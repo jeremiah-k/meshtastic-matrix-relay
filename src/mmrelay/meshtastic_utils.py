@@ -150,12 +150,22 @@ def _submit_coro(
     except RuntimeError:
         # No running loop: check if we can safely create a new loop
         try:
-            # Try to get the current event loop policy and create a new loop
-            # This is safer than asyncio.run() which can cause deadlocks
+            # Try to get the current event loop policy and create a new loop.
+            # This is safer than asyncio.run() which can cause deadlocks.
             policy = asyncio.get_event_loop_policy()
             logger.debug(
                 "No running event loop detected; creating a temporary loop to execute coroutine"
             )
+            # Avoid asyncio.get_event_loop() here: on Python 3.12 it emits a
+            # DeprecationWarning and may create a new loop. We only want to
+            # restore an already-set loop after the temporary loop finishes, so
+            # we read the policy's thread-local loop defensively.
+            previous_loop: asyncio.AbstractEventLoop | None = None
+            try:
+                local = getattr(policy, "_local", None)
+                previous_loop = getattr(local, "_loop", None)
+            except Exception:
+                previous_loop = None
             new_loop = policy.new_event_loop()
             asyncio.set_event_loop(new_loop)
             try:
@@ -165,12 +175,17 @@ def _submit_coro(
                 return result_future
             finally:
                 new_loop.close()
-                asyncio.set_event_loop(None)
+                if isinstance(previous_loop, asyncio.AbstractEventLoop):
+                    asyncio.set_event_loop(previous_loop)
+                else:
+                    asyncio.set_event_loop(None)
         except Exception as e:
             # Final fallback: always return a Future so _fire_and_forget can log
             # exceptions instead of crashing a background thread when no loop is
-            # available. We intentionally catch broad exceptions here because the
-            # coroutine itself may raise, and we still need a Future wrapper.
+            # available. We intentionally catch broad exceptions here because
+            # run_until_complete can raise from the coroutine itself, async mocks
+            # can raise unexpected errors in tests, and callers still expect a
+            # Future wrapper to attach callbacks for error logging.
             logger.debug(
                 "Ultimate fallback triggered for _submit_coro: %s: %s",
                 type(e).__name__,

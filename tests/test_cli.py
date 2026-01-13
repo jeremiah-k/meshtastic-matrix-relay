@@ -20,6 +20,7 @@
 # See docs/dev/TESTING_GUIDE.md for comprehensive async mocking patterns.
 
 import builtins
+import importlib
 import json
 import os
 import sys
@@ -2742,47 +2743,18 @@ class TestPrintEnvironmentSummary(unittest.TestCase):
         # Import function first
         from mmrelay.cli import _print_environment_summary
 
-        # Mock failed E2EE imports by removing modules from sys.modules and making import fail
-        original_modules = sys.modules.copy()
-        original_import = None
-        try:
-            # Remove E2EE modules if they exist
-            for module in ["olm", "nio.crypto", "nio.store"]:
-                if module in sys.modules:
-                    del sys.modules[module]
+        real_import_module = importlib.import_module
 
-            # Mock import to raise ImportError for E2EE modules
-            original_import = builtins.__import__
+        def mock_import_module(name: str):
+            if name in ("olm", "nio.crypto", "nio.store"):
+                raise ImportError(name)
+            return real_import_module(name)
 
-            def mock_import(name, *args, **kwargs):
-                """
-                Simulate missing optional modules by raising ImportError for select module names during imports.
-                
-                Parameters:
-                    name (str): Fully-qualified module name being imported; if it equals "olm", "nio.crypto", or "nio.store" an ImportError is raised.
-                    *args: Additional positional arguments passed to the underlying import machinery (passed through unchanged).
-                    **kwargs: Additional keyword arguments passed through to the underlying import machinery.
-                
-                Returns:
-                    module: The result of the normal import for module names other than the ones listed.
-                
-                Raises:
-                    ImportError: If `name` is "olm", "nio.crypto", or "nio.store".
-                """
-                if name in ["olm", "nio.crypto", "nio.store"]:
-                    raise ImportError(f"No module named '{name}'")
-                return original_import(name, *args, **kwargs)
-
-            builtins.__import__ = mock_import
-
-            # Call function
+        # Call function
+        with patch(
+            "mmrelay.cli.importlib.import_module", side_effect=mock_import_module
+        ):
             _print_environment_summary()
-
-        finally:
-            # Restore original state
-            if original_import is not None:
-                builtins.__import__ = original_import
-            sys.modules.update(original_modules)
 
         # Verify results
         mock_print.assert_any_call("\n🖥️  Environment Summary:")
@@ -3130,49 +3102,20 @@ class TestAnalyzeE2eeSetup(unittest.TestCase):
         # Setup mocks
         mock_exists.return_value = False  # No credentials file
 
-        # Mock missing E2EE dependencies
-        original_modules = sys.modules.copy()
-        original_import = None
-        try:
-            # Remove E2EE modules if they exist
-            for module in ["olm", "nio.crypto", "nio.store"]:
-                if module in sys.modules:
-                    del sys.modules[module]
+        real_import_module = importlib.import_module
 
-            # Mock import to raise ImportError for E2EE modules
-            original_import = builtins.__import__
+        def mock_import_module(name: str):
+            if name in ("olm", "nio.crypto", "nio.store"):
+                raise ImportError(name)
+            return real_import_module(name)
 
-            def mock_import(name, *args, **kwargs):
-                """
-                Simulate missing optional modules by raising ImportError for select module names during imports.
-                
-                Parameters:
-                    name (str): Fully-qualified module name being imported; if it equals "olm", "nio.crypto", or "nio.store" an ImportError is raised.
-                    *args: Additional positional arguments passed to the underlying import machinery (passed through unchanged).
-                    **kwargs: Additional keyword arguments passed through to the underlying import machinery.
-                
-                Returns:
-                    module: The result of the normal import for module names other than the ones listed.
-                
-                Raises:
-                    ImportError: If `name` is "olm", "nio.crypto", or "nio.store".
-                """
-                if name in ["olm", "nio.crypto", "nio.store"]:
-                    raise ImportError(f"No module named '{name}'")
-                return original_import(name, *args, **kwargs)
-
-            builtins.__import__ = mock_import
-
+        with patch(
+            "mmrelay.cli.importlib.import_module", side_effect=mock_import_module
+        ):
             # Import and call function
             from mmrelay.cli import _analyze_e2ee_setup
 
             result = _analyze_e2ee_setup(self.base_config, self.config_path)
-
-        finally:
-            # Restore original state
-            if original_import is not None:
-                builtins.__import__ = original_import
-            sys.modules.update(original_modules)
 
         # Verify results
         self.assertIsInstance(result, dict)

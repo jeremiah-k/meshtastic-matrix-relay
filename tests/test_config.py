@@ -14,6 +14,7 @@ from mmrelay.config import (
     _convert_env_float,
     _convert_env_int,
     apply_env_config_overrides,
+    check_e2ee_enabled_silently,
     get_app_path,
     get_base_dir,
     get_config_paths,
@@ -845,6 +846,9 @@ class TestE2EESupport(unittest.TestCase):
     def test_is_e2ee_enabled_various_configs(self):
         """Test E2EE enablement detection across various configurations."""
         test_cases = [
+            (None, False, "none config"),
+            (False, False, "false config"),
+            ("", False, "empty string config"),
             # Legacy key
             (
                 {"matrix": {"encryption": {"enabled": True}}},
@@ -884,11 +888,65 @@ class TestE2EESupport(unittest.TestCase):
             ({}, False, "empty config"),
             ({"meshtastic": {}}, False, "no matrix section"),
             ({"matrix": {}}, False, "empty matrix section"),
+            ({"matrix": None}, False, "matrix section None"),
         ]
         for config, expected, description in test_cases:
             with self.subTest(description=description):
                 result = is_e2ee_enabled(config)
                 self.assertEqual(result, expected)
+
+
+class TestE2EESilentChecks(unittest.TestCase):
+    """Test silent E2EE configuration checks."""
+
+    def test_check_e2ee_enabled_silently_no_config(self):
+        """Verify missing config returns False without raising."""
+        result = check_e2ee_enabled_silently(None)
+        self.assertFalse(result)
+
+    def test_check_e2ee_enabled_silently_with_empty_paths(self):
+        """Verify an empty config path list returns False."""
+        mock_args = MagicMock()
+        mock_args.config = None
+
+        with patch("mmrelay.config.get_config_paths", return_value=[]):
+            result = check_e2ee_enabled_silently(mock_args)
+            self.assertFalse(result)
+
+    def test_check_e2ee_enabled_silently_missing_config_path(self):
+        """Verify a missing explicit config path returns False."""
+        mock_args = MagicMock()
+        mock_args.config = "/nonexistent/config.yaml"
+
+        result = check_e2ee_enabled_silently(mock_args)
+        self.assertFalse(result)
+
+    def test_check_e2ee_enabled_silently_handles_yaml_error(self):
+        """Verify YAML parsing errors are handled and return False."""
+        mock_args = MagicMock()
+        mock_args.config = None
+        with patch(
+            "mmrelay.config.get_config_paths", return_value=["/test/config.yaml"]
+        ):
+            with patch("os.path.isfile", return_value=True):
+                with patch(
+                    "builtins.open", mock_open(read_data="invalid: yaml: content: [")
+                ):
+                    result = check_e2ee_enabled_silently(mock_args)
+                    self.assertFalse(result)
+
+    def test_check_e2ee_enabled_silently_falsy_config(self):
+        """Verify falsy config data returns False."""
+        mock_args = MagicMock()
+        mock_args.config = None
+        with patch(
+            "mmrelay.config.get_config_paths", return_value=["/test/config.yaml"]
+        ):
+            with patch("os.path.isfile", return_value=True):
+                with patch("builtins.open", mock_open(read_data="")):
+                    with patch("mmrelay.config.yaml.load", return_value=None):
+                        result = check_e2ee_enabled_silently(mock_args)
+                        self.assertFalse(result)
 
 
 class TestCredentials(unittest.TestCase):

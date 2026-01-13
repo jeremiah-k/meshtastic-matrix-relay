@@ -42,7 +42,11 @@ try:
         RemoteProtocolError,
         RemoteTransportError,
     )
-    from nio.responses import LoginError, LogoutError  # type: ignore[import-untyped]
+    from nio.responses import (  # type: ignore[import-untyped]
+        LoginError,
+        LogoutError,
+        LogoutResponse,
+    )
 
     # Create aliases for backward compatibility
     NioLoginError = LoginError
@@ -67,6 +71,7 @@ except ImportError:
     NioRemoteTransportError = Exception
     NioLocalProtocolError = Exception
     NioRemoteProtocolError = Exception
+    LogoutResponse = type("LogoutResponse", (), {})
 
 # Import mmrelay modules - avoid circular imports by importing inside functions
 
@@ -738,17 +743,25 @@ async def logout_matrix_bot(password: str) -> bool:
                     "⚠️  Timeout during Matrix server logout, proceeding with local cleanup."
                 )
             else:
-                if hasattr(logout_response, "transport_response"):
+                if isinstance(logout_response, LogoutResponse):
                     logger.info("Successfully logged out from Matrix server.")
                     print("✅ Successfully logged out from Matrix server.")
+                elif isinstance(logout_response, NioLogoutError):
+                    _handle_matrix_error(logout_response, "Server logout", "warning")
                 else:
                     logger.warning(
                         "Logout response unclear, proceeding with local cleanup."
                     )
                     print("⚠️  Logout response unclear, proceeding with local cleanup.")
-        except Exception as e:
+        except (
+            NioLocalTransportError,
+            NioRemoteTransportError,
+            NioLocalProtocolError,
+            NioRemoteProtocolError,
+            OSError,
+        ) as e:
             _handle_matrix_error(e, "Server logout", "warning")
-            logger.debug(f"Logout error details: {e}")
+            logger.debug("Logout error details: %s", e)
         finally:
             if main_client is not None:
                 try:
