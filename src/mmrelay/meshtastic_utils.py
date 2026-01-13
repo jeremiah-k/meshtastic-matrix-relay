@@ -369,6 +369,98 @@ def _resolve_plugin_timeout(cfg: dict[str, Any] | None, default: float = 5.0) ->
     return default
 
 
+def _resolve_plugin_result(
+    handler_result: Any,
+    plugin: Any,
+    plugin_timeout: float,
+    loop: asyncio.AbstractEventLoop,
+) -> bool:
+    """
+    Resolve a plugin handler result to a boolean, handling async timeouts and bad awaitables.
+
+    Returns True when the plugin should be treated as handled, False otherwise.
+    """
+    if not inspect.iscoroutine(handler_result) and not inspect.isawaitable(
+        handler_result
+    ):
+        return bool(handler_result)
+
+    result_future = _submit_coro(handler_result, loop=loop)
+    if result_future is None:
+        logger.warning("Plugin %s returned no awaitable; skipping.", plugin.plugin_name)
+        return False
+    try:
+        return bool(_wait_for_result(result_future, plugin_timeout, loop=loop))
+    except (asyncio.TimeoutError, FuturesTimeoutError) as exc:
+        logger.warning(
+            "Plugin %s did not respond within %ss: %s",
+            plugin.plugin_name,
+            plugin_timeout,
+            exc,
+        )
+        return True
+
+
+def _run_meshtastic_plugins(
+    *,
+    packet: dict[str, Any],
+    formatted_message: str | None,
+    longname: str | None,
+    meshnet_name: str | None,
+    loop: asyncio.AbstractEventLoop,
+    cfg: dict[str, Any] | None,
+    use_keyword_args: bool = False,
+    log_with_portnum: bool = False,
+    portnum: Any | None = None,
+) -> bool:
+    """
+    Invoke Meshtastic plugins and return True when a plugin handles the message.
+    """
+    from mmrelay.plugin_loader import load_plugins
+
+    plugins = load_plugins()
+    plugin_timeout = _resolve_plugin_timeout(cfg, default=5.0)
+
+    found_matching_plugin = False
+    for plugin in plugins:
+        if not found_matching_plugin:
+            try:
+                if use_keyword_args:
+                    handler_result = plugin.handle_meshtastic_message(
+                        packet,
+                        formatted_message=formatted_message,
+                        longname=longname,
+                        meshnet_name=meshnet_name,
+                    )
+                else:
+                    handler_result = plugin.handle_meshtastic_message(
+                        packet,
+                        formatted_message,
+                        longname,
+                        meshnet_name,
+                    )
+
+                found_matching_plugin = _resolve_plugin_result(
+                    handler_result,
+                    plugin,
+                    plugin_timeout,
+                    loop,
+                )
+
+                if found_matching_plugin:
+                    if log_with_portnum:
+                        logger.debug(
+                            f"Processed {portnum} with plugin {plugin.plugin_name}"
+                        )
+                    else:
+                        logger.debug(f"Processed by plugin {plugin.plugin_name}")
+            except Exception:
+                logger.exception(f"Plugin {plugin.plugin_name} failed")
+                # Continue processing other plugins
+
+    return found_matching_plugin
+
+
 def _get_name_safely(name_func: Callable[[Any], str | None], sender: Any) -> str:
     """
     Return a display name for a sender, falling back to the sender's string form.
@@ -1217,56 +1309,14 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         formatted_message = f"{prefix}{text}"
 
         # Plugin functionality - Check if any plugin handles this message before relaying
-        from mmrelay.plugin_loader import load_plugins
-
-        plugins = load_plugins()
-        plugin_timeout = _resolve_plugin_timeout(config, default=5.0)
-
-        found_matching_plugin = False
-        for plugin in plugins:
-            if not found_matching_plugin:
-                try:
-                    handler_result = plugin.handle_meshtastic_message(
-                        packet, formatted_message, longname, meshnet_name
-                    )
-
-                    # Backward compatibility: handle synchronous plugins
-                    if not inspect.iscoroutine(
-                        handler_result
-                    ) and not inspect.isawaitable(handler_result):
-                        found_matching_plugin = bool(handler_result)
-                    else:
-                        # Async plugins
-                        result_future = _submit_coro(handler_result, loop=loop)
-                        if result_future is None:
-                            logger.warning(
-                                "Plugin %s returned no awaitable; skipping.",
-                                plugin.plugin_name,
-                            )
-                            found_matching_plugin = False
-                            continue
-                        try:
-                            found_matching_plugin = bool(
-                                _wait_for_result(
-                                    result_future,
-                                    plugin_timeout,
-                                    loop=loop,
-                                )
-                            )
-                        except (asyncio.TimeoutError, FuturesTimeoutError) as exc:
-                            logger.warning(
-                                "Plugin %s did not respond within %ss: %s",
-                                plugin.plugin_name,
-                                plugin_timeout,
-                                exc,
-                            )
-                            found_matching_plugin = True
-
-                    if found_matching_plugin:
-                        logger.debug(f"Processed by plugin {plugin.plugin_name}")
-                except Exception:
-                    logger.exception(f"Plugin {plugin.plugin_name} failed")
-                    # Continue processing other plugins
+        found_matching_plugin = _run_meshtastic_plugins(
+            packet=packet,
+            formatted_message=formatted_message,
+            longname=longname,
+            meshnet_name=meshnet_name,
+            loop=loop,
+            cfg=config,
+        )
 
         # If message is a DM or handled by plugin, do not relay further
         if is_direct_message:
@@ -1314,59 +1364,17 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     else:
         # Non-text messages via plugins
         portnum = decoded.get("portnum")
-        from mmrelay.plugin_loader import load_plugins
-
-        plugins = load_plugins()
-        plugin_timeout = _resolve_plugin_timeout(config, default=5.0)
-        found_matching_plugin = False
-        for plugin in plugins:
-            if not found_matching_plugin:
-                try:
-                    handler_result = plugin.handle_meshtastic_message(
-                        packet,
-                        formatted_message=None,
-                        longname=None,
-                        meshnet_name=None,
-                    )
-
-                    # Backward compatibility: handle synchronous plugins
-                    if not inspect.iscoroutine(
-                        handler_result
-                    ) and not inspect.isawaitable(handler_result):
-                        found_matching_plugin = bool(handler_result)
-                    else:
-                        result_future = _submit_coro(handler_result, loop=loop)
-                        if result_future is None:
-                            logger.warning(
-                                "Plugin %s returned no awaitable; skipping.",
-                                plugin.plugin_name,
-                            )
-                            found_matching_plugin = False
-                            continue
-                        try:
-                            found_matching_plugin = bool(
-                                _wait_for_result(
-                                    result_future,
-                                    plugin_timeout,
-                                    loop=loop,
-                                )
-                            )
-                        except (asyncio.TimeoutError, FuturesTimeoutError) as exc:
-                            logger.warning(
-                                "Plugin %s did not respond within %ss: %s",
-                                plugin.plugin_name,
-                                plugin_timeout,
-                                exc,
-                            )
-                            found_matching_plugin = True
-
-                    if found_matching_plugin:
-                        logger.debug(
-                            f"Processed {portnum} with plugin {plugin.plugin_name}"
-                        )
-                except Exception:
-                    logger.exception(f"Plugin {plugin.plugin_name} failed")
-                    # Continue processing other plugins
+        _run_meshtastic_plugins(
+            packet=packet,
+            formatted_message=None,
+            longname=None,
+            meshnet_name=None,
+            loop=loop,
+            cfg=config,
+            use_keyword_args=True,
+            log_with_portnum=True,
+            portnum=portnum,
+        )
 
 
 async def check_connection() -> None:
