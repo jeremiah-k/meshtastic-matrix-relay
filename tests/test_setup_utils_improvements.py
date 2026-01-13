@@ -20,7 +20,7 @@ class TestPatchCoverageImprovements(unittest.TestCase):
         # Test warning message in get_template_service_path
         from mmrelay.setup_utils import get_template_service_path
 
-        with patch("os.path.exists", return_value=False):
+        with patch("mmrelay.setup_utils.os.path.exists", return_value=False):
             with patch("mmrelay.setup_utils.logger") as mock_logger:
                 result = get_template_service_path()
 

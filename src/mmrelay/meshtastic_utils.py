@@ -148,44 +148,31 @@ def _submit_coro(
         running = asyncio.get_running_loop()
         return cast(Future[Any], running.create_task(coro))
     except RuntimeError:
-        # No running loop: check if we can safely create a new loop
         try:
-            # Try to get the current event loop policy and create a new loop.
-            # This is safer than asyncio.run() which can cause deadlocks.
             policy = asyncio.get_event_loop_policy()
             logger.debug(
                 "No running event loop detected; creating a temporary loop to execute coroutine"
             )
-            # Avoid asyncio.get_event_loop() here: on Python 3.12 it emits a
-            # DeprecationWarning and may create a new loop. We only want to
-            # restore an already-set loop after the temporary loop finishes, so
-            # we read the policy's thread-local loop defensively.
-            previous_loop: asyncio.AbstractEventLoop | None = None
-            try:
-                local = getattr(policy, "_local", None)
-                previous_loop = getattr(local, "_loop", None)
-            except Exception:
-                previous_loop = None
             new_loop = policy.new_event_loop()
             asyncio.set_event_loop(new_loop)
             try:
-                result = new_loop.run_until_complete(coro)
                 result_future: Future[Any] = Future()
-                result_future.set_result(result)
+                outcome = new_loop.run_until_complete(
+                    asyncio.gather(coro, return_exceptions=True)
+                )[0]
+                if isinstance(outcome, BaseException):
+                    result_future.set_exception(outcome)
+                else:
+                    result_future.set_result(outcome)
                 return result_future
             finally:
                 new_loop.close()
-                if isinstance(previous_loop, asyncio.AbstractEventLoop):
-                    asyncio.set_event_loop(previous_loop)
-                else:
-                    asyncio.set_event_loop(None)
-        except Exception as e:
+                asyncio.set_event_loop(None)
+        except (OSError, RuntimeError, ValueError, TypeError) as e:
             # Final fallback: always return a Future so _fire_and_forget can log
             # exceptions instead of crashing a background thread when no loop is
-            # available. We intentionally catch broad exceptions here because
-            # run_until_complete can raise from the coroutine itself, async mocks
-            # can raise unexpected errors in tests, and callers still expect a
-            # Future wrapper to attach callbacks for error logging.
+            # available. We intentionally catch specific exceptions here because
+            # callers still expect a Future wrapper to attach callbacks for error logging.
             logger.debug(
                 "Ultimate fallback triggered for _submit_coro: %s: %s",
                 type(e).__name__,
@@ -230,7 +217,10 @@ def _fire_and_forget(
         """
         try:
             if (exc := t.exception()) and not isinstance(exc, asyncio.CancelledError):
-                logger.error("Exception in fire-and-forget task", exc_info=exc)
+                logger.error(
+                    "Exception in fire-and-forget task",
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                )
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -627,15 +617,16 @@ def connect_meshtastic(
         if meshtastic_client and not force_connect:
             return meshtastic_client
 
-        # Close previous connection if exists
-        if meshtastic_client:
-            try:
-                meshtastic_client.close()
-            except Exception as e:
-                logger.warning(f"Error closing previous connection: {e}")
-            if meshtastic_client is meshtastic_iface:
-                meshtastic_iface = None
-            meshtastic_client = None
+            # Close previous connection if exists
+            if meshtastic_client:
+                try:
+                    meshtastic_client.close()
+                except Exception as e:
+                    logger.warning(f"Error closing previous connection: {e}")
+                if meshtastic_client is meshtastic_iface:
+                    with meshtastic_iface_lock:
+                        meshtastic_iface = None
+                meshtastic_client = None
 
         # Check if config is available
         if config is None:
@@ -757,13 +748,17 @@ def connect_meshtastic(
                             logger.info(
                                 "BLE address has changed. Re-creating BLE interface."
                             )
-                            with contextlib.suppress(Exception):
+                            try:
                                 meshtastic_iface.close()
-                            meshtastic_iface = None
+                            except Exception:
+                                logger.debug(
+                                    "Ignoring error while closing old BLE interface",
+                                    exc_info=True,
+                                )
+                            finally:
+                                meshtastic_iface = None
 
                         if meshtastic_iface is None:
-                            # Create a single BLEInterface instance for process lifetime
-                            # Check if auto_reconnect parameter is supported (forked version)
                             ble_init_sig = inspect.signature(
                                 meshtastic.ble_interface.BLEInterface.__init__
                             )
@@ -775,7 +770,6 @@ def connect_meshtastic(
                                 "timeout": timeout,
                             }
 
-                            # Add auto_reconnect only if supported (forked version)
                             if "auto_reconnect" in ble_init_sig.parameters:
                                 ble_kwargs["auto_reconnect"] = False
                                 logger.debug(
@@ -789,7 +783,6 @@ def connect_meshtastic(
                                     meshtastic.ble_interface.BLEInterface(**ble_kwargs)
                                 )
                             except Exception:
-                                # BLEInterface constructor failed - this is a critical error
                                 logger.exception("BLE interface creation failed")
                                 raise
 
@@ -972,7 +965,8 @@ def on_lost_meshtastic_connection(
             except Exception as e:
                 logger.warning(f"Error closing Meshtastic client: {e}")
             if meshtastic_client is meshtastic_iface:
-                meshtastic_iface = None
+                with meshtastic_iface_lock:
+                    meshtastic_iface = None
         meshtastic_client = None
 
         if event_loop and not event_loop.is_closed():

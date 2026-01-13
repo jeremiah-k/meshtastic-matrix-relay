@@ -19,8 +19,10 @@
 # This pattern eliminates RuntimeWarnings while maintaining proper test coverage.
 # See docs/dev/TESTING_GUIDE.md for comprehensive async mocking patterns.
 
+import asyncio
 import builtins
 import importlib
+import inspect
 import json
 import os
 import sys
@@ -1220,6 +1222,20 @@ class TestAuthLogin(unittest.TestCase):
         self.mock_args.homeserver = None
         self.mock_args.username = None
         self.mock_args.password = None
+        self._asyncio_run_patcher = patch("asyncio.run")
+        self.mock_asyncio_run = self._asyncio_run_patcher.start()
+        self.addCleanup(self._asyncio_run_patcher.stop)
+
+        def _fake_asyncio_run(coro):
+            if inspect.isawaitable(coro):
+                loop = asyncio.new_event_loop()
+                try:
+                    return loop.run_until_complete(coro)
+                finally:
+                    loop.close()
+            return coro
+
+        self.mock_asyncio_run.side_effect = _fake_asyncio_run
 
     @patch("mmrelay.matrix_utils.login_matrix_bot")
     @patch("builtins.print")

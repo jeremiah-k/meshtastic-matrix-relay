@@ -928,7 +928,7 @@ class TestE2EESilentChecks(unittest.TestCase):
         with patch(
             "mmrelay.config.get_config_paths", return_value=["/test/config.yaml"]
         ):
-            with patch("os.path.isfile", return_value=True):
+            with patch("mmrelay.config.os.path.isfile", return_value=True):
                 with patch(
                     "builtins.open", mock_open(read_data="invalid: yaml: content: [")
                 ):
@@ -942,7 +942,7 @@ class TestE2EESilentChecks(unittest.TestCase):
         with patch(
             "mmrelay.config.get_config_paths", return_value=["/test/config.yaml"]
         ):
-            with patch("os.path.isfile", return_value=True):
+            with patch("mmrelay.config.os.path.isfile", return_value=True):
                 with patch("builtins.open", mock_open(read_data="")):
                     with patch("mmrelay.config.yaml.load", return_value=None):
                         result = check_e2ee_enabled_silently(mock_args)

@@ -553,7 +553,7 @@ async def logout_matrix_bot(password: str) -> bool:
     """
     Log out the configured Matrix account, verify credentials when possible, and remove local session data.
 
-    If credentials are present the function will, when feasible, verify the provided password by performing a temporary login and request server-side logout to invalidate the stored access token. If the stored credentials are incomplete it performs a best-effort local cleanup of session artifacts (for example, credentials file and E2EE stores). All network and cleanup failures are reported; the function always attempts local cleanup regardless of server outcomes.
+    If credentials are present the function will, when feasible, verify the provided password by performing a temporary login and request server-side logout to invalidate the stored access token. If the stored credentials are incomplete it performs a best-effort local cleanup of session artifacts (for example, credentials file and E2EE stores). Local cleanup is attempted after the server logout flow, so early validation failures may return before cleanup is run. All network and cleanup failures are reported; the function always reports errors encountered along the way.
 
     Parameters:
         password (str): Matrix account password used to verify the session before attempting server logout.
