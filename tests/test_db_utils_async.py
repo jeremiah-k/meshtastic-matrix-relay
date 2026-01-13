@@ -260,7 +260,7 @@ class TestAsyncHelpers(unittest.TestCase):
 
         # Verify SQL execution
         expected_sql = "INSERT INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) VALUES (?, ?, ?, ?, ?) ON CONFLICT(matrix_event_id) DO UPDATE SET meshtastic_id=excluded.meshtastic_id, matrix_room_id=excluded.matrix_room_id, meshtastic_text=excluded.meshtastic_text, meshtastic_meshnet=excluded.meshtastic_meshnet"
-        expected_params = (123, "$event123", "!room123", "Test message", "testnet")
+        expected_params = ("123", "$event123", "!room123", "Test message", "testnet")
         mock_cursor.execute.assert_called_once_with(expected_sql, expected_params)
 
     @patch("mmrelay.db_utils._get_db_manager")

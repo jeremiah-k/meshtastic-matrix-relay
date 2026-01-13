@@ -1102,14 +1102,30 @@ def main() -> int:
             # Create the directory if it doesn't exist
             os.makedirs(mmrelay.config.custom_data_dir, exist_ok=True)
 
-        # Handle subcommands first (modern interface)
-        if hasattr(args, "command") and args.command:
-            return handle_subcommand(args)
+        args_dict = vars(args)
+        has_modern_command = bool(getattr(args, "command", None))
+        has_legacy_flag = any(
+            args_dict.get(flag)
+            for flag in (
+                "version",
+                "install_service",
+                "generate_config",
+                "check_config",
+                "auth",
+            )
+        )
 
-        # Handle legacy flags (with deprecation warnings)
-        legacy_exit = handle_cli_commands(args)
-        if legacy_exit is not None:
-            return legacy_exit
+        if has_modern_command or has_legacy_flag:
+            from mmrelay import log_utils
+
+            # CLI commands print user-facing output; suppress console logging noise.
+            with log_utils.cli_logging_mode(args=args):
+                if has_modern_command:
+                    return handle_subcommand(args)
+
+                legacy_exit = handle_cli_commands(args)
+                if legacy_exit is not None:
+                    return legacy_exit
 
         # If no command was specified, run the main functionality
         try:

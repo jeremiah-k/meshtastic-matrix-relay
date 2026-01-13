@@ -166,8 +166,11 @@ def _submit_coro(
             finally:
                 new_loop.close()
                 asyncio.set_event_loop(None)
-        except (RuntimeError, OSError) as e:
-            # Ultimate fallback: create a completed Future with an exception
+        except Exception as e:
+            # Final fallback: always return a Future so _fire_and_forget can log
+            # exceptions instead of crashing a background thread when no loop is
+            # available. We intentionally catch broad exceptions here because the
+            # coroutine itself may raise, and we still need a Future wrapper.
             logger.debug(
                 "Ultimate fallback triggered for _submit_coro: %s: %s",
                 type(e).__name__,
@@ -1015,7 +1018,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
 
     if not getattr(interface, "myInfo", None):
         logger.warning("Meshtastic interface missing myInfo; cannot determine node id")
-        return None
+        return
     myId = interface.myInfo.my_node_num
 
     if toId == myId:
@@ -1531,7 +1534,8 @@ sendTextReply = send_text_reply
 if __name__ == "__main__":
     # If running this standalone (normally the main.py does the loop), just try connecting and run forever.
     meshtastic_client = connect_meshtastic()
-    loop = asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     event_loop = loop  # Set the event loop for use in callbacks
     loop.create_task(check_connection())
     loop.run_forever()

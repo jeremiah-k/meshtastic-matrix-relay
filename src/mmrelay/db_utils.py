@@ -711,7 +711,7 @@ def update_shortnames(nodes: dict[str, Any]) -> None:
 
 def _store_message_map_core(
     cursor: sqlite3.Cursor,
-    meshtastic_id: int | str,
+    meshtastic_id: str,
     matrix_event_id: str,
     matrix_room_id: str,
     meshtastic_text: str,
@@ -722,7 +722,7 @@ def _store_message_map_core(
 
     Parameters:
         cursor (sqlite3.Cursor): Active database cursor used to execute the statement.
-        meshtastic_id (int | str): Meshtastic message or node identifier.
+        meshtastic_id (str): Meshtastic message or node identifier (string-normalized).
         matrix_event_id (str): Matrix event ID to map to.
         matrix_room_id (str): Matrix room ID where the Matrix event resides.
         meshtastic_text (str): Text content of the Meshtastic message.
@@ -763,6 +763,8 @@ def store_message_map(
         meshtastic_meshnet (str|None): Optional meshnet identifier associated with the message; stored when provided.
     """
     manager = _get_db_manager()
+    # Normalize IDs to a consistent string form to match other DB helpers.
+    id_key = str(meshtastic_id)
 
     try:
         logger.debug(
@@ -776,7 +778,7 @@ def store_message_map(
         manager.run_sync(
             lambda cursor: _store_message_map_core(
                 cursor,
-                meshtastic_id,
+                id_key,
                 matrix_event_id,
                 matrix_room_id,
                 meshtastic_text,
@@ -798,6 +800,8 @@ def get_message_map_by_meshtastic_id(
         tuple: (matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) if a valid mapping exists, `None` otherwise.
     """
     manager = _get_db_manager()
+    # Normalize IDs to a consistent string form to match other DB helpers.
+    id_key = str(meshtastic_id)
 
     def _fetch(cursor: sqlite3.Cursor) -> tuple[Any, ...] | None:
         """
@@ -808,7 +812,7 @@ def get_message_map_by_meshtastic_id(
         """
         cursor.execute(
             "SELECT matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet FROM message_map WHERE meshtastic_id=?",
-            (meshtastic_id,),
+            (id_key,),
         )
         return cast(tuple[Any, ...] | None, cursor.fetchone())
 
@@ -973,6 +977,8 @@ async def async_store_message_map(
         meshtastic_meshnet (str | None): Optional meshnet identifier associated with the message.
     """
     manager = _get_db_manager()
+    # Normalize IDs to a consistent string form to match other DB helpers.
+    id_key = str(meshtastic_id)
 
     try:
         logger.debug(
@@ -986,7 +992,7 @@ async def async_store_message_map(
         await manager.run_async(
             lambda cursor: _store_message_map_core(
                 cursor,
-                meshtastic_id,
+                id_key,
                 matrix_event_id,
                 matrix_room_id,
                 meshtastic_text,

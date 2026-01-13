@@ -1486,6 +1486,7 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
 
     def test_submit_coro_with_no_event_loop_no_running_loop_exception(self):
         """Test _submit_coro exception handling when coroutine execution fails."""
+        from concurrent.futures import Future
 
         async def failing_coro():
             """
@@ -1504,9 +1505,10 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
         with patch("asyncio.get_running_loop") as mock_get_loop:
             mock_get_loop.side_effect = RuntimeError("No running loop")
 
-            with self.assertRaises(ValueError) as cm:
-                self.original_submit_coro(coro)
-            self.assertEqual(str(cm.exception), "Test exception")
+            result = self.original_submit_coro(coro)
+            self.assertIsInstance(result, Future)
+            self.assertIsInstance(result.exception(), ValueError)
+            self.assertEqual(str(result.exception()), "Test exception")
 
     def test_submit_coro_with_running_loop(self):
         """Test _submit_coro with a running loop - should use create_task."""
