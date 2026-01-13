@@ -705,14 +705,15 @@ async def logout_matrix_bot(password: str) -> bool:
         # Now logout the main session
         logger.info("Logging out from Matrix server...")
         print("🚪 Logging out from Matrix server...")
-        main_client = AsyncClient(homeserver, user_id, ssl=ssl_context)
-        main_client.restore_login(
-            user_id=user_id,
-            device_id=device_id,
-            access_token=access_token,
-        )
-
+        main_client = None
         try:
+            main_client = AsyncClient(homeserver, user_id, ssl=ssl_context)
+            main_client.restore_login(
+                user_id=user_id,
+                device_id=device_id,
+                access_token=access_token,
+            )
+
             # Logout from the server (invalidates the access token)
             logout_response = await main_client.logout()
             if hasattr(logout_response, "transport_response"):
@@ -727,7 +728,14 @@ async def logout_matrix_bot(password: str) -> bool:
             _handle_matrix_error(e, "Server logout", "warning")
             logger.debug(f"Logout error details: {e}")
         finally:
-            await main_client.close()
+            if main_client is not None:
+                try:
+                    await main_client.close()
+                except (OSError, asyncio.TimeoutError):
+                    logger.debug(
+                        "Ignoring error while closing main Matrix client",
+                        exc_info=True,
+                    )
 
         # Clear local session data
         success = _cleanup_local_session_data()

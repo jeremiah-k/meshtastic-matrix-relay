@@ -676,7 +676,7 @@ def connect_meshtastic(
                                 meshtastic_iface = (
                                     meshtastic.ble_interface.BLEInterface(**ble_kwargs)
                                 )
-                            except Exception as e:
+                            except Exception:
                                 # BLEInterface constructor failed - this is a critical error
                                 logger.exception("BLE interface creation failed")
                                 raise

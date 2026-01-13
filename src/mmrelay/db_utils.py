@@ -410,30 +410,6 @@ def store_plugin_data(plugin_name: str, meshtastic_id: int | str, data: Any) -> 
         )
         return
 
-    def _store(cursor: sqlite3.Cursor) -> None:
-        """
-        Store JSON-serialized plugin data for a specific plugin and Meshtastic node using the provided DB cursor.
-
-        Executes an INSERT (with ON CONFLICT DO UPDATE) into `plugin_data` for captured `plugin_name` and `meshtastic_id`, storing `data` serialized as JSON.
-
-        Parameters:
-            cursor (sqlite3.Cursor): Open database cursor used to execute the insert/update. The function uses `plugin_name`, `meshtastic_id`, and `payload` from the enclosing scope.
-        """
-        cursor.execute(
-            "INSERT INTO plugin_data (plugin_name, meshtastic_id, data) VALUES (?, ?, ?) "
-            "ON CONFLICT (plugin_name, meshtastic_id) DO UPDATE SET data = excluded.data",
-            (plugin_name, meshtastic_id, payload),
-        )
-
-    try:
-        manager.run_sync(_store, write=True)
-    except sqlite3.Error:
-        logger.exception(
-            "Database error storing plugin data for %s, %s",
-            plugin_name,
-            meshtastic_id,
-        )
-
 
 def delete_plugin_data(plugin_name: str, meshtastic_id: int | str) -> None:
     """Remove a plugin data entry for a Meshtastic node from the database.
@@ -481,6 +457,7 @@ def get_plugin_data_for_node(plugin_name: str, meshtastic_id: int | str) -> Any:
         Any: The deserialized JSON value (may be dict, list, scalar, etc.) for the given plugin and node, or an empty list `[]` if none is stored or on error.
     """
     manager = _get_db_manager()
+    id_key = str(meshtastic_id)
 
     def _fetch(cursor: sqlite3.Cursor) -> tuple[Any, ...] | None:
         """
@@ -491,7 +468,7 @@ def get_plugin_data_for_node(plugin_name: str, meshtastic_id: int | str) -> Any:
         """
         cursor.execute(
             "SELECT data FROM plugin_data WHERE plugin_name=? AND meshtastic_id=?",
-            (plugin_name, meshtastic_id),
+            (plugin_name, id_key),
         )
         return cast(tuple[Any, ...] | None, cursor.fetchone())
 
@@ -604,6 +581,7 @@ def save_longname(meshtastic_id: int | str, longname: str) -> None:
         longname (str): Full display name to store for the node.
     """
     manager = _get_db_manager()
+    id_key = str(meshtastic_id)
 
     def _store(cursor: sqlite3.Cursor) -> None:
         """
@@ -615,7 +593,7 @@ def save_longname(meshtastic_id: int | str, longname: str) -> None:
         cursor.execute(
             "INSERT INTO longnames (meshtastic_id, longname) VALUES (?, ?) "
             "ON CONFLICT(meshtastic_id) DO UPDATE SET longname=excluded.longname",
-            (meshtastic_id, longname),
+            (id_key, longname),
         )
 
     try:
@@ -690,6 +668,7 @@ def save_shortname(meshtastic_id: int | str, shortname: str) -> None:
         shortname (str): Display name to store for the node.
     """
     manager = _get_db_manager()
+    id_key = str(meshtastic_id)
 
     def _store(cursor: sqlite3.Cursor) -> None:
         """
@@ -701,7 +680,7 @@ def save_shortname(meshtastic_id: int | str, shortname: str) -> None:
         cursor.execute(
             "INSERT INTO shortnames (meshtastic_id, shortname) VALUES (?, ?) "
             "ON CONFLICT(meshtastic_id) DO UPDATE SET shortname=excluded.shortname",
-            (meshtastic_id, shortname),
+            (id_key, shortname),
         )
 
     try:
