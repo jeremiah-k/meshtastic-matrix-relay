@@ -695,7 +695,7 @@ async def logout_matrix_bot(password: str) -> bool:
             if temp_client is not None:
                 try:
                     await temp_client.close()
-                except Exception:
+                except (OSError, asyncio.TimeoutError):
                     # Avoid masking the original error; log for diagnostics only.
                     logger.debug(
                         "Ignoring error while closing temporary Matrix client after password verification",

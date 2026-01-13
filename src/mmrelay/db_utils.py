@@ -364,16 +364,17 @@ def initialize_database() -> None:
         raise
 
 
-def store_plugin_data(plugin_name: str, meshtastic_id: str, data: Any) -> None:
+def store_plugin_data(plugin_name: str, meshtastic_id: int | str, data: Any) -> None:
     """
     Store or update JSON-serialized plugin data for a specific plugin and Meshtastic ID in the database.
 
     Parameters:
         plugin_name (str): The name of the plugin.
-        meshtastic_id (str): The Meshtastic node identifier.
+        meshtastic_id (int | str): The Meshtastic node identifier.
         data (Any): The plugin data to be serialized and stored.
     """
     manager = _get_db_manager()
+    id_key = str(meshtastic_id)
 
     # Serialize payload up front to surface JSON errors before opening a write txn
     try:
@@ -381,6 +382,31 @@ def store_plugin_data(plugin_name: str, meshtastic_id: str, data: Any) -> None:
     except (TypeError, ValueError):
         logger.exception(
             "Plugin data for %s/%s is not JSON-serializable", plugin_name, meshtastic_id
+        )
+        return
+
+    def _store(cursor: sqlite3.Cursor) -> None:
+        """
+        Store JSON-serialized plugin data for a specific plugin and Meshtastic node using the provided DB cursor.
+
+        Executes an INSERT (with ON CONFLICT DO UPDATE) into `plugin_data` for captured `plugin_name` and `meshtastic_id`, storing `data` serialized as JSON.
+
+        Parameters:
+            cursor (sqlite3.Cursor): Open database cursor used to execute insert/update. The function uses `plugin_name`, `meshtastic_id`, and `payload` from the enclosing scope.
+        """
+        cursor.execute(
+            "INSERT INTO plugin_data (plugin_name, meshtastic_id, data) VALUES (?, ?, ?) "
+            "ON CONFLICT (plugin_name, meshtastic_id) DO UPDATE SET data = excluded.data",
+            (plugin_name, id_key, payload),
+        )
+
+    try:
+        manager.run_sync(_store, write=True)
+    except sqlite3.Error:
+        logger.exception(
+            "Database error storing plugin data for %s, %s",
+            plugin_name,
+            meshtastic_id,
         )
         return
 
@@ -409,25 +435,35 @@ def store_plugin_data(plugin_name: str, meshtastic_id: str, data: Any) -> None:
         )
 
 
-def delete_plugin_data(plugin_name: str, meshtastic_id: str) -> None:
+def delete_plugin_data(plugin_name: str, meshtastic_id: int | str) -> None:
     """Remove a plugin data entry for a Meshtastic node from the database.
 
     Parameters:
         plugin_name (str): The name of the plugin whose data should be deleted.
-        meshtastic_id (str): The Meshtastic node ID associated with the plugin data.
+        meshtastic_id (int | str): The Meshtastic node ID associated with the plugin data.
     """
     manager = _get_db_manager()
+    id_key = str(meshtastic_id)
 
     def _delete(cursor: sqlite3.Cursor) -> None:
         """
         Delete the plugin_data row for the current `plugin_name` and `meshtastic_id` using the provided DB cursor.
 
         Parameters:
-            cursor (sqlite3.Cursor): Active database cursor; the deletion is executed on this cursor and should be part of the caller's transaction.
+            cursor (sqlite3.Cursor): Active database cursor; deletion is executed on this cursor and should be part of the caller's transaction.
         """
         cursor.execute(
             "DELETE FROM plugin_data WHERE plugin_name=? AND meshtastic_id=?",
-            (plugin_name, meshtastic_id),
+            (plugin_name, id_key),
+        )
+
+    try:
+        manager.run_sync(_delete, write=True)
+    except sqlite3.Error:
+        logger.exception(
+            "Database error deleting plugin data for %s, %s",
+            plugin_name,
+            meshtastic_id,
         )
 
     try:
@@ -529,17 +565,18 @@ def get_plugin_data(plugin_name: str) -> list[tuple[Any, ...]]:
     return cast(list[tuple[Any, ...]], result)
 
 
-def get_longname(meshtastic_id: str) -> str | None:
+def get_longname(meshtastic_id: int | str) -> str | None:
     """
-    Return the long name for the given Meshtastic node ID.
+    Return the long name for a given Meshtastic node ID.
 
     Parameters:
-        meshtastic_id (str): Meshtastic node identifier to look up.
+        meshtastic_id (int | str): Meshtastic node identifier to look up.
 
     Returns:
         str | None: The stored long name if present, `None` if not found or on database error.
     """
     manager = _get_db_manager()
+    id_key = str(meshtastic_id)
 
     def _fetch(cursor: sqlite3.Cursor) -> tuple[Any, ...] | None:
         """
@@ -553,7 +590,7 @@ def get_longname(meshtastic_id: str) -> str | None:
         """
         cursor.execute(
             "SELECT longname FROM longnames WHERE meshtastic_id=?",
-            (meshtastic_id,),
+            (id_key,),
         )
         return cast(tuple[Any, ...] | None, cursor.fetchone())
 
@@ -614,31 +651,32 @@ def update_longnames(nodes: dict[str, Any]) -> None:
                 save_longname(meshtastic_id, longname)
 
 
-def get_shortname(meshtastic_id: str) -> str | None:
+def get_shortname(meshtastic_id: int | str) -> str | None:
     """
     Retrieve the short display name for a Meshtastic node.
 
     Parameters:
-        meshtastic_id (str): Meshtastic node identifier used to look up the short name.
+        meshtastic_id (int | str): Meshtastic node identifier used to look up short name.
 
     Returns:
         str | None: The shortname string if present in the database, `None` if not found or on database error.
     """
     manager = _get_db_manager()
+    id_key = str(meshtastic_id)
 
     def _fetch(cursor: sqlite3.Cursor) -> tuple[Any, ...] | None:
         """
-        Fetch the first shortname row for the active Meshtastic ID using the provided database cursor.
+        Fetches the first shortname row for an active Meshtastic ID using the provided database cursor.
 
         Parameters:
             cursor (sqlite3.Cursor): Cursor on which the SELECT query is executed; the function expects a `meshtastic_id` value to be available from the surrounding scope.
 
         Returns:
-            tuple[Any, ...] | None: The first row returned by the query (typically a single-item tuple containing the `shortname`), or `None` if no row is found.
+            tuple[Any, ...] | None: The first row returned by query (typically a single-item tuple containing the `shortname`), or `None` if no row is found.
         """
         cursor.execute(
             "SELECT shortname FROM shortnames WHERE meshtastic_id=?",
-            (meshtastic_id,),
+            (id_key,),
         )
         return cast(tuple[Any, ...] | None, cursor.fetchone())
 

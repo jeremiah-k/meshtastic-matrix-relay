@@ -2002,14 +2002,13 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
 
     Uses the module-global configuration unless an explicit `passed_config` is provided. Ensures community repositories and their dependencies are prepared as configured, starts plugins marked active, caches the loaded set for subsequent calls, and returns the active plugin instances ordered by their `priority`.
 
-    Parameters:
-        passed_config (dict | Any, optional): Configuration to use instead of the module-global `config`.
+     Parameters:
+        passed_config (Mapping[str, Any] | None, optional): Configuration to use instead of module-global `config`.
 
     Returns:
         list[Any]: Active plugin instances sorted by their `priority` attribute.
     """
-    global sorted_active_plugins
-    global plugins_loaded
+    global sorted_active_plugins, plugins_loaded
     global config
 
     if plugins_loaded:

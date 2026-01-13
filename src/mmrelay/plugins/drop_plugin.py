@@ -95,8 +95,9 @@ class Plugin(BasePlugin):
                 )
 
                 self.logger.debug(f"Packet originates from: {packet_location}")
+                data = self.get_node_data(self.special_node)
                 messages: list[dict[str, Any]] = (
-                    self.get_node_data(self.special_node) or []
+                    data if isinstance(data, list) else [data] if data else []
                 )
                 unsent_messages: list[dict[str, Any]] = []
                 for message in messages:

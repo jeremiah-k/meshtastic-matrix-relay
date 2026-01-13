@@ -167,7 +167,7 @@ def _submit_coro(
                 new_loop.close()
                 asyncio.set_event_loop(None)
         except (RuntimeError, OSError) as e:
-            # Ultimate fallback: create a completed Future with the exception
+            # Ultimate fallback: create a completed Future with an exception
             logger.debug(
                 "Ultimate fallback triggered for _submit_coro: %s: %s",
                 type(e).__name__,
@@ -678,7 +678,7 @@ def connect_meshtastic(
                                 )
                             except Exception as e:
                                 # BLEInterface constructor failed - this is a critical error
-                                logger.exception(f"BLE interface creation failed: {e}")
+                                logger.exception("BLE interface creation failed")
                                 raise
 
                         iface = meshtastic_iface
