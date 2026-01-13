@@ -356,7 +356,35 @@ def initialize_database() -> None:
         column_map = {column[1]: column for column in columns}
         meshtastic_column = column_map.get("meshtastic_id")
         meshnet_column = column_map.get("meshtastic_meshnet")
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='message_map_legacy'"
+        )
+        legacy_exists = cursor.fetchone() is not None
+
+        if legacy_exists and (
+            not meshtastic_column or str(meshtastic_column[2]).upper() == "TEXT"
+        ):
+            # Recover from a previously interrupted migration by merging legacy rows.
+            cursor.execute("PRAGMA table_info(message_map_legacy)")
+            legacy_columns = {column[1]: column for column in cursor.fetchall()}
+            if "meshtastic_meshnet" in legacy_columns:
+                cursor.execute(
+                    "INSERT OR IGNORE INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
+                    "SELECT CAST(meshtastic_id AS TEXT), matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet "
+                    "FROM message_map_legacy"
+                )
+            else:
+                cursor.execute(
+                    "INSERT OR IGNORE INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
+                    "SELECT CAST(meshtastic_id AS TEXT), matrix_event_id, matrix_room_id, meshtastic_text, NULL "
+                    "FROM message_map_legacy"
+                )
+            cursor.execute("DROP TABLE message_map_legacy")
+            legacy_exists = False
+
         if meshtastic_column and str(meshtastic_column[2]).upper() != "TEXT":
+            if legacy_exists:
+                cursor.execute("DROP TABLE message_map_legacy")
             cursor.execute("ALTER TABLE message_map RENAME TO message_map_legacy")
             cursor.execute(
                 "CREATE TABLE message_map (meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
