@@ -293,15 +293,15 @@ def _validate_e2ee_dependencies() -> bool:
 
 def _validate_credentials_json(config_path: str) -> bool:
     """
-    Validate presence and contents of a Matrix credentials.json adjacent to the given config.
-
-    Checks that a credentials.json file can be located from the supplied config path and contains non-empty string values for the keys "homeserver", "access_token", "user_id", and "device_id". On validation failure this function prints a concise error message and guidance to run the authentication login flow.
-
+    Check for a Matrix credentials.json next to the provided config and validate required fields.
+    
+    Ensures a credentials.json can be located relative to config_path and that it contains non-empty string values for "homeserver", "access_token", "user_id", and "device_id". On validation failure this function prints a concise error message and guidance to run the authentication login flow.
+    
     Parameters:
         config_path (str): Path to the configuration file used to determine where to look for credentials.json.
-
+    
     Returns:
-        bool: `True` if a credentials.json was found and contains all required non-empty fields, `False` otherwise.
+        bool: `True` if credentials.json exists and contains non-empty "homeserver", "access_token", "user_id", and "device_id"; `False` otherwise.
     """
     import json
 
@@ -1794,12 +1794,12 @@ def handle_cli_commands(args: argparse.Namespace) -> int | None:
 
 def generate_sample_config() -> bool:
     """
-    Create a sample configuration file at the highest-priority config path when no configuration exists.
-
-    Tries packaged resources and several fallback locations, writing a minimal built-in template as a last resort. Applies secure owner-only permissions on Unix-like systems when possible and prints user-facing diagnostics and guidance.
-
+    Generate a sample configuration file at the highest-priority config path when no configuration exists.
+    
+    Attempts to copy the bundled sample_config.yaml into the first candidate config path. If the packaged resource is unavailable, falls back to reading the sample from importlib.resources, several standard filesystem locations, and finally writes a minimal built-in template as a last resort. When a file is created, the function will attempt to apply secure owner-only permissions on Unix-like systems. If a config file already exists at any candidate path, no file is created.
+    
     Returns:
-        `True` if a sample config file was created, `False` if no file was created (because a config already exists or an error occurred).
+        True if a sample configuration file was created, False if no file was created (because a config already existed or an error occurred).
     """
 
     # Get the first config path (highest priority)

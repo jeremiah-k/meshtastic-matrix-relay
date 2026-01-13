@@ -140,17 +140,17 @@ class Plugin(BasePlugin):
     ) -> bool:
         # Pass the event to matches()
         """
-        Handle a Matrix message requesting a telemetry graph and send the generated image to the originating room.
-
-        Parses a telemetry command (one of `batteryLevel`, `voltage`, `airUtilTx`) optionally followed by a node identifier, computes hourly averages for the last 12 hours (for the specified node or network-wide), generates a line plot of those averages, and uploads the image to the originating room. If a requested node has no telemetry data, a user-facing notice is sent instead of an image.
-
+        Handle a Matrix message that requests a telemetry graph and send the generated image to the originating room.
+        
+        Parses a telemetry command (one of `batteryLevel`, `voltage`, `airUtilTx`) optionally followed by a node identifier, computes hourly averages for the last 12 hours for that node or for the whole network, renders a line plot of those averages, and uploads the image to the originating room. If a specified node has no telemetry data, a notice is sent instead of an image.
+        
         Parameters:
             room: Matrix room object where the event originated and where the response will be sent.
             event: Matrix event used to determine whether it matches a supported telemetry command.
-            full_message (str): Full plaintext message content used to parse the command and optional node identifier.
-
+            full_message: Full plaintext message content used to parse the command and optional node identifier.
+        
         Returns:
-            `True` if the message matched a telemetry command and either a graph was generated and sent or a notice was sent for a node with no data; `False` otherwise.
+            `True` if the message matched a telemetry command and a graph was generated and sent or a notice was sent for a node with no data, `False` otherwise.
         """
         if not self.matches(event):
             return False

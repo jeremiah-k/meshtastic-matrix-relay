@@ -129,11 +129,11 @@ def _submit_coro(
         # Wrap awaitables that are not coroutine objects (e.g., Futures) for scheduling.
         async def _await_wrapper(awaitable: Any) -> Any:
             """
-            Await the given awaitable and return its result.
-
+            Await an awaitable and return its result.
+            
             Parameters:
-                awaitable (Any): An awaitable object (e.g., coroutine, Future) to be awaited.
-
+                awaitable (Any): A coroutine, Future, or other awaitable to be awaited.
+            
             Returns:
                 Any: The value produced by awaiting `awaitable`.
             """
@@ -1367,18 +1367,16 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
 
 async def check_connection() -> None:
     """
-    Periodically verify the Meshtastic connection and initiate a reconnect when the device appears unresponsive.
-
-    Runs until the module-level shutting_down flag becomes True. Behavior:
+    Periodically verify the Meshtastic connection and trigger a reconnect when the device appears unresponsive.
+    
+    Checks run until the module-level `shutting_down` flag is True. Behavior:
     - Controlled by config["meshtastic"]["health_check"]:
-      - "enabled" (bool, default True) — enable/disable periodic checks.
-      - "heartbeat_interval" (int, seconds, default 60) — interval between checks.
-      - Backward compatibility: if "heartbeat_interval" exists directly under config["meshtastic"], that value is used.
-    - BLE connections are excluded from periodic checks (Bleak provides real-time disconnect detection).
-    - For non-BLE connections:
-      - Calls _get_device_metadata(client) in an executor with a 30-second timeout; if metadata parsing fails, performs a fallback probe via client.getMyNodeInfo() with the same timeout.
-      - If both probes fail and no reconnection is currently in progress, calls on_lost_meshtastic_connection(...) to start a reconnection.
-    No return value; side effect is scheduling/triggering reconnection when the device is unresponsive.
+      - `enabled` (bool, default True) — enable or disable checks.
+      - `heartbeat_interval` (int, seconds, default 60) — interval between checks. For backward compatibility, a top-level `heartbeat_interval` under `config["meshtastic"]` is supported.
+    - BLE connections are excluded from periodic checks because BLE libraries provide real-time disconnect detection.
+    - For non-BLE connections, attempts a metadata probe (via _get_device_metadata) and, if parsing fails, a fallback probe using `client.getMyNodeInfo()`. If both probes fail and no reconnection is already in progress, calls on_lost_meshtastic_connection(...) to initiate reconnection.
+    
+    No return value; side effects are logging and scheduling/triggering reconnection when the device is unresponsive.
     """
     global meshtastic_client, shutting_down, config
 
