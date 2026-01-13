@@ -466,15 +466,6 @@ def delete_plugin_data(plugin_name: str, meshtastic_id: int | str) -> None:
             meshtastic_id,
         )
 
-    try:
-        manager.run_sync(_delete, write=True)
-    except sqlite3.Error:
-        logger.exception(
-            "Database error deleting plugin data for %s, %s",
-            plugin_name,
-            meshtastic_id,
-        )
-
 
 def get_plugin_data_for_node(plugin_name: str, meshtastic_id: int | str) -> Any:
     """
