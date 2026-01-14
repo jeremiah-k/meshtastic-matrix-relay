@@ -1293,7 +1293,7 @@ def connect_meshtastic(
 
 
 def on_lost_meshtastic_connection(
-    _interface: Any = None,
+    interface: Any = None,
     detection_source: str = "unknown",
 ) -> None:
     """
@@ -1843,7 +1843,7 @@ async def check_connection() -> None:
                             f"{connection_type.capitalize()} connection health check failed: {e}"
                         )
                         on_lost_meshtastic_connection(
-                            _interface=meshtastic_client,
+                            interface=meshtastic_client,
                             detection_source=f"health check failed: {str(e)}",
                         )
                     else:
