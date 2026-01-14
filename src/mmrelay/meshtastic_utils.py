@@ -1063,8 +1063,9 @@ def connect_meshtastic(
                             _disconnect_ble_by_address(ble_address)
 
                             # Create a single BLEInterface instance for process lifetime
+                            sanitized_address = _sanitize_ble_address(ble_address)
                             logger.debug(
-                                f"Creating new BLE interface for {ble_address}"
+                                f"Creating new BLE interface for {ble_address} (sanitized: {sanitized_address})"
                             )
                             # Check if auto_reconnect parameter is supported (forked version)
                             ble_init_sig = inspect.signature(
