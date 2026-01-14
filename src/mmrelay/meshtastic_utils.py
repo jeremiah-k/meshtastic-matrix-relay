@@ -51,6 +51,15 @@ from mmrelay.constants.network import (
     ERRNO_BAD_FILE_DESCRIPTOR,
     INFINITE_RETRIES,
 )
+
+try:
+    from bleak import BleakScanner
+    from bleak.backends.bluezdbus.manager import DeviceManager
+
+    BLE_AVAILABLE = True
+except ImportError:
+    BLE_AVAILABLE = False
+
 from mmrelay.db_utils import (
     get_longname,
     get_message_map_by_meshtastic_id,
@@ -561,6 +570,46 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
     return result
 
 
+def _disconnect_ble_by_address(address: str) -> None:
+    """
+    Disconnect a BLE device by its address if it's already connected in BlueZ.
+
+    This function handles the case where a device is still connected in BlueZ
+    but there's no active meshtastic interface (state inconsistency).
+
+    Parameters:
+        address: The BLE address of the device to disconnect.
+
+    Returns:
+        None
+    """
+    if not BLE_AVAILABLE:
+        return
+
+    try:
+        import asyncio
+
+        from bleak import BleakClient
+
+        logger.debug(f"Checking if device {address} is already connected in BlueZ")
+
+        try:
+            client = BleakClient(address)
+            is_connected = asyncio.run(client.is_connected())
+            if is_connected:
+                logger.warning(
+                    f"Device {address} is already connected in BlueZ. "
+                    f"Disconnecting before creating new interface."
+                )
+                asyncio.run(client.disconnect())
+                time.sleep(0.5)
+        except Exception:
+            pass
+
+    except ImportError:
+        pass
+
+
 def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
     """
     Properly disconnect a BLE interface with appropriate delays to allow the adapter to release resources.
@@ -794,6 +843,9 @@ def connect_meshtastic(
                             meshtastic_iface = None
 
                         if meshtastic_iface is None:
+                            # Disconnect any stale BlueZ connection before creating new interface
+                            _disconnect_ble_by_address(ble_address)
+
                             # Create a single BLEInterface instance for process lifetime
                             logger.debug(
                                 f"Creating new BLE interface for {ble_address}"
