@@ -140,12 +140,10 @@ class TestSetupUtils(unittest.TestCase):
 
         # Verify all expected commands were printed
         expected_calls = [
-            call("  systemctl --user start mmrelay.service    # Start of service"),
-            call("  systemctl --user stop mmrelay.service     # Stop of service"),
-            call("  systemctl --user restart mmrelay.service  # Restart of service"),
-            call(
-                "  systemctl --user status mmrelay.service   # Check of service status"
-            ),
+            call("  systemctl --user start mmrelay.service    # Start the service"),
+            call("  systemctl --user stop mmrelay.service     # Stop the service"),
+            call("  systemctl --user restart mmrelay.service  # Restart the service"),
+            call("  systemctl --user status mmrelay.service   # Check service status"),
         ]
         mock_print.assert_has_calls(expected_calls)
 
