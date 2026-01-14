@@ -133,19 +133,21 @@ class TestSetupUtils(unittest.TestCase):
         expected = f"ExecStart={sys.executable} -m mmrelay --config %h/.mmrelay/config.yaml --logfile %h/.mmrelay/logs/mmrelay.log"
         self.assertEqual(result, expected)
 
-    @patch("mmrelay.setup_utils.logger")
-    def test_log_service_commands(self, mock_logger):
-        """Test that log_service_commands logs the correct commands."""
+    @patch("builtins.print")
+    def test_log_service_commands(self, mock_print):
+        """Test that log_service_commands prints to stdout (not logger)."""
         log_service_commands()
 
-        # Verify all expected commands were logged
+        # Verify all expected commands were printed
         expected_calls = [
-            call("  systemctl --user start mmrelay.service    # Start the service"),
-            call("  systemctl --user stop mmrelay.service     # Stop the service"),
-            call("  systemctl --user restart mmrelay.service  # Restart the service"),
-            call("  systemctl --user status mmrelay.service   # Check service status"),
+            call("  systemctl --user start mmrelay.service    # Start of service"),
+            call("  systemctl --user stop mmrelay.service     # Stop of service"),
+            call("  systemctl --user restart mmrelay.service  # Restart of service"),
+            call(
+                "  systemctl --user status mmrelay.service   # Check of service status"
+            ),
         ]
-        mock_logger.info.assert_has_calls(expected_calls)
+        mock_print.assert_has_calls(expected_calls)
 
     @patch("mmrelay.setup_utils.is_service_active")
     @patch("time.sleep")
@@ -813,7 +815,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
     ):
         """
         Verifies that service_needs_update flags an update when the service file's PATH environment is missing common user-bin locations.
-        
+
         Sets up a service file whose ExecStart uses the current Python interpreter (via `-m mmrelay`), mocks a template path and a located mmrelay executable, and asserts that service_needs_update returns `True` with a reason mentioning that the service PATH does not include common user-bin locations.
         """
         # Mock existing service file without proper PATH environment
@@ -1306,7 +1308,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
     ):
         """
         Verifies that install_service returns True and logs an exception when restarting the service raises an OSError.
-        
+
         Sets up mocks to simulate an existing, enabled, and active user service and makes the restart call raise OSError; asserts install_service completes successfully and logger.exception is called with "OS error while restarting service".
         """
         mock_get_path.return_value = Path(
