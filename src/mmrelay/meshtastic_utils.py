@@ -767,7 +767,6 @@ def connect_meshtastic(
                                 "noProto": False,
                                 "debugOut": None,
                                 "noNodes": False,
-                                "timeout": timeout,
                             }
 
                             if "auto_reconnect" in ble_init_sig.parameters:
