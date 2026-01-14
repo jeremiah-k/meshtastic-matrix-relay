@@ -568,6 +568,99 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
     return result
 
 
+def _sanitize_ble_address(address: str) -> str:
+    """
+    Normalize a BLE address by removing common separators and converting to lowercase.
+
+    This matches the sanitization logic used by both official and forked meshtastic
+    libraries, ensuring consistent address comparison.
+
+    Parameters:
+        address: The BLE address to sanitize.
+
+    Returns:
+        Sanitized address with all "-", "_", ":" removed and lowercased.
+    """
+    if not address:
+        return address
+    return address.replace("-", "").replace("_", "").replace(":", "").lower()
+
+
+def _validate_ble_connection_address(interface: Any, expected_address: str) -> bool:
+    """
+    Validate that the BLE interface is connected to the expected device address.
+
+    This is a critical safety check to prevent connecting to the wrong device due to:
+    1. Substring matching bugs in meshtastic library's find_device() (official version)
+    2. Name-based device selection that could match non-Meshtastic devices
+    3. Scanning returning multiple devices where wrong one is selected
+
+    The issue occurs because meshtastic's find_device() uses substring matching:
+        `lambda x: address in (x.name, x.address)`
+    This means if target address is "AA:BB:CC:DD:EE:FF" and a nearby device
+    has a name containing that string as a substring, it would incorrectly match.
+
+    Example vulnerability scenario:
+    - Configured address: AA:BB:CC:DD:EE:FF (Meshtastic device)
+    - Nearby device name: "AA:BB:CC:DD:EE:FF-Sensor" (car/handset/etc)
+    - Result: Bot incorrectly matches and connects to non-Meshtastic device
+
+    This validation works with both official and forked meshtastic versions.
+
+    Parameters:
+        interface: The BLE interface instance to validate.
+        expected_address: The configured BLE address that should be connected.
+
+    Returns:
+        True if connected device matches expected address, False otherwise.
+    """
+    try:
+        expected_sanitized = _sanitize_ble_address(expected_address)
+
+        # Try to get the actual connected address from the interface
+        actual_address = None
+        actual_sanitized = None
+
+        if hasattr(interface, "client") and interface.client is not None:
+            # Official version: client has bleak_client attribute
+            bleak_client = getattr(interface.client, "bleak_client", None)
+            if bleak_client is not None:
+                actual_address = getattr(bleak_client, "address", None)
+            # Forked version: client might be wrapped differently
+            if actual_address is None:
+                actual_address = getattr(interface.client, "address", None)
+
+        if actual_address is None:
+            logger.warning(
+                "Could not determine connected BLE device address for validation. "
+                "Proceeding with caution - verify correct device is connected."
+            )
+            return True
+
+        actual_sanitized = _sanitize_ble_address(actual_address)
+
+        if actual_sanitized == expected_sanitized:
+            logger.debug(
+                f"BLE connection validation passed: connected to {actual_address} "
+                f"(expected: {expected_address})"
+            )
+            return True
+        else:
+            logger.error(
+                f"BLE CONNECTION VALIDATION FAILED: Connected to {actual_address} "
+                f"but expected {expected_address}. This could be caused by "
+                "substring matching in device discovery selecting wrong device. "
+                "Disconnecting to prevent misconfiguration."
+            )
+            return False
+    except Exception as e:
+        logger.warning(
+            f"Error during BLE connection address validation: {e}. "
+            "Proceeding with caution."
+        )
+        return True
+
+
 def _disconnect_ble_by_address(address: str) -> None:
     """
     Disconnect a BLE device by its address if it's already connected in BlueZ.
@@ -1054,6 +1147,48 @@ def connect_meshtastic(
             # Acquire lock only for the final setup and subscription
             with meshtastic_lock:
                 meshtastic_client = client
+
+                # CRITICAL VALIDATION: Verify we're connected to the correct BLE device.
+                # This prevents connection to wrong device due to substring matching
+                # bugs in meshtastic library's find_device() function. The official
+                # version uses substring matching: `address in (device.name, device.address)`
+                # which can match a non-target device if its name contains to
+                # configured address as a substring.
+                #
+                # Example vulnerability scenario:
+                # - Configured address: AA:BB:CC:DD:EE:FF (Meshtastic device)
+                # - Nearby device name: "AA:BB:CC:DD:EE:FF-Sensor" (car/handset/etc)
+                # - Result: Bot incorrectly matches and connects to non-Meshtastic device
+                #
+                # This validation works with both official and forked meshtastic versions.
+                # If validation fails, we disconnect immediately to prevent further issues.
+                if connection_type == CONNECTION_TYPE_BLE:
+                    expected_ble_address = config["meshtastic"].get(
+                        CONFIG_KEY_BLE_ADDRESS
+                    )
+                    if expected_ble_address and not _validate_ble_connection_address(
+                        meshtastic_client, expected_ble_address
+                    ):
+                        # Validation failed - wrong device connected
+                        # Disconnect immediately to prevent communication with wrong device
+                        logger.error(
+                            "BLE connection validation failed - connected to wrong device. "
+                            "Disconnecting and raising error to force retry."
+                        )
+                        try:
+                            if meshtastic_client is meshtastic_iface:
+                                # BLE interface - use proper disconnect sequence
+                                _disconnect_ble_interface(
+                                    meshtastic_iface, reason="address validation failed"
+                                )
+                            else:
+                                meshtastic_client.close()
+                        except Exception as e:
+                            logger.warning(f"Error closing invalid BLE connection: {e}")
+                        raise ConnectionRefusedError(
+                            f"Connected to wrong BLE device. Expected: {expected_ble_address}"
+                        )
+
                 nodeInfo = meshtastic_client.getMyNodeInfo()
 
                 # Safely access node info fields
