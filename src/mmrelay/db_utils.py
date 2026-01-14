@@ -660,7 +660,7 @@ def update_longnames(nodes: dict[str, Any]) -> None:
     """
     Persist long names from node user entries into the database.
 
-    For each node in `nodes` that contains a `"user"` mapping, save the user's `"longName"` (use `"N/A"` if missing) under the user's `"id"` by calling `save_longname`.
+    For each node in `nodes` that contains a `"user"` mapping with a present `"longName"`, save it under the user's `"id"` by calling `save_longname`. Nodes with missing `"longName"` are skipped to avoid overwriting existing database entries with placeholder values.
 
     Parameters:
         nodes (dict[str, Any]): Mapping of node identifiers to node dictionaries; each node dictionary may include a `"user"` dict with an `"id"` key and an optional `"longName"` key.
@@ -670,8 +670,10 @@ def update_longnames(nodes: dict[str, Any]) -> None:
             user = node.get("user")
             if user:
                 meshtastic_id = user["id"]
-                longname = user.get("longName", "N/A")
-                save_longname(meshtastic_id, longname)
+                longname = user.get("longName")
+                # Only save if longName is present to avoid overwriting valid names with placeholders
+                if longname:
+                    save_longname(meshtastic_id, longname)
 
 
 def get_shortname(meshtastic_id: int | str) -> str | None:
@@ -743,9 +745,7 @@ def update_shortnames(nodes: dict[str, Any]) -> None:
     """
     Update persisted short names for nodes that include a user object.
 
-    For each node in the provided mapping, if the node contains a `user` dictionary, the function
-    uses `user["id"]` as the Meshtastic ID and `user.get("shortName", "N/A")` as the short name and
-    stores that value in the database.
+    For each node in the provided mapping, if the node contains a `user` dictionary with a present `shortName`, the function uses `user["id"]` as the Meshtastic ID and stores the short name in the database. Nodes with missing `shortName` are skipped to avoid overwriting existing database entries with placeholder values.
 
     Parameters:
         nodes (Mapping): Mapping of node identifiers to node objects; nodes without a `user` entry are ignored.
@@ -755,8 +755,10 @@ def update_shortnames(nodes: dict[str, Any]) -> None:
             user = node.get("user")
             if user:
                 meshtastic_id = user["id"]
-                shortname = user.get("shortName", "N/A")
-                save_shortname(meshtastic_id, shortname)
+                shortname = user.get("shortName")
+                # Only save if shortName is present to avoid overwriting valid names with placeholders
+                if shortname:
+                    save_shortname(meshtastic_id, shortname)
 
 
 def _store_message_map_core(
