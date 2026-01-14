@@ -4,6 +4,7 @@ import importlib.util
 import inspect
 import io
 import re
+import sys
 import threading
 import time
 from concurrent.futures import Future
@@ -62,7 +63,10 @@ from mmrelay.db_utils import (
 from mmrelay.log_utils import get_logger
 from mmrelay.runtime_utils import is_running_as_service
 
-BLE_AVAILABLE = importlib.util.find_spec("bleak") is not None
+try:
+    BLE_AVAILABLE = importlib.util.find_spec("bleak") is not None
+except ValueError:
+    BLE_AVAILABLE = "bleak" in sys.modules
 
 # Maximum number of timeout retries when retries are configured as infinite.
 MAX_TIMEOUT_RETRIES_INFINITE = 5
@@ -607,12 +611,37 @@ def _disconnect_ble_by_address(address: str) -> None:
                     logger.warning(
                         f"Device {address} is already connected in BlueZ. Disconnecting..."
                     )
-                    await client.disconnect()
-                    await asyncio.sleep(2.0)
-                    logger.debug(
-                        f"Successfully disconnected stale connection to {address}, "
-                        f"waiting 2s for BlueZ to settle"
-                    )
+                    # Retry logic for disconnect with timeout
+                    max_retries = 3
+                    for attempt in range(max_retries):
+                        try:
+                            await asyncio.wait_for(client.disconnect(), timeout=3.0)
+                            await asyncio.sleep(2.0)
+                            logger.debug(
+                                f"Successfully disconnected stale connection to {address} on attempt {attempt + 1}, "
+                                f"waiting 2s for BlueZ to settle"
+                            )
+                            break
+                        except asyncio.TimeoutError:
+                            if attempt < max_retries - 1:
+                                logger.warning(
+                                    f"Disconnect attempt {attempt + 1} for {address} timed out, retrying..."
+                                )
+                                await asyncio.sleep(0.5)
+                            else:
+                                logger.error(
+                                    f"Disconnect for {address} timed out after {max_retries} attempts"
+                                )
+                        except Exception as e:
+                            if attempt < max_retries - 1:
+                                logger.warning(
+                                    f"Disconnect attempt {attempt + 1} for {address} failed: {e}, retrying..."
+                                )
+                                await asyncio.sleep(0.5)
+                            else:
+                                logger.error(
+                                    f"Disconnect for {address} failed after {max_retries} attempts: {e}"
+                                )
                 else:
                     logger.debug(f"Device {address} not currently connected in BlueZ")
             except Exception as e:
@@ -620,8 +649,10 @@ def _disconnect_ble_by_address(address: str) -> None:
             finally:
                 try:
                     if client:
-                        await client.disconnect()
+                        await asyncio.wait_for(client.disconnect(), timeout=2.0)
                         await asyncio.sleep(0.5)
+                except asyncio.TimeoutError:
+                    logger.debug(f"Final disconnect for {address} timed out (cleanup)")
                 except Exception:
                     # Ignore disconnect errors during cleanup - connection may already be closed
                     pass  # nosec
@@ -635,7 +666,7 @@ def _disconnect_ble_by_address(address: str) -> None:
                 # Run disconnect in loop and wait for it to complete
                 asyncio.run_coroutine_threadsafe(
                     disconnect_stale_connection(), loop
-                ).result(timeout=5.0)
+                ).result(timeout=10.0)
                 logger.debug(f"Stale connection disconnect completed for {address}")
             else:
                 logger.debug(f"No event loop found, creating new one for {address}")
@@ -654,9 +685,10 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
     Properly disconnect a BLE interface with appropriate delays to allow the adapter to release resources.
 
     This function ensures sequential BLE connections by:
-    1. Calling disconnect() if available (forked meshtastic version)
-    2. Calling close() to release all resources
-    3. Adding a delay to allow the Bluetooth adapter to fully release the connection
+    1. Adding a pre-disconnect delay to allow notifications to flush
+    2. Calling disconnect() if available (forked meshtastic version) with retry logic
+    3. Calling close() to release all resources
+    4. Adding a delay to allow the Bluetooth adapter to fully release the connection
 
     Parameters:
         iface: The BLE interface instance to disconnect. Can be None.
@@ -668,13 +700,37 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
     if iface is None:
         return
 
+    # Pre-disconnect delay to allow pending notifications to complete
+    # This helps prevent "Unexpected EOF on notification file handle" errors
+    logger.debug(f"Waiting before disconnecting BLE interface ({reason})")
+    time.sleep(0.5)
+
     try:
         # Check if interface has a disconnect method (forked version)
         if hasattr(iface, "disconnect"):
             logger.debug(f"Disconnecting BLE interface ({reason})")
-            iface.disconnect()
-            # Give the adapter time to complete the disconnect
-            time.sleep(1.0)
+
+            # Retry logic for disconnect operations
+            max_disconnect_retries = 3
+            for attempt in range(max_disconnect_retries):
+                try:
+                    iface.disconnect()
+                    # Give the adapter time to complete the disconnect
+                    time.sleep(1.0)
+                    logger.debug(
+                        f"BLE interface disconnect succeeded on attempt {attempt + 1} ({reason})"
+                    )
+                    break
+                except Exception as e:
+                    if attempt < max_disconnect_retries - 1:
+                        logger.warning(
+                            f"BLE interface disconnect attempt {attempt + 1} failed ({reason}): {e}, retrying..."
+                        )
+                        time.sleep(0.5)
+                    else:
+                        logger.error(
+                            f"BLE interface disconnect failed after {max_disconnect_retries} attempts ({reason}): {e}"
+                        )
         else:
             logger.debug(
                 f"BLE interface has no disconnect() method, using close() only ({reason})"
@@ -687,12 +743,28 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
         # to prevent stale connections in BlueZ (official library bug)
         if hasattr(iface, "client"):
             logger.debug(f"Explicitly disconnecting BLE client ({reason})")
-            try:
-                iface.client.disconnect()
-            except Exception:
-                # Ignore disconnect errors - connection may already be closed
-                pass  # nosec
-            time.sleep(1.0)
+
+            # Retry logic for client disconnect
+            max_client_retries = 2
+            for attempt in range(max_client_retries):
+                try:
+                    iface.client.disconnect()
+                    time.sleep(1.0)
+                    logger.debug(
+                        f"BLE client disconnect succeeded on attempt {attempt + 1} ({reason})"
+                    )
+                    break
+                except Exception as e:
+                    if attempt < max_client_retries - 1:
+                        logger.warning(
+                            f"BLE client disconnect attempt {attempt + 1} failed ({reason}): {e}, retrying..."
+                        )
+                        time.sleep(0.3)
+                    else:
+                        # Ignore disconnect errors on final attempt - connection may already be closed
+                        logger.debug(
+                            f"BLE client disconnect failed after {max_client_retries} attempts ({reason}): {e}"
+                        )
 
         iface.close()
     except Exception as e:
