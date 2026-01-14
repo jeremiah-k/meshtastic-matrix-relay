@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import importlib.util
 import inspect
 import io
 import re
@@ -51,14 +52,6 @@ from mmrelay.constants.network import (
     ERRNO_BAD_FILE_DESCRIPTOR,
     INFINITE_RETRIES,
 )
-
-try:
-    from bleak import BleakScanner
-
-    BLE_AVAILABLE = True
-except ImportError:
-    BLE_AVAILABLE = False
-
 from mmrelay.db_utils import (
     get_longname,
     get_message_map_by_meshtastic_id,
@@ -68,6 +61,8 @@ from mmrelay.db_utils import (
 )
 from mmrelay.log_utils import get_logger
 from mmrelay.runtime_utils import is_running_as_service
+
+BLE_AVAILABLE = importlib.util.find_spec("bleak") is not None
 
 # Maximum number of timeout retries when retries are configured as infinite.
 MAX_TIMEOUT_RETRIES_INFINITE = 5
@@ -628,7 +623,8 @@ def _disconnect_ble_by_address(address: str) -> None:
                         await client.disconnect()
                         await asyncio.sleep(0.5)
                 except Exception:
-                    pass
+                    # Ignore disconnect errors during cleanup - connection may already be closed
+                    pass  # nosec
 
         try:
             loop = asyncio.get_running_loop()
@@ -690,7 +686,8 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
             try:
                 iface.client.disconnect()
             except Exception:
-                pass
+                # Ignore disconnect errors - connection may already be closed
+                pass  # nosec
             time.sleep(1.0)
 
         iface.close()

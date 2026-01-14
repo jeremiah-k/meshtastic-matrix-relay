@@ -983,7 +983,9 @@ def get_meshtastic_config_value(
             try:
                 from mmrelay.cli_utils import msg_suggest_check_config
             except ImportError:
-                msg_suggest_check_config = lambda: ""  # type: ignore[assignment]
+
+                def msg_suggest_check_config():
+                    return ""  # type: ignore[assignment]
 
             logger.error(
                 f"Missing required configuration: meshtastic.{key}\n"

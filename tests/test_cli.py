@@ -2757,15 +2757,15 @@ class TestPrintEnvironmentSummary(unittest.TestCase):
             def mock_import(name, *args, **kwargs):
                 """
                 Simulate missing optional modules by raising ImportError for select module names during imports.
-                
+
                 Parameters:
                     name (str): Fully-qualified module name being imported; if it equals "olm", "nio.crypto", or "nio.store" an ImportError is raised.
                     *args: Additional positional arguments passed to the underlying import machinery (passed through unchanged).
                     **kwargs: Additional keyword arguments passed through to the underlying import machinery.
-                
+
                 Returns:
                     module: The result of the normal import for module names other than the ones listed.
-                
+
                 Raises:
                     ImportError: If `name` is "olm", "nio.crypto", or "nio.store".
                 """
@@ -3145,15 +3145,15 @@ class TestAnalyzeE2eeSetup(unittest.TestCase):
             def mock_import(name, *args, **kwargs):
                 """
                 Simulate missing optional modules by raising ImportError for select module names during imports.
-                
+
                 Parameters:
                     name (str): Fully-qualified module name being imported; if it equals "olm", "nio.crypto", or "nio.store" an ImportError is raised.
                     *args: Additional positional arguments passed to the underlying import machinery (passed through unchanged).
                     **kwargs: Additional keyword arguments passed through to the underlying import machinery.
-                
+
                 Returns:
                     module: The result of the normal import for module names other than the ones listed.
-                
+
                 Raises:
                     ImportError: If `name` is "olm", "nio.crypto", or "nio.store".
                 """

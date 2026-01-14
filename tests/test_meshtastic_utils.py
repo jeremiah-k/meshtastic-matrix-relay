@@ -1491,9 +1491,9 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
         async def failing_coro():
             """
             Coroutine that always raises ValueError with message "Test exception" when awaited.
-            
+
             Intended for use in tests to simulate a coroutine that fails.
-            
+
             Raises:
                 ValueError: Always raised when the coroutine is awaited with message "Test exception".
             """
@@ -1600,7 +1600,7 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
             def __await__(self):
                 """
                 Allow awaiting this object to receive its awaited result.
-                
+
                 Returns:
                     str: The string produced when awaiting the instance, "awaitable-result".
                 """

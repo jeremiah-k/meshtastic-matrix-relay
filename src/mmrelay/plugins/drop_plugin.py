@@ -62,9 +62,9 @@ class Plugin(BasePlugin):
     ) -> bool:
         """
         Handle stored "drop" messages and record new drops from an incoming Meshtastic packet.
-        
+
         If the packet is from another node whose position is known, deliver any stored drops whose saved location lies within the configured radius to that node (excluding messages the node originally dropped). If the packet contains a "!drop <message>" command and the dropper's position is known, store the message with the dropper's location and originator id for later delivery.
-        
+
         Returns:
             `True` if the packet contained and processed a drop command (including cases where the command was acknowledged but the dropper's position was unavailable), `False` otherwise.
         """

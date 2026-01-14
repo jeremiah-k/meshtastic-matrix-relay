@@ -1999,12 +1999,12 @@ def stop_global_scheduler() -> None:
 def load_plugins(passed_config: Any = None) -> list[Any]:
     """
     Load, prepare, and start configured core, custom, and community plugins.
-    
+
     Uses the module-global configuration unless `passed_config` is provided. Ensures community repositories and their dependencies are cloned/updated and installed as configured, starts plugins marked active (and the global scheduler), caches the loaded set for subsequent calls, and returns the active plugin instances ordered by their `priority`.
-    
+
     Parameters:
         passed_config (dict | Any, optional): Configuration to use instead of the module-global `config`.
-    
+
     Returns:
         list[Any]: Active plugin instances sorted by their `priority` attribute.
     """

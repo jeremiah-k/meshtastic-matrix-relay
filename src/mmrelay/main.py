@@ -298,13 +298,23 @@ async def main(config: dict[str, Any]) -> None:
                     Close the active Meshtastic client connection.
 
                     Does nothing if no Meshtastic client is present in meshtastic_utils.meshtastic_client.
+                    Waits for close to complete before returning.
                     """
                     if meshtastic_utils.meshtastic_client:
                         meshtastic_utils.meshtastic_client.close()
 
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                     future = executor.submit(_close_meshtastic)
-                    future.result(timeout=10.0)  # 10-second timeout
+                    try:
+                        future.result(timeout=10.0)  # 10-second timeout
+                    except concurrent.futures.TimeoutError:
+                        meshtastic_logger.warning(
+                            "Meshtastic client close timed out - may cause notification errors"
+                        )
+                    except Exception as e:
+                        meshtastic_logger.error(
+                            f"Unexpected error during Meshtastic client close: {e}"
+                        )
 
                 meshtastic_logger.info("Meshtastic client closed successfully")
             except concurrent.futures.TimeoutError:
