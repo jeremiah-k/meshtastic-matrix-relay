@@ -630,9 +630,13 @@ def _disconnect_ble_by_address(address: str) -> None:
             loop = asyncio.get_running_loop()
             if loop:
                 logger.debug(
-                    f"Found existing event loop, scheduling disconnect task for {address}"
+                    f"Found existing event loop, waiting for disconnect task for {address}"
                 )
-                asyncio.create_task(disconnect_stale_connection())
+                # Run disconnect in loop and wait for it to complete
+                asyncio.run_coroutine_threadsafe(
+                    disconnect_stale_connection(), loop
+                ).result(timeout=5.0)
+                logger.debug(f"Stale connection disconnect completed for {address}")
             else:
                 logger.debug(f"No event loop found, creating new one for {address}")
                 asyncio.run(disconnect_stale_connection())
