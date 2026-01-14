@@ -682,6 +682,17 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
 
         # Always call close() to release resources
         logger.debug(f"Closing BLE interface ({reason})")
+
+        # For BLE interfaces, explicitly disconnect the underlying BleakClient
+        # to prevent stale connections in BlueZ (official library bug)
+        if hasattr(iface, "client"):
+            logger.debug(f"Explicitly disconnecting BLE client ({reason})")
+            try:
+                iface.client.disconnect()
+            except Exception:
+                pass
+            time.sleep(1.0)
+
         iface.close()
     except Exception as e:
         logger.debug(f"Error during BLE interface {reason}: {e}")
