@@ -5,12 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from mmrelay.cli_utils import (
-    LogoutResponse,
-    NioLogoutError,
-    _cleanup_local_session_data,
-    logout_matrix_bot,
-)
+from mmrelay.cli_utils import _cleanup_local_session_data, logout_matrix_bot
 from mmrelay.config import get_e2ee_store_dir, load_credentials, save_credentials
 from mmrelay.matrix_utils import (
     NioLocalTransportError,
@@ -941,7 +936,7 @@ async def test_logout_matrix_bot_password_verification_success():
 
         mock_main_client = AsyncMock()
         mock_main_client.restore_login = MagicMock()
-        mock_main_client.logout.return_value = LogoutResponse()
+        mock_main_client.logout.return_value = MagicMock(transport_response=True)
         mock_main_client.close = AsyncMock()
 
         mock_async_client.side_effect = [mock_temp_client, mock_main_client]
@@ -1007,7 +1002,7 @@ async def test_logout_matrix_bot_server_logout_failure():
 
         mock_main_client = AsyncMock()
         mock_main_client.restore_login = MagicMock()
-        mock_main_client.logout.return_value = NioLogoutError("Server error")
+        mock_main_client.logout.side_effect = Exception("Server error")
         mock_main_client.close = AsyncMock()
 
         mock_async_client.side_effect = [mock_temp_client, mock_main_client]
@@ -1227,7 +1222,9 @@ async def test_logout_matrix_bot_missing_user_id_fetch_success():
 
         mock_main_client = AsyncMock()
         mock_main_client.restore_login = MagicMock()
-        mock_main_client.logout = AsyncMock(return_value=LogoutResponse())
+        mock_main_client.logout = AsyncMock(
+            return_value=MagicMock(transport_response="success")
+        )
         mock_main_client.close = AsyncMock()
 
         mock_async_client.side_effect = [

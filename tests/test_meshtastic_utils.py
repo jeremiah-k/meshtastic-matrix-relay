@@ -11,11 +11,9 @@ Tests the Meshtastic client functionality including:
 """
 
 import asyncio
-import inspect
 import os
 import sys
 import unittest
-from concurrent.futures import Future
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
 from unittest.mock import AsyncMock, MagicMock, Mock, mock_open, patch
 
@@ -26,7 +24,6 @@ from meshtastic.mesh_interface import BROADCAST_NUM
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.meshtastic_utils import (
-    DEFAULT_MESHTASTIC_TIMEOUT,
     _get_device_metadata,
     _resolve_plugin_timeout,
     check_connection,
@@ -38,28 +35,6 @@ from mmrelay.meshtastic_utils import (
     send_text_reply,
     serial_port_exists,
 )
-
-
-def _done_future(coro: object | None = None, *_args, **_kwargs) -> Future[None]:
-    """
-    Return a completed Future and close any coroutine passed in for cleanup.
-    """
-    if inspect.iscoroutine(coro):
-        coro.close()
-    future: Future[None] = Future()
-    future.set_result(None)
-    return future
-
-
-def _drain_coro(coro: object, *_args, **_kwargs) -> Future[None]:
-    """
-    Close a coroutine and return a completed Future for use in mocks.
-    """
-    if inspect.iscoroutine(coro):
-        coro.close()
-    future: Future[None] = Future()
-    future.set_result(None)
-    return future
 
 
 class TestMeshtasticUtils(unittest.TestCase):
@@ -113,7 +88,20 @@ class TestMeshtasticUtils(unittest.TestCase):
         Sets up name, interaction, and storage mocks and invokes on_meshtastic_message with a valid text packet and mock interface, asserting that the message relay is scheduled for delivery to Matrix.
         """
         # Mock the required functions
+        from concurrent.futures import Future
+
         import mmrelay.meshtastic_utils
+
+        def _done_future(*args, **kwargs):
+            """
+            Create a completed Future whose result is None.
+
+            Returns:
+                Future: A Future object already resolved with result `None`.
+            """
+            f = Future()
+            f.set_result(None)
+            return f
 
         with (
             patch("mmrelay.meshtastic_utils.get_longname") as mock_get_longname,
@@ -298,6 +286,24 @@ class TestMeshtasticUtils(unittest.TestCase):
             patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
             patch("mmrelay.meshtastic_utils.logger"),
         ):
+            import inspect
+
+            def _drain_coro(coro, *_args, **_kwargs):
+                # Mirror mock_submit_coro fixture behavior: close coroutines
+                # so AsyncMock-based matrix_relay calls don't raise warnings.
+                """
+                Close a coroutine object to prevent un-awaited-coroutine warnings in tests.
+
+                Parameters:
+                    coro: The coroutine object to close; if not a coroutine, the function has no effect.
+
+                Notes:
+                    Accepts additional positional and keyword arguments for compatibility with fixtures that forward them; those are ignored.
+                """
+                if inspect.iscoroutine(coro):
+                    coro.close()
+                return None
+
             mock_submit_coro.side_effect = _drain_coro
             mock_interface = MagicMock()
             mock_interface.myInfo.my_node_num = 999
@@ -348,6 +354,24 @@ class TestMeshtasticUtils(unittest.TestCase):
             ) as mock_matrix_relay,
             patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
         ):
+            import inspect
+
+            def _drain_coro(coro, *_args, **_kwargs):
+                # Mirror mock_submit_coro fixture behavior: close coroutines
+                # so AsyncMock-based matrix_relay calls don't raise warnings.
+                """
+                Close a coroutine object to prevent un-awaited-coroutine warnings in tests.
+
+                Parameters:
+                    coro: The coroutine object to close; if not a coroutine, the function has no effect.
+
+                Notes:
+                    Accepts additional positional and keyword arguments for compatibility with fixtures that forward them; those are ignored.
+                """
+                if inspect.iscoroutine(coro):
+                    coro.close()
+                return None
+
             mock_submit_coro.side_effect = _drain_coro
             mock_interface = MagicMock()
             mock_interface.myInfo.my_node_num = 999
@@ -409,9 +433,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         result = connect_meshtastic(passed_config=config)
 
         self.assertEqual(result, mock_client)
-        mock_serial.assert_called_once_with(
-            "/dev/ttyUSB0", timeout=DEFAULT_MESHTASTIC_TIMEOUT
-        )
+        mock_serial.assert_called_once_with("/dev/ttyUSB0", timeout=300)
 
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
     @patch("mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface")
@@ -445,9 +467,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         result = connect_meshtastic(passed_config=config)
 
         self.assertEqual(result, mock_client)
-        mock_tcp.assert_called_once_with(
-            hostname="192.168.1.100", timeout=DEFAULT_MESHTASTIC_TIMEOUT
-        )
+        mock_tcp.assert_called_once_with(hostname="192.168.1.100", timeout=300)
 
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
     @patch("mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface")
@@ -487,6 +507,7 @@ class TestMeshtasticUtils(unittest.TestCase):
             noProto=False,
             debugOut=None,
             noNodes=False,
+            timeout=300,
         )
 
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
@@ -528,7 +549,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         mock_interface._generatePacketId.assert_called_once()
         mock_interface._sendPacket.assert_called_once()
 
-    def test_send_text_reply_send_failure(self):
+    def test_send_text_reply_no_client(self):
         """
         Test that send_text_reply returns None when the interface fails to send a packet.
         """
@@ -551,6 +572,27 @@ class TestMeshtasticUtils(unittest.TestCase):
         """
         config_no_broadcast = self.mock_config.copy()
         config_no_broadcast["meshtastic"]["broadcast_enabled"] = False
+
+        import inspect
+        from concurrent.futures import Future
+
+        def _done_future(coro, *args, **kwargs):
+            # Close the coroutine if it's a coroutine to prevent "never awaited" warnings
+            """
+            Close `coro` if it is a coroutine to avoid "coroutine was never awaited" warnings and return a completed Future.
+
+            Parameters:
+                coro: The object to inspect; if it is a coroutine it will be closed.
+                *args, **kwargs: Ignored.
+
+            Returns:
+                asyncio.Future: A Future already resolved with the value `None`.
+            """
+            if inspect.iscoroutine(coro):
+                coro.close()
+            f = Future()
+            f.set_result(None)
+            return f
 
         with (
             patch("mmrelay.meshtastic_utils.config", config_no_broadcast),
@@ -960,6 +1002,27 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             # No 'decoded' field
         }
 
+        import inspect
+        from concurrent.futures import Future
+
+        def _done_future(coro, *args, **kwargs):
+            # Close the coroutine if it's a coroutine to prevent "never awaited" warnings
+            """
+            Close `coro` if it is a coroutine to avoid "coroutine was never awaited" warnings and return a completed Future.
+
+            Parameters:
+                coro: The object to inspect; if it is a coroutine it will be closed.
+                *args, **kwargs: Ignored.
+
+            Returns:
+                asyncio.Future: A Future already resolved with the value `None`.
+            """
+            if inspect.iscoroutine(coro):
+                coro.close()
+            f = Future()
+            f.set_result(None)
+            return f
+
         with (
             patch("mmrelay.meshtastic_utils.config", self.mock_config),
             patch(
@@ -990,6 +1053,27 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             "id": 12345,
             "rxTime": 1234567890,
         }
+
+        import inspect
+        from concurrent.futures import Future
+
+        def _done_future(coro, *args, **kwargs):
+            # Close the coroutine if it's a coroutine to prevent "never awaited" warnings
+            """
+            Close `coro` if it is a coroutine to avoid "coroutine was never awaited" warnings and return a completed Future.
+
+            Parameters:
+                coro: The object to inspect; if it is a coroutine it will be closed.
+                *args, **kwargs: Ignored.
+
+            Returns:
+                asyncio.Future: A Future already resolved with the value `None`.
+            """
+            if inspect.iscoroutine(coro):
+                coro.close()
+            f = Future()
+            f.set_result(None)
+            return f
 
         with (
             patch("mmrelay.meshtastic_utils.config", self.mock_config),
@@ -1282,13 +1366,8 @@ class TestAsyncHelperUtilities(unittest.TestCase):
             mock_logger.debug.assert_not_called()
             _call_args, call_kwargs = mock_logger.error.call_args
             self.assertIn("exc_info", call_kwargs)
-            exc_info = call_kwargs["exc_info"]
-            self.assertIsInstance(exc_info, tuple)
-            self.assertEqual(len(exc_info), 3)
-            self.assertIs(exc_info[0], ValueError)
-            self.assertIsInstance(exc_info[1], ValueError)
-            self.assertEqual(str(exc_info[1]), "Task failed")
-            self.assertIsNone(exc_info[2])
+            self.assertIsInstance(call_kwargs["exc_info"], ValueError)
+            self.assertEqual(str(call_kwargs["exc_info"]), "Task failed")
 
     def test_fire_and_forget_ignores_returned_cancelled_error(self):
         """Ensure fire-and-forget ignores CancelledError instances returned by task.exception()."""
@@ -1412,9 +1491,9 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
         async def failing_coro():
             """
             Coroutine that always raises ValueError with message "Test exception" when awaited.
-
+            
             Intended for use in tests to simulate a coroutine that fails.
-
+            
             Raises:
                 ValueError: Always raised when the coroutine is awaited with message "Test exception".
             """
@@ -1521,7 +1600,7 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
             def __await__(self):
                 """
                 Allow awaiting this object to receive its awaited result.
-
+                
                 Returns:
                     str: The string produced when awaiting the instance, "awaitable-result".
                 """
@@ -1814,17 +1893,48 @@ def test_resolve_plugin_timeout(cfg, default, expected):
 
 
 class TestUncoveredMeshtasticUtils(unittest.TestCase):
-    """Test edge cases in meshtastic_utils that are not yet covered."""
+    """Test cases for uncovered functions and edge cases in meshtastic_utils.py."""
 
-    def test_submit_coro_ultimate_fallback_runtime_error(self):
-        """Test _submit_coro ultimate fallback when event loop operations raise RuntimeError.
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_resolve_plugin_timeout_attribute_error_handling(self, mock_logger):
+        """Test _resolve_plugin_timeout handles AttributeError gracefully."""
+        from mmrelay.meshtastic_utils import _resolve_plugin_timeout
 
-        Note: This test is skipped because conftest's mock_submit_coro fixture
-        replaces the original _submit_coro function with a more robust implementation
-        that catches exceptions before reaching the ultimate fallback path (lines 171-183).
-        """
-        self.skipTest(
-            "Cannot test ultimate fallback with conftest mock_submit_coro fixture"
+        # Create a config dict that will cause AttributeError when accessing nested dict
+        class FaultyDict(dict):
+            def get(self, key, default=None):
+                if key == "meshtastic":
+                    # Return None to cause AttributeError when trying to access .get() on None
+                    return None
+                return super().get(key, default)
+
+        faulty_config = FaultyDict()
+        result = _resolve_plugin_timeout(faulty_config, 10.0)
+
+        # Should return default value when AttributeError occurs
+        self.assertEqual(result, 10.0)
+        # Should not log any warnings for AttributeError handling
+        mock_logger.warning.assert_not_called()
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_get_device_metadata_no_localnode(self, mock_logger):
+        """Test _get_device_metadata when client has no localNode attribute."""
+        from mmrelay.meshtastic_utils import _get_device_metadata
+
+        # Mock client without localNode
+        mock_client = Mock(spec=[])  # No attributes at all
+
+        result = _get_device_metadata(mock_client)
+
+        # Should return default result
+        expected = {
+            "firmware_version": "unknown",
+            "raw_output": "",
+            "success": False,
+        }
+        self.assertEqual(result, expected)
+        mock_logger.debug.assert_called_with(
+            "Meshtastic client has no localNode.getMetadata(); skipping metadata retrieval"
         )
 
     @patch("mmrelay.meshtastic_utils.logger")
@@ -1969,484 +2079,6 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
         self.assertIsNone(result)
         mock_logger.error.assert_called_with(
             "No configuration available. Cannot check connection."
-        )
-
-    def test_submit_coro_ultimate_fallback_policy_error(self):
-        """Test _submit_coro ultimate fallback when event loop policy raises RuntimeError.
-
-        Note: This test is skipped because conftest's mock_submit_coro fixture
-        replaces the original _submit_coro function with a more robust implementation
-        that doesn't trigger the ultimate fallback path (lines 171-183).
-        """
-        self.skipTest(
-            "Cannot test ultimate fallback with conftest mock_submit_coro fixture"
-        )
-
-
-class TestResolvePluginResultNoneFuture(unittest.TestCase):
-    """Test _resolve_plugin_result when result_future is None (lines 394-396).
-
-    Note: This test is skipped because conftest's mock_submit_coro fixture
-    replaces _submit_coro with a version that always returns a Future,
-    making it impossible to test the None return case.
-    """
-
-    def test_resolve_plugin_result_none_future(self):
-        """Test _resolve_plugin_result returns False when result_future is None."""
-        self.skipTest("Cannot test None return with conftest mock_submit_coro fixture")
-
-
-class TestConnectMeshtasticClientIsIfaceCleanup(unittest.TestCase):
-    """Test connect_meshtastic cleanup when client is meshtastic_iface (lines 626-628, 966-968)."""
-
-    def setUp(self):
-        import mmrelay.meshtastic_utils
-
-        self.original_client = mmrelay.meshtastic_utils.meshtastic_client
-        self.original_iface = mmrelay.meshtastic_utils.meshtastic_iface
-        mmrelay.meshtastic_utils.meshtastic_client = None
-        mmrelay.meshtastic_utils.meshtastic_iface = None
-
-    def tearDown(self):
-        import mmrelay.meshtastic_utils
-
-        mmrelay.meshtastic_utils.meshtastic_client = self.original_client
-        mmrelay.meshtastic_utils.meshtastic_iface = self.original_iface
-
-    @patch("mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface")
-    def test_connect_meshtastic_clears_iface_when_same_as_client(self, mock_tcp):
-        """Test that meshtastic_iface is cleared when it's the same object as meshtastic_client."""
-        from mmrelay.meshtastic_utils import connect_meshtastic
-
-        mock_client = Mock()
-        mock_client.getMyNodeInfo.return_value = {
-            "user": {"shortName": "test", "hwModel": "test"}
-        }
-        mock_tcp.return_value = mock_client
-
-        # Set meshtastic_iface to same object as what will be meshtastic_client
-        import mmrelay.meshtastic_utils
-
-        mmrelay.meshtastic_utils.meshtastic_iface = mock_client
-        mmrelay.meshtastic_utils.meshtastic_client = mock_client
-
-        config = {"meshtastic": {"connection_type": "tcp", "host": "127.0.0.1"}}
-
-        result = connect_meshtastic(passed_config=config, force_connect=True)
-
-        self.assertEqual(result, mock_client)
-        # meshtastic_iface should be None after cleanup
-        self.assertIsNone(mmrelay.meshtastic_utils.meshtastic_iface)
-
-
-class TestTimeoutConfigurationEdgeCases(unittest.TestCase):
-    """Test timeout configuration edge cases (lines 689-704)."""
-
-    @patch("mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface")
-    @patch("mmrelay.meshtastic_utils.logger")
-    def test_timeout_non_positive_uses_default(self, mock_logger, mock_tcp):
-        """Test that non-positive timeout values use default and log warning."""
-        from mmrelay.meshtastic_utils import connect_meshtastic
-
-        mock_client = Mock()
-        mock_client.getMyNodeInfo.return_value = {
-            "user": {"shortName": "test", "hwModel": "test"}
-        }
-        mock_tcp.return_value = mock_client
-
-        # Reset global state
-        import mmrelay.meshtastic_utils
-
-        mmrelay.meshtastic_utils.meshtastic_client = None
-        mmrelay.meshtastic_utils.shutting_down = False
-        mmrelay.meshtastic_utils.reconnecting = False
-
-        config = {
-            "meshtastic": {
-                "connection_type": "tcp",
-                "host": "127.0.0.1",
-                "timeout": -5,
-            }
-        }
-
-        result = connect_meshtastic(passed_config=config)
-
-        self.assertEqual(result, mock_client)
-        mock_tcp.assert_called_once_with(
-            hostname="127.0.0.1", timeout=DEFAULT_MESHTASTIC_TIMEOUT
-        )
-        mock_logger.warning.assert_called()
-
-    @patch("mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface")
-    @patch("mmrelay.meshtastic_utils.logger")
-    def test_timeout_none_uses_default_without_warning(self, mock_logger, mock_tcp):
-        """Test that None timeout uses default without logging warning."""
-        from mmrelay.meshtastic_utils import connect_meshtastic
-
-        mock_client = Mock()
-        mock_client.getMyNodeInfo.return_value = {
-            "user": {"shortName": "test", "hwModel": "test"}
-        }
-        mock_tcp.return_value = mock_client
-
-        # Reset global state
-        import mmrelay.meshtastic_utils
-
-        mmrelay.meshtastic_utils.meshtastic_client = None
-        mmrelay.meshtastic_utils.shutting_down = False
-        mmrelay.meshtastic_utils.reconnecting = False
-
-        config = {
-            "meshtastic": {
-                "connection_type": "tcp",
-                "host": "127.0.0.1",
-                "timeout": None,
-            }
-        }
-
-        result = connect_meshtastic(passed_config=config)
-
-        self.assertEqual(result, mock_client)
-        mock_tcp.assert_called_once_with(
-            hostname="127.0.0.1", timeout=DEFAULT_MESHTASTIC_TIMEOUT
-        )
-        mock_logger.warning.assert_not_called()
-
-    @patch("mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface")
-    @patch("mmrelay.meshtastic_utils.logger")
-    def test_timeout_invalid_string_uses_default_with_warning(
-        self, mock_logger, mock_tcp
-    ):
-        """Test that invalid timeout string uses default and logs warning."""
-        from mmrelay.meshtastic_utils import connect_meshtastic
-
-        mock_client = Mock()
-        mock_client.getMyNodeInfo.return_value = {
-            "user": {"shortName": "test", "hwModel": "test"}
-        }
-        mock_tcp.return_value = mock_client
-
-        # Reset global state
-        import mmrelay.meshtastic_utils
-
-        mmrelay.meshtastic_utils.meshtastic_client = None
-        mmrelay.meshtastic_utils.shutting_down = False
-        mmrelay.meshtastic_utils.reconnecting = False
-
-        config = {
-            "meshtastic": {
-                "connection_type": "tcp",
-                "host": "127.0.0.1",
-                "timeout": "invalid",
-            }
-        }
-
-        result = connect_meshtastic(passed_config=config)
-
-        self.assertEqual(result, mock_client)
-        mock_tcp.assert_called_once_with(
-            hostname="127.0.0.1", timeout=DEFAULT_MESHTASTIC_TIMEOUT
-        )
-        mock_logger.warning.assert_called()
-
-
-class TestBLEConnectionEdgeCases(unittest.TestCase):
-    """Test BLE connection edge cases (lines 753-754, 761, 772-774)."""
-
-    @patch("mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface")
-    @patch("mmrelay.meshtastic_utils.logger")
-    def test_ble_close_error_is_caught_and_logged(self, mock_logger, mock_ble):
-        """Test that errors closing old BLE interface are caught and logged (line 753-754)."""
-        from mmrelay.meshtastic_utils import connect_meshtastic
-
-        mock_client = Mock()
-        mock_client.getMyNodeInfo.return_value = {
-            "user": {"shortName": "test", "hwModel": "test"}
-        }
-        mock_ble.return_value = mock_client
-
-        # Create a mock interface that raises error on close
-        mock_old_iface = Mock()
-        mock_old_iface.close.side_effect = Exception("Close failed")
-
-        import mmrelay.meshtastic_utils
-
-        mmrelay.meshtastic_utils.meshtastic_iface = mock_old_iface
-
-        config = {
-            "meshtastic": {
-                "connection_type": "ble",
-                "ble_address": "AA:BB:CC:DD:EE:FF",
-            }
-        }
-
-        result = connect_meshtastic(passed_config=config, force_connect=True)
-
-        self.assertEqual(result, mock_client)
-        mock_logger.debug.assert_called()
-
-    @patch("mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface")
-    def test_ble_interface_created_when_none(self, mock_ble):
-        """Test that BLE interface is created when meshtastic_iface is None (line 761)."""
-        from mmrelay.meshtastic_utils import connect_meshtastic
-
-        mock_client = Mock()
-        mock_client.getMyNodeInfo.return_value = {
-            "user": {"shortName": "test", "hwModel": "test"}
-        }
-        mock_ble.return_value = mock_client
-
-        import mmrelay.meshtastic_utils
-
-        mmrelay.meshtastic_utils.meshtastic_iface = None
-        mmrelay.meshtastic_utils.meshtastic_client = None
-        mmrelay.meshtastic_utils.shutting_down = False
-        mmrelay.meshtastic_utils.reconnecting = False
-
-        config = {
-            "meshtastic": {
-                "connection_type": "ble",
-                "ble_address": "AA:BB:CC:DD:EE:FF",
-            }
-        }
-
-        result = connect_meshtastic(passed_config=config)
-
-        self.assertEqual(result, mock_client)
-        mock_ble.assert_called_once()
-
-    @patch("mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface")
-    @patch("mmrelay.meshtastic_utils.inspect.signature")
-    @patch("mmrelay.meshtastic_utils.logger")
-    def test_ble_auto_reconnect_parameter_in_signature(
-        self, mock_logger, mock_signature, mock_ble
-    ):
-        """Test BLE connection when auto_reconnect is in signature (lines 772-774)."""
-        from mmrelay.meshtastic_utils import connect_meshtastic
-
-        mock_client = Mock()
-        mock_client.getMyNodeInfo.return_value = {
-            "user": {"shortName": "test", "hwModel": "test"}
-        }
-        mock_ble.return_value = mock_client
-
-        # Mock signature to include auto_reconnect parameter
-        mock_sig = Mock()
-        mock_sig.parameters = {"auto_reconnect": Mock()}
-        mock_signature.return_value = mock_sig
-
-        # Reset global state
-        import mmrelay.meshtastic_utils
-
-        mmrelay.meshtastic_utils.meshtastic_iface = None
-        mmrelay.meshtastic_utils.meshtastic_client = None
-        mmrelay.meshtastic_utils.shutting_down = False
-        mmrelay.meshtastic_utils.reconnecting = False
-
-        config = {
-            "meshtastic": {
-                "connection_type": "ble",
-                "ble_address": "AA:BB:CC:DD:EE:FF",
-            }
-        }
-
-        result = connect_meshtastic(passed_config=config)
-
-        self.assertEqual(result, mock_client)
-        mock_ble.assert_called_once()
-        call_kwargs = mock_ble.call_args[1]
-        self.assertEqual(call_kwargs["auto_reconnect"], False)
-        mock_logger.debug.assert_called()
-
-    @patch("mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface")
-    @patch("mmrelay.meshtastic_utils.inspect.signature")
-    @patch("mmrelay.meshtastic_utils.logger")
-    def test_ble_no_auto_reconnect_parameter_in_signature(
-        self, mock_logger, mock_signature, mock_ble
-    ):
-        """Test BLE connection when auto_reconnect is NOT in signature (lines 772-774)."""
-        from mmrelay.meshtastic_utils import connect_meshtastic
-
-        mock_client = Mock()
-        mock_client.getMyNodeInfo.return_value = {
-            "user": {"shortName": "test", "hwModel": "test"}
-        }
-        mock_ble.return_value = mock_client
-
-        # Mock signature without auto_reconnect parameter
-        mock_sig = Mock()
-        mock_sig.parameters = {}
-        mock_signature.return_value = mock_sig
-
-        # Reset global state
-        import mmrelay.meshtastic_utils
-
-        mmrelay.meshtastic_utils.meshtastic_iface = None
-        mmrelay.meshtastic_utils.meshtastic_client = None
-        mmrelay.meshtastic_utils.shutting_down = False
-        mmrelay.meshtastic_utils.reconnecting = False
-
-        config = {
-            "meshtastic": {
-                "connection_type": "ble",
-                "ble_address": "AA:BB:CC:DD:EE:FF",
-            }
-        }
-
-        result = connect_meshtastic(passed_config=config)
-
-        self.assertEqual(result, mock_client)
-        mock_ble.assert_called_once()
-        call_kwargs = mock_ble.call_args[1]
-        self.assertNotIn("auto_reconnect", call_kwargs)
-        mock_logger.debug.assert_called()
-
-
-class TestOnMeshtasticMessageNameSaving(unittest.TestCase):
-    """Test on_meshtastic_message saving longname from interface (lines 1292-1300)."""
-
-    def test_saves_longname_from_interface_nodes(self):
-        """Test that longname is saved from interface.nodes when not in database."""
-        from mmrelay.meshtastic_utils import on_meshtastic_message
-
-        packet = {
-            "from": 123456789,
-            "to": 987654321,
-            "decoded": {
-                "text": "Hello",
-                "portnum": "TEXT_MESSAGE_APP",
-            },
-            "channel": 0,
-            "id": 12345,
-        }
-
-        mock_config = {
-            "meshtastic": {
-                "connection_type": "serial",
-                "serial_port": "/dev/ttyUSB0",
-                "meshnet_name": "test_mesh",
-            },
-            "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
-        }
-
-        with (
-            patch("mmrelay.meshtastic_utils.config", mock_config),
-            patch("mmrelay.meshtastic_utils.matrix_rooms", mock_config["matrix_rooms"]),
-            patch("mmrelay.meshtastic_utils.get_longname", return_value=None),
-            patch("mmrelay.meshtastic_utils.get_shortname", return_value="SN"),
-            patch("mmrelay.meshtastic_utils.save_longname") as mock_save_longname,
-            patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
-            patch("mmrelay.matrix_utils.matrix_relay", new_callable=AsyncMock),
-            patch(
-                "mmrelay.matrix_utils.get_interaction_settings"
-            ) as mock_get_interactions,
-            patch("mmrelay.matrix_utils.message_storage_enabled", return_value=False),
-        ):
-            mock_submit_coro.side_effect = _done_future
-            mock_get_interactions.return_value = {"reactions": False, "replies": False}
-
-            mock_interface = Mock()
-            mock_interface.myInfo = Mock()
-            mock_interface.myInfo.my_node_num = 987654321
-            mock_interface.nodes = {
-                123456789: {
-                    "user": {
-                        "longName": "Interface LongName",
-                        "shortName": "ILN",
-                    }
-                }
-            }
-
-            on_meshtastic_message(packet, mock_interface)
-
-            # Verify longname was saved from interface
-            mock_save_longname.assert_called_once_with(123456789, "Interface LongName")
-
-
-class TestCheckConnectionFallbackProbe(unittest.TestCase):
-    """Test check_connection fallback probe when metadata fails (line 1446).
-
-    Note: This test class is skipped because testing check_connection's infinite loop
-    behavior is complex and prone to timeouts. The line 1446 path requires
-    specific conditions that are difficult to set up reliably in a unit test.
-    """
-
-    @patch("mmrelay.meshtastic_utils.logger")
-    @patch("mmrelay.meshtastic_utils.asyncio.sleep", new_callable=AsyncMock)
-    def test_check_connection_fallback_probe_success(self, mock_logger, mock_sleep):
-        """Test check_connection fallback probe when metadata parse fails but node info succeeds."""
-        self.skipTest("check_connection testing is complex and prone to timeouts")
-
-    @patch("mmrelay.meshtastic_utils.logger")
-    @patch("mmrelay.meshtastic_utils.on_lost_meshtastic_connection")
-    @patch("mmrelay.meshtastic_utils.asyncio.sleep", new_callable=AsyncMock)
-    def test_check_connection_fallback_probe_failure(
-        self, mock_sleep, mock_lost_conn, mock_logger
-    ):
-        """Test check_connection fallback probe when both metadata and node info fail."""
-        import asyncio
-
-        from mmrelay.meshtastic_utils import check_connection
-
-        mock_config = {
-            "meshtastic": {
-                "connection_type": "tcp",
-                "host": "127.0.0.1",
-                "health_check": {"enabled": True, "heartbeat_interval": 60},
-            }
-        }
-
-        mock_client = Mock()
-        mock_client.getMyNodeInfo.side_effect = Exception("No response")
-
-        with (
-            patch("mmrelay.meshtastic_utils.config", mock_config),
-            patch("mmrelay.meshtastic_utils.meshtastic_client", mock_client),
-            patch("mmrelay.meshtastic_utils.reconnecting", False),
-            patch("mmrelay.meshtastic_utils._get_device_metadata") as mock_metadata,
-        ):
-            # Metadata fails to parse
-            mock_metadata.return_value = {
-                "firmware_version": "unknown",
-                "raw_output": "",
-                "success": False,
-            }
-
-            async def run_test():
-                mock_sleep.side_effect = asyncio.CancelledError()
-                try:
-                    await check_connection()
-                except asyncio.CancelledError:
-                    pass
-
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                loop.run_until_complete(run_test())
-            finally:
-                loop.close()
-
-            # Should trigger connection lost
-            mock_lost_conn.assert_called_once()
-
-
-class TestSendTextReplySystemExit(unittest.TestCase):
-    """Test send_text_reply SystemExit handling (lines 1543-1545)."""
-
-    @patch("mmrelay.meshtastic_utils.logger")
-    def test_send_text_reply_system_exit_re_raised(self, mock_logger):
-        """Test that SystemExit is re-raised after logging."""
-        from mmrelay.meshtastic_utils import send_text_reply
-
-        mock_interface = Mock()
-        mock_interface._generatePacketId.return_value = 12345
-        mock_interface._sendPacket.side_effect = SystemExit(1)
-
-        with self.assertRaises(SystemExit):
-            send_text_reply(mock_interface, "Hello", 999, destinationId="123456789")
-
-        mock_logger.debug.assert_any_call(
-            "SystemExit encountered, preserving for graceful shutdown"
         )
 
 

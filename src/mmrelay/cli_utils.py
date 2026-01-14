@@ -42,11 +42,7 @@ try:
         RemoteProtocolError,
         RemoteTransportError,
     )
-    from nio.responses import (  # type: ignore[import-untyped]
-        LoginError,
-        LogoutError,
-        LogoutResponse,
-    )
+    from nio.responses import LoginError, LogoutError  # type: ignore[import-untyped]
 
     # Create aliases for backward compatibility
     NioLoginError = LoginError
@@ -71,7 +67,6 @@ except ImportError:
     NioRemoteTransportError = Exception
     NioLocalProtocolError = Exception
     NioRemoteProtocolError = Exception
-    LogoutResponse = type("LogoutResponse", (), {})
 
 # Import mmrelay modules - avoid circular imports by importing inside functions
 
@@ -553,7 +548,7 @@ async def logout_matrix_bot(password: str) -> bool:
     """
     Log out the configured Matrix account, verify credentials when possible, and remove local session data.
 
-    If credentials are present the function will, when feasible, verify the provided password by performing a temporary login and request server-side logout to invalidate the stored access token. If the stored credentials are incomplete it performs a best-effort local cleanup of session artifacts (for example, credentials file and E2EE stores). Local cleanup is attempted after the server logout flow, so early validation failures may return before cleanup is run. All network and cleanup failures are reported; the function always reports errors encountered along the way.
+    If credentials are present the function will, when feasible, verify the provided password by performing a temporary login and request server-side logout to invalidate the stored access token. If the stored credentials are incomplete it performs a best-effort local cleanup of session artifacts (for example, credentials file and E2EE stores). All network and cleanup failures are reported; the function always attempts local cleanup regardless of server outcomes.
 
     Parameters:
         password (str): Matrix account password used to verify the session before attempting server logout.
@@ -743,25 +738,17 @@ async def logout_matrix_bot(password: str) -> bool:
                     "⚠️  Timeout during Matrix server logout, proceeding with local cleanup."
                 )
             else:
-                if isinstance(logout_response, LogoutResponse):
+                if hasattr(logout_response, "transport_response"):
                     logger.info("Successfully logged out from Matrix server.")
                     print("✅ Successfully logged out from Matrix server.")
-                elif isinstance(logout_response, NioLogoutError):
-                    _handle_matrix_error(logout_response, "Server logout", "warning")
                 else:
                     logger.warning(
                         "Logout response unclear, proceeding with local cleanup."
                     )
                     print("⚠️  Logout response unclear, proceeding with local cleanup.")
-        except (
-            NioLocalTransportError,
-            NioRemoteTransportError,
-            NioLocalProtocolError,
-            NioRemoteProtocolError,
-            OSError,
-        ) as e:
+        except Exception as e:
             _handle_matrix_error(e, "Server logout", "warning")
-            logger.debug("Logout error details: %s", e)
+            logger.debug(f"Logout error details: {e}")
         finally:
             if main_client is not None:
                 try:

@@ -325,10 +325,9 @@ def _validate_credentials_json(config_path: str) -> bool:
 
         if missing_fields:
             print(
-                f"❌ Error: credentials.json missing required fields: {', '.join(missing_fields)}",
-                file=sys.stderr,
+                f"❌ Error: credentials.json missing required fields: {', '.join(missing_fields)}"
             )
-            print(f"   {msg_run_auth_login()}", file=sys.stderr)
+            print(f"   {msg_run_auth_login()}")
             return False
 
         return True

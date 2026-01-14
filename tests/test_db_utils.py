@@ -79,7 +79,6 @@ class TestDbUtils(unittest.TestCase):
         """
         # Clear cache after each test
         clear_db_path_cache()
-        _reset_db_manager()
 
         # Clean up temporary files and directory
         if os.path.exists(self.test_dir):

@@ -19,9 +19,7 @@
 # This pattern eliminates RuntimeWarnings while maintaining proper test coverage.
 # See docs/dev/TESTING_GUIDE.md for comprehensive async mocking patterns.
 
-import asyncio
-import importlib
-import inspect
+import builtins
 import json
 import os
 import sys
@@ -1221,20 +1219,6 @@ class TestAuthLogin(unittest.TestCase):
         self.mock_args.homeserver = None
         self.mock_args.username = None
         self.mock_args.password = None
-        self._asyncio_run_patcher = patch("asyncio.run")
-        self.mock_asyncio_run = self._asyncio_run_patcher.start()
-        self.addCleanup(self._asyncio_run_patcher.stop)
-
-        def _fake_asyncio_run(coro):
-            if inspect.isawaitable(coro):
-                loop = asyncio.new_event_loop()
-                try:
-                    return loop.run_until_complete(coro)
-                finally:
-                    loop.close()
-            return coro
-
-        self.mock_asyncio_run.side_effect = _fake_asyncio_run
 
     @patch("mmrelay.matrix_utils.login_matrix_bot")
     @patch("builtins.print")
@@ -1924,12 +1908,10 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         # Verify results
         self.assertFalse(result)
         mock_print.assert_any_call(
-            "❌ Error: credentials.json missing required fields: homeserver",
-            file=sys.stderr,
+            "❌ Error: credentials.json missing required fields: homeserver"
         )
         mock_print.assert_any_call(
-            "   Please run 'mmrelay auth login' again to generate new credentials that include a device_id.",
-            file=sys.stderr,
+            "   Please run 'mmrelay auth login' again to generate new credentials that include a device_id."
         )
 
     @patch("os.path.exists")
@@ -1960,48 +1942,10 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         # Verify results
         self.assertFalse(result)
         mock_print.assert_any_call(
-            "❌ Error: credentials.json missing required fields: access_token",
-            file=sys.stderr,
+            "❌ Error: credentials.json missing required fields: access_token"
         )
         mock_print.assert_any_call(
-            "   Please run 'mmrelay auth login' again to generate new credentials that include a device_id.",
-            file=sys.stderr,
-        )
-
-    @patch("os.path.exists")
-    @patch("builtins.open", new_callable=mock_open)
-    @patch("builtins.print")
-    def test_validate_credentials_json_missing_device_id(
-        self, mock_print, mock_file, mock_exists
-    ):
-        """Test validation when credentials.json is missing device_id field."""
-        # Setup mocks
-        config_path = "/home/user/.mmrelay/config.yaml"
-        mock_exists.return_value = True
-
-        # Mock credentials with missing device_id
-        credentials_data = {
-            "homeserver": "https://matrix.org",
-            "access_token": "syt_test_token_123",
-            "user_id": "@bot:matrix.org",
-            # Missing device_id
-        }
-        mock_file.return_value.read.return_value = json.dumps(credentials_data)
-
-        # Import and call function
-        from mmrelay.cli import _validate_credentials_json
-
-        result = _validate_credentials_json(config_path)
-
-        # Verify results
-        self.assertFalse(result)
-        mock_print.assert_any_call(
-            "❌ Error: credentials.json missing required fields: device_id",
-            file=sys.stderr,
-        )
-        mock_print.assert_any_call(
-            "   Please run 'mmrelay auth login' again to generate new credentials that include a device_id.",
-            file=sys.stderr,
+            "   Please run 'mmrelay auth login' again to generate new credentials that include a device_id."
         )
 
     @patch("os.path.exists")
@@ -2032,12 +1976,44 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         # Verify results
         self.assertFalse(result)
         mock_print.assert_any_call(
-            "❌ Error: credentials.json missing required fields: user_id",
-            file=sys.stderr,
+            "❌ Error: credentials.json missing required fields: user_id"
         )
         mock_print.assert_any_call(
-            "   Please run 'mmrelay auth login' again to generate new credentials that include a device_id.",
-            file=sys.stderr,
+            "   Please run 'mmrelay auth login' again to generate new credentials that include a device_id."
+        )
+
+    @patch("os.path.exists")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("builtins.print")
+    def test_validate_credentials_json_missing_device_id(
+        self, mock_print, mock_file, mock_exists
+    ):
+        """Test validation when credentials.json is missing device_id field."""
+        # Setup mocks
+        config_path = "/home/user/.mmrelay/config.yaml"
+        mock_exists.return_value = True
+
+        # Mock credentials with missing device_id
+        credentials_data = {
+            "homeserver": "https://matrix.org",
+            "access_token": "syt_test_token_123",
+            "user_id": "@bot:matrix.org",
+            # Missing device_id
+        }
+        mock_file.return_value.read.return_value = json.dumps(credentials_data)
+
+        # Import and call function
+        from mmrelay.cli import _validate_credentials_json
+
+        result = _validate_credentials_json(config_path)
+
+        # Verify results
+        self.assertFalse(result)
+        mock_print.assert_any_call(
+            "❌ Error: credentials.json missing required fields: device_id"
+        )
+        mock_print.assert_any_call(
+            "   Please run 'mmrelay auth login' again to generate new credentials that include a device_id."
         )
 
     @patch("os.path.exists")
@@ -2068,12 +2044,10 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         # Verify results
         self.assertFalse(result)
         mock_print.assert_any_call(
-            "❌ Error: credentials.json missing required fields: homeserver",
-            file=sys.stderr,
+            "❌ Error: credentials.json missing required fields: homeserver"
         )
         mock_print.assert_any_call(
-            "   Please run 'mmrelay auth login' again to generate new credentials that include a device_id.",
-            file=sys.stderr,
+            "   Please run 'mmrelay auth login' again to generate new credentials that include a device_id."
         )
 
     @patch("os.path.exists")
@@ -2144,12 +2118,10 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         self.assertFalse(result)
         # Should report all missing fields
         mock_print.assert_any_call(
-            "❌ Error: credentials.json missing required fields: access_token, user_id, device_id",
-            file=sys.stderr,
+            "❌ Error: credentials.json missing required fields: access_token, user_id, device_id"
         )
         mock_print.assert_any_call(
-            "   Please run 'mmrelay auth login' again to generate new credentials that include a device_id.",
-            file=sys.stderr,
+            "   Please run 'mmrelay auth login' again to generate new credentials that include a device_id."
         )
 
 
@@ -2770,18 +2742,47 @@ class TestPrintEnvironmentSummary(unittest.TestCase):
         # Import function first
         from mmrelay.cli import _print_environment_summary
 
-        real_import_module = importlib.import_module
+        # Mock failed E2EE imports by removing modules from sys.modules and making import fail
+        original_modules = sys.modules.copy()
+        original_import = None
+        try:
+            # Remove E2EE modules if they exist
+            for module in ["olm", "nio.crypto", "nio.store"]:
+                if module in sys.modules:
+                    del sys.modules[module]
 
-        def mock_import_module(name: str):
-            if name in ("olm", "nio.crypto", "nio.store"):
-                raise ImportError(name)
-            return real_import_module(name)
+            # Mock import to raise ImportError for E2EE modules
+            original_import = builtins.__import__
 
-        # Call function
-        with patch(
-            "mmrelay.cli.importlib.import_module", side_effect=mock_import_module
-        ):
+            def mock_import(name, *args, **kwargs):
+                """
+                Simulate missing optional modules by raising ImportError for select module names during imports.
+                
+                Parameters:
+                    name (str): Fully-qualified module name being imported; if it equals "olm", "nio.crypto", or "nio.store" an ImportError is raised.
+                    *args: Additional positional arguments passed to the underlying import machinery (passed through unchanged).
+                    **kwargs: Additional keyword arguments passed through to the underlying import machinery.
+                
+                Returns:
+                    module: The result of the normal import for module names other than the ones listed.
+                
+                Raises:
+                    ImportError: If `name` is "olm", "nio.crypto", or "nio.store".
+                """
+                if name in ["olm", "nio.crypto", "nio.store"]:
+                    raise ImportError(f"No module named '{name}'")
+                return original_import(name, *args, **kwargs)
+
+            builtins.__import__ = mock_import
+
+            # Call function
             _print_environment_summary()
+
+        finally:
+            # Restore original state
+            if original_import is not None:
+                builtins.__import__ = original_import
+            sys.modules.update(original_modules)
 
         # Verify results
         mock_print.assert_any_call("\n🖥️  Environment Summary:")
@@ -3129,20 +3130,49 @@ class TestAnalyzeE2eeSetup(unittest.TestCase):
         # Setup mocks
         mock_exists.return_value = False  # No credentials file
 
-        real_import_module = importlib.import_module
+        # Mock missing E2EE dependencies
+        original_modules = sys.modules.copy()
+        original_import = None
+        try:
+            # Remove E2EE modules if they exist
+            for module in ["olm", "nio.crypto", "nio.store"]:
+                if module in sys.modules:
+                    del sys.modules[module]
 
-        def mock_import_module(name: str):
-            if name in ("olm", "nio.crypto", "nio.store"):
-                raise ImportError(name)
-            return real_import_module(name)
+            # Mock import to raise ImportError for E2EE modules
+            original_import = builtins.__import__
 
-        with patch(
-            "mmrelay.cli.importlib.import_module", side_effect=mock_import_module
-        ):
+            def mock_import(name, *args, **kwargs):
+                """
+                Simulate missing optional modules by raising ImportError for select module names during imports.
+                
+                Parameters:
+                    name (str): Fully-qualified module name being imported; if it equals "olm", "nio.crypto", or "nio.store" an ImportError is raised.
+                    *args: Additional positional arguments passed to the underlying import machinery (passed through unchanged).
+                    **kwargs: Additional keyword arguments passed through to the underlying import machinery.
+                
+                Returns:
+                    module: The result of the normal import for module names other than the ones listed.
+                
+                Raises:
+                    ImportError: If `name` is "olm", "nio.crypto", or "nio.store".
+                """
+                if name in ["olm", "nio.crypto", "nio.store"]:
+                    raise ImportError(f"No module named '{name}'")
+                return original_import(name, *args, **kwargs)
+
+            builtins.__import__ = mock_import
+
             # Import and call function
             from mmrelay.cli import _analyze_e2ee_setup
 
             result = _analyze_e2ee_setup(self.base_config, self.config_path)
+
+        finally:
+            # Restore original state
+            if original_import is not None:
+                builtins.__import__ = original_import
+            sys.modules.update(original_modules)
 
         # Verify results
         self.assertIsInstance(result, dict)

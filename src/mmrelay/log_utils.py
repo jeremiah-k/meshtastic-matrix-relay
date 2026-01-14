@@ -146,14 +146,14 @@ def configure_component_debug_logging() -> None:
 def _should_log_to_file(args: argparse.Namespace | None) -> bool:
     """
     Determine if file logging should be enabled based on configuration and CLI options.
-
+    
     When the module is in CLI mode, file logging defaults to off unless explicitly enabled
     in the logging configuration or a logfile is provided on the command line.
-
+    
     Parameters:
         args (argparse.Namespace | None): Parsed CLI arguments. If present and `args.logfile`
             is truthy, file logging is forced on.
-
+    
     Returns:
         bool: `True` if file logging should be enabled, `False` otherwise.
     """
@@ -359,10 +359,10 @@ def get_logger(name: str, args: argparse.Namespace | None = None) -> logging.Log
 def cli_logging_mode(args: argparse.Namespace | None = None) -> Iterator[None]:
     """
     Temporarily disable console logging while preserving file logging for CLI commands.
-
+    
     Sets the internal CLI mode to True, refreshes all registered loggers so console handlers are removed,
     yields control to the caller, then restores the previous CLI mode and refreshes loggers again.
-
+    
     Parameters:
         args (argparse.Namespace | None): Optional CLI argument namespace forwarded to logger refresh calls;
             used to determine file-logging behavior when loggers are reconfigured.

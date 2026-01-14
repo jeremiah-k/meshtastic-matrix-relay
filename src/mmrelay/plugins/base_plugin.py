@@ -532,12 +532,12 @@ class BasePlugin(ABC):
     ) -> RoomSendResponse | RoomSendError | None:
         """
         Send a message to a Matrix room, optionally converting Markdown to HTML.
-
+        
         Parameters:
             room_id: Matrix room identifier.
             message: Message content to send.
             formatted: If True, convert `message` from Markdown to HTML and include it as formatted content; otherwise send plain text only.
-
+        
         Returns:
             The Matrix client's `room_send` response (`RoomSendResponse` or `RoomSendError`), or `None` if the Matrix client could not be obtained.
         """
@@ -565,9 +565,9 @@ class BasePlugin(ABC):
     def get_mesh_commands(self) -> list[str]:
         """
         List mesh/radio command names this plugin handles.
-
+        
         Subclasses should override to expose commands. Command names must not include a leading '!'.
-
+        
         Returns:
             list[str]: Command names without a leading '!' (empty list by default).
         """
