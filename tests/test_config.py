@@ -20,6 +20,7 @@ from mmrelay.config import (
     get_data_dir,
     get_e2ee_store_dir,
     get_log_dir,
+    get_meshtastic_config_value,
     get_plugin_data_dir,
     is_e2ee_enabled,
     load_config,
@@ -47,8 +48,9 @@ class TestConfig(unittest.TestCase):
         """
         Test that get_base_dir() returns the default base directory on Linux systems.
         """
-        with patch("sys.platform", "linux"), patch(
-            "mmrelay.config.custom_data_dir", None
+        with (
+            patch("sys.platform", "linux"),
+            patch("mmrelay.config.custom_data_dir", None),
         ):
             base_dir = get_base_dir()
             self.assertEqual(base_dir, os.path.expanduser("~/.mmrelay"))
@@ -59,8 +61,9 @@ class TestConfig(unittest.TestCase):
         """
         Test that get_base_dir returns the correct default base directory on Windows when platform detection and user data directory are mocked.
         """
-        with patch("mmrelay.config.sys.platform", "win32"), patch(
-            "mmrelay.config.custom_data_dir", None
+        with (
+            patch("mmrelay.config.sys.platform", "win32"),
+            patch("mmrelay.config.custom_data_dir", None),
         ):
             mock_user_data_dir.return_value = "C:\\Users\\test\\AppData\\Local\\mmrelay"
             base_dir = get_base_dir()
@@ -99,8 +102,10 @@ class TestConfig(unittest.TestCase):
         """
         Test that `get_config_paths` returns the default Linux configuration file path when no command-line arguments are provided.
         """
-        with patch("sys.platform", "linux"), patch("sys.argv", ["mmrelay"]), patch(
-            "mmrelay.config.custom_data_dir", None
+        with (
+            patch("sys.platform", "linux"),
+            patch("sys.argv", ["mmrelay"]),
+            patch("mmrelay.config.custom_data_dir", None),
         ):
             paths = get_config_paths()
             self.assertIn(os.path.expanduser("~/.mmrelay/config.yaml"), paths)
@@ -114,8 +119,9 @@ class TestConfig(unittest.TestCase):
 
         Simulates a Windows environment and verifies that the returned config paths include the expected Windows-specific config file location.
         """
-        with patch("mmrelay.config.sys.platform", "win32"), patch(
-            "sys.argv", ["mmrelay"]
+        with (
+            patch("mmrelay.config.sys.platform", "win32"),
+            patch("sys.argv", ["mmrelay"]),
         ):
             mock_user_config_dir.return_value = (
                 "C:\\Users\\test\\AppData\\Local\\mmrelay\\config"
@@ -133,8 +139,9 @@ class TestConfig(unittest.TestCase):
         """
         Test that get_data_dir returns the default data directory path on Linux platforms.
         """
-        with patch("sys.platform", "linux"), patch(
-            "mmrelay.config.custom_data_dir", None
+        with (
+            patch("sys.platform", "linux"),
+            patch("mmrelay.config.custom_data_dir", None),
         ):
             data_dir = get_data_dir()
             self.assertEqual(data_dir, os.path.expanduser("~/.mmrelay/data"))
@@ -144,8 +151,9 @@ class TestConfig(unittest.TestCase):
         """
         Test that get_log_dir() returns the default logs directory on Linux platforms.
         """
-        with patch("sys.platform", "linux"), patch(
-            "mmrelay.config.custom_data_dir", None
+        with (
+            patch("sys.platform", "linux"),
+            patch("mmrelay.config.custom_data_dir", None),
         ):
             log_dir = get_log_dir()
             self.assertEqual(log_dir, os.path.expanduser("~/.mmrelay/logs"))
@@ -157,8 +165,9 @@ class TestConfig(unittest.TestCase):
 
         Ensures the function resolves both the default plugins data directory and a plugin-specific directory for the Linux platform.
         """
-        with patch("sys.platform", "linux"), patch(
-            "mmrelay.config.custom_data_dir", None
+        with (
+            patch("sys.platform", "linux"),
+            patch("mmrelay.config.custom_data_dir", None),
         ):
             plugin_data_dir = get_plugin_data_dir()
             self.assertEqual(
@@ -825,8 +834,9 @@ class TestAppPath(unittest.TestCase):
 
     def test_get_app_path_unfrozen(self):
         """Test application path resolution for unfrozen applications."""
-        with patch("mmrelay.config.sys.frozen", False, create=True), patch(
-            "mmrelay.config.os.path.dirname", return_value="/app"
+        with (
+            patch("mmrelay.config.sys.frozen", False, create=True),
+            patch("mmrelay.config.os.path.dirname", return_value="/app"),
         ):
             result = get_app_path()
             self.assertEqual(result, "/app")
@@ -1001,6 +1011,92 @@ class TestE2EEStoreDir(unittest.TestCase):
         self.assertEqual(result, expected_path)
         mock_base_dir.assert_called_once()
         mock_makedirs.assert_called_once_with(expected_path, exist_ok=True)
+
+
+class TestLoadConfigUncoveredLines(unittest.TestCase):
+    """Test uncovered lines in load_config function."""
+
+    def setUp(self):
+        """Reset global config state before each test."""
+        mmrelay.config.relay_config = {}
+        mmrelay.config.config_path = None
+
+    @patch("mmrelay.config.os.path.isfile", return_value=False)
+    @patch("mmrelay.config.apply_env_config_overrides")
+    def test_load_config_env_only_returns_config(self, mock_apply_env, _mock_isfile):
+        """Test that when env vars provide config, it logs and returns that config."""
+        mock_apply_env.return_value = {"meshtastic": {"connection_type": "tcp"}}
+
+        with patch("mmrelay.config.get_config_paths", return_value=["/fake/path.yaml"]):
+            config = load_config()
+
+        self.assertEqual(config, {"meshtastic": {"connection_type": "tcp"}})
+
+    @patch("mmrelay.config.os.path.isfile", return_value=False)
+    @patch("mmrelay.config.apply_env_config_overrides", return_value={})
+    def test_load_config_import_error_logs_debug(self, _mock_apply_env, _mock_isfile):
+        """Test that ImportError from msg_suggest_generate_config logs debug with exc_info."""
+        with patch("mmrelay.config.get_config_paths", return_value=["/fake/path.yaml"]):
+            with patch(
+                "builtins.__import__",
+                side_effect=ImportError("No module named 'cli_utils'"),
+            ):
+                config = load_config()
+
+        self.assertEqual(config, {})
+
+    @patch("mmrelay.config.os.path.isfile", return_value=False)
+    @patch("mmrelay.config.apply_env_config_overrides", return_value={})
+    def test_load_config_cli_suggestion_message(self, _mock_apply_env, _mock_isfile):
+        """Test that CLI suggestion message is logged when import succeeds."""
+        with patch("mmrelay.config.get_config_paths", return_value=["/fake/path.yaml"]):
+            with patch(
+                "mmrelay.cli_utils.msg_suggest_generate_config",
+                return_value="Generate config with: mmrelay generate-config",
+            ):
+                config = load_config()
+
+        self.assertEqual(config, {})
+
+
+class TestGetMeshtasticConfigValueUncoveredLines(unittest.TestCase):
+    """Test uncovered lines in get_meshtastic_config_value function."""
+
+    @patch("mmrelay.config.os.path.isfile", return_value=False)
+    @patch("mmrelay.config.apply_env_config_overrides", return_value={})
+    def test_get_meshtastic_config_value_invalid_section_type(
+        self, _mock_apply_env, _mock_isfile
+    ):
+        """Test that when meshtastic section is not a dict, it resets to empty dict."""
+        with patch("mmrelay.config.get_config_paths", return_value=["/fake/path.yaml"]):
+            config = {"meshtastic": "not_a_dict"}
+
+        result = get_meshtastic_config_value(
+            config, "connection_type", default="serial"
+        )
+        self.assertEqual(result, "serial")
+
+    @patch("mmrelay.config.os.path.isfile", return_value=False)
+    @patch("mmrelay.config.apply_env_config_overrides", return_value={})
+    @patch("mmrelay.config.os.makedirs")
+    def test_get_meshtastic_config_value_required_missing_import_error(
+        self, _mock_makedirs, _mock_apply_env, _mock_isfile
+    ):
+        """Test that when required key is missing and import fails, lambda is used."""
+        with patch("mmrelay.config.get_config_paths", return_value=["/fake/path.yaml"]):
+            config = {"meshtastic": {}}
+
+        with patch(
+            "builtins.__import__",
+            side_effect=ImportError("No module named 'cli_utils'"),
+        ):
+            with self.assertRaises(KeyError) as cm:
+                get_meshtastic_config_value(config, "connection_type", required=True)
+
+        self.assertIn(
+            "Required configuration 'meshtastic.connection_type' is missing",
+            str(cm.exception),
+        )
 
 
 if __name__ == "__main__":
