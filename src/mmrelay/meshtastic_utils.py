@@ -590,10 +590,16 @@ def _disconnect_ble_by_address(address: str) -> None:
         from bleak import BleakClient
 
         async def disconnect_stale_connection():
+            client = None
             try:
                 client = BleakClient(address)
 
                 is_connected = await client.is_connected()
+            except Exception as e:
+                logger.debug(f"Failed to check connection state for {address}: {e}")
+                return
+
+            try:
                 if is_connected:
                     logger.warning(
                         f"Device {address} is already connected in BlueZ. Disconnecting..."
@@ -620,12 +626,15 @@ def _disconnect_ble_by_address(address: str) -> None:
                         )
                     finally:
                         try:
-                            await client.disconnect()
+                            if client:
+                                await client.disconnect()
                             await asyncio.sleep(0.5)
                         except Exception:
                             pass
             except Exception as e:
-                logger.debug(f"Error checking/disconnecting stale connection: {e}")
+                logger.debug(
+                    f"Error during BLE stale connection cleanup for {address}: {e}"
+                )
 
         asyncio.run(disconnect_stale_connection())
 
