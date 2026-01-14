@@ -20,7 +20,6 @@
 # See docs/dev/TESTING_GUIDE.md for comprehensive async mocking patterns.
 
 import asyncio
-import builtins
 import importlib
 import inspect
 import json

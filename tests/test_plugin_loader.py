@@ -170,10 +170,10 @@ def test_temp_sys_path_handles_missing_remove():
         def remove(self, _value):
             """
             Always raises a ValueError indicating the requested item is missing.
-            
+
             Parameters:
                 _value: The item attempted to be removed; this value is ignored.
-            
+
             Raises:
                 ValueError: Always raised with the message "missing".
             """

@@ -2034,8 +2034,8 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
                 "Ultimate fallback triggered", mock_logger.debug.call_args[0][0]
             )
 
-    def test_submit_coro_ultimate_fallback_runtime_error(self):
-        """Test _submit_coro ultimate fallback when event loop creation raises RuntimeError."""
+    def test_submit_coro_ultimate_fallback_policy_error(self):
+        """Test _submit_coro ultimate fallback when event loop policy raises RuntimeError."""
         from mmrelay.meshtastic_utils import _submit_coro
 
         async def test_coro():
