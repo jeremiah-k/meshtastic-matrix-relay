@@ -561,6 +561,47 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
     return result
 
 
+def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
+    """
+    Properly disconnect a BLE interface with appropriate delays to allow the adapter to release resources.
+
+    This function ensures sequential BLE connections by:
+    1. Calling disconnect() if available (forked meshtastic version)
+    2. Calling close() to release all resources
+    3. Adding a delay to allow the Bluetooth adapter to fully release the connection
+
+    Parameters:
+        iface: The BLE interface instance to disconnect. Can be None.
+        reason: Reason for disconnection, used in log messages.
+
+    Returns:
+        None
+    """
+    if iface is None:
+        return
+
+    try:
+        # Check if interface has a disconnect method (forked version)
+        if hasattr(iface, "disconnect"):
+            logger.debug(f"Disconnecting BLE interface ({reason})")
+            iface.disconnect()
+            # Give the adapter time to complete the disconnect
+            time.sleep(1.0)
+        else:
+            logger.debug(
+                f"BLE interface has no disconnect() method, using close() only ({reason})"
+            )
+
+        # Always call close() to release resources
+        logger.debug(f"Closing BLE interface ({reason})")
+        iface.close()
+    except Exception as e:
+        logger.debug(f"Error during BLE interface {reason}: {e}")
+    finally:
+        # Small delay to ensure the adapter has fully released the connection
+        time.sleep(0.5)
+
+
 def serial_port_exists(port_name: str) -> bool:
     """
     Determine whether a serial port with the given device name exists on the system.
@@ -739,15 +780,24 @@ def connect_meshtastic(
                             and getattr(meshtastic_iface, "address", None)
                             != ble_address
                         ):
-                            logger.info(
-                                "BLE address has changed. Re-creating BLE interface."
+                            old_address = getattr(
+                                meshtastic_iface, "address", "unknown"
                             )
-                            with contextlib.suppress(Exception):
-                                meshtastic_iface.close()
+                            logger.info(
+                                f"BLE address has changed from {old_address} to {ble_address}. "
+                                "Disconnecting old interface and creating new one."
+                            )
+                            # Properly disconnect the old interface to ensure sequential connections
+                            _disconnect_ble_interface(
+                                meshtastic_iface, reason="address change"
+                            )
                             meshtastic_iface = None
 
                         if meshtastic_iface is None:
                             # Create a single BLEInterface instance for process lifetime
+                            logger.debug(
+                                f"Creating new BLE interface for {ble_address}"
+                            )
                             # Check if auto_reconnect parameter is supported (forked version)
                             ble_init_sig = inspect.signature(
                                 meshtastic.ble_interface.BLEInterface.__init__
@@ -764,19 +814,29 @@ def connect_meshtastic(
                             if "auto_reconnect" in ble_init_sig.parameters:
                                 ble_kwargs["auto_reconnect"] = False
                                 logger.debug(
-                                    "Using forked meshtastic library with auto_reconnect support"
+                                    "Using forked meshtastic library with auto_reconnect=False "
+                                    "to ensure sequential connections"
                                 )
                             else:
-                                logger.debug("Using official meshtastic library")
+                                logger.debug(
+                                    "Using official meshtastic library (auto_reconnect not available)"
+                                )
 
                             try:
                                 meshtastic_iface = (
                                     meshtastic.ble_interface.BLEInterface(**ble_kwargs)
                                 )
+                                logger.debug(
+                                    f"BLE interface created successfully for {ble_address}"
+                                )
                             except Exception:
                                 # BLEInterface constructor failed - this is a critical error
                                 logger.exception("BLE interface creation failed")
                                 raise
+                        else:
+                            logger.debug(
+                                f"Reusing existing BLE interface for {ble_address}"
+                            )
 
                         iface = meshtastic_iface
 
@@ -784,7 +844,11 @@ def connect_meshtastic(
                     # Official version connects automatically during init (no connect() method)
                     # Forked version has separate connect() method that we need to call
                     if iface is not None and hasattr(iface, "connect"):
+                        logger.info(
+                            f"Initiating BLE connection to {ble_address} (sequential mode)"
+                        )
                         iface.connect()
+                        logger.info(f"BLE connection established to {ble_address}")
 
                     client = iface
                 else:
@@ -946,18 +1010,25 @@ def on_lost_meshtastic_connection(
         logger.error(f"Lost connection ({detection_source}). Reconnecting...")
 
         if meshtastic_client:
-            try:
-                meshtastic_client.close()
-            except OSError as e:
-                if e.errno == ERRNO_BAD_FILE_DESCRIPTOR:
-                    # Bad file descriptor, already closed
-                    pass
-                else:
-                    logger.warning(f"Error closing Meshtastic client: {e}")
-            except Exception as e:
-                logger.warning(f"Error closing Meshtastic client: {e}")
             if meshtastic_client is meshtastic_iface:
+                # This is a BLE interface - use proper disconnect sequence
+                logger.debug("Disconnecting BLE interface due to connection loss")
+                _disconnect_ble_interface(
+                    meshtastic_iface, reason=f"connection loss: {detection_source}"
+                )
                 meshtastic_iface = None
+            else:
+                # Serial or TCP interface - use standard close()
+                try:
+                    meshtastic_client.close()
+                except OSError as e:
+                    if e.errno == ERRNO_BAD_FILE_DESCRIPTOR:
+                        # Bad file descriptor, already closed
+                        pass
+                    else:
+                        logger.warning(f"Error closing Meshtastic client: {e}")
+                except Exception as e:
+                    logger.warning(f"Error closing Meshtastic client: {e}")
         meshtastic_client = None
 
         if event_loop and not event_loop.is_closed():
