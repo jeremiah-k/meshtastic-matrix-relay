@@ -54,7 +54,6 @@ from mmrelay.constants.network import (
 
 try:
     from bleak import BleakScanner
-    from bleak.backends.bluezdbus.manager import DeviceManager
 
     BLE_AVAILABLE = True
 except ImportError:
@@ -583,31 +582,55 @@ def _disconnect_ble_by_address(address: str) -> None:
     Returns:
         None
     """
-    if not BLE_AVAILABLE:
-        return
+    logger.debug(f"Checking for stale BlueZ connection to {address}")
 
     try:
         import asyncio
 
         from bleak import BleakClient
 
-        logger.debug(f"Checking if device {address} is already connected in BlueZ")
+        async def disconnect_stale_connection():
+            try:
+                client = BleakClient(address)
 
-        try:
-            client = BleakClient(address)
-            is_connected = asyncio.run(client.is_connected())
-            if is_connected:
-                logger.warning(
-                    f"Device {address} is already connected in BlueZ. "
-                    f"Disconnecting before creating new interface."
-                )
-                asyncio.run(client.disconnect())
-                time.sleep(0.5)
-        except Exception:
-            pass
+                is_connected = await client.is_connected()
+                if is_connected:
+                    logger.warning(
+                        f"Device {address} is already connected in BlueZ. Disconnecting..."
+                    )
+                    await client.disconnect()
+                    await asyncio.sleep(0.5)
+                    logger.debug(
+                        f"Successfully disconnected stale connection to {address}"
+                    )
+                else:
+                    logger.debug(f"Device {address} not currently connected in BlueZ")
+
+                    try:
+                        logger.debug(
+                            f"Attempting connection to {address} to verify BlueZ state..."
+                        )
+                        await client.connect(timeout=2.0)
+                        logger.debug(
+                            f"Quick connect to {address} succeeded, now disconnecting"
+                        )
+                    except Exception:
+                        logger.debug(
+                            f"Quick connect to {address} failed (may already be disconnected)"
+                        )
+                    finally:
+                        try:
+                            await client.disconnect()
+                            await asyncio.sleep(0.5)
+                        except Exception:
+                            pass
+            except Exception as e:
+                logger.debug(f"Error checking/disconnecting stale connection: {e}")
+
+        asyncio.run(disconnect_stale_connection())
 
     except ImportError:
-        pass
+        logger.debug("BleakClient not available for stale connection cleanup")
 
 
 def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
