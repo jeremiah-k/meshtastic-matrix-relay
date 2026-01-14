@@ -1283,8 +1283,13 @@ class TestAsyncHelperUtilities(unittest.TestCase):
             mock_logger.debug.assert_not_called()
             _call_args, call_kwargs = mock_logger.error.call_args
             self.assertIn("exc_info", call_kwargs)
-            self.assertIsInstance(call_kwargs["exc_info"], ValueError)
-            self.assertEqual(str(call_kwargs["exc_info"]), "Task failed")
+            exc_info = call_kwargs["exc_info"]
+            self.assertIsInstance(exc_info, tuple)
+            self.assertEqual(len(exc_info), 3)
+            self.assertIs(exc_info[0], ValueError)
+            self.assertIsInstance(exc_info[1], ValueError)
+            self.assertEqual(str(exc_info[1]), "Task failed")
+            self.assertIsNone(exc_info[2])
 
     def test_fire_and_forget_ignores_returned_cancelled_error(self):
         """Ensure fire-and-forget ignores CancelledError instances returned by task.exception()."""

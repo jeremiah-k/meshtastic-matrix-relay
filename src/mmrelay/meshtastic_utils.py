@@ -617,16 +617,16 @@ def connect_meshtastic(
         if meshtastic_client and not force_connect:
             return meshtastic_client
 
-            # Close previous connection if exists
-            if meshtastic_client:
-                try:
-                    meshtastic_client.close()
-                except Exception as e:
-                    logger.warning(f"Error closing previous connection: {e}")
-                if meshtastic_client is meshtastic_iface:
-                    with meshtastic_iface_lock:
-                        meshtastic_iface = None
-                meshtastic_client = None
+        # Close previous connection if exists
+        if meshtastic_client:
+            try:
+                meshtastic_client.close()
+            except Exception as e:
+                logger.warning(f"Error closing previous connection: {e}")
+            if meshtastic_client is meshtastic_iface:
+                with meshtastic_iface_lock:
+                    meshtastic_iface = None
+            meshtastic_client = None
 
         # Check if config is available
         if config is None:
