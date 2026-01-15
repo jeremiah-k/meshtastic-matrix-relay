@@ -25,6 +25,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.meshtastic_utils import (
     _get_device_metadata,
+    _get_packet_details,
+    _get_portnum_name,
     _resolve_plugin_timeout,
     check_connection,
     connect_meshtastic,
@@ -204,7 +206,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         """
         # Modify packet to have no text
         packet_no_text = self.mock_packet.copy()
-        packet_no_text["decoded"] = {"portnum": 2}  # Not TEXT_MESSAGE_APP
+        packet_no_text["decoded"] = {"portnum": 2}  # REMOTE_HARDWARE_APP
 
         with (
             patch("mmrelay.meshtastic_utils.config", self.mock_config),
@@ -216,15 +218,27 @@ class TestMeshtasticUtils(unittest.TestCase):
             patch("mmrelay.plugin_loader.load_plugins") as mock_load_plugins,
             patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True),
             patch("mmrelay.matrix_utils.matrix_client", None),
+            patch("mmrelay.meshtastic_utils.portnums_pb2") as mock_portnums_pb2,
         ):
             mock_load_plugins.return_value = []
+            mock_portnums_pb2.PortNum.Name.return_value = "REMOTE_HARDWARE_APP"
             mock_interface = MagicMock()
 
-            # Call the function
-            on_meshtastic_message(packet_no_text, mock_interface)
+            with self.assertLogs("Meshtastic", level="DEBUG") as cm:
+                # Call the function
+                on_meshtastic_message(packet_no_text, mock_interface)
 
             # Verify _submit_coro was not called for non-text message
             mock_submit_coro.assert_not_called()
+            mock_portnums_pb2.PortNum.Name.assert_called_once_with(2)
+
+            # Verify debug log was called with packet type information
+            log_output = "\n".join(cm.output)
+            self.assertIn("Received non-text Meshtastic message", log_output)
+            self.assertIn("type=REMOTE_HARDWARE_APP", log_output)
+            self.assertIn("from=123456789", log_output)
+            self.assertIn("channel=0", log_output)
+            self.assertIn("id=12345", log_output)
 
     def test_on_meshtastic_message_missing_myinfo(self):
         """
@@ -636,6 +650,147 @@ class TestMeshtasticUtils(unittest.TestCase):
             mock_submit_coro.assert_called_once()
 
 
+class TestGetPortnumName(unittest.TestCase):
+    """Test cases for _get_portnum_name helper function."""
+
+    def test_get_portnum_name_with_none(self):
+        """Test with None input."""
+        result = _get_portnum_name(None)
+        self.assertEqual(result, "UNKNOWN (None)")
+
+    def test_get_portnum_name_with_empty_string(self):
+        """Test with an empty string."""
+        result = _get_portnum_name("")
+        self.assertEqual(result, "UNKNOWN (empty string)")
+
+    def test_get_portnum_name_with_string(self):
+        """Test with a valid string portnum name."""
+        result = _get_portnum_name("TEXT_MESSAGE_APP")
+        self.assertEqual(result, "TEXT_MESSAGE_APP")
+
+    def test_get_portnum_name_with_valid_int(self):
+        """Test with a valid integer portnum."""
+        with patch("mmrelay.meshtastic_utils.portnums_pb2") as mock_portnums_pb2:
+            mock_portnums_pb2.PortNum.Name.return_value = "TEXT_MESSAGE_APP"
+            result = _get_portnum_name(1)
+            self.assertEqual(result, "TEXT_MESSAGE_APP")
+            mock_portnums_pb2.PortNum.Name.assert_called_once_with(1)
+
+    def test_get_portnum_name_with_invalid_int(self):
+        """Test with an invalid integer portnum."""
+        with patch("mmrelay.meshtastic_utils.portnums_pb2") as mock_portnums_pb2:
+            mock_portnums_pb2.PortNum.Name.side_effect = ValueError
+            result = _get_portnum_name(999)
+            self.assertEqual(result, "UNKNOWN (portnum=999)")
+
+    def test_get_portnum_name_with_other_type(self):
+        """Test with unsupported types."""
+        result_float = _get_portnum_name(123.45)
+        self.assertEqual(result_float, "UNKNOWN (type=float)")
+        result_list = _get_portnum_name([])
+        self.assertEqual(result_list, "UNKNOWN (type=list)")
+
+
+class TestGetPacketDetails(unittest.TestCase):
+    """Test cases for _get_packet_details helper function."""
+
+    def test_get_packet_details_with_none_decoded(self):
+        """Test with None decoded data."""
+        result = _get_packet_details(None, {}, "UNKNOWN")
+        self.assertEqual(result, {})
+
+    def test_get_packet_details_with_device_metrics(self):
+        """Test with device telemetry metrics."""
+        decoded = {
+            "telemetry": {
+                "deviceMetrics": {
+                    "batteryLevel": 100,
+                    "voltage": 4.488,
+                    "channelUtilization": 0.0,
+                    "airUtilTx": 0.53747225,
+                    "uptimeSeconds": 8405,
+                }
+            }
+        }
+        packet = {"from": 321352745}
+        result = _get_packet_details(decoded, packet, "TELEMETRY_APP")
+        self.assertEqual(result["batt"], "100%")
+        self.assertEqual(result["voltage"], "4.49V")
+        self.assertNotIn("temp", result)
+        self.assertNotIn("humidity", result)
+
+    def test_get_packet_details_with_environment_metrics(self):
+        """Test with environment telemetry metrics."""
+        decoded = {
+            "telemetry": {
+                "environmentMetrics": {
+                    "temperature": -12.756417,
+                    "relativeHumidity": 62.443268,
+                    "barometricPressure": 994.1772,
+                    "gasResistance": 1582.0542,
+                    "iaq": 176,
+                }
+            }
+        }
+        packet = {"from": 321352745}
+        result = _get_packet_details(decoded, packet, "TELEMETRY_APP")
+        self.assertEqual(result["temp"], "-12.8°C")
+        self.assertEqual(result["humidity"], "62%")
+        self.assertNotIn("batt", result)
+        self.assertNotIn("voltage", result)
+
+    def test_get_packet_details_with_signal_info(self):
+        """Test with signal information (RSSI and SNR)."""
+        decoded = {}
+        packet = {"from": 123, "rxRssi": -64, "rxSnr": 6.0}
+        result = _get_packet_details(decoded, packet, "TELEMETRY_APP")
+        self.assertEqual(result["signal"], "RSSI:-64 SNR:6.0")
+
+    def test_get_packet_details_with_zero_signal(self):
+        """Test with zero signal values (should still be logged)."""
+        decoded = {}
+        packet = {"from": 123, "rxRssi": 0, "rxSnr": 0.0}
+        result = _get_packet_details(decoded, packet, "TELEMETRY_APP")
+        self.assertEqual(result["signal"], "RSSI:0 SNR:0.0")
+
+    def test_get_packet_details_with_relay_info(self):
+        """Test with relay node information."""
+        decoded = {}
+        packet = {"from": 123, "relayNode": 177}
+        result = _get_packet_details(decoded, packet, "TELEMETRY_APP")
+        self.assertEqual(result["relayed"], "via 177")
+
+    def test_get_packet_details_with_relay_zero(self):
+        """Test with relay node zero (should be ignored)."""
+        decoded = {}
+        packet = {"from": 123, "relayNode": 0}
+        result = _get_packet_details(decoded, packet, "TELEMETRY_APP")
+        self.assertNotIn("relayed", result)
+
+    def test_get_packet_details_with_priority(self):
+        """Test with non-default priority."""
+        decoded = {}
+        packet = {"from": 123, "priority": "BACKGROUND"}
+        result = _get_packet_details(decoded, packet, "TELEMETRY_APP")
+        self.assertEqual(result["priority"], "BACKGROUND")
+
+    def test_get_packet_details_with_normal_priority(self):
+        """Test with NORMAL priority (should be ignored)."""
+        decoded = {}
+        packet = {"from": 123, "priority": "NORMAL"}
+        result = _get_packet_details(decoded, packet, "TELEMETRY_APP")
+        self.assertNotIn("priority", result)
+
+    def test_get_packet_details_non_telemetry(self):
+        """Test with non-TELEMETRY_APP portnum."""
+        decoded = {"portnum": "TEXT_MESSAGE_APP"}
+        packet = {"from": 123, "rxRssi": -70}
+        result = _get_packet_details(decoded, packet, "TEXT_MESSAGE_APP")
+        self.assertEqual(result["signal"], "RSSI:-70")
+        self.assertNotIn("batt", result)
+        self.assertNotIn("voltage", result)
+
+
 class TestServiceDetection(unittest.TestCase):
     """Test cases for service detection functionality."""
 
@@ -1041,10 +1196,19 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             mock_submit_coro.side_effect = _done_future
             mock_interface = MagicMock()
 
-            on_meshtastic_message(packet, mock_interface)
+            with self.assertLogs("Meshtastic", level="DEBUG") as cm:
+                on_meshtastic_message(packet, mock_interface)
 
             # Should not process message without decoded field
             mock_submit_coro.assert_not_called()
+
+            # Verify debug log was called with packet type information (portnum None)
+            log_output = "\n".join(cm.output)
+            self.assertIn("Received non-text Meshtastic message", log_output)
+            self.assertIn("type=UNKNOWN (None)", log_output)
+            self.assertIn("from=123456789", log_output)
+            self.assertIn("channel=0", log_output)
+            self.assertIn("id=12345", log_output)
 
     def test_on_meshtastic_message_empty_text(self):
         """
@@ -1091,10 +1255,19 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             mock_submit_coro.side_effect = _done_future
             mock_interface = MagicMock()
 
-            on_meshtastic_message(packet, mock_interface)
+            with self.assertLogs("Meshtastic", level="DEBUG") as cm:
+                on_meshtastic_message(packet, mock_interface)
 
             # Should not process empty text messages
             mock_submit_coro.assert_not_called()
+
+            # Verify debug log was called with packet type information
+            log_output = "\n".join(cm.output)
+            self.assertIn("Received non-text Meshtastic message", log_output)
+            self.assertIn("type=TEXT_MESSAGE_APP", log_output)
+            self.assertIn("from=123456789", log_output)
+            self.assertIn("channel=0", log_output)
+            self.assertIn("id=12345", log_output)
 
 
 # Meshtastic connection retry tests - converted from unittest.TestCase to standalone pytest functions

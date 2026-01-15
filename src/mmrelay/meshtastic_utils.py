@@ -775,20 +775,16 @@ def _disconnect_ble_by_address(address: str) -> None:
 
 def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
     """
-    Properly disconnect a BLE interface with appropriate delays to allow the adapter to release resources.
-
-    This function ensures sequential BLE connections by:
-    1. Adding a pre-disconnect delay to allow notifications to flush
-    2. Calling disconnect() if available (forked meshtastic version) with retry logic
-    3. Calling close() to release all resources
-    4. Adding a delay to allow the Bluetooth adapter to fully release the connection
-
+    Disconnect a BLE interface and ensure the Bluetooth adapter releases associated resources.
+    
+    Performs a safe teardown by waiting briefly before and after the disconnect, calling an available
+    disconnect() method with retries, disconnecting an underlying client if present, and always
+    calling close() to release resources. Logs and suppresses non-fatal errors but preserves overall
+    shutdown flow.
+    
     Parameters:
-        iface: The BLE interface instance to disconnect. Can be None.
-        reason: Reason for disconnection, used in log messages.
-
-    Returns:
-        None
+        iface (Any): BLE interface instance to disconnect. May be None.
+        reason (str): Human-readable reason for the disconnect, included in log messages.
     """
     if iface is None:
         return
@@ -865,6 +861,93 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
     finally:
         # Small delay to ensure the adapter has fully released the connection
         time.sleep(0.5)
+
+
+def _get_packet_details(
+    decoded: dict | None, packet: dict, portnum_name: str
+) -> dict[str, Any]:
+    """
+    Extract telemetry, signal, relay, and priority fields from a Meshtastic packet for logging.
+    
+    Parameters:
+        decoded: Decoded packet payload (may be None); used to extract telemetry fields when present.
+        packet: Full packet dictionary; used to extract signal (RSSI/SNR), relay, and priority information.
+        portnum_name: Port identifier name (e.g., "TELEMETRY_APP") that determines telemetry parsing.
+    
+    Returns:
+        dict: Mapping of short detail keys to formatted string values (e.g., 'batt': '85%', 'signal': 'RSSI:-70 SNR:7.5').
+    """
+    details = {}
+
+    if decoded and isinstance(decoded, dict) and portnum_name == "TELEMETRY_APP":
+        if (telemetry := decoded.get("telemetry")) and isinstance(telemetry, dict):
+            if (metrics := telemetry.get("deviceMetrics")) and isinstance(
+                metrics, dict
+            ):
+                if (batt := metrics.get("batteryLevel")) is not None:
+                    details["batt"] = f"{batt}%"
+                if (voltage := metrics.get("voltage")) is not None:
+                    details["voltage"] = f"{voltage:.2f}V"
+            elif (metrics := telemetry.get("environmentMetrics")) and isinstance(
+                metrics, dict
+            ):
+                if (temp := metrics.get("temperature")) is not None:
+                    details["temp"] = f"{temp:.1f}°C"
+                if (humidity := metrics.get("relativeHumidity")) is not None:
+                    details["humidity"] = f"{humidity:.0f}%"
+
+    signal_info = []
+    rssi = packet.get("rxRssi")
+    if rssi is not None:
+        signal_info.append(f"RSSI:{rssi}")
+    snr = packet.get("rxSnr")
+    if snr is not None:
+        signal_info.append(f"SNR:{snr:.1f}")
+    if signal_info:
+        details["signal"] = " ".join(signal_info)
+
+    relay = packet.get("relayNode")
+    if relay is not None and relay != 0:
+        details["relayed"] = f"via {relay}"
+
+    priority = packet.get("priority")
+    if priority and priority != "NORMAL":
+        details["priority"] = priority
+
+    return details
+
+
+def _get_portnum_name(portnum: Any) -> str:
+    """
+    Return a human-readable name for a Meshtastic port identifier.
+    
+    Accepts an integer enum value, a string name from the protobuf, or None.
+    - If given a valid enum integer, returns the corresponding enum name.
+    - If given a non-empty string, returns it unchanged.
+    - If the input is None, an empty string, an unknown integer, or an unexpected type,
+      returns an `UNKNOWN (...)` descriptive string indicating the issue.
+    
+    Parameters:
+        portnum: The port identifier to convert; may be an int enum value, a string name, or None.
+    
+    Returns:
+        A string containing the port name or an `UNKNOWN (...)` description for invalid or missing inputs.
+    """
+    if portnum is None:
+        return "UNKNOWN (None)"
+
+    if isinstance(portnum, str):
+        if portnum:
+            return portnum
+        return "UNKNOWN (empty string)"
+
+    if isinstance(portnum, int):
+        try:
+            return portnums_pb2.PortNum.Name(portnum)
+        except ValueError:
+            return f"UNKNOWN (portnum={portnum})"
+
+    return f"UNKNOWN (type={type(portnum).__name__})"
 
 
 def serial_port_exists(port_name: str) -> bool:
@@ -1442,7 +1525,19 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     if decoded and isinstance(decoded, dict) and decoded.get("text"):
         logger.info(f"Received Meshtastic message: {decoded.get('text')}")
     else:
-        logger.debug("Received non-text Meshtastic message")
+        portnum = (
+            decoded.get("portnum") if decoded and isinstance(decoded, dict) else None
+        )
+        portnum_name = _get_portnum_name(portnum)
+        details_map = {
+            "from": packet.get("fromId") or packet.get("from"),
+            "channel": packet.get("channel"),
+            "id": packet.get("id"),
+        }
+        details_map.update(_get_packet_details(decoded, packet, portnum_name))
+        details = [f"type={portnum_name}"]
+        details.extend(f"{k}={v}" for k, v in details_map.items() if v is not None)
+        logger.debug(f"Received non-text Meshtastic message: {', '.join(details)}")
 
     # Check if config is available
     if config is None:
