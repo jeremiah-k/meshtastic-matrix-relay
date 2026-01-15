@@ -7,7 +7,7 @@ import re
 import sys
 import threading
 import time
-from concurrent.futures import Future
+from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Any, Awaitable, Callable, Coroutine, cast
 
@@ -762,24 +762,14 @@ def _disconnect_ble_by_address(address: str) -> None:
                     disconnect_stale_connection(), loop
                 ).result(timeout=10.0)
                 logger.debug(f"Stale connection disconnect completed for {address}")
-            else:
-                # No running loop, create a temporary one
-                logger.debug(f"No event loop found, creating new one for {address}")
-                asyncio.run(disconnect_stale_connection())
-                logger.debug(f"Stale connection disconnect completed for {address}")
         except RuntimeError as e:
             # get_running_loop raises RuntimeError when no loop is running
             # Create a new event loop in this case
-            if "no running event loop" in str(e):
-                logger.debug(
-                    f"No running event loop, creating temporary loop for {address}"
-                )
-                asyncio.run(disconnect_stale_connection())
-                logger.debug(f"Stale connection disconnect completed for {address}")
-            else:
-                logger.debug(
-                    f"RuntimeError during stale connection cleanup for {address}: {e}"
-                )
+            logger.debug(
+                f"No running event loop (RuntimeError: {e}), creating temporary loop for {address}"
+            )
+            asyncio.run(disconnect_stale_connection())
+            logger.debug(f"Stale connection disconnect completed for {address}")
 
     except ImportError:
         logger.debug("BleakClient not available for stale connection cleanup")
@@ -1190,8 +1180,6 @@ def connect_meshtastic(
                                 # Create BLE interface with timeout protection to prevent indefinite hangs
                                 # Use ThreadPoolExecutor to run with timeout, as BLEInterface.__init__
                                 # can potentially block indefinitely if BlueZ is in a bad state
-                                import concurrent.futures
-
                                 def create_ble_interface(
                                     local_ble_kwargs: dict[str, Any],
                                 ) -> Any:
@@ -1202,9 +1190,7 @@ def connect_meshtastic(
                                 # Use 90-second timeout (3x 30s connection timeout + overhead)
                                 # This provides multiple retry cycles while ensuring eventual failure
                                 # if connection truly cannot be established
-                                with concurrent.futures.ThreadPoolExecutor(
-                                    max_workers=1
-                                ) as executor:
+                                with ThreadPoolExecutor(max_workers=1) as executor:
                                     future = executor.submit(
                                         create_ble_interface, ble_kwargs
                                     )
@@ -1213,15 +1199,15 @@ def connect_meshtastic(
                                         logger.debug(
                                             f"BLE interface created successfully for {ble_address}"
                                         )
-                                    except concurrent.futures.TimeoutError:
-                                        logger.error(
+                                    except FuturesTimeoutError:
+                                        logger.exception(
                                             f"BLE interface creation timed out after 90 seconds for {ble_address}. "
                                             "This may indicate a stale BlueZ connection or Bluetooth adapter issue."
                                         )
                                         raise TimeoutError(
                                             f"BLE connection attempt timed out for {ble_address}. "
                                             "Try: 1) Restarting BlueZ: 'sudo systemctl restart bluetooth', "
-                                            "2) Manually disconnecting device: 'bluetoothctl disconnect DD:DD:13:27:74:29', "
+                                            f"2) Manually disconnecting device: 'bluetoothctl disconnect {ble_address}', "
                                             "3) Rebooting your machine"
                                         ) from None
                             except Exception:
@@ -1242,24 +1228,21 @@ def connect_meshtastic(
                         logger.info(
                             f"Initiating BLE connection to {ble_address} (sequential mode)"
                         )
+
                         # Add timeout protection for connect() call to prevent indefinite hangs
                         # Use ThreadPoolExecutor with 30-second timeout (same as CONNECTION_TIMEOUT)
-                        import concurrent.futures
-
                         def connect_iface(iface_param: Any) -> None:
                             iface_param.connect()
 
-                        with concurrent.futures.ThreadPoolExecutor(
-                            max_workers=1
-                        ) as executor:
+                        with ThreadPoolExecutor(max_workers=1) as executor:
                             connect_future = executor.submit(connect_iface, iface)
                             try:
                                 connect_future.result(timeout=30.0)
                                 logger.info(
                                     f"BLE connection established to {ble_address}"
                                 )
-                            except concurrent.futures.TimeoutError as err:
-                                logger.error(
+                            except FuturesTimeoutError as err:
+                                logger.exception(
                                     f"BLE connect() call timed out after 30 seconds for {ble_address}. "
                                     "This may indicate a BlueZ or adapter issue."
                                 )
@@ -1268,7 +1251,7 @@ def connect_meshtastic(
                                 raise TimeoutError(
                                     f"BLE connect() timed out for {ble_address}. "
                                     "BlueZ may be in a bad state. Try: "
-                                    "'sudo systemctl restart bluetooth' or 'bluetoothctl disconnect {ble_address}'"
+                                    f"'sudo systemctl restart bluetooth' or 'bluetoothctl disconnect {ble_address}'"
                                 ) from err
 
                     client = iface
