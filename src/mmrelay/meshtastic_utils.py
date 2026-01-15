@@ -1579,7 +1579,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         portnum = (
             decoded.get("portnum") if decoded and isinstance(decoded, dict) else None
         )
-        portnum_name = _get_portnum_name(portnum) or "UNKNOWN"
+        portnum_name = _get_portnum_name(portnum)
         details_map = {
             "from": packet.get("fromId") or packet.get("from"),
             "channel": packet.get("channel"),
