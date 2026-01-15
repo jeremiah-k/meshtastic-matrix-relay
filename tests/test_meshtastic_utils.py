@@ -485,6 +485,11 @@ class TestMeshtasticUtils(unittest.TestCase):
         # Ensure the mock doesn't create any async operations
         mock_client.close = MagicMock()
 
+        # Set up nested structure for BLE address validation
+        mock_client.client = MagicMock()
+        mock_client.client.bleak_client = MagicMock()
+        mock_client.client.bleak_client.address = "AA:BB:CC:DD:EE:FF"
+
         # Configure BLE mock to return our mock client
         mock_ble.return_value = mock_client
 
