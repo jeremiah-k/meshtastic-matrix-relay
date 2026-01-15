@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.meshtastic_utils import (
     _get_device_metadata,
+    _get_packet_details,
     _get_portnum_name,
     _resolve_plugin_timeout,
     check_connection,
@@ -688,6 +689,106 @@ class TestGetPortnumName(unittest.TestCase):
         self.assertEqual(result_float, "UNKNOWN (type=float)")
         result_list = _get_portnum_name([])
         self.assertEqual(result_list, "UNKNOWN (type=list)")
+
+
+class TestGetPacketDetails(unittest.TestCase):
+    """Test cases for _get_packet_details helper function."""
+
+    def test_get_packet_details_with_none_decoded(self):
+        """Test with None decoded data."""
+        result = _get_packet_details(None, {}, "UNKNOWN")
+        self.assertEqual(result, {})
+
+    def test_get_packet_details_with_device_metrics(self):
+        """Test with device telemetry metrics."""
+        decoded = {
+            "telemetry": {
+                "deviceMetrics": {
+                    "batteryLevel": 100,
+                    "voltage": 4.488,
+                    "channelUtilization": 0.0,
+                    "airUtilTx": 0.53747225,
+                    "uptimeSeconds": 8405,
+                }
+            }
+        }
+        packet = {"from": 321352745}
+        result = _get_packet_details(decoded, packet, "TELEMETRY_APP")
+        self.assertEqual(result["batt"], "100%")
+        self.assertEqual(result["voltage"], "4.49V")
+        self.assertNotIn("temp", result)
+        self.assertNotIn("humidity", result)
+
+    def test_get_packet_details_with_environment_metrics(self):
+        """Test with environment telemetry metrics."""
+        decoded = {
+            "telemetry": {
+                "environmentMetrics": {
+                    "temperature": -12.756417,
+                    "relativeHumidity": 62.443268,
+                    "barometricPressure": 994.1772,
+                    "gasResistance": 1582.0542,
+                    "iaq": 176,
+                }
+            }
+        }
+        packet = {"from": 321352745}
+        result = _get_packet_details(decoded, packet, "TELEMETRY_APP")
+        self.assertEqual(result["temp"], "-12.8°C")
+        self.assertEqual(result["humidity"], "62%")
+        self.assertNotIn("batt", result)
+        self.assertNotIn("voltage", result)
+
+    def test_get_packet_details_with_signal_info(self):
+        """Test with signal information (RSSI and SNR)."""
+        decoded = {}
+        packet = {"from": 123, "rxRssi": -64, "rxSnr": 6.0}
+        result = _get_packet_details(decoded, packet, "TELEMETRY_APP")
+        self.assertEqual(result["signal"], "RSSI:-64 SNR:6.0")
+
+    def test_get_packet_details_with_zero_signal(self):
+        """Test with zero signal values (should be ignored)."""
+        decoded = {}
+        packet = {"from": 123, "rxRssi": 0, "rxSnr": 0.0}
+        result = _get_packet_details(decoded, packet, "TELEMETRY_APP")
+        self.assertNotIn("signal", result)
+
+    def test_get_packet_details_with_relay_info(self):
+        """Test with relay node information."""
+        decoded = {}
+        packet = {"from": 123, "relayNode": 177}
+        result = _get_packet_details(decoded, packet, "TELEMETRY_APP")
+        self.assertEqual(result["relayed"], "via 177")
+
+    def test_get_packet_details_with_relay_zero(self):
+        """Test with relay node zero (should be ignored)."""
+        decoded = {}
+        packet = {"from": 123, "relayNode": 0}
+        result = _get_packet_details(decoded, packet, "TELEMETRY_APP")
+        self.assertNotIn("relayed", result)
+
+    def test_get_packet_details_with_priority(self):
+        """Test with non-default priority."""
+        decoded = {}
+        packet = {"from": 123, "priority": "BACKGROUND"}
+        result = _get_packet_details(decoded, packet, "TELEMETRY_APP")
+        self.assertEqual(result["priority"], "BACKGROUND")
+
+    def test_get_packet_details_with_normal_priority(self):
+        """Test with NORMAL priority (should be ignored)."""
+        decoded = {}
+        packet = {"from": 123, "priority": "NORMAL"}
+        result = _get_packet_details(decoded, packet, "TELEMETRY_APP")
+        self.assertNotIn("priority", result)
+
+    def test_get_packet_details_non_telemetry(self):
+        """Test with non-TELEMETRY_APP portnum."""
+        decoded = {"portnum": "TEXT_MESSAGE_APP"}
+        packet = {"from": 123, "rxRssi": -70}
+        result = _get_packet_details(decoded, packet, "TEXT_MESSAGE_APP")
+        self.assertEqual(result["signal"], "RSSI:-70")
+        self.assertNotIn("batt", result)
+        self.assertNotIn("voltage", result)
 
 
 class TestServiceDetection(unittest.TestCase):

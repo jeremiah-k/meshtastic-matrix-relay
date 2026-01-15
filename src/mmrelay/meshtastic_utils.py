@@ -867,6 +867,66 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
         time.sleep(0.5)
 
 
+def _get_packet_details(
+    decoded: dict | None, packet: dict, portnum_name: str
+) -> dict[str, Any]:
+    """
+    Extract additional details from packet based on portnum type.
+
+    Parameters:
+        decoded: Decoded packet data (dict or None)
+        packet: Full packet data
+        portnum_name: Name of the portnum type
+
+    Returns:
+        Dictionary of additional details to include in log output
+    """
+    details = {}
+
+    if decoded and isinstance(decoded, dict):
+        if portnum_name == "TELEMETRY_APP":
+            telemetry = decoded.get("telemetry", {})
+            if telemetry and isinstance(telemetry, dict):
+                if "deviceMetrics" in telemetry:
+                    metrics = telemetry["deviceMetrics"]
+                    if isinstance(metrics, dict):
+                        batt = metrics.get("batteryLevel")
+                        voltage = metrics.get("voltage")
+                        if batt is not None:
+                            details["batt"] = f"{batt}%"
+                        if voltage is not None:
+                            details["voltage"] = f"{voltage:.2f}V"
+                elif "environmentMetrics" in telemetry:
+                    metrics = telemetry["environmentMetrics"]
+                    if isinstance(metrics, dict):
+                        temp = metrics.get("temperature")
+                        humidity = metrics.get("relativeHumidity")
+                        if temp is not None:
+                            details["temp"] = f"{temp:.1f}°C"
+                        if humidity is not None:
+                            details["humidity"] = f"{humidity:.0f}%"
+
+    signal_info = []
+    rssi = packet.get("rxRssi")
+    if rssi is not None and rssi != 0:
+        signal_info.append(f"RSSI:{rssi}")
+    snr = packet.get("rxSnr")
+    if snr is not None and snr != 0:
+        signal_info.append(f"SNR:{snr:.1f}")
+    if signal_info:
+        details["signal"] = " ".join(signal_info)
+
+    relay = packet.get("relayNode")
+    if relay is not None and relay != 0:
+        details["relayed"] = f"via {relay}"
+
+    priority = packet.get("priority")
+    if priority and priority != "NORMAL":
+        details["priority"] = priority
+
+    return details
+
+
 def _get_portnum_name(portnum: Any) -> str:
     """
     Convert a portnum value to a human-readable name.
@@ -1481,6 +1541,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             "channel": packet.get("channel"),
             "id": packet.get("id"),
         }
+        details_map.update(_get_packet_details(decoded, packet, portnum_name))
         details = [f"type={portnum_name}"]
         details.extend(f"{k}={v}" for k, v in details_map.items() if v is not None)
         logger.debug(f"Received non-text Meshtastic message: {', '.join(details)}")
