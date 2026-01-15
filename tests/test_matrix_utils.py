@@ -6165,6 +6165,47 @@ async def test_handle_matrix_reply_unexpected_id_type_broadcasts():
 
 
 @pytest.mark.asyncio
+async def test_handle_matrix_reply_integer_id():
+    """Integer meshtastic_id should be used directly as reply_id."""
+    mock_room = MagicMock()
+    mock_event = MagicMock()
+    mock_room_config = {"meshtastic_channel": 0}
+    mock_config = {"matrix_rooms": []}
+
+    with (
+        patch(
+            "mmrelay.matrix_utils.get_message_map_by_matrix_event_id"
+        ) as mock_db_lookup,
+        patch(
+            "mmrelay.matrix_utils.send_reply_to_meshtastic",
+            new_callable=AsyncMock,
+        ) as mock_send_reply,
+        patch("mmrelay.matrix_utils.format_reply_message") as mock_format_reply,
+        patch(
+            "mmrelay.matrix_utils.get_user_display_name", new_callable=AsyncMock
+        ) as mock_get_display_name,
+    ):
+        mock_db_lookup.return_value = (123, "!room123", "original text", "remote")
+        mock_format_reply.return_value = "formatted reply"
+        mock_get_display_name.return_value = "Test User"
+        mock_send_reply.return_value = True
+
+        result = await handle_matrix_reply(
+            mock_room,
+            mock_event,
+            "reply_to_event_id",
+            "reply text",
+            mock_room_config,
+            True,
+            "local_meshnet",
+            mock_config,
+        )
+
+        assert result is True
+        assert mock_send_reply.call_args.kwargs["reply_id"] == 123
+
+
+@pytest.mark.asyncio
 async def test_handle_matrix_reply_original_not_found():
     """Test handle_matrix_reply when original message is not found."""
 

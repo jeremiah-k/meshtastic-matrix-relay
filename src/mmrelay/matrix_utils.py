@@ -97,7 +97,7 @@ from mmrelay.db_utils import (
 from mmrelay.log_utils import get_logger
 
 # Do not import plugin_loader here to avoid circular imports
-from mmrelay.meshtastic_utils import connect_meshtastic, sendTextReply
+from mmrelay.meshtastic_utils import connect_meshtastic, send_text_reply
 
 # Import meshtastic protobuf for port numbers when needed
 from mmrelay.message_queue import get_message_queue, queue_message
@@ -501,13 +501,15 @@ def _normalize_bot_user_id(homeserver: str, bot_user_id: str | None) -> str | No
 
 def _get_msgs_to_keep_config(config_override: dict[str, Any] | None = None) -> int:
     """
-    Determine how many Meshtastic–Matrix message mappings to retain.
+    Return the configured number of Meshtastic-Matrix message mappings to retain.
 
-    Prefers the new configuration key `database.msg_map.msgs_to_keep`; falls back to the legacy `db.msg_map.msgs_to_keep` and emits a deprecation warning if that legacy key is used. If no valid integer is configured, returns DEFAULT_MSGS_TO_KEEP. When provided, `config_override` is consulted instead of the module-level `config`.
+    Looks up `database.msg_map.msgs_to_keep` in the provided configuration (or the module-level config when none is provided), falls back to legacy `db.msg_map.msgs_to_keep` with a deprecation warning, and returns DEFAULT_MSGS_TO_KEEP when the value is missing or not an integer.
+
     Parameters:
-        config_override (dict[str, Any] | None): Optional configuration dictionary to use in place of the module-level `config`.
+        config_override (dict[str, Any] | None): Optional config to consult instead of the module-level `config`.
+
     Returns:
-        int: The configured number of message mappings to keep, or DEFAULT_MSGS_TO_KEEP if unspecified or invalid.
+        int: The configured number of mappings to keep, or DEFAULT_MSGS_TO_KEEP if unspecified or invalid.
     """
     global config
     effective_config = config_override if config_override is not None else config
@@ -2404,7 +2406,7 @@ async def matrix_relay(
 
                 # markdown has stubs in our env; avoid import-untyped to keep mypy clean.
                 # If that changes, prefer installing types-Markdown over adding ignores.
-                import markdown  # lazy import
+                import markdown  # lazy import; stubs available so no import-untyped
 
                 raw_html = markdown.markdown(safe_message)
                 formatted_body = bleach.clean(
@@ -2849,7 +2851,7 @@ async def send_reply_to_meshtastic(
             # Send as a structured reply using our custom function
             # Queue structured reply message for delivery to Meshtastic.
             success = queue_message(
-                sendTextReply,
+                send_text_reply,
                 meshtastic_interface,
                 text=reply_message,
                 reply_id=reply_id,
@@ -2905,7 +2907,7 @@ async def send_reply_to_meshtastic(
 
         # Message mapping is now handled automatically by the queue system
 
-    except Exception:
+    except Exception:  # noqa: BLE001 - error boundary for Meshtastic send path
         # Keep the bridge alive for unexpected Meshtastic send errors
         meshtastic_logger.exception("Error sending Matrix reply to Meshtastic")
         return False

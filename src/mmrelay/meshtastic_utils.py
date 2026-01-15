@@ -1,14 +1,17 @@
 import asyncio
 import contextlib
+import importlib.util
 import inspect
 import io
 import re
+import sys
 import threading
 import time
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Any, Awaitable, Callable, Coroutine, cast
 
+# meshtastic is not marked py.typed; keep import-untyped for strict mypy.
 import meshtastic  # type: ignore[import-untyped]
 import meshtastic.ble_interface  # type: ignore[import-untyped]
 import meshtastic.serial_interface  # type: ignore[import-untyped]
@@ -39,11 +42,14 @@ from mmrelay.constants.network import (
     CONFIG_KEY_CONNECTION_TYPE,
     CONFIG_KEY_HOST,
     CONFIG_KEY_SERIAL_PORT,
+    CONFIG_KEY_TIMEOUT,
     CONNECTION_TYPE_BLE,
     CONNECTION_TYPE_NETWORK,
     CONNECTION_TYPE_SERIAL,
     CONNECTION_TYPE_TCP,
     DEFAULT_BACKOFF_TIME,
+    DEFAULT_MESHTASTIC_OPERATION_TIMEOUT,
+    DEFAULT_MESHTASTIC_TIMEOUT,
     ERRNO_BAD_FILE_DESCRIPTOR,
     INFINITE_RETRIES,
 )
@@ -57,8 +63,14 @@ from mmrelay.db_utils import (
 from mmrelay.log_utils import get_logger
 from mmrelay.runtime_utils import is_running_as_service
 
+try:
+    BLE_AVAILABLE = importlib.util.find_spec("bleak") is not None
+except ValueError:
+    BLE_AVAILABLE = "bleak" in sys.modules
+
 # Maximum number of timeout retries when retries are configured as infinite.
 MAX_TIMEOUT_RETRIES_INFINITE = 5
+
 
 # Import BLE exceptions conditionally
 try:
@@ -82,6 +94,7 @@ logger = get_logger(name="Meshtastic")
 
 # Global variables for the Meshtastic connection and event loop management
 meshtastic_client = None
+meshtastic_iface = None  # BLE interface instance for process lifetime
 event_loop = None  # Will be set from main.py
 
 meshtastic_lock = (
@@ -90,7 +103,11 @@ meshtastic_lock = (
 
 reconnecting = False
 shutting_down = False
+
 reconnect_task = None  # To keep track of the reconnect task
+meshtastic_iface_lock = (
+    threading.Lock()
+)  # To prevent race conditions on BLE interface singleton creation
 
 # Subscription flags to prevent duplicate subscriptions
 subscribed_to_messages = False
@@ -102,18 +119,34 @@ def _submit_coro(
     loop: asyncio.AbstractEventLoop | None = None,
 ) -> Future[Any] | None:
     """
-    Schedule a coroutine to run on an available asyncio event loop and return a Future for its result.
+    Schedule a coroutine or awaitable on an available asyncio event loop and return a Future for its result.
 
     Parameters:
-        coro: The coroutine object to execute. If not a coroutine, the function returns None.
+        coro: The coroutine or awaitable object to execute. If not awaitable, the function returns None.
         loop: Optional target asyncio event loop to run the coroutine on. If omitted, a suitable loop (module-level or running loop) will be used when available.
 
     Returns:
-        A Future containing the coroutine's result, or `None` if `coro` is not a coroutine.
+        A Future containing the coroutine's result, or `None` if `coro` is not awaitable.
     """
     if not inspect.iscoroutine(coro):
-        # Defensive guard for tests that mistakenly patch async funcs to return None
-        return None
+        if not inspect.isawaitable(coro):
+            # Guard against test mocks returning non-awaitable values (e.g., return_value vs AsyncMock).
+            return None
+
+        # Wrap awaitables that are not coroutine objects (e.g., Futures) for scheduling.
+        async def _await_wrapper(awaitable: Any) -> Any:
+            """
+            Await an awaitable and return its result.
+
+            Parameters:
+                awaitable (Any): A coroutine, Future, or other awaitable to be awaited.
+
+            Returns:
+                Any: The value produced by awaiting `awaitable`.
+            """
+            return await awaitable
+
+        coro = _await_wrapper(coro)
     loop = loop or event_loop
     if loop and isinstance(loop, asyncio.AbstractEventLoop) and not loop.is_closed():
         return asyncio.run_coroutine_threadsafe(coro, loop)
@@ -141,7 +174,15 @@ def _submit_coro(
                 new_loop.close()
                 asyncio.set_event_loop(None)
         except Exception as e:
-            # Ultimate fallback: create a completed Future with the exception
+            # Final fallback: always return a Future so _fire_and_forget can log
+            # exceptions instead of crashing a background thread when no loop is
+            # available. We intentionally catch broad exceptions here because the
+            # coroutine itself may raise, and we still need a Future wrapper.
+            logger.debug(
+                "Ultimate fallback triggered for _submit_coro: %s: %s",
+                type(e).__name__,
+                e,
+            )
             error_future: Future[Any] = Future()
             error_future.set_exception(e)
             return error_future
@@ -335,6 +376,98 @@ def _resolve_plugin_timeout(cfg: dict[str, Any] | None, default: float = 5.0) ->
     return default
 
 
+def _resolve_plugin_result(
+    handler_result: Any,
+    plugin: Any,
+    plugin_timeout: float,
+    loop: asyncio.AbstractEventLoop,
+) -> bool:
+    """
+    Resolve a plugin handler result to a boolean, handling async timeouts and bad awaitables.
+
+    Returns True when the plugin should be treated as handled, False otherwise.
+    """
+    if not inspect.iscoroutine(handler_result) and not inspect.isawaitable(
+        handler_result
+    ):
+        return bool(handler_result)
+
+    result_future = _submit_coro(handler_result, loop=loop)
+    if result_future is None:
+        logger.warning("Plugin %s returned no awaitable; skipping.", plugin.plugin_name)
+        return False
+    try:
+        return bool(_wait_for_result(result_future, plugin_timeout, loop=loop))
+    except (asyncio.TimeoutError, FuturesTimeoutError) as exc:
+        logger.warning(
+            "Plugin %s did not respond within %ss: %s",
+            plugin.plugin_name,
+            plugin_timeout,
+            exc,
+        )
+        return True
+
+
+def _run_meshtastic_plugins(
+    *,
+    packet: dict[str, Any],
+    formatted_message: str | None,
+    longname: str | None,
+    meshnet_name: str | None,
+    loop: asyncio.AbstractEventLoop,
+    cfg: dict[str, Any] | None,
+    use_keyword_args: bool = False,
+    log_with_portnum: bool = False,
+    portnum: Any | None = None,
+) -> bool:
+    """
+    Invoke Meshtastic plugins and return True when a plugin handles the message.
+    """
+    from mmrelay.plugin_loader import load_plugins
+
+    plugins = load_plugins()
+    plugin_timeout = _resolve_plugin_timeout(cfg, default=5.0)
+
+    found_matching_plugin = False
+    for plugin in plugins:
+        if not found_matching_plugin:
+            try:
+                if use_keyword_args:
+                    handler_result = plugin.handle_meshtastic_message(
+                        packet,
+                        formatted_message=formatted_message,
+                        longname=longname,
+                        meshnet_name=meshnet_name,
+                    )
+                else:
+                    handler_result = plugin.handle_meshtastic_message(
+                        packet,
+                        formatted_message,
+                        longname,
+                        meshnet_name,
+                    )
+
+                found_matching_plugin = _resolve_plugin_result(
+                    handler_result,
+                    plugin,
+                    plugin_timeout,
+                    loop,
+                )
+
+                if found_matching_plugin:
+                    if log_with_portnum:
+                        logger.debug(
+                            f"Processed {portnum} with plugin {plugin.plugin_name}"
+                        )
+                    else:
+                        logger.debug(f"Processed by plugin {plugin.plugin_name}")
+            except Exception:
+                logger.exception(f"Plugin {plugin.plugin_name} failed")
+                # Continue processing other plugins
+
+    return found_matching_plugin
+
+
 def _get_name_safely(name_func: Callable[[Any], str | None], sender: Any) -> str:
     """
     Return a display name for a sender, falling back to the sender's string form.
@@ -435,6 +568,305 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
     return result
 
 
+def _sanitize_ble_address(address: str) -> str:
+    """
+    Normalize a BLE address by removing common separators and converting to lowercase.
+
+    This matches the sanitization logic used by both official and forked meshtastic
+    libraries, ensuring consistent address comparison.
+
+    Parameters:
+        address: The BLE address to sanitize.
+
+    Returns:
+        Sanitized address with all "-", "_", ":" removed and lowercased.
+    """
+    if not address:
+        return address
+    return address.replace("-", "").replace("_", "").replace(":", "").lower()
+
+
+def _validate_ble_connection_address(interface: Any, expected_address: str) -> bool:
+    """
+    Validate that the BLE interface is connected to the expected device address.
+
+    This is a critical safety check to prevent connecting to the wrong device due to:
+    1. Substring matching bugs in meshtastic library's find_device() (official version)
+    2. Name-based device selection that could match non-Meshtastic devices
+    3. Scanning returning multiple devices where wrong one is selected
+
+    The issue occurs because meshtastic's find_device() uses substring matching:
+        `lambda x: address in (x.name, x.address)`
+    This means if target address is "AA:BB:CC:DD:EE:FF" and a nearby device
+    has a name containing that string as a substring, it would incorrectly match.
+
+    Example vulnerability scenario:
+    - Configured address: AA:BB:CC:DD:EE:FF (Meshtastic device)
+    - Nearby device name: "AA:BB:CC:DD:EE:FF-Sensor" (car/handset/etc)
+    - Result: Bot incorrectly matches and connects to non-Meshtastic device
+
+    This validation works with both official and forked meshtastic versions.
+
+    Parameters:
+        interface: The BLE interface instance to validate.
+        expected_address: The configured BLE address that should be connected.
+
+    Returns:
+        True if connected device matches expected address, False otherwise.
+    """
+    try:
+        expected_sanitized = _sanitize_ble_address(expected_address)
+
+        # Try to get the actual connected address from the interface
+        actual_address = None
+        actual_sanitized = None
+
+        if hasattr(interface, "client") and interface.client is not None:
+            # Official version: client has bleak_client attribute
+            bleak_client = getattr(interface.client, "bleak_client", None)
+            if bleak_client is not None:
+                actual_address = getattr(bleak_client, "address", None)
+            # Forked version: client might be wrapped differently
+            if actual_address is None:
+                actual_address = getattr(interface.client, "address", None)
+
+        if actual_address is None:
+            logger.warning(
+                "Could not determine connected BLE device address for validation. "
+                "Proceeding with caution - verify correct device is connected."
+            )
+            return True
+
+        actual_sanitized = _sanitize_ble_address(actual_address)
+
+        if actual_sanitized == expected_sanitized:
+            logger.debug(
+                f"BLE connection validation passed: connected to {actual_address} "
+                f"(expected: {expected_address})"
+            )
+            return True
+        else:
+            logger.error(
+                f"BLE CONNECTION VALIDATION FAILED: Connected to {actual_address} "
+                f"but expected {expected_address}. This could be caused by "
+                "substring matching in device discovery selecting wrong device. "
+                "Disconnecting to prevent misconfiguration."
+            )
+            return False
+    except Exception as e:
+        logger.warning(
+            f"Error during BLE connection address validation: {e}. "
+            "Proceeding with caution."
+        )
+        return True
+
+
+def _disconnect_ble_by_address(address: str) -> None:
+    """
+    Disconnect a BLE device by its address if it's already connected in BlueZ.
+
+    This function handles the case where a device is still connected in BlueZ
+    but there's no active meshtastic interface (state inconsistency).
+
+    Parameters:
+        address: The BLE address of the device to disconnect.
+
+    Returns:
+        None
+    """
+    logger.debug(f"Checking for stale BlueZ connection to {address}")
+
+    try:
+        import asyncio
+
+        from bleak import BleakClient
+
+        async def disconnect_stale_connection():
+            client = None
+            try:
+                client = BleakClient(address)
+
+                is_connected = None
+                is_connected_method = getattr(client, "is_connected", None)
+
+                if is_connected_method and callable(is_connected_method):
+                    is_connected = await is_connected_method()
+                elif isinstance(is_connected_method, bool):
+                    is_connected = is_connected_method
+                else:
+                    is_connected = False
+            except Exception as e:
+                logger.debug(f"Failed to check connection state for {address}: {e}")
+                return
+
+            try:
+                if is_connected:
+                    logger.warning(
+                        f"Device {address} is already connected in BlueZ. Disconnecting..."
+                    )
+                    # Retry logic for disconnect with timeout
+                    max_retries = 3
+                    for attempt in range(max_retries):
+                        try:
+                            await asyncio.wait_for(client.disconnect(), timeout=3.0)
+                            await asyncio.sleep(2.0)
+                            logger.debug(
+                                f"Successfully disconnected stale connection to {address} on attempt {attempt + 1}, "
+                                f"waiting 2s for BlueZ to settle"
+                            )
+                            break
+                        except asyncio.TimeoutError:
+                            if attempt < max_retries - 1:
+                                logger.warning(
+                                    f"Disconnect attempt {attempt + 1} for {address} timed out, retrying..."
+                                )
+                                await asyncio.sleep(0.5)
+                            else:
+                                logger.error(
+                                    f"Disconnect for {address} timed out after {max_retries} attempts"
+                                )
+                        except Exception as e:
+                            if attempt < max_retries - 1:
+                                logger.warning(
+                                    f"Disconnect attempt {attempt + 1} for {address} failed: {e}, retrying..."
+                                )
+                                await asyncio.sleep(0.5)
+                            else:
+                                logger.error(
+                                    f"Disconnect for {address} failed after {max_retries} attempts: {e}"
+                                )
+                else:
+                    logger.debug(f"Device {address} not currently connected in BlueZ")
+            except Exception as e:
+                logger.debug(f"Error disconnecting stale connection to {address}: {e}")
+            finally:
+                try:
+                    if client:
+                        await asyncio.wait_for(client.disconnect(), timeout=2.0)
+                        await asyncio.sleep(0.5)
+                except asyncio.TimeoutError:
+                    logger.debug(f"Final disconnect for {address} timed out (cleanup)")
+                except Exception:
+                    # Ignore disconnect errors during cleanup - connection may already be closed
+                    pass  # nosec
+
+        try:
+            loop = asyncio.get_running_loop()
+            if loop:
+                logger.debug(
+                    f"Found existing event loop, waiting for disconnect task for {address}"
+                )
+                # Run disconnect in loop and wait for it to complete
+                asyncio.run_coroutine_threadsafe(
+                    disconnect_stale_connection(), loop
+                ).result(timeout=10.0)
+                logger.debug(f"Stale connection disconnect completed for {address}")
+            else:
+                logger.debug(f"No event loop found, creating new one for {address}")
+                asyncio.run(disconnect_stale_connection())
+        except RuntimeError as e:
+            logger.debug(
+                f"RuntimeError during stale connection cleanup for {address}: {e}"
+            )
+
+    except ImportError:
+        logger.debug("BleakClient not available for stale connection cleanup")
+
+
+def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
+    """
+    Properly disconnect a BLE interface with appropriate delays to allow the adapter to release resources.
+
+    This function ensures sequential BLE connections by:
+    1. Adding a pre-disconnect delay to allow notifications to flush
+    2. Calling disconnect() if available (forked meshtastic version) with retry logic
+    3. Calling close() to release all resources
+    4. Adding a delay to allow the Bluetooth adapter to fully release the connection
+
+    Parameters:
+        iface: The BLE interface instance to disconnect. Can be None.
+        reason: Reason for disconnection, used in log messages.
+
+    Returns:
+        None
+    """
+    if iface is None:
+        return
+
+    # Pre-disconnect delay to allow pending notifications to complete
+    # This helps prevent "Unexpected EOF on notification file handle" errors
+    logger.debug(f"Waiting before disconnecting BLE interface ({reason})")
+    time.sleep(0.5)
+
+    try:
+        # Check if interface has a disconnect method (forked version)
+        if hasattr(iface, "disconnect"):
+            logger.debug(f"Disconnecting BLE interface ({reason})")
+
+            # Retry logic for disconnect operations
+            max_disconnect_retries = 3
+            for attempt in range(max_disconnect_retries):
+                try:
+                    iface.disconnect()
+                    # Give the adapter time to complete the disconnect
+                    time.sleep(1.0)
+                    logger.debug(
+                        f"BLE interface disconnect succeeded on attempt {attempt + 1} ({reason})"
+                    )
+                    break
+                except Exception as e:
+                    if attempt < max_disconnect_retries - 1:
+                        logger.warning(
+                            f"BLE interface disconnect attempt {attempt + 1} failed ({reason}): {e}, retrying..."
+                        )
+                        time.sleep(0.5)
+                    else:
+                        logger.error(
+                            f"BLE interface disconnect failed after {max_disconnect_retries} attempts ({reason}): {e}"
+                        )
+        else:
+            logger.debug(
+                f"BLE interface has no disconnect() method, using close() only ({reason})"
+            )
+
+        # Always call close() to release resources
+        logger.debug(f"Closing BLE interface ({reason})")
+
+        # For BLE interfaces, explicitly disconnect the underlying BleakClient
+        # to prevent stale connections in BlueZ (official library bug)
+        if hasattr(iface, "client"):
+            logger.debug(f"Explicitly disconnecting BLE client ({reason})")
+
+            # Retry logic for client disconnect
+            max_client_retries = 2
+            for attempt in range(max_client_retries):
+                try:
+                    iface.client.disconnect()
+                    time.sleep(1.0)
+                    logger.debug(
+                        f"BLE client disconnect succeeded on attempt {attempt + 1} ({reason})"
+                    )
+                    break
+                except Exception as e:
+                    if attempt < max_client_retries - 1:
+                        logger.warning(
+                            f"BLE client disconnect attempt {attempt + 1} failed ({reason}): {e}, retrying..."
+                        )
+                        time.sleep(0.3)
+                    else:
+                        # Ignore disconnect errors on final attempt - connection may already be closed
+                        logger.debug(
+                            f"BLE client disconnect failed after {max_client_retries} attempts ({reason}): {e}"
+                        )
+
+        iface.close()
+    except Exception as e:
+        logger.debug(f"Error during BLE interface {reason}: {e}")
+    finally:
+        # Small delay to ensure the adapter has fully released the connection
+        time.sleep(0.5)
+
+
 def serial_port_exists(port_name: str) -> bool:
     """
     Determine whether a serial port with the given device name exists on the system.
@@ -465,7 +897,7 @@ def connect_meshtastic(
     Returns:
         The connected Meshtastic client instance on success, or `None` if a connection could not be established or shutdown is in progress.
     """
-    global meshtastic_client, shutting_down, reconnecting, config, matrix_rooms
+    global meshtastic_client, meshtastic_iface, shutting_down, reconnecting, config, matrix_rooms
     if shutting_down:
         logger.debug("Shutdown in progress. Not attempting to connect.")
         return None
@@ -492,6 +924,8 @@ def connect_meshtastic(
                 meshtastic_client.close()
             except Exception as e:
                 logger.warning(f"Error closing previous connection: {e}")
+            if meshtastic_client is meshtastic_iface:
+                meshtastic_iface = None
             meshtastic_client = None
 
         # Check if config is available
@@ -546,6 +980,29 @@ def connect_meshtastic(
     timeout_attempts = 0
     successful = False
 
+    # Get timeout configuration (default: DEFAULT_MESHTASTIC_TIMEOUT)
+    timeout_raw = meshtastic_settings.get(
+        CONFIG_KEY_TIMEOUT, DEFAULT_MESHTASTIC_TIMEOUT
+    )
+    try:
+        timeout = int(timeout_raw)
+        if timeout <= 0:
+            logger.warning(
+                "Non-positive meshtastic.timeout value %r; using %ss fallback.",
+                timeout_raw,
+                DEFAULT_MESHTASTIC_TIMEOUT,
+            )
+            timeout = DEFAULT_MESHTASTIC_TIMEOUT
+    except (TypeError, ValueError):
+        # None or invalid value - use default silently
+        if timeout_raw is not None:
+            logger.warning(
+                "Invalid meshtastic.timeout value %r; using %ss fallback.",
+                timeout_raw,
+                DEFAULT_MESHTASTIC_TIMEOUT,
+            )
+        timeout = DEFAULT_MESHTASTIC_TIMEOUT
+
     while (
         not successful
         and (retry_limit == 0 or attempts <= retry_limit)
@@ -570,7 +1027,9 @@ def connect_meshtastic(
                         f"Serial port {serial_port} does not exist."
                     )
 
-                client = meshtastic.serial_interface.SerialInterface(serial_port)
+                client = meshtastic.serial_interface.SerialInterface(
+                    serial_port, timeout=timeout
+                )
 
             elif connection_type == CONNECTION_TYPE_BLE:
                 # BLE connection
@@ -578,13 +1037,89 @@ def connect_meshtastic(
                 if ble_address:
                     logger.info(f"Connecting to BLE address {ble_address}")
 
-                    # Connect without progress indicator
-                    client = meshtastic.ble_interface.BLEInterface(
-                        address=ble_address,
-                        noProto=False,
-                        debugOut=None,
-                        noNodes=False,
-                    )
+                    iface = None
+                    with meshtastic_iface_lock:
+                        # If BLE address has changed, re-create the interface
+                        if (
+                            meshtastic_iface
+                            and getattr(meshtastic_iface, "address", None)
+                            != ble_address
+                        ):
+                            old_address = getattr(
+                                meshtastic_iface, "address", "unknown"
+                            )
+                            logger.info(
+                                f"BLE address has changed from {old_address} to {ble_address}. "
+                                "Disconnecting old interface and creating new one."
+                            )
+                            # Properly disconnect the old interface to ensure sequential connections
+                            _disconnect_ble_interface(
+                                meshtastic_iface, reason="address change"
+                            )
+                            meshtastic_iface = None
+
+                        if meshtastic_iface is None:
+                            # Disconnect any stale BlueZ connection before creating new interface
+                            _disconnect_ble_by_address(ble_address)
+
+                            # Create a single BLEInterface instance for process lifetime
+                            sanitized_address = _sanitize_ble_address(ble_address)
+                            logger.debug(
+                                f"Creating new BLE interface for {ble_address} (sanitized: {sanitized_address})"
+                            )
+                            # Check if auto_reconnect parameter is supported (forked version)
+                            ble_init_sig = inspect.signature(
+                                meshtastic.ble_interface.BLEInterface.__init__
+                            )
+                            ble_kwargs = {
+                                "address": ble_address,
+                                "noProto": False,
+                                "debugOut": None,
+                                "noNodes": False,
+                                "timeout": timeout,
+                            }
+
+                            # Add auto_reconnect only if supported (forked version)
+                            if "auto_reconnect" in ble_init_sig.parameters:
+                                ble_kwargs["auto_reconnect"] = False
+                                logger.debug(
+                                    "Using forked meshtastic library with auto_reconnect=False "
+                                    "to ensure sequential connections"
+                                )
+                            else:
+                                logger.debug(
+                                    "Using official meshtastic library (auto_reconnect not available)"
+                                )
+
+                            try:
+                                meshtastic_iface = (
+                                    meshtastic.ble_interface.BLEInterface(**ble_kwargs)
+                                )
+                                logger.debug(
+                                    f"BLE interface created successfully for {ble_address}"
+                                )
+                            except Exception:
+                                # BLEInterface constructor failed - this is a critical error
+                                logger.exception("BLE interface creation failed")
+                                raise
+                        else:
+                            logger.debug(
+                                f"Reusing existing BLE interface for {ble_address}"
+                            )
+
+                        iface = meshtastic_iface
+
+                    # Connect outside singleton-creation lock to avoid blocking other threads
+                    # Official version connects automatically during init (no connect() method)
+                    # Forked version has separate connect() method that we need to call
+                    if iface is not None and hasattr(iface, "connect"):
+                        logger.info(
+                            f"Initiating BLE connection to {ble_address} (sequential mode)"
+                        )
+                        iface.connect()
+                        logger.info(f"BLE connection established to {ble_address}")
+
+                    client = iface
                 else:
                     logger.error("No BLE address provided.")
                     return None
@@ -601,7 +1136,9 @@ def connect_meshtastic(
                 logger.info(f"Connecting to host {target_host}")
 
                 # Connect without progress indicator
-                client = meshtastic.tcp_interface.TCPInterface(hostname=target_host)
+                client = meshtastic.tcp_interface.TCPInterface(
+                    hostname=target_host, timeout=timeout
+                )
             else:
                 logger.error(f"Unknown connection type: {connection_type}")
                 return None
@@ -611,6 +1148,48 @@ def connect_meshtastic(
             # Acquire lock only for the final setup and subscription
             with meshtastic_lock:
                 meshtastic_client = client
+
+                # CRITICAL VALIDATION: Verify we're connected to the correct BLE device.
+                # This prevents connection to wrong device due to substring matching
+                # bugs in meshtastic library's find_device() function. The official
+                # version uses substring matching: `address in (device.name, device.address)`
+                # which can match a non-target device if its name contains to
+                # configured address as a substring.
+                #
+                # Example vulnerability scenario:
+                # - Configured address: AA:BB:CC:DD:EE:FF (Meshtastic device)
+                # - Nearby device name: "AA:BB:CC:DD:EE:FF-Sensor" (car/handset/etc)
+                # - Result: Bot incorrectly matches and connects to non-Meshtastic device
+                #
+                # This validation works with both official and forked meshtastic versions.
+                # If validation fails, we disconnect immediately to prevent further issues.
+                if connection_type == CONNECTION_TYPE_BLE:
+                    expected_ble_address = config["meshtastic"].get(
+                        CONFIG_KEY_BLE_ADDRESS
+                    )
+                    if expected_ble_address and not _validate_ble_connection_address(
+                        meshtastic_client, expected_ble_address
+                    ):
+                        # Validation failed - wrong device connected
+                        # Disconnect immediately to prevent communication with wrong device
+                        logger.error(
+                            "BLE connection validation failed - connected to wrong device. "
+                            "Disconnecting and raising error to force retry."
+                        )
+                        try:
+                            if meshtastic_client is meshtastic_iface:
+                                # BLE interface - use proper disconnect sequence
+                                _disconnect_ble_interface(
+                                    meshtastic_iface, reason="address validation failed"
+                                )
+                            else:
+                                meshtastic_client.close()
+                        except Exception as e:
+                            logger.warning(f"Error closing invalid BLE connection: {e}")
+                        raise ConnectionRefusedError(
+                            f"Connected to wrong BLE device. Expected: {expected_ble_address}"
+                        )
+
                 nodeInfo = meshtastic_client.getMyNodeInfo()
 
                 # Safely access node info fields
@@ -714,7 +1293,7 @@ def connect_meshtastic(
 
 
 def on_lost_meshtastic_connection(
-    _interface: Any = None,
+    interface: Any = None,
     detection_source: str = "unknown",
 ) -> None:
     """
@@ -728,7 +1307,7 @@ def on_lost_meshtastic_connection(
     Parameters:
         detection_source (str): Identifier for where or how the loss was detected; used in log messages.
     """
-    global meshtastic_client, reconnecting, shutting_down, event_loop, reconnect_task
+    global meshtastic_client, meshtastic_iface, reconnecting, shutting_down, event_loop, reconnect_task
     with meshtastic_lock:
         if shutting_down:
             logger.debug("Shutdown in progress. Not attempting to reconnect.")
@@ -742,16 +1321,25 @@ def on_lost_meshtastic_connection(
         logger.error(f"Lost connection ({detection_source}). Reconnecting...")
 
         if meshtastic_client:
-            try:
-                meshtastic_client.close()
-            except OSError as e:
-                if e.errno == ERRNO_BAD_FILE_DESCRIPTOR:
-                    # Bad file descriptor, already closed
-                    pass
-                else:
+            if meshtastic_client is meshtastic_iface:
+                # This is a BLE interface - use proper disconnect sequence
+                logger.debug("Disconnecting BLE interface due to connection loss")
+                _disconnect_ble_interface(
+                    meshtastic_iface, reason=f"connection loss: {detection_source}"
+                )
+                meshtastic_iface = None
+            else:
+                # Serial or TCP interface - use standard close()
+                try:
+                    meshtastic_client.close()
+                except OSError as e:
+                    if e.errno == ERRNO_BAD_FILE_DESCRIPTOR:
+                        # Bad file descriptor, already closed
+                        pass
+                    else:
+                        logger.warning(f"Error closing Meshtastic client: {e}")
+                except Exception as e:
                     logger.warning(f"Error closing Meshtastic client: {e}")
-            except Exception as e:
-                logger.warning(f"Error closing Meshtastic client: {e}")
         meshtastic_client = None
 
         if event_loop and not event_loop.is_closed():
@@ -908,7 +1496,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
 
     if not getattr(interface, "myInfo", None):
         logger.warning("Meshtastic interface missing myInfo; cannot determine node id")
-        return None
+        return
     myId = interface.myInfo.my_node_num
 
     if toId == myId:
@@ -1078,12 +1666,12 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                 if user:
                     if not longname:
                         longname_val = user.get("longName")
-                        if longname_val:
+                        if longname_val and sender is not None:
                             save_longname(sender, longname_val)
                             longname = longname_val
                     if not shortname:
                         shortname_val = user.get("shortName")
-                        if shortname_val:
+                        if shortname_val and sender is not None:
                             save_shortname(sender, shortname_val)
                             shortname = shortname_val
             else:
@@ -1103,56 +1691,14 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         formatted_message = f"{prefix}{text}"
 
         # Plugin functionality - Check if any plugin handles this message before relaying
-        from mmrelay.plugin_loader import load_plugins
-
-        plugins = load_plugins()
-        plugin_timeout = _resolve_plugin_timeout(config, default=5.0)
-
-        found_matching_plugin = False
-        for plugin in plugins:
-            if not found_matching_plugin:
-                try:
-                    handler_result = plugin.handle_meshtastic_message(
-                        packet, formatted_message, longname, meshnet_name
-                    )
-
-                    # Backward compatibility: handle synchronous plugins
-                    if not inspect.iscoroutine(
-                        handler_result
-                    ) and not inspect.isawaitable(handler_result):
-                        found_matching_plugin = bool(handler_result)
-                    else:
-                        # Async plugins
-                        result_future = _submit_coro(handler_result, loop=loop)
-                        if result_future is None:
-                            logger.warning(
-                                "Plugin %s returned no awaitable; skipping.",
-                                plugin.plugin_name,
-                            )
-                            found_matching_plugin = False
-                            continue
-                        try:
-                            found_matching_plugin = bool(
-                                _wait_for_result(
-                                    result_future,
-                                    plugin_timeout,
-                                    loop=loop,
-                                )
-                            )
-                        except (asyncio.TimeoutError, FuturesTimeoutError) as exc:
-                            logger.warning(
-                                "Plugin %s did not respond within %ss: %s",
-                                plugin.plugin_name,
-                                plugin_timeout,
-                                exc,
-                            )
-                            found_matching_plugin = True
-
-                    if found_matching_plugin:
-                        logger.debug(f"Processed by plugin {plugin.plugin_name}")
-                except Exception:
-                    logger.exception(f"Plugin {plugin.plugin_name} failed")
-                    # Continue processing other plugins
+        found_matching_plugin = _run_meshtastic_plugins(
+            packet=packet,
+            formatted_message=formatted_message,
+            longname=longname,
+            meshnet_name=meshnet_name,
+            loop=loop,
+            cfg=config,
+        )
 
         # If message is a DM or handled by plugin, do not relay further
         if is_direct_message:
@@ -1200,75 +1746,31 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     else:
         # Non-text messages via plugins
         portnum = decoded.get("portnum")
-        from mmrelay.plugin_loader import load_plugins
-
-        plugins = load_plugins()
-        plugin_timeout = _resolve_plugin_timeout(config, default=5.0)
-        found_matching_plugin = False
-        for plugin in plugins:
-            if not found_matching_plugin:
-                try:
-                    handler_result = plugin.handle_meshtastic_message(
-                        packet,
-                        formatted_message=None,
-                        longname=None,
-                        meshnet_name=None,
-                    )
-
-                    # Backward compatibility: handle synchronous plugins
-                    if not inspect.iscoroutine(
-                        handler_result
-                    ) and not inspect.isawaitable(handler_result):
-                        found_matching_plugin = bool(handler_result)
-                    else:
-                        result_future = _submit_coro(handler_result, loop=loop)
-                        if result_future is None:
-                            logger.warning(
-                                "Plugin %s returned no awaitable; skipping.",
-                                plugin.plugin_name,
-                            )
-                            found_matching_plugin = False
-                            continue
-                        try:
-                            found_matching_plugin = bool(
-                                _wait_for_result(
-                                    result_future,
-                                    plugin_timeout,
-                                    loop=loop,
-                                )
-                            )
-                        except (asyncio.TimeoutError, FuturesTimeoutError) as exc:
-                            logger.warning(
-                                "Plugin %s did not respond within %ss: %s",
-                                plugin.plugin_name,
-                                plugin_timeout,
-                                exc,
-                            )
-                            found_matching_plugin = True
-
-                    if found_matching_plugin:
-                        logger.debug(
-                            f"Processed {portnum} with plugin {plugin.plugin_name}"
-                        )
-                except Exception:
-                    logger.exception(f"Plugin {plugin.plugin_name} failed")
-                    # Continue processing other plugins
+        _run_meshtastic_plugins(
+            packet=packet,
+            formatted_message=None,
+            longname=None,
+            meshnet_name=None,
+            loop=loop,
+            cfg=config,
+            use_keyword_args=True,
+            log_with_portnum=True,
+            portnum=portnum,
+        )
 
 
 async def check_connection() -> None:
     """
-    Periodically verify the Meshtastic connection and initiate a reconnect when the device appears unresponsive.
+    Periodically verify the Meshtastic connection and trigger a reconnect when the device appears unresponsive.
 
-    Runs until the module-level shutting_down flag becomes True. Behavior:
+    Checks run until the module-level `shutting_down` flag is True. Behavior:
     - Controlled by config["meshtastic"]["health_check"]:
-      - "enabled" (bool, default True) — enable/disable periodic checks.
-      - "heartbeat_interval" (int, seconds, default 60) — interval between checks.
-      - Backward compatibility: if "heartbeat_interval" exists directly under config["meshtastic"], that value is used.
-    - BLE connections are excluded from periodic checks (Bleak provides real-time disconnect detection).
-    - For non-BLE connections:
-      - Calls _get_device_metadata(client) in an executor; if metadata parsing fails, performs a fallback probe via client.getMyNodeInfo().
-      - If both probes fail and no reconnection is currently in progress, calls on_lost_meshtastic_connection(...) to start a reconnection.
-    No return value; side effect is scheduling/triggering reconnection when the device is unresponsive.
+      - `enabled` (bool, default True) — enable or disable checks.
+      - `heartbeat_interval` (int, seconds, default 60) — interval between checks. For backward compatibility, a top-level `heartbeat_interval` under `config["meshtastic"]` is supported.
+    - BLE connections are excluded from periodic checks because BLE libraries provide real-time disconnect detection.
+    - For non-BLE connections, attempts a metadata probe (via _get_device_metadata) and, if parsing fails, a fallback probe using `client.getMyNodeInfo()`. If both probes fail and no reconnection is already in progress, calls on_lost_meshtastic_connection(...) to initiate reconnection.
+
+    No return value; side effects are logging and scheduling/triggering reconnection when the device is unresponsive.
     """
     global meshtastic_client, shutting_down, config
 
@@ -1308,15 +1810,21 @@ async def check_connection() -> None:
             else:
                 try:
                     loop = asyncio.get_running_loop()
-                    # Use helper function to get device metadata, run in executor
-                    metadata = await loop.run_in_executor(
-                        None, _get_device_metadata, meshtastic_client
+                    # Use helper function to get device metadata, run in executor with timeout
+                    metadata = await asyncio.wait_for(
+                        loop.run_in_executor(
+                            None, _get_device_metadata, meshtastic_client
+                        ),
+                        timeout=DEFAULT_MESHTASTIC_OPERATION_TIMEOUT,
                     )
                     if not metadata["success"]:
                         # Fallback probe: device responding at all?
                         try:
-                            _ = await loop.run_in_executor(
-                                None, meshtastic_client.getMyNodeInfo
+                            _ = await asyncio.wait_for(
+                                loop.run_in_executor(
+                                    None, meshtastic_client.getMyNodeInfo
+                                ),
+                                timeout=DEFAULT_MESHTASTIC_OPERATION_TIMEOUT,
                             )
                         except Exception as probe_err:
                             raise Exception(
@@ -1335,7 +1843,7 @@ async def check_connection() -> None:
                             f"{connection_type.capitalize()} connection health check failed: {e}"
                         )
                         on_lost_meshtastic_connection(
-                            _interface=meshtastic_client,
+                            interface=meshtastic_client,
                             detection_source=f"health check failed: {str(e)}",
                         )
                     else:
@@ -1350,7 +1858,7 @@ async def check_connection() -> None:
         await asyncio.sleep(heartbeat_interval)
 
 
-def sendTextReply(
+def send_text_reply(
     interface: Any,
     text: str,
     reply_id: int,
@@ -1397,15 +1905,29 @@ def sendTextReply(
         return interface._sendPacket(
             mesh_packet, destinationId=destinationId, wantAck=wantAck
         )
-    except Exception:
+    except (
+        AttributeError,
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ):
         logger.exception("Failed to send text reply")
         return None
+    except SystemExit:
+        logger.debug("SystemExit encountered, preserving for graceful shutdown")
+        raise
+
+
+# Backward-compatible alias for older call sites.
+sendTextReply = send_text_reply
 
 
 if __name__ == "__main__":
     # If running this standalone (normally the main.py does the loop), just try connecting and run forever.
     meshtastic_client = connect_meshtastic()
-    loop = asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     event_loop = loop  # Set the event loop for use in callbacks
-    loop.create_task(check_connection())
+    _check_connection_task = loop.create_task(check_connection())
     loop.run_forever()

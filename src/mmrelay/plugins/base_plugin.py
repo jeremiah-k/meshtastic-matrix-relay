@@ -373,7 +373,7 @@ class BasePlugin(ABC):
         """
         Recursively remove any "raw" keys from dictionaries within a nested data structure.
 
-        This function walks dictionaries and lists and removes entries with the key `"raw"`, returning a structure with the same shape but without those keys.
+        This function walks dictionaries and lists and removes entries with the key `"raw"`. Both dictionaries and lists are mutated in place.
 
         Parameters:
             data (Any): The nested data structure (e.g., dicts and lists) to clean.
@@ -386,7 +386,8 @@ class BasePlugin(ABC):
             for k, v in data.items():
                 data[k] = self.strip_raw(v)
         elif isinstance(data, list):
-            data = [self.strip_raw(item) for item in data]
+            for idx, item in enumerate(data):
+                data[idx] = self.strip_raw(item)
         return data
 
     def get_response_delay(self) -> float:
@@ -533,12 +534,12 @@ class BasePlugin(ABC):
         Send a message to a Matrix room, optionally converting Markdown to HTML.
 
         Parameters:
-            room_id (str): Matrix room identifier.
-            message (str): Message content to send.
-            formatted (bool): If True, convert `message` from Markdown to HTML and send as formatted content; otherwise send plain text.
+            room_id: Matrix room identifier.
+            message: Message content to send.
+            formatted: If True, convert `message` from Markdown to HTML and include it as formatted content; otherwise send plain text only.
 
         Returns:
-            RoomSendResponse | RoomSendError | None: The Matrix API response from room_send, or `None` if the Matrix client could not be obtained.
+            The Matrix client's `room_send` response (`RoomSendResponse` or `RoomSendError`), or `None` if the Matrix client could not be obtained.
         """
         from mmrelay.matrix_utils import connect_matrix
 
@@ -548,25 +549,27 @@ class BasePlugin(ABC):
             self.logger.error("Failed to connect to Matrix client")
             return None
 
+        content = {
+            "msgtype": "m.text",
+            "body": message,
+        }
+        if formatted:
+            content["format"] = "org.matrix.custom.html"
+            content["formatted_body"] = markdown.markdown(message)
         return await matrix_client.room_send(
             room_id=room_id,
             message_type="m.room.message",
-            content={
-                "msgtype": "m.text",
-                "format": "org.matrix.custom.html" if formatted else None,
-                "body": message,
-                "formatted_body": markdown.markdown(message) if formatted else None,
-            },
+            content=content,
         )
 
     def get_mesh_commands(self) -> list[str]:
         """
-        List mesh/radio command names the plugin handles.
+        List mesh/radio command names this plugin handles.
 
-        By default this returns an empty list; subclasses should override to expose commands. Command names must be provided without the leading '!'.
+        Subclasses should override to expose commands. Command names must not include a leading '!'.
 
         Returns:
-            list[str]: Command names without the leading '!' (empty by default).
+            list[str]: Command names without a leading '!' (empty list by default).
         """
         return []
 
@@ -586,14 +589,18 @@ class BasePlugin(ABC):
 
     def store_node_data(self, meshtastic_id: str, node_data: Any) -> None:
         """
-        Append data items for a Meshtastic node to this plugin's persistent store and persist the trimmed result.
+        Append data for a Meshtastic node to this plugin's persistent per-node store.
+
+        The existing stored value (if any) is normalized to a list, the provided item or items are appended, the list is trimmed to the plugin's max_data_rows_per_node, and the updated list is persisted.
 
         Parameters:
-            meshtastic_id (str): Identifier of the Meshtastic node to which the data belongs.
-            node_data (Any): A single item or an iterable/list of items to append for the node.
+            meshtastic_id (str): Identifier of the Meshtastic node.
+            node_data (Any): A single data item or a list/iterable of items to append; the stored value will be a list after this call.
         """
         plugin_name = self._require_plugin_name()
         data = get_plugin_data_for_node(plugin_name, meshtastic_id)
+        if not isinstance(data, list):
+            data = [data]
         if isinstance(node_data, list):
             data.extend(node_data)
         else:
@@ -629,20 +636,23 @@ class BasePlugin(ABC):
 
     def delete_node_data(self, meshtastic_id: str) -> None:
         """
-        Remove all stored data entries for the specified Meshtastic node from this plugin's persistent storage.
+        Remove all persisted data associated with the given Meshtastic node for this plugin.
 
         Parameters:
-            meshtastic_id (str): Meshtastic node identifier whose stored data will be removed.
+            meshtastic_id (str): Identifier of the Meshtastic node whose stored data will be deleted.
         """
         plugin_name = self._require_plugin_name()
         delete_plugin_data(plugin_name, meshtastic_id)
 
-    def get_node_data(self, meshtastic_id: str) -> list[Any]:
+    def get_node_data(self, meshtastic_id: str) -> Any:
         """
-        Retrieve stored data rows for the specified Meshtastic node.
+        Retrieve the plugin-specific data stored for a Meshtastic node.
+
+        Parameters:
+            meshtastic_id (str): Identifier of the Meshtastic node.
 
         Returns:
-            list[Any]: Stored data rows for the node identified by `meshtastic_id`; empty list if no data exists.
+            Any: The stored data value for the given node (may be any JSON-serializable value), or an empty list [] if no data exists or on error.
         """
         plugin_name = self._require_plugin_name()
         return get_plugin_data_for_node(plugin_name, meshtastic_id)

@@ -184,8 +184,8 @@ class TestGetMap(unittest.TestCase):
             self.test_locations,
             zoom=10,
             image_size=(800, 600),
-            anonymize=False,
-            radius=2000,
+            _anonymize=False,
+            _radius=2000,
         )
 
         mock_context.set_zoom.assert_called_once_with(10)

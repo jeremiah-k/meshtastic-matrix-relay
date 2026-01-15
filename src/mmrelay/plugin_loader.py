@@ -1711,14 +1711,14 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
     """
     Discover and instantiate top-level Plugin classes from Python modules in a directory.
 
-    Scans the given directory (optionally recursively) for .py files, imports each module in an isolated namespace, and instantiates any top-level `Plugin` class found. If a module import fails due to a missing dependency and automatic installation is enabled, the function may attempt to install the missing package, refresh import paths, and retry loading. The function may modify interpreter import state (for compatibility aliases) and invoke external installers when auto-installation occurs.
+    Scans the given directory (optionally recursively) for .py modules, imports each module in an isolated namespace, and returns instantiated top-level `Plugin` objects found. On import failure due to a missing dependency and when automatic installation is enabled, the function may attempt to install the missing package and refresh import paths before retrying. The function does not raise on individual plugin load failures; it returns only successfully instantiated plugins.
 
     Parameters:
         directory (str): Path to the directory containing plugin Python files.
         recursive (bool): If True, scan subdirectories recursively; otherwise scan only the top-level directory.
 
     Returns:
-        list[Any]: Instances of discovered plugin classes; returns an empty list if none are found.
+        list[Any]: Instances of discovered `Plugin` classes; returns an empty list if none are found.
     """
     plugins = []
     if os.path.isdir(directory):
@@ -1873,7 +1873,7 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
                                     plugin_path,
                                 )
 
-                        except subprocess.CalledProcessError:
+                        except (subprocess.CalledProcessError, FileNotFoundError):
                             logger.exception(
                                 f"Failed to automatically install {missing_pkg}. "
                                 f"Please install manually:\n"
@@ -1998,18 +1998,17 @@ def stop_global_scheduler() -> None:
 
 def load_plugins(passed_config: Any = None) -> list[Any]:
     """
-    Load and start the application's configured plugins and return the active instances sorted by priority.
+    Load, prepare, and start configured core, custom, and community plugins.
 
-    Loads core, custom, and community plugins according to the provided configuration (or the module-global config if none is provided), ensures community repositories and their dependencies are prepared as configured, starts plugins marked active, and caches the loaded set so subsequent calls return the same active instances.
+    Uses the module-global configuration unless `passed_config` is provided. Ensures community repositories and their dependencies are cloned/updated and installed as configured, starts plugins marked active (and the global scheduler), caches the loaded set for subsequent calls, and returns the active plugin instances ordered by their `priority`.
 
     Parameters:
-        passed_config (dict, optional): Configuration to use instead of the module-global config; when omitted the module-global `config` is used.
+        passed_config (dict | Any, optional): Configuration to use instead of the module-global `config`.
 
     Returns:
-        list: Active plugin instances sorted by their `priority` attribute.
+        list[Any]: Active plugin instances sorted by their `priority` attribute.
     """
-    global sorted_active_plugins
-    global plugins_loaded
+    global sorted_active_plugins, plugins_loaded
     global config
 
     if plugins_loaded:
@@ -2204,8 +2203,8 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
         repo_url = plugin_info.get("repository")
         if repo_url:
             # Extract repo name using lightweight function (no validation needed for loading)
-            repo_name = _get_repo_name_from_url(repo_url)
-            if not repo_name:
+            repo_name_candidate = _get_repo_name_from_url(repo_url)
+            if not repo_name_candidate:
                 logger.error(
                     "Invalid repository URL for community plugin: %s",
                     _redact_url(repo_url),
@@ -2215,7 +2214,7 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
             # Try each directory in order
             plugin_found = False
             for dir_path in community_plugin_dirs:
-                plugin_path = os.path.join(dir_path, repo_name)
+                plugin_path = os.path.join(dir_path, repo_name_candidate)
                 if os.path.exists(plugin_path):
                     logger.info(f"Loading community plugin from: {plugin_path}")
                     try:

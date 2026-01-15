@@ -72,15 +72,15 @@ class Plugin(BasePlugin):
     ) -> bool:
         # Support deviceMetrics only for now
         """
-        Process an incoming Meshtastic packet and record device telemetry for the sending node when present.
+        Record device telemetry from an incoming Meshtastic telemetry packet for the sending node.
 
-        If the packet contains `decoded.telemetry.deviceMetrics` and `decoded.portnum == "TELEMETRY_APP"`, extracts the `time` plus the `batteryLevel`, `voltage`, and `airUtilTx` fields (each None if missing) and persists an appended telemetry record for the sender. Other parameters (`formatted_message`, `longname`, `meshnet_name`) are not inspected by this method.
+        When `packet` contains `decoded.portnum == "TELEMETRY_APP"` and `decoded.telemetry.deviceMetrics`, extracts the telemetry timestamp and the `batteryLevel`, `voltage`, and `airUtilTx` fields (each `None` if missing) and appends a telemetry record for the sender identified by `packet["fromId"]`. Other packet contents are not modified.
 
         Parameters:
-            packet (dict): Meshtastic packet expected to include `decoded` with `portnum` and a `telemetry.deviceMetrics` object.
-            formatted_message (str): Unused in this handler.
-            longname (str): Unused in this handler.
-            meshnet_name (str): Unused in this handler.
+            packet (dict): Meshtastic packet expected to include `decoded` with `portnum` and `telemetry.deviceMetrics`.
+            formatted_message (str): Unused.
+            longname (str): Unused.
+            meshnet_name (str): Unused.
 
         Returns:
             bool: `False` always; telemetry is recorded but the message is not consumed by this handler.
@@ -96,7 +96,7 @@ class Plugin(BasePlugin):
             telemetry_data = []
             data = self.get_node_data(meshtastic_id=packet["fromId"])
             if data:
-                telemetry_data = data
+                telemetry_data = data if isinstance(data, list) else [data]
             packet_data = packet["decoded"]["telemetry"]
             device_metrics = packet_data["deviceMetrics"]
 
@@ -140,17 +140,17 @@ class Plugin(BasePlugin):
     ) -> bool:
         # Pass the event to matches()
         """
-        Handle a Matrix message requesting a telemetry graph and send the generated image to the originating room.
+        Handle a Matrix message that requests a telemetry graph and send the generated image to the originating room.
 
-        Parses a telemetry command (one of `batteryLevel`, `voltage`, `airUtilTx`) optionally followed by a node identifier, computes hourly averages for the last 12 hours (for the specified node or network-wide), generates a line plot of those averages, and uploads the image to the originating room. If a requested node has no telemetry data, a user-facing notice is sent instead of an image.
+        Parses a telemetry command (one of `batteryLevel`, `voltage`, `airUtilTx`) optionally followed by a node identifier, computes hourly averages for the last 12 hours for that node or for the whole network, renders a line plot of those averages, and uploads the image to the originating room. If a specified node has no telemetry data, a notice is sent instead of an image.
 
         Parameters:
             room: Matrix room object where the event originated and where the response will be sent.
             event: Matrix event used to determine whether it matches a supported telemetry command.
-            full_message (str): Full plaintext message content used to parse the command and optional node identifier.
+            full_message: Full plaintext message content used to parse the command and optional node identifier.
 
         Returns:
-            `True` if the message matched a telemetry command and either a graph was generated and sent or a notice was sent for a node with no data; `False` otherwise.
+            `True` if the message matched a telemetry command and a graph was generated and sent or a notice was sent for a node with no data, `False` otherwise.
         """
         if not self.matches(event):
             return False
@@ -201,7 +201,11 @@ class Plugin(BasePlugin):
         if node:
             node_data_rows = self.get_node_data(node)
             if node_data_rows:
-                calculate_averages(node_data_rows)
+                calculate_averages(
+                    node_data_rows
+                    if isinstance(node_data_rows, list)
+                    else [node_data_rows]
+                )
             else:
                 await self.send_matrix_message(
                     room.room_id,

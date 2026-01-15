@@ -439,7 +439,7 @@ async def test_handle_message_mapping_stores_and_prunes():
         await queue._handle_message_mapping(result, mapping_info)
 
     mock_store.assert_awaited_once_with(
-        123,
+        "123",
         "$event",
         "!room:example.org",
         "hello",

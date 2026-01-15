@@ -6,6 +6,7 @@ from typing import Any, cast
 import PIL.ImageDraw
 import s2sphere  # type: ignore[import-untyped]
 import staticmaps  # type: ignore[import-untyped]
+
 # matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
 from nio import (  # type: ignore[import-untyped]
     AsyncClient,
@@ -52,7 +53,7 @@ logger = get_logger(__name__)
 async def _connect_meshtastic_async() -> object | None:
     """
     Obtain a Meshtastic client connection without blocking the event loop.
-    
+
     Returns:
         The Meshtastic client instance, or `None` if a connection could not be established.
     """
@@ -66,10 +67,10 @@ def textsize(
 ) -> tuple[float, float]:
     """
     Compute the width and height of `text` as rendered by this ImageDraw instance.
-    
+
     Parameters:
         text (Any): The text to measure. Additional rendering options (font, anchor, etc.) may be supplied via `*args` and `**kwargs`.
-    
+
     Returns:
         (width, height) (tuple[float, float]): Width and height of the rendered text in pixels.
     """
@@ -85,7 +86,7 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
     def __init__(self, latlng: s2sphere.LatLng, text: str, fontSize: int = 12) -> None:
         """
         Initialize a TextLabel anchored at a geographic LatLng with the provided text and font size.
-        
+
         Parameters:
             latlng (s2sphere.LatLng): Geographic anchor point for the label.
             text (str): Label text to render.
@@ -262,14 +263,14 @@ def get_map(
     locations: list[dict[str, float | int | str | None]],
     zoom: int | None = None,
     image_size: tuple[int, int] | None = None,
-    anonymize: bool = False,  # noqa: ARG001
-    radius: int = 10000,  # noqa: ARG001
+    _anonymize: bool = False,
+    _radius: int = 10000,
 ) -> PILImage.Image:
     """
     Render a static map with labeled markers and optional precision-radius circles.
-    
+
     Each entry in `locations` must include "lat", "lon", and "label"; if "precisionBits" is present and parseable it will be converted to an approximate radius (meters) and drawn as a lightly shaded circle around the marker. When one or more valid locations are provided, the map is centered on their average coordinates.
-    
+
     Parameters:
         locations (list[dict[str, float | int | str | None]]): Sequence of location dictionaries. Required keys:
             - "lat": latitude (coercible to float).
@@ -279,9 +280,9 @@ def get_map(
             - "precisionBits": integer (or string) used to compute an approximate precision radius in meters.
         zoom (int | None): Optional map zoom level; if None the context default is used.
         image_size (tuple[int, int] | None): Optional output size as (width, height) in pixels; if None a 1000x1000 image is produced.
-        anonymize (bool): Ignored (kept for compatibility).
-        radius (int): Ignored (kept for compatibility).
-    
+        _anonymize (bool): Ignored (kept for compatibility).
+        _radius (int): Ignored (kept for compatibility).
+
     Returns:
         PIL.Image.Image: Pillow Image containing the rendered map with markers and any precision circles.
     """
@@ -295,9 +296,7 @@ def get_map(
 
     # Center the map on the average location so nodes are not pushed to the edge.
     # Skip entries missing coordinates to avoid centering on 0,0 by default.
-    valid_locations: list[
-        tuple[float, float, dict[str, float | int | str | None]]
-    ] = []
+    valid_locations: list[tuple[float, float, dict[str, float | int | str | None]]] = []
     for location in locations:
         lat = location.get("lat")
         lon = location.get("lon")
@@ -372,10 +371,10 @@ class Plugin(BasePlugin):
     @property
     def description(self) -> str:
         """
-        Provide a short, human-readable description of the plugin for listings and help.
+        Provide a brief human-readable description of the plugin for listings and help.
         
         Returns:
-            A one-line human-readable description of the plugin.
+            str: One-line description mentioning map generation and supported `zoom` and `size` options.
         """
         return (
             "Map of mesh radio nodes. Supports `zoom` and `size` options to customize"
@@ -390,13 +389,13 @@ class Plugin(BasePlugin):
     ) -> bool:
         """
         Decide whether this plugin consumes an incoming Meshtastic packet.
-        
+
         Parameters:
             packet (dict[str, Any]): Raw Meshtastic packet received from the mesh network.
             formatted_message (str): Human-readable, pre-formatted message derived from the packet.
             longname (str): Sender's long name or identifier.
             meshnet_name (str): Name of the mesh network the packet originated from.
-        
+
         Returns:
             True if the plugin handled the message and further processing should stop, False otherwise.
         """
@@ -416,7 +415,7 @@ class Plugin(BasePlugin):
     def get_mesh_commands(self) -> list[str]:
         """
         Return the mesh-specific command names handled by this plugin.
-        
+
         Returns:
             list[str]: Mesh command names handled by the plugin; an empty list if the plugin does not handle any mesh commands.
         """
@@ -425,23 +424,20 @@ class Plugin(BasePlugin):
     async def handle_room_message(
         self,
         room: MatrixRoom,
-        event: RoomMessageText
-        | RoomMessageNotice
-        | ReactionEvent
-        | RoomMessageEmote,
+        event: RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote,
         full_message: str,
     ) -> bool:
         # Pass the whole event to matches() for compatibility w/ updated base_plugin.py
         """
         Generate a static map of known mesh node locations for a received "!map" command and send it to the Matrix room.
-        
+
         Parses optional `zoom=N` and `size=W,H` tokens from the message, collects node positions (including `precisionBits` when available), renders a map image, and uploads it to the room as "location.png".
-        
+
         Parameters:
             room: The Matrix room where the message was received; used to send responses and the resulting image.
             event: The full Matrix event object; passed to plugin matching logic.
             full_message: The raw message text to parse for the "!map" command and optional parameters.
-        
+
         Returns:
             `True` if the command was handled and the map image was generated and sent; `False` otherwise.
         """
@@ -554,8 +550,8 @@ class Plugin(BasePlugin):
             locations=locations,
             zoom=zoom,
             image_size=image_size,
-            anonymize=False,
-            radius=0,
+            _anonymize=False,
+            _radius=0,
         )
 
         try:

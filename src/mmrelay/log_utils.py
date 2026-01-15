@@ -3,7 +3,7 @@ import contextlib
 import logging
 import os
 from logging.handlers import RotatingFileHandler
-from typing import Any, Dict, Set
+from typing import Any, Dict, Iterator, Set
 
 # Import Rich components only when not running as a service
 try:
@@ -55,6 +55,9 @@ _registered_logger_names: Set[str] = set()
 # Keep a generation counter so we know when to refresh handlers on existing loggers
 _config_generation = 0
 _logger_config_generations: Dict[str, int] = {}
+
+# Toggle for CLI-only commands to avoid polluting user-facing output.
+_cli_mode = False
 
 # Component logger mapping for data-driven configuration
 _COMPONENT_LOGGERS = {
@@ -142,18 +145,23 @@ def configure_component_debug_logging() -> None:
 
 def _should_log_to_file(args: argparse.Namespace | None) -> bool:
     """
-    Decide whether logging to a file is enabled according to configuration and CLI options.
+    Determine if file logging should be enabled based on configuration and CLI options.
+
+    When the module is in CLI mode, file logging defaults to off unless explicitly enabled
+    in the logging configuration or a logfile is provided on the command line.
 
     Parameters:
-        args (argparse.Namespace | None): Parsed CLI arguments; if present and `args.logfile` is truthy, file logging is forced on.
+        args (argparse.Namespace | None): Parsed CLI arguments. If present and `args.logfile`
+            is truthy, file logging is forced on.
 
     Returns:
         bool: `True` if file logging should be enabled, `False` otherwise.
     """
     logging_config: dict[str, Any] = config.get("logging", {}) if config else {}
 
-    # Default to True for better user experience unless explicitly disabled
-    enabled = logging_config.get("log_to_file", True)
+    # Default off in CLI mode so we only log to file when explicitly enabled.
+    default_enabled = False if _cli_mode else True
+    enabled = logging_config.get("log_to_file", default_enabled)
 
     # Command-line argument always wins and forces file logging on
     logfile = getattr(args, "logfile", None) if args is not None else None
@@ -239,30 +247,31 @@ def _configure_logger(
             handler.close()
     logger.handlers.clear()
 
-    # Add handler for console logging (with or without colors)
-    if color_enabled and RICH_AVAILABLE:
-        # Use Rich handler with colors
-        console_handler: logging.Handler = RichHandler(
-            rich_tracebacks=rich_tracebacks_enabled,
-            console=console,
-            show_time=True,
-            show_level=True,
-            show_path=False,
-            markup=True,
-            log_time_format="%Y-%m-%d %H:%M:%S",
-            omit_repeated_times=False,
-        )
-        console_handler.setFormatter(logging.Formatter("%(name)s: %(message)s"))
-    else:
-        # Use standard handler without colors
-        console_handler: logging.Handler = logging.StreamHandler()  # type: ignore[no-redef]
-        console_handler.setFormatter(
-            logging.Formatter(
-                fmt="%(asctime)s %(levelname)s:%(name)s:%(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S %z",
+    # Add handler for console logging (with or without colors), unless in CLI mode.
+    if not _cli_mode:
+        if color_enabled and RICH_AVAILABLE:
+            # Use Rich handler with colors
+            console_handler: logging.Handler = RichHandler(
+                rich_tracebacks=rich_tracebacks_enabled,
+                console=console,
+                show_time=True,
+                show_level=True,
+                show_path=False,
+                markup=True,
+                log_time_format="%Y-%m-%d %H:%M:%S",
+                omit_repeated_times=False,
             )
-        )
-    logger.addHandler(console_handler)
+            console_handler.setFormatter(logging.Formatter("%(name)s: %(message)s"))
+        else:
+            # Use standard handler without colors
+            console_handler: logging.Handler = logging.StreamHandler()  # type: ignore[no-redef]
+            console_handler.setFormatter(
+                logging.Formatter(
+                    fmt="%(asctime)s %(levelname)s:%(name)s:%(message)s",
+                    datefmt="%Y-%m-%d %H:%M:%S %z",
+                )
+            )
+        logger.addHandler(console_handler)
 
     # Determine whether to attach a file handler
     if _should_log_to_file(effective_args):
@@ -344,6 +353,29 @@ def get_logger(name: str, args: argparse.Namespace | None = None) -> logging.Log
     _registered_logger_names.add(name)
 
     return _configure_logger(logger, args=args)
+
+
+@contextlib.contextmanager
+def cli_logging_mode(args: argparse.Namespace | None = None) -> Iterator[None]:
+    """
+    Temporarily disable console logging while preserving file logging for CLI commands.
+
+    Sets the internal CLI mode to True, refreshes all registered loggers so console handlers are removed,
+    yields control to the caller, then restores the previous CLI mode and refreshes loggers again.
+
+    Parameters:
+        args (argparse.Namespace | None): Optional CLI argument namespace forwarded to logger refresh calls;
+            used to determine file-logging behavior when loggers are reconfigured.
+    """
+    global _cli_mode
+    previous_mode = _cli_mode
+    _cli_mode = True
+    refresh_all_loggers(args=args)
+    try:
+        yield
+    finally:
+        _cli_mode = previous_mode
+        refresh_all_loggers(args=args)
 
 
 def refresh_all_loggers(args: argparse.Namespace | None = None) -> None:

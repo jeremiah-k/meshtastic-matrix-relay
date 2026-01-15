@@ -61,12 +61,12 @@ class Plugin(BasePlugin):
         meshnet_name: str,
     ) -> bool:
         """
-        Handle delivery of stored drop messages and record new drops from an incoming Meshtastic packet.
+        Handle stored "drop" messages and record new drops from an incoming Meshtastic packet.
 
-        If the packet originates from another node and that node's position is known, deliver any stored drops whose saved location lies within the configured radius to the originator (excluding messages the originator created). If the packet contains a "!drop <message>" command and the dropper's position is known, store the message together with the dropper's location and originator id for later delivery.
+        If the packet is from another node whose position is known, deliver any stored drops whose saved location lies within the configured radius to that node (excluding messages the node originally dropped). If the packet contains a "!drop <message>" command and the dropper's position is known, store the message with the dropper's location and originator id for later delivery.
 
         Returns:
-            `True` if a drop command was processed (including cases where processing occurred but the dropper's position was unavailable), `False` otherwise.
+            `True` if the packet contained and processed a drop command (including cases where the command was acknowledged but the dropper's position was unavailable), `False` otherwise.
         """
         # Keep parameter names for keyword-arg compatibility in tests and plugin API.
         _ = (formatted_message, longname, meshnet_name)
@@ -95,8 +95,9 @@ class Plugin(BasePlugin):
                 )
 
                 self.logger.debug(f"Packet originates from: {packet_location}")
+                data = self.get_node_data(self.special_node)
                 messages: list[dict[str, Any]] = (
-                    self.get_node_data(self.special_node) or []
+                    data if isinstance(data, list) else [data] if data else []
                 )
                 unsent_messages: list[dict[str, Any]] = []
                 for message in messages:

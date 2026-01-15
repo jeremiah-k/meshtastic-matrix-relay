@@ -211,7 +211,7 @@ class Plugin(BasePlugin):
             full_message (str): The message text (kept for compatibility; not used by this implementation).
 
         Returns:
-            `true` if the event matched and a reply was sent, `false` otherwise.
+            `True` if the event matched and a reply was sent, `False` otherwise.
         """
         # Keep parameter names for compatibility with keyword calls in tests.
         _ = full_message

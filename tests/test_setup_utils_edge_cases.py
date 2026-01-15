@@ -39,7 +39,7 @@ class TestSetupUtilsEdgeCases(unittest.TestCase):
 
     def test_create_service_file_permission_error(self):
         """
-        Test that create_service_file returns False when directory creation fails due to a PermissionError.
+        Verify create_service_file logs the exception and indicates failure when writing the service file raises a PermissionError.
         """
         with patch(
             "mmrelay.setup_utils.get_executable_path", return_value="/usr/bin/mmrelay"
@@ -48,17 +48,17 @@ class TestSetupUtilsEdgeCases(unittest.TestCase):
                 "pathlib.Path.write_text",
                 side_effect=PermissionError("Permission denied"),
             ):
-                with patch("builtins.print") as mock_print:
+                with patch("mmrelay.setup_utils.logger") as mock_logger:
                     result = create_service_file()
                     self.assertFalse(result)
-                    mock_print.assert_called()
+                    mock_logger.exception.assert_called()
 
     def test_get_executable_path_not_found(self):
         """
         Test that get_executable_path returns the system Python executable with -m mmrelay when the "mmrelay" executable is not found.
         """
         with patch("shutil.which", return_value=None):
-            with patch("builtins.print"):  # Suppress warning print
+            with patch("mmrelay.setup_utils.logger"):  # Suppress warning log
                 result = get_executable_path()
                 # Should return quoted sys.executable -m mmrelay as fallback (quotes only if needed)
                 self.assertEqual(
@@ -102,22 +102,22 @@ class TestSetupUtilsEdgeCases(unittest.TestCase):
 
     def test_get_template_service_content_read_error(self):
         """
-        Test that get_template_service_content returns the default template and prints an error when reading the template file raises an IOError.
+        Test that get_template_service_content returns the default template and logs an error when reading the template file raises an IOError.
         """
         with patch(
             "mmrelay.setup_utils.get_template_service_path",
             return_value="/test/service.template",
         ):
             with patch("builtins.open", side_effect=IOError("Read error")):
-                with patch("builtins.print") as mock_print:
+                with patch("mmrelay.setup_utils.logger") as mock_logger:
                     result = get_template_service_content()
-                    # Should return default template and print error
+                    # Should return default template and log error
                     self.assertIn("[Unit]", result)
-                    mock_print.assert_called()
+                    mock_logger.exception.assert_called()
 
     def test_create_service_file_write_permission_error(self):
         """
-        Test that create_service_file returns False and prints an error when file writing fails due to a PermissionError.
+        Test that create_service_file returns False and logs an error when file writing fails due to a PermissionError.
         """
         with patch("mmrelay.setup_utils.get_user_service_path") as mock_get_path:
             mock_path = MagicMock()
@@ -132,10 +132,10 @@ class TestSetupUtilsEdgeCases(unittest.TestCase):
                     "mmrelay.setup_utils.get_executable_path",
                     return_value="/usr/bin/mmrelay",
                 ):
-                    with patch("builtins.print") as mock_print:
+                    with patch("mmrelay.setup_utils.logger") as mock_logger:
                         result = create_service_file()
                         self.assertFalse(result)
-                        mock_print.assert_called()
+                        mock_logger.exception.assert_called()
 
     def test_create_service_file_no_executable_uses_fallback(self):
         """
@@ -157,14 +157,13 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
                     mock_path = MagicMock()
                     mock_get_path.return_value = mock_path
 
-                    with patch("builtins.print") as mock_print:
+                    with patch("mmrelay.setup_utils.logger") as mock_logger:
                         result = create_service_file()
                         self.assertTrue(result)  # Should succeed with fallback
 
-                        # Check that fallback message was printed
-                        mock_print.assert_any_call(
-                            "Warning: Could not find mmrelay executable in PATH. Using current Python interpreter.",
-                            file=sys.stderr,
+                        # Check that fallback message was logged
+                        mock_logger.warning.assert_any_call(
+                            "Could not find mmrelay executable in PATH. Using current Python interpreter."
                         )
 
                         # Check that the ExecStart uses a python* -m mmrelay fallback
@@ -176,7 +175,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
 
     def test_reload_daemon_command_failure(self):
         """
-        Test that reload_daemon returns False and prints an error when the systemctl command fails with a CalledProcessError.
+        Test that reload_daemon returns False and logs an error when the systemctl command fails with a CalledProcessError.
         """
         with patch("subprocess.run") as mock_run:
             # Mock subprocess.run to raise CalledProcessError (since check=True is used)
@@ -184,22 +183,22 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
                 1, "systemctl", "Command failed"
             )
 
-            with patch("builtins.print") as mock_print:
+            with patch("mmrelay.setup_utils.logger") as mock_logger:
                 result = reload_daemon()
                 self.assertFalse(result)
-                mock_print.assert_called()
+                mock_logger.exception.assert_called()
 
     def test_reload_daemon_exception(self):
         """
-        Test that reload_daemon returns False and prints an error when subprocess.run raises a FileNotFoundError.
+        Test that reload_daemon returns False and logs an error when subprocess.run raises a FileNotFoundError.
         """
         with patch(
             "subprocess.run", side_effect=FileNotFoundError("systemctl not found")
         ):
-            with patch("builtins.print") as mock_print:
+            with patch("mmrelay.setup_utils.logger") as mock_logger:
                 result = reload_daemon()
                 self.assertFalse(result)
-                mock_print.assert_called()
+                mock_logger.exception.assert_called()
 
     def test_check_loginctl_available_not_found(self):
         """
@@ -222,14 +221,14 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
 
     def test_check_lingering_enabled_command_failure(self):
         """
-        Test that check_lingering_enabled returns False and prints an error when the loginctl command raises an exception.
+        Test that check_lingering_enabled returns False and logs an error when the loginctl command raises an exception.
         """
-        with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = OSError("Command failed")
-            with patch("builtins.print") as mock_print:
-                result = check_lingering_enabled()
-                self.assertFalse(result)
-                mock_print.assert_called()
+        with patch("shutil.which", return_value="/usr/bin/loginctl"):
+            with patch("subprocess.run", side_effect=OSError("Command failed")):
+                with patch("mmrelay.setup_utils.logger") as mock_logger:
+                    result = check_lingering_enabled()
+                    self.assertFalse(result)
+                    mock_logger.exception.assert_called()
 
     def test_check_lingering_enabled_parsing_error(self):
         """
@@ -245,26 +244,26 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
 
     def test_enable_lingering_command_failure(self):
         """
-        Test that enable_lingering returns False and prints an error when the loginctl command fails with a non-zero exit code.
+        Test that enable_lingering returns False and logs an error when the loginctl command fails with a non-zero exit code.
         """
         with patch("subprocess.run") as mock_run:
             mock_run.return_value.returncode = 1
             mock_run.return_value.stderr = "Permission denied"
 
-            with patch("builtins.print") as mock_print:
+            with patch("mmrelay.setup_utils.logger") as mock_logger:
                 result = enable_lingering()
                 self.assertFalse(result)
-                mock_print.assert_called()
+                mock_logger.error.assert_called()
 
     def test_enable_lingering_exception(self):
         """
-        Test that enable_lingering returns False and prints an error when subprocess.run raises an exception.
+        Test that enable_lingering returns False and logs an error when subprocess.run raises an exception.
         """
         with patch("subprocess.run", side_effect=OSError("Command failed")):
-            with patch("builtins.print") as mock_print:
+            with patch("mmrelay.setup_utils.logger") as mock_logger:
                 result = enable_lingering()
                 self.assertFalse(result)
-                mock_print.assert_called()
+                mock_logger.exception.assert_called()
 
     def test_install_service_no_executable_uses_fallback(self):
         """
@@ -278,15 +277,14 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
                 with patch(
                     "mmrelay.setup_utils.read_service_file", return_value=None
                 ):  # No existing service
-                    with patch("builtins.print") as mock_print:
+                    with patch("mmrelay.setup_utils.logger") as mock_logger:
                         with patch(
                             "builtins.input", return_value="n"
                         ):  # Mock input to avoid stdin issues
                             result = install_service()
                             self.assertTrue(result)  # Should succeed with fallback
-                            mock_print.assert_any_call(
-                                "Warning: Could not find mmrelay executable in PATH. Using current Python interpreter.",
-                                file=sys.stderr,
+                            mock_logger.warning.assert_any_call(
+                                "Could not find mmrelay executable in PATH. Using current Python interpreter."
                             )
 
     def test_install_service_create_file_failure(self):
@@ -297,7 +295,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
             "mmrelay.setup_utils.get_executable_path", return_value="/usr/bin/mmrelay"
         ):
             with patch("mmrelay.setup_utils.create_service_file", return_value=False):
-                with patch("builtins.print"):
+                with patch("mmrelay.setup_utils.logger"):
                     with patch(
                         "builtins.input", return_value="y"
                     ):  # Mock input to avoid stdin issues
@@ -329,14 +327,14 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
                                 with patch(
                                     "builtins.input", return_value="n"
                                 ):  # Mock all input prompts to return "n"
-                                    with patch("builtins.print"):
+                                    with patch("mmrelay.setup_utils.logger"):
                                         result = install_service()
                                         # Should still return True even if reload fails
                                         self.assertTrue(result)
 
     def test_install_service_lingering_check_failure(self):
         """
-        Test that install_service returns True and prints a message when lingering check fails and the user declines to enable lingering.
+        Test that install_service returns True and logs a message when lingering check fails and the user declines to enable lingering.
         """
         with patch(
             "mmrelay.setup_utils.get_executable_path", return_value="/usr/bin/mmrelay"
@@ -352,10 +350,10 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
                             return_value=False,
                         ):
                             with patch("builtins.input", return_value="n"):
-                                with patch("builtins.print") as mock_print:
+                                with patch("mmrelay.setup_utils.logger") as mock_logger:
                                     result = install_service()
                                     self.assertTrue(result)
-                                    mock_print.assert_called()
+                                    mock_logger.info.assert_called()
 
     def test_install_service_enable_lingering_failure(self):
         """
@@ -381,7 +379,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
                                     "mmrelay.setup_utils.enable_lingering",
                                     return_value=False,
                                 ):
-                                    with patch("builtins.print"):
+                                    with patch("mmrelay.setup_utils.logger"):
                                         result = install_service()
                                         self.assertTrue(result)  # Should still succeed
 
@@ -405,7 +403,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
                             return_value=False,
                         ):
                             with patch("builtins.input", side_effect=EOFError()):
-                                with patch("builtins.print"):
+                                with patch("mmrelay.setup_utils.logger"):
                                     result = install_service()
                                     self.assertTrue(result)
 
@@ -429,7 +427,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
                             with patch(
                                 "builtins.input", side_effect=KeyboardInterrupt()
                             ):
-                                with patch("builtins.print"):
+                                with patch("mmrelay.setup_utils.logger"):
                                     result = install_service()
                                     self.assertTrue(result)
 

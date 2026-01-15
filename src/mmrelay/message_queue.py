@@ -436,10 +436,30 @@ class MessageQueue:
                         )
 
                         # Handle message mapping if provided
-                        if current_message.mapping_info and hasattr(result, "id"):
-                            await self._handle_message_mapping(
-                                result, current_message.mapping_info
-                            )
+                        if current_message.mapping_info:
+                            # Robust ID extraction with detailed logging
+                            msg_id = None
+                            if hasattr(result, "id"):
+                                msg_id = result.id
+                            elif isinstance(result, dict) and "id" in result:
+                                msg_id = result["id"]
+
+                            if msg_id is not None:
+                                # Create normalized result object for mapping handler
+                                from types import SimpleNamespace
+
+                                normalized_result = SimpleNamespace(id=msg_id)
+                                await self._handle_message_mapping(
+                                    normalized_result, current_message.mapping_info
+                                )
+                            else:
+                                # Critical: Log detailed error when mapping cannot be stored
+                                logger.error(
+                                    f"Cannot store message mapping: send result lacks 'id' attribute. "
+                                    f"Result type: {type(result).__name__}. "
+                                    f"Replies/reactions will not work for this message. "
+                                    f"Message: {current_message.description}"
+                                )
 
                 except Exception as e:
                     logger.error(
@@ -518,7 +538,7 @@ class MessageQueue:
         """
         Persist a mapping from a sent Meshtastic message to a Matrix event and optionally prune old mappings.
 
-        Stores the Meshtastic message id taken from `result.id` alongside `matrix_event_id`, `room_id`, `text`, and optional `meshnet` from `mapping_info`. If `mapping_info` contains `msgs_to_keep` greater than zero, prunes older mappings to retain that many entries; otherwise uses DEFAULT_MSGS_TO_KEEP.
+        Stores the Meshtastic message id taken from `result.id` (normalized to string) alongside `matrix_event_id`, `room_id`, `text`, and optional `meshnet` from `mapping_info`. If `mapping_info` contains `msgs_to_keep` greater than zero, prunes older mappings to retain that many entries; otherwise uses DEFAULT_MSGS_TO_KEEP.
 
         Parameters:
             result: Object returned by the send function; must have an `id` attribute containing the Meshtastic message id.
@@ -543,15 +563,18 @@ class MessageQueue:
             meshnet = mapping_info.get("meshnet")
 
             if matrix_event_id and room_id and text:
+                # CRITICAL: Normalize result.id to string to match database TEXT column
+                meshtastic_id = str(result.id)
+
                 # Store the message mapping
                 await async_store_message_map(
-                    result.id,
+                    meshtastic_id,
                     matrix_event_id,
                     room_id,
                     text,
                     meshtastic_meshnet=meshnet,
                 )
-                logger.debug(f"Stored message map for meshtastic_id: {result.id}")
+                logger.debug(f"Stored message map for meshtastic_id: {meshtastic_id}")
 
                 # Handle pruning if configured
                 msgs_to_keep = mapping_info.get("msgs_to_keep", DEFAULT_MSGS_TO_KEEP)

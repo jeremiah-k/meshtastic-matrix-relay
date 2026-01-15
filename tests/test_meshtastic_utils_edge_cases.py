@@ -29,7 +29,7 @@ from mmrelay.meshtastic_utils import (
     is_running_as_service,
     on_lost_meshtastic_connection,
     on_meshtastic_message,
-    sendTextReply,
+    send_text_reply,
     serial_port_exists,
 )
 
@@ -587,38 +587,39 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
                             mock_interface, detection_source=source
                         )
 
-    def test_sendTextReply_no_client(self):
+    def test_send_text_reply_no_client(self):
         """
-        Test the behavior of sendTextReply when no Meshtastic client is set.
+        Test the behavior of send_text_reply when no Meshtastic client is set.
 
-        Verifies that sendTextReply returns None and logs an error if the Meshtastic client is unavailable.
+        Verifies that send_text_reply returns None and logs an error if the Meshtastic client is unavailable.
         """
         import mmrelay.meshtastic_utils
 
         mmrelay.meshtastic_utils.meshtastic_client = None
 
         with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
-            result = sendTextReply(None, "test message", 12345)
+            result = send_text_reply(None, "test message", 12345)
             self.assertIsNone(result)
             mock_logger.error.assert_called_with(
                 "No Meshtastic interface available for sending reply"
             )
 
-    def test_sendTextReply_client_send_failure(self):
+    def test_send_text_reply_client_send_failure(self):
         """
-        Test that sendTextReply returns None and logs an exception when the client's send operation raises.
+        Test that send_text_reply returns None and logs an exception when the client's send operation raises.
 
-        Ensures that if the client's `_sendPacket` raises an exception, `sendTextReply` handles it by returning None and calling `logger.exception`.
+        Ensures that if the client's `_sendPacket` raises an exception, `send_text_reply` handles it by returning None and calling `logger.exception`.
         """
         mock_client = MagicMock()
-        mock_client._sendPacket.side_effect = Exception("Send failed")
+        mock_client._generatePacketId.return_value = 12345
+        mock_client._sendPacket.side_effect = RuntimeError("Send failed")
 
         import mmrelay.meshtastic_utils
 
         mmrelay.meshtastic_utils.meshtastic_client = mock_client
 
         with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
-            result = sendTextReply(mock_client, "test message", 12345)
+            result = send_text_reply(mock_client, "test message", 12345)
             self.assertIsNone(result)
             mock_logger.exception.assert_called()
 

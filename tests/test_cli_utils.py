@@ -5,6 +5,8 @@ This module tests the centralized CLI command registry and utility functions
 that provide consistent command references across the application.
 """
 
+import ssl
+
 import pytest
 
 from mmrelay.cli_utils import (
@@ -299,7 +301,7 @@ class TestCreateSslContext:
         _create_ssl_context()
         mock_ssl_context.assert_called_once_with(cafile="/fake/path")
 
-    @patch("ssl.create_default_context", side_effect=Exception("SSL error"))
+    @patch("ssl.create_default_context", side_effect=ssl.SSLError("SSL error"))
     @patch("mmrelay.cli_utils.certifi", None)
     def test_create_ssl_context_ssl_error(self, mock_ssl_context):
         """Test _create_ssl_context when ssl.create_default_context fails."""

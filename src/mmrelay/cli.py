@@ -49,7 +49,10 @@ from mmrelay.constants.network import (
     CONNECTION_TYPE_TCP,
 )
 from mmrelay.e2ee_utils import E2EEStatus
+from mmrelay.log_utils import get_logger
 from mmrelay.tools import get_sample_config_path
+
+logger = get_logger(__name__)
 
 # =============================================================================
 # CLI Argument Parsing and Command Handling
@@ -290,19 +293,19 @@ def _validate_e2ee_dependencies() -> bool:
 
 def _validate_credentials_json(config_path: str) -> bool:
     """
-    Validate presence and contents of a Matrix credentials.json adjacent to the given config.
+    Check for a Matrix credentials.json next to the provided config and validate required fields.
 
-    Checks that a credentials.json file can be located from the supplied config path and contains non-empty string values for the keys "homeserver", "access_token", "user_id", and "device_id". On validation failure this function prints a concise error message and guidance to run the authentication login flow.
+    Ensures a credentials.json can be located relative to config_path and that it contains non-empty string values for "homeserver", "access_token", "user_id", and "device_id". On validation failure this function prints a concise error message and guidance to run the authentication login flow.
 
     Parameters:
         config_path (str): Path to the configuration file used to determine where to look for credentials.json.
 
     Returns:
-        bool: `True` if a credentials.json was found and contains all required non-empty fields, `False` otherwise.
+        bool: `True` if credentials.json exists and contains non-empty "homeserver", "access_token", "user_id", and "device_id"; `False` otherwise.
     """
-    try:
-        import json
+    import json
 
+    try:
         # Look for credentials.json using helper function
         credentials_path = _find_credentials_json_path(config_path)
         if not credentials_path:
@@ -328,8 +331,10 @@ def _validate_credentials_json(config_path: str) -> bool:
             return False
 
         return True
-    except Exception as e:
-        print(f"❌ Error: Could not validate credentials.json: {e}")
+    except (OSError, json.JSONDecodeError) as e:
+        logger.exception("Could not validate credentials.json")
+        print(f"❌ Error: Could not validate credentials.json: {e}", file=sys.stderr)
+        print(f"   {msg_run_auth_login()}", file=sys.stderr)
         return False
 
 
@@ -1099,36 +1104,30 @@ def main() -> int:
             # Create the directory if it doesn't exist
             os.makedirs(mmrelay.config.custom_data_dir, exist_ok=True)
 
-        # Handle subcommands first (modern interface)
-        if hasattr(args, "command") and args.command:
-            return handle_subcommand(args)
+        args_dict = vars(args)
+        has_modern_command = bool(getattr(args, "command", None))
+        has_legacy_flag = any(
+            args_dict.get(flag)
+            for flag in (
+                "version",
+                "install_service",
+                "generate_config",
+                "check_config",
+                "auth",
+            )
+        )
 
-        # Handle legacy flags (with deprecation warnings)
-        if args.check_config:
-            print(get_deprecation_warning("--check-config"))
-            return 0 if check_config(args) else 1
+        if has_modern_command or has_legacy_flag:
+            from mmrelay import log_utils
 
-        if args.install_service:
-            print(get_deprecation_warning("--install-service"))
-            try:
-                from mmrelay.setup_utils import install_service
+            # CLI commands print user-facing output; suppress console logging noise.
+            with log_utils.cli_logging_mode(args=args):
+                if has_modern_command:
+                    return handle_subcommand(args)
 
-                return 0 if install_service() else 1
-            except ImportError as e:
-                print(f"Error importing setup utilities: {e}")
-                return 1
-
-        if args.generate_config:
-            print(get_deprecation_warning("--generate-config"))
-            return 0 if generate_sample_config() else 1
-
-        if args.version:
-            print_version()
-            return 0
-
-        if args.auth:
-            print(get_deprecation_warning("--auth"))
-            return handle_auth_command(args)
+                legacy_exit = handle_cli_commands(args)
+                if legacy_exit is not None:
+                    return legacy_exit
 
         # If no command was specified, run the main functionality
         try:
@@ -1693,19 +1692,15 @@ def _diagnose_minimal_config_template() -> None:
 
 def handle_config_diagnose(args: argparse.Namespace) -> int:
     """
-    Run non-destructive diagnostics for the MMRelay configuration subsystem and print a concise, human-readable report.
+    Run non-destructive diagnostics for the MMRelay configuration subsystem and print a human-readable report.
 
-    Performs four checks without modifying user files:
-    1. Resolves and reports candidate configuration file paths and directory accessibility.
-    2. Verifies availability and readability of the packaged sample configuration.
-    3. Executes platform-specific diagnostics (runs Windows-specific checks when applicable).
-    4. Validates the bundled minimal YAML configuration template.
+    Performs four checks without modifying user files: (1) resolves and reports candidate configuration paths and directory accessibility, (2) verifies the packaged sample configuration is accessible, (3) runs platform-specific diagnostics (Windows checks when applicable), and (4) validates the bundled minimal YAML template.
 
     Parameters:
         args (argparse.Namespace): Parsed CLI arguments used to determine configuration search paths and to control platform-specific diagnostic behavior.
 
     Returns:
-        int: Exit code where `0` indicates diagnostics completed successfully and `1` indicates a failure occurred (an error summary is printed to stderr).
+        int: `0` if diagnostics completed successfully, `1` if a failure occurred and an error summary was printed to stderr.
     """
     print("MMRelay Configuration System Diagnostics")
     print("=" * 40)
@@ -1752,67 +1747,70 @@ def handle_config_diagnose(args: argparse.Namespace) -> int:
         return 1
 
 
-if __name__ == "__main__":
-    import sys
-
-    sys.exit(main())
-
-
-def handle_cli_commands(args: argparse.Namespace) -> bool:
+def handle_cli_commands(args: argparse.Namespace) -> int | None:
     """
-    Handle legacy CLI flags (--version, --install-service, --generate-config, --check-config).
-
-    Processes backward-compatible, legacy command-line flags and performs their immediate actions. Some handled flags perform immediate operations that may terminate the process as part of their normal behavior (for example, installing the service or performing a config check).
+    Dispatch legacy CLI flags to their immediate handlers.
 
     Parameters:
-        args (argparse.Namespace): Parsed command-line arguments produced by parse_arguments().
+        args (argparse.Namespace): Parsed command-line arguments.
 
     Returns:
-        bool: `True` if a legacy command was handled and the caller should not continue normal execution, `False` otherwise.
+        int | None: Exit code (`0` on success, `1` on failure) if a legacy command was handled; `None` if no legacy flag was present.
     """
+    args_dict = vars(args)
+
     # Handle --version
-    if args.version:
+    if args_dict.get("version"):
         print_version()
-        return True
+        return 0
 
     # Handle --install-service
-    if args.install_service:
-        from mmrelay.setup_utils import install_service
+    if args_dict.get("install_service"):
+        warning = get_deprecation_warning("--install-service")
+        print(warning, file=sys.stderr)
+        logger.warning(warning)
+        try:
+            from mmrelay.setup_utils import install_service
 
-        success = install_service()
-        import sys
-
-        sys.exit(0 if success else 1)
+            return 0 if install_service() else 1
+        except ImportError as e:
+            logger.exception("Error importing setup utilities")
+            print(f"Error importing setup utilities: {e}", file=sys.stderr)
+            return 1
 
     # Handle --generate-config
-    if args.generate_config:
-        if generate_sample_config():
-            # Exit with success if config was generated
-            return True
-        else:
-            # Exit with error if config generation failed
-            import sys
-
-            sys.exit(1)
+    if args_dict.get("generate_config"):
+        warning = get_deprecation_warning("--generate-config")
+        print(warning, file=sys.stderr)
+        logger.warning(warning)
+        return 0 if generate_sample_config() else 1
 
     # Handle --check-config
-    if args.check_config:
-        import sys
+    if args_dict.get("check_config"):
+        warning = get_deprecation_warning("--check-config")
+        print(warning, file=sys.stderr)
+        logger.warning(warning)
+        return 0 if check_config(args) else 1
 
-        sys.exit(0 if check_config() else 1)
+    # Handle --auth
+    if args_dict.get("auth"):
+        warning = get_deprecation_warning("--auth")
+        print(warning, file=sys.stderr)
+        logger.warning(warning)
+        return handle_auth_command(args)
 
     # No commands were handled
-    return False
+    return None
 
 
 def generate_sample_config() -> bool:
     """
     Generate a sample configuration file at the highest-priority config path when no configuration exists.
 
-    Attempts to create the sample in the first candidate path from get_config_paths(). It prefers copying the packaged sample (get_sample_config_path()), falls back to reading the packaged resource via importlib.resources, then to a set of conventional filesystem locations, and finally writes a minimal built-in template as a last resort. On Unix-like systems the created file will have secure owner-only permissions applied when possible. Prints user-facing diagnostics and troubleshooting guidance.
+    Attempts to copy the bundled sample_config.yaml into the first candidate config path. If the packaged resource is unavailable, falls back to reading the sample from importlib.resources, several standard filesystem locations, and finally writes a minimal built-in template as a last resort. When a file is created, the function will attempt to apply secure owner-only permissions on Unix-like systems. If a config file already exists at any candidate path, no file is created.
 
     Returns:
-        True when a sample config is successfully generated, False on any error or if a config file already exists.
+        True if a sample configuration file was created, False if no file was created (because a config already existed or an error occurred).
     """
 
     # Get the first config path (highest priority)
@@ -1986,3 +1984,7 @@ def generate_sample_config() -> bool:
             pass
 
         return False
+
+
+if __name__ == "__main__":
+    sys.exit(main())

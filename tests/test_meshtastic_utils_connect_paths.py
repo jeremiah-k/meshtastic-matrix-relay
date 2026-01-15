@@ -3,7 +3,10 @@ from unittest.mock import MagicMock, patch
 import serial
 
 import mmrelay.meshtastic_utils as mu
-from mmrelay.constants.network import ERRNO_BAD_FILE_DESCRIPTOR
+from mmrelay.constants.network import (
+    DEFAULT_MESHTASTIC_TIMEOUT,
+    ERRNO_BAD_FILE_DESCRIPTOR,
+)
 from mmrelay.meshtastic_utils import connect_meshtastic, on_lost_meshtastic_connection
 
 
@@ -43,7 +46,9 @@ def test_connect_meshtastic_network_alias_warns_and_uses_tcp(reset_meshtastic_gl
         result = connect_meshtastic(passed_config=config)
 
     assert result is mock_client
-    mock_tcp.assert_called_once_with(hostname="127.0.0.1")
+    mock_tcp.assert_called_once_with(
+        hostname="127.0.0.1", timeout=DEFAULT_MESHTASTIC_TIMEOUT
+    )
     mock_logger.warning.assert_any_call(
         "Using 'network' connection type (legacy). 'tcp' is now the preferred name and 'network' will be deprecated in a future version."
     )

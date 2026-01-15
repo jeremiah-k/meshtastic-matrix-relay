@@ -320,10 +320,30 @@ class TestDbUtils(unittest.TestCase):
         # Retrieve by matrix_event_id
         result = get_message_map_by_matrix_event_id(matrix_event_id)
         self.assertIsNotNone(result)
-        self.assertEqual(result[0], meshtastic_id)
+        self.assertEqual(result[0], str(meshtastic_id))
         self.assertEqual(result[1], matrix_room_id)
         self.assertEqual(result[2], meshtastic_text)
         self.assertEqual(result[3], meshtastic_meshnet)
+
+    def test_message_map_id_normalization(self):
+        """
+        Verify that int and str representations of the same Meshtastic ID map to the same row.
+        """
+        initialize_database()
+
+        store_message_map(
+            12345,
+            "$event1:matrix.org",
+            "!room:matrix.org",
+            "text1",
+        )
+
+        result_int = get_message_map_by_meshtastic_id(12345)
+        result_str = get_message_map_by_meshtastic_id("12345")
+
+        self.assertIsNotNone(result_int)
+        self.assertIsNotNone(result_str)
+        self.assertEqual(result_int, result_str)
 
     def test_wipe_message_map(self):
         """
@@ -375,7 +395,7 @@ class TestDbUtils(unittest.TestCase):
             # Verify the kept entries are the most recent ones
             cursor.execute("SELECT meshtastic_id FROM message_map ORDER BY rowid")
             kept_ids = [row[0] for row in cursor.fetchall()]
-            self.assertEqual(kept_ids, [5, 6, 7, 8, 9])
+            self.assertEqual(kept_ids, ["5", "6", "7", "8", "9"])
 
     def test_database_manager_reuses_connection(self):
         """
