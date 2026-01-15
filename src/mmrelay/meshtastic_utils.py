@@ -880,26 +880,21 @@ def _get_packet_details(
     details = {}
 
     if decoded and isinstance(decoded, dict) and portnum_name == "TELEMETRY_APP":
-        telemetry = decoded.get("telemetry", {})
-        if telemetry and isinstance(telemetry, dict):
-            if "deviceMetrics" in telemetry:
-                metrics = telemetry["deviceMetrics"]
-                if isinstance(metrics, dict):
-                    batt = metrics.get("batteryLevel")
-                    voltage = metrics.get("voltage")
-                    if batt is not None:
-                        details["batt"] = f"{batt}%"
-                    if voltage is not None:
-                        details["voltage"] = f"{voltage:.2f}V"
-            elif "environmentMetrics" in telemetry:
-                metrics = telemetry["environmentMetrics"]
-                if isinstance(metrics, dict):
-                    temp = metrics.get("temperature")
-                    humidity = metrics.get("relativeHumidity")
-                    if temp is not None:
-                        details["temp"] = f"{temp:.1f}°C"
-                    if humidity is not None:
-                        details["humidity"] = f"{humidity:.0f}%"
+        if (telemetry := decoded.get("telemetry")) and isinstance(telemetry, dict):
+            if (metrics := telemetry.get("deviceMetrics")) and isinstance(
+                metrics, dict
+            ):
+                if (batt := metrics.get("batteryLevel")) is not None:
+                    details["batt"] = f"{batt}%"
+                if (voltage := metrics.get("voltage")) is not None:
+                    details["voltage"] = f"{voltage:.2f}V"
+            elif (metrics := telemetry.get("environmentMetrics")) and isinstance(
+                metrics, dict
+            ):
+                if (temp := metrics.get("temperature")) is not None:
+                    details["temp"] = f"{temp:.1f}°C"
+                if (humidity := metrics.get("relativeHumidity")) is not None:
+                    details["humidity"] = f"{humidity:.0f}%"
 
     signal_info = []
     rssi = packet.get("rxRssi")
