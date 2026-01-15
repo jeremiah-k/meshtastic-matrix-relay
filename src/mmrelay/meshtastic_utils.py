@@ -543,12 +543,14 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
             ):
                 client.localNode.getMetadata()
 
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(call_get_metadata)
-            try:
-                future.result(timeout=30.0)
-            except FuturesTimeoutError:
-                logger.debug("getMetadata() timed out after 30 seconds")
+        executor = ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(call_get_metadata)
+        try:
+            future.result(timeout=30.0)
+        except FuturesTimeoutError:
+            logger.debug("getMetadata() timed out after 30 seconds")
+        finally:
+            executor.shutdown(wait=False)
 
         console_output = output_capture.getvalue()
         output_capture.close()
@@ -1204,27 +1206,30 @@ def connect_meshtastic(
                                 # Use 90-second timeout (3x 30s connection timeout + overhead)
                                 # This provides multiple retry cycles while ensuring eventual failure
                                 # if connection truly cannot be established
-                                with ThreadPoolExecutor(max_workers=1) as executor:
-                                    future = executor.submit(
-                                        create_ble_interface, ble_kwargs
+                                executor = ThreadPoolExecutor(max_workers=1)
+                                future = executor.submit(
+                                    create_ble_interface, ble_kwargs
+                                )
+                                try:
+                                    meshtastic_iface = future.result(timeout=90.0)
+                                    logger.debug(
+                                        f"BLE interface created successfully for {ble_address}"
                                     )
-                                    try:
-                                        meshtastic_iface = future.result(timeout=90.0)
-                                        logger.debug(
-                                            f"BLE interface created successfully for {ble_address}"
-                                        )
-                                    except FuturesTimeoutError:
-                                        logger.error(
-                                            f"BLE interface creation timed out after 90 seconds for {ble_address}. "
-                                            "This may indicate a stale BlueZ connection or Bluetooth adapter issue."
-                                        )
-                                        meshtastic_iface = None
-                                        raise TimeoutError(
-                                            f"BLE connection attempt timed out for {ble_address}. "
-                                            "Try: 1) Restarting BlueZ: 'sudo systemctl restart bluetooth', "
-                                            f"2) Manually disconnecting device: 'bluetoothctl disconnect {ble_address}', "
-                                            "3) Rebooting your machine"
-                                        ) from None
+                                except FuturesTimeoutError:
+                                    logger.error(
+                                        f"BLE interface creation timed out after 90 seconds for {ble_address}. "
+                                        "This may indicate a stale BlueZ connection or Bluetooth adapter issue."
+                                    )
+                                    meshtastic_iface = None
+                                    executor.shutdown(wait=False)
+                                    raise TimeoutError(
+                                        f"BLE connection attempt timed out for {ble_address}. "
+                                        "Try: 1) Restarting BlueZ: 'sudo systemctl restart bluetooth', "
+                                        f"2) Manually disconnecting device: 'bluetoothctl disconnect {ble_address}', "
+                                        "3) Rebooting your machine"
+                                    ) from None
+                                finally:
+                                    executor.shutdown(wait=False)
                             except Exception:
                                 # BLEInterface constructor failed - this is a critical error
                                 logger.exception("BLE interface creation failed")
@@ -1255,26 +1260,27 @@ def connect_meshtastic(
                             """
                             iface_param.connect()
 
-                        with ThreadPoolExecutor(max_workers=1) as executor:
-                            connect_future = executor.submit(connect_iface, iface)
-                            try:
-                                connect_future.result(timeout=30.0)
-                                logger.info(
-                                    f"BLE connection established to {ble_address}"
-                                )
-                            except FuturesTimeoutError as err:
-                                logger.error(
-                                    f"BLE connect() call timed out after 30 seconds for {ble_address}. "
-                                    "This may indicate a BlueZ or adapter issue."
-                                )
-                                # Don't use iface if connect() timed out - it may be in an inconsistent state
-                                iface = None
-                                meshtastic_iface = None
-                                raise TimeoutError(
-                                    f"BLE connect() timed out for {ble_address}. "
-                                    "BlueZ may be in a bad state. Try: "
-                                    f"'sudo systemctl restart bluetooth' or 'bluetoothctl disconnect {ble_address}'"
-                                ) from err
+                        executor = ThreadPoolExecutor(max_workers=1)
+                        connect_future = executor.submit(connect_iface, iface)
+                        try:
+                            connect_future.result(timeout=30.0)
+                            logger.info(f"BLE connection established to {ble_address}")
+                        except FuturesTimeoutError as err:
+                            logger.error(
+                                f"BLE connect() call timed out after 30 seconds for {ble_address}. "
+                                "This may indicate a BlueZ or adapter issue."
+                            )
+                            # Don't use iface if connect() timed out - it may be in an inconsistent state
+                            iface = None
+                            meshtastic_iface = None
+                            executor.shutdown(wait=False)
+                            raise TimeoutError(
+                                f"BLE connect() timed out for {ble_address}. "
+                                "BlueZ may be in a bad state. Try: "
+                                f"'sudo systemctl restart bluetooth' or 'bluetoothctl disconnect {ble_address}'"
+                            ) from err
+                        finally:
+                            executor.shutdown(wait=False)
 
                     client = iface
                 else:
