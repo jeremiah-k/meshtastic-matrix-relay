@@ -16,10 +16,10 @@ import meshtastic  # type: ignore[import-untyped]
 import meshtastic.ble_interface  # type: ignore[import-untyped]
 import meshtastic.serial_interface  # type: ignore[import-untyped]
 import meshtastic.tcp_interface  # type: ignore[import-untyped]
-import serial  # For serial port exceptions
-import serial.tools.list_ports  # Import serial tools for port listing
+import serial  # type: ignore[import-untyped]  # For serial port exceptions
+import serial.tools.list_ports  # type: ignore[import-untyped]  # Import serial tools for port listing
 from meshtastic.protobuf import mesh_pb2, portnums_pb2  # type: ignore[import-untyped]
-from pubsub import pub
+from pubsub import pub  # type: ignore[import-untyped]
 
 from mmrelay.config import get_meshtastic_config_value
 from mmrelay.constants.config import (
@@ -74,7 +74,7 @@ MAX_TIMEOUT_RETRIES_INFINITE = 5
 
 # Import BLE exceptions conditionally
 try:
-    from bleak.exc import BleakDBusError, BleakError  # type: ignore[misc,assignment]
+    from bleak.exc import BleakDBusError, BleakError
 except ImportError:
     BleakDBusError = Exception  # type: ignore[misc,assignment]
     BleakError = Exception  # type: ignore[misc,assignment]
@@ -952,7 +952,7 @@ def _get_portnum_name(portnum: Any) -> str:
 
     if isinstance(portnum, int):
         try:
-            return portnums_pb2.PortNum.Name(portnum)  # type: ignore[arg-type]
+            return portnums_pb2.PortNum.Name(portnum)  # type: ignore[no-any-return]
         except ValueError:
             return f"UNKNOWN (portnum={portnum})"
 
