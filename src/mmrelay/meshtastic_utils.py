@@ -753,15 +753,14 @@ def _disconnect_ble_by_address(address: str) -> None:
 
         try:
             loop = asyncio.get_running_loop()
-            if loop:
-                logger.debug(
-                    f"Found existing event loop, waiting for disconnect task for {address}"
-                )
-                # Run disconnect in loop and wait for it to complete
-                asyncio.run_coroutine_threadsafe(
-                    disconnect_stale_connection(), loop
-                ).result(timeout=10.0)
-                logger.debug(f"Stale connection disconnect completed for {address}")
+            logger.debug(
+                f"Found existing event loop, waiting for disconnect task for {address}"
+            )
+            # Run disconnect in loop and wait for it to complete
+            asyncio.run_coroutine_threadsafe(
+                disconnect_stale_connection(), loop
+            ).result(timeout=10.0)
+            logger.debug(f"Stale connection disconnect completed for {address}")
         except RuntimeError as e:
             # get_running_loop raises RuntimeError when no loop is running
             # Create a new event loop in this case
@@ -919,7 +918,7 @@ def _get_packet_details(
     return details
 
 
-def _get_portnum_name(portnum: Any) -> str | None:
+def _get_portnum_name(portnum: Any) -> str:
     """
     Return a human-readable name for a Meshtastic port identifier.
 
@@ -945,7 +944,7 @@ def _get_portnum_name(portnum: Any) -> str | None:
 
     if isinstance(portnum, int):
         try:
-            return cast(str | None, portnums_pb2.PortNum.Name(portnum))
+            return portnums_pb2.PortNum.Name(portnum)
         except ValueError:
             return f"UNKNOWN (portnum={portnum})"
 
@@ -1181,10 +1180,10 @@ def connect_meshtastic(
                                 # Use ThreadPoolExecutor to run with timeout, as BLEInterface.__init__
                                 # can potentially block indefinitely if BlueZ is in a bad state
                                 def create_ble_interface(
-                                    local_ble_kwargs: dict[str, Any],
+                                    kwargs: dict[str, Any],
                                 ) -> Any:
                                     return meshtastic.ble_interface.BLEInterface(
-                                        **local_ble_kwargs
+                                        **kwargs
                                     )
 
                                 # Use 90-second timeout (3x 30s connection timeout + overhead)
@@ -1200,7 +1199,7 @@ def connect_meshtastic(
                                             f"BLE interface created successfully for {ble_address}"
                                         )
                                     except FuturesTimeoutError:
-                                        logger.exception(
+                                        logger.error(
                                             f"BLE interface creation timed out after 90 seconds for {ble_address}. "
                                             "This may indicate a stale BlueZ connection or Bluetooth adapter issue."
                                         )
@@ -1242,7 +1241,7 @@ def connect_meshtastic(
                                     f"BLE connection established to {ble_address}"
                                 )
                             except FuturesTimeoutError as err:
-                                logger.exception(
+                                logger.error(
                                     f"BLE connect() call timed out after 30 seconds for {ble_address}. "
                                     "This may indicate a BlueZ or adapter issue."
                                 )
