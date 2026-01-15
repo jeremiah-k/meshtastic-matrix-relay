@@ -1420,6 +1420,9 @@ def connect_meshtastic(
                     wait_time,
                 )
                 time.sleep(wait_time)
+            else:
+                logger.exception("Connection failed after %s attempts", attempts)
+                return None
         except Exception as e:
             if shutting_down:
                 logger.debug("Shutdown in progress. Aborting connection attempts.")
