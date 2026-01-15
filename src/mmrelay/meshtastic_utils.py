@@ -533,12 +533,22 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
             return result
 
         # Capture getMetadata() output to extract firmware version
+        # Wrap in timeout to avoid indefinite hangs from meshtastic library
         output_capture = io.StringIO()
-        with (
-            contextlib.redirect_stdout(output_capture),
-            contextlib.redirect_stderr(output_capture),
-        ):
-            client.localNode.getMetadata()
+
+        def call_get_metadata() -> None:
+            with (
+                contextlib.redirect_stdout(output_capture),
+                contextlib.redirect_stderr(output_capture),
+            ):
+                client.localNode.getMetadata()
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(call_get_metadata)
+            try:
+                future.result(timeout=30.0)
+            except FuturesTimeoutError:
+                logger.debug("getMetadata() timed out after 30 seconds")
 
         console_output = output_capture.getvalue()
         output_capture.close()
@@ -664,11 +674,11 @@ def _validate_ble_connection_address(interface: Any, expected_address: str) -> b
 def _disconnect_ble_by_address(address: str) -> None:
     """
     Disconnect a potentially stale BlueZ BLE connection for the given address.
-    
+
     If a BleakClient is available, attempts a graceful disconnect with retries and timeouts.
     Operates correctly from an existing asyncio event loop or by creating a temporary loop
     when none is running. If Bleak is not installed, the function exits silently.
-    
+
     Parameters:
         address (str): BLE address of the device to disconnect (any common separator format).
     """
@@ -680,7 +690,7 @@ def _disconnect_ble_by_address(address: str) -> None:
         async def disconnect_stale_connection() -> None:
             """
             Disconnect a stale BlueZ BLE connection for the target address.
-            
+
             Attempts to determine whether the Bleak client for the given address is connected and, if so, disconnects it with bounded retry and timeout behavior. Ensures a best-effort final cleanup disconnect and short settle delays; logs warnings and errors when disconnect attempts time out or fail.
             """
             client = None
@@ -779,10 +789,10 @@ def _disconnect_ble_by_address(address: str) -> None:
 def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
     """
     Tear down a BLE interface and release its underlying Bluetooth resources.
-    
+
     Safely disconnects and closes the provided BLE interface (no-op if `None`), suppressing non-fatal errors
     and ensuring the Bluetooth adapter has time to release the connection.
-    
+
     Parameters:
         iface (Any): BLE interface instance to disconnect; may be `None`.
         reason (str): Short human-readable reason included in log messages.
@@ -921,12 +931,12 @@ def _get_packet_details(
 def _get_portnum_name(portnum: Any) -> str:
     """
     Get a human-readable name for a Meshtastic port identifier.
-    
+
     Accepts an integer enum value, a string name, or None. For a valid enum integer returns the enum name; for a non-empty string returns it unchanged; for None, an empty string, an unknown integer, or an unexpected type returns a descriptive "UNKNOWN (...)" string.
-    
+
     Parameters:
         portnum (Any): The port identifier to convert; may be an int enum value, a string name, or None.
-    
+
     Returns:
         str: The resolved port name or an `UNKNOWN (...)` description for invalid or missing inputs.
     """
@@ -1180,10 +1190,10 @@ def connect_meshtastic(
                                 ) -> Any:
                                     """
                                     Create a BLEInterface instance configured for Meshtastic BLE connections.
-                                    
+
                                     Parameters:
                                         kwargs (dict): Keyword arguments forwarded to the Meshtastic BLEInterface constructor (for example: address, adapter, auto_reconnect, timeout). Valid keys depend on the Meshtastic BLEInterface implementation.
-                                    
+
                                     Returns:
                                         BLEInterface: A newly constructed Meshtastic BLEInterface instance.
                                     """
@@ -1239,7 +1249,7 @@ def connect_meshtastic(
                         def connect_iface(iface_param: Any) -> None:
                             """
                             Invoke the object's connect() method to establish the underlying interface connection.
-                            
+
                             Parameters:
                                 iface_param (Any): An interface-like object that implements a no-argument `connect()` method.
                             """
