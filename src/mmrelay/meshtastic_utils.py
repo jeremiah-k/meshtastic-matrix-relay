@@ -668,6 +668,9 @@ def _disconnect_ble_by_address(address: str) -> None:
     This function handles the case where a device is still connected in BlueZ
     but there's no active meshtastic interface (state inconsistency).
 
+    This function works both from async contexts and from thread pools
+    by creating its own event loop when needed.
+
     Parameters:
         address: The BLE address of the device to disconnect.
 
@@ -677,30 +680,28 @@ def _disconnect_ble_by_address(address: str) -> None:
     logger.debug(f"Checking for stale BlueZ connection to {address}")
 
     try:
-        import asyncio
-
         from bleak import BleakClient
 
-        async def disconnect_stale_connection():
+        async def disconnect_stale_connection() -> None:
             client = None
             try:
                 client = BleakClient(address)
 
-                is_connected = None
+                connected_status = None
                 is_connected_method = getattr(client, "is_connected", None)
 
                 if is_connected_method and callable(is_connected_method):
-                    is_connected = await is_connected_method()
+                    connected_status = await is_connected_method()
                 elif isinstance(is_connected_method, bool):
-                    is_connected = is_connected_method
+                    connected_status = is_connected_method
                 else:
-                    is_connected = False
+                    connected_status = False
             except Exception as e:
                 logger.debug(f"Failed to check connection state for {address}: {e}")
                 return
 
             try:
-                if is_connected:
+                if connected_status:
                     logger.warning(
                         f"Device {address} is already connected in BlueZ. Disconnecting..."
                     )
@@ -762,12 +763,23 @@ def _disconnect_ble_by_address(address: str) -> None:
                 ).result(timeout=10.0)
                 logger.debug(f"Stale connection disconnect completed for {address}")
             else:
+                # No running loop, create a temporary one
                 logger.debug(f"No event loop found, creating new one for {address}")
                 asyncio.run(disconnect_stale_connection())
+                logger.debug(f"Stale connection disconnect completed for {address}")
         except RuntimeError as e:
-            logger.debug(
-                f"RuntimeError during stale connection cleanup for {address}: {e}"
-            )
+            # get_running_loop raises RuntimeError when no loop is running
+            # Create a new event loop in this case
+            if "no running event loop" in str(e):
+                logger.debug(
+                    f"No running event loop, creating temporary loop for {address}"
+                )
+                asyncio.run(disconnect_stale_connection())
+                logger.debug(f"Stale connection disconnect completed for {address}")
+            else:
+                logger.debug(
+                    f"RuntimeError during stale connection cleanup for {address}: {e}"
+                )
 
     except ImportError:
         logger.debug("BleakClient not available for stale connection cleanup")
@@ -776,12 +788,12 @@ def _disconnect_ble_by_address(address: str) -> None:
 def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
     """
     Disconnect a BLE interface and ensure the Bluetooth adapter releases associated resources.
-    
+
     Performs a safe teardown by waiting briefly before and after the disconnect, calling an available
     disconnect() method with retries, disconnecting an underlying client if present, and always
     calling close() to release resources. Logs and suppresses non-fatal errors but preserves overall
     shutdown flow.
-    
+
     Parameters:
         iface (Any): BLE interface instance to disconnect. May be None.
         reason (str): Human-readable reason for the disconnect, included in log messages.
@@ -864,16 +876,16 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
 
 
 def _get_packet_details(
-    decoded: dict | None, packet: dict, portnum_name: str
+    decoded: dict[str, Any] | None, packet: dict[str, Any], portnum_name: str | None
 ) -> dict[str, Any]:
     """
     Extract telemetry, signal, relay, and priority fields from a Meshtastic packet for logging.
-    
+
     Parameters:
         decoded: Decoded packet payload (may be None); used to extract telemetry fields when present.
         packet: Full packet dictionary; used to extract signal (RSSI/SNR), relay, and priority information.
         portnum_name: Port identifier name (e.g., "TELEMETRY_APP") that determines telemetry parsing.
-    
+
     Returns:
         dict: Mapping of short detail keys to formatted string values (e.g., 'batt': '85%', 'signal': 'RSSI:-70 SNR:7.5').
     """
@@ -917,19 +929,19 @@ def _get_packet_details(
     return details
 
 
-def _get_portnum_name(portnum: Any) -> str:
+def _get_portnum_name(portnum: Any) -> str | None:
     """
     Return a human-readable name for a Meshtastic port identifier.
-    
+
     Accepts an integer enum value, a string name from the protobuf, or None.
     - If given a valid enum integer, returns the corresponding enum name.
     - If given a non-empty string, returns it unchanged.
     - If the input is None, an empty string, an unknown integer, or an unexpected type,
       returns an `UNKNOWN (...)` descriptive string indicating the issue.
-    
+
     Parameters:
         portnum: The port identifier to convert; may be an int enum value, a string name, or None.
-    
+
     Returns:
         A string containing the port name or an `UNKNOWN (...)` description for invalid or missing inputs.
     """
@@ -943,7 +955,7 @@ def _get_portnum_name(portnum: Any) -> str:
 
     if isinstance(portnum, int):
         try:
-            return portnums_pb2.PortNum.Name(portnum)
+            return cast(str | None, portnums_pb2.PortNum.Name(portnum))
         except ValueError:
             return f"UNKNOWN (portnum={portnum})"
 
@@ -1175,12 +1187,43 @@ def connect_meshtastic(
                                 )
 
                             try:
-                                meshtastic_iface = (
-                                    meshtastic.ble_interface.BLEInterface(**ble_kwargs)
-                                )
-                                logger.debug(
-                                    f"BLE interface created successfully for {ble_address}"
-                                )
+                                # Create BLE interface with timeout protection to prevent indefinite hangs
+                                # Use ThreadPoolExecutor to run with timeout, as BLEInterface.__init__
+                                # can potentially block indefinitely if BlueZ is in a bad state
+                                import concurrent.futures
+
+                                def create_ble_interface(
+                                    local_ble_kwargs: dict[str, Any],
+                                ) -> Any:
+                                    return meshtastic.ble_interface.BLEInterface(
+                                        **local_ble_kwargs
+                                    )
+
+                                # Use 90-second timeout (3x 30s connection timeout + overhead)
+                                # This provides multiple retry cycles while ensuring eventual failure
+                                # if connection truly cannot be established
+                                with concurrent.futures.ThreadPoolExecutor(
+                                    max_workers=1
+                                ) as executor:
+                                    future = executor.submit(
+                                        create_ble_interface, ble_kwargs
+                                    )
+                                    try:
+                                        meshtastic_iface = future.result(timeout=90.0)
+                                        logger.debug(
+                                            f"BLE interface created successfully for {ble_address}"
+                                        )
+                                    except concurrent.futures.TimeoutError:
+                                        logger.error(
+                                            f"BLE interface creation timed out after 90 seconds for {ble_address}. "
+                                            "This may indicate a stale BlueZ connection or Bluetooth adapter issue."
+                                        )
+                                        raise TimeoutError(
+                                            f"BLE connection attempt timed out for {ble_address}. "
+                                            "Try: 1) Restarting BlueZ: 'sudo systemctl restart bluetooth', "
+                                            "2) Manually disconnecting device: 'bluetoothctl disconnect DD:DD:13:27:74:29', "
+                                            "3) Rebooting your machine"
+                                        ) from None
                             except Exception:
                                 # BLEInterface constructor failed - this is a critical error
                                 logger.exception("BLE interface creation failed")
@@ -1199,8 +1242,34 @@ def connect_meshtastic(
                         logger.info(
                             f"Initiating BLE connection to {ble_address} (sequential mode)"
                         )
-                        iface.connect()
-                        logger.info(f"BLE connection established to {ble_address}")
+                        # Add timeout protection for connect() call to prevent indefinite hangs
+                        # Use ThreadPoolExecutor with 30-second timeout (same as CONNECTION_TIMEOUT)
+                        import concurrent.futures
+
+                        def connect_iface(iface_param: Any) -> None:
+                            iface_param.connect()
+
+                        with concurrent.futures.ThreadPoolExecutor(
+                            max_workers=1
+                        ) as executor:
+                            connect_future = executor.submit(connect_iface, iface)
+                            try:
+                                connect_future.result(timeout=30.0)
+                                logger.info(
+                                    f"BLE connection established to {ble_address}"
+                                )
+                            except concurrent.futures.TimeoutError as err:
+                                logger.error(
+                                    f"BLE connect() call timed out after 30 seconds for {ble_address}. "
+                                    "This may indicate a BlueZ or adapter issue."
+                                )
+                                # Don't use iface if connect() timed out - it may be in an inconsistent state
+                                iface = None
+                                raise TimeoutError(
+                                    f"BLE connect() timed out for {ble_address}. "
+                                    "BlueZ may be in a bad state. Try: "
+                                    "'sudo systemctl restart bluetooth' or 'bluetoothctl disconnect {ble_address}'"
+                                ) from err
 
                     client = iface
                 else:
@@ -1351,9 +1420,6 @@ def connect_meshtastic(
                     wait_time,
                 )
                 time.sleep(wait_time)
-            else:
-                logger.exception("Connection failed after %s attempts", attempts)
-                return None
         except Exception as e:
             if shutting_down:
                 logger.debug("Shutdown in progress. Aborting connection attempts.")
@@ -1528,7 +1594,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         portnum = (
             decoded.get("portnum") if decoded and isinstance(decoded, dict) else None
         )
-        portnum_name = _get_portnum_name(portnum)
+        portnum_name = _get_portnum_name(portnum) or "UNKNOWN"
         details_map = {
             "from": packet.get("fromId") or packet.get("from"),
             "channel": packet.get("channel"),
