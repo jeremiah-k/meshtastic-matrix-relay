@@ -1476,16 +1476,13 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             decoded.get("portnum") if decoded and isinstance(decoded, dict) else None
         )
         portnum_name = _get_portnum_name(portnum)
-        sender = packet.get("fromId") or packet.get("from")
-        packet_id = packet.get("id")
-        channel = packet.get("channel")
+        details_map = {
+            "from": packet.get("fromId") or packet.get("from"),
+            "channel": packet.get("channel"),
+            "id": packet.get("id"),
+        }
         details = [f"type={portnum_name}"]
-        if sender is not None:
-            details.append(f"from={sender}")
-        if channel is not None:
-            details.append(f"channel={channel}")
-        if packet_id is not None:
-            details.append(f"id={packet_id}")
+        details.extend(f"{k}={v}" for k, v in details_map.items() if v is not None)
         logger.debug(f"Received non-text Meshtastic message: {', '.join(details)}")
 
     # Check if config is available

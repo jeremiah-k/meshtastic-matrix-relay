@@ -217,8 +217,10 @@ class TestMeshtasticUtils(unittest.TestCase):
             patch("mmrelay.plugin_loader.load_plugins") as mock_load_plugins,
             patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True),
             patch("mmrelay.matrix_utils.matrix_client", None),
+            patch("mmrelay.meshtastic_utils.portnums_pb2") as mock_portnums_pb2,
         ):
             mock_load_plugins.return_value = []
+            mock_portnums_pb2.PortNum.Name.return_value = "REMOTE_HARDWARE_APP"
             mock_interface = MagicMock()
 
             with self.assertLogs("Meshtastic", level="DEBUG") as cm:
@@ -227,10 +229,12 @@ class TestMeshtasticUtils(unittest.TestCase):
 
             # Verify _submit_coro was not called for non-text message
             mock_submit_coro.assert_not_called()
+            mock_portnums_pb2.PortNum.Name.assert_called_once_with(2)
 
             # Verify debug log was called with packet type information
             log_output = "\n".join(cm.output)
             self.assertIn("Received non-text Meshtastic message", log_output)
+            self.assertIn("type=REMOTE_HARDWARE_APP", log_output)
             self.assertIn("from=123456789", log_output)
             self.assertIn("channel=0", log_output)
             self.assertIn("id=12345", log_output)
@@ -643,6 +647,47 @@ class TestMeshtasticUtils(unittest.TestCase):
             # Meshtastic->Matrix messages are still relayed regardless of broadcast_enabled
             # (broadcast_enabled only affects Matrix->Meshtastic direction)
             mock_submit_coro.assert_called_once()
+
+
+class TestGetPortnumName(unittest.TestCase):
+    """Test cases for _get_portnum_name helper function."""
+
+    def test_get_portnum_name_with_none(self):
+        """Test with None input."""
+        result = _get_portnum_name(None)
+        self.assertEqual(result, "UNKNOWN (None)")
+
+    def test_get_portnum_name_with_empty_string(self):
+        """Test with an empty string."""
+        result = _get_portnum_name("")
+        self.assertEqual(result, "UNKNOWN (empty string)")
+
+    def test_get_portnum_name_with_string(self):
+        """Test with a valid string portnum name."""
+        result = _get_portnum_name("TEXT_MESSAGE_APP")
+        self.assertEqual(result, "TEXT_MESSAGE_APP")
+
+    def test_get_portnum_name_with_valid_int(self):
+        """Test with a valid integer portnum."""
+        with patch("mmrelay.meshtastic_utils.portnums_pb2") as mock_portnums_pb2:
+            mock_portnums_pb2.PortNum.Name.return_value = "TEXT_MESSAGE_APP"
+            result = _get_portnum_name(1)
+            self.assertEqual(result, "TEXT_MESSAGE_APP")
+            mock_portnums_pb2.PortNum.Name.assert_called_once_with(1)
+
+    def test_get_portnum_name_with_invalid_int(self):
+        """Test with an invalid integer portnum."""
+        with patch("mmrelay.meshtastic_utils.portnums_pb2") as mock_portnums_pb2:
+            mock_portnums_pb2.PortNum.Name.side_effect = ValueError
+            result = _get_portnum_name(999)
+            self.assertEqual(result, "UNKNOWN (portnum=999)")
+
+    def test_get_portnum_name_with_other_type(self):
+        """Test with unsupported types."""
+        result_float = _get_portnum_name(123.45)
+        self.assertEqual(result_float, "UNKNOWN (type=float)")
+        result_list = _get_portnum_name([])
+        self.assertEqual(result_list, "UNKNOWN (type=list)")
 
 
 class TestServiceDetection(unittest.TestCase):
@@ -1118,6 +1163,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             # Verify debug log was called with packet type information
             log_output = "\n".join(cm.output)
             self.assertIn("Received non-text Meshtastic message", log_output)
+            self.assertIn("type=TEXT_MESSAGE_APP", log_output)
             self.assertIn("from=123456789", log_output)
             self.assertIn("channel=0", log_output)
             self.assertIn("id=12345", log_output)
