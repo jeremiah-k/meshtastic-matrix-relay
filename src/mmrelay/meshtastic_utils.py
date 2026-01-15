@@ -1205,6 +1205,7 @@ def connect_meshtastic(
                                             f"BLE interface creation timed out after 90 seconds for {ble_address}. "
                                             "This may indicate a stale BlueZ connection or Bluetooth adapter issue."
                                         )
+                                        meshtastic_iface = None
                                         raise TimeoutError(
                                             f"BLE connection attempt timed out for {ble_address}. "
                                             "Try: 1) Restarting BlueZ: 'sudo systemctl restart bluetooth', "
@@ -1249,6 +1250,7 @@ def connect_meshtastic(
                                 )
                                 # Don't use iface if connect() timed out - it may be in an inconsistent state
                                 iface = None
+                                meshtastic_iface = None
                                 raise TimeoutError(
                                     f"BLE connect() timed out for {ble_address}. "
                                     "BlueZ may be in a bad state. Try: "
