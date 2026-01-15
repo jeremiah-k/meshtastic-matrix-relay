@@ -747,11 +747,11 @@ class TestGetPacketDetails(unittest.TestCase):
         self.assertEqual(result["signal"], "RSSI:-64 SNR:6.0")
 
     def test_get_packet_details_with_zero_signal(self):
-        """Test with zero signal values (should be ignored)."""
+        """Test with zero signal values (should still be logged)."""
         decoded = {}
         packet = {"from": 123, "rxRssi": 0, "rxSnr": 0.0}
         result = _get_packet_details(decoded, packet, "TELEMETRY_APP")
-        self.assertNotIn("signal", result)
+        self.assertEqual(result["signal"], "RSSI:0 SNR:0.0")
 
     def test_get_packet_details_with_relay_info(self):
         """Test with relay node information."""
