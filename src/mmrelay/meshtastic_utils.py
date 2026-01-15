@@ -663,19 +663,14 @@ def _validate_ble_connection_address(interface: Any, expected_address: str) -> b
 
 def _disconnect_ble_by_address(address: str) -> None:
     """
-    Disconnect a BLE device by its address if it's already connected in BlueZ.
-
-    This function handles the case where a device is still connected in BlueZ
-    but there's no active meshtastic interface (state inconsistency).
-
-    This function works both from async contexts and from thread pools
-    by creating its own event loop when needed.
-
+    Disconnect a potentially stale BlueZ BLE connection for the given address.
+    
+    If a BleakClient is available, attempts a graceful disconnect with retries and timeouts.
+    Operates correctly from an existing asyncio event loop or by creating a temporary loop
+    when none is running. If Bleak is not installed, the function exits silently.
+    
     Parameters:
-        address: The BLE address of the device to disconnect.
-
-    Returns:
-        None
+        address (str): BLE address of the device to disconnect (any common separator format).
     """
     logger.debug(f"Checking for stale BlueZ connection to {address}")
 
@@ -683,6 +678,11 @@ def _disconnect_ble_by_address(address: str) -> None:
         from bleak import BleakClient
 
         async def disconnect_stale_connection() -> None:
+            """
+            Disconnect a stale BlueZ BLE connection for the target address.
+            
+            Attempts to determine whether the Bleak client for the given address is connected and, if so, disconnects it with bounded retry and timeout behavior. Ensures a best-effort final cleanup disconnect and short settle delays; logs warnings and errors when disconnect attempts time out or fail.
+            """
             client = None
             try:
                 client = BleakClient(address)
@@ -778,16 +778,14 @@ def _disconnect_ble_by_address(address: str) -> None:
 
 def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
     """
-    Disconnect a BLE interface and ensure the Bluetooth adapter releases associated resources.
-
-    Performs a safe teardown by waiting briefly before and after the disconnect, calling an available
-    disconnect() method with retries, disconnecting an underlying client if present, and always
-    calling close() to release resources. Logs and suppresses non-fatal errors but preserves overall
-    shutdown flow.
-
+    Tear down a BLE interface and release its underlying Bluetooth resources.
+    
+    Safely disconnects and closes the provided BLE interface (no-op if `None`), suppressing non-fatal errors
+    and ensuring the Bluetooth adapter has time to release the connection.
+    
     Parameters:
-        iface (Any): BLE interface instance to disconnect. May be None.
-        reason (str): Human-readable reason for the disconnect, included in log messages.
+        iface (Any): BLE interface instance to disconnect; may be `None`.
+        reason (str): Short human-readable reason included in log messages.
     """
     if iface is None:
         return
@@ -922,19 +920,15 @@ def _get_packet_details(
 
 def _get_portnum_name(portnum: Any) -> str:
     """
-    Return a human-readable name for a Meshtastic port identifier.
-
-    Accepts an integer enum value, a string name from the protobuf, or None.
-    - If given a valid enum integer, returns the corresponding enum name.
-    - If given a non-empty string, returns it unchanged.
-    - If the input is None, an empty string, an unknown integer, or an unexpected type,
-      returns an `UNKNOWN (...)` descriptive string indicating the issue.
-
+    Get a human-readable name for a Meshtastic port identifier.
+    
+    Accepts an integer enum value, a string name, or None. For a valid enum integer returns the enum name; for a non-empty string returns it unchanged; for None, an empty string, an unknown integer, or an unexpected type returns a descriptive "UNKNOWN (...)" string.
+    
     Parameters:
-        portnum: The port identifier to convert; may be an int enum value, a string name, or None.
-
+        portnum (Any): The port identifier to convert; may be an int enum value, a string name, or None.
+    
     Returns:
-        A string containing the port name or an `UNKNOWN (...)` description for invalid or missing inputs.
+        str: The resolved port name or an `UNKNOWN (...)` description for invalid or missing inputs.
     """
     if portnum is None:
         return "UNKNOWN (None)"
@@ -1184,6 +1178,15 @@ def connect_meshtastic(
                                 def create_ble_interface(
                                     kwargs: dict[str, Any],
                                 ) -> Any:
+                                    """
+                                    Create a BLEInterface instance configured for Meshtastic BLE connections.
+                                    
+                                    Parameters:
+                                        kwargs (dict): Keyword arguments forwarded to the Meshtastic BLEInterface constructor (for example: address, adapter, auto_reconnect, timeout). Valid keys depend on the Meshtastic BLEInterface implementation.
+                                    
+                                    Returns:
+                                        BLEInterface: A newly constructed Meshtastic BLEInterface instance.
+                                    """
                                     return meshtastic.ble_interface.BLEInterface(
                                         **kwargs
                                     )
@@ -1234,6 +1237,12 @@ def connect_meshtastic(
                         # Add timeout protection for connect() call to prevent indefinite hangs
                         # Use ThreadPoolExecutor with 30-second timeout (same as CONNECTION_TIMEOUT)
                         def connect_iface(iface_param: Any) -> None:
+                            """
+                            Invoke the object's connect() method to establish the underlying interface connection.
+                            
+                            Parameters:
+                                iface_param (Any): An interface-like object that implements a no-argument `connect()` method.
+                            """
                             iface_param.connect()
 
                         with ThreadPoolExecutor(max_workers=1) as executor:
