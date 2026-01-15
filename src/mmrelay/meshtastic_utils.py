@@ -74,7 +74,7 @@ MAX_TIMEOUT_RETRIES_INFINITE = 5
 
 # Import BLE exceptions conditionally
 try:
-    from bleak.exc import BleakDBusError, BleakError
+    from bleak.exc import BleakDBusError, BleakError  # type: ignore[misc,assignment]
 except ImportError:
     BleakDBusError = Exception  # type: ignore[misc,assignment]
     BleakError = Exception  # type: ignore[misc,assignment]
@@ -691,7 +691,9 @@ def _disconnect_ble_by_address(address: str) -> None:
                 is_connected_method = getattr(client, "is_connected", None)
 
                 if is_connected_method and callable(is_connected_method):
-                    connected_status = await is_connected_method()
+                    connected_status = await cast(
+                        Callable[[], Awaitable[bool]], is_connected_method
+                    )()
                 elif isinstance(is_connected_method, bool):
                     connected_status = is_connected_method
                 else:
@@ -944,7 +946,7 @@ def _get_portnum_name(portnum: Any) -> str:
 
     if isinstance(portnum, int):
         try:
-            return portnums_pb2.PortNum.Name(portnum)
+            return portnums_pb2.PortNum.Name(portnum)  # type: ignore[arg-type]
         except ValueError:
             return f"UNKNOWN (portnum={portnum})"
 
