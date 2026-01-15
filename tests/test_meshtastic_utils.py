@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.meshtastic_utils import (
     _get_device_metadata,
+    _get_portnum_name,
     _resolve_plugin_timeout,
     check_connection,
     connect_meshtastic,
