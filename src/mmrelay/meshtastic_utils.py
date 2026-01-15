@@ -867,6 +867,36 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
         time.sleep(0.5)
 
 
+def _get_portnum_name(portnum: Any) -> str:
+    """
+    Convert a portnum value to a human-readable name.
+
+    Handles both numeric portnums and string portnum names from the protobuf enum.
+    If the portnum is unknown, returns a descriptive string.
+
+    Parameters:
+        portnum: Portnum value (int, str, or None)
+
+    Returns:
+        Human-readable portnum name
+    """
+    if portnum is None:
+        return "UNKNOWN (None)"
+
+    if isinstance(portnum, str):
+        if portnum:
+            return portnum
+        return "UNKNOWN (empty string)"
+
+    if isinstance(portnum, int):
+        try:
+            return portnums_pb2.PortNum.Name(portnum)
+        except ValueError:
+            return f"UNKNOWN (portnum={portnum})"
+
+    return f"UNKNOWN (type={type(portnum).__name__})"
+
+
 def serial_port_exists(port_name: str) -> bool:
     """
     Determine whether a serial port with the given device name exists on the system.
@@ -1442,7 +1472,21 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     if decoded and isinstance(decoded, dict) and decoded.get("text"):
         logger.info(f"Received Meshtastic message: {decoded.get('text')}")
     else:
-        logger.debug("Received non-text Meshtastic message")
+        portnum = (
+            decoded.get("portnum") if decoded and isinstance(decoded, dict) else None
+        )
+        portnum_name = _get_portnum_name(portnum)
+        sender = packet.get("fromId") or packet.get("from")
+        packet_id = packet.get("id")
+        channel = packet.get("channel")
+        details = [f"type={portnum_name}"]
+        if sender is not None:
+            details.append(f"from={sender}")
+        if channel is not None:
+            details.append(f"channel={channel}")
+        if packet_id is not None:
+            details.append(f"id={packet_id}")
+        logger.debug(f"Received non-text Meshtastic message: {', '.join(details)}")
 
     # Check if config is available
     if config is None:

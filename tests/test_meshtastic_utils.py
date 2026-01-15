@@ -204,7 +204,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         """
         # Modify packet to have no text
         packet_no_text = self.mock_packet.copy()
-        packet_no_text["decoded"] = {"portnum": 2}  # Not TEXT_MESSAGE_APP
+        packet_no_text["decoded"] = {"portnum": 2}  # REMOTE_HARDWARE_APP
 
         with (
             patch("mmrelay.meshtastic_utils.config", self.mock_config),
@@ -220,11 +220,18 @@ class TestMeshtasticUtils(unittest.TestCase):
             mock_load_plugins.return_value = []
             mock_interface = MagicMock()
 
-            # Call the function
-            on_meshtastic_message(packet_no_text, mock_interface)
+            with self.assertLogs("mmrelay", level="DEBUG") as cm:
+                # Call the function
+                on_meshtastic_message(packet_no_text, mock_interface)
 
             # Verify _submit_coro was not called for non-text message
             mock_submit_coro.assert_not_called()
+
+            # Verify debug log was called with packet type information
+            self.assertIn(
+                "Received non-text Meshtastic message: type=REMOTE_HARDWARE_APP, from=123456789, channel=0, id=12345",
+                cm.output,
+            )
 
     def test_on_meshtastic_message_missing_myinfo(self):
         """
@@ -1037,6 +1044,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
             patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True),
             patch("mmrelay.matrix_utils.matrix_client", None),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
         ):
             mock_submit_coro.side_effect = _done_future
             mock_interface = MagicMock()
@@ -1045,6 +1053,11 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
 
             # Should not process message without decoded field
             mock_submit_coro.assert_not_called()
+
+            # Verify debug log was called with packet type information (portnum None)
+            mock_logger.debug.assert_any_call(
+                "Received non-text Meshtastic message: type=UNKNOWN (None), from=123456789, channel=0, id=12345"
+            )
 
     def test_on_meshtastic_message_empty_text(self):
         """
@@ -1087,6 +1100,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
                 self.mock_config["matrix_rooms"],
             ),
             patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
         ):
             mock_submit_coro.side_effect = _done_future
             mock_interface = MagicMock()
@@ -1095,6 +1109,11 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
 
             # Should not process empty text messages
             mock_submit_coro.assert_not_called()
+
+            # Verify debug log was called with packet type information
+            mock_logger.debug.assert_any_call(
+                "Received non-text Meshtastic message: type=TEXT_MESSAGE_APP, from=123456789, channel=0, id=12345"
+            )
 
 
 # Meshtastic connection retry tests - converted from unittest.TestCase to standalone pytest functions
