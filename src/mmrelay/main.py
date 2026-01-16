@@ -192,7 +192,10 @@ async def main(config: dict[str, Any]) -> None:
 
     # Handle signals differently based on the platform
     if sys.platform != WINDOWS_PLATFORM:
-        for sig in (signal.SIGINT, signal.SIGTERM):
+        signals = [signal.SIGINT, signal.SIGTERM]
+        if hasattr(signal, "SIGHUP"):
+            signals.append(signal.SIGHUP)
+        for sig in signals:
             loop.add_signal_handler(sig, signal_handler)
     else:
         # On Windows, we can't use add_signal_handler, so we'll handle KeyboardInterrupt
@@ -301,7 +304,18 @@ async def main(config: dict[str, Any]) -> None:
                     Waits for close to complete before returning.
                     """
                     if meshtastic_utils.meshtastic_client:
-                        meshtastic_utils.meshtastic_client.close()
+                        if (
+                            meshtastic_utils.meshtastic_client
+                            is meshtastic_utils.meshtastic_iface
+                        ):
+                            meshtastic_utils._disconnect_ble_interface(
+                                meshtastic_utils.meshtastic_iface,
+                                reason="shutdown",
+                            )
+                            meshtastic_utils.meshtastic_iface = None
+                        else:
+                            meshtastic_utils.meshtastic_client.close()
+                        meshtastic_utils.meshtastic_client = None
 
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
                     future = executor.submit(_close_meshtastic)

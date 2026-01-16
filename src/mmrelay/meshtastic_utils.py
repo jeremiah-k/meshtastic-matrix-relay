@@ -1013,11 +1013,13 @@ def connect_meshtastic(
         # Close previous connection if exists
         if meshtastic_client:
             try:
-                meshtastic_client.close()
+                if meshtastic_client is meshtastic_iface:
+                    _disconnect_ble_interface(meshtastic_iface, reason="reconnect")
+                    meshtastic_iface = None
+                else:
+                    meshtastic_client.close()
             except Exception as e:
                 logger.warning(f"Error closing previous connection: {e}")
-            if meshtastic_client is meshtastic_iface:
-                meshtastic_iface = None
             meshtastic_client = None
 
         # Check if config is available
