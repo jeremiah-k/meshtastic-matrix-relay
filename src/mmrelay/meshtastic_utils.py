@@ -770,11 +770,19 @@ def _disconnect_ble_by_address(address: str) -> None:
             logger.debug(
                 f"Found existing event loop, waiting for disconnect task for {address}"
             )
-            # Run disconnect in loop and wait for it to complete
-            asyncio.run_coroutine_threadsafe(
+            future = asyncio.run_coroutine_threadsafe(
                 disconnect_stale_connection(), loop
-            ).result(timeout=10.0)
-            logger.debug(f"Stale connection disconnect completed for {address}")
+            )
+            try:
+                future.result(timeout=10.0)
+                logger.debug(f"Stale connection disconnect completed for {address}")
+            except FuturesTimeoutError:
+                logger.warning(
+                    f"Stale connection disconnect timed out after 10s for {address}"
+                )
+                if not future.done():
+                    future.cancel()
+                asyncio.run(disconnect_stale_connection())
         except RuntimeError as e:
             # get_running_loop raises RuntimeError when no loop is running
             # Create a new event loop in this case
@@ -877,7 +885,7 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
 
 
 def _get_packet_details(
-    decoded: dict[str, Any] | None, packet: dict[str, Any], portnum_name: str | None
+    decoded: dict[str, Any] | None, packet: dict[str, Any], portnum_name: str
 ) -> dict[str, Any]:
     """
     Extract telemetry, signal, relay, and priority fields from a Meshtastic packet for logging.
