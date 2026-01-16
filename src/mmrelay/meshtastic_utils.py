@@ -535,11 +535,15 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
         # Capture getMetadata() output to extract firmware version
         # Wrap in timeout to avoid indefinite hangs from meshtastic library
         output_capture = io.StringIO()
+        # Track redirect state so a timeout cannot leave sys.stdout/sys.stderr
+        # pointing at a closed StringIO (which triggers "lost sys.stderr" errors).
         redirect_active = threading.Event()
         orig_stdout = sys.stdout
         orig_stderr = sys.stderr
 
         def call_get_metadata() -> None:
+            # Capture stdout only; stderr is left intact to avoid losing
+            # critical error output if the worker outlives the timeout.
             with contextlib.redirect_stdout(output_capture):
                 redirect_active.set()
                 try:
@@ -556,6 +560,8 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
         except FuturesTimeoutError:
             timed_out = True
             logger.debug("getMetadata() timed out after 30 seconds")
+            # If the worker is still running, restore stdio immediately so the
+            # main process does not keep writing to the captured buffer.
             if redirect_active.is_set():
                 if sys.stdout is output_capture:
                     sys.stdout = orig_stdout
@@ -567,8 +573,12 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
             executor.shutdown(wait=False)
 
         console_output = output_capture.getvalue()
+        # Only close the buffer when the redirect is no longer active; otherwise
+        # writes from the worker will raise ValueError("I/O operation on closed file").
         if not timed_out or future.done():
             output_capture.close()
+        # Re-raise any worker exception so the outer handler can log and
+        # return default metadata without hiding failures.
         if future_error is not None:
             raise future_error
 
@@ -590,6 +600,8 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
                 result["success"] = True
 
     except Exception as e:
+        # Metadata is optional; never block the main connection path on failures
+        # in the admin request or parsing logic.
         logger.debug(
             "Could not retrieve device metadata via localNode.getMetadata()", exc_info=e
         )
@@ -719,6 +731,9 @@ def _disconnect_ble_by_address(address: str) -> None:
                 connected_status = None
                 is_connected_method = getattr(client, "is_connected", None)
 
+                # Bleak exposes either an is_connected() method or a bool attribute,
+                # depending on version/backend; treat unknown shapes as disconnected
+                # to keep this cleanup best-effort and non-blocking.
                 if is_connected_method and callable(is_connected_method):
                     connected_status = await cast(
                         Callable[[], Awaitable[bool]], is_connected_method
@@ -770,10 +785,14 @@ def _disconnect_ble_by_address(address: str) -> None:
                 else:
                     logger.debug(f"Device {address} not currently connected in BlueZ")
             except Exception as e:
+                # Stale disconnects are best-effort; do not fail startup/reconnect
+                # on cleanup errors from BlueZ/DBus.
                 logger.debug(f"Error disconnecting stale connection to {address}: {e}")
             finally:
                 try:
                     if client:
+                        # Always attempt a short final disconnect to release the
+                        # adapter even when we think it's already disconnected.
                         await asyncio.wait_for(client.disconnect(), timeout=2.0)
                         await asyncio.sleep(0.5)
                 except asyncio.TimeoutError:
@@ -798,6 +817,8 @@ def _disconnect_ble_by_address(address: str) -> None:
                     f"Stale connection disconnect timed out after 10s for {address}"
                 )
                 if not future.done():
+                    # Cancel the cleanup task so we do not block a new connect
+                    # attempt on a hung DBus/Bleak operation.
                     future.cancel()
         except RuntimeError as e:
             # get_running_loop raises RuntimeError when no loop is running
@@ -809,6 +830,8 @@ def _disconnect_ble_by_address(address: str) -> None:
             logger.debug(f"Stale connection disconnect completed for {address}")
 
     except ImportError:
+        # Bleak is optional in some deployments; skip stale cleanup rather than
+        # breaking startup when BLE support isn't installed.
         logger.debug("BleakClient not available for stale connection cleanup")
 
 
@@ -1038,6 +1061,9 @@ def connect_meshtastic(
         if meshtastic_client:
             try:
                 if meshtastic_client is meshtastic_iface:
+                    # BLE needs an explicit disconnect to release BlueZ state; a
+                    # plain close() can leave the adapter "busy" for the next
+                    # connect attempt.
                     _disconnect_ble_interface(meshtastic_iface, reason="reconnect")
                     meshtastic_iface = None
                 else:
@@ -1242,16 +1268,25 @@ def connect_meshtastic(
                                         f"BLE interface created successfully for {ble_address}"
                                     )
                                 except FuturesTimeoutError:
+                                    # Use logger.exception so we retain the timeout context (TRY400),
+                                    # but keep the raised exception concise (TRY003) and emit guidance
+                                    # as separate log lines for operators.
+                                    logger.exception(
+                                        "BLE interface creation timed out after 90 seconds for %s.",
+                                        ble_address,
+                                    )
                                     logger.error(
-                                        f"BLE interface creation timed out after 90 seconds for {ble_address}. "
                                         "This may indicate a stale BlueZ connection or Bluetooth adapter issue."
+                                    )
+                                    logger.error(
+                                        "Try: 1) Restarting BlueZ: 'sudo systemctl restart bluetooth', "
+                                        "2) Manually disconnecting device: 'bluetoothctl disconnect %s', "
+                                        "3) Rebooting your machine",
+                                        ble_address,
                                     )
                                     meshtastic_iface = None
                                     raise TimeoutError(
-                                        f"BLE connection attempt timed out for {ble_address}. "
-                                        "Try: 1) Restarting BlueZ: 'sudo systemctl restart bluetooth', "
-                                        f"2) Manually disconnecting device: 'bluetoothctl disconnect {ble_address}', "
-                                        "3) Rebooting your machine"
+                                        f"BLE connection attempt timed out for {ble_address}."
                                     ) from None
                                 finally:
                                     executor.shutdown(wait=False)
@@ -1291,17 +1326,24 @@ def connect_meshtastic(
                             connect_future.result(timeout=30.0)
                             logger.info(f"BLE connection established to {ble_address}")
                         except FuturesTimeoutError as err:
+                            # Use logger.exception so timeouts include stack context (TRY400),
+                            # but raise a short error and keep operator guidance in logs (TRY003).
+                            logger.exception(
+                                "BLE connect() call timed out after 30 seconds for %s.",
+                                ble_address,
+                            )
+                            logger.error("This may indicate a BlueZ or adapter issue.")
                             logger.error(
-                                f"BLE connect() call timed out after 30 seconds for {ble_address}. "
-                                "This may indicate a BlueZ or adapter issue."
+                                "BlueZ may be in a bad state. Try: "
+                                "'sudo systemctl restart bluetooth' or "
+                                "'bluetoothctl disconnect %s'",
+                                ble_address,
                             )
                             # Don't use iface if connect() timed out - it may be in an inconsistent state
                             iface = None
                             meshtastic_iface = None
                             raise TimeoutError(
-                                f"BLE connect() timed out for {ble_address}. "
-                                "BlueZ may be in a bad state. Try: "
-                                f"'sudo systemctl restart bluetooth' or 'bluetoothctl disconnect {ble_address}'"
+                                f"BLE connect() timed out for {ble_address}."
                             ) from err
                         finally:
                             executor.shutdown(wait=False)

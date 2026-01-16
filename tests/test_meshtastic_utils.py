@@ -2299,7 +2299,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
     @patch("mmrelay.meshtastic_utils.logger")
     @patch("bleak.BleakClient")
     def test_disconnect_ble_by_address_is_connected_bool_true(
-        self, mock_bleak, mock_logger
+        self, mock_bleak, _mock_logger
     ):
         """Test _disconnect_ble_by_address when is_connected is a bool (True)."""
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
@@ -2317,7 +2317,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
     @patch("mmrelay.meshtastic_utils.logger")
     @patch("bleak.BleakClient")
     def test_disconnect_ble_by_address_is_connected_bool_false(
-        self, mock_bleak, mock_logger
+        self, mock_bleak, _mock_logger
     ):
         """Test _disconnect_ble_by_address when is_connected is a bool (False)."""
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
@@ -2384,7 +2384,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
     @patch("mmrelay.meshtastic_utils.logger")
     @patch("mmrelay.meshtastic_utils.time")
     def test_connect_meshtastic_ble_interface_creation_timeout(
-        self, mock_time, mock_logger
+        self, _mock_time, mock_logger
     ):
         """Test connect_meshtastic handles BLEInterface creation timeout."""
         from concurrent.futures import TimeoutError as FuturesTimeoutError
@@ -2421,13 +2421,13 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             # Verify timeout error was logged 6 times (once per attempt)
             error_calls = [
                 call
-                for call in mock_logger.error.call_args_list
+                for call in mock_logger.exception.call_args_list
                 if "timed out after 90 seconds" in str(call)
             ]
             self.assertEqual(len(error_calls), 6)
 
             # Verify that last error call contains BLE address
-            last_error_call = error_calls[-1][0][0]
+            last_error_call = str(error_calls[-1])
             self.assertIn("AA:BB:CC:DD:EE:FF", last_error_call)
 
             # Verify final abort was logged after max retries (using logger.exception)
@@ -2449,7 +2449,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
     @patch("mmrelay.meshtastic_utils.logger")
     @patch("mmrelay.meshtastic_utils.time")
-    def test_connect_meshtastic_ble_connect_timeout(self, mock_time, mock_logger):
+    def test_connect_meshtastic_ble_connect_timeout(self, _mock_time, mock_logger):
         """Test connect_meshtastic handles BLE connect() timeout."""
         from concurrent.futures import TimeoutError as FuturesTimeoutError
 
@@ -2481,7 +2481,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         # Track which submit call we're handling
         call_count = [0]
 
-        def submit_side_effect(func, *args, **kwargs):
+        def submit_side_effect(_func, *_args, **_kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
                 # First call: interface creation
@@ -2505,7 +2505,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             # Verify connect() timeout error was logged on first attempt
             connect_timeout_calls = [
                 call
-                for call in mock_logger.error.call_args_list
+                for call in mock_logger.exception.call_args_list
                 if "connect() call timed out after 30 seconds" in str(call)
             ]
             self.assertEqual(len(connect_timeout_calls), 1)
@@ -2514,7 +2514,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             # (because meshtastic_iface is set to None after connect timeout)
             interface_timeout_calls = [
                 call
-                for call in mock_logger.error.call_args_list
+                for call in mock_logger.exception.call_args_list
                 if "timed out after 90 seconds" in str(call)
             ]
             self.assertEqual(len(interface_timeout_calls), 5)

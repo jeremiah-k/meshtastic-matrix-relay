@@ -193,6 +193,7 @@ async def main(config: dict[str, Any]) -> None:
     # Handle signals differently based on the platform
     if sys.platform != WINDOWS_PLATFORM:
         signals = [signal.SIGINT, signal.SIGTERM]
+        # Handle terminal hangups (e.g., SSH session closes) when supported.
         if hasattr(signal, "SIGHUP"):
             signals.append(signal.SIGHUP)
         for sig in signals:
@@ -308,6 +309,8 @@ async def main(config: dict[str, Any]) -> None:
                             meshtastic_utils.meshtastic_client
                             is meshtastic_utils.meshtastic_iface
                         ):
+                            # BLE shutdown needs an explicit disconnect to release
+                            # the adapter; a plain close() can leave BlueZ stuck.
                             meshtastic_utils._disconnect_ble_interface(
                                 meshtastic_utils.meshtastic_iface,
                                 reason="shutdown",
@@ -317,18 +320,32 @@ async def main(config: dict[str, Any]) -> None:
                             meshtastic_utils.meshtastic_client.close()
                         meshtastic_utils.meshtastic_client = None
 
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(_close_meshtastic)
+                # Avoid the context manager here: __exit__ would wait for the
+                # worker thread and could block forever if BLE shutdown hangs,
+                # negating the timeout protection.
+                executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+                future = executor.submit(_close_meshtastic)
+                try:
+                    future.result(timeout=10.0)  # 10-second timeout
+                except concurrent.futures.TimeoutError:
+                    meshtastic_logger.warning(
+                        "Meshtastic client close timed out - may cause notification errors"
+                    )
+                    # Best-effort cancellation; the underlying close may be
+                    # stuck in BLE/DBus, but we cannot block shutdown.
+                    future.cancel()
+                except Exception as e:
+                    meshtastic_logger.error(
+                        f"Unexpected error during Meshtastic client close: {e}"
+                    )
+                finally:
                     try:
-                        future.result(timeout=10.0)  # 10-second timeout
-                    except concurrent.futures.TimeoutError:
-                        meshtastic_logger.warning(
-                            "Meshtastic client close timed out - may cause notification errors"
-                        )
-                    except Exception as e:
-                        meshtastic_logger.error(
-                            f"Unexpected error during Meshtastic client close: {e}"
-                        )
+                        # Do not wait for shutdown; if close hangs we still
+                        # want the process to exit promptly.
+                        executor.shutdown(wait=False, cancel_futures=True)
+                    except TypeError:
+                        # cancel_futures is unsupported on older Python versions.
+                        executor.shutdown(wait=False)
 
                 meshtastic_logger.info("Meshtastic client closed successfully")
             except concurrent.futures.TimeoutError:
