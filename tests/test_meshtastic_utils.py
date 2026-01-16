@@ -2349,6 +2349,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         mu._metadata_future = None
         output_capture = Mock()
         output_capture.getvalue.return_value = "firmware_version: 2.3.15"
+        output_capture.closed = False
 
         timeout_future = Mock()
         timeout_future.result.side_effect = FuturesTimeoutError()
@@ -2376,9 +2377,12 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         """Test _disconnect_ble_by_address when is_connected is a bool (True)."""
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
 
+        async def _noop(*_args, **_kwargs):
+            return None
+
         mock_client = Mock()
         mock_client.is_connected = True  # bool, not callable
-        mock_client.disconnect = Mock()
+        mock_client.disconnect = Mock(return_value=_noop())
         mock_bleak.return_value = mock_client
 
         _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
@@ -2394,9 +2398,12 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         """Test _disconnect_ble_by_address when is_connected is a bool (False)."""
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
 
+        async def _noop(*_args, **_kwargs):
+            return None
+
         mock_client = Mock()
         mock_client.is_connected = False  # bool, not callable
-        mock_client.disconnect = Mock()
+        mock_client.disconnect = Mock(return_value=_noop())
         mock_bleak.return_value = mock_client
 
         _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
@@ -2479,7 +2486,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         mock_client = Mock()
         mock_client.is_connected = True
-        mock_client.disconnect = Mock(return_value=None)
+        mock_client.disconnect = Mock(return_value=_noop())
         mock_bleak.return_value = mock_client
 
         _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
@@ -2538,12 +2545,15 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         """Test _disconnect_ble_by_address logs when cleanup disconnect times out."""
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
 
+        async def _noop(*_args, **_kwargs):
+            return None
+
         mock_get_running_loop.side_effect = RuntimeError("no loop")
         mock_wait_for.side_effect = asyncio.TimeoutError()
 
         mock_client = Mock()
         mock_client.is_connected = False
-        mock_client.disconnect = Mock(return_value=None)
+        mock_client.disconnect = Mock(return_value=_noop())
         mock_bleak.return_value = mock_client
 
         _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")

@@ -770,10 +770,32 @@ def _disconnect_ble_by_address(address: str) -> None:
                 # Bleak exposes either an is_connected() method or a bool attribute,
                 # depending on version/backend; treat unknown shapes as disconnected
                 # to keep this cleanup best-effort and non-blocking.
+                # Bleak backends differ: is_connected may be sync (bool) or async.
+                # Handle both to keep this cleanup path resilient to mocks and
+                # backend-specific behavior.
                 if is_connected_method and callable(is_connected_method):
-                    connected_status = await cast(
-                        Callable[[], Awaitable[bool]], is_connected_method
-                    )()
+                    try:
+                        connected_result = is_connected_method()
+                    except (
+                        BleakClientError,
+                        BleakClientDBusError,
+                        OSError,
+                        RuntimeError,
+                        ValueError,
+                        TypeError,
+                    ) as e:
+                        logger.debug(
+                            "Failed to call is_connected for %s: %s", address, e
+                        )
+                        return
+                    if inspect.isawaitable(connected_result):
+                        connected_status = await cast(Awaitable[bool], connected_result)
+                    elif isinstance(connected_result, bool):
+                        connected_status = connected_result
+                    else:
+                        # Unexpected return type; treat as disconnected so cleanup
+                        # remains non-blocking in test/mocked environments.
+                        connected_status = False
                 elif isinstance(is_connected_method, bool):
                     connected_status = is_connected_method
                 else:
@@ -784,6 +806,7 @@ def _disconnect_ble_by_address(address: str) -> None:
                 OSError,
                 RuntimeError,
                 ValueError,
+                TypeError,
             ) as e:
                 # Bleak backends raise a mix of DBus/IO errors; treat them as
                 # non-fatal because stale disconnects are best-effort cleanup.
@@ -799,7 +822,11 @@ def _disconnect_ble_by_address(address: str) -> None:
                     max_retries = 3
                     for attempt in range(max_retries):
                         try:
-                            await asyncio.wait_for(client.disconnect(), timeout=3.0)
+                            # Some backends or test doubles return a sync result
+                            # from disconnect(); only await when needed.
+                            disconnect_result = client.disconnect()
+                            if inspect.isawaitable(disconnect_result):
+                                await asyncio.wait_for(disconnect_result, timeout=3.0)
                             await asyncio.sleep(2.0)
                             logger.debug(
                                 f"Successfully disconnected stale connection to {address} on attempt {attempt + 1}, "
@@ -822,6 +849,7 @@ def _disconnect_ble_by_address(address: str) -> None:
                             OSError,
                             RuntimeError,
                             ValueError,
+                            TypeError,
                         ) as e:
                             # Bleak disconnects can throw DBus/IO errors depending
                             # on adapter state; retry a few times then give up.
@@ -842,6 +870,7 @@ def _disconnect_ble_by_address(address: str) -> None:
                 OSError,
                 RuntimeError,
                 ValueError,
+                TypeError,
             ) as e:
                 # Stale disconnects are best-effort; do not fail startup/reconnect
                 # on cleanup errors from BlueZ/DBus.
@@ -851,7 +880,11 @@ def _disconnect_ble_by_address(address: str) -> None:
                     if client:
                         # Always attempt a short final disconnect to release the
                         # adapter even when we think it's already disconnected.
-                        await asyncio.wait_for(client.disconnect(), timeout=2.0)
+                        # Some backends or test doubles return a sync result
+                        # from disconnect(); only await when needed.
+                        disconnect_result = client.disconnect()
+                        if inspect.isawaitable(disconnect_result):
+                            await asyncio.wait_for(disconnect_result, timeout=2.0)
                         await asyncio.sleep(0.5)
                 except asyncio.TimeoutError:
                     logger.debug(f"Final disconnect for {address} timed out (cleanup)")
@@ -861,6 +894,7 @@ def _disconnect_ble_by_address(address: str) -> None:
                     OSError,
                     RuntimeError,
                     ValueError,
+                    TypeError,
                 ) as e:
                     # Ignore disconnect errors during cleanup - connection may already be closed
                     logger.debug(
