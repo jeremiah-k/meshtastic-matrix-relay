@@ -113,6 +113,12 @@ meshtastic_iface_lock = (
 subscribed_to_messages = False
 subscribed_to_connection_lost = False
 
+# Shared executor for getMetadata() to avoid leaking threads when metadata calls hang.
+# A single worker is enough because getMetadata() is serialized by design.
+_metadata_executor = ThreadPoolExecutor(max_workers=1)
+_metadata_future: Future[Any] | None = None
+_metadata_future_lock = threading.Lock()
+
 
 def _submit_coro(
     coro: Any,
@@ -520,6 +526,7 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
             "success": bool — `true` when a firmware_version was successfully parsed, `false` otherwise
         }
     """
+    global _metadata_future
     result = {"firmware_version": "unknown", "raw_output": "", "success": False}
 
     try:
@@ -532,14 +539,13 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
             )
             return result
 
-        # Capture getMetadata() output to extract firmware version
-        # Wrap in timeout to avoid indefinite hangs from meshtastic library
+        # Capture getMetadata() output to extract firmware version.
+        # Use a shared executor to prevent thread leaks if getMetadata() hangs.
         output_capture = io.StringIO()
-        # Track redirect state so a timeout cannot leave sys.stdout/sys.stderr
-        # pointing at a closed StringIO (which triggers "lost sys.stderr" errors).
+        # Track redirect state so a timeout cannot leave sys.stdout pointing at
+        # a closed StringIO (which can trigger "I/O operation on closed file").
         redirect_active = threading.Event()
         orig_stdout = sys.stdout
-        orig_stderr = sys.stderr
 
         def call_get_metadata() -> None:
             # Capture stdout only; stderr is left intact to avoid losing
@@ -551,8 +557,24 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
                 finally:
                     redirect_active.clear()
 
-        executor = ThreadPoolExecutor(max_workers=1)
-        future = executor.submit(call_get_metadata)
+        with _metadata_future_lock:
+            if _metadata_future and not _metadata_future.done():
+                # A previous metadata request is still running; avoid piling up
+                # threads and leave the in-flight call to finish in its own time.
+                logger.debug("getMetadata() already running; skipping new request")
+                return result
+
+            try:
+                future = _metadata_executor.submit(call_get_metadata)
+            except RuntimeError as exc:
+                # The shared executor may already be shutting down; treat this as
+                # a non-fatal metadata miss so we don't block connections.
+                logger.debug(
+                    "getMetadata() submission failed; skipping metadata retrieval",
+                    exc_info=exc,
+                )
+                return result
+            _metadata_future = future
         timed_out = False
         future_error: Exception | None = None
         try:
@@ -565,18 +587,30 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
             if redirect_active.is_set():
                 if sys.stdout is output_capture:
                     sys.stdout = orig_stdout
-                if sys.stderr is output_capture:
-                    sys.stderr = orig_stderr
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - getMetadata errors vary by backend
             future_error = e
-        finally:
-            executor.shutdown(wait=False)
 
-        console_output = output_capture.getvalue()
+        try:
+            console_output = output_capture.getvalue()
+        except ValueError:
+            # If the buffer was closed unexpectedly, treat as empty output.
+            console_output = ""
+
+        def _finalize_metadata_capture(done_future: Future[Any]) -> None:
+            global _metadata_future
+            with _metadata_future_lock:
+                if _metadata_future is done_future:
+                    _metadata_future = None
+            if not output_capture.closed:
+                output_capture.close()
+
         # Only close the buffer when the redirect is no longer active; otherwise
         # writes from the worker will raise ValueError("I/O operation on closed file").
-        if not timed_out or future.done():
-            output_capture.close()
+        if timed_out and not future.done():
+            future.add_done_callback(_finalize_metadata_capture)
+        else:
+            _finalize_metadata_capture(future)
+
         # Re-raise any worker exception so the outer handler can log and
         # return default metadata without hiding failures.
         if future_error is not None:
@@ -599,7 +633,7 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
                 result["firmware_version"] = parsed
                 result["success"] = True
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - metadata failures must not block startup
         # Metadata is optional; never block the main connection path on failures
         # in the admin request or parsing logic.
         logger.debug(
@@ -694,7 +728,7 @@ def _validate_ble_connection_address(interface: Any, expected_address: str) -> b
                 "Disconnecting to prevent misconfiguration."
             )
             return False
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - validation is best-effort
         logger.warning(
             f"Error during BLE connection address validation: {e}. "
             "Proceeding with caution."
@@ -717,12 +751,14 @@ def _disconnect_ble_by_address(address: str) -> None:
 
     try:
         from bleak import BleakClient
+        from bleak.exc import BleakDBusError as BleakClientDBusError
+        from bleak.exc import BleakError as BleakClientError
 
         async def disconnect_stale_connection() -> None:
             """
             Disconnect a stale BlueZ BLE connection for the target address.
 
-            Attempts to determine whether the Bleak client for the given address is connected and, if so, disconnects it with bounded retry and timeout behavior. Ensures a best-effort final cleanup disconnect and short settle delays; logs warnings and errors when disconnect attempts time out or fail.
+            Attempts to determine whether the Bleak client for the given address is connected and, if so, disconnects it with bounded retry and timeout behavior. Ensures a best-effort final cleanup disconnect and short settle delays; logs warnings when disconnect attempts time out or fail.
             """
             client = None
             try:
@@ -742,7 +778,15 @@ def _disconnect_ble_by_address(address: str) -> None:
                     connected_status = is_connected_method
                 else:
                     connected_status = False
-            except Exception as e:
+            except (
+                BleakClientError,
+                BleakClientDBusError,
+                OSError,
+                RuntimeError,
+                ValueError,
+            ) as e:
+                # Bleak backends raise a mix of DBus/IO errors; treat them as
+                # non-fatal because stale disconnects are best-effort cleanup.
                 logger.debug(f"Failed to check connection state for {address}: {e}")
                 return
 
@@ -769,22 +813,36 @@ def _disconnect_ble_by_address(address: str) -> None:
                                 )
                                 await asyncio.sleep(0.5)
                             else:
-                                logger.error(
+                                logger.warning(
                                     f"Disconnect for {address} timed out after {max_retries} attempts"
                                 )
-                        except Exception as e:
+                        except (
+                            BleakClientError,
+                            BleakClientDBusError,
+                            OSError,
+                            RuntimeError,
+                            ValueError,
+                        ) as e:
+                            # Bleak disconnects can throw DBus/IO errors depending
+                            # on adapter state; retry a few times then give up.
                             if attempt < max_retries - 1:
                                 logger.warning(
                                     f"Disconnect attempt {attempt + 1} for {address} failed: {e}, retrying..."
                                 )
                                 await asyncio.sleep(0.5)
                             else:
-                                logger.error(
+                                logger.warning(
                                     f"Disconnect for {address} failed after {max_retries} attempts: {e}"
                                 )
                 else:
                     logger.debug(f"Device {address} not currently connected in BlueZ")
-            except Exception as e:
+            except (
+                BleakClientError,
+                BleakClientDBusError,
+                OSError,
+                RuntimeError,
+                ValueError,
+            ) as e:
                 # Stale disconnects are best-effort; do not fail startup/reconnect
                 # on cleanup errors from BlueZ/DBus.
                 logger.debug(f"Error disconnecting stale connection to {address}: {e}")
@@ -797,9 +855,17 @@ def _disconnect_ble_by_address(address: str) -> None:
                         await asyncio.sleep(0.5)
                 except asyncio.TimeoutError:
                     logger.debug(f"Final disconnect for {address} timed out (cleanup)")
-                except Exception:
+                except (
+                    BleakClientError,
+                    BleakClientDBusError,
+                    OSError,
+                    RuntimeError,
+                    ValueError,
+                ) as e:
                     # Ignore disconnect errors during cleanup - connection may already be closed
-                    pass  # nosec
+                    logger.debug(
+                        f"Final disconnect for {address} failed during cleanup: {e}"
+                    )
 
         try:
             loop = asyncio.get_running_loop()
@@ -916,7 +982,7 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                         )
 
         iface.close()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - cleanup must not block shutdown
         logger.debug(f"Error during BLE interface {reason}: {e}")
     finally:
         # Small delay to ensure the adapter has fully released the connection
@@ -1275,10 +1341,10 @@ def connect_meshtastic(
                                         "BLE interface creation timed out after 90 seconds for %s.",
                                         ble_address,
                                     )
-                                    logger.error(
+                                    logger.warning(
                                         "This may indicate a stale BlueZ connection or Bluetooth adapter issue."
                                     )
-                                    logger.error(
+                                    logger.warning(
                                         "Try: 1) Restarting BlueZ: 'sudo systemctl restart bluetooth', "
                                         "2) Manually disconnecting device: 'bluetoothctl disconnect %s', "
                                         "3) Rebooting your machine",
@@ -1332,8 +1398,10 @@ def connect_meshtastic(
                                 "BLE connect() call timed out after 30 seconds for %s.",
                                 ble_address,
                             )
-                            logger.error("This may indicate a BlueZ or adapter issue.")
-                            logger.error(
+                            logger.warning(
+                                "This may indicate a BlueZ or adapter issue."
+                            )
+                            logger.warning(
                                 "BlueZ may be in a bad state. Try: "
                                 "'sudo systemctl restart bluetooth' or "
                                 "'bluetoothctl disconnect %s'",

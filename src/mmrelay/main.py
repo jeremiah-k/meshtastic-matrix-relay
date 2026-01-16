@@ -334,10 +334,12 @@ async def main(config: dict[str, Any]) -> None:
                     # Best-effort cancellation; the underlying close may be
                     # stuck in BLE/DBus, but we cannot block shutdown.
                     future.cancel()
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001 - shutdown must keep going
                     meshtastic_logger.error(
                         f"Unexpected error during Meshtastic client close: {e}"
                     )
+                else:
+                    meshtastic_logger.info("Meshtastic client closed successfully")
                 finally:
                     try:
                         # Do not wait for shutdown; if close hangs we still
@@ -346,8 +348,6 @@ async def main(config: dict[str, Any]) -> None:
                     except TypeError:
                         # cancel_futures is unsupported on older Python versions.
                         executor.shutdown(wait=False)
-
-                meshtastic_logger.info("Meshtastic client closed successfully")
             except concurrent.futures.TimeoutError:
                 meshtastic_logger.warning(
                     "Meshtastic client close timed out - forcing shutdown"

@@ -2267,7 +2267,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
     @patch("mmrelay.meshtastic_utils.logger")
     def test_get_device_metadata_timeout(self, mock_logger):
         """Test _get_device_metadata when getMetadata() times out."""
-        from concurrent.futures import Future
         from concurrent.futures import TimeoutError as FuturesTimeoutError
 
         from mmrelay.meshtastic_utils import _get_device_metadata
@@ -2275,31 +2274,59 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         mock_client = Mock()
         mock_client.localNode.getMetadata = Mock()
 
-        with patch("mmrelay.meshtastic_utils.io.StringIO") as mock_stringio:
-            mock_output = Mock()
-            mock_output.getvalue.return_value = "firmware_version: 2.3.15"
-            mock_stringio.return_value = mock_output
+        import mmrelay.meshtastic_utils as mu
 
-            # Mock ThreadPoolExecutor to raise timeout
-            with patch("mmrelay.meshtastic_utils.ThreadPoolExecutor") as mock_executor:
-                timeout_future = Future()
-                timeout_future.set_exception(FuturesTimeoutError())
-                mock_executor.return_value.submit.return_value = timeout_future
+        mu._metadata_future = None
+        mock_output = Mock()
+        mock_output.getvalue.return_value = "firmware_version: 2.3.15"
 
-                result = _get_device_metadata(mock_client)
+        timeout_future = Mock()
+        timeout_future.done.return_value = False
+        timeout_future.add_done_callback = Mock()
 
-                # Should still return result with firmware version parsed
-                self.assertTrue(result["success"])
-                self.assertEqual(result["firmware_version"], "2.3.15")
-                # Verify timeout was logged
-                mock_logger.debug.assert_called_with(
-                    "getMetadata() timed out after 30 seconds"
-                )
+        orig_stdout = object()
+
+        def _raise_timeout(*_args, **_kwargs):
+            # Simulate a worker redirecting stdout before the timeout hits.
+            mu.sys.stdout = mock_output
+            raise FuturesTimeoutError()
+
+        timeout_future.result.side_effect = _raise_timeout
+
+        class FakeEvent:
+            def is_set(self) -> bool:
+                return True
+
+            def set(self) -> None:
+                return None
+
+            def clear(self) -> None:
+                return None
+
+        with (
+            patch("mmrelay.meshtastic_utils.io.StringIO", return_value=mock_output),
+            patch("mmrelay.meshtastic_utils.threading.Event", return_value=FakeEvent()),
+            patch("mmrelay.meshtastic_utils._metadata_executor") as mock_executor,
+            patch("mmrelay.meshtastic_utils.sys.stdout", orig_stdout),
+        ):
+            mock_executor.submit.return_value = timeout_future
+
+            result = _get_device_metadata(mock_client)
+
+            # Should still return result with firmware version parsed
+            self.assertTrue(result["success"])
+            self.assertEqual(result["firmware_version"], "2.3.15")
+            # Verify timeout was logged
+            mock_logger.debug.assert_called_with(
+                "getMetadata() timed out after 30 seconds"
+            )
+            # Ensure we deferred cleanup when the worker is still running.
+            timeout_future.add_done_callback.assert_called_once()
+            self.assertIs(mu.sys.stdout, orig_stdout)
 
     @patch("mmrelay.meshtastic_utils.logger")
     def test_get_device_metadata_timeout_restores_stdio(self, _mock_logger):
         """Test _get_device_metadata restores stdio when timeout happens mid-redirect."""
-        from concurrent.futures import Future
         from concurrent.futures import TimeoutError as FuturesTimeoutError
 
         from mmrelay.meshtastic_utils import _get_device_metadata
@@ -2317,20 +2344,23 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         mock_client = Mock()
         mock_client.localNode.getMetadata = Mock()
 
+        import mmrelay.meshtastic_utils as mu
+
+        mu._metadata_future = None
         output_capture = Mock()
         output_capture.getvalue.return_value = "firmware_version: 2.3.15"
 
-        timeout_future = Future()
-        timeout_future.set_exception(FuturesTimeoutError())
+        timeout_future = Mock()
+        timeout_future.result.side_effect = FuturesTimeoutError()
+        timeout_future.done.return_value = True
 
         with (
             patch("mmrelay.meshtastic_utils.io.StringIO", return_value=output_capture),
             patch("mmrelay.meshtastic_utils.threading.Event", return_value=FakeEvent()),
             patch("mmrelay.meshtastic_utils.sys.stdout", output_capture),
-            patch("mmrelay.meshtastic_utils.sys.stderr", output_capture),
-            patch("mmrelay.meshtastic_utils.ThreadPoolExecutor") as mock_executor,
+            patch("mmrelay.meshtastic_utils._metadata_executor") as mock_executor,
         ):
-            mock_executor.return_value.submit.return_value = timeout_future
+            mock_executor.submit.return_value = timeout_future
 
             result = _get_device_metadata(mock_client)
 
@@ -2429,7 +2459,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
     @patch("mmrelay.meshtastic_utils.asyncio.sleep")
     @patch("mmrelay.meshtastic_utils.logger")
     @patch("bleak.BleakClient")
-    def test_disconnect_ble_by_address_disconnect_timeout_logs_error(
+    def test_disconnect_ble_by_address_disconnect_timeout_logs_warning(
         self,
         mock_bleak,
         mock_logger,
@@ -2437,7 +2467,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         mock_wait_for,
         mock_get_running_loop,
     ):
-        """Test _disconnect_ble_by_address logs after repeated disconnect timeouts."""
+        """Test _disconnect_ble_by_address warns after repeated disconnect timeouts."""
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
 
         async def _noop(*_args, **_kwargs):
@@ -2454,7 +2484,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
 
-        mock_logger.error.assert_any_call(
+        mock_logger.warning.assert_any_call(
             "Disconnect for AA:BB:CC:DD:EE:FF timed out after 3 attempts"
         )
 
@@ -2671,7 +2701,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         config = {"meshtastic": {}, "matrix_rooms": []}
 
-        result = connect_meshtastic(passed_config=config)
+        result = connect_meshtastic(passed_config=config, force_connect=True)
 
         self.assertIsNone(result)
         mock_disconnect_iface.assert_called_once_with(mock_iface, reason="reconnect")

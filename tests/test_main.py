@@ -47,7 +47,7 @@ import inspect
 import os
 import sys
 import unittest
-from typing import Any
+from typing import Any, Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -80,6 +80,72 @@ def _mock_run_with_keyboard_interrupt(coro: Any) -> None:
     """Close coroutine and raise KeyboardInterrupt."""
     _close_coro_if_possible(coro)
     raise KeyboardInterrupt()
+
+
+class _CloseFutureBase(concurrent.futures.Future):
+    """Future with a cancel flag for shutdown test assertions."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.cancel_called = False
+
+    def cancel(self) -> bool:
+        self.cancel_called = True
+        return super().cancel()
+
+
+class _TimeoutCloseFuture(_CloseFutureBase):
+    """Future that raises TimeoutError immediately on result()."""
+
+    def result(self, timeout: float | None = None) -> None:  # noqa: D401 - test double
+        raise concurrent.futures.TimeoutError()
+
+
+class _ErrorCloseFuture(_CloseFutureBase):
+    """Future that raises an unexpected error on result()."""
+
+    def result(self, timeout: float | None = None) -> None:  # noqa: D401 - test double
+        raise ValueError("boom")
+
+
+class _ControlledExecutor:
+    """Executor that runs normal tasks immediately and can override close behavior."""
+
+    def __init__(
+        self,
+        *,
+        close_future_factory: Callable[[], concurrent.futures.Future] | None = None,
+        submit_timeout: bool = False,
+        shutdown_typeerror: bool = False,
+    ) -> None:
+        self.close_future_factory = close_future_factory
+        self.submit_timeout = submit_timeout
+        self.shutdown_typeerror = shutdown_typeerror
+        self.future = None
+        self.calls = []
+
+    def submit(self, func, *args, **kwargs):
+        if getattr(func, "__name__", "") == "_close_meshtastic":
+            if self.submit_timeout:
+                raise concurrent.futures.TimeoutError()
+            if self.close_future_factory is not None:
+                self.future = self.close_future_factory()
+                return self.future
+
+        future = concurrent.futures.Future()
+        try:
+            result = func(*args, **kwargs)
+        except Exception as exc:
+            future.set_exception(exc)
+        else:
+            future.set_result(result)
+        return future
+
+    def shutdown(self, wait: bool = False, cancel_futures: bool = False) -> None:
+        self.calls.append((wait, cancel_futures))
+        if self.shutdown_typeerror and cancel_futures is True:
+            # Simulate older Python versions that do not accept cancel_futures.
+            raise TypeError("cancel_futures unsupported")
 
 
 class TestMain(unittest.TestCase):
@@ -452,33 +518,6 @@ class TestMain(unittest.TestCase):
             async def wait(self) -> None:
                 return None
 
-        class ImmediateFuture:
-            def __init__(self, func) -> None:
-                self._func = func
-                self.cancel_called = False
-                self._ran = False
-
-            def result(self, timeout=None) -> None:  # noqa: D401 - test double
-                if not self._ran:
-                    self._func()
-                    self._ran = True
-                return None
-
-            def cancel(self) -> bool:
-                self.cancel_called = True
-                return True
-
-        class ImmediateExecutor:
-            def __init__(self) -> None:
-                self.future = None
-
-            def submit(self, func):
-                self.future = ImmediateFuture(func)
-                return self.future
-
-            def shutdown(self, wait=False, cancel_futures=False) -> None:
-                return None
-
         mock_iface = MagicMock()
 
         def _connect_meshtastic(*_args, **_kwargs):
@@ -493,11 +532,12 @@ class TestMain(unittest.TestCase):
         mock_matrix_client.close = AsyncMock()
         mock_connect_matrix.return_value = mock_matrix_client
 
+        executor = _ControlledExecutor()
         with (
             patch("mmrelay.main.asyncio.Event", return_value=ImmediateEvent()),
             patch(
                 "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
-                return_value=ImmediateExecutor(),
+                return_value=executor,
             ),
         ):
             asyncio.run(main(self.mock_config))
@@ -541,33 +581,12 @@ class TestMain(unittest.TestCase):
             async def wait(self) -> None:
                 return None
 
-        class TimeoutFuture:
-            def __init__(self) -> None:
-                self.cancel_called = False
-
-            def result(self, timeout=None) -> None:
-                raise concurrent.futures.TimeoutError()
-
-            def cancel(self) -> bool:
-                self.cancel_called = True
-                return True
-
-        class TimeoutExecutor:
-            def __init__(self) -> None:
-                self.future = TimeoutFuture()
-
-            def submit(self, _func):
-                return self.future
-
-            def shutdown(self, wait=False, cancel_futures=False) -> None:
-                return None
-
         mock_connect_meshtastic.return_value = MagicMock()
         mock_matrix_client = MagicMock()
         mock_matrix_client.close = AsyncMock()
         mock_connect_matrix.return_value = mock_matrix_client
 
-        executor = TimeoutExecutor()
+        executor = _ControlledExecutor(close_future_factory=_TimeoutCloseFuture)
         with (
             patch("mmrelay.main.asyncio.Event", return_value=ImmediateEvent()),
             patch(
@@ -616,30 +635,17 @@ class TestMain(unittest.TestCase):
             async def wait(self) -> None:
                 return None
 
-        class ErrorFuture:
-            def result(self, timeout=None) -> None:
-                raise ValueError("boom")
-
-            def cancel(self) -> bool:
-                return True
-
-        class ErrorExecutor:
-            def submit(self, _func):
-                return ErrorFuture()
-
-            def shutdown(self, wait=False, cancel_futures=False) -> None:
-                return None
-
         mock_connect_meshtastic.return_value = MagicMock()
         mock_matrix_client = MagicMock()
         mock_matrix_client.close = AsyncMock()
         mock_connect_matrix.return_value = mock_matrix_client
 
+        executor = _ControlledExecutor(close_future_factory=_ErrorCloseFuture)
         with (
             patch("mmrelay.main.asyncio.Event", return_value=ImmediateEvent()),
             patch(
                 "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
-                return_value=ErrorExecutor(),
+                return_value=executor,
             ),
         ):
             asyncio.run(main(self.mock_config))
@@ -683,32 +689,12 @@ class TestMain(unittest.TestCase):
             async def wait(self) -> None:
                 return None
 
-        class OkFuture:
-            def result(self, timeout=None) -> None:
-                return None
-
-            def cancel(self) -> bool:
-                return True
-
-        class ShutdownTypeErrorExecutor:
-            def __init__(self) -> None:
-                self.calls = []
-
-            def submit(self, _func):
-                return OkFuture()
-
-            def shutdown(self, wait=False, cancel_futures=None) -> None:
-                self.calls.append((wait, cancel_futures))
-                if cancel_futures is True:
-                    # Simulate older Python versions that do not accept cancel_futures.
-                    raise TypeError("cancel_futures unsupported")
-
         mock_connect_meshtastic.return_value = MagicMock()
         mock_matrix_client = MagicMock()
         mock_matrix_client.close = AsyncMock()
         mock_connect_matrix.return_value = mock_matrix_client
 
-        executor = ShutdownTypeErrorExecutor()
+        executor = _ControlledExecutor(shutdown_typeerror=True)
         with (
             patch("mmrelay.main.asyncio.Event", return_value=ImmediateEvent()),
             patch(
@@ -719,7 +705,7 @@ class TestMain(unittest.TestCase):
             asyncio.run(main(self.mock_config))
 
         self.assertEqual(executor.calls[0], (False, True))
-        self.assertEqual(executor.calls[1], (False, None))
+        self.assertEqual(executor.calls[1], (False, False))
 
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
@@ -755,24 +741,17 @@ class TestMain(unittest.TestCase):
             async def wait(self) -> None:
                 return None
 
-        class SubmitTimeoutExecutor:
-            def submit(self, _func):
-                # Force the outer timeout handler to run.
-                raise concurrent.futures.TimeoutError()
-
-            def shutdown(self, wait=False, cancel_futures=False) -> None:
-                return None
-
         mock_connect_meshtastic.return_value = MagicMock()
         mock_matrix_client = MagicMock()
         mock_matrix_client.close = AsyncMock()
         mock_connect_matrix.return_value = mock_matrix_client
 
+        executor = _ControlledExecutor(submit_timeout=True)
         with (
             patch("mmrelay.main.asyncio.Event", return_value=ImmediateEvent()),
             patch(
                 "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
-                return_value=SubmitTimeoutExecutor(),
+                return_value=executor,
             ),
         ):
             asyncio.run(main(self.mock_config))
@@ -1563,6 +1542,8 @@ class TestMainAsyncFunction(unittest.TestCase):
             module.reconnect_task = None
             module.subscribed_to_messages = False
             module.subscribed_to_connection_lost = False
+            if hasattr(module, "_metadata_future"):
+                module._metadata_future = None
 
         # Reset matrix_utils globals
         if "mmrelay.matrix_utils" in sys.modules:
