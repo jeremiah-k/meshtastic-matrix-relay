@@ -535,25 +535,42 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
         # Capture getMetadata() output to extract firmware version
         # Wrap in timeout to avoid indefinite hangs from meshtastic library
         output_capture = io.StringIO()
+        redirect_active = threading.Event()
+        orig_stdout = sys.stdout
+        orig_stderr = sys.stderr
 
         def call_get_metadata() -> None:
-            with (
-                contextlib.redirect_stdout(output_capture),
-                contextlib.redirect_stderr(output_capture),
-            ):
-                client.localNode.getMetadata()
+            with contextlib.redirect_stdout(output_capture):
+                redirect_active.set()
+                try:
+                    client.localNode.getMetadata()
+                finally:
+                    redirect_active.clear()
 
         executor = ThreadPoolExecutor(max_workers=1)
         future = executor.submit(call_get_metadata)
+        timed_out = False
+        future_error: Exception | None = None
         try:
             future.result(timeout=30.0)
         except FuturesTimeoutError:
+            timed_out = True
             logger.debug("getMetadata() timed out after 30 seconds")
+            if redirect_active.is_set():
+                if sys.stdout is output_capture:
+                    sys.stdout = orig_stdout
+                if sys.stderr is output_capture:
+                    sys.stderr = orig_stderr
+        except Exception as e:
+            future_error = e
         finally:
             executor.shutdown(wait=False)
 
         console_output = output_capture.getvalue()
-        output_capture.close()
+        if not timed_out or future.done():
+            output_capture.close()
+        if future_error is not None:
+            raise future_error
 
         # Cap raw_output length to avoid memory bloat
         if len(console_output) > 4096:
