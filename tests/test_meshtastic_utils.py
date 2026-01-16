@@ -2296,10 +2296,9 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
                 )
 
     @patch("mmrelay.meshtastic_utils.logger")
-    @patch("mmrelay.meshtastic_utils._disconnect_ble_interface")
-    @patch("mmrelay.meshtastic_utils.BleakClient")
+    @patch("bleak.BleakClient")
     def test_disconnect_ble_by_address_is_connected_bool_true(
-        self, mock_bleak, mock_disconnect, mock_logger
+        self, mock_bleak, mock_logger
     ):
         """Test _disconnect_ble_by_address when is_connected is a bool (True)."""
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
@@ -2315,10 +2314,9 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         mock_client.disconnect.assert_called()
 
     @patch("mmrelay.meshtastic_utils.logger")
-    @patch("mmrelay.meshtastic_utils._disconnect_ble_interface")
-    @patch("mmrelay.meshtastic_utils.BleakClient")
+    @patch("bleak.BleakClient")
     def test_disconnect_ble_by_address_is_connected_bool_false(
-        self, mock_bleak, mock_disconnect, mock_logger
+        self, mock_bleak, mock_logger
     ):
         """Test _disconnect_ble_by_address when is_connected is a bool (False)."""
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
@@ -2330,17 +2328,24 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
 
-        # Should not attempt to disconnect since is_connected is False
-        mock_client.disconnect.assert_not_called()
+        # The finally block always does a best-effort cleanup disconnect
+        # even when is_connected is False
+        mock_client.disconnect.assert_called()
 
+    @patch("mmrelay.meshtastic_utils.asyncio.run")
     @patch("mmrelay.meshtastic_utils.logger")
-    @patch("mmrelay.meshtastic_utils.asyncio")
-    @patch("mmrelay.meshtastic_utils.BleakClient")
+    @patch("mmrelay.meshtastic_utils.asyncio.get_running_loop")
+    @patch("mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe")
+    @patch("bleak.BleakClient")
     def test_disconnect_ble_by_address_timeout_handler(
-        self, mock_bleak, mock_asyncio, mock_logger
+        self,
+        mock_bleak,
+        mock_run_coroutine_threadsafe,
+        mock_get_running_loop,
+        mock_logger,
+        mock_run,
     ):
         """Test _disconnect_ble_by_address handles FuturesTimeoutError."""
-        from concurrent.futures import Future
         from concurrent.futures import TimeoutError as FuturesTimeoutError
 
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
@@ -2352,15 +2357,14 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         # Mock get_running_loop to return a loop
         mock_loop = Mock()
-        mock_asyncio.get_running_loop.return_value = mock_loop
+        mock_get_running_loop.return_value = mock_loop
 
-        # Mock run_coroutine_threadsafe to return a future that times out
-        timeout_future = Future()
-        timeout_future.set_exception(FuturesTimeoutError())
-        mock_asyncio.run_coroutine_threadsafe.return_value = timeout_future
-
-        # Mock asyncio.run for the fallback disconnect
-        mock_asyncio.run = Mock()
+        # Mock run_coroutine_threadsafe to return a mock future that times out
+        mock_future = Mock()
+        mock_future.cancel.return_value = True
+        mock_future.done.return_value = False
+        mock_future.result = Mock(side_effect=FuturesTimeoutError())
+        mock_run_coroutine_threadsafe.return_value = mock_future
 
         _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
 
@@ -2368,10 +2372,10 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         mock_logger.warning.assert_called_with(
             "Stale connection disconnect timed out after 10s for AA:BB:CC:DD:EE:FF"
         )
-        # Verify future was cancelled
-        self.assertTrue(timeout_future.cancelled())
+        # Verify future.cancel() was called
+        mock_future.cancel.assert_called_once()
         # Verify fallback disconnect via asyncio.run was called
-        mock_asyncio.run.assert_called_once()
+        mock_run.assert_called_once()
 
     def test_disconnect_ble_interface_none_input(self):
         """Test _disconnect_ble_interface returns early when iface is None."""
@@ -2379,37 +2383,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         # Should not raise any errors and return early
         _disconnect_ble_interface(None)
-
-        mu.meshtastic_client = mock_existing_client
-        mu.meshtastic_iface = mock_existing_iface
-
-        config = {
-            "meshtastic": {
-                "connection_type": "ble",
-                "ble_address": ble_address,
-            },
-            "matrix_rooms": [],
-        }
-
-        # Mock BLE interface creation to succeed
-        with patch("meshtastic.ble_interface.BLEInterface") as mock_ble:
-            new_iface = Mock()
-            new_iface.address = ble_address  # Set address to pass address change check
-            new_iface.getMyNodeInfo.return_value = {
-                "num": 123,
-                "user": {"shortName": "Test"},
-            }
-            mock_ble.return_value = new_iface
-
-            result = connect_meshtastic(passed_config=config, force_connect=True)
-
-            # Verify existing BLE interface was disconnected
-            mock_disconnect.assert_called_once_with(
-                mock_existing_iface, reason="reconnect"
-            )
-            # Verify meshtastic_iface was set to None before creating new one
-            # (This happens in the disconnect path)
-            self.assertIsNotNone(result)
 
     @patch("mmrelay.meshtastic_utils.logger")
     @patch("mmrelay.meshtastic_utils.time")
