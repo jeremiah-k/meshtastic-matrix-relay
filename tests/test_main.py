@@ -1544,6 +1544,8 @@ class TestMainAsyncFunction(unittest.TestCase):
             module.subscribed_to_connection_lost = False
             if hasattr(module, "_metadata_future"):
                 module._metadata_future = None
+            if hasattr(module, "_ble_future"):
+                module._ble_future = None
 
         # Reset matrix_utils globals
         if "mmrelay.matrix_utils" in sys.modules:
@@ -1776,6 +1778,12 @@ class TestMainAsyncFunction(unittest.TestCase):
         mock_matrix_client.add_event_callback = MagicMock()
         mock_matrix_client.close = AsyncMock()
 
+        async def _return_matrix_client(*_args, **_kwargs):
+            return mock_matrix_client
+
+        async def _noop(*_args, **_kwargs):
+            return None
+
         captured_signals = []
         real_get_running_loop = asyncio.get_running_loop
 
@@ -1802,15 +1810,14 @@ class TestMainAsyncFunction(unittest.TestCase):
             patch("mmrelay.main.start_message_queue"),
             patch(
                 "mmrelay.main.connect_matrix",
-                new_callable=AsyncMock,
-                return_value=mock_matrix_client,
+                side_effect=_return_matrix_client,
             ),
             patch("mmrelay.main.connect_meshtastic", return_value=None),
-            patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
+            patch("mmrelay.main.join_matrix_room", side_effect=_noop),
             patch("mmrelay.main.get_message_queue") as mock_get_queue,
             patch(
                 "mmrelay.main.meshtastic_utils.check_connection",
-                new_callable=AsyncMock,
+                side_effect=_noop,
             ),
             patch("mmrelay.main.shutdown_plugins"),
             patch("mmrelay.main.stop_message_queue"),

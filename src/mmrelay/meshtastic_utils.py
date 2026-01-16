@@ -119,6 +119,12 @@ _metadata_executor = ThreadPoolExecutor(max_workers=1)
 _metadata_future: Future[Any] | None = None
 _metadata_future_lock = threading.Lock()
 
+# Shared executor for BLE init/connect to avoid leaking threads across retries.
+# BLE setup is inherently sequential, so a single worker keeps things predictable.
+_ble_executor = ThreadPoolExecutor(max_workers=1)
+_ble_executor_lock = threading.Lock()
+_ble_future: Future[Any] | None = None
+
 
 def _submit_coro(
     coro: Any,
@@ -192,6 +198,20 @@ def _submit_coro(
             error_future: Future[Any] = Future()
             error_future.set_exception(e)
             return error_future
+
+
+def _clear_ble_future(done_future: Future[Any]) -> None:
+    """
+    Clear the active BLE executor future when it finishes.
+
+    We keep a module-level reference to the currently running BLE task to avoid
+    queuing up multiple long-running BLE operations; this callback releases the
+    reference once the task completes.
+    """
+    global _ble_future
+    with _ble_executor_lock:
+        if _ble_future is done_future:
+            _ble_future = None
 
 
 def _fire_and_forget(
@@ -1136,7 +1156,8 @@ def connect_meshtastic(
     Returns:
         The connected Meshtastic client instance on success, or `None` if a connection could not be established or shutdown is in progress.
     """
-    global meshtastic_client, meshtastic_iface, shutting_down, reconnecting, config, matrix_rooms
+    global meshtastic_client, meshtastic_iface, shutting_down, reconnecting, config
+    global matrix_rooms, _ble_future
     if shutting_down:
         logger.debug("Shutdown in progress. Not attempting to connect.")
         return None
@@ -1357,11 +1378,37 @@ def connect_meshtastic(
 
                                 # Use 90-second timeout (3x 30s connection timeout + overhead)
                                 # This provides multiple retry cycles while ensuring eventual failure
-                                # if connection truly cannot be established
-                                executor = ThreadPoolExecutor(max_workers=1)
-                                future = executor.submit(
-                                    create_ble_interface, ble_kwargs
-                                )
+                                # if connection truly cannot be established.
+                                #
+                                # Guard against overlapping BLE tasks: if a previous BLE operation is
+                                # still running (often due to a hung BlueZ/DBus call), we skip queuing
+                                # a new task. Raising TimeoutError here intentionally reuses the
+                                # existing retry/backoff logic rather than silently proceeding.
+                                with _ble_executor_lock:
+                                    if _ble_future and not _ble_future.done():
+                                        logger.debug(
+                                            "BLE worker busy; skipping interface creation for %s",
+                                            ble_address,
+                                        )
+                                        raise TimeoutError(
+                                            f"BLE interface creation already in progress for {ble_address}."
+                                        )
+                                    try:
+                                        future = _ble_executor.submit(
+                                            create_ble_interface, ble_kwargs
+                                        )
+                                    except RuntimeError as exc:
+                                        # The shared executor can be shutting down during interpreter
+                                        # teardown; treat this as a timeout so retry logic applies.
+                                        logger.exception(
+                                            "BLE interface creation submission failed for %s",
+                                            ble_address,
+                                        )
+                                        raise TimeoutError(
+                                            f"BLE interface creation could not be scheduled for {ble_address}."
+                                        ) from exc
+                                    _ble_future = future
+                                future.add_done_callback(_clear_ble_future)
                                 try:
                                     meshtastic_iface = future.result(timeout=90.0)
                                     logger.debug(
@@ -1384,12 +1431,15 @@ def connect_meshtastic(
                                         "3) Rebooting your machine",
                                         ble_address,
                                     )
+                                    # Best-effort cancellation: if the worker is hung we cannot force
+                                    # it to stop, but this signals intent and lets retries proceed
+                                    # only if the future transitions to done/cancelled.
+                                    if future.cancel():
+                                        _clear_ble_future(future)
                                     meshtastic_iface = None
                                     raise TimeoutError(
                                         f"BLE connection attempt timed out for {ble_address}."
                                     ) from None
-                                finally:
-                                    executor.shutdown(wait=False)
                             except Exception:
                                 # BLEInterface constructor failed - this is a critical error
                                 logger.exception("BLE interface creation failed")
@@ -1420,8 +1470,29 @@ def connect_meshtastic(
                             """
                             iface_param.connect()
 
-                        executor = ThreadPoolExecutor(max_workers=1)
-                        connect_future = executor.submit(connect_iface, iface)
+                        with _ble_executor_lock:
+                            if _ble_future and not _ble_future.done():
+                                logger.debug(
+                                    "BLE worker busy; skipping connect() for %s",
+                                    ble_address,
+                                )
+                                raise TimeoutError(
+                                    f"BLE connect already in progress for {ble_address}."
+                                )
+                            try:
+                                connect_future = _ble_executor.submit(
+                                    connect_iface, iface
+                                )
+                            except RuntimeError as exc:
+                                logger.exception(
+                                    "BLE connect() submission failed for %s",
+                                    ble_address,
+                                )
+                                raise TimeoutError(
+                                    f"BLE connect could not be scheduled for {ble_address}."
+                                ) from exc
+                            _ble_future = connect_future
+                        connect_future.add_done_callback(_clear_ble_future)
                         try:
                             connect_future.result(timeout=30.0)
                             logger.info(f"BLE connection established to {ble_address}")
@@ -1441,14 +1512,16 @@ def connect_meshtastic(
                                 "'bluetoothctl disconnect %s'",
                                 ble_address,
                             )
+                            # Best-effort cancellation: a hung BLE connect blocks the worker
+                            # thread, so we cancel to allow retries only if it completes.
+                            if connect_future.cancel():
+                                _clear_ble_future(connect_future)
                             # Don't use iface if connect() timed out - it may be in an inconsistent state
                             iface = None
                             meshtastic_iface = None
                             raise TimeoutError(
                                 f"BLE connect() timed out for {ble_address}."
                             ) from err
-                        finally:
-                            executor.shutdown(wait=False)
 
                     client = iface
                 else:

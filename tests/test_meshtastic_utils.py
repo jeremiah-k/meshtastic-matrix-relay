@@ -82,6 +82,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         mmrelay.meshtastic_utils.reconnecting = False
         mmrelay.meshtastic_utils.shutting_down = False
         mmrelay.meshtastic_utils.reconnect_task = None
+        mmrelay.meshtastic_utils._ble_future = None
 
     def test_on_meshtastic_message_basic(self):
         """
@@ -1281,11 +1282,13 @@ def reset_meshtastic_globals():
     mmrelay.meshtastic_utils.meshtastic_client = None
     mmrelay.meshtastic_utils.shutting_down = False
     mmrelay.meshtastic_utils.reconnecting = False
+    mmrelay.meshtastic_utils._ble_future = None
     yield
     # Cleanup after test
     mmrelay.meshtastic_utils.meshtastic_client = None
     mmrelay.meshtastic_utils.shutting_down = False
     mmrelay.meshtastic_utils.reconnecting = False
+    mmrelay.meshtastic_utils._ble_future = None
 
 
 @patch("mmrelay.meshtastic_utils.time.sleep")
@@ -2516,7 +2519,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         mock_get_running_loop.side_effect = RuntimeError("no loop")
         mock_sleep.side_effect = _noop
-        mock_wait_for.side_effect = lambda awaitable, timeout=None: awaitable
+        mock_wait_for.side_effect = lambda awaitable, _timeout=None: awaitable
         # Force an exception outside the inner retry loop to cover the
         # best-effort cleanup exception path.
         mock_logger.warning.side_effect = ValueError("forced warning failure")
@@ -2649,17 +2652,18 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             "matrix_rooms": [],
         }
 
-        # Mock BLE interface creation with ThreadPoolExecutor
+        # Mock BLE interface creation with the shared BLE executor
         # Create a mock future whose .result() method raises FuturesTimeoutError
         mock_future = Mock()
         mock_future.result = Mock(side_effect=FuturesTimeoutError())
         mock_future.cancel = Mock(return_value=True)
 
-        with patch("mmrelay.meshtastic_utils.ThreadPoolExecutor") as mock_executor:
-            mock_executor.return_value.submit.return_value = mock_future
+        with patch("mmrelay.meshtastic_utils._ble_executor") as mock_executor:
+            mock_executor.submit.return_value = mock_future
 
             import mmrelay.meshtastic_utils as mu
 
+            mu._ble_future = None
             # The function will retry 6 times (MAX_TIMEOUT_RETRIES_INFINITE = 5 + 1)
             # After all retries, it returns None (doesn't raise)
             result = connect_meshtastic(passed_config=config)
@@ -2760,11 +2764,12 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
                 # Second call: connect()
                 return connect_future
 
-        with patch("mmrelay.meshtastic_utils.ThreadPoolExecutor") as mock_executor:
-            mock_executor.return_value.submit.side_effect = submit_side_effect
+        with patch("mmrelay.meshtastic_utils._ble_executor") as mock_executor:
+            mock_executor.submit.side_effect = submit_side_effect
 
             import mmrelay.meshtastic_utils as mu
 
+            mu._ble_future = None
             # The function will retry 6 times and return None (doesn't raise)
             result = connect_meshtastic(passed_config=config)
             self.assertIsNone(result)

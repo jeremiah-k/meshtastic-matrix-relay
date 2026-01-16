@@ -641,6 +641,7 @@ def reset_meshtastic_globals():
             mu, "subscribed_to_connection_lost", False
         ),
         "_metadata_future": getattr(mu, "_metadata_future", None),
+        "_ble_future": getattr(mu, "_ble_future", None),
     }
 
     # Reset mutable globals to a clean state; keep logger and event_loop usable
@@ -652,6 +653,7 @@ def reset_meshtastic_globals():
     mu.subscribed_to_messages = False
     mu.subscribed_to_connection_lost = False
     mu._metadata_future = None
+    mu._ble_future = None
 
     yield
 
