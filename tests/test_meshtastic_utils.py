@@ -2333,7 +2333,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         # even when is_connected is False
         mock_client.disconnect.assert_called()
 
-    @patch("mmrelay.meshtastic_utils.asyncio.run")
     @patch("mmrelay.meshtastic_utils.logger")
     @patch("mmrelay.meshtastic_utils.asyncio.get_running_loop")
     @patch("mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe")
@@ -2344,7 +2343,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         mock_run_coroutine_threadsafe,
         mock_get_running_loop,
         mock_logger,
-        mock_run,
     ):
         """Test _disconnect_ble_by_address handles FuturesTimeoutError."""
         from concurrent.futures import TimeoutError as FuturesTimeoutError
@@ -2375,8 +2373,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         )
         # Verify future.cancel() was called
         mock_future.cancel.assert_called_once()
-        # Verify fallback disconnect via asyncio.run was called
-        mock_run.assert_called_once()
 
     def test_disconnect_ble_interface_none_input(self):
         """Test _disconnect_ble_interface returns early when iface is None."""

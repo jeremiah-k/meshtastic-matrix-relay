@@ -782,7 +782,6 @@ def _disconnect_ble_by_address(address: str) -> None:
                 )
                 if not future.done():
                     future.cancel()
-                asyncio.run(disconnect_stale_connection())
         except RuntimeError as e:
             # get_running_loop raises RuntimeError when no loop is running
             # Create a new event loop in this case
