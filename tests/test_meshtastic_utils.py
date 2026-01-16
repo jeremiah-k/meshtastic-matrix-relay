@@ -2260,6 +2260,7 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
         )
 
 
+@pytest.mark.usefixtures("reset_meshtastic_globals")
 class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
     """Test cases for uncovered code paths in meshtastic_utils.py."""
 
