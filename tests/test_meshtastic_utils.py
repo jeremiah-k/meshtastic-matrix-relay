@@ -2547,12 +2547,17 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
 
-        self.assertTrue(
-            any(
-                "Error disconnecting stale connection to AA:BB:CC:DD:EE:FF" in str(call)
-                for call in mock_logger.debug.call_args_list
-            )
-        )
+        found = False
+        for call in mock_logger.debug.call_args_list:
+            args = call.args
+            if not args:
+                continue
+            if "Error disconnecting stale connection" in str(args[0]) and any(
+                arg == "AA:BB:CC:DD:EE:FF" for arg in args
+            ):
+                found = True
+                break
+        self.assertTrue(found)
 
     @patch("mmrelay.meshtastic_utils.asyncio.get_running_loop")
     @patch("mmrelay.meshtastic_utils.asyncio.wait_for")
