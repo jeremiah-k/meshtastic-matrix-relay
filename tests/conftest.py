@@ -620,7 +620,7 @@ def reset_banner_flag():
 def reset_meshtastic_globals():
     """
     Temporarily reset key module-level state in mmrelay.meshtastic_utils for a test and restore it on teardown.
-    
+
     Saves the original values of attributes such as `config`, `meshtastic_client`, reconnect/shutdown flags and tasks,
     subscription flags, and internal futures; sets those attributes to clean defaults for the duration of the test,
     yields control to the test, and restores the saved values on teardown. The module's `logger` and `event_loop`

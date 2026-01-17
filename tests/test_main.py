@@ -80,10 +80,10 @@ def _mock_run_with_exception(coro: Any) -> None:
 def _mock_run_with_keyboard_interrupt(coro: Any) -> None:
     """
     Invoke _close_coro_if_possible on the given coroutine-like object and then raise KeyboardInterrupt.
-    
+
     Parameters:
         coro (Any): An awaitable or coroutine object; if it has a `close()` method, that method will be called.
-    
+
     Raises:
         KeyboardInterrupt: Always raised after attempting to close the coroutine.
     """
@@ -94,13 +94,14 @@ def _mock_run_with_keyboard_interrupt(coro: Any) -> None:
 def _make_async_return(value: Any):
     """
     Create an async function that always returns the provided value.
-    
+
     Parameters:
         value (Any): Value to be returned by the generated coroutine.
-    
+
     Returns:
         callable: An async function that ignores its arguments and returns `value` when awaited.
     """
+
     async def _async_return(*_args, **_kwargs):
         return value
 
@@ -110,13 +111,14 @@ def _make_async_return(value: Any):
 def _make_async_raise(exc: Exception):
     """
     Create an async callable that always raises the provided exception when awaited.
-    
+
     Parameters:
         exc (Exception): The exception instance to raise when the returned coroutine is awaited.
-    
+
     Returns:
         Callable[..., Coroutine]: An async function that, when called and awaited, raises `exc`.
     """
+
     async def _async_raise(*_args, **_kwargs):
         raise exc
 
@@ -126,7 +128,7 @@ def _make_async_raise(exc: Exception):
 async def _async_noop(*_args, **_kwargs) -> None:
     """
     Asynchronous no-op that accepts any positional and keyword arguments.
-    
+
     This coroutine performs no action and ignores all provided arguments.
     """
     return None
@@ -138,7 +140,7 @@ class _InlineExecutorLoop:
     def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
         """
         Store the provided event loop for use by this wrapper.
-        
+
         Parameters:
             loop (asyncio.AbstractEventLoop): The underlying event loop that this wrapper will delegate to.
         """
@@ -147,15 +149,15 @@ class _InlineExecutorLoop:
     def run_in_executor(self, _executor, func, *args):
         """
         Execute a callable synchronously and return a Future resolved with its outcome.
-        
+
         Parameters:
             _executor: Ignored executor placeholder (kept for compatibility with loop.run_in_executor signature).
             func (callable): The function to execute.
             *args: Positional arguments to pass to `func`.
-        
+
         Returns:
             concurrent.futures.Future: A Future that contains `func`'s return value or the exception raised by `func`.
-            
+
         Notes:
             If `func` raises TimeoutError, ValueError, RuntimeError, TypeError, or OSError, that exception is set on the returned Future.
         """
@@ -177,10 +179,10 @@ class _InlineExecutorLoop:
     def __getattr__(self, name: str):
         """
         Delegate attribute access to the wrapped event loop.
-        
+
         Parameters:
             name (str): Attribute name being accessed on this wrapper.
-        
+
         Returns:
             The attribute value from the underlying event loop corresponding to `name`.
         """
@@ -190,12 +192,12 @@ class _InlineExecutorLoop:
 async def _inline_to_thread(func, *args, **kwargs):
     """
     Run the given callable synchronously in the current thread and return its result.
-    
+
     Parameters:
         func (callable): The function to execute.
         *args: Positional arguments to pass to `func`.
         **kwargs: Keyword arguments to pass to `func`.
-    
+
     Returns:
         The return value produced by calling `func(*args, **kwargs)`.
     """
@@ -208,7 +210,7 @@ class _ImmediateEvent:
     def __init__(self) -> None:
         """
         Initialize an ImmediateEvent representing an event that is always set.
-        
+
         Sets internal state so is_set() returns True and awaitable wait() completes immediately.
         """
         self._set = True
@@ -216,7 +218,7 @@ class _ImmediateEvent:
     def is_set(self) -> bool:
         """
         Indicates whether the event is set.
-        
+
         Returns:
             `True` if the event is set, `False` otherwise.
         """
@@ -231,7 +233,7 @@ class _ImmediateEvent:
     async def wait(self) -> None:
         """
         Return immediately without blocking, simulating an event that is already set.
-        
+
         This coroutine is a no-op used in tests to represent an event whose wait completes immediately.
         """
         return None
@@ -243,7 +245,7 @@ class _CloseFutureBase(concurrent.futures.Future):
     def __init__(self) -> None:
         """
         Initialize the instance and set up the cancel call tracker.
-        
+
         Tracks whether cancel() was invoked on this future via the `cancel_called` attribute.
         """
         super().__init__()
@@ -252,9 +254,9 @@ class _CloseFutureBase(concurrent.futures.Future):
     def cancel(self) -> bool:
         """
         Mark the future as cancelled and record that cancellation was attempted.
-        
+
         Sets the `cancel_called` attribute to True.
-        
+
         Returns:
             bool: `True` if the future was successfully cancelled, `False` otherwise.
         """
@@ -268,10 +270,10 @@ class _TimeoutCloseFuture(_CloseFutureBase):
     def result(self, _timeout: float | None = None) -> None:
         """
         Always raises a concurrent.futures.TimeoutError to simulate a timed-out close future.
-        
+
         Parameters:
             _timeout (float | None): Ignored timeout value.
-        
+
         Raises:
             concurrent.futures.TimeoutError: Always raised when called.
         """
@@ -284,10 +286,10 @@ class _ErrorCloseFuture(_CloseFutureBase):
     def result(self, _timeout: float | None = None) -> None:
         """
         Always raises a ValueError with message "boom".
-        
+
         Parameters:
             _timeout (float | None): Ignored; present for API compatibility.
-        
+
         Raises:
             ValueError: Always raised with message "boom".
         """
@@ -306,7 +308,7 @@ class _ControlledExecutor:
     ) -> None:
         """
         Create a ControlledExecutor used in tests to simulate and control task submission and shutdown behaviors.
-        
+
         Parameters:
             close_future_factory (Callable[[], concurrent.futures.Future] | None):
                 Factory that produces a preconfigured Future to return for close-related submissions; if None, submit executes synchronously.
@@ -314,7 +316,7 @@ class _ControlledExecutor:
                 If True, simulate a timeout condition when submitting close-related tasks.
             shutdown_typeerror (bool):
                 If True, simulate an executor.shutdown that raises a TypeError when called with cancel_futures=True (to model older Python behavior).
-        
+
         """
         self.close_future_factory = close_future_factory
         self.submit_timeout = submit_timeout
@@ -326,12 +328,12 @@ class _ControlledExecutor:
     def submit(self, func, *args, **kwargs):
         """
         Submit a callable to the controlled executor, execute it synchronously, and return a Future representing its outcome.
-        
+
         If the callable's name or qualified name contains "_close_meshtastic", the executor applies special close-related behavior: it raises concurrent.futures.TimeoutError when configured with submit_timeout, or returns a pre-created close future when a close_future_factory is provided.
-        
+
         Parameters:
             func (callable): The function or functools.partial to execute. Additional positional and keyword arguments are forwarded to the callable.
-        
+
         Returns:
             concurrent.futures.Future: Future containing the callable's result, or a Future with the exception set if the callable raised one.
         """
@@ -368,7 +370,7 @@ class _ControlledExecutor:
     def shutdown(self, wait: bool = False, cancel_futures: bool = False) -> None:
         """
         Record an executor shutdown request and optionally simulate a legacy TypeError when `cancel_futures` is used.
-        
+
         Parameters:
             wait (bool): Whether to wait for pending futures to complete.
             cancel_futures (bool): Whether to cancel pending futures; when the executor is configured
@@ -616,7 +618,7 @@ class TestMain(unittest.TestCase):
         def _patched_get_running_loop():
             """
             Wraps the real running event loop in an _InlineExecutorLoop when necessary to ensure run_in_executor calls execute inline in tests.
-            
+
             Returns:
                 An event loop object: the original loop if it is already an `_InlineExecutorLoop`, otherwise a new `_InlineExecutorLoop` that delegates to the real loop.
             """
@@ -674,7 +676,7 @@ class TestMain(unittest.TestCase):
         def _patched_get_running_loop():
             """
             Wraps the real running event loop in an _InlineExecutorLoop when necessary to ensure run_in_executor calls execute inline in tests.
-            
+
             Returns:
                 An event loop object: the original loop if it is already an `_InlineExecutorLoop`, otherwise a new `_InlineExecutorLoop` that delegates to the real loop.
             """
@@ -766,7 +768,7 @@ class TestMain(unittest.TestCase):
         def _patched_get_running_loop():
             """
             Provide an event loop wrapper that executes run_in_executor calls inline for testing.
-            
+
             Returns:
                 _InlineExecutorLoop: A wrapper around the real running event loop whose
                 run_in_executor executes functions synchronously (useful for deterministic tests).
@@ -815,10 +817,10 @@ class TestMain(unittest.TestCase):
         def _connect_meshtastic(*_args, **_kwargs):
             """
             Install the test Meshtastic interface into mmrelay.meshtastic_utils and return it.
-            
+
             This helper ignores any positional or keyword arguments. It assigns the module-level
             `mock_iface` to `mmrelay.meshtastic_utils.meshtastic_iface` and returns that object.
-            
+
             Returns:
                 mock_iface: The mock Meshtastic interface that was assigned.
             """
@@ -878,9 +880,9 @@ class TestMain(unittest.TestCase):
         def _connect_meshtastic(*_args, **_kwargs):
             """
             Install the provided mock Meshtastic interface into the mmrelay.meshtastic_utils module for tests.
-            
+
             Sets mmrelay.meshtastic_utils.meshtastic_client to the mock interface and mmrelay.meshtastic_utils.meshtastic_iface to None.
-            
+
             Returns:
                 The mock Meshtastic interface that was installed.
             """
@@ -980,7 +982,7 @@ class TestMain(unittest.TestCase):
     ):
         """
         Ensure main retries executor.shutdown without cancel_futures when a TypeError occurs.
-        
+
         Verifies that if ThreadPoolExecutor.shutdown raises a TypeError when invoked with
         cancel_futures=True, the shutdown sequence calls executor.shutdown a second time
         with cancel_futures=False.
@@ -1978,7 +1980,7 @@ class TestMainAsyncFunction(unittest.TestCase):
     def test_main_signal_handler_sets_shutdown_flag(self):
         """
         Ensure signal handlers set the shutdown flag and register a shutdown handler.
-        
+
         Patches asyncio.get_running_loop so the event loop's add_signal_handler is replaced with a synchronous invoker that captures and immediately calls the registered handler; runs main(config) and asserts the meshtastic shutdown flag is set and a signal handler was registered.
         """
         config = {
@@ -2059,9 +2061,9 @@ class TestMainAsyncFunction(unittest.TestCase):
         def _patched_get_running_loop():
             """
             Return the current running event loop with its signal-handler registration patched to capture signals.
-            
+
             The returned loop has its `add_signal_handler` replaced so that any registered signal is appended to the module-level `captured_signals` list, and a `_signal_capture_patched` attribute is set to avoid repeated patching.
-            
+
             Returns:
                 asyncio.AbstractEventLoop: The running event loop with signal registration patched.
             """
@@ -2071,7 +2073,7 @@ class TestMainAsyncFunction(unittest.TestCase):
                 def _fake_add_signal_handler(sig, _handler):
                     """
                     Record the given signal identifier by appending it to the module-level captured_signals list for testing.
-                    
+
                     Parameters:
                         sig: The signal identifier (e.g., an int or signal.Signals) to capture.
                         _handler: The signal handler callable (ignored).

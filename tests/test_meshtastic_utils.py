@@ -45,7 +45,7 @@ class _FakeEvent:
     def is_set(self) -> bool:
         """
         Always reports the fake event as set.
-        
+
         Returns:
             bool: `True`, indicating the event is considered set.
         """
@@ -54,7 +54,7 @@ class _FakeEvent:
     def set(self) -> None:
         """
         Mark the event as set so subsequent is_set() calls return True.
-        
+
         Mimics threading.Event.set behavior for the test double.
         """
         return None
@@ -62,7 +62,7 @@ class _FakeEvent:
     def clear(self) -> None:
         """
         No-op placeholder for clearing the object's internal state.
-        
+
         This method currently performs no action and exists to be overridden or implemented to reset the instance's state.
         """
         return None
@@ -1326,7 +1326,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
 def reset_meshtastic_globals():
     """
     Reset Meshtastic-related global state before a test and restore it afterward.
-    
+
     This generator-style fixture clears the shared module-level variables used by
     connection and BLE logic so tests run in a clean environment. It resets:
     `meshtastic_client`, `shutting_down`, `reconnecting`, `_ble_future`,
@@ -2353,11 +2353,11 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             # Simulate a worker redirecting stdout before the timeout hits.
             """
             Simulate a worker that redirects stdout and then triggers a futures timeout.
-            
+
             This test helper replaces mu.sys.stdout with the provided mock_output to mimic a worker
             redirecting standard output and then raises FuturesTimeoutError to simulate a timeout
             condition.
-            
+
             Raises:
                 FuturesTimeoutError: Indicates the simulated timeout.
             """
@@ -2437,7 +2437,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         async def _noop(*_args, **_kwargs):
             """
             Asynchronous no-op that ignores all positional and keyword arguments.
-            
+
             Returns:
                 None: Always returns None.
             """
@@ -2460,7 +2460,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
     ):
         """
         Verify _disconnect_ble_by_address invokes the client's disconnect as a best-effort cleanup when the client's is_connected attribute indicates the device is not connected.
-        
+
         Asserts that disconnect is called from the cleanup path even if the client reports it is not connected (and is_connected is not callable).
         """
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
@@ -2468,7 +2468,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         async def _noop(*_args, **_kwargs):
             """
             Asynchronous no-op that ignores all positional and keyword arguments.
-            
+
             Returns:
                 None: Always returns None.
             """
@@ -2497,7 +2497,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         async def _noop(*_args, **_kwargs):
             """
             Asynchronous no-op that ignores all positional and keyword arguments.
-            
+
             Returns:
                 None: Always returns None.
             """
@@ -2528,7 +2528,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         async def _noop(*_args, **_kwargs):
             """
             Asynchronous no-op that ignores all positional and keyword arguments.
-            
+
             Returns:
                 None: Always returns None.
             """
@@ -2565,7 +2565,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         async def _noop(*_args, **_kwargs):
             """
             Asynchronous no-op that ignores all positional and keyword arguments.
-            
+
             Returns:
                 None: Always returns None.
             """
@@ -2605,7 +2605,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         async def _noop(*_args, **_kwargs):
             """
             Asynchronous no-op that ignores all positional and keyword arguments.
-            
+
             Returns:
                 None: Always returns None.
             """
@@ -2650,7 +2650,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         async def _noop(*_args, **_kwargs):
             """
             Asynchronous no-op that ignores all positional and keyword arguments.
-            
+
             Returns:
                 None: Always returns None.
             """
@@ -2682,15 +2682,15 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         def _import_side_effect(name, *args, **kwargs):
             """
             Simulate an import hook that raises ImportError for the "bleak" module and otherwise performs a normal import.
-            
+
             Parameters:
                 name (str): The module name to import; when equal to "bleak" an ImportError is raised.
                 *args: Positional arguments forwarded to the real import function.
                 **kwargs: Keyword arguments forwarded to the real import function.
-            
+
             Returns:
                 module: The imported module object returned by the underlying import.
-            
+
             Raises:
                 ImportError: If `name` is exactly "bleak".
             """
@@ -2882,7 +2882,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         def submit_side_effect(_func, *_args, **_kwargs):
             """
             Test helper used as a side-effect function to simulate a two-stage submission flow.
-            
+
             Increments the shared call_count[0] each time it is invoked and, on the first invocation, returns the precreated interface_future; on subsequent invocations, returns the connect_future. The provided positional and keyword arguments are ignored.
             """
             call_count[0] += 1
