@@ -1113,8 +1113,10 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
 
         self.assertIsNone(result)
 
+    @patch("mmrelay.meshtastic_utils.INFINITE_RETRIES", 1)
+    @patch("mmrelay.meshtastic_utils.time.sleep")
     @patch("mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface")
-    def test_connect_meshtastic_ble_exception(self, mock_ble):
+    def test_connect_meshtastic_ble_exception(self, mock_ble, _mock_sleep):
         """
         Test that connect_meshtastic returns None when the BLE interface raises an exception during connection.
         """
@@ -1123,6 +1125,14 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
         config = {
             "meshtastic": {"connection_type": "ble", "ble_address": "AA:BB:CC:DD:EE:FF"}
         }
+
+        import mmrelay.meshtastic_utils as mu
+
+        mu.meshtastic_client = None
+        mu.meshtastic_iface = None
+        mu.reconnecting = False
+        mu.shutting_down = False
+        mu._ble_future = None
 
         result = connect_meshtastic(passed_config=config)
 
@@ -2742,6 +2752,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         mock_iface = Mock()
         mock_iface.getMyNodeInfo.return_value = {"num": 123}
         mock_iface.connect = Mock()  # Has connect() method to trigger connect() path
+        mock_iface.auto_reconnect = False
 
         interface_future = Mock()
         interface_future.result = Mock(return_value=mock_iface)

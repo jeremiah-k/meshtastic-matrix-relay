@@ -1404,6 +1404,7 @@ def connect_meshtastic(
                     logger.info(f"Connecting to BLE address {ble_address}")
 
                     iface = None
+                    supports_auto_reconnect = False
                     with meshtastic_iface_lock:
                         # If BLE address has changed, re-create the interface
                         if (
@@ -1446,7 +1447,10 @@ def connect_meshtastic(
                             }
 
                             # Add auto_reconnect only if supported (forked version)
-                            if "auto_reconnect" in ble_init_sig.parameters:
+                            supports_auto_reconnect = (
+                                "auto_reconnect" in ble_init_sig.parameters
+                            )
+                            if supports_auto_reconnect:
                                 ble_kwargs["auto_reconnect"] = False
                                 logger.debug(
                                     "Using forked meshtastic library with auto_reconnect=False "
@@ -1515,6 +1519,8 @@ def connect_meshtastic(
                                     logger.debug(
                                         f"BLE interface created successfully for {ble_address}"
                                     )
+                                    if hasattr(meshtastic_iface, "auto_reconnect"):
+                                        supports_auto_reconnect = True
                                 except FuturesTimeoutError as err:
                                     # Use logger.exception so we retain the timeout context (TRY400),
                                     # but keep the raised exception concise (TRY003) and emit guidance
@@ -1549,13 +1555,30 @@ def connect_meshtastic(
                             logger.debug(
                                 f"Reusing existing BLE interface for {ble_address}"
                             )
+                            if hasattr(meshtastic_iface, "auto_reconnect"):
+                                supports_auto_reconnect = True
+                            else:
+                                try:
+                                    existing_sig = inspect.signature(
+                                        type(meshtastic_iface).__init__
+                                    )
+                                    supports_auto_reconnect = (
+                                        "auto_reconnect" in existing_sig.parameters
+                                    )
+                                except (TypeError, ValueError):
+                                    supports_auto_reconnect = False
 
                         iface = meshtastic_iface
 
                     # Connect outside singleton-creation lock to avoid blocking other threads
-                    # Official version connects automatically during init (no connect() method)
-                    # Forked version has separate connect() method that we need to call
-                    if iface is not None and hasattr(iface, "connect"):
+                    # Official version connects during init; forked version needs explicit
+                    # connect(). Skipping connect for official avoids calling connect() with
+                    # an implicit None address, which can fail reconnection.
+                    if (
+                        iface is not None
+                        and supports_auto_reconnect
+                        and hasattr(iface, "connect")
+                    ):
                         logger.info(
                             f"Initiating BLE connection to {ble_address} (sequential mode)"
                         )
@@ -1623,6 +1646,12 @@ def connect_meshtastic(
                             raise TimeoutError(
                                 f"BLE connect() timed out for {ble_address}."
                             ) from err
+                    elif iface is not None and hasattr(iface, "connect"):
+                        logger.debug(
+                            "Skipping explicit BLE connect for official library; "
+                            "interface connects during init for %s",
+                            ble_address,
+                        )
 
                     client = iface
                 else:
