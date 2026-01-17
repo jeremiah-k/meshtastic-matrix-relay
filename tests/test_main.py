@@ -89,8 +89,39 @@ def _make_async_return(value: Any):
     return _async_return
 
 
+def _make_async_raise(exc: Exception):
+    async def _async_raise(*_args, **_kwargs):
+        raise exc
+
+    return _async_raise
+
+
 async def _async_noop(*_args, **_kwargs) -> None:
     return None
+
+
+class _InlineExecutorLoop:
+    """Wrap an event loop and execute run_in_executor calls inline for tests."""
+
+    def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
+        self._loop = loop
+
+    def run_in_executor(self, _executor, func, *args):
+        fut = self._loop.create_future()
+        try:
+            result = func(*args)
+        except Exception as exc:  # noqa: BLE001 - test helper passthrough
+            fut.set_exception(exc)
+        else:
+            fut.set_result(result)
+        return fut
+
+    def __getattr__(self, name: str):
+        return getattr(self._loop, name)
+
+
+async def _inline_to_thread(func, *args, **kwargs):
+    return func(*args, **kwargs)
 
 
 class _ImmediateEvent:
@@ -387,8 +418,8 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
     @patch("mmrelay.main.start_message_queue")
-    @patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
-    @patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
+    @patch("mmrelay.main.connect_matrix")
+    @patch("mmrelay.main.join_matrix_room")
     @patch("mmrelay.main.stop_message_queue")
     def test_main_meshtastic_connection_failure(
         self,
@@ -409,13 +440,32 @@ class TestMain(unittest.TestCase):
         mock_connect_meshtastic.return_value = None
 
         # Mock Matrix connection to fail early to avoid hanging
-        mock_connect_matrix.return_value = None
+        mock_connect_matrix.side_effect = _make_async_return(None)
+        mock_join_room.side_effect = _async_noop
+
+        real_get_running_loop = asyncio.get_running_loop
+
+        def _patched_get_running_loop():
+            loop = real_get_running_loop()
+            if isinstance(loop, _InlineExecutorLoop):
+                return loop
+            return _InlineExecutorLoop(loop)
 
         # Call main function (should exit early due to connection failures)
-        try:
-            asyncio.run(main(self.mock_config))
-        except (SystemExit, Exception):
-            pass  # Expected due to connection failures
+        with (
+            patch(
+                "mmrelay.main.asyncio.get_running_loop",
+                side_effect=_patched_get_running_loop,
+            ),
+            patch(
+                "mmrelay.main.asyncio.to_thread",
+                side_effect=_inline_to_thread,
+            ),
+        ):
+            try:
+                asyncio.run(main(self.mock_config))
+            except (SystemExit, Exception):
+                pass  # Expected due to connection failures
 
         # Should still proceed with Matrix connection
         mock_connect_matrix.assert_called_once()
@@ -424,7 +474,7 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.load_plugins")
     @patch("mmrelay.main.start_message_queue")
     @patch("mmrelay.main.connect_meshtastic")
-    @patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
+    @patch("mmrelay.main.connect_matrix")
     @patch("mmrelay.main.stop_message_queue")
     def test_main_matrix_connection_failure(
         self,
@@ -440,16 +490,34 @@ class TestMain(unittest.TestCase):
 
         Mocks the Matrix connection to raise an exception and verifies that the main function propagates the error.
         """
-        # Mock Matrix connection to raise an exception
-        mock_connect_matrix.side_effect = Exception("Matrix connection failed")
-
         # Mock Meshtastic client
         mock_meshtastic_client = MagicMock()
         mock_connect_meshtastic.return_value = mock_meshtastic_client
 
+        mock_connect_matrix.side_effect = _make_async_raise(
+            Exception("Matrix connection failed")
+        )
+        real_get_running_loop = asyncio.get_running_loop
+
+        def _patched_get_running_loop():
+            loop = real_get_running_loop()
+            if isinstance(loop, _InlineExecutorLoop):
+                return loop
+            return _InlineExecutorLoop(loop)
+
         # Should raise the Matrix connection exception
-        with self.assertRaises(Exception) as context:
-            asyncio.run(main(self.mock_config))
+        with (
+            patch(
+                "mmrelay.main.asyncio.get_running_loop",
+                side_effect=_patched_get_running_loop,
+            ),
+            patch(
+                "mmrelay.main.asyncio.to_thread",
+                side_effect=_inline_to_thread,
+            ),
+        ):
+            with self.assertRaises(Exception) as context:
+                asyncio.run(main(self.mock_config))
         self.assertIn("Matrix connection failed", str(context.exception))
 
     @patch("mmrelay.main.initialize_database")

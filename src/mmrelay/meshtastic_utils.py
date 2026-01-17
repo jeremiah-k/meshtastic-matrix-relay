@@ -902,13 +902,43 @@ def _disconnect_ble_by_address(address: str) -> None:
             runtime_error = e
 
         if loop:
-            # We are already on the loop thread; do not block it. Schedule a
-            # best-effort disconnect and return so the loop can keep running.
+            # We are running on the loop thread; run the disconnect in a helper
+            # thread so we can wait for completion without deadlocking the loop.
             logger.debug(
-                "Found running event loop, scheduling disconnect task for %s",
+                "Found running event loop, disconnecting via worker thread for %s",
                 address,
             )
-            _fire_and_forget(disconnect_stale_connection(), loop=loop)
+            disconnect_error: Exception | None = None
+            done_event = threading.Event()
+
+            def _run_disconnect() -> None:
+                nonlocal disconnect_error
+                try:
+                    asyncio.run(disconnect_stale_connection())
+                except Exception as exc:  # noqa: BLE001 - best-effort cleanup
+                    disconnect_error = exc
+                finally:
+                    done_event.set()
+
+            worker = threading.Thread(
+                target=_run_disconnect,
+                name="mmrelay-ble-disconnect",
+                daemon=True,
+            )
+            worker.start()
+            if not done_event.wait(timeout=10.0):
+                logger.warning(
+                    f"Stale connection disconnect timed out after 10s for {address}"
+                )
+            else:
+                if disconnect_error is not None:
+                    logger.debug(
+                        "Stale connection disconnect failed for %s: %s",
+                        address,
+                        disconnect_error,
+                    )
+                else:
+                    logger.debug(f"Stale connection disconnect completed for {address}")
             return
 
         if event_loop and getattr(event_loop, "is_running", lambda: False)():
