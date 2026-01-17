@@ -1444,7 +1444,7 @@ def connect_meshtastic(
                                     logger.debug(
                                         f"BLE interface created successfully for {ble_address}"
                                     )
-                                except FuturesTimeoutError:
+                                except FuturesTimeoutError as err:
                                     # Use logger.exception so we retain the timeout context (TRY400),
                                     # but keep the raised exception concise (TRY003) and emit guidance
                                     # as separate log lines for operators.
@@ -1469,7 +1469,7 @@ def connect_meshtastic(
                                     meshtastic_iface = None
                                     raise TimeoutError(
                                         f"BLE connection attempt timed out for {ble_address}."
-                                    ) from None
+                                    ) from err
                             except Exception:
                                 # BLEInterface constructor failed - this is a critical error
                                 logger.exception("BLE interface creation failed")
