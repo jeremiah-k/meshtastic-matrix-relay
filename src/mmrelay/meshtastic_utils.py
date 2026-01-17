@@ -237,6 +237,8 @@ def _schedule_ble_future_cleanup(
     """
 
     def _cleanup() -> None:
+        if future.done():
+            return
         logger.warning(
             "BLE worker still running after %.0fs for %s; clearing stale future (%s)",
             _BLE_FUTURE_WATCHDOG_SECS,
@@ -247,6 +249,7 @@ def _schedule_ble_future_cleanup(
 
     timer = threading.Timer(_BLE_FUTURE_WATCHDOG_SECS, _cleanup)
     timer.daemon = True
+    future.add_done_callback(lambda _f: timer.cancel())
     timer.start()
 
 
@@ -263,16 +266,23 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
     """
     Recreate the BLE executor after repeated timeouts to recover from hangs.
     """
-    if timeout_count < _BLE_TIMEOUT_RESET_THRESHOLD:
-        return
-
     global _ble_executor, _ble_future, _ble_future_address
-    logger.warning(
-        "BLE worker timed out %s times for %s; recreating executor",
-        timeout_count,
-        ble_address,
-    )
     with _ble_executor_lock:
+        if timeout_count < _BLE_TIMEOUT_RESET_THRESHOLD:
+            return
+        logger.warning(
+            "BLE worker timed out %s times for %s; recreating executor",
+            timeout_count,
+            ble_address,
+        )
+        if _ble_future and not _ble_future.done():
+            _ble_future.cancel()
+            try:
+                _ble_future.result(timeout=0.2)
+            except FuturesTimeoutError:
+                pass
+            except Exception as exc:  # noqa: BLE001 - best-effort reset cleanup
+                logger.debug("BLE worker errored during reset: %s", exc)
         try:
             _ble_executor.shutdown(wait=False, cancel_futures=True)
         except TypeError:
@@ -1201,8 +1211,15 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                     else:
                         # Run sync disconnect in a daemon thread so it cannot
                         # block shutdown if BlueZ/DBus is hung.
+                        def _disconnect_sync(
+                            method: Callable[[], Any] = disconnect_method,
+                        ) -> None:
+                            result = method()
+                            if inspect.isawaitable(result):
+                                _wait_for_result(result, timeout=2.0)
+
                         _run_blocking_with_timeout(
-                            disconnect_method,
+                            _disconnect_sync,
                             timeout=2.0,
                             label=f"ble-client-disconnect-{reason}",
                         )
@@ -1231,8 +1248,13 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
         else:
             # Close can block indefinitely in the official library; run it in
             # a daemon thread with a timeout to allow clean shutdown.
+            def _close_sync(method: Callable[[], Any] = close_method) -> None:
+                result = method()
+                if inspect.isawaitable(result):
+                    _wait_for_result(result, timeout=5.0)
+
             _run_blocking_with_timeout(
-                close_method,
+                _close_sync,
                 timeout=5.0,
                 label=f"ble-interface-close-{reason}",
             )

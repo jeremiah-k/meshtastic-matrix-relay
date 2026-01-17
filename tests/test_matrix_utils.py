@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 import importlib
 import os
 import re
@@ -6036,7 +6037,13 @@ class _InlineExecutorLoop:
         fut = self._loop.create_future()
         try:
             result = func(*args)
-        except Exception as exc:
+        except (
+            concurrent.futures.TimeoutError,
+            ValueError,
+            RuntimeError,
+            TypeError,
+            OSError,
+        ) as exc:
             fut.set_exception(exc)
         else:
             fut.set_result(result)
