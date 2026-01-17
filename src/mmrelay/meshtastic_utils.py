@@ -902,6 +902,8 @@ def _disconnect_ble_by_address(address: str) -> None:
                 BleakClientDBusError,
                 OSError,
                 RuntimeError,
+                # Bleak/DBus can raise these during teardown with malformed payloads
+                # or unexpected awaitable shapes; cleanup stays best-effort.
                 ValueError,
                 TypeError,
             )

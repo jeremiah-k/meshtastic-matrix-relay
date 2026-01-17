@@ -162,14 +162,16 @@ class _CloseFutureBase(concurrent.futures.Future):
 class _TimeoutCloseFuture(_CloseFutureBase):
     """Future that raises TimeoutError immediately on result()."""
 
-    def result(self, _timeout: float | None = None) -> None:
+    def result(self, timeout: float | None = None) -> None:
+        _ = timeout
         raise concurrent.futures.TimeoutError()
 
 
 class _ErrorCloseFuture(_CloseFutureBase):
     """Future that raises an unexpected error on result()."""
 
-    def result(self, _timeout: float | None = None) -> None:
+    def result(self, timeout: float | None = None) -> None:
+        _ = timeout
         raise ValueError("boom")
 
 
