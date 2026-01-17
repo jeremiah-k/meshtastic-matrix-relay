@@ -973,11 +973,14 @@ def _disconnect_ble_by_address(address: str) -> None:
         )
         asyncio.run(disconnect_stale_connection())
         logger.debug(f"Stale connection disconnect completed for {address}")
-
     except ImportError:
         # Bleak is optional in some deployments; skip stale cleanup rather than
         # breaking startup when BLE support isn't installed.
         logger.debug("BleakClient not available for stale connection cleanup")
+    except Exception as e:  # noqa: BLE001 - disconnect cleanup must not block startup
+        # Other errors during best-effort disconnect (e.g., from future.result() or asyncio.run())
+        # are non-fatal; log and continue.
+        logger.debug(f"Error during BLE disconnect cleanup for {address}: {e}")
 
 
 def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
