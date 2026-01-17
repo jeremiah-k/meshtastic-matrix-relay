@@ -985,6 +985,12 @@ def get_meshtastic_config_value(
             except ImportError:
 
                 def msg_suggest_check_config() -> str:
+                    """
+                    Provide a fallback suggestion string for checking configuration when the real helper is unavailable.
+                    
+                    Returns:
+                        suggestion (str): An empty string indicating no suggestion is available.
+                    """
                     return ""
 
             logger.error(
