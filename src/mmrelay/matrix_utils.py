@@ -114,7 +114,7 @@ try:
     NioRemoteTransportError = nio_exceptions.RemoteTransportError
     NioLoginError = nio_responses.LoginError
     NioLogoutError = nio_responses.LogoutError
-except ImportError:
+except (ImportError, AttributeError):
     # Fallback for test environments where nio imports might fail
     class _NioStubError(Exception):
         """Stub exception for nio errors in test mode"""

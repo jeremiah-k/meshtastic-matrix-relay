@@ -1022,13 +1022,16 @@ class TestConnectionLossHandling(unittest.TestCase):
         )
 
 
+@pytest.mark.usefixtures("reset_meshtastic_globals")
 class TestConnectMeshtasticEdgeCases(unittest.TestCase):
     """Test cases for edge cases in Meshtastic connection."""
 
+    @patch("mmrelay.meshtastic_utils.INFINITE_RETRIES", 1)
+    @patch("mmrelay.meshtastic_utils.time.sleep")
     @patch("mmrelay.meshtastic_utils.serial_port_exists")
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
     def test_connect_meshtastic_serial_port_not_exists(
-        self, mock_serial, mock_port_exists
+        self, mock_serial, mock_port_exists, _mock_sleep
     ):
         """
         Test that connect_meshtastic returns None and does not instantiate the serial interface when the specified serial port does not exist.
@@ -1044,8 +1047,10 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
         self.assertIsNone(result)
         mock_serial.assert_not_called()
 
+    @patch("mmrelay.meshtastic_utils.INFINITE_RETRIES", 1)
+    @patch("mmrelay.meshtastic_utils.time.sleep")
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
-    def test_connect_meshtastic_serial_exception(self, mock_serial):
+    def test_connect_meshtastic_serial_exception(self, mock_serial, _mock_sleep):
         """
         Test that connect_meshtastic returns None if an exception occurs during serial interface instantiation.
         """

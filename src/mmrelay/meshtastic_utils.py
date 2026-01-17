@@ -125,6 +125,11 @@ _metadata_future_lock = threading.Lock()
 _ble_executor = ThreadPoolExecutor(max_workers=1)
 _ble_executor_lock = threading.Lock()
 _ble_future: Future[Any] | None = None
+_ble_future_address: str | None = None
+_ble_timeout_counts: dict[str, int] = {}
+_ble_timeout_lock = threading.Lock()
+_BLE_FUTURE_WATCHDOG_SECS = 120.0
+_BLE_TIMEOUT_RESET_THRESHOLD = 3
 
 
 def _submit_coro(
@@ -209,10 +214,74 @@ def _clear_ble_future(done_future: Future[Any]) -> None:
     queuing up multiple long-running BLE operations; this callback releases the
     reference once the task completes.
     """
-    global _ble_future
+    global _ble_future, _ble_future_address
     with _ble_executor_lock:
         if _ble_future is done_future:
             _ble_future = None
+            if _ble_future_address:
+                with _ble_timeout_lock:
+                    _ble_timeout_counts.pop(_ble_future_address, None)
+            _ble_future_address = None
+
+
+def _schedule_ble_future_cleanup(
+    future: Future[Any],
+    ble_address: str,
+    reason: str,
+) -> None:
+    """
+    Schedule a delayed cleanup for a stuck BLE future.
+
+    If a BLE task cannot be cancelled, we avoid blocking all future retries by
+    clearing the shared future reference after a grace period.
+    """
+
+    def _cleanup() -> None:
+        logger.warning(
+            "BLE worker still running after %.0fs for %s; clearing stale future (%s)",
+            _BLE_FUTURE_WATCHDOG_SECS,
+            ble_address,
+            reason,
+        )
+        _clear_ble_future(future)
+
+    timer = threading.Timer(_BLE_FUTURE_WATCHDOG_SECS, _cleanup)
+    timer.daemon = True
+    timer.start()
+
+
+def _record_ble_timeout(ble_address: str) -> int:
+    """
+    Increment and return the timeout count for a BLE address.
+    """
+    with _ble_timeout_lock:
+        _ble_timeout_counts[ble_address] = _ble_timeout_counts.get(ble_address, 0) + 1
+        return _ble_timeout_counts[ble_address]
+
+
+def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
+    """
+    Recreate the BLE executor after repeated timeouts to recover from hangs.
+    """
+    if timeout_count < _BLE_TIMEOUT_RESET_THRESHOLD:
+        return
+
+    global _ble_executor, _ble_future, _ble_future_address
+    logger.warning(
+        "BLE worker timed out %s times for %s; recreating executor",
+        timeout_count,
+        ble_address,
+    )
+    with _ble_executor_lock:
+        try:
+            _ble_executor.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            _ble_executor.shutdown(wait=False)
+        _ble_executor = ThreadPoolExecutor(max_workers=1)
+        _ble_future = None
+        _ble_future_address = None
+    with _ble_timeout_lock:
+        _ble_timeout_counts[ble_address] = 0
 
 
 def _fire_and_forget(
@@ -370,23 +439,32 @@ def _wait_for_result(
         """
         return await asyncio.wait_for(awaitable, timeout=timeout)
 
-    if target_loop and not target_loop.is_closed():
-        if target_loop.is_running():
-            return asyncio.run_coroutine_threadsafe(_runner(), target_loop).result(
-                timeout=timeout
-            )
-        return target_loop.run_until_complete(_runner())
-
     try:
         running_loop = asyncio.get_running_loop()
     except RuntimeError:
         running_loop = None
 
-    if running_loop and not running_loop.is_closed():
-        if running_loop.is_running():
-            return asyncio.run_coroutine_threadsafe(_runner(), running_loop).result(
+    if target_loop and not target_loop.is_closed():
+        if target_loop.is_running():
+            if running_loop is target_loop:
+                # Avoid deadlocking the loop thread; schedule and return.
+                logger.warning(
+                    "Refusing to block running event loop while waiting for result"
+                )
+                _fire_and_forget(_runner(), loop=target_loop)
+                return False
+            return asyncio.run_coroutine_threadsafe(_runner(), target_loop).result(
                 timeout=timeout
             )
+        return target_loop.run_until_complete(_runner())
+
+    if running_loop and not running_loop.is_closed():
+        if running_loop.is_running():
+            logger.warning(
+                "Refusing to block running event loop while waiting for result"
+            )
+            _fire_and_forget(_runner(), loop=running_loop)
+            return False
         return running_loop.run_until_complete(_runner())
 
     new_loop = asyncio.new_event_loop()
@@ -1052,9 +1130,23 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
             max_disconnect_retries = 3
             for attempt in range(max_disconnect_retries):
                 try:
-                    disconnect_result = iface.disconnect()
-                    if inspect.isawaitable(disconnect_result):
-                        _wait_for_result(disconnect_result, timeout=3.0)
+                    disconnect_method = iface.disconnect
+                    if inspect.iscoroutinefunction(disconnect_method):
+                        _wait_for_result(disconnect_method(), timeout=3.0)
+                    else:
+                        # Run sync disconnect in a daemon thread to avoid hangs.
+                        def _disconnect_sync(
+                            method: Callable[[], Any] = disconnect_method,
+                        ) -> None:
+                            result = method()
+                            if inspect.isawaitable(result):
+                                _wait_for_result(result, timeout=3.0)
+
+                        _run_blocking_with_timeout(
+                            _disconnect_sync,
+                            timeout=3.0,
+                            label=f"ble-interface-disconnect-{reason}",
+                        )
                     # Give the adapter time to complete the disconnect
                     time.sleep(1.0)
                     logger.debug(
@@ -1127,6 +1219,8 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                         )
 
         close_method = iface.close
+        with contextlib.suppress(Exception):
+            atexit.unregister(close_method)
         if inspect.iscoroutinefunction(close_method):
             _wait_for_result(close_method(), timeout=5.0)
         else:
@@ -1258,7 +1352,7 @@ def connect_meshtastic(
         The connected Meshtastic client instance on success, or `None` if a connection could not be established or shutdown is in progress.
     """
     global meshtastic_client, meshtastic_iface, shutting_down, reconnecting, config
-    global matrix_rooms, _ble_future
+    global matrix_rooms, _ble_future, _ble_future_address
     if shutting_down:
         logger.debug("Shutdown in progress. Not attempting to connect.")
         return None
@@ -1513,6 +1607,7 @@ def connect_meshtastic(
                                             f"BLE interface creation could not be scheduled for {ble_address}."
                                         ) from exc
                                     _ble_future = future
+                                    _ble_future_address = ble_address
                                 future.add_done_callback(_clear_ble_future)
                                 try:
                                     meshtastic_iface = future.result(timeout=90.0)
@@ -1543,6 +1638,16 @@ def connect_meshtastic(
                                     # only if the future transitions to done/cancelled.
                                     if future.cancel():
                                         _clear_ble_future(future)
+                                    else:
+                                        _schedule_ble_future_cleanup(
+                                            future,
+                                            ble_address,
+                                            reason="interface creation timeout",
+                                        )
+                                        timeout_count = _record_ble_timeout(ble_address)
+                                        _maybe_reset_ble_executor(
+                                            ble_address, timeout_count
+                                        )
                                     meshtastic_iface = None
                                     raise TimeoutError(
                                         f"BLE connection attempt timed out for {ble_address}."
@@ -1616,6 +1721,7 @@ def connect_meshtastic(
                                     f"BLE connect could not be scheduled for {ble_address}."
                                 ) from exc
                             _ble_future = connect_future
+                            _ble_future_address = ble_address
                         connect_future.add_done_callback(_clear_ble_future)
                         try:
                             connect_future.result(timeout=30.0)
@@ -1640,6 +1746,14 @@ def connect_meshtastic(
                             # thread, so we cancel to allow retries only if it completes.
                             if connect_future.cancel():
                                 _clear_ble_future(connect_future)
+                            else:
+                                _schedule_ble_future_cleanup(
+                                    connect_future,
+                                    ble_address,
+                                    reason="connect timeout",
+                                )
+                                timeout_count = _record_ble_timeout(ble_address)
+                                _maybe_reset_ble_executor(ble_address, timeout_count)
                             # Don't use iface if connect() timed out - it may be in an inconsistent state
                             iface = None
                             meshtastic_iface = None
@@ -1841,7 +1955,7 @@ def on_lost_meshtastic_connection(
     Parameters:
         detection_source (str): Identifier for where or how the loss was detected; used in log messages.
     """
-    global meshtastic_client, meshtastic_iface, reconnecting, shutting_down, event_loop, reconnect_task
+    global meshtastic_client, meshtastic_iface, reconnecting, shutting_down, event_loop, reconnect_task, _ble_future, _ble_future_address
     with meshtastic_lock:
         if shutting_down:
             logger.debug("Shutdown in progress. Not attempting to reconnect.")
@@ -1875,6 +1989,17 @@ def on_lost_meshtastic_connection(
                 except Exception as e:
                     logger.warning(f"Error closing Meshtastic client: {e}")
         meshtastic_client = None
+        with _ble_executor_lock:
+            if _ble_future and not _ble_future.done():
+                logger.debug(
+                    "Clearing stale BLE future before reconnect (%s)",
+                    detection_source,
+                )
+                _ble_future = None
+                if _ble_future_address:
+                    with _ble_timeout_lock:
+                        _ble_timeout_counts.pop(_ble_future_address, None)
+                _ble_future_address = None
 
         if event_loop and not event_loop.is_closed():
             reconnect_task = event_loop.create_task(reconnect())
