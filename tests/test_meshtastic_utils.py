@@ -2401,7 +2401,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         mock_client = Mock()
         mock_client.is_connected = True  # bool, not callable
-        mock_client.disconnect = Mock(return_value=_noop())
+        mock_client.disconnect = Mock(side_effect=_noop)
         mock_bleak.return_value = mock_client
 
         _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
@@ -2422,7 +2422,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         mock_client = Mock()
         mock_client.is_connected = False  # bool, not callable
-        mock_client.disconnect = Mock(return_value=_noop())
+        mock_client.disconnect = Mock(side_effect=_noop)
         mock_bleak.return_value = mock_client
 
         _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
@@ -2448,7 +2448,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         mock_client = Mock()
         mock_client.is_connected = object()
-        mock_client.disconnect = Mock(return_value=_noop())
+        mock_client.disconnect = Mock(side_effect=_noop)
         mock_bleak.return_value = mock_client
 
         _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
@@ -2473,7 +2473,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         mock_client = Mock()
         mock_client.is_connected = True
-        mock_client.disconnect = Mock(return_value=_noop())
+        mock_client.disconnect = Mock(side_effect=_noop)
         mock_bleak.return_value = mock_client
 
         _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
@@ -2505,7 +2505,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         mock_client = Mock()
         mock_client.is_connected = True
-        mock_client.disconnect = Mock(return_value=_noop())
+        mock_client.disconnect = Mock(side_effect=_noop)
         mock_bleak.return_value = mock_client
 
         _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
@@ -2542,7 +2542,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         mock_client = Mock()
         mock_client.is_connected = True
-        mock_client.disconnect = Mock(return_value=_noop())
+        mock_client.disconnect = Mock(side_effect=_noop)
         mock_bleak.return_value = mock_client
 
         _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
@@ -2572,7 +2572,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         mock_client = Mock()
         mock_client.is_connected = False
-        mock_client.disconnect = Mock(return_value=_noop())
+        mock_client.disconnect = Mock(side_effect=_noop)
         mock_bleak.return_value = mock_client
 
         _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
@@ -2592,7 +2592,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         def _import_side_effect(name, *args, **kwargs):
             if name == "bleak":
-                raise ImportError("no bleak")
+                raise ImportError()
             return real_import(name, *args, **kwargs)
 
         with patch("builtins.__import__", side_effect=_import_side_effect):

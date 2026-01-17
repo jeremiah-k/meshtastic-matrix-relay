@@ -162,16 +162,14 @@ class _CloseFutureBase(concurrent.futures.Future):
 class _TimeoutCloseFuture(_CloseFutureBase):
     """Future that raises TimeoutError immediately on result()."""
 
-    def result(self, timeout: float | None = None) -> None:
-        _ = timeout
+    def result(self, _timeout: float | None = None) -> None:
         raise concurrent.futures.TimeoutError()
 
 
 class _ErrorCloseFuture(_CloseFutureBase):
     """Future that raises an unexpected error on result()."""
 
-    def result(self, timeout: float | None = None) -> None:
-        _ = timeout
+    def result(self, _timeout: float | None = None) -> None:
         raise ValueError("boom")
 
 
@@ -222,7 +220,7 @@ class _ControlledExecutor:
         self.calls.append((wait, cancel_futures))
         if self.shutdown_typeerror and cancel_futures is True:
             # Simulate older Python versions that do not accept cancel_futures.
-            raise TypeError("cancel_futures unsupported")
+            raise TypeError()
 
 
 class TestMain(unittest.TestCase):
