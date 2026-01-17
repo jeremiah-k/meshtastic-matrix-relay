@@ -111,7 +111,13 @@ class _InlineExecutorLoop:
         fut = self._loop.create_future()
         try:
             result = func(*args)
-        except Exception as exc:  # noqa: BLE001 - test helper passthrough
+        except (
+            concurrent.futures.TimeoutError,
+            ValueError,
+            RuntimeError,
+            TypeError,
+            OSError,
+        ) as exc:
             fut.set_exception(exc)
         else:
             fut.set_result(result)
@@ -469,10 +475,8 @@ class TestMain(unittest.TestCase):
                 side_effect=_inline_to_thread,
             ),
         ):
-            try:
+            with contextlib.suppress(ConnectionError):
                 asyncio.run(main(self.mock_config))
-            except (SystemExit, Exception):
-                pass  # Expected due to connection failures
 
         # Should still proceed with Matrix connection
         mock_connect_matrix.assert_called_once()
@@ -1613,6 +1617,8 @@ class TestMainAsyncFunction(unittest.TestCase):
                 module._metadata_future = None
             if hasattr(module, "_ble_future"):
                 module._ble_future = None
+            if hasattr(module, "_ble_future_address"):
+                module._ble_future_address = None
 
         # Reset matrix_utils globals
         if "mmrelay.matrix_utils" in sys.modules:

@@ -12,6 +12,10 @@ class _DummyLoop:
     def is_running(self):
         return True
 
+    def create_task(self, _coro):
+        _coro.close()
+        return MagicMock()
+
 
 def _make_threadsafe_runner(result_value):
     result_future = MagicMock()
@@ -97,13 +101,14 @@ def test_wait_for_result_running_loop_threadsafe():
             patch(
                 "mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe",
                 side_effect=_make_threadsafe_runner("running"),
-            ),
+            ) as mock_threadsafe,
         ):
             result = _wait_for_result(future, timeout=0.1)
     finally:
         loop.close()
 
-    assert result == "running"
+    assert result is False
+    mock_threadsafe.assert_not_called()
 
 
 def test_wait_for_result_running_loop_not_running():

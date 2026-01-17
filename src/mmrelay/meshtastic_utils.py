@@ -399,7 +399,10 @@ def _wait_for_result(
         loop (asyncio.AbstractEventLoop | None): Optional event loop to use for awaiting; if omitted, a running loop will be used or a temporary loop will be created.
 
     Returns:
-        Any: The value produced by the resolved future/awaitable.
+        Any: The value produced by the resolved future/awaitable. Returns False
+        when no awaitable is provided (result_future is None) or when a potential
+        deadlock is detected and the awaitable is scheduled via _fire_and_forget
+        instead of blocking the running event loop.
 
     Raises:
         asyncio.TimeoutError: If awaiting the awaitable times out.
