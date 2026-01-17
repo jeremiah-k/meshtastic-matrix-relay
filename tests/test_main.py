@@ -162,16 +162,14 @@ class _CloseFutureBase(concurrent.futures.Future):
 class _TimeoutCloseFuture(_CloseFutureBase):
     """Future that raises TimeoutError immediately on result()."""
 
-    def result(self, timeout: float | None = None) -> None:
-        _ = timeout
+    def result(self, _timeout: float | None = None) -> None:
         raise concurrent.futures.TimeoutError()
 
 
 class _ErrorCloseFuture(_CloseFutureBase):
     """Future that raises an unexpected error on result()."""
 
-    def result(self, timeout: float | None = None) -> None:
-        _ = timeout
+    def result(self, _timeout: float | None = None) -> None:
         raise ValueError("boom")
 
 
@@ -196,11 +194,17 @@ class _ControlledExecutor:
         target = func
         if isinstance(func, functools.partial):
             target = func.func
-        if getattr(target, "__name__", "") == "_close_meshtastic":
-            if self.submit_timeout:
-                raise concurrent.futures.TimeoutError()
-            if self.close_future_factory is not None:
-                self.close_future = self.close_future_factory()
+        if self.close_future_factory is not None:
+            target_name = getattr(target, "__name__", "")
+            target_qualname = getattr(target, "__qualname__", "")
+            if (
+                "_close_meshtastic" in target_name
+                or "_close_meshtastic" in target_qualname
+            ):
+                if self.submit_timeout:
+                    raise concurrent.futures.TimeoutError()
+                if self.close_future is None:
+                    self.close_future = self.close_future_factory()
                 return self.close_future
 
         future = concurrent.futures.Future()

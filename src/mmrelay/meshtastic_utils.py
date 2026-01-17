@@ -130,6 +130,7 @@ _ble_timeout_counts: dict[str, int] = {}
 _ble_timeout_lock = threading.Lock()
 _BLE_FUTURE_WATCHDOG_SECS = 120.0
 _BLE_TIMEOUT_RESET_THRESHOLD = 3
+_BLE_SCAN_TIMEOUT_SECS = 4.0
 
 
 def _submit_coro(
@@ -292,6 +293,81 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
         _ble_future_address = None
     with _ble_timeout_lock:
         _ble_timeout_counts[ble_address] = 0
+
+
+def _scan_for_ble_address(ble_address: str, timeout: float) -> bool:
+    """
+    Best-effort scan for a BLE device address to refresh BlueZ discovery state.
+
+    Returns True when the device is observed in the scan results, False if the
+    scan fails or the device is not discovered within the timeout.
+    """
+    if not BLE_AVAILABLE:
+        return False
+
+    try:
+        from bleak import BleakScanner
+    except ImportError:
+        return False
+
+    async def _scan() -> bool:
+        try:
+            find_device = getattr(BleakScanner, "find_device_by_address", None)
+            if callable(find_device):
+                try:
+                    return await find_device(ble_address, timeout=timeout) is not None
+                except TypeError:
+                    return await find_device(ble_address) is not None
+
+            devices = await BleakScanner.discover(timeout=timeout)
+            return any(
+                getattr(device, "address", None) == ble_address for device in devices
+            )
+        except (BleakError, BleakDBusError, OSError, RuntimeError) as exc:
+            logger.debug("BLE scan failed for %s: %s", ble_address, exc)
+            return False
+
+    try:
+        running_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        running_loop = None
+
+    if running_loop and running_loop.is_running():
+        logger.debug(
+            "Skipping BLE scan for %s; running event loop is active",
+            ble_address,
+        )
+        return False
+
+    try:
+        return asyncio.run(_scan())
+    except (BleakError, BleakDBusError, OSError, RuntimeError) as exc:
+        logger.debug("BLE scan failed for %s: %s", ble_address, exc)
+        return False
+
+
+def _is_ble_discovery_error(error: Exception) -> bool:
+    """
+    Return True when the exception indicates BLE discovery/connection completion failure.
+    """
+    message = str(error)
+    if "No Meshtastic BLE peripheral" in message:
+        return True
+    if "Timed out waiting for connection completion" in message:
+        return True
+
+    ble_interface = getattr(meshtastic.ble_interface, "BLEInterface", None)
+    ble_error_type = getattr(ble_interface, "BLEError", None)
+    if ble_error_type and isinstance(error, ble_error_type):
+        return True
+
+    mesh_interface = getattr(meshtastic, "mesh_interface", None)
+    mesh_interface_class = getattr(mesh_interface, "MeshInterface", None)
+    mesh_error_type = getattr(mesh_interface_class, "MeshInterfaceError", None)
+    if mesh_error_type and isinstance(error, mesh_error_type):
+        return True
+
+    return False
 
 
 def _fire_and_forget(
@@ -1471,6 +1547,8 @@ def connect_meshtastic(
     attempts = 0
     timeout_attempts = 0
     successful = False
+    ble_scan_after_failure = False
+    ble_scan_reason: str | None = None
 
     # Get timeout configuration (default: DEFAULT_MESHTASTIC_TIMEOUT)
     timeout_raw = meshtastic_settings.get(
@@ -1502,6 +1580,8 @@ def connect_meshtastic(
     ):
         try:
             client = None
+            ble_address: str | None = None
+            supports_auto_reconnect = False
             if connection_type == CONNECTION_TYPE_SERIAL:
                 # Serial connection
                 serial_port = config["meshtastic"].get(CONFIG_KEY_SERIAL_PORT)
@@ -1586,6 +1666,17 @@ def connect_meshtastic(
                                 logger.debug(
                                     "Using official meshtastic library (auto_reconnect not available)"
                                 )
+                            if ble_scan_after_failure and not supports_auto_reconnect:
+                                logger.debug(
+                                    "Scanning for BLE device before retrying %s (%s)",
+                                    ble_address,
+                                    ble_scan_reason or "previous failure",
+                                )
+                                _scan_for_ble_address(
+                                    ble_address, _BLE_SCAN_TIMEOUT_SECS
+                                )
+                                ble_scan_after_failure = False
+                                ble_scan_reason = None
 
                             try:
                                 # Create BLE interface with timeout protection to prevent indefinite hangs
@@ -1956,6 +2047,14 @@ def connect_meshtastic(
                 logger.debug("Shutdown in progress. Aborting connection attempts.")
                 break
             attempts += 1
+            if (
+                connection_type == CONNECTION_TYPE_BLE
+                and ble_address
+                and not supports_auto_reconnect
+                and _is_ble_discovery_error(e)
+            ):
+                ble_scan_after_failure = True
+                ble_scan_reason = type(e).__name__
             if retry_limit == 0 or attempts <= retry_limit:
                 wait_time = min(2**attempts, 60)
                 logger.warning(

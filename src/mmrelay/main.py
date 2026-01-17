@@ -325,9 +325,11 @@ async def main(config: dict[str, Any]) -> None:
                 # negating the timeout protection.
                 executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
                 future = executor.submit(_close_meshtastic)
+                close_timed_out = False
                 try:
                     future.result(timeout=10.0)  # 10-second timeout
                 except concurrent.futures.TimeoutError:
+                    close_timed_out = True
                     meshtastic_logger.warning(
                         "Meshtastic client close timed out - may cause notification errors"
                     )
@@ -341,6 +343,12 @@ async def main(config: dict[str, Any]) -> None:
                 else:
                     meshtastic_logger.info("Meshtastic client closed successfully")
                 finally:
+                    if not future.done():
+                        if not close_timed_out:
+                            meshtastic_logger.warning(
+                                "Meshtastic client close timed out - may cause notification errors"
+                            )
+                        future.cancel()
                     try:
                         # Do not wait for shutdown; if close hangs we still
                         # want the process to exit promptly.
