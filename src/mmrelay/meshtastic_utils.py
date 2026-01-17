@@ -367,6 +367,10 @@ def _run_blocking_with_timeout(
     This is used for sync BLE operations in the official meshtastic library
     (notably BLEClient.disconnect/close), which can block indefinitely and
     prevent clean shutdown if executed on a non-daemon thread.
+
+    Raises:
+        TimeoutError: If the action does not finish before the timeout expires.
+        Exception: Any exception raised by the action is re-raised.
     """
     done_event = threading.Event()
     action_error: Exception | None = None
@@ -388,9 +392,10 @@ def _run_blocking_with_timeout(
     thread.start()
     if not done_event.wait(timeout=timeout):
         logger.warning("%s timed out after %.1fs", label, timeout)
-        return
+        raise TimeoutError(f"{label} timed out after {timeout:.1f}s")
     if action_error is not None:
         logger.debug("%s failed: %s", label, action_error)
+        raise action_error
 
 
 def _wait_for_result(
