@@ -719,7 +719,7 @@ class TestMain(unittest.TestCase):
         self.assertTrue(
             any(
                 "Unexpected error during Meshtastic client close" in str(call)
-                for call in mock_meshtastic_logger.error.call_args_list
+                for call in mock_meshtastic_logger.exception.call_args_list
             )
         )
 

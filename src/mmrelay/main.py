@@ -334,9 +334,9 @@ async def main(config: dict[str, Any]) -> None:
                     # Best-effort cancellation; the underlying close may be
                     # stuck in BLE/DBus, but we cannot block shutdown.
                     future.cancel()
-                except Exception as e:  # noqa: BLE001 - shutdown must keep going
-                    meshtastic_logger.error(
-                        f"Unexpected error during Meshtastic client close: {e}"
+                except Exception:  # noqa: BLE001 - shutdown must keep going
+                    meshtastic_logger.exception(
+                        "Unexpected error during Meshtastic client close"
                     )
                 else:
                     meshtastic_logger.info("Meshtastic client closed successfully")
