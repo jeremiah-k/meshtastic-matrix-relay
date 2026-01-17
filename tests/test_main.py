@@ -636,6 +636,7 @@ class TestMain(unittest.TestCase):
         executor = _ControlledExecutor()
         with (
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+            patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
             patch(
                 "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
                 return_value=executor,
@@ -820,6 +821,7 @@ class TestMain(unittest.TestCase):
         executor = _ControlledExecutor(submit_timeout=True)
         with (
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+            patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
             patch(
                 "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
                 return_value=executor,

@@ -6032,8 +6032,15 @@ class _InlineExecutorLoop:
     def is_running(self):
         return True
 
-    async def run_in_executor(self, _executor, func, *args):
-        return func(*args)
+    def run_in_executor(self, _executor, func, *args):
+        fut = self._loop.create_future()
+        try:
+            result = func(*args)
+        except Exception as exc:
+            fut.set_exception(exc)
+        else:
+            fut.set_result(result)
+        return fut
 
     def __getattr__(self, name):
         return getattr(self._loop, name)
