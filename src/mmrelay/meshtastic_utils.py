@@ -911,11 +911,7 @@ def _disconnect_ble_by_address(address: str) -> None:
             _fire_and_forget(disconnect_stale_connection(), loop=loop)
             return
 
-        if (
-            event_loop
-            and getattr(event_loop, "is_running", None)
-            and event_loop.is_running()
-        ):
+        if event_loop and getattr(event_loop, "is_running", lambda: False)():
             logger.debug(
                 "Using global event loop, waiting for disconnect task for %s",
                 address,
