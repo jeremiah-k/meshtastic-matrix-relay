@@ -1,4 +1,5 @@
 import asyncio
+import atexit
 import contextlib
 import importlib.util
 import inspect
@@ -276,6 +277,41 @@ def _make_awaitable(
         return future
     target_loop = loop if isinstance(loop, asyncio.AbstractEventLoop) else None
     return asyncio.wrap_future(future, loop=target_loop)
+
+
+def _run_blocking_with_timeout(
+    action: Callable[[], Any], timeout: float, label: str
+) -> None:
+    """
+    Run a blocking callable in a daemon thread with a timeout to avoid hangs.
+
+    This is used for sync BLE operations in the official meshtastic library
+    (notably BLEClient.disconnect/close), which can block indefinitely and
+    prevent clean shutdown if executed on a non-daemon thread.
+    """
+    done_event = threading.Event()
+    action_error: Exception | None = None
+
+    def _runner() -> None:
+        nonlocal action_error
+        try:
+            action()
+        except Exception as exc:  # noqa: BLE001 - best-effort cleanup
+            action_error = exc
+        finally:
+            done_event.set()
+
+    thread = threading.Thread(
+        target=_runner,
+        name=f"mmrelay-blocking-{label}",
+        daemon=True,
+    )
+    thread.start()
+    if not done_event.wait(timeout=timeout):
+        logger.warning("%s timed out after %.1fs", label, timeout)
+        return
+    if action_error is not None:
+        logger.debug("%s failed: %s", label, action_error)
 
 
 def _wait_for_result(
@@ -1001,6 +1037,13 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
     time.sleep(0.5)
 
     try:
+        if hasattr(iface, "_exit_handler") and iface._exit_handler:
+            # Best-effort: avoid atexit callbacks blocking shutdown when the
+            # official library registers close handlers we already ran.
+            with contextlib.suppress(Exception):
+                atexit.unregister(iface._exit_handler)
+            iface._exit_handler = None
+
         # Check if interface has a disconnect method (forked version)
         if hasattr(iface, "disconnect"):
             logger.debug(f"Disconnecting BLE interface ({reason})")
@@ -1045,9 +1088,27 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
             max_client_retries = 2
             for attempt in range(max_client_retries):
                 try:
-                    client_disconnect = iface.client.disconnect()
-                    if inspect.isawaitable(client_disconnect):
-                        _wait_for_result(client_disconnect, timeout=2.0)
+                    disconnect_method = iface.client.disconnect
+                    if (
+                        hasattr(iface.client, "_exit_handler")
+                        and iface.client._exit_handler
+                    ):
+                        with contextlib.suppress(Exception):
+                            atexit.unregister(iface.client._exit_handler)
+                        iface.client._exit_handler = None
+                    with contextlib.suppress(Exception):
+                        atexit.unregister(disconnect_method)
+
+                    if inspect.iscoroutinefunction(disconnect_method):
+                        _wait_for_result(disconnect_method(), timeout=2.0)
+                    else:
+                        # Run sync disconnect in a daemon thread so it cannot
+                        # block shutdown if BlueZ/DBus is hung.
+                        _run_blocking_with_timeout(
+                            disconnect_method,
+                            timeout=2.0,
+                            label=f"ble-client-disconnect-{reason}",
+                        )
                     time.sleep(1.0)
                     logger.debug(
                         f"BLE client disconnect succeeded on attempt {attempt + 1} ({reason})"
@@ -1065,7 +1126,17 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                             f"BLE client disconnect failed after {max_client_retries} attempts ({reason}): {e}"
                         )
 
-        iface.close()
+        close_method = iface.close
+        if inspect.iscoroutinefunction(close_method):
+            _wait_for_result(close_method(), timeout=5.0)
+        else:
+            # Close can block indefinitely in the official library; run it in
+            # a daemon thread with a timeout to allow clean shutdown.
+            _run_blocking_with_timeout(
+                close_method,
+                timeout=5.0,
+                label=f"ble-interface-close-{reason}",
+            )
     except Exception as e:  # noqa: BLE001 - cleanup must not block shutdown
         logger.debug(f"Error during BLE interface {reason}: {e}")
     finally:

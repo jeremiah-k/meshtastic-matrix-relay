@@ -6,8 +6,8 @@ import sys
 from typing import Any, cast
 
 import platformdirs
-import yaml
-from yaml.loader import SafeLoader
+import yaml  # type: ignore[import-untyped]
+from yaml.loader import SafeLoader  # type: ignore[import-untyped]
 
 # Import application constants
 from mmrelay.constants.app import APP_AUTHOR, APP_NAME
@@ -984,8 +984,8 @@ def get_meshtastic_config_value(
                 from mmrelay.cli_utils import msg_suggest_check_config
             except ImportError:
 
-                def msg_suggest_check_config():
-                    return ""  # type: ignore[assignment]
+                def msg_suggest_check_config() -> str:
+                    return ""
 
             logger.error(
                 f"Missing required configuration: meshtastic.{key}\n"
