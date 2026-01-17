@@ -780,6 +780,14 @@ def _disconnect_ble_by_address(address: str) -> None:
 
             Attempts to determine whether the Bleak client for the given address is connected and, if so, disconnects it with bounded retry and timeout behavior. Ensures a best-effort final cleanup disconnect and short settle delays; logs warnings when disconnect attempts time out or fail.
             """
+            BLEAK_EXCEPTIONS = (
+                BleakClientError,
+                BleakClientDBusError,
+                OSError,
+                RuntimeError,
+                ValueError,
+                TypeError,
+            )
             client = None
             try:
                 client = BleakClient(address)
@@ -796,14 +804,7 @@ def _disconnect_ble_by_address(address: str) -> None:
                 if is_connected_method and callable(is_connected_method):
                     try:
                         connected_result = is_connected_method()
-                    except (
-                        BleakClientError,
-                        BleakClientDBusError,
-                        OSError,
-                        RuntimeError,
-                        ValueError,
-                        TypeError,
-                    ) as e:
+                    except BLEAK_EXCEPTIONS as e:
                         logger.debug(
                             "Failed to call is_connected for %s: %s", address, e
                         )
@@ -820,14 +821,7 @@ def _disconnect_ble_by_address(address: str) -> None:
                     connected_status = is_connected_method
                 else:
                     connected_status = False
-            except (
-                BleakClientError,
-                BleakClientDBusError,
-                OSError,
-                RuntimeError,
-                ValueError,
-                TypeError,
-            ) as e:
+            except BLEAK_EXCEPTIONS as e:
                 # Bleak backends raise a mix of DBus/IO errors; treat them as
                 # non-fatal because stale disconnects are best-effort cleanup.
                 logger.debug(f"Failed to check connection state for {address}: {e}")
@@ -863,14 +857,7 @@ def _disconnect_ble_by_address(address: str) -> None:
                                 logger.warning(
                                     f"Disconnect for {address} timed out after {max_retries} attempts"
                                 )
-                        except (
-                            BleakClientError,
-                            BleakClientDBusError,
-                            OSError,
-                            RuntimeError,
-                            ValueError,
-                            TypeError,
-                        ) as e:
+                        except BLEAK_EXCEPTIONS as e:
                             # Bleak disconnects can throw DBus/IO errors depending
                             # on adapter state; retry a few times then give up.
                             if attempt < max_retries - 1:
@@ -884,14 +871,7 @@ def _disconnect_ble_by_address(address: str) -> None:
                                 )
                 else:
                     logger.debug(f"Device {address} not currently connected in BlueZ")
-            except (
-                BleakClientError,
-                BleakClientDBusError,
-                OSError,
-                RuntimeError,
-                ValueError,
-                TypeError,
-            ) as e:
+            except BLEAK_EXCEPTIONS as e:
                 # Stale disconnects are best-effort; do not fail startup/reconnect
                 # on cleanup errors from BlueZ/DBus.
                 logger.debug(f"Error disconnecting stale connection to {address}: {e}")
@@ -908,14 +888,7 @@ def _disconnect_ble_by_address(address: str) -> None:
                         await asyncio.sleep(0.5)
                 except asyncio.TimeoutError:
                     logger.debug(f"Final disconnect for {address} timed out (cleanup)")
-                except (
-                    BleakClientError,
-                    BleakClientDBusError,
-                    OSError,
-                    RuntimeError,
-                    ValueError,
-                    TypeError,
-                ) as e:
+                except BLEAK_EXCEPTIONS as e:
                     # Ignore disconnect errors during cleanup - connection may already be closed
                     logger.debug(
                         f"Final disconnect for {address} failed during cleanup: {e}"
@@ -935,7 +908,7 @@ def _disconnect_ble_by_address(address: str) -> None:
                 "Found running event loop, scheduling disconnect task for %s",
                 address,
             )
-            loop.create_task(disconnect_stale_connection())
+            _fire_and_forget(disconnect_stale_connection(), loop=loop)
             return
 
         if (
