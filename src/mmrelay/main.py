@@ -497,6 +497,7 @@ def run_main(args: Any) -> int:
         asyncio.run(main(config))
         return 0
     except KeyboardInterrupt:
+        meshtastic_utils.shutting_down = True
         logger.info("Interrupted by user. Exiting.")
         return 0
     except Exception:  # noqa: BLE001 — top-level guard to log and exit cleanly
