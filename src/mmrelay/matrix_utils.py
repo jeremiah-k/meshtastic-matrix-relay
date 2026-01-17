@@ -2950,17 +2950,10 @@ async def handle_matrix_reply(
         bool: `True` if a mapping was found and the reply was queued to Meshtastic, `False` otherwise.
     """
     # Look up the original message in the message map
-    from unittest.mock import Mock
-
-    if isinstance(get_message_map_by_matrix_event_id, Mock):
-        # Tests often patch this helper; calling it inline avoids hanging the
-        # event loop shutdown on a default executor thread.
-        orig = get_message_map_by_matrix_event_id(reply_to_event_id)
-    else:
-        loop = asyncio.get_running_loop()
-        orig = await loop.run_in_executor(
-            None, get_message_map_by_matrix_event_id, reply_to_event_id
-        )
+    loop = asyncio.get_running_loop()
+    orig = await loop.run_in_executor(
+        None, get_message_map_by_matrix_event_id, reply_to_event_id
+    )
     if not orig:
         logger.debug(
             f"Original message for Matrix reply not found in DB: {reply_to_event_id}"

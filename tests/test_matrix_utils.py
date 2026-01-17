@@ -6025,6 +6025,20 @@ async def test_connect_matrix_e2ee_missing_sqlite_store():
         mock_logger.exception.assert_called_with("Missing E2EE dependency")
 
 
+class _InlineExecutorLoop:
+    def __init__(self, loop):
+        self._loop = loop
+
+    def is_running(self):
+        return True
+
+    async def run_in_executor(self, _executor, func, *args):
+        return func(*args)
+
+    def __getattr__(self, name):
+        return getattr(self._loop, name)
+
+
 @pytest.mark.asyncio
 async def test_handle_matrix_reply_success():
     """Test handle_matrix_reply processes reply successfully."""
@@ -6036,7 +6050,12 @@ async def test_handle_matrix_reply_success():
     mock_config = {"matrix_rooms": []}
 
     # Mock database lookup to return original message
+    loop = asyncio.get_running_loop()
     with (
+        patch(
+            "mmrelay.matrix_utils.asyncio.get_running_loop",
+            return_value=_InlineExecutorLoop(loop),
+        ),
         patch(
             "mmrelay.matrix_utils.get_message_map_by_matrix_event_id"
         ) as mock_db_lookup,
@@ -6089,7 +6108,12 @@ async def test_handle_matrix_reply_numeric_string_reply_id():
     mock_room_config = {"meshtastic_channel": 0}
     mock_config = {"matrix_rooms": []}
 
+    loop = asyncio.get_running_loop()
     with (
+        patch(
+            "mmrelay.matrix_utils.asyncio.get_running_loop",
+            return_value=_InlineExecutorLoop(loop),
+        ),
         patch(
             "mmrelay.matrix_utils.get_message_map_by_matrix_event_id"
         ) as mock_db_lookup,
@@ -6130,7 +6154,12 @@ async def test_handle_matrix_reply_unexpected_id_type_broadcasts():
     mock_room_config = {"meshtastic_channel": 0}
     mock_config = {"matrix_rooms": []}
 
+    loop = asyncio.get_running_loop()
     with (
+        patch(
+            "mmrelay.matrix_utils.asyncio.get_running_loop",
+            return_value=_InlineExecutorLoop(loop),
+        ),
         patch(
             "mmrelay.matrix_utils.get_message_map_by_matrix_event_id"
         ) as mock_db_lookup,
@@ -6172,7 +6201,12 @@ async def test_handle_matrix_reply_integer_id():
     mock_room_config = {"meshtastic_channel": 0}
     mock_config = {"matrix_rooms": []}
 
+    loop = asyncio.get_running_loop()
     with (
+        patch(
+            "mmrelay.matrix_utils.asyncio.get_running_loop",
+            return_value=_InlineExecutorLoop(loop),
+        ),
         patch(
             "mmrelay.matrix_utils.get_message_map_by_matrix_event_id"
         ) as mock_db_lookup,
@@ -6215,7 +6249,12 @@ async def test_handle_matrix_reply_original_not_found():
     mock_room_config = {"meshtastic_channel": 0}
     mock_config = {"matrix_rooms": []}
 
+    loop = asyncio.get_running_loop()
     with (
+        patch(
+            "mmrelay.matrix_utils.asyncio.get_running_loop",
+            return_value=_InlineExecutorLoop(loop),
+        ),
         patch(
             "mmrelay.matrix_utils.get_message_map_by_matrix_event_id"
         ) as mock_db_lookup,
