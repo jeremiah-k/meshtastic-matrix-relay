@@ -93,6 +93,22 @@ async def _async_noop(*_args, **_kwargs) -> None:
     return None
 
 
+class _ImmediateEvent:
+    """Event that starts set and completes wait() immediately for shutdown tests."""
+
+    def __init__(self) -> None:
+        self._set = True
+
+    def is_set(self) -> bool:
+        return self._set
+
+    def set(self) -> None:
+        self._set = True
+
+    async def wait(self) -> None:
+        return None
+
+
 class _CloseFutureBase(concurrent.futures.Future):
     """Future with a cancel flag for shutdown test assertions."""
 
@@ -108,14 +124,14 @@ class _CloseFutureBase(concurrent.futures.Future):
 class _TimeoutCloseFuture(_CloseFutureBase):
     """Future that raises TimeoutError immediately on result()."""
 
-    def result(self, timeout: float | None = None) -> None:  # noqa: D401 - test double
+    def result(self, timeout: float | None = None) -> None:
         raise concurrent.futures.TimeoutError()
 
 
 class _ErrorCloseFuture(_CloseFutureBase):
     """Future that raises an unexpected error on result()."""
 
-    def result(self, timeout: float | None = None) -> None:  # noqa: D401 - test double
+    def result(self, timeout: float | None = None) -> None:
         raise ValueError("boom")
 
 
@@ -517,19 +533,6 @@ class TestMain(unittest.TestCase):
     ):
         """Shutdown should use BLE-specific disconnect when the interface is BLE."""
 
-        class ImmediateEvent:
-            def __init__(self) -> None:
-                self._set = True
-
-            def is_set(self) -> bool:
-                return self._set
-
-            def set(self) -> None:
-                self._set = True
-
-            async def wait(self) -> None:
-                return None
-
         mock_iface = MagicMock()
 
         def _connect_meshtastic(*_args, **_kwargs):
@@ -547,7 +550,7 @@ class TestMain(unittest.TestCase):
 
         executor = _ControlledExecutor()
         with (
-            patch("mmrelay.main.asyncio.Event", return_value=ImmediateEvent()),
+            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
             patch(
                 "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
                 return_value=executor,
@@ -581,19 +584,6 @@ class TestMain(unittest.TestCase):
     ):
         """Shutdown should cancel futures when Meshtastic close times out."""
 
-        class ImmediateEvent:
-            def __init__(self) -> None:
-                self._set = True
-
-            def is_set(self) -> bool:
-                return self._set
-
-            def set(self) -> None:
-                self._set = True
-
-            async def wait(self) -> None:
-                return None
-
         mock_connect_meshtastic.return_value = MagicMock()
         mock_matrix_client = MagicMock()
         mock_matrix_client.close = AsyncMock()
@@ -602,7 +592,7 @@ class TestMain(unittest.TestCase):
 
         executor = _ControlledExecutor(close_future_factory=_TimeoutCloseFuture)
         with (
-            patch("mmrelay.main.asyncio.Event", return_value=ImmediateEvent()),
+            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
             patch(
                 "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
                 return_value=executor,
@@ -636,19 +626,6 @@ class TestMain(unittest.TestCase):
     ):
         """Shutdown should log unexpected errors from close futures."""
 
-        class ImmediateEvent:
-            def __init__(self) -> None:
-                self._set = True
-
-            def is_set(self) -> bool:
-                return self._set
-
-            def set(self) -> None:
-                self._set = True
-
-            async def wait(self) -> None:
-                return None
-
         mock_connect_meshtastic.return_value = MagicMock()
         mock_matrix_client = MagicMock()
         mock_matrix_client.close = AsyncMock()
@@ -657,7 +634,7 @@ class TestMain(unittest.TestCase):
 
         executor = _ControlledExecutor(close_future_factory=_ErrorCloseFuture)
         with (
-            patch("mmrelay.main.asyncio.Event", return_value=ImmediateEvent()),
+            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
             patch(
                 "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
                 return_value=executor,
@@ -691,19 +668,6 @@ class TestMain(unittest.TestCase):
     ):
         """Shutdown should retry executor.shutdown without cancel_futures."""
 
-        class ImmediateEvent:
-            def __init__(self) -> None:
-                self._set = True
-
-            def is_set(self) -> bool:
-                return self._set
-
-            def set(self) -> None:
-                self._set = True
-
-            async def wait(self) -> None:
-                return None
-
         mock_connect_meshtastic.return_value = MagicMock()
         mock_matrix_client = MagicMock()
         mock_matrix_client.close = AsyncMock()
@@ -712,7 +676,7 @@ class TestMain(unittest.TestCase):
 
         executor = _ControlledExecutor(shutdown_typeerror=True)
         with (
-            patch("mmrelay.main.asyncio.Event", return_value=ImmediateEvent()),
+            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
             patch(
                 "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
                 return_value=executor,
@@ -744,19 +708,6 @@ class TestMain(unittest.TestCase):
     ):
         """Submit-time timeouts should hit the outer shutdown warning."""
 
-        class ImmediateEvent:
-            def __init__(self) -> None:
-                self._set = True
-
-            def is_set(self) -> bool:
-                return self._set
-
-            def set(self) -> None:
-                self._set = True
-
-            async def wait(self) -> None:
-                return None
-
         mock_connect_meshtastic.return_value = MagicMock()
         mock_matrix_client = MagicMock()
         mock_matrix_client.close = AsyncMock()
@@ -765,7 +716,7 @@ class TestMain(unittest.TestCase):
 
         executor = _ControlledExecutor(submit_timeout=True)
         with (
-            patch("mmrelay.main.asyncio.Event", return_value=ImmediateEvent()),
+            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
             patch(
                 "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
                 return_value=executor,
@@ -1778,28 +1729,9 @@ class TestMainAsyncFunction(unittest.TestCase):
             "meshtastic": {"connection_type": "serial"},
         }
 
-        class ImmediateEvent:
-            def __init__(self) -> None:
-                self._set = True
-
-            def is_set(self) -> bool:
-                return self._set
-
-            def set(self) -> None:
-                self._set = True
-
-            async def wait(self) -> None:
-                return None
-
         mock_matrix_client = AsyncMock()
         mock_matrix_client.add_event_callback = MagicMock()
         mock_matrix_client.close = AsyncMock()
-
-        async def _return_matrix_client(*_args, **_kwargs):
-            return mock_matrix_client
-
-        async def _noop(*_args, **_kwargs):
-            return None
 
         captured_signals = []
         real_get_running_loop = asyncio.get_running_loop
@@ -1827,19 +1759,19 @@ class TestMainAsyncFunction(unittest.TestCase):
             patch("mmrelay.main.start_message_queue"),
             patch(
                 "mmrelay.main.connect_matrix",
-                side_effect=_return_matrix_client,
+                side_effect=_make_async_return(mock_matrix_client),
             ),
             patch("mmrelay.main.connect_meshtastic", return_value=None),
-            patch("mmrelay.main.join_matrix_room", side_effect=_noop),
+            patch("mmrelay.main.join_matrix_room", side_effect=_async_noop),
             patch("mmrelay.main.get_message_queue") as mock_get_queue,
             patch(
                 "mmrelay.main.meshtastic_utils.check_connection",
-                side_effect=_noop,
+                side_effect=_async_noop,
             ),
             patch("mmrelay.main.shutdown_plugins"),
             patch("mmrelay.main.stop_message_queue"),
             patch("mmrelay.main.sys.platform", "linux"),
-            patch("mmrelay.main.asyncio.Event", return_value=ImmediateEvent()),
+            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
         ):
             mock_queue = MagicMock()
             mock_queue.ensure_processor_started = MagicMock()

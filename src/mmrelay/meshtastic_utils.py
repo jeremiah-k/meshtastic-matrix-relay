@@ -921,13 +921,12 @@ def _disconnect_ble_by_address(address: str) -> None:
                         f"Final disconnect for {address} failed during cleanup: {e}"
                     )
 
+        runtime_error: RuntimeError | None = None
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError as e:
             loop = None
             runtime_error = e
-        else:
-            runtime_error = None
 
         if loop:
             # We are already on the loop thread; do not block it. Schedule a
@@ -1011,7 +1010,9 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
             max_disconnect_retries = 3
             for attempt in range(max_disconnect_retries):
                 try:
-                    iface.disconnect()
+                    disconnect_result = iface.disconnect()
+                    if inspect.isawaitable(disconnect_result):
+                        _wait_for_result(disconnect_result, timeout=3.0)
                     # Give the adapter time to complete the disconnect
                     time.sleep(1.0)
                     logger.debug(
@@ -1045,7 +1046,9 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
             max_client_retries = 2
             for attempt in range(max_client_retries):
                 try:
-                    iface.client.disconnect()
+                    client_disconnect = iface.client.disconnect()
+                    if inspect.isawaitable(client_disconnect):
+                        _wait_for_result(client_disconnect, timeout=2.0)
                     time.sleep(1.0)
                     logger.debug(
                         f"BLE client disconnect succeeded on attempt {attempt + 1} ({reason})"
