@@ -209,11 +209,12 @@ def _submit_coro(
 
 def _clear_ble_future(done_future: Future[Any]) -> None:
     """
-    Clear the active BLE executor future when it finishes.
-
-    We keep a module-level reference to the currently running BLE task to avoid
-    queuing up multiple long-running BLE operations; this callback releases the
-    reference once the task completes.
+    Release the module's active BLE future reference if it matches the completed future.
+    
+    If `done_future` is the currently tracked BLE executor future, clear the tracked
+    future and its associated address; also remove the per-address timeout count.
+    Parameters:
+        done_future (concurrent.futures.Future | asyncio.Future): The future that has completed and should be cleared if it matches the active BLE task.
     """
     global _ble_future, _ble_future_address
     with _ble_executor_lock:
@@ -238,6 +239,11 @@ def _schedule_ble_future_cleanup(
     """
 
     def _cleanup() -> None:
+        """
+        Clear a stale BLE worker future when it exceeds the watchdog timeout.
+        
+        If the provided future is still running and remains the active BLE future, logs a warning including the watchdog duration, BLE address, and reason, then clears the stale future.
+        """
         if future.done():
             return
         with _ble_executor_lock:
@@ -259,7 +265,15 @@ def _schedule_ble_future_cleanup(
 
 def _record_ble_timeout(ble_address: str) -> int:
     """
-    Increment and return the timeout count for a BLE address.
+    Increment the recorded BLE timeout count for the given BLE address.
+    
+    This operation is thread-safe.
+    
+    Parameters:
+        ble_address (str): BLE device address to record the timeout for.
+    
+    Returns:
+        int: The updated timeout count for the specified BLE address (1 or greater).
     """
     with _ble_timeout_lock:
         _ble_timeout_counts[ble_address] = _ble_timeout_counts.get(ble_address, 0) + 1
@@ -268,7 +282,16 @@ def _record_ble_timeout(ble_address: str) -> int:
 
 def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
     """
-    Recreate the BLE executor after repeated timeouts to recover from hangs.
+    Reset the BLE worker executor when an address has reached the timeout threshold.
+    
+    Recreates the module's BLE executor and clears any active BLE future/state for the given
+    BLE address when `timeout_count` meets or exceeds the configured reset threshold. Performs a
+    best-effort cancellation and cleanup of a possibly stuck BLE task and resets the per-address
+    timeout counter to zero.
+    
+    Parameters:
+        ble_address (str): BLE device address associated with the observed timeouts.
+        timeout_count (int): Number of consecutive timeouts recorded for that address.
     """
     global _ble_executor, _ble_future, _ble_future_address
     with _ble_executor_lock:
@@ -300,10 +323,12 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
 
 def _scan_for_ble_address(ble_address: str, timeout: float) -> bool:
     """
-    Best-effort scan for a BLE device address to refresh BlueZ discovery state.
-
-    Returns True when the device is observed in the scan results, False if the
-    scan fails or the device is not discovered within the timeout.
+    Performs a best-effort BLE scan to check whether a device with the given address is discoverable.
+    
+    If the Bleak library is unavailable or an active asyncio event loop is running, the function does not perform a scan and returns `false`.
+    
+    Returns:
+        `true` if the device address was observed in a scan within the given timeout; `false` if the device was not observed, the scan failed, Bleak is unavailable, or scanning was skipped due to an active event loop.
     """
     if not BLE_AVAILABLE:
         return False
@@ -314,6 +339,12 @@ def _scan_for_ble_address(ble_address: str, timeout: float) -> bool:
         return False
 
     async def _scan() -> bool:
+        """
+        Determine whether the target BLE device is discoverable within the scan timeout.
+        
+        Returns:
+            bool: `True` if a device with the target BLE address is discovered within the timeout, `False` otherwise (including when BLE discovery errors occur).
+        """
         try:
             find_device = getattr(BleakScanner, "find_device_by_address", None)
             if callable(find_device):
@@ -351,7 +382,10 @@ def _scan_for_ble_address(ble_address: str, timeout: float) -> bool:
 
 def _is_ble_discovery_error(error: Exception) -> bool:
     """
-    Return True when the exception indicates BLE discovery/connection completion failure.
+    Determine whether an exception represents a BLE discovery or connection completion failure.
+    
+    Returns:
+        True if the exception indicates a BLE discovery or connection completion failure, False otherwise.
     """
     message = str(error)
     if "No Meshtastic BLE peripheral" in message:
@@ -455,6 +489,11 @@ def _run_blocking_with_timeout(
     action_error: Exception | None = None
 
     def _runner() -> None:
+        """
+        Execute the enclosing scope's action callable, record any raised Exception into the nonlocal `action_error`, and mark completion by calling `done_event.set()`.
+        
+        This function does not return a value; its observable effects are writing to the nonlocal `action_error` (set to the caught Exception on error) and setting the `done_event` to signal completion.
+        """
         nonlocal action_error
         try:
             action()
@@ -483,23 +522,18 @@ def _wait_for_result(
     loop: asyncio.AbstractEventLoop | None = None,
 ) -> Any:
     """
-    Await and return the value of a future-like object from synchronous code, enforcing a timeout.
-
-    Supports concurrent.futures.Future, asyncio.Future/Task, awaitables, and objects exposing a callable `result(timeout)` method. If called when an event loop is running, schedules the awaitable on that loop; otherwise it will run the awaitable on the provided loop or create a temporary loop.
-
+    Wait for and return the resolved value of a future-like or awaitable object, enforcing a timeout.
+    
     Parameters:
-        result_future (Any): The future/awaitable or future-like object to resolve.
+        result_future (Any): A concurrent.futures.Future, asyncio Future/Task, awaitable, or object exposing a callable `result(timeout)` method. If None, the function returns False.
         timeout (float): Maximum seconds to wait for the result.
-        loop (asyncio.AbstractEventLoop | None): Optional event loop to use for awaiting; if omitted, a running loop will be used or a temporary loop will be created.
-
+        loop (asyncio.AbstractEventLoop | None): Optional event loop to use; if omitted, the function will use a running loop or create a temporary loop as needed.
+    
     Returns:
-        Any: The value produced by the resolved future/awaitable. Returns False
-        when no awaitable is provided (result_future is None) or when a potential
-        deadlock is detected and the awaitable is scheduled via _fire_and_forget
-        instead of blocking the running event loop.
-
+        Any: The value produced by the resolved future or awaitable. Returns `False` when `result_future` is `None` or when the function refuses to block the currently running event loop and instead schedules the awaitable to run in the background.
+    
     Raises:
-        asyncio.TimeoutError: If awaiting the awaitable times out.
+        asyncio.TimeoutError: If awaiting an asyncio awaitable times out.
         concurrent.futures.TimeoutError: If a concurrent.futures.Future times out.
         Exception: Any exception raised by the resolved future/awaitable is propagated.
     """
@@ -527,10 +561,10 @@ def _wait_for_result(
     async def _runner() -> Any:
         """
         Await the captured awaitable and enforce the captured timeout.
-
+        
         Returns:
             The result returned by the awaitable.
-
+        
         Raises:
             asyncio.TimeoutError: If the awaitable does not complete before the timeout expires.
         """
@@ -743,18 +777,18 @@ def _get_name_or_none(
 
 def _get_device_metadata(client: Any) -> dict[str, Any]:
     """
-    Extract firmware version and raw metadata output from a Meshtastic client.
-
-    Attempts to invoke client.localNode.getMetadata() (if present), captures its console output, and parses a firmware version string. Returns a dict containing the parsed firmware version, the captured raw output (possibly truncated), and a success flag indicating whether a firmware version was found.
-
+    Retrieve firmware version and raw metadata output from a Meshtastic client.
+    
+    Attempts to call client.localNode.getMetadata() (when present), captures any console output produced, and extracts a firmware version string if available.
+    
     Parameters:
-        client: An object implementing a Meshtastic client interface; expected to provide a localNode with a getMetadata() method. If the method is absent or parsing fails, defaults are returned.
-
+        client (Any): Meshtastic client object expected to expose localNode.getMetadata(); if absent, metadata retrieval is skipped.
+    
     Returns:
         dict: {
-            "firmware_version": str — parsed firmware version or "unknown" when not found,
-            "raw_output": str — captured output from getMetadata() (truncated to 4096 characters with a trailing ellipsis if longer),
-            "success": bool — `true` when a firmware_version was successfully parsed, `false` otherwise
+            "firmware_version" (str): Parsed firmware version or "unknown" when not found,
+            "raw_output" (str): Captured output from getMetadata(), truncated to 4096 characters with a trailing ellipsis if longer,
+            "success" (bool): `True` when a firmware version was successfully parsed, `False` otherwise
         }
     """
     global _metadata_future
@@ -781,6 +815,14 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
         def call_get_metadata() -> None:
             # Capture stdout only; stderr is left intact to avoid losing
             # critical error output if the worker outlives the timeout.
+            """
+            Invoke the client's getMetadata() while capturing its standard output.
+            
+            Calls client.localNode.getMetadata() with stdout redirected into the module's
+            output_capture to prevent metadata noise from polluting process stdout; stderr
+            is left unchanged. While the call runs, the module-level redirect_active flag
+            is set and is cleared on completion to signal the redirect state.
+            """
             with contextlib.redirect_stdout(output_capture):
                 redirect_active.set()
                 try:
@@ -828,6 +870,15 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
             console_output = ""
 
         def _finalize_metadata_capture(done_future: Future[Any]) -> None:
+            """
+            Finalize capture state for a completed metadata retrieval future.
+            
+            If the provided future matches the module-level metadata future, clear that reference.
+            Also close the shared output capture stream if it is still open.
+            
+            Parameters:
+                done_future (concurrent.futures.Future | asyncio.Future): The future that has completed and triggered finalization.
+            """
             global _metadata_future
             with _metadata_future_lock:
                 if _metadata_future is done_future:
@@ -894,31 +945,22 @@ def _sanitize_ble_address(address: str) -> str:
 
 def _validate_ble_connection_address(interface: Any, expected_address: str) -> bool:
     """
-    Validate that the BLE interface is connected to the expected device address.
-
-    This is a critical safety check to prevent connecting to the wrong device due to:
-    1. Substring matching bugs in meshtastic library's find_device() (official version)
-    2. Name-based device selection that could match non-Meshtastic devices
-    3. Scanning returning multiple devices where wrong one is selected
-
-    The issue occurs because meshtastic's find_device() uses substring matching:
-        `lambda x: address in (x.name, x.address)`
-    This means if target address is "AA:BB:CC:DD:EE:FF" and a nearby device
-    has a name containing that string as a substring, it would incorrectly match.
-
-    Example vulnerability scenario:
-    - Configured address: AA:BB:CC:DD:EE:FF (Meshtastic device)
-    - Nearby device name: "AA:BB:CC:DD:EE:FF-Sensor" (car/handset/etc)
-    - Result: Bot incorrectly matches and connects to non-Meshtastic device
-
-    This validation works with both official and forked meshtastic versions.
-
+    Validate that a BLE interface is connected to the configured device address.
+    
+    Compares the configured address to the interface's connected address after normalizing
+    (both addresses have separators removed and are lowercased). Works with both the
+    official and forked Meshtastic interface shapes by attempting common attribute paths.
+    This is a best-effort check: if the connected address cannot be determined the
+    function returns `True` to avoid false negatives; it returns `False` only when a
+    determinate mismatch is detected.
+    
     Parameters:
-        interface: The BLE interface instance to validate.
-        expected_address: The configured BLE address that should be connected.
-
+        interface (Any): BLE interface object whose connected address should be inspected.
+        expected_address (str): Configured BLE device address to validate against.
+    
     Returns:
-        True if connected device matches expected address, False otherwise.
+        bool: `True` if the connected device matches `expected_address` or the address
+        cannot be determined, `False` if a definitive mismatch is found.
     """
     try:
         expected_sanitized = _sanitize_ble_address(expected_address)
@@ -987,9 +1029,9 @@ def _disconnect_ble_by_address(address: str) -> None:
 
         async def disconnect_stale_connection() -> None:
             """
-            Disconnect a stale BlueZ BLE connection for the target address.
-
-            Attempts to determine whether the Bleak client for the given address is connected and, if so, disconnects it with bounded retry and timeout behavior. Ensures a best-effort final cleanup disconnect and short settle delays; logs warnings when disconnect attempts time out or fail.
+            Perform a best-effort disconnect of a stale BlueZ BLE connection for the target address.
+            
+            Attempts to detect whether the Bleak client for the configured address is connected and, if so, issues a bounded series of disconnect attempts with timeouts and short settle delays. All errors and timeouts are suppressed (logged at debug/warning levels) so this function never raises; a final cleanup disconnect is always attempted.
             """
             BLEAK_EXCEPTIONS = (
                 BleakClientError,
@@ -1215,6 +1257,14 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                         def _disconnect_sync(
                             method: Callable[[], Any] = disconnect_method,
                         ) -> None:
+                            """
+                            Call the provided disconnect callable and wait briefly if it returns an awaitable.
+                            
+                            Parameters:
+                                method (Callable[[], Any]): A zero-argument callable that performs a disconnect. If omitted, a module-level
+                                    default `disconnect_method` is used. If the callable returns an awaitable, this function will wait up to
+                                    3.0 seconds for completion.
+                            """
                             result = method()
                             if inspect.isawaitable(result):
                                 _wait_for_result(result, timeout=3.0)
@@ -1276,6 +1326,12 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                         def _disconnect_sync(
                             method: Callable[[], Any] = disconnect_method,
                         ) -> None:
+                            """
+                            Call a disconnection callable and, if it returns an awaitable, wait up to 2 seconds for it to complete.
+                            
+                            Parameters:
+                                method (Callable[[], Any]): A synchronous or asynchronous disconnect callable to invoke. If it returns an awaitable, this function will wait up to 2.0 seconds for completion.
+                            """
                             result = method()
                             if inspect.isawaitable(result):
                                 _wait_for_result(result, timeout=2.0)
@@ -1311,6 +1367,12 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
             # Close can block indefinitely in the official library; run it in
             # a daemon thread with a timeout to allow clean shutdown.
             def _close_sync(method: Callable[[], Any] = close_method) -> None:
+                """
+                Invoke a close-like callable and, if it returns an awaitable, wait up to 5 seconds for it to complete.
+                
+                Parameters:
+                    method (Callable[[], Any]): A zero-argument function that performs a close/teardown action. If the callable returns an awaitable, this function will wait up to 5.0 seconds for completion.
+                """
                 result = method()
                 if inspect.isawaitable(result):
                     _wait_for_result(result, timeout=5.0)
@@ -1667,11 +1729,11 @@ def connect_meshtastic(
                                     kwargs: dict[str, Any],
                                 ) -> Any:
                                     """
-                                    Create a BLEInterface instance configured for Meshtastic BLE connections.
-
+                                    Create a BLEInterface configured for Meshtastic BLE connections.
+                                    
                                     Parameters:
-                                        kwargs (dict): Keyword arguments forwarded to the Meshtastic BLEInterface constructor (for example: address, adapter, auto_reconnect, timeout). Valid keys depend on the Meshtastic BLEInterface implementation.
-
+                                        kwargs (dict): Keyword arguments forwarded to the Meshtastic BLEInterface constructor (e.g., `address`, `adapter`, `auto_reconnect`, `timeout`). Valid keys depend on the Meshtastic BLEInterface implementation.
+                                    
                                     Returns:
                                         BLEInterface: A newly constructed Meshtastic BLEInterface instance.
                                     """
@@ -1796,10 +1858,10 @@ def connect_meshtastic(
                         # Use ThreadPoolExecutor with 30-second timeout (same as CONNECTION_TIMEOUT)
                         def connect_iface(iface_param: Any) -> None:
                             """
-                            Invoke the object's connect() method to establish the underlying interface connection.
-
+                            Establishes the given interface by invoking its no-argument `connect()` method.
+                            
                             Parameters:
-                                iface_param (Any): An interface-like object that implements a no-argument `connect()` method.
+                                iface_param (Any): An interface-like object whose `connect()` method will be called to open the underlying connection.
                             """
                             iface_param.connect()
 

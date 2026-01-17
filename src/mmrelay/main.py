@@ -299,10 +299,11 @@ async def main(config: dict[str, Any]) -> None:
 
                 def _close_meshtastic() -> None:
                     """
-                    Close the active Meshtastic client connection.
-
-                    Does nothing if no Meshtastic client is present in meshtastic_utils.meshtastic_client.
-                    Waits for close to complete before returning.
+                    Close and clean up the active Meshtastic client connection.
+                    
+                    If a BLE interface is the active client, perform an explicit BLE disconnect to release the adapter.
+                    Clears meshtastic_utils.meshtastic_client (and meshtastic_utils.meshtastic_iface when applicable).
+                    Does nothing if no client is present.
                     """
                     if meshtastic_utils.meshtastic_client:
                         if (

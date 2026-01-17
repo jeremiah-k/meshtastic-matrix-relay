@@ -6028,12 +6028,35 @@ async def test_connect_matrix_e2ee_missing_sqlite_store():
 
 class _InlineExecutorLoop:
     def __init__(self, loop):
+        """
+        Initialize the InlineExecutorLoop shim that simulates a running asyncio event loop for synchronous executor execution in tests.
+        
+        Parameters:
+            loop (asyncio.AbstractEventLoop): The underlying event loop whose attributes and non-overridden behavior are delegated to this shim.
+        """
         self._loop = loop
 
     def is_running(self):
+        """
+        Report whether this executor loop should be treated as running.
+        
+        Returns:
+            True if the loop is considered running, False otherwise.
+        """
         return True
 
     def run_in_executor(self, _executor, func, *args):
+        """
+        Execute `func` synchronously with the provided `args` and return a Future resolved with the outcome.
+        
+        Parameters:
+            _executor: Ignored executor parameter kept for compatibility.
+            func (callable): Function to invoke.
+            *args: Positional arguments passed to `func`.
+        
+        Returns:
+            asyncio.Future: Future resolved with `func(*args)` result, or completed with the raised exception if `func` raises.
+        """
         fut = self._loop.create_future()
         try:
             result = func(*args)
@@ -6050,6 +6073,18 @@ class _InlineExecutorLoop:
         return fut
 
     def __getattr__(self, name):
+        """
+        Delegate attribute access to the wrapped asyncio event loop.
+        
+        Parameters:
+            name (str): The attribute name being accessed.
+        
+        Returns:
+            The attribute value retrieved from the underlying loop.
+        
+        Raises:
+            AttributeError: If the attribute does not exist on the wrapped loop.
+        """
         return getattr(self._loop, name)
 
 
