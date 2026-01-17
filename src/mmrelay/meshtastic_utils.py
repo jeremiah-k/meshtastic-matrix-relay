@@ -240,6 +240,9 @@ def _schedule_ble_future_cleanup(
     def _cleanup() -> None:
         if future.done():
             return
+        with _ble_executor_lock:
+            if _ble_future is not future:
+                return
         logger.warning(
             "BLE worker still running after %.0fs for %s; clearing stale future (%s)",
             _BLE_FUTURE_WATCHDOG_SECS,

@@ -97,6 +97,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         mmrelay.meshtastic_utils.reconnect_task = None
         mmrelay.meshtastic_utils._ble_future = None
         mmrelay.meshtastic_utils._ble_future_address = None
+        mmrelay.meshtastic_utils._metadata_future = None
 
     def test_on_meshtastic_message_basic(self):
         """
@@ -1140,6 +1141,7 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
         mu.shutting_down = False
         mu._ble_future = None
         mu._ble_future_address = None
+        mu._metadata_future = None
 
         result = connect_meshtastic(passed_config=config)
 
@@ -1314,6 +1316,7 @@ def reset_meshtastic_globals():
     mmrelay.meshtastic_utils.reconnecting = False
     mmrelay.meshtastic_utils._ble_future = None
     mmrelay.meshtastic_utils._ble_future_address = None
+    mmrelay.meshtastic_utils._metadata_future = None
     yield
     # Cleanup after test
     mmrelay.meshtastic_utils.meshtastic_client = None
@@ -1321,6 +1324,7 @@ def reset_meshtastic_globals():
     mmrelay.meshtastic_utils.reconnecting = False
     mmrelay.meshtastic_utils._ble_future = None
     mmrelay.meshtastic_utils._ble_future_address = None
+    mmrelay.meshtastic_utils._metadata_future = None
 
 
 @patch("mmrelay.meshtastic_utils.time.sleep")
@@ -2688,6 +2692,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
             mu._ble_future = None
             mu._ble_future_address = None
+            mu._metadata_future = None
             # The function will retry 6 times (MAX_TIMEOUT_RETRIES_INFINITE = 5 + 1)
             # After all retries, it returns None (doesn't raise)
             result = connect_meshtastic(passed_config=config)
@@ -2796,6 +2801,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
             mu._ble_future = None
             mu._ble_future_address = None
+            mu._metadata_future = None
             # The function will retry 6 times and return None (doesn't raise)
             result = connect_meshtastic(passed_config=config)
             self.assertIsNone(result)

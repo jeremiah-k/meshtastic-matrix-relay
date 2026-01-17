@@ -540,10 +540,12 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.connect_meshtastic")
     @patch("mmrelay.main.connect_matrix")
     @patch("mmrelay.main.join_matrix_room")
+    @patch("mmrelay.main.shutdown_plugins")
     @patch("mmrelay.main.stop_message_queue")
     def test_main_closes_meshtastic_client_on_shutdown(
         self,
         _mock_stop_queue,
+        _mock_shutdown_plugins,
         mock_join_room,
         mock_connect_matrix,
         mock_connect_meshtastic,
@@ -595,7 +597,23 @@ class TestMain(unittest.TestCase):
         mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
         mock_join_room.side_effect = _async_noop
 
-        with patch("mmrelay.main.asyncio.Event", return_value=ImmediateEvent()):
+        real_get_running_loop = asyncio.get_running_loop
+
+        def _patched_get_running_loop():
+            return _InlineExecutorLoop(real_get_running_loop())
+
+        with (
+            patch(
+                "mmrelay.main.asyncio.get_running_loop",
+                side_effect=_patched_get_running_loop,
+            ),
+            patch("mmrelay.main.asyncio.Event", return_value=ImmediateEvent()),
+            patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
+            patch("mmrelay.main.get_message_queue") as mock_get_queue,
+        ):
+            mock_queue = MagicMock()
+            mock_queue.ensure_processor_started = MagicMock()
+            mock_get_queue.return_value = mock_queue
             asyncio.run(main(self.mock_config))
 
         mock_meshtastic_client.close.assert_called_once()
