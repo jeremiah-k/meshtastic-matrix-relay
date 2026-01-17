@@ -1084,7 +1084,11 @@ def _disconnect_ble_by_address(address: str) -> None:
             except BLEAK_EXCEPTIONS as e:
                 # Stale disconnects are best-effort; do not fail startup/reconnect
                 # on cleanup errors from BlueZ/DBus.
-                logger.debug(f"Error disconnecting stale connection to {address}: {e}")
+                logger.debug(
+                    "Error disconnecting stale connection to %s",
+                    address,
+                    exc_info=e,
+                )
             finally:
                 try:
                     if client:
@@ -1101,7 +1105,9 @@ def _disconnect_ble_by_address(address: str) -> None:
                 except BLEAK_EXCEPTIONS as e:
                     # Ignore disconnect errors during cleanup - connection may already be closed
                     logger.debug(
-                        f"Final disconnect for {address} failed during cleanup: {e}"
+                        "Final disconnect for %s failed during cleanup",
+                        address,
+                        exc_info=e,
                     )
 
         runtime_error: RuntimeError | None = None
@@ -1112,43 +1118,11 @@ def _disconnect_ble_by_address(address: str) -> None:
             runtime_error = e
 
         if loop:
-            # We are running on the loop thread; run the disconnect in a helper
-            # thread so we can wait for completion without deadlocking the loop.
             logger.debug(
-                "Found running event loop, disconnecting via worker thread for %s",
+                "Found running event loop; scheduling disconnect task for %s",
                 address,
             )
-            disconnect_error: Exception | None = None
-            done_event = threading.Event()
-
-            def _run_disconnect() -> None:
-                nonlocal disconnect_error
-                try:
-                    asyncio.run(disconnect_stale_connection())
-                except Exception as exc:  # noqa: BLE001 - best-effort cleanup
-                    disconnect_error = exc
-                finally:
-                    done_event.set()
-
-            worker = threading.Thread(
-                target=_run_disconnect,
-                name="mmrelay-ble-disconnect",
-                daemon=True,
-            )
-            worker.start()
-            if not done_event.wait(timeout=10.0):
-                logger.warning(
-                    f"Stale connection disconnect timed out after 10s for {address}"
-                )
-            else:
-                if disconnect_error is not None:
-                    logger.debug(
-                        "Stale connection disconnect failed for %s: %s",
-                        address,
-                        disconnect_error,
-                    )
-                else:
-                    logger.debug(f"Stale connection disconnect completed for {address}")
+            _fire_and_forget(disconnect_stale_connection(), loop=loop)
             return
 
         if event_loop and getattr(event_loop, "is_running", lambda: False)():
@@ -1188,7 +1162,11 @@ def _disconnect_ble_by_address(address: str) -> None:
     except Exception as e:  # noqa: BLE001 - disconnect cleanup must not block startup
         # Other errors during best-effort disconnect (e.g., from future.result() or asyncio.run())
         # are non-fatal; log and continue.
-        logger.debug(f"Error during BLE disconnect cleanup for {address}: {e}")
+        logger.debug(
+            "Error during BLE disconnect cleanup for %s",
+            address,
+            exc_info=e,
+        )
 
 
 def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:

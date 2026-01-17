@@ -194,18 +194,17 @@ class _ControlledExecutor:
         target = func
         if isinstance(func, functools.partial):
             target = func.func
-        if self.close_future_factory is not None:
-            target_name = getattr(target, "__name__", "")
-            target_qualname = getattr(target, "__qualname__", "")
-            if (
-                "_close_meshtastic" in target_name
-                or "_close_meshtastic" in target_qualname
-            ):
-                if self.submit_timeout:
-                    raise concurrent.futures.TimeoutError()
-                if self.close_future is None:
-                    self.close_future = self.close_future_factory()
-                return self.close_future
+        target_name = getattr(target, "__name__", "")
+        target_qualname = getattr(target, "__qualname__", "")
+        is_close = "_close_meshtastic" in target_name or "_close_meshtastic" in (
+            target_qualname
+        )
+        if is_close and self.submit_timeout:
+            raise concurrent.futures.TimeoutError()
+        if is_close and self.close_future_factory is not None:
+            if self.close_future is None:
+                self.close_future = self.close_future_factory()
+            return self.close_future
 
         future = concurrent.futures.Future()
         try:
