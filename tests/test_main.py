@@ -82,6 +82,17 @@ def _mock_run_with_keyboard_interrupt(coro: Any) -> None:
     raise KeyboardInterrupt()
 
 
+def _make_async_return(value: Any):
+    async def _async_return(*_args, **_kwargs):
+        return value
+
+    return _async_return
+
+
+async def _async_noop(*_args, **_kwargs) -> None:
+    return None
+
+
 class _CloseFutureBase(concurrent.futures.Future):
     """Future with a cancel flag for shutdown test assertions."""
 
@@ -423,13 +434,13 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.load_plugins")
     @patch("mmrelay.main.start_message_queue")
     @patch("mmrelay.main.connect_meshtastic")
-    @patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
-    @patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
+    @patch("mmrelay.main.connect_matrix")
+    @patch("mmrelay.main.join_matrix_room")
     @patch("mmrelay.main.stop_message_queue")
     def test_main_closes_meshtastic_client_on_shutdown(
         self,
         _mock_stop_queue,
-        _mock_join_room,
+        mock_join_room,
         mock_connect_matrix,
         mock_connect_meshtastic,
         _mock_start_queue,
@@ -477,7 +488,8 @@ class TestMain(unittest.TestCase):
 
         mock_matrix_client = MagicMock()
         mock_matrix_client.close = AsyncMock()
-        mock_connect_matrix.return_value = mock_matrix_client
+        mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
+        mock_join_room.side_effect = _async_noop
 
         with patch("mmrelay.main.asyncio.Event", return_value=ImmediateEvent()):
             asyncio.run(main(self.mock_config))
@@ -488,15 +500,15 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.load_plugins")
     @patch("mmrelay.main.start_message_queue")
     @patch("mmrelay.main.connect_meshtastic")
-    @patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
-    @patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
+    @patch("mmrelay.main.connect_matrix")
+    @patch("mmrelay.main.join_matrix_room")
     @patch("mmrelay.main.stop_message_queue")
     @patch("mmrelay.main.meshtastic_utils._disconnect_ble_interface")
     def test_main_shutdown_disconnects_ble_interface(
         self,
         mock_disconnect_iface,
         _mock_stop_queue,
-        _mock_join_room,
+        mock_join_room,
         mock_connect_matrix,
         mock_connect_meshtastic,
         _mock_start_queue,
@@ -530,7 +542,8 @@ class TestMain(unittest.TestCase):
 
         mock_matrix_client = MagicMock()
         mock_matrix_client.close = AsyncMock()
-        mock_connect_matrix.return_value = mock_matrix_client
+        mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
+        mock_join_room.side_effect = _async_noop
 
         executor = _ControlledExecutor()
         with (
@@ -551,15 +564,15 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.load_plugins")
     @patch("mmrelay.main.start_message_queue")
     @patch("mmrelay.main.connect_meshtastic")
-    @patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
-    @patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
+    @patch("mmrelay.main.connect_matrix")
+    @patch("mmrelay.main.join_matrix_room")
     @patch("mmrelay.main.stop_message_queue")
     @patch("mmrelay.main.meshtastic_logger")
     def test_main_shutdown_timeout_cancels_future(
         self,
         mock_meshtastic_logger,
         _mock_stop_queue,
-        _mock_join_room,
+        mock_join_room,
         mock_connect_matrix,
         mock_connect_meshtastic,
         _mock_start_queue,
@@ -584,7 +597,8 @@ class TestMain(unittest.TestCase):
         mock_connect_meshtastic.return_value = MagicMock()
         mock_matrix_client = MagicMock()
         mock_matrix_client.close = AsyncMock()
-        mock_connect_matrix.return_value = mock_matrix_client
+        mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
+        mock_join_room.side_effect = _async_noop
 
         executor = _ControlledExecutor(close_future_factory=_TimeoutCloseFuture)
         with (
@@ -605,15 +619,15 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.load_plugins")
     @patch("mmrelay.main.start_message_queue")
     @patch("mmrelay.main.connect_meshtastic")
-    @patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
-    @patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
+    @patch("mmrelay.main.connect_matrix")
+    @patch("mmrelay.main.join_matrix_room")
     @patch("mmrelay.main.stop_message_queue")
     @patch("mmrelay.main.meshtastic_logger")
     def test_main_shutdown_logs_unexpected_close_error(
         self,
         mock_meshtastic_logger,
         _mock_stop_queue,
-        _mock_join_room,
+        mock_join_room,
         mock_connect_matrix,
         mock_connect_meshtastic,
         _mock_start_queue,
@@ -638,7 +652,8 @@ class TestMain(unittest.TestCase):
         mock_connect_meshtastic.return_value = MagicMock()
         mock_matrix_client = MagicMock()
         mock_matrix_client.close = AsyncMock()
-        mock_connect_matrix.return_value = mock_matrix_client
+        mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
+        mock_join_room.side_effect = _async_noop
 
         executor = _ControlledExecutor(close_future_factory=_ErrorCloseFuture)
         with (
@@ -661,13 +676,13 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.load_plugins")
     @patch("mmrelay.main.start_message_queue")
     @patch("mmrelay.main.connect_meshtastic")
-    @patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
-    @patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
+    @patch("mmrelay.main.connect_matrix")
+    @patch("mmrelay.main.join_matrix_room")
     @patch("mmrelay.main.stop_message_queue")
     def test_main_shutdown_shutdown_typeerror_fallback(
         self,
         _mock_stop_queue,
-        _mock_join_room,
+        mock_join_room,
         mock_connect_matrix,
         mock_connect_meshtastic,
         _mock_start_queue,
@@ -692,7 +707,8 @@ class TestMain(unittest.TestCase):
         mock_connect_meshtastic.return_value = MagicMock()
         mock_matrix_client = MagicMock()
         mock_matrix_client.close = AsyncMock()
-        mock_connect_matrix.return_value = mock_matrix_client
+        mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
+        mock_join_room.side_effect = _async_noop
 
         executor = _ControlledExecutor(shutdown_typeerror=True)
         with (
@@ -711,15 +727,15 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.load_plugins")
     @patch("mmrelay.main.start_message_queue")
     @patch("mmrelay.main.connect_meshtastic")
-    @patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
-    @patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
+    @patch("mmrelay.main.connect_matrix")
+    @patch("mmrelay.main.join_matrix_room")
     @patch("mmrelay.main.stop_message_queue")
     @patch("mmrelay.main.meshtastic_logger")
     def test_main_shutdown_submit_timeout_triggers_outer_warning(
         self,
         mock_meshtastic_logger,
         _mock_stop_queue,
-        _mock_join_room,
+        mock_join_room,
         mock_connect_matrix,
         mock_connect_meshtastic,
         _mock_start_queue,
@@ -744,7 +760,8 @@ class TestMain(unittest.TestCase):
         mock_connect_meshtastic.return_value = MagicMock()
         mock_matrix_client = MagicMock()
         mock_matrix_client.close = AsyncMock()
-        mock_connect_matrix.return_value = mock_matrix_client
+        mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
+        mock_join_room.side_effect = _async_noop
 
         executor = _ControlledExecutor(submit_timeout=True)
         with (

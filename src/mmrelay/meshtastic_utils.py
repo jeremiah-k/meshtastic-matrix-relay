@@ -923,11 +923,33 @@ def _disconnect_ble_by_address(address: str) -> None:
 
         try:
             loop = asyncio.get_running_loop()
+        except RuntimeError as e:
+            loop = None
+            runtime_error = e
+        else:
+            runtime_error = None
+
+        if loop:
+            # We are already on the loop thread; do not block it. Schedule a
+            # best-effort disconnect and return so the loop can keep running.
             logger.debug(
-                f"Found existing event loop, waiting for disconnect task for {address}"
+                "Found running event loop, scheduling disconnect task for %s",
+                address,
+            )
+            loop.create_task(disconnect_stale_connection())
+            return
+
+        if (
+            event_loop
+            and getattr(event_loop, "is_running", None)
+            and event_loop.is_running()
+        ):
+            logger.debug(
+                "Using global event loop, waiting for disconnect task for %s",
+                address,
             )
             future = asyncio.run_coroutine_threadsafe(
-                disconnect_stale_connection(), loop
+                disconnect_stale_connection(), event_loop
             )
             try:
                 future.result(timeout=10.0)
@@ -940,14 +962,17 @@ def _disconnect_ble_by_address(address: str) -> None:
                     # Cancel the cleanup task so we do not block a new connect
                     # attempt on a hung DBus/Bleak operation.
                     future.cancel()
-        except RuntimeError as e:
-            # get_running_loop raises RuntimeError when no loop is running
-            # Create a new event loop in this case
-            logger.debug(
-                f"No running event loop (RuntimeError: {e}), creating temporary loop for {address}"
-            )
-            asyncio.run(disconnect_stale_connection())
-            logger.debug(f"Stale connection disconnect completed for {address}")
+            return
+
+        # No running event loop in this thread (and no global loop to target);
+        # create a temporary loop to perform a blocking best-effort cleanup.
+        logger.debug(
+            "No running event loop (RuntimeError: %s), creating temporary loop for %s",
+            runtime_error,
+            address,
+        )
+        asyncio.run(disconnect_stale_connection())
+        logger.debug(f"Stale connection disconnect completed for {address}")
 
     except ImportError:
         # Bleak is optional in some deployments; skip stale cleanup rather than

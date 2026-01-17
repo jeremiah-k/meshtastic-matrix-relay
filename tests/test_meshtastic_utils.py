@@ -39,6 +39,19 @@ from mmrelay.meshtastic_utils import (
 )
 
 
+class _FakeEvent:
+    """Threading.Event test double for metadata redirect behavior."""
+
+    def is_set(self) -> bool:
+        return True
+
+    def set(self) -> None:
+        return None
+
+    def clear(self) -> None:
+        return None
+
+
 class TestMeshtasticUtils(unittest.TestCase):
     """Test cases for Meshtastic utilities."""
 
@@ -2296,19 +2309,11 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         timeout_future.result.side_effect = _raise_timeout
 
-        class FakeEvent:
-            def is_set(self) -> bool:
-                return True
-
-            def set(self) -> None:
-                return None
-
-            def clear(self) -> None:
-                return None
-
         with (
             patch("mmrelay.meshtastic_utils.io.StringIO", return_value=mock_output),
-            patch("mmrelay.meshtastic_utils.threading.Event", return_value=FakeEvent()),
+            patch(
+                "mmrelay.meshtastic_utils.threading.Event", return_value=_FakeEvent()
+            ),
             patch("mmrelay.meshtastic_utils._metadata_executor") as mock_executor,
             patch("mmrelay.meshtastic_utils.sys.stdout", orig_stdout),
         ):
@@ -2334,16 +2339,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         from mmrelay.meshtastic_utils import _get_device_metadata
 
-        class FakeEvent:
-            def is_set(self) -> bool:
-                return True
-
-            def set(self) -> None:
-                return None
-
-            def clear(self) -> None:
-                return None
-
         mock_client = Mock()
         mock_client.localNode.getMetadata = Mock()
 
@@ -2360,7 +2355,9 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         with (
             patch("mmrelay.meshtastic_utils.io.StringIO", return_value=output_capture),
-            patch("mmrelay.meshtastic_utils.threading.Event", return_value=FakeEvent()),
+            patch(
+                "mmrelay.meshtastic_utils.threading.Event", return_value=_FakeEvent()
+            ),
             patch("mmrelay.meshtastic_utils.sys.stdout", output_capture),
             patch("mmrelay.meshtastic_utils._metadata_executor") as mock_executor,
         ):
@@ -2607,9 +2604,10 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         mock_client.is_connected = False
         mock_bleak.return_value = mock_client
 
-        # Mock get_running_loop to return a loop
+        # Simulate no running loop in this thread; fall back to global loop.
         mock_loop = Mock()
-        mock_get_running_loop.return_value = mock_loop
+        mock_loop.is_running.return_value = True
+        mock_get_running_loop.side_effect = RuntimeError("no loop")
 
         # Mock run_coroutine_threadsafe to return a mock future that times out
         mock_future = Mock()
@@ -2618,7 +2616,8 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         mock_future.result = Mock(side_effect=FuturesTimeoutError())
         mock_run_coroutine_threadsafe.return_value = mock_future
 
-        _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
+        with patch("mmrelay.meshtastic_utils.event_loop", mock_loop):
+            _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
 
         # Verify warning was logged for timeout
         mock_logger.warning.assert_called_with(
