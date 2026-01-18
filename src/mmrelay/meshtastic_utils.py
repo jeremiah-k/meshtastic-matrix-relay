@@ -1162,7 +1162,7 @@ def _disconnect_ble_by_address(address: str) -> None:
             loop = None
             runtime_error = e
 
-        if loop:
+        if loop and loop.is_running():
             logger.debug(
                 "Found running event loop; scheduling disconnect task for %s",
                 address,
