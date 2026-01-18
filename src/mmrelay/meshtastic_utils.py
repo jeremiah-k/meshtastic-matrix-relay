@@ -167,7 +167,12 @@ def _submit_coro(
 
         coro = _await_wrapper(coro)
     loop = loop or event_loop
-    if loop and isinstance(loop, asyncio.AbstractEventLoop) and not loop.is_closed():
+    if (
+        loop
+        and isinstance(loop, asyncio.AbstractEventLoop)
+        and not loop.is_closed()
+        and loop.is_running()
+    ):
         return asyncio.run_coroutine_threadsafe(coro, loop)
     # Fallback: schedule on a real loop if present; tests can override this.
     try:

@@ -1859,6 +1859,46 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
             self.assertIsInstance(result, Future)
             self.assertEqual(result.result(), "awaitable-result")
 
+    def test_submit_coro_with_loop_not_running_falls_back(self):
+        """
+        Test _submit_coro with event loop that is not running - should fall through to fallback logic
+        instead of calling run_coroutine_threadsafe.
+        """
+        import asyncio
+
+        async def test_coro():
+            return "test_result"
+
+        coro = test_coro()
+
+        try:
+            mock_loop = MagicMock(spec=asyncio.AbstractEventLoop)
+            mock_loop.is_closed.return_value = False
+            mock_loop.is_running.return_value = False
+
+            with patch("asyncio.run_coroutine_threadsafe") as mock_run_threadsafe:
+                mock_get_loop = MagicMock()
+                mock_task = MagicMock()
+
+                def mock_create_task(coro_arg):
+                    coro_arg.close()
+                    return mock_task
+
+                mock_get_loop.create_task.side_effect = mock_create_task
+
+                with patch("asyncio.get_running_loop", return_value=mock_get_loop):
+                    result = self.original_submit_coro(coro, loop=mock_loop)
+
+                    # Should NOT call run_coroutine_threadsafe because loop is not running
+                    mock_run_threadsafe.assert_not_called()
+
+                    # Should call get_running_loop's create_task (fallback)
+                    mock_get_loop.create_task.assert_called_once()
+                    self.assertEqual(result, mock_task)
+        finally:
+            if hasattr(coro, "cr_frame") and coro.cr_frame is not None:
+                coro.close()
+
 
 class TestBLEExceptionHandling(unittest.TestCase):
     """Test cases for BLE exception handling and fallback classes."""
