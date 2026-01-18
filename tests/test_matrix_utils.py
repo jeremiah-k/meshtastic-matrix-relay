@@ -42,6 +42,7 @@ from mmrelay.matrix_utils import (
     upload_image,
     validate_prefix_format,
 )
+from tests.helpers import InlineExecutorLoop
 
 # Matrix room message handling tests - converted from unittest.TestCase to standalone pytest functions
 #
@@ -6026,68 +6027,6 @@ async def test_connect_matrix_e2ee_missing_sqlite_store():
         mock_logger.exception.assert_called_with("Missing E2EE dependency")
 
 
-class _InlineExecutorLoop:
-    def __init__(self, loop):
-        """
-        Initialize the InlineExecutorLoop shim that simulates a running asyncio event loop for synchronous executor execution in tests.
-
-        Parameters:
-            loop (asyncio.AbstractEventLoop): The underlying event loop whose attributes and non-overridden behavior are delegated to this shim.
-        """
-        self._loop = loop
-
-    def is_running(self):
-        """
-        Report whether this executor loop should be treated as running.
-
-        Returns:
-            True if the loop is considered running, False otherwise.
-        """
-        return True
-
-    def run_in_executor(self, _executor, func, *args):
-        """
-        Execute `func` synchronously with the provided `args` and return a Future resolved with the outcome.
-
-        Parameters:
-            _executor: Ignored executor parameter kept for compatibility.
-            func (callable): Function to invoke.
-            *args: Positional arguments passed to `func`.
-
-        Returns:
-            asyncio.Future: Future resolved with `func(*args)` result, or completed with the raised exception if `func` raises.
-        """
-        fut = self._loop.create_future()
-        try:
-            result = func(*args)
-        except (
-            concurrent.futures.TimeoutError,
-            ValueError,
-            RuntimeError,
-            TypeError,
-            OSError,
-        ) as exc:
-            fut.set_exception(exc)
-        else:
-            fut.set_result(result)
-        return fut
-
-    def __getattr__(self, name):
-        """
-        Delegate attribute access to the wrapped asyncio event loop.
-
-        Parameters:
-            name (str): The attribute name being accessed.
-
-        Returns:
-            The attribute value retrieved from the underlying loop.
-
-        Raises:
-            AttributeError: If the attribute does not exist on the wrapped loop.
-        """
-        return getattr(self._loop, name)
-
-
 @pytest.mark.asyncio
 async def test_handle_matrix_reply_success():
     """Test handle_matrix_reply processes reply successfully."""
@@ -6103,7 +6042,7 @@ async def test_handle_matrix_reply_success():
     with (
         patch(
             "mmrelay.matrix_utils.asyncio.get_running_loop",
-            return_value=_InlineExecutorLoop(loop),
+            return_value=InlineExecutorLoop(loop),
         ),
         patch(
             "mmrelay.matrix_utils.get_message_map_by_matrix_event_id"
@@ -6161,7 +6100,7 @@ async def test_handle_matrix_reply_numeric_string_reply_id():
     with (
         patch(
             "mmrelay.matrix_utils.asyncio.get_running_loop",
-            return_value=_InlineExecutorLoop(loop),
+            return_value=InlineExecutorLoop(loop),
         ),
         patch(
             "mmrelay.matrix_utils.get_message_map_by_matrix_event_id"
@@ -6207,7 +6146,7 @@ async def test_handle_matrix_reply_unexpected_id_type_broadcasts():
     with (
         patch(
             "mmrelay.matrix_utils.asyncio.get_running_loop",
-            return_value=_InlineExecutorLoop(loop),
+            return_value=InlineExecutorLoop(loop),
         ),
         patch(
             "mmrelay.matrix_utils.get_message_map_by_matrix_event_id"
@@ -6254,7 +6193,7 @@ async def test_handle_matrix_reply_integer_id():
     with (
         patch(
             "mmrelay.matrix_utils.asyncio.get_running_loop",
-            return_value=_InlineExecutorLoop(loop),
+            return_value=InlineExecutorLoop(loop),
         ),
         patch(
             "mmrelay.matrix_utils.get_message_map_by_matrix_event_id"
@@ -6302,7 +6241,7 @@ async def test_handle_matrix_reply_original_not_found():
     with (
         patch(
             "mmrelay.matrix_utils.asyncio.get_running_loop",
-            return_value=_InlineExecutorLoop(loop),
+            return_value=InlineExecutorLoop(loop),
         ),
         patch(
             "mmrelay.matrix_utils.get_message_map_by_matrix_event_id"

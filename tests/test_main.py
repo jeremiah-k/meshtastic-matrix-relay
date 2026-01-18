@@ -52,11 +52,39 @@ from typing import Any, Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-# Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+import pytest_asyncio
 
 from mmrelay.main import main, print_banner, run_main
+from tests.helpers import InlineExecutorLoop, inline_to_thread
+
+
+def _make_async_return(value: Any):
+    """
+    Create an async function that always returns provided value.
+
+    Parameters:
+        value (Any): Value to be returned by generated coroutine.
+
+    Returns:
+        callable: An async function that ignores its arguments and returns `value` when awaited.
+    """
+
+    async def _async_return(*_args, **_kwargs):
+        return value
+
+    return _async_return
+
+
+async def _async_noop(*_args, **_kwargs) -> None:
+    """
+    Asynchronous no-op that accepts any positional and keyword arguments.
+
+    This coroutine performs no action and ignores all provided arguments.
+
+    Returns:
+        None
+    """
+    return None
 
 
 def _close_coro_if_possible(coro: Any) -> None:
@@ -91,26 +119,9 @@ def _mock_run_with_keyboard_interrupt(coro: Any) -> None:
     raise KeyboardInterrupt()
 
 
-def _make_async_return(value: Any):
-    """
-    Create an async function that always returns the provided value.
-
-    Parameters:
-        value (Any): Value to be returned by the generated coroutine.
-
-    Returns:
-        callable: An async function that ignores its arguments and returns `value` when awaited.
-    """
-
-    async def _async_return(*_args, **_kwargs):
-        return value
-
-    return _async_return
-
-
 def _make_async_raise(exc: Exception):
     """
-    Create an async callable that always raises the provided exception when awaited.
+    Create an async callable that always raises provided exception when awaited.
 
     Parameters:
         exc (Exception): The exception instance to raise when the returned coroutine is awaited.
@@ -123,85 +134,6 @@ def _make_async_raise(exc: Exception):
         raise exc
 
     return _async_raise
-
-
-async def _async_noop(*_args, **_kwargs) -> None:
-    """
-    Asynchronous no-op that accepts any positional and keyword arguments.
-
-    This coroutine performs no action and ignores all provided arguments.
-    """
-    return None
-
-
-class _InlineExecutorLoop:
-    """Wrap an event loop and execute run_in_executor calls inline for tests."""
-
-    def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
-        """
-        Store the provided event loop for use by this wrapper.
-
-        Parameters:
-            loop (asyncio.AbstractEventLoop): The underlying event loop that this wrapper will delegate to.
-        """
-        self._loop = loop
-
-    def run_in_executor(self, _executor, func, *args):
-        """
-        Execute a callable synchronously and return a Future resolved with its outcome.
-
-        Parameters:
-            _executor: Ignored executor placeholder (kept for compatibility with loop.run_in_executor signature).
-            func (callable): The function to execute.
-            *args: Positional arguments to pass to `func`.
-
-        Returns:
-            concurrent.futures.Future: A Future that contains `func`'s return value or the exception raised by `func`.
-
-        Notes:
-            If `func` raises TimeoutError, ValueError, RuntimeError, TypeError, or OSError, that exception is set on the returned Future.
-        """
-        fut = self._loop.create_future()
-        try:
-            result = func(*args)
-        except (
-            concurrent.futures.TimeoutError,
-            ValueError,
-            RuntimeError,
-            TypeError,
-            OSError,
-        ) as exc:
-            fut.set_exception(exc)
-        else:
-            fut.set_result(result)
-        return fut
-
-    def __getattr__(self, name: str):
-        """
-        Delegate attribute access to the wrapped event loop.
-
-        Parameters:
-            name (str): Attribute name being accessed on this wrapper.
-
-        Returns:
-            The attribute value from the underlying event loop corresponding to `name`.
-        """
-        return getattr(self._loop, name)
-
-
-async def _inline_to_thread(func, *args, **kwargs):
-    """
-    Run the given callable synchronously in the current thread and return its result.
-
-    Parameters:
-        func (callable): The function to execute.
-        *args: Positional arguments to pass to `func`.
-        **kwargs: Keyword arguments to pass to `func`.
-
-    Returns:
-        The return value produced by calling `func(*args, **kwargs)`.
-    """
-    return func(*args, **kwargs)
 
 
 class _ImmediateEvent:
@@ -617,15 +549,15 @@ class TestMain(unittest.TestCase):
 
         def _patched_get_running_loop():
             """
-            Wraps the real running event loop in an _InlineExecutorLoop when necessary to ensure run_in_executor calls execute inline in tests.
+            Wraps the real running event loop in an InlineExecutorLoop when necessary to ensure run_in_executor calls execute inline in tests.
 
             Returns:
-                An event loop object: the original loop if it is already an `_InlineExecutorLoop`, otherwise a new `_InlineExecutorLoop` that delegates to the real loop.
+                An event loop object: the original loop if it is already an `InlineExecutorLoop`, otherwise a new `InlineExecutorLoop` that delegates to the real loop.
             """
             loop = real_get_running_loop()
-            if isinstance(loop, _InlineExecutorLoop):
+            if isinstance(loop, InlineExecutorLoop):
                 return loop
-            return _InlineExecutorLoop(loop)
+            return InlineExecutorLoop(loop)
 
         # Call main function (should exit early due to connection failures)
         with (
@@ -635,7 +567,7 @@ class TestMain(unittest.TestCase):
             ),
             patch(
                 "mmrelay.main.asyncio.to_thread",
-                side_effect=_inline_to_thread,
+                side_effect=inline_to_thread,
             ),
         ):
             with contextlib.suppress(ConnectionError):
@@ -675,15 +607,15 @@ class TestMain(unittest.TestCase):
 
         def _patched_get_running_loop():
             """
-            Wraps the real running event loop in an _InlineExecutorLoop when necessary to ensure run_in_executor calls execute inline in tests.
+            Wraps the real running event loop in an InlineExecutorLoop when necessary to ensure run_in_executor calls execute inline in tests.
 
             Returns:
-                An event loop object: the original loop if it is already an `_InlineExecutorLoop`, otherwise a new `_InlineExecutorLoop` that delegates to the real loop.
+                An event loop object: the original loop if it is already an `InlineExecutorLoop`, otherwise a new `InlineExecutorLoop` that delegates to the real loop.
             """
             loop = real_get_running_loop()
-            if isinstance(loop, _InlineExecutorLoop):
+            if isinstance(loop, InlineExecutorLoop):
                 return loop
-            return _InlineExecutorLoop(loop)
+            return InlineExecutorLoop(loop)
 
         # Should raise the Matrix connection exception
         with (
@@ -693,7 +625,7 @@ class TestMain(unittest.TestCase):
             ),
             patch(
                 "mmrelay.main.asyncio.to_thread",
-                side_effect=_inline_to_thread,
+                side_effect=inline_to_thread,
             ),
         ):
             with self.assertRaises(Exception) as context:
@@ -770,10 +702,10 @@ class TestMain(unittest.TestCase):
             Provide an event loop wrapper that executes run_in_executor calls inline for testing.
 
             Returns:
-                _InlineExecutorLoop: A wrapper around the real running event loop whose
+                InlineExecutorLoop: A wrapper around the real running event loop whose
                 run_in_executor executes functions synchronously (useful for deterministic tests).
             """
-            return _InlineExecutorLoop(real_get_running_loop())
+            return InlineExecutorLoop(real_get_running_loop())
 
         with (
             patch(
