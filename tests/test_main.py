@@ -134,6 +134,37 @@ def _make_async_raise(exc: Exception):
     return _async_raise
 
 
+def _make_patched_get_running_loop():
+    """
+    Create a patched get_running_loop that wraps the loop in InlineExecutorLoop.
+
+    Returns:
+        Callable: A function that returns the current event loop wrapped in
+        InlineExecutorLoop if not already wrapped.
+
+    Notes:
+        This helper is used in tests to ensure run_in_executor calls execute
+        inline instead of scheduling on a thread pool. The returned function
+        checks if the loop is already an InlineExecutorLoop to avoid double-wrapping.
+    """
+    real_get_running_loop = asyncio.get_running_loop
+
+    def _patched_get_running_loop():
+        """
+        Wraps the real running event loop in an InlineExecutorLoop when necessary.
+
+        Returns:
+            The original loop if it is already an InlineExecutorLoop,
+            otherwise a new InlineExecutorLoop that delegates to the real loop.
+        """
+        loop = real_get_running_loop()
+        if isinstance(loop, InlineExecutorLoop):
+            return loop
+        return InlineExecutorLoop(loop)
+
+    return _patched_get_running_loop
+
+
 class _ImmediateEvent:
     """Event that starts set and completes wait() immediately for shutdown tests."""
 
@@ -285,13 +316,7 @@ class _ControlledExecutor:
         future = concurrent.futures.Future()
         try:
             result = func(*args, **kwargs)
-        except (
-            concurrent.futures.TimeoutError,
-            ValueError,
-            RuntimeError,
-            TypeError,
-            OSError,
-        ) as exc:
+        except Exception as exc:
             future.set_exception(exc)
         else:
             future.set_result(result)
@@ -543,25 +568,11 @@ class TestMain(unittest.TestCase):
         mock_connect_matrix.side_effect = _make_async_return(None)
         mock_join_room.side_effect = _async_noop
 
-        real_get_running_loop = asyncio.get_running_loop
-
-        def _patched_get_running_loop():
-            """
-            Wraps the real running event loop in an InlineExecutorLoop when necessary to ensure run_in_executor calls execute inline in tests.
-
-            Returns:
-                An event loop object: the original loop if it is already an `InlineExecutorLoop`, otherwise a new `InlineExecutorLoop` that delegates to the real loop.
-            """
-            loop = real_get_running_loop()
-            if isinstance(loop, InlineExecutorLoop):
-                return loop
-            return InlineExecutorLoop(loop)
-
         # Call main function (should exit early due to connection failures)
         with (
             patch(
                 "mmrelay.main.asyncio.get_running_loop",
-                side_effect=_patched_get_running_loop,
+                side_effect=_make_patched_get_running_loop(),
             ),
             patch(
                 "mmrelay.main.asyncio.to_thread",
@@ -601,25 +612,11 @@ class TestMain(unittest.TestCase):
         mock_connect_matrix.side_effect = _make_async_raise(
             Exception("Matrix connection failed")
         )
-        real_get_running_loop = asyncio.get_running_loop
-
-        def _patched_get_running_loop():
-            """
-            Wraps the real running event loop in an InlineExecutorLoop when necessary to ensure run_in_executor calls execute inline in tests.
-
-            Returns:
-                An event loop object: the original loop if it is already an `InlineExecutorLoop`, otherwise a new `InlineExecutorLoop` that delegates to the real loop.
-            """
-            loop = real_get_running_loop()
-            if isinstance(loop, InlineExecutorLoop):
-                return loop
-            return InlineExecutorLoop(loop)
-
         # Should raise the Matrix connection exception
         with (
             patch(
                 "mmrelay.main.asyncio.get_running_loop",
-                side_effect=_patched_get_running_loop,
+                side_effect=_make_patched_get_running_loop(),
             ),
             patch(
                 "mmrelay.main.asyncio.to_thread",
@@ -659,22 +656,10 @@ class TestMain(unittest.TestCase):
         mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
         mock_join_room.side_effect = _async_noop
 
-        real_get_running_loop = asyncio.get_running_loop
-
-        def _patched_get_running_loop():
-            """
-            Provide an event loop wrapper that executes run_in_executor calls inline for testing.
-
-            Returns:
-                InlineExecutorLoop: A wrapper around the real running event loop whose
-                run_in_executor executes functions synchronously (useful for deterministic tests).
-            """
-            return InlineExecutorLoop(real_get_running_loop())
-
         with (
             patch(
                 "mmrelay.main.asyncio.get_running_loop",
-                side_effect=_patched_get_running_loop,
+                side_effect=_make_patched_get_running_loop(),
             ),
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),

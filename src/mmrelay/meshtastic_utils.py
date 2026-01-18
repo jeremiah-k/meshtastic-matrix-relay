@@ -72,6 +72,13 @@ except ValueError:
 # Maximum number of timeout retries when retries are configured as infinite.
 MAX_TIMEOUT_RETRIES_INFINITE = 5
 
+# Operator guidance for BLE troubleshooting (reused across multiple timeout handlers)
+BLE_TROUBLESHOOTING_GUIDANCE = (
+    "Try: 1) Restarting BlueZ: 'sudo systemctl restart bluetooth', "
+    "2) Manually disconnecting device: 'bluetoothctl disconnect {ble_address}', "
+    "3) Rebooting your machine"
+)
+
 
 # Import BLE exceptions conditionally
 try:
@@ -552,7 +559,7 @@ def _wait_for_result(
         loop (asyncio.AbstractEventLoop | None): Optional event loop to use; if omitted, the function will use a running loop or create a temporary loop as needed.
 
     Returns:
-        Any: The value produced by the resolved future or awaitable. Returns `False` when `result_future` is `None` or when the function refuses to block the currently running event loop and instead schedules the awaitable to run in the background.
+        Any: The value produced by the resolved future or awaitable. Returns `False` when `result_future` is `None` or when the function refuses to block the currently running event loop and instead schedules the awaitable to run in the background. Callers should handle False as a "could not wait" signal rather than a failed result.
 
     Raises:
         asyncio.TimeoutError: If awaiting an asyncio awaitable times out.
@@ -1819,10 +1826,9 @@ def connect_meshtastic(
                                         "This may indicate a stale BlueZ connection or Bluetooth adapter issue."
                                     )
                                     logger.warning(
-                                        "Try: 1) Restarting BlueZ: 'sudo systemctl restart bluetooth', "
-                                        "2) Manually disconnecting device: 'bluetoothctl disconnect %s', "
-                                        "3) Rebooting your machine",
-                                        ble_address,
+                                        BLE_TROUBLESHOOTING_GUIDANCE.format(
+                                            ble_address=ble_address
+                                        )
                                     )
                                     # Best-effort cancellation: if the worker is hung we cannot force
                                     # it to stop, but this signals intent and lets retries proceed
@@ -1928,10 +1934,7 @@ def connect_meshtastic(
                                 "This may indicate a BlueZ or adapter issue."
                             )
                             logger.warning(
-                                "BlueZ may be in a bad state. Try: "
-                                "'sudo systemctl restart bluetooth' or "
-                                "'bluetoothctl disconnect %s'",
-                                ble_address,
+                                f"BlueZ may be in a bad state. {BLE_TROUBLESHOOTING_GUIDANCE.format(ble_address=ble_address)}"
                             )
                             # Best-effort cancellation: a hung BLE connect blocks the worker
                             # thread, so we cancel to allow retries only if it completes.
