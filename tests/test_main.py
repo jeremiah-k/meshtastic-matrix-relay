@@ -45,14 +45,12 @@ import concurrent.futures
 import contextlib
 import functools
 import inspect
-import os
 import sys
 import unittest
 from typing import Any, Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-import pytest_asyncio
 
 from mmrelay.main import main, print_banner, run_main
 from tests.helpers import InlineExecutorLoop, inline_to_thread
@@ -653,40 +651,6 @@ class TestMain(unittest.TestCase):
     ):
         """Shutdown should close the Meshtastic client when present."""
 
-        class ImmediateEvent:
-            def __init__(self) -> None:
-                """
-                Initialize the instance and mark it as set.
-
-                Sets the internal flag `_set` to True to indicate the object has been initialized.
-                """
-                self._set = True
-
-            def is_set(self) -> bool:
-                """
-                Indicates whether the internal set flag is enabled.
-
-                Returns:
-                    True if the flag is set, False otherwise.
-                """
-                return self._set
-
-            def set(self) -> None:
-                """
-                Mark the event as set, allowing any waiters to proceed.
-
-                When called, the event's state becomes set; subsequent checks or waits observing the event will see it as set until cleared.
-                """
-                self._set = True
-
-            async def wait(self) -> None:
-                """
-                A no-op asynchronous wait that completes immediately.
-
-                This coroutine does not block; awaiting it returns without delay or side effects.
-                """
-                return None
-
         mock_meshtastic_client = MagicMock()
         mock_connect_meshtastic.return_value = mock_meshtastic_client
 
@@ -712,7 +676,7 @@ class TestMain(unittest.TestCase):
                 "mmrelay.main.asyncio.get_running_loop",
                 side_effect=_patched_get_running_loop,
             ),
-            patch("mmrelay.main.asyncio.Event", return_value=ImmediateEvent()),
+            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
             patch("mmrelay.main.get_message_queue") as mock_get_queue,
         ):
@@ -1750,7 +1714,6 @@ class TestMainAsyncFunction(unittest.TestCase):
         it mutates imported mmrelay modules and may call cleanup helpers (such as
         message queue stop).
         """
-        import sys
 
         # Reset meshtastic_utils globals
         if "mmrelay.meshtastic_utils" in sys.modules:

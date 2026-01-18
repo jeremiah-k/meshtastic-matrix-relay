@@ -6,7 +6,9 @@ and improve maintainability of the test suite.
 """
 
 import asyncio
-import concurrent.futures
+from typing import Any, Callable, TypeVar
+
+T = TypeVar("T")
 
 
 class InlineExecutorLoop:
@@ -36,40 +38,36 @@ class InlineExecutorLoop:
         """
         return True
 
-    def run_in_executor(self, _executor, func, *args):
+    def run_in_executor(
+        self, _executor: Any, func: Callable[..., T], *args: Any
+    ) -> asyncio.Future[T]:
         """
         Execute a callable synchronously and return a Future resolved with its outcome.
 
         Parameters:
             _executor: Ignored executor placeholder (kept for compatibility with
                 loop.run_in_executor signature).
-            func (callable): The function to execute.
+            func (Callable[..., T]): The function to execute.
             *args: Positional arguments to pass to `func`.
 
         Returns:
-            asyncio.Future: A Future that contains `func`'s return value or
+            asyncio.Future[T]: A Future that contains `func`'s return value or
                 exception raised by `func`.
 
         Notes:
-            If `func` raises TimeoutError, ValueError, RuntimeError, TypeError,
-            or OSError, that exception is set on the returned Future.
+            Any exception raised by `func` will be set on the returned Future,
+            matching the semantics of loop.run_in_executor.
         """
         fut = self._loop.create_future()
         try:
             result = func(*args)
-        except (
-            concurrent.futures.TimeoutError,
-            ValueError,
-            RuntimeError,
-            TypeError,
-            OSError,
-        ) as exc:
+        except Exception as exc:
             fut.set_exception(exc)
         else:
             fut.set_result(result)
         return fut
 
-    def __getattr__(self, name: str):
+    def __getattr__(self, name: str) -> Any:
         """
         Delegate attribute access to wrapped event loop.
 
@@ -85,7 +83,7 @@ class InlineExecutorLoop:
         return getattr(self._loop, name)
 
 
-def inline_to_thread(func, *args, **kwargs):
+def inline_to_thread(func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
     """
     Run given callable synchronously in the current thread and return its result.
 
@@ -93,11 +91,11 @@ def inline_to_thread(func, *args, **kwargs):
     actual threading for deterministic test behavior.
 
     Parameters:
-        func (callable): The function to execute.
+        func (Callable[..., Any]): The function to execute.
         *args: Positional arguments to pass to `func`.
         **kwargs: Keyword arguments to pass to `func`.
 
     Returns:
-        The return value produced by calling `func(*args, **kwargs)`.
+        Any: The return value produced by calling `func(*args, **kwargs)`.
     """
     return func(*args, **kwargs)

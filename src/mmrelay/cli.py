@@ -477,7 +477,9 @@ def _validate_e2ee_config(
         if store_path:
             expanded_path = os.path.expanduser(store_path)
             if not os.path.exists(expanded_path):
-                print(f"ℹ️  Note: E2EE store directory will be created: {expanded_path}")
+                print(
+                    f"ℹ️  Note: E2EE store directory will be created: {expanded_path}"
+                )
 
         print("✅ E2EE configuration is valid")
 

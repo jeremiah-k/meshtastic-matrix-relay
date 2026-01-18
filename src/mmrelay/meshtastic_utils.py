@@ -133,6 +133,23 @@ _BLE_TIMEOUT_RESET_THRESHOLD = 3
 _BLE_SCAN_TIMEOUT_SECS = 4.0
 
 
+def _shutdown_shared_executors() -> None:
+    """
+    Shutdown shared executors on interpreter exit to avoid blocking.
+
+    Attempts to cancel any pending futures and shutdown without waiting
+    to prevent interpreter hangs when tasks are stuck.
+    """
+    for executor in (_metadata_executor, _ble_executor):
+        try:
+            executor.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            executor.shutdown(wait=False)
+
+
+atexit.register(_shutdown_shared_executors)
+
+
 def _submit_coro(
     coro: Any,
     loop: asyncio.AbstractEventLoop | None = None,
@@ -828,12 +845,15 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
             is left unchanged. While the call runs, the module-level redirect_active flag
             is set and is cleared on completion to signal the redirect state.
             """
-            with contextlib.redirect_stdout(output_capture):
-                redirect_active.set()
-                try:
-                    client.localNode.getMetadata()
-                finally:
-                    redirect_active.clear()
+            try:
+                with contextlib.redirect_stdout(output_capture):
+                    redirect_active.set()
+                    try:
+                        client.localNode.getMetadata()
+                    finally:
+                        redirect_active.clear()
+            except ValueError:
+                pass
 
         with _metadata_future_lock:
             if _metadata_future and not _metadata_future.done():

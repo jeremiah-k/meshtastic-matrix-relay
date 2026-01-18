@@ -827,9 +827,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
     
     [Install]
     WantedBy=default.target
-    """.format(
-            sys.executable
-        )
+    """.format(sys.executable)
 
         # Mock template path and acceptable executables
         with (
