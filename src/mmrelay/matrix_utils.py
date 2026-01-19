@@ -1797,6 +1797,9 @@ async def login_matrix_bot(
         # This ensures the username uses the domain the user expects, not the discovered one
         parsed = urlparse(homeserver)
         original_domain = parsed.hostname or urlparse(f"//{homeserver}").hostname
+        if not original_domain:
+            host = homeserver.split("://")[-1].split("/", 1)[0]
+            original_domain = re.sub(r":\d+$", "", host)
 
         # Step 1: Perform server discovery to get the actual homeserver URL
         logger.info(f"Performing server discovery for {homeserver}...")
