@@ -1718,6 +1718,24 @@ class TestMainAsyncFunction(unittest.TestCase):
                 module._ble_future = None
             if hasattr(module, "_ble_future_address"):
                 module._ble_future_address = None
+            if hasattr(module, "_ble_timeout_counts"):
+                module._ble_timeout_counts = {}
+            if hasattr(module, "_metadata_executor"):
+                executor = module._metadata_executor
+                if executor is not None:
+                    try:
+                        executor.shutdown(wait=False, cancel_futures=True)
+                    except Exception:
+                        pass
+                module._metadata_executor = None
+            if hasattr(module, "_ble_executor"):
+                executor = module._ble_executor
+                if executor is not None:
+                    try:
+                        executor.shutdown(wait=False, cancel_futures=True)
+                    except Exception:
+                        pass
+                module._ble_executor = None
 
         # Reset matrix_utils globals
         if "mmrelay.matrix_utils" in sys.modules:

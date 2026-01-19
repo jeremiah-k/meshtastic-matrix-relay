@@ -2297,9 +2297,12 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
             connect_meshtastic(config, force_connect=True)
 
             # Should log warning about close error but continue
-            mock_logger.warning.assert_called_with(
-                "Error closing previous connection: Close error"
-            )
+            assert mock_logger.warning.called
+            args = mock_logger.warning.call_args
+            assert args[0][0] == "Error closing previous connection: %s"
+            assert isinstance(args[0][1], Exception)
+            assert str(args[0][1]) == "Close error"
+            assert args[1].get("exc_info") is True
 
     @patch("mmrelay.meshtastic_utils.reconnecting", True)
     @patch(

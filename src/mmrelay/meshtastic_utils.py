@@ -386,7 +386,13 @@ def _scan_for_ble_address(ble_address: str, timeout: float) -> bool:
             return any(
                 getattr(device, "address", None) == ble_address for device in devices
             )
-        except (BleakError, BleakDBusError, OSError, RuntimeError) as exc:
+        except (
+            BleakError,
+            BleakDBusError,
+            OSError,
+            RuntimeError,
+            asyncio.TimeoutError,
+        ) as exc:
             logger.debug("BLE scan failed for %s: %s", ble_address, exc)
             return False
 
@@ -404,7 +410,13 @@ def _scan_for_ble_address(ble_address: str, timeout: float) -> bool:
 
     try:
         return asyncio.run(_scan())
-    except (BleakError, BleakDBusError, OSError, RuntimeError) as exc:
+    except (
+        BleakError,
+        BleakDBusError,
+        OSError,
+        RuntimeError,
+        asyncio.TimeoutError,
+    ) as exc:
         logger.debug("BLE scan failed for %s: %s", ble_address, exc)
         return False
 
@@ -1111,7 +1123,12 @@ def _disconnect_ble_by_address(address: str) -> None:
             except BLEAK_EXCEPTIONS as e:
                 # Bleak backends raise a mix of DBus/IO errors; treat them as
                 # non-fatal because stale disconnects are best-effort cleanup.
-                logger.debug(f"Failed to check connection state for {address}: {e}")
+                logger.debug(
+                    "Failed to check connection state for %s: %s",
+                    address,
+                    e,
+                    exc_info=True,
+                )
                 return
 
             try:
@@ -1149,12 +1166,20 @@ def _disconnect_ble_by_address(address: str) -> None:
                             # on adapter state; retry a few times then give up.
                             if attempt < max_retries - 1:
                                 logger.warning(
-                                    f"Disconnect attempt {attempt + 1} for {address} failed: {e}, retrying..."
+                                    "Disconnect attempt %s for %s failed: %s, retrying...",
+                                    attempt + 1,
+                                    address,
+                                    e,
+                                    exc_info=True,
                                 )
                                 await asyncio.sleep(0.5)
                             else:
                                 logger.warning(
-                                    f"Disconnect for {address} failed after {max_retries} attempts: {e}"
+                                    "Disconnect for %s failed after %s attempts: %s",
+                                    address,
+                                    max_retries,
+                                    e,
+                                    exc_info=True,
                                 )
                 else:
                     logger.debug(f"Device {address} not currently connected in BlueZ")
@@ -1568,7 +1593,9 @@ def connect_meshtastic(
                 else:
                     meshtastic_client.close()
             except Exception as e:
-                logger.warning(f"Error closing previous connection: {e}")
+                logger.warning(
+                    "Error closing previous connection: %s", e, exc_info=True
+                )
             meshtastic_client = None
 
         # Check if config is available

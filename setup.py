@@ -62,7 +62,7 @@ setup(
         "dev": [
             "pyright==1.1.407",
             "mypy==1.19.1",
-            "types-PyYAML",
+            "types-PyYAML==6.0.12.20250915",
         ],
         "e2e": [
             "matrix-nio[e2e]==0.25.2",
