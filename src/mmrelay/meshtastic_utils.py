@@ -147,7 +147,16 @@ def _shutdown_shared_executors() -> None:
     Attempts to cancel any pending futures and shutdown without waiting
     to prevent interpreter hangs when tasks are stuck.
     """
-    for executor in (_metadata_executor, _ble_executor):
+    with _metadata_future_lock:
+        executor = _metadata_executor
+        if executor is not None and not getattr(executor, "_shutdown", False):
+            try:
+                executor.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                executor.shutdown(wait=False)
+
+    with _ble_executor_lock:
+        executor = _ble_executor
         if executor is not None and not getattr(executor, "_shutdown", False):
             try:
                 executor.shutdown(wait=False, cancel_futures=True)
