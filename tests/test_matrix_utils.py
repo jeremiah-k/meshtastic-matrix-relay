@@ -16,6 +16,7 @@ from mmrelay.matrix_utils import (
     NioLocalTransportError,
     _can_auto_create_credentials,
     _create_mapping_info,
+    _extract_localpart_from_mxid,
     _get_detailed_matrix_error_message,
     _get_msgs_to_keep_config,
     _handle_detection_sensor_packet,
@@ -6449,6 +6450,48 @@ class TestUncoveredMatrixUtils(unittest.TestCase):
 
         result3 = _normalize_bot_user_id("[::1]:8448", "carol")
         self.assertEqual(result3, "@carol:[::1]")
+
+    def test_extract_localpart_from_mxid(self):
+        """Test _extract_localpart_from_mxid with different input formats."""
+
+        # Test with full MXID
+        result1 = _extract_localpart_from_mxid("@user:example.com")
+        self.assertEqual(result1, "user")
+
+        # Test with MXID using different server
+        result2 = _extract_localpart_from_mxid("@bot:tchncs.de")
+        self.assertEqual(result2, "bot")
+
+        # Test with localpart only
+        result3 = _extract_localpart_from_mxid("alice")
+        self.assertEqual(result3, "alice")
+
+        # Test with empty string
+        result4 = _extract_localpart_from_mxid("")
+        self.assertEqual(result4, "")
+
+        # Test with None
+        result5 = _extract_localpart_from_mxid(None)
+        self.assertIsNone(result5)
+
+        # Test with MXID containing special characters
+        result6 = _extract_localpart_from_mxid("@user_123:example.com")
+        self.assertEqual(result6, "user_123")
+
+    def test_normalize_bot_user_id_preserves_existing_server_part(self):
+        """Test that _normalize_bot_user_id preserves existing server part in MXID."""
+
+        # Test with full MXID - should preserve server part
+        result1 = _normalize_bot_user_id("https://matrix.tchncs.de", "@bot:tchncs.de")
+        self.assertEqual(result1, "@bot:tchncs.de")
+
+        # Test with localpart only - should use provided homeserver
+        result2 = _normalize_bot_user_id("https://tchncs.de", "bot")
+        self.assertEqual(result2, "@bot:tchncs.de")
+
+        # Test with already formatted ID without @
+        result3 = _normalize_bot_user_id("https://example.com", "bot:example.com")
+        self.assertEqual(result3, "@bot:example.com")
 
     @patch("mmrelay.matrix_utils.logger")
     def test_get_detailed_matrix_error_message_bytes(self, mock_logger):

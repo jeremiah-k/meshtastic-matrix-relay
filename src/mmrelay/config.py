@@ -6,8 +6,8 @@ import sys
 from typing import Any, cast
 
 import platformdirs
-import yaml  # type: ignore[import-untyped]
-from yaml.loader import SafeLoader  # type: ignore[import-untyped]
+import yaml
+from yaml.loader import SafeLoader
 
 # Import application constants
 from mmrelay.constants.app import APP_AUTHOR, APP_NAME
