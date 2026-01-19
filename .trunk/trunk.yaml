@@ -21,7 +21,7 @@ lint:
     - hadolint@2.14.0
     - taplo@0.10.0
     - actionlint@1.7.10
-    - bandit@1.9.2
+    - bandit@1.9.3
     - black@26.1.0
     - checkov@3.2.497
     - git-diff-check
