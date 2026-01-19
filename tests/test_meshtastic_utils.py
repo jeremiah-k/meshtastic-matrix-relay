@@ -114,6 +114,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         mmrelay.meshtastic_utils._ble_future = None
         mmrelay.meshtastic_utils._ble_future_address = None
         mmrelay.meshtastic_utils._metadata_future = None
+        mmrelay.meshtastic_utils._ble_timeout_counts = {}
 
     def test_on_meshtastic_message_basic(self):
         """
@@ -1158,6 +1159,7 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
         mu._ble_future = None
         mu._ble_future_address = None
         mu._metadata_future = None
+        mu._ble_timeout_counts = {}
 
         result = connect_meshtastic(passed_config=config)
 
@@ -1341,6 +1343,7 @@ def reset_meshtastic_globals():
     mmrelay.meshtastic_utils._ble_future = None
     mmrelay.meshtastic_utils._ble_future_address = None
     mmrelay.meshtastic_utils._metadata_future = None
+    mmrelay.meshtastic_utils._ble_timeout_counts = {}
     yield
     # Cleanup after test
     mmrelay.meshtastic_utils.meshtastic_client = None
@@ -1349,6 +1352,7 @@ def reset_meshtastic_globals():
     mmrelay.meshtastic_utils._ble_future = None
     mmrelay.meshtastic_utils._ble_future_address = None
     mmrelay.meshtastic_utils._metadata_future = None
+    mmrelay.meshtastic_utils._ble_timeout_counts = {}
 
 
 @patch("mmrelay.meshtastic_utils.time.sleep")

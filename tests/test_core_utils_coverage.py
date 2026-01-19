@@ -163,6 +163,7 @@ class TestMeshtasticUtilsCoverage(unittest.TestCase):
                 # This will fail due to missing config, but we want to test the exception handling
                 meshtastic_utils.connect_meshtastic(force_connect=True)
 
+                mock_logger.warning.assert_called_once()
                 call_args = mock_logger.warning.call_args
                 self.assertEqual(
                     call_args[0][0], "Error closing previous connection: %s"

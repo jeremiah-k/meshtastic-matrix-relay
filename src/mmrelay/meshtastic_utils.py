@@ -148,7 +148,7 @@ def _shutdown_shared_executors() -> None:
     to prevent interpreter hangs when tasks are stuck.
     """
     for executor in (_metadata_executor, _ble_executor):
-        if executor is not None and not executor._shutdown:
+        if executor is not None and not getattr(executor, "_shutdown", False):
             try:
                 executor.shutdown(wait=False, cancel_futures=True)
             except TypeError:
@@ -170,7 +170,7 @@ def _get_ble_executor() -> ThreadPoolExecutor:
         ThreadPoolExecutor: The shared BLE executor instance.
     """
     global _ble_executor
-    if _ble_executor is None or _ble_executor._shutdown:
+    if _ble_executor is None or getattr(_ble_executor, "_shutdown", False):
         _ble_executor = ThreadPoolExecutor(max_workers=1)
     return _ble_executor
 
@@ -187,7 +187,7 @@ def _get_metadata_executor() -> ThreadPoolExecutor:
         ThreadPoolExecutor: The shared metadata executor instance.
     """
     global _metadata_executor
-    if _metadata_executor is None or _metadata_executor._shutdown:
+    if _metadata_executor is None or getattr(_metadata_executor, "_shutdown", False):
         _metadata_executor = ThreadPoolExecutor(max_workers=1)
     return _metadata_executor
 
@@ -1476,7 +1476,7 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                 label=f"ble-interface-close-{reason}",
             )
     except Exception as e:  # noqa: BLE001 - cleanup must not block shutdown
-        logger.debug(f"Error during BLE interface {reason}: {e}")
+        logger.debug(f"Error during BLE interface {reason}", exc_info=e)
     finally:
         # Small delay to ensure the adapter has fully released the connection
         time.sleep(0.5)

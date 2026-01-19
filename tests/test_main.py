@@ -314,12 +314,8 @@ class _ControlledExecutor:
             return self.close_future
 
         future = concurrent.futures.Future()
-        try:
-            result = func(*args, **kwargs)
-        except Exception as exc:
-            future.set_exception(exc)
-        else:
-            future.set_result(result)
+        result = func(*args, **kwargs)
+        future.set_result(result)
         return future
 
     def shutdown(self, wait: bool = False, cancel_futures: bool = False) -> None:
@@ -1723,18 +1719,14 @@ class TestMainAsyncFunction(unittest.TestCase):
             if hasattr(module, "_metadata_executor"):
                 executor = module._metadata_executor
                 if executor is not None:
-                    try:
+                    with contextlib.suppress(TypeError, RuntimeError):
                         executor.shutdown(wait=False, cancel_futures=True)
-                    except Exception:
-                        pass
                 module._metadata_executor = None
             if hasattr(module, "_ble_executor"):
                 executor = module._ble_executor
                 if executor is not None:
-                    try:
+                    with contextlib.suppress(TypeError, RuntimeError):
                         executor.shutdown(wait=False, cancel_futures=True)
-                    except Exception:
-                        pass
                 module._ble_executor = None
 
         # Reset matrix_utils globals
