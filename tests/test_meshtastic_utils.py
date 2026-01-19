@@ -2392,7 +2392,9 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         timeout_future.done.return_value = False
         timeout_future.add_done_callback = Mock()
 
-        orig_stdout = object()
+        import sys
+
+        orig_stdout = sys.stdout
 
         redirect_active = threading.Event()
         redirect_active.set()
@@ -2413,6 +2415,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         timeout_future.result.side_effect = _raise_timeout
 
         mock_executor = Mock()
+        mock_executor._shutdown = False
         mock_executor.submit.return_value = timeout_future
 
         with (
@@ -2422,7 +2425,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             ),
             patch("mmrelay.meshtastic_utils._metadata_executor", mock_executor),
             patch("mmrelay.meshtastic_utils.sys.stdout", orig_stdout),
-            patch("mmrelay.meshtastic_utils.redirect_active", redirect_active),
         ):
             result = _get_device_metadata(mock_client)
 
@@ -2440,6 +2442,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
     @patch("mmrelay.meshtastic_utils.logger")
     def test_get_device_metadata_timeout_restores_stdio(self, _mock_logger):
         """Test _get_device_metadata restores stdio when timeout happens mid-redirect."""
+        import threading
         from concurrent.futures import TimeoutError as FuturesTimeoutError
 
         from mmrelay.meshtastic_utils import _get_device_metadata
@@ -2462,6 +2465,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         redirect_active.set()
 
         mock_executor = Mock()
+        mock_executor._shutdown = False
         mock_executor.submit.return_value = timeout_future
 
         with (
@@ -2469,7 +2473,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             patch("threading.Event", return_value=redirect_active),
             patch("mmrelay.meshtastic_utils._metadata_executor", mock_executor),
             patch("mmrelay.meshtastic_utils.sys.stdout", output_capture),
-            patch("mmrelay.meshtastic_utils.redirect_active", redirect_active),
         ):
             result = _get_device_metadata(mock_client)
 
@@ -2831,6 +2834,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         mock_future.cancel = Mock(return_value=True)
 
         mock_executor = Mock()
+        mock_executor._shutdown = False
         mock_executor.submit.return_value = mock_future
 
         with patch("mmrelay.meshtastic_utils._ble_executor", mock_executor):
@@ -2946,6 +2950,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
                 return connect_future
 
         mock_executor = Mock()
+        mock_executor._shutdown = False
         mock_executor.submit.side_effect = submit_side_effect
 
         with patch("mmrelay.meshtastic_utils._ble_executor", mock_executor):
