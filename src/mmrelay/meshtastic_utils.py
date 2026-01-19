@@ -148,13 +148,48 @@ def _shutdown_shared_executors() -> None:
     to prevent interpreter hangs when tasks are stuck.
     """
     for executor in (_metadata_executor, _ble_executor):
-        try:
-            executor.shutdown(wait=False, cancel_futures=True)
-        except TypeError:
-            executor.shutdown(wait=False)
+        if executor is not None and not executor._shutdown:
+            try:
+                executor.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                executor.shutdown(wait=False)
 
 
 atexit.register(_shutdown_shared_executors)
+
+
+def _get_ble_executor() -> ThreadPoolExecutor:
+    """
+    Get or create a BLE executor thread pool.
+
+    Returns the shared BLE executor, creating it if it has been shut down or is None.
+    This handles cases where executor has been shut down during test cleanup.
+    Note: Caller must hold _ble_executor_lock to avoid race conditions.
+
+    Returns:
+        ThreadPoolExecutor: The shared BLE executor instance.
+    """
+    global _ble_executor
+    if _ble_executor is None or _ble_executor._shutdown:
+        _ble_executor = ThreadPoolExecutor(max_workers=1)
+    return _ble_executor
+
+
+def _get_metadata_executor() -> ThreadPoolExecutor:
+    """
+    Get or create the metadata executor thread pool.
+
+    Returns the shared metadata executor, creating it if it has been shut down or is None.
+    This handles cases where executor has been shut down during test cleanup.
+    Note: Caller must hold _metadata_future_lock to avoid race conditions.
+
+    Returns:
+        ThreadPoolExecutor: The shared metadata executor instance.
+    """
+    global _metadata_executor
+    if _metadata_executor is None or _metadata_executor._shutdown:
+        _metadata_executor = ThreadPoolExecutor(max_workers=1)
+    return _metadata_executor
 
 
 def _submit_coro(
@@ -339,10 +374,11 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
                 pass
             except Exception as exc:  # noqa: BLE001 - best-effort reset cleanup
                 logger.debug("BLE worker errored during reset: %s", exc)
-        try:
-            _ble_executor.shutdown(wait=False, cancel_futures=True)
-        except TypeError:
-            _ble_executor.shutdown(wait=False)
+        if _ble_executor is not None and not _ble_executor._shutdown:
+            try:
+                _ble_executor.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                _ble_executor.shutdown(wait=False)
         _ble_executor = ThreadPoolExecutor(max_workers=1)
         _ble_future = None
         _ble_future_address = None
@@ -882,7 +918,7 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
                 return result
 
             try:
-                future = _metadata_executor.submit(call_get_metadata)
+                future = _get_metadata_executor().submit(call_get_metadata)
             except RuntimeError as exc:
                 # The shared executor may already be shutting down; treat this as
                 # a non-fatal metadata miss so we don't block connections.
@@ -1818,7 +1854,7 @@ def connect_meshtastic(
                                             f"BLE interface creation already in progress for {ble_address}."
                                         )
                                     try:
-                                        future = _ble_executor.submit(
+                                        future = _get_ble_executor().submit(
                                             create_ble_interface, ble_kwargs
                                         )
                                     except RuntimeError as exc:
@@ -1933,7 +1969,7 @@ def connect_meshtastic(
                                     f"BLE connect already in progress for {ble_address}."
                                 )
                             try:
-                                connect_future = _ble_executor.submit(
+                                connect_future = _get_ble_executor().submit(
                                     connect_iface, iface
                                 )
                             except RuntimeError as exc:

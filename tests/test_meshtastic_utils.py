@@ -2380,6 +2380,8 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         mock_client = Mock()
         mock_client.localNode.getMetadata = Mock()
 
+        import threading
+
         import mmrelay.meshtastic_utils as mu
 
         mu._metadata_future = None
@@ -2392,33 +2394,36 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         orig_stdout = object()
 
+        redirect_active = threading.Event()
+        redirect_active.set()
+
         def _raise_timeout(*_args, **_kwargs):
             # Simulate a worker redirecting stdout before the timeout hits.
             """
-            Simulate a worker that redirects stdout and then triggers a futures timeout.
-
-            This test helper replaces mu.sys.stdout with the provided mock_output to mimic a worker
-            redirecting standard output and then raises FuturesTimeoutError to simulate a timeout
+            Simulate a worker that redirects stdout and then raises a FuturesTimeoutError to simulate a timeout
             condition.
 
             Raises:
-                FuturesTimeoutError: Indicates the simulated timeout.
+                FuturesTimeoutError: Indicates a simulated timeout.
             """
             mu.sys.stdout = mock_output
+            redirect_active.clear()
             raise FuturesTimeoutError()
 
         timeout_future.result.side_effect = _raise_timeout
+
+        mock_executor = Mock()
+        mock_executor.submit.return_value = timeout_future
 
         with (
             patch("mmrelay.meshtastic_utils.io.StringIO", return_value=mock_output),
             patch(
                 "mmrelay.meshtastic_utils.threading.Event", return_value=_FakeEvent()
             ),
-            patch("mmrelay.meshtastic_utils._metadata_executor") as mock_executor,
+            patch("mmrelay.meshtastic_utils._metadata_executor", mock_executor),
             patch("mmrelay.meshtastic_utils.sys.stdout", orig_stdout),
+            patch("mmrelay.meshtastic_utils.redirect_active", redirect_active),
         ):
-            mock_executor.submit.return_value = timeout_future
-
             result = _get_device_metadata(mock_client)
 
             # Should still return result with firmware version parsed
@@ -2428,7 +2433,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             mock_logger.debug.assert_called_with(
                 "getMetadata() timed out after 30 seconds"
             )
-            # Ensure we deferred cleanup when the worker is still running.
+            # Ensure we deferred cleanup when worker is still running.
             timeout_future.add_done_callback.assert_called_once()
             self.assertIs(mu.sys.stdout, orig_stdout)
 
@@ -2453,19 +2458,22 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         timeout_future.result.side_effect = FuturesTimeoutError()
         timeout_future.done.return_value = True
 
+        redirect_active = threading.Event()
+        redirect_active.set()
+
+        mock_executor = Mock()
+        mock_executor.submit.return_value = timeout_future
+
         with (
             patch("mmrelay.meshtastic_utils.io.StringIO", return_value=output_capture),
-            patch(
-                "mmrelay.meshtastic_utils.threading.Event", return_value=_FakeEvent()
-            ),
+            patch("threading.Event", return_value=redirect_active),
+            patch("mmrelay.meshtastic_utils._metadata_executor", mock_executor),
             patch("mmrelay.meshtastic_utils.sys.stdout", output_capture),
-            patch("mmrelay.meshtastic_utils._metadata_executor") as mock_executor,
+            patch("mmrelay.meshtastic_utils.redirect_active", redirect_active),
         ):
-            mock_executor.submit.return_value = timeout_future
-
             result = _get_device_metadata(mock_client)
 
-        # The timeout path should still parse output and close the capture safely.
+        # The timeout path should still parse output and close capture safely.
         self.assertTrue(result["success"])
         output_capture.close.assert_called_once()
 
@@ -2822,9 +2830,10 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         mock_future.result = Mock(side_effect=FuturesTimeoutError())
         mock_future.cancel = Mock(return_value=True)
 
-        with patch("mmrelay.meshtastic_utils._ble_executor") as mock_executor:
-            mock_executor.submit.return_value = mock_future
+        mock_executor = Mock()
+        mock_executor.submit.return_value = mock_future
 
+        with patch("mmrelay.meshtastic_utils._ble_executor", mock_executor):
             import mmrelay.meshtastic_utils as mu
 
             mu._ble_future = None
@@ -2936,9 +2945,10 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
                 # Second call: connect()
                 return connect_future
 
-        with patch("mmrelay.meshtastic_utils._ble_executor") as mock_executor:
-            mock_executor.submit.side_effect = submit_side_effect
+        mock_executor = Mock()
+        mock_executor.submit.side_effect = submit_side_effect
 
+        with patch("mmrelay.meshtastic_utils._ble_executor", mock_executor):
             import mmrelay.meshtastic_utils as mu
 
             mu._ble_future = None
