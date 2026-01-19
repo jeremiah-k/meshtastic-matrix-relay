@@ -4,6 +4,7 @@ import contextlib
 import importlib.util
 import inspect
 import io
+import logging
 import re
 import sys
 import threading
@@ -563,7 +564,10 @@ def _make_awaitable(
 
 
 def _run_blocking_with_timeout(
-    action: Callable[[], Any], timeout: float, label: str
+    action: Callable[[], Any],
+    timeout: float,
+    label: str,
+    timeout_log_level: int | None = logging.WARNING,
 ) -> None:
     """
     Run a blocking callable in a daemon thread with a timeout to avoid hangs.
@@ -571,6 +575,12 @@ def _run_blocking_with_timeout(
     This is used for sync BLE operations in the official meshtastic library
     (notably BLEClient.disconnect/close), which can block indefinitely and
     prevent clean shutdown if executed on a non-daemon thread.
+
+    Parameters:
+        action (Callable[[], Any]): Callable to run in a daemon thread.
+        timeout (float): Maximum seconds to wait for completion.
+        label (str): Short label used for logging/exception messages.
+        timeout_log_level (int | None): Logging level for timeouts, or None to suppress.
 
     Raises:
         TimeoutError: If the action does not finish before the timeout expires.
@@ -600,7 +610,8 @@ def _run_blocking_with_timeout(
     )
     thread.start()
     if not done_event.wait(timeout=timeout):
-        logger.warning("%s timed out after %.1fs", label, timeout)
+        if timeout_log_level is not None:
+            logger.log(timeout_log_level, "%s timed out after %.1fs", label, timeout)
         raise TimeoutError(f"{label} timed out after {timeout:.1f}s")
     if action_error is not None:
         logger.debug("%s failed: %s", label, action_error)
@@ -1339,6 +1350,9 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
     # This helps prevent "Unexpected EOF on notification file handle" errors
     logger.debug(f"Waiting before disconnecting BLE interface ({reason})")
     time.sleep(0.5)
+    timeout_log_level = logging.DEBUG if reason == "shutdown" else logging.WARNING
+    retry_log = logger.debug if reason == "shutdown" else logger.warning
+    final_log = logger.debug if reason == "shutdown" else logger.error
 
     try:
         if hasattr(iface, "_exit_handler") and iface._exit_handler:
@@ -1380,6 +1394,7 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                             _disconnect_sync,
                             timeout=3.0,
                             label=f"ble-interface-disconnect-{reason}",
+                            timeout_log_level=timeout_log_level,
                         )
                     # Give the adapter time to complete the disconnect
                     time.sleep(1.0)
@@ -1389,12 +1404,12 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                     break
                 except Exception as e:
                     if attempt < max_disconnect_retries - 1:
-                        logger.warning(
+                        retry_log(
                             f"BLE interface disconnect attempt {attempt + 1} failed ({reason}): {e}, retrying..."
                         )
                         time.sleep(0.5)
                     else:
-                        logger.error(
+                        final_log(
                             f"BLE interface disconnect failed after {max_disconnect_retries} attempts ({reason}): {e}"
                         )
         else:
@@ -1447,6 +1462,7 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                             _disconnect_sync,
                             timeout=2.0,
                             label=f"ble-client-disconnect-{reason}",
+                            timeout_log_level=timeout_log_level,
                         )
                     time.sleep(1.0)
                     logger.debug(
@@ -1455,7 +1471,7 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                     break
                 except Exception as e:
                     if attempt < max_client_retries - 1:
-                        logger.warning(
+                        retry_log(
                             f"BLE client disconnect attempt {attempt + 1} failed ({reason}): {e}, retrying..."
                         )
                         time.sleep(0.3)
@@ -1488,7 +1504,10 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                 _close_sync,
                 timeout=5.0,
                 label=f"ble-interface-close-{reason}",
+                timeout_log_level=timeout_log_level,
             )
+    except TimeoutError as exc:
+        logger.debug("BLE interface %s timed out: %s", reason, exc)
     except Exception as e:  # noqa: BLE001 - cleanup must not block shutdown
         logger.debug(f"Error during BLE interface {reason}", exc_info=e)
     finally:
