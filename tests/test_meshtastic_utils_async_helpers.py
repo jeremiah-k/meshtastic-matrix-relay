@@ -10,10 +10,38 @@ class _DummyLoop:
         return False
 
     def is_running(self):
+        """
+        Indicates that this dummy loop is always considered running.
+
+        Returns:
+            True, since the dummy loop is always treated as running.
+        """
         return True
+
+    def create_task(self, _coro):
+        """
+        Simulate scheduling a coroutine by closing it and returning a MagicMock representing the created task.
+
+        Parameters:
+            _coro: A coroutine object which will be closed.
+
+        Returns:
+            MagicMock: A mock object standing in for the scheduled task.
+        """
+        _coro.close()
+        return MagicMock()
 
 
 def _make_threadsafe_runner(result_value):
+    """
+    Create a fake thread-safe runner that closes a coroutine and returns a mock future.
+
+    Parameters:
+        result_value: Value that the returned mock future's `result()` method will return.
+
+    Returns:
+        A callable with signature `(coro, _loop)` that closes `coro` and returns a MagicMock whose `result()` returns `result_value`.
+    """
     result_future = MagicMock()
     result_future.result.return_value = result_value
 
@@ -97,16 +125,22 @@ def test_wait_for_result_running_loop_threadsafe():
             patch(
                 "mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe",
                 side_effect=_make_threadsafe_runner("running"),
-            ),
+            ) as mock_threadsafe,
         ):
             result = _wait_for_result(future, timeout=0.1)
     finally:
         loop.close()
 
-    assert result == "running"
+    assert result is False
+    mock_threadsafe.assert_not_called()
 
 
 def test_wait_for_result_running_loop_not_running():
+    """
+    Verifies that _wait_for_result executes a coroutine on a loop returned by get_running_loop when that loop is not running and returns the coroutine's result.
+
+    Patches asyncio.get_running_loop to return a newly created (not running) event loop, calls _wait_for_result with a coroutine that returns "sync-loop", and asserts the observed result is "sync-loop".
+    """
     loop = asyncio.new_event_loop()
     try:
         with patch(

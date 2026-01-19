@@ -41,20 +41,48 @@ This solution ensures reliable test execution and prevents CI blocking issues.
 """
 
 import asyncio
+import concurrent.futures
 import contextlib
+import functools
 import inspect
-import os
 import sys
 import unittest
-from typing import Any
+from typing import Any, Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-# Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-
 from mmrelay.main import main, print_banner, run_main
+from tests.helpers import InlineExecutorLoop, inline_to_thread
+
+
+def _make_async_return(value: Any):
+    """
+    Create an async function that always returns provided value.
+
+    Parameters:
+        value (Any): Value to be returned by generated coroutine.
+
+    Returns:
+        callable: An async function that ignores its arguments and returns `value` when awaited.
+    """
+
+    async def _async_return(*_args, **_kwargs):
+        return value
+
+    return _async_return
+
+
+async def _async_noop(*_args, **_kwargs) -> None:
+    """
+    Asynchronous no-op that accepts any positional and keyword arguments.
+
+    This coroutine performs no action and ignores all provided arguments.
+
+    Returns:
+        None
+    """
+    return None
 
 
 def _close_coro_if_possible(coro: Any) -> None:
@@ -76,9 +104,234 @@ def _mock_run_with_exception(coro: Any) -> None:
 
 
 def _mock_run_with_keyboard_interrupt(coro: Any) -> None:
-    """Close coroutine and raise KeyboardInterrupt."""
+    """
+    Invoke _close_coro_if_possible on the given coroutine-like object and then raise KeyboardInterrupt.
+
+    Parameters:
+        coro (Any): An awaitable or coroutine object; if it has a `close()` method, that method will be called.
+
+    Raises:
+        KeyboardInterrupt: Always raised after attempting to close the coroutine.
+    """
     _close_coro_if_possible(coro)
     raise KeyboardInterrupt()
+
+
+def _make_async_raise(exc: Exception):
+    """
+    Create an async callable that always raises provided exception when awaited.
+
+    Parameters:
+        exc (Exception): The exception instance to raise when the returned coroutine is awaited.
+
+    Returns:
+        Callable[..., Coroutine]: An async function that, when called and awaited, raises `exc`.
+    """
+
+    async def _async_raise(*_args, **_kwargs):
+        raise exc
+
+    return _async_raise
+
+
+def _make_patched_get_running_loop():
+    """
+    Create a patched get_running_loop that wraps the loop in InlineExecutorLoop.
+
+    Returns:
+        Callable: A function that returns the current event loop wrapped in
+        InlineExecutorLoop if not already wrapped.
+
+    Notes:
+        This helper is used in tests to ensure run_in_executor calls execute
+        inline instead of scheduling on a thread pool. The returned function
+        checks if the loop is already an InlineExecutorLoop to avoid double-wrapping.
+    """
+    real_get_running_loop = asyncio.get_running_loop
+
+    def _patched_get_running_loop():
+        """
+        Wraps the real running event loop in an InlineExecutorLoop when necessary.
+
+        Returns:
+            The original loop if it is already an InlineExecutorLoop,
+            otherwise a new InlineExecutorLoop that delegates to the real loop.
+        """
+        loop = real_get_running_loop()
+        if isinstance(loop, InlineExecutorLoop):
+            return loop
+        return InlineExecutorLoop(loop)
+
+    return _patched_get_running_loop
+
+
+class _ImmediateEvent:
+    """Event that starts set and completes wait() immediately for shutdown tests."""
+
+    def __init__(self) -> None:
+        """
+        Initialize an ImmediateEvent representing an event that is always set.
+
+        Sets internal state so is_set() returns True and awaitable wait() completes immediately.
+        """
+        self._set = True
+
+    def is_set(self) -> bool:
+        """
+        Indicates whether the event is set.
+
+        Returns:
+            `True` if the event is set, `False` otherwise.
+        """
+        return self._set
+
+    def set(self) -> None:
+        """
+        Mark the event as set so subsequent checks see it as signaled and waiters do not block.
+        """
+        self._set = True
+
+    async def wait(self) -> None:
+        """
+        Return immediately without blocking, simulating an event that is already set.
+
+        This coroutine is a no-op used in tests to represent an event whose wait completes immediately.
+        """
+        return None
+
+
+class _CloseFutureBase(concurrent.futures.Future):
+    """Future with a cancel flag for shutdown test assertions."""
+
+    def __init__(self) -> None:
+        """
+        Initialize the instance and set up the cancel call tracker.
+
+        Tracks whether cancel() was invoked on this future via the `cancel_called` attribute.
+        """
+        super().__init__()
+        self.cancel_called = False
+
+    def cancel(self) -> bool:
+        """
+        Mark the future as cancelled and record that cancellation was attempted.
+
+        Sets the `cancel_called` attribute to True.
+
+        Returns:
+            bool: `True` if the future was successfully cancelled, `False` otherwise.
+        """
+        self.cancel_called = True
+        return super().cancel()
+
+
+class _TimeoutCloseFuture(_CloseFutureBase):
+    """Future that raises TimeoutError immediately on result()."""
+
+    def result(self, _timeout: float | None = None) -> None:
+        """
+        Always raises a concurrent.futures.TimeoutError to simulate a timed-out close future.
+
+        Parameters:
+            _timeout (float | None): Ignored timeout value.
+
+        Raises:
+            concurrent.futures.TimeoutError: Always raised when called.
+        """
+        raise concurrent.futures.TimeoutError()
+
+
+class _ErrorCloseFuture(_CloseFutureBase):
+    """Future that raises an unexpected error on result()."""
+
+    def result(self, _timeout: float | None = None) -> None:
+        """
+        Always raises a ValueError with message "boom".
+
+        Parameters:
+            _timeout (float | None): Ignored; present for API compatibility.
+
+        Raises:
+            ValueError: Always raised with message "boom".
+        """
+        raise ValueError("boom")
+
+
+class _ControlledExecutor:
+    """Executor that runs normal tasks immediately and can override close behavior."""
+
+    def __init__(
+        self,
+        *,
+        close_future_factory: Callable[[], concurrent.futures.Future] | None = None,
+        submit_timeout: bool = False,
+        shutdown_typeerror: bool = False,
+    ) -> None:
+        """
+        Create a ControlledExecutor used in tests to simulate and control task submission and shutdown behaviors.
+
+        Parameters:
+            close_future_factory (Callable[[], concurrent.futures.Future] | None):
+                Factory that produces a preconfigured Future to return for close-related submissions; if None, submit executes synchronously.
+            submit_timeout (bool):
+                If True, simulate a timeout condition when submitting close-related tasks.
+            shutdown_typeerror (bool):
+                If True, simulate an executor.shutdown that raises a TypeError when called with cancel_futures=True (to model older Python behavior).
+
+        """
+        self.close_future_factory = close_future_factory
+        self.submit_timeout = submit_timeout
+        self.shutdown_typeerror = shutdown_typeerror
+        self.future = None
+        self.close_future = None
+        self.calls = []
+
+    def submit(self, func, *args, **kwargs):
+        """
+        Submit a callable to the controlled executor, execute it synchronously, and return a Future representing its outcome.
+
+        If the callable's name or qualified name contains "_close_meshtastic", the executor applies special close-related behavior: it raises concurrent.futures.TimeoutError when configured with submit_timeout, or returns a pre-created close future when a close_future_factory is provided.
+
+        Parameters:
+            func (callable): The function or functools.partial to execute. Additional positional and keyword arguments are forwarded to the callable.
+
+        Returns:
+            concurrent.futures.Future: Future containing the callable's result. If the callable raises an exception,
+            it propagates to the caller (no Future is returned).
+        """
+        target = func
+        if isinstance(func, functools.partial):
+            target = func.func
+        target_name = getattr(target, "__name__", "")
+        target_qualname = getattr(target, "__qualname__", "")
+        is_close = "_close_meshtastic" in target_name or "_close_meshtastic" in (
+            target_qualname
+        )
+        if is_close and self.submit_timeout:
+            raise concurrent.futures.TimeoutError()
+        if is_close and self.close_future_factory is not None:
+            if self.close_future is None:
+                self.close_future = self.close_future_factory()
+            return self.close_future
+
+        future = concurrent.futures.Future()
+        result = func(*args, **kwargs)
+        future.set_result(result)
+        return future
+
+    def shutdown(self, wait: bool = False, cancel_futures: bool = False) -> None:
+        """
+        Record an executor shutdown request and optionally simulate a legacy TypeError when `cancel_futures` is used.
+
+        Parameters:
+            wait (bool): Whether to wait for pending futures to complete.
+            cancel_futures (bool): Whether to cancel pending futures; when the executor is configured
+                to simulate older Python behavior, passing `True` raises a `TypeError`.
+        """
+        self.calls.append((wait, cancel_futures))
+        if self.shutdown_typeerror and cancel_futures is True:
+            # Simulate older Python versions that do not accept cancel_futures.
+            raise TypeError()
 
 
 class TestMain(unittest.TestCase):
@@ -287,8 +540,8 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
     @patch("mmrelay.main.start_message_queue")
-    @patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
-    @patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
+    @patch("mmrelay.main.connect_matrix")
+    @patch("mmrelay.main.join_matrix_room")
     @patch("mmrelay.main.stop_message_queue")
     def test_main_meshtastic_connection_failure(
         self,
@@ -309,13 +562,22 @@ class TestMain(unittest.TestCase):
         mock_connect_meshtastic.return_value = None
 
         # Mock Matrix connection to fail early to avoid hanging
-        mock_connect_matrix.return_value = None
+        mock_connect_matrix.side_effect = _make_async_return(None)
+        mock_join_room.side_effect = _async_noop
 
         # Call main function (should exit early due to connection failures)
-        try:
-            asyncio.run(main(self.mock_config))
-        except (SystemExit, Exception):
-            pass  # Expected due to connection failures
+        with (
+            patch(
+                "mmrelay.main.asyncio.get_running_loop",
+                side_effect=_make_patched_get_running_loop(),
+            ),
+            patch(
+                "mmrelay.main.asyncio.to_thread",
+                side_effect=inline_to_thread,
+            ),
+        ):
+            with contextlib.suppress(ConnectionError):
+                asyncio.run(main(self.mock_config))
 
         # Should still proceed with Matrix connection
         mock_connect_matrix.assert_called_once()
@@ -324,7 +586,7 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.load_plugins")
     @patch("mmrelay.main.start_message_queue")
     @patch("mmrelay.main.connect_meshtastic")
-    @patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
+    @patch("mmrelay.main.connect_matrix")
     @patch("mmrelay.main.stop_message_queue")
     def test_main_matrix_connection_failure(
         self,
@@ -340,29 +602,41 @@ class TestMain(unittest.TestCase):
 
         Mocks the Matrix connection to raise an exception and verifies that the main function propagates the error.
         """
-        # Mock Matrix connection to raise an exception
-        mock_connect_matrix.side_effect = Exception("Matrix connection failed")
-
         # Mock Meshtastic client
         mock_meshtastic_client = MagicMock()
         mock_connect_meshtastic.return_value = mock_meshtastic_client
 
+        mock_connect_matrix.side_effect = _make_async_raise(
+            Exception("Matrix connection failed")
+        )
         # Should raise the Matrix connection exception
-        with self.assertRaises(Exception) as context:
-            asyncio.run(main(self.mock_config))
+        with (
+            patch(
+                "mmrelay.main.asyncio.get_running_loop",
+                side_effect=_make_patched_get_running_loop(),
+            ),
+            patch(
+                "mmrelay.main.asyncio.to_thread",
+                side_effect=inline_to_thread,
+            ),
+        ):
+            with self.assertRaises(Exception) as context:
+                asyncio.run(main(self.mock_config))
         self.assertIn("Matrix connection failed", str(context.exception))
 
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
     @patch("mmrelay.main.start_message_queue")
     @patch("mmrelay.main.connect_meshtastic")
-    @patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
-    @patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
+    @patch("mmrelay.main.connect_matrix")
+    @patch("mmrelay.main.join_matrix_room")
+    @patch("mmrelay.main.shutdown_plugins")
     @patch("mmrelay.main.stop_message_queue")
     def test_main_closes_meshtastic_client_on_shutdown(
         self,
         _mock_stop_queue,
-        _mock_join_room,
+        _mock_shutdown_plugins,
+        mock_join_room,
         mock_connect_matrix,
         mock_connect_meshtastic,
         _mock_start_queue,
@@ -371,51 +645,288 @@ class TestMain(unittest.TestCase):
     ):
         """Shutdown should close the Meshtastic client when present."""
 
-        class ImmediateEvent:
-            def __init__(self) -> None:
-                """
-                Initialize the instance and mark it as set.
-
-                Sets the internal flag `_set` to True to indicate the object has been initialized.
-                """
-                self._set = True
-
-            def is_set(self) -> bool:
-                """
-                Indicates whether the internal set flag is enabled.
-
-                Returns:
-                    True if the flag is set, False otherwise.
-                """
-                return self._set
-
-            def set(self) -> None:
-                """
-                Mark the event as set, allowing any waiters to proceed.
-
-                When called, the event's state becomes set; subsequent checks or waits observing the event will see it as set until cleared.
-                """
-                self._set = True
-
-            async def wait(self) -> None:
-                """
-                A no-op asynchronous wait that completes immediately.
-
-                This coroutine does not block; awaiting it returns without delay or side effects.
-                """
-                return None
-
         mock_meshtastic_client = MagicMock()
         mock_connect_meshtastic.return_value = mock_meshtastic_client
 
         mock_matrix_client = MagicMock()
         mock_matrix_client.close = AsyncMock()
-        mock_connect_matrix.return_value = mock_matrix_client
+        mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
+        mock_join_room.side_effect = _async_noop
 
-        with patch("mmrelay.main.asyncio.Event", return_value=ImmediateEvent()):
+        with (
+            patch(
+                "mmrelay.main.asyncio.get_running_loop",
+                side_effect=_make_patched_get_running_loop(),
+            ),
+            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+            patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
+            patch("mmrelay.main.get_message_queue") as mock_get_queue,
+        ):
+            mock_queue = MagicMock()
+            mock_queue.ensure_processor_started = MagicMock()
+            mock_get_queue.return_value = mock_queue
             asyncio.run(main(self.mock_config))
 
         mock_meshtastic_client.close.assert_called_once()
+
+    @patch("mmrelay.main.initialize_database")
+    @patch("mmrelay.main.load_plugins")
+    @patch("mmrelay.main.start_message_queue")
+    @patch("mmrelay.main.connect_meshtastic")
+    @patch("mmrelay.main.connect_matrix")
+    @patch("mmrelay.main.join_matrix_room")
+    @patch("mmrelay.main.stop_message_queue")
+    @patch("mmrelay.main.meshtastic_utils._disconnect_ble_interface")
+    def test_main_shutdown_disconnects_ble_interface(
+        self,
+        mock_disconnect_iface,
+        _mock_stop_queue,
+        mock_join_room,
+        mock_connect_matrix,
+        mock_connect_meshtastic,
+        _mock_start_queue,
+        _mock_load_plugins,
+        _mock_init_db,
+    ):
+        """Shutdown should use BLE-specific disconnect when the interface is BLE."""
+
+        mock_iface = MagicMock()
+
+        def _connect_meshtastic(*_args, **_kwargs):
+            """
+            Install the test Meshtastic interface into mmrelay.meshtastic_utils and return it.
+
+            This helper ignores any positional or keyword arguments. It assigns the module-level
+            `mock_iface` to `mmrelay.meshtastic_utils.meshtastic_iface` and returns that object.
+
+            Returns:
+                mock_iface: The mock Meshtastic interface that was assigned.
+            """
+            import mmrelay.meshtastic_utils as mu
+
+            mu.meshtastic_iface = mock_iface
+            return mock_iface
+
+        mock_connect_meshtastic.side_effect = _connect_meshtastic
+
+        mock_matrix_client = MagicMock()
+        mock_matrix_client.close = AsyncMock()
+        mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
+        mock_join_room.side_effect = _async_noop
+
+        executor = _ControlledExecutor()
+        with (
+            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+            patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
+            patch(
+                "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
+                return_value=executor,
+            ),
+        ):
+            asyncio.run(main(self.mock_config))
+
+        mock_disconnect_iface.assert_called_once_with(mock_iface, reason="shutdown")
+        import mmrelay.meshtastic_utils as mu
+
+        self.assertIsNone(mu.meshtastic_iface)
+
+    @patch("mmrelay.main.initialize_database")
+    @patch("mmrelay.main.load_plugins")
+    @patch("mmrelay.main.start_message_queue")
+    @patch("mmrelay.main.connect_meshtastic")
+    @patch("mmrelay.main.connect_matrix")
+    @patch("mmrelay.main.join_matrix_room")
+    @patch("mmrelay.main.shutdown_plugins")
+    @patch("mmrelay.main.stop_message_queue")
+    @patch("mmrelay.main.meshtastic_logger")
+    def test_main_shutdown_timeout_cancels_future(
+        self,
+        mock_meshtastic_logger,
+        _mock_stop_queue,
+        _mock_shutdown_plugins,
+        mock_join_room,
+        mock_connect_matrix,
+        mock_connect_meshtastic,
+        _mock_start_queue,
+        _mock_load_plugins,
+        _mock_init_db,
+    ):
+        """Shutdown should cancel futures when Meshtastic close times out."""
+
+        mock_iface = MagicMock()
+
+        def _connect_meshtastic(*_args, **_kwargs):
+            """
+            Install the provided mock Meshtastic interface into the mmrelay.meshtastic_utils module for tests.
+
+            Sets mmrelay.meshtastic_utils.meshtastic_client to the mock interface and mmrelay.meshtastic_utils.meshtastic_iface to None.
+
+            Returns:
+                The mock Meshtastic interface that was installed.
+            """
+            import mmrelay.meshtastic_utils as mu
+
+            mu.meshtastic_client = mock_iface
+            mu.meshtastic_iface = None
+            return mock_iface
+
+        mock_connect_meshtastic.side_effect = _connect_meshtastic
+        mock_matrix_client = MagicMock()
+        mock_matrix_client.close = AsyncMock()
+        mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
+        mock_join_room.side_effect = _async_noop
+
+        executor = _ControlledExecutor(close_future_factory=_TimeoutCloseFuture)
+        with (
+            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+            patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
+            patch(
+                "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
+                return_value=executor,
+            ),
+        ):
+            asyncio.run(main(self.mock_config))
+
+        self.assertTrue(executor.close_future.cancel_called)
+        mock_meshtastic_logger.warning.assert_any_call(
+            "Meshtastic client close timed out - may cause notification errors"
+        )
+
+    @patch("mmrelay.main.initialize_database")
+    @patch("mmrelay.main.load_plugins")
+    @patch("mmrelay.main.start_message_queue")
+    @patch("mmrelay.main.connect_meshtastic")
+    @patch("mmrelay.main.connect_matrix")
+    @patch("mmrelay.main.join_matrix_room")
+    @patch("mmrelay.main.shutdown_plugins")
+    @patch("mmrelay.main.stop_message_queue")
+    @patch("mmrelay.main.meshtastic_logger")
+    def test_main_shutdown_logs_unexpected_close_error(
+        self,
+        mock_meshtastic_logger,
+        _mock_stop_queue,
+        _mock_shutdown_plugins,
+        mock_join_room,
+        mock_connect_matrix,
+        mock_connect_meshtastic,
+        _mock_start_queue,
+        _mock_load_plugins,
+        _mock_init_db,
+    ):
+        """Shutdown should log unexpected errors from close futures."""
+
+        mock_connect_meshtastic.return_value = MagicMock()
+        mock_matrix_client = MagicMock()
+        mock_matrix_client.close = AsyncMock()
+        mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
+        mock_join_room.side_effect = _async_noop
+
+        executor = _ControlledExecutor(close_future_factory=_ErrorCloseFuture)
+        with (
+            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+            patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
+            patch(
+                "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
+                return_value=executor,
+            ),
+        ):
+            asyncio.run(main(self.mock_config))
+
+        self.assertTrue(
+            any(
+                "Unexpected error during Meshtastic client close" in str(call)
+                for call in mock_meshtastic_logger.exception.call_args_list
+            )
+        )
+
+    @patch("mmrelay.main.initialize_database")
+    @patch("mmrelay.main.load_plugins")
+    @patch("mmrelay.main.start_message_queue")
+    @patch("mmrelay.main.connect_meshtastic")
+    @patch("mmrelay.main.connect_matrix")
+    @patch("mmrelay.main.join_matrix_room")
+    @patch("mmrelay.main.shutdown_plugins")
+    @patch("mmrelay.main.stop_message_queue")
+    def test_main_shutdown_shutdown_typeerror_fallback(
+        self,
+        _mock_stop_queue,
+        _mock_shutdown_plugins,
+        mock_join_room,
+        mock_connect_matrix,
+        mock_connect_meshtastic,
+        _mock_start_queue,
+        _mock_load_plugins,
+        _mock_init_db,
+    ):
+        """
+        Ensure main retries executor.shutdown without cancel_futures when a TypeError occurs.
+
+        Verifies that if ThreadPoolExecutor.shutdown raises a TypeError when invoked with
+        cancel_futures=True, the shutdown sequence calls executor.shutdown a second time
+        with cancel_futures=False.
+        """
+
+        mock_connect_meshtastic.return_value = MagicMock()
+        mock_matrix_client = MagicMock()
+        mock_matrix_client.close = AsyncMock()
+        mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
+        mock_join_room.side_effect = _async_noop
+
+        executor = _ControlledExecutor(shutdown_typeerror=True)
+        with (
+            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+            patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
+            patch(
+                "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
+                return_value=executor,
+            ),
+        ):
+            asyncio.run(main(self.mock_config))
+
+        self.assertEqual(executor.calls[0], (False, True))
+        self.assertEqual(executor.calls[1], (False, False))
+
+    @patch("mmrelay.main.initialize_database")
+    @patch("mmrelay.main.load_plugins")
+    @patch("mmrelay.main.start_message_queue")
+    @patch("mmrelay.main.connect_meshtastic")
+    @patch("mmrelay.main.connect_matrix")
+    @patch("mmrelay.main.join_matrix_room")
+    @patch("mmrelay.main.stop_message_queue")
+    @patch("mmrelay.main.meshtastic_logger")
+    def test_main_shutdown_submit_timeout_triggers_outer_warning(
+        self,
+        mock_meshtastic_logger,
+        _mock_stop_queue,
+        mock_join_room,
+        mock_connect_matrix,
+        mock_connect_meshtastic,
+        _mock_start_queue,
+        _mock_load_plugins,
+        _mock_init_db,
+    ):
+        """Submit-time timeouts should hit the outer shutdown warning."""
+
+        mock_connect_meshtastic.return_value = MagicMock()
+        mock_matrix_client = MagicMock()
+        mock_matrix_client.close = AsyncMock()
+        mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
+        mock_join_room.side_effect = _async_noop
+
+        executor = _ControlledExecutor(submit_timeout=True)
+        with (
+            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+            patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
+            patch(
+                "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
+                return_value=executor,
+            ),
+        ):
+            asyncio.run(main(self.mock_config))
+
+        mock_meshtastic_logger.warning.assert_any_call(
+            "Meshtastic client close timed out - forcing shutdown"
+        )
 
 
 class TestPrintBanner(unittest.TestCase):
@@ -1185,7 +1696,6 @@ class TestMainAsyncFunction(unittest.TestCase):
         it mutates imported mmrelay modules and may call cleanup helpers (such as
         message queue stop).
         """
-        import sys
 
         # Reset meshtastic_utils globals
         if "mmrelay.meshtastic_utils" in sys.modules:
@@ -1199,6 +1709,26 @@ class TestMainAsyncFunction(unittest.TestCase):
             module.reconnect_task = None
             module.subscribed_to_messages = False
             module.subscribed_to_connection_lost = False
+            if hasattr(module, "_metadata_future"):
+                module._metadata_future = None
+            if hasattr(module, "_ble_future"):
+                module._ble_future = None
+            if hasattr(module, "_ble_future_address"):
+                module._ble_future_address = None
+            if hasattr(module, "_ble_timeout_counts"):
+                module._ble_timeout_counts = {}
+            if hasattr(module, "_metadata_executor"):
+                executor = module._metadata_executor
+                if executor is not None:
+                    with contextlib.suppress(TypeError, RuntimeError):
+                        executor.shutdown(wait=False, cancel_futures=True)
+                module._metadata_executor = None
+            if hasattr(module, "_ble_executor"):
+                executor = module._ble_executor
+                if executor is not None:
+                    with contextlib.suppress(TypeError, RuntimeError):
+                        executor.shutdown(wait=False, cancel_futures=True)
+                module._ble_executor = None
 
         # Reset matrix_utils globals
         if "mmrelay.matrix_utils" in sys.modules:
@@ -1238,13 +1768,10 @@ class TestMainAsyncFunction(unittest.TestCase):
         if "mmrelay.message_queue" in sys.modules:
             from mmrelay.message_queue import get_message_queue
 
-            try:
+            with contextlib.suppress(Exception):
                 queue = get_message_queue()
                 if hasattr(queue, "stop"):
                     queue.stop()
-            except Exception:
-                # Ignore errors during cleanup
-                pass
 
     def test_main_async_initialization_sequence(self):
         """Verify that the asynchronous main() startup sequence invokes database initialization, plugin loading, message-queue startup, and both Matrix and Meshtastic connection routines.
@@ -1340,11 +1867,9 @@ class TestMainAsyncFunction(unittest.TestCase):
 
     def test_main_signal_handler_sets_shutdown_flag(self):
         """
-        Verify that signal handling triggers shutdown flag and event setup.
+        Ensure signal handlers set the shutdown flag and register a shutdown handler.
 
-        This test replaces the event loop's add_signal_handler to synchronously invoke
-        the registered handler, ensuring the shutdown path executes without relying on
-        OS signal delivery.
+        Patches asyncio.get_running_loop so the event loop's add_signal_handler is replaced with a synchronous invoker that captures and immediately calls the registered handler; runs main(config) and asserts the meshtastic shutdown flag is set and a signal handler was registered.
         """
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
@@ -1381,15 +1906,14 @@ class TestMainAsyncFunction(unittest.TestCase):
             patch("mmrelay.main.start_message_queue"),
             patch(
                 "mmrelay.main.connect_matrix",
-                new_callable=AsyncMock,
-                return_value=mock_matrix_client,
+                side_effect=_make_async_return(mock_matrix_client),
             ),
             patch("mmrelay.main.connect_meshtastic", return_value=None),
-            patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
+            patch("mmrelay.main.join_matrix_room", side_effect=_async_noop),
             patch("mmrelay.main.get_message_queue") as mock_get_queue,
             patch(
                 "mmrelay.main.meshtastic_utils.check_connection",
-                new_callable=AsyncMock,
+                side_effect=_async_noop,
             ),
             patch("mmrelay.main.shutdown_plugins"),
             patch("mmrelay.main.stop_message_queue"),
@@ -1405,6 +1929,81 @@ class TestMainAsyncFunction(unittest.TestCase):
 
         self.assertTrue(mu.shutting_down)
         self.assertTrue(captured_handlers)
+
+    def test_main_registers_sighup_handler(self):
+        """Verify SIGHUP handler registration on non-Windows platforms."""
+        config = {
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+            "matrix": {"homeserver": "https://matrix.org"},
+            "meshtastic": {"connection_type": "serial"},
+        }
+
+        mock_matrix_client = AsyncMock()
+        mock_matrix_client.add_event_callback = MagicMock()
+        mock_matrix_client.close = AsyncMock()
+
+        captured_signals = []
+        real_get_running_loop = asyncio.get_running_loop
+
+        def _patched_get_running_loop():
+            """
+            Return the current running event loop with its signal-handler registration patched to capture signals.
+
+            The returned loop has its `add_signal_handler` replaced so that any registered signal is appended to the module-level `captured_signals` list, and a `_signal_capture_patched` attribute is set to avoid repeated patching.
+
+            Returns:
+                asyncio.AbstractEventLoop: The running event loop with signal registration patched.
+            """
+            loop = real_get_running_loop()
+            if not hasattr(loop, "_signal_capture_patched"):
+
+                def _fake_add_signal_handler(sig, _handler):
+                    """
+                    Record the given signal identifier by appending it to the module-level captured_signals list for testing.
+
+                    Parameters:
+                        sig: The signal identifier (e.g., an int or signal.Signals) to capture.
+                        _handler: The signal handler callable (ignored).
+                    """
+                    captured_signals.append(sig)
+
+                loop.add_signal_handler = _fake_add_signal_handler
+                loop._signal_capture_patched = True
+            return loop
+
+        import mmrelay.main as main_module
+
+        with (
+            patch(
+                "mmrelay.main.asyncio.get_running_loop",
+                side_effect=_patched_get_running_loop,
+            ),
+            patch("mmrelay.main.initialize_database"),
+            patch("mmrelay.main.load_plugins"),
+            patch("mmrelay.main.start_message_queue"),
+            patch(
+                "mmrelay.main.connect_matrix",
+                side_effect=_make_async_return(mock_matrix_client),
+            ),
+            patch("mmrelay.main.connect_meshtastic", return_value=None),
+            patch("mmrelay.main.join_matrix_room", side_effect=_async_noop),
+            patch("mmrelay.main.get_message_queue") as mock_get_queue,
+            patch(
+                "mmrelay.main.meshtastic_utils.check_connection",
+                side_effect=_async_noop,
+            ),
+            patch("mmrelay.main.shutdown_plugins"),
+            patch("mmrelay.main.stop_message_queue"),
+            patch("mmrelay.main.sys.platform", "linux"),
+            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+        ):
+            mock_queue = MagicMock()
+            mock_queue.ensure_processor_started = MagicMock()
+            mock_get_queue.return_value = mock_queue
+
+            asyncio.run(main(config))
+
+        self.assertIn(main_module.signal.SIGHUP, captured_signals)
 
     def test_main_windows_keyboard_interrupt_triggers_shutdown(self):
         """

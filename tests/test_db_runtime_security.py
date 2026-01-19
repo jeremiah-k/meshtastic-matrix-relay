@@ -552,20 +552,16 @@ class TestDatabaseManager(unittest.TestCase):
                         Returns:
                             int or None: The updated counter value after incrementing, or `None` if the row was not found.
                         """
-                        cursor.execute(
-                            """
+                        cursor.execute("""
                             CREATE TABLE IF NOT EXISTS counter (
                                 id INTEGER PRIMARY KEY CHECK (id = 1),
                                 count INTEGER DEFAULT 0
                             )
-                        """
-                        )
+                        """)
                         # Insert initial row if not exists
-                        cursor.execute(
-                            """
+                        cursor.execute("""
                             INSERT OR IGNORE INTO counter (id, count) VALUES (1, 0)
-                        """
-                        )
+                        """)
                         # Increment counter
                         cursor.execute(
                             "UPDATE counter SET count = count + 1 WHERE id = 1"

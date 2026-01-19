@@ -2974,7 +2974,7 @@ class TestValidateE2eeConfig(unittest.TestCase):
         mock_validate_deps.assert_called_once()
         mock_expanduser.assert_called_once_with("~/.mmrelay/store")
         mock_print.assert_any_call(
-            "ℹ️  Note: E2EE store directory will be created: /home/user/.mmrelay/store"
+            "Info: E2EE store directory will be created: /home/user/.mmrelay/store"
         )
         mock_print.assert_any_call("✅ E2EE configuration is valid")
 

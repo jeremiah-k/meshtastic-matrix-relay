@@ -105,13 +105,11 @@ class TestPluginLoaderEdgeCases(unittest.TestCase):
             # Create a plugin file with failing initialization
             plugin_file = os.path.join(temp_dir, "failing_plugin.py")
             with open(plugin_file, "w") as f:
-                f.write(
-                    """
+                f.write("""
 class Plugin:
     def __init__(self):
         raise Exception("Initialization failed")
-"""
-                )
+""")
 
             with patch("mmrelay.plugin_loader.logger") as mock_logger:
                 plugins = load_plugins_from_directory(temp_dir)
@@ -127,13 +125,11 @@ class Plugin:
         with tempfile.TemporaryDirectory() as temp_dir:
             plugin_file = os.path.join(temp_dir, "dependency_plugin.py")
             with open(plugin_file, "w") as f:
-                f.write(
-                    """
+                f.write("""
 import nonexistent_module
 class Plugin:
     pass
-"""
-                )
+""")
 
             # Mock environment to force pip usage instead of pipx
             with patch.dict(
@@ -184,14 +180,12 @@ class Plugin:
         with tempfile.TemporaryDirectory() as temp_dir:
             plugin_file = os.path.join(temp_dir, "dependency_plugin.py")
             with open(plugin_file, "w") as f:
-                f.write(
-                    """
+                f.write("""
 import missing_dependency
 class Plugin:
     def __init__(self):
         self.plugin_name = "dependency_plugin"
-"""
-                )
+""")
 
             missing_module = "missing_dependency"
             sys.modules.pop(missing_module, None)
@@ -240,13 +234,11 @@ class Plugin:
         with tempfile.TemporaryDirectory() as temp_dir:
             plugin_file = os.path.join(temp_dir, "dependency_plugin.py")
             with open(plugin_file, "w") as f:
-                f.write(
-                    """
+                f.write("""
 import nonexistent_module
 class Plugin:
     pass
-"""
-                )
+""")
 
             with patch("subprocess.run") as mock_run:
                 mock_run.return_value.returncode = 1  # Failed installation

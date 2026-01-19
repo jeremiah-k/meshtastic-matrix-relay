@@ -619,13 +619,12 @@ def reset_banner_flag():
 @pytest.fixture
 def reset_meshtastic_globals():
     """
-    Reset and restore key globals in mmrelay.meshtastic_utils to ensure test isolation.
+    Temporarily reset key module-level state in mmrelay.meshtastic_utils for a test and restore it on teardown.
 
-    Saves the module-level state for attributes such as `config`, `meshtastic_client`,
-    reconnect-related flags and tasks, and subscription flags; sets those attributes
-    to a clean default state for the duration of a test, yields control to the
-    test, and restores the original values on teardown. The fixture intentionally
-    does not modify the module's logger or event loop references.
+    Saves the original values of attributes such as `config`, `meshtastic_client`, reconnect/shutdown flags and tasks,
+    subscription flags, and internal futures; sets those attributes to clean defaults for the duration of the test,
+    yields control to the test, and restores the saved values on teardown. The module's `logger` and `event_loop`
+    are intentionally left unchanged.
     """
     import mmrelay.meshtastic_utils as mu
 
@@ -640,6 +639,8 @@ def reset_meshtastic_globals():
         "subscribed_to_connection_lost": getattr(
             mu, "subscribed_to_connection_lost", False
         ),
+        "_metadata_future": getattr(mu, "_metadata_future", None),
+        "_ble_future": getattr(mu, "_ble_future", None),
     }
 
     # Reset mutable globals to a clean state; keep logger and event_loop usable
@@ -650,6 +651,8 @@ def reset_meshtastic_globals():
     mu.reconnect_task = None
     mu.subscribed_to_messages = False
     mu.subscribed_to_connection_lost = False
+    mu._metadata_future = None
+    mu._ble_future = None
 
     yield
 

@@ -22,3 +22,4 @@ pytest-env==1.2.0
 pytest-timeout==2.4.0
 mypy==1.19.1
 pyright==1.1.407
+types-PyYAML==6.0.12.20250915  # Type stubs for PyYAML to enable strict type checking

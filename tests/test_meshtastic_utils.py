@@ -39,6 +39,35 @@ from mmrelay.meshtastic_utils import (
 )
 
 
+class _FakeEvent:
+    """Threading.Event test double for metadata redirect behavior."""
+
+    def is_set(self) -> bool:
+        """
+        Always reports the fake event as set.
+
+        Returns:
+            bool: `True`, indicating the event is considered set.
+        """
+        return True
+
+    def set(self) -> None:
+        """
+        Mark the event as set so subsequent is_set() calls return True.
+
+        Mimics threading.Event.set behavior for the test double.
+        """
+        return None
+
+    def clear(self) -> None:
+        """
+        No-op placeholder for clearing the object's internal state.
+
+        This method currently performs no action and exists to be overridden or implemented to reset the instance's state.
+        """
+        return None
+
+
 class TestMeshtasticUtils(unittest.TestCase):
     """Test cases for Meshtastic utilities."""
 
@@ -82,6 +111,10 @@ class TestMeshtasticUtils(unittest.TestCase):
         mmrelay.meshtastic_utils.reconnecting = False
         mmrelay.meshtastic_utils.shutting_down = False
         mmrelay.meshtastic_utils.reconnect_task = None
+        mmrelay.meshtastic_utils._ble_future = None
+        mmrelay.meshtastic_utils._ble_future_address = None
+        mmrelay.meshtastic_utils._metadata_future = None
+        mmrelay.meshtastic_utils._ble_timeout_counts = {}
 
     def test_on_meshtastic_message_basic(self):
         """
@@ -1008,13 +1041,16 @@ class TestConnectionLossHandling(unittest.TestCase):
         )
 
 
+@pytest.mark.usefixtures("reset_meshtastic_globals")
 class TestConnectMeshtasticEdgeCases(unittest.TestCase):
     """Test cases for edge cases in Meshtastic connection."""
 
+    @patch("mmrelay.meshtastic_utils.INFINITE_RETRIES", 1)
+    @patch("mmrelay.meshtastic_utils.time.sleep")
     @patch("mmrelay.meshtastic_utils.serial_port_exists")
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
     def test_connect_meshtastic_serial_port_not_exists(
-        self, mock_serial, mock_port_exists
+        self, mock_serial, mock_port_exists, _mock_sleep
     ):
         """
         Test that connect_meshtastic returns None and does not instantiate the serial interface when the specified serial port does not exist.
@@ -1030,8 +1066,10 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
         self.assertIsNone(result)
         mock_serial.assert_not_called()
 
+    @patch("mmrelay.meshtastic_utils.INFINITE_RETRIES", 1)
+    @patch("mmrelay.meshtastic_utils.time.sleep")
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
-    def test_connect_meshtastic_serial_exception(self, mock_serial):
+    def test_connect_meshtastic_serial_exception(self, mock_serial, _mock_sleep):
         """
         Test that connect_meshtastic returns None if an exception occurs during serial interface instantiation.
         """
@@ -1099,8 +1137,10 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
 
         self.assertIsNone(result)
 
+    @patch("mmrelay.meshtastic_utils.INFINITE_RETRIES", 1)
+    @patch("mmrelay.meshtastic_utils.time.sleep")
     @patch("mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface")
-    def test_connect_meshtastic_ble_exception(self, mock_ble):
+    def test_connect_meshtastic_ble_exception(self, mock_ble, _mock_sleep):
         """
         Test that connect_meshtastic returns None when the BLE interface raises an exception during connection.
         """
@@ -1109,6 +1149,17 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
         config = {
             "meshtastic": {"connection_type": "ble", "ble_address": "AA:BB:CC:DD:EE:FF"}
         }
+
+        import mmrelay.meshtastic_utils as mu
+
+        mu.meshtastic_client = None
+        mu.meshtastic_iface = None
+        mu.reconnecting = False
+        mu.shutting_down = False
+        mu._ble_future = None
+        mu._ble_future_address = None
+        mu._metadata_future = None
+        mu._ble_timeout_counts = {}
 
         result = connect_meshtastic(passed_config=config)
 
@@ -1275,17 +1326,33 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
 
 @pytest.fixture
 def reset_meshtastic_globals():
-    """Reset global state for connection retry tests."""
+    """
+    Reset Meshtastic-related global state before a test and restore it afterward.
+
+    This generator-style fixture clears the shared module-level variables used by
+    connection and BLE logic so tests run in a clean environment. It resets:
+    `meshtastic_client`, `shutting_down`, `reconnecting`, `_ble_future`,
+    `_ble_future_address`, and `_metadata_future`. The fixture yields once to run
+    the test and then performs the same resets as cleanup.
+    """
     import mmrelay.meshtastic_utils
 
     mmrelay.meshtastic_utils.meshtastic_client = None
     mmrelay.meshtastic_utils.shutting_down = False
     mmrelay.meshtastic_utils.reconnecting = False
+    mmrelay.meshtastic_utils._ble_future = None
+    mmrelay.meshtastic_utils._ble_future_address = None
+    mmrelay.meshtastic_utils._metadata_future = None
+    mmrelay.meshtastic_utils._ble_timeout_counts = {}
     yield
     # Cleanup after test
     mmrelay.meshtastic_utils.meshtastic_client = None
     mmrelay.meshtastic_utils.shutting_down = False
     mmrelay.meshtastic_utils.reconnecting = False
+    mmrelay.meshtastic_utils._ble_future = None
+    mmrelay.meshtastic_utils._ble_future_address = None
+    mmrelay.meshtastic_utils._metadata_future = None
+    mmrelay.meshtastic_utils._ble_timeout_counts = {}
 
 
 @patch("mmrelay.meshtastic_utils.time.sleep")
@@ -1796,6 +1863,46 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
             self.assertIsInstance(result, Future)
             self.assertEqual(result.result(), "awaitable-result")
 
+    def test_submit_coro_with_loop_not_running_falls_back(self):
+        """
+        Test _submit_coro with event loop that is not running - should fall through to fallback logic
+        instead of calling run_coroutine_threadsafe.
+        """
+        import asyncio
+
+        async def test_coro():
+            return "test_result"
+
+        coro = test_coro()
+
+        try:
+            mock_loop = MagicMock(spec=asyncio.AbstractEventLoop)
+            mock_loop.is_closed.return_value = False
+            mock_loop.is_running.return_value = False
+
+            with patch("asyncio.run_coroutine_threadsafe") as mock_run_threadsafe:
+                mock_get_loop = MagicMock()
+                mock_task = MagicMock()
+
+                def mock_create_task(coro_arg):
+                    coro_arg.close()
+                    return mock_task
+
+                mock_get_loop.create_task.side_effect = mock_create_task
+
+                with patch("asyncio.get_running_loop", return_value=mock_get_loop):
+                    result = self.original_submit_coro(coro, loop=mock_loop)
+
+                    # Should NOT call run_coroutine_threadsafe because loop is not running
+                    mock_run_threadsafe.assert_not_called()
+
+                    # Should call get_running_loop's create_task (fallback)
+                    mock_get_loop.create_task.assert_called_once()
+                    self.assertEqual(result, mock_task)
+        finally:
+            if hasattr(coro, "cr_frame") and coro.cr_frame is not None:
+                coro.close()
+
 
 class TestBLEExceptionHandling(unittest.TestCase):
     """Test cases for BLE exception handling and fallback classes."""
@@ -2194,9 +2301,12 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
             connect_meshtastic(config, force_connect=True)
 
             # Should log warning about close error but continue
-            mock_logger.warning.assert_called_with(
-                "Error closing previous connection: Close error"
-            )
+            assert mock_logger.warning.called
+            args = mock_logger.warning.call_args
+            assert args[0][0] == "Error closing previous connection: %s"
+            assert isinstance(args[0][1], Exception)
+            assert str(args[0][1]) == "Close error"
+            assert args[1].get("exc_info") is True
 
     @patch("mmrelay.meshtastic_utils.reconnecting", True)
     @patch(
@@ -2258,6 +2368,641 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
         mock_logger.error.assert_called_with(
             "No configuration available. Cannot check connection."
         )
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
+    """Test cases for uncovered code paths in meshtastic_utils.py."""
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_get_device_metadata_timeout(self, mock_logger):
+        """Test _get_device_metadata when getMetadata() times out."""
+        from concurrent.futures import TimeoutError as FuturesTimeoutError
+
+        from mmrelay.meshtastic_utils import _get_device_metadata
+
+        mock_client = Mock()
+        mock_client.localNode.getMetadata = Mock()
+
+        import threading
+
+        import mmrelay.meshtastic_utils as mu
+
+        mu._metadata_future = None
+        mock_output = Mock()
+        mock_output.getvalue.return_value = "firmware_version: 2.3.15"
+
+        timeout_future = Mock()
+        timeout_future.done.return_value = False
+        timeout_future.add_done_callback = Mock()
+
+        import sys
+
+        orig_stdout = sys.stdout
+
+        redirect_active = threading.Event()
+        redirect_active.set()
+
+        def _raise_timeout(*_args, **_kwargs):
+            # Simulate a worker redirecting stdout before the timeout hits.
+            """
+            Simulate a worker that redirects stdout and then raises a FuturesTimeoutError to simulate a timeout
+            condition.
+
+            Raises:
+                FuturesTimeoutError: Indicates a simulated timeout.
+            """
+            mu.sys.stdout = mock_output
+            redirect_active.clear()
+            raise FuturesTimeoutError()
+
+        timeout_future.result.side_effect = _raise_timeout
+
+        mock_executor = Mock()
+        mock_executor._shutdown = False
+        mock_executor.submit.return_value = timeout_future
+
+        with (
+            patch("mmrelay.meshtastic_utils.io.StringIO", return_value=mock_output),
+            patch(
+                "mmrelay.meshtastic_utils.threading.Event", return_value=_FakeEvent()
+            ),
+            patch("mmrelay.meshtastic_utils._metadata_executor", mock_executor),
+            patch("mmrelay.meshtastic_utils.sys.stdout", orig_stdout),
+        ):
+            result = _get_device_metadata(mock_client)
+
+            # Should still return result with firmware version parsed
+            self.assertTrue(result["success"])
+            self.assertEqual(result["firmware_version"], "2.3.15")
+            # Verify timeout was logged
+            mock_logger.debug.assert_called_with(
+                "getMetadata() timed out after 30 seconds"
+            )
+            # Ensure we deferred cleanup when worker is still running.
+            timeout_future.add_done_callback.assert_called_once()
+            self.assertIs(mu.sys.stdout, orig_stdout)
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_get_device_metadata_timeout_restores_stdio(self, _mock_logger):
+        """Test _get_device_metadata restores stdio when timeout happens mid-redirect."""
+        import threading
+        from concurrent.futures import TimeoutError as FuturesTimeoutError
+
+        from mmrelay.meshtastic_utils import _get_device_metadata
+
+        mock_client = Mock()
+        mock_client.localNode.getMetadata = Mock()
+
+        import mmrelay.meshtastic_utils as mu
+
+        mu._metadata_future = None
+        output_capture = Mock()
+        output_capture.getvalue.return_value = "firmware_version: 2.3.15"
+        output_capture.closed = False
+
+        timeout_future = Mock()
+        timeout_future.result.side_effect = FuturesTimeoutError()
+        timeout_future.done.return_value = True
+
+        redirect_active = threading.Event()
+        redirect_active.set()
+
+        mock_executor = Mock()
+        mock_executor._shutdown = False
+        mock_executor.submit.return_value = timeout_future
+
+        with (
+            patch("mmrelay.meshtastic_utils.io.StringIO", return_value=output_capture),
+            patch("threading.Event", return_value=redirect_active),
+            patch("mmrelay.meshtastic_utils._metadata_executor", mock_executor),
+            patch("mmrelay.meshtastic_utils.sys.stdout", output_capture),
+        ):
+            result = _get_device_metadata(mock_client)
+
+        # The timeout path should still parse output and close capture safely.
+        self.assertTrue(result["success"])
+        output_capture.close.assert_called_once()
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    @patch("bleak.BleakClient")
+    def test_disconnect_ble_by_address_is_connected_bool_true(
+        self, mock_bleak, _mock_logger
+    ):
+        """Test _disconnect_ble_by_address when is_connected is a bool (True)."""
+        from mmrelay.meshtastic_utils import _disconnect_ble_by_address
+
+        async def _noop(*_args, **_kwargs):
+            """
+            Asynchronous no-op that ignores all positional and keyword arguments.
+
+            Returns:
+                None: Always returns None.
+            """
+            return None
+
+        mock_client = Mock()
+        mock_client.is_connected = True  # bool, not callable
+        mock_client.disconnect = Mock(side_effect=_noop)
+        mock_bleak.return_value = mock_client
+
+        _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
+
+        # Should attempt to disconnect since is_connected is True
+        mock_client.disconnect.assert_called()
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    @patch("bleak.BleakClient")
+    def test_disconnect_ble_by_address_is_connected_bool_false(
+        self, mock_bleak, _mock_logger
+    ):
+        """
+        Verify _disconnect_ble_by_address invokes the client's disconnect as a best-effort cleanup when the client's is_connected attribute indicates the device is not connected.
+
+        Asserts that disconnect is called from the cleanup path even if the client reports it is not connected (and is_connected is not callable).
+        """
+        from mmrelay.meshtastic_utils import _disconnect_ble_by_address
+
+        async def _noop(*_args, **_kwargs):
+            """
+            Asynchronous no-op that ignores all positional and keyword arguments.
+
+            Returns:
+                None: Always returns None.
+            """
+            return None
+
+        mock_client = Mock()
+        mock_client.is_connected = False  # bool, not callable
+        mock_client.disconnect = Mock(side_effect=_noop)
+        mock_bleak.return_value = mock_client
+
+        _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
+
+        # The finally block always does a best-effort cleanup disconnect
+        # even when is_connected is False
+        mock_client.disconnect.assert_called()
+
+    @patch("mmrelay.meshtastic_utils.asyncio.get_running_loop")
+    @patch("mmrelay.meshtastic_utils.asyncio.sleep")
+    @patch("bleak.BleakClient")
+    def test_disconnect_ble_by_address_unknown_is_connected_defaults_false(
+        self, mock_bleak, mock_sleep, mock_get_running_loop
+    ):
+        """Test _disconnect_ble_by_address treats unknown is_connected as False."""
+        from mmrelay.meshtastic_utils import _disconnect_ble_by_address
+
+        async def _noop(*_args, **_kwargs):
+            """
+            Asynchronous no-op that ignores all positional and keyword arguments.
+
+            Returns:
+                None: Always returns None.
+            """
+            return None
+
+        mock_get_running_loop.side_effect = RuntimeError("no loop")
+        mock_sleep.side_effect = _noop
+
+        mock_client = Mock()
+        mock_client.is_connected = object()
+        mock_client.disconnect = Mock(side_effect=_noop)
+        mock_bleak.return_value = mock_client
+
+        _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
+
+        mock_sleep.assert_any_call(0.5)
+        mock_client.disconnect.assert_called()
+
+    @patch("mmrelay.meshtastic_utils.asyncio.get_running_loop")
+    @patch("mmrelay.meshtastic_utils.asyncio.sleep")
+    @patch("bleak.BleakClient")
+    def test_disconnect_ble_by_address_disconnect_success_calls_sleep(
+        self, mock_bleak, mock_sleep, mock_get_running_loop
+    ):
+        """Test _disconnect_ble_by_address sleeps after a successful disconnect."""
+        from mmrelay.meshtastic_utils import _disconnect_ble_by_address
+
+        async def _noop(*_args, **_kwargs):
+            """
+            Asynchronous no-op that ignores all positional and keyword arguments.
+
+            Returns:
+                None: Always returns None.
+            """
+            return None
+
+        mock_get_running_loop.side_effect = RuntimeError("no loop")
+        mock_sleep.side_effect = _noop
+
+        mock_client = Mock()
+        mock_client.is_connected = True
+        mock_client.disconnect = Mock(side_effect=_noop)
+        mock_bleak.return_value = mock_client
+
+        _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
+
+        mock_sleep.assert_any_call(2.0)
+
+    @patch("mmrelay.meshtastic_utils.asyncio.get_running_loop")
+    @patch("mmrelay.meshtastic_utils.asyncio.wait_for")
+    @patch("mmrelay.meshtastic_utils.asyncio.sleep")
+    @patch("mmrelay.meshtastic_utils.logger")
+    @patch("bleak.BleakClient")
+    def test_disconnect_ble_by_address_disconnect_timeout_logs_warning(
+        self,
+        mock_bleak,
+        mock_logger,
+        mock_sleep,
+        mock_wait_for,
+        mock_get_running_loop,
+    ):
+        """Test _disconnect_ble_by_address warns after repeated disconnect timeouts."""
+        from mmrelay.meshtastic_utils import _disconnect_ble_by_address
+
+        async def _noop(*_args, **_kwargs):
+            """
+            Asynchronous no-op that ignores all positional and keyword arguments.
+
+            Returns:
+                None: Always returns None.
+            """
+            return None
+
+        mock_get_running_loop.side_effect = RuntimeError("no loop")
+        mock_sleep.side_effect = _noop
+        mock_wait_for.side_effect = asyncio.TimeoutError()
+
+        mock_client = Mock()
+        mock_client.is_connected = True
+        mock_client.disconnect = Mock(side_effect=_noop)
+        mock_bleak.return_value = mock_client
+
+        _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
+
+        mock_logger.warning.assert_any_call(
+            "Disconnect for AA:BB:CC:DD:EE:FF timed out after 3 attempts"
+        )
+
+    @patch("mmrelay.meshtastic_utils.asyncio.get_running_loop")
+    @patch("mmrelay.meshtastic_utils.asyncio.wait_for")
+    @patch("mmrelay.meshtastic_utils.asyncio.sleep")
+    @patch("mmrelay.meshtastic_utils.logger")
+    @patch("bleak.BleakClient")
+    def test_disconnect_ble_by_address_disconnect_exception_logs_debug(
+        self,
+        mock_bleak,
+        mock_logger,
+        mock_sleep,
+        mock_wait_for,
+        mock_get_running_loop,
+    ):
+        """Test _disconnect_ble_by_address handles unexpected disconnect errors."""
+        from mmrelay.meshtastic_utils import _disconnect_ble_by_address
+
+        async def _noop(*_args, **_kwargs):
+            """
+            Asynchronous no-op that ignores all positional and keyword arguments.
+
+            Returns:
+                None: Always returns None.
+            """
+            return None
+
+        mock_get_running_loop.side_effect = RuntimeError("no loop")
+        mock_sleep.side_effect = _noop
+        mock_wait_for.side_effect = lambda awaitable, _timeout=None: awaitable
+        # Force an exception outside the inner retry loop to cover the
+        # best-effort cleanup exception path.
+        mock_logger.warning.side_effect = ValueError("forced warning failure")
+
+        mock_client = Mock()
+        mock_client.is_connected = True
+        mock_client.disconnect = Mock(side_effect=_noop)
+        mock_bleak.return_value = mock_client
+
+        _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
+
+        found = False
+        for call in mock_logger.debug.call_args_list:
+            args = call.args
+            if not args:
+                continue
+            if "Error disconnecting stale connection" in str(args[0]) and any(
+                arg == "AA:BB:CC:DD:EE:FF" for arg in args
+            ):
+                found = True
+                break
+        self.assertTrue(found)
+
+    @patch("mmrelay.meshtastic_utils.asyncio.get_running_loop")
+    @patch("mmrelay.meshtastic_utils.asyncio.wait_for")
+    @patch("mmrelay.meshtastic_utils.logger")
+    @patch("bleak.BleakClient")
+    def test_disconnect_ble_by_address_cleanup_timeout_logs(
+        self, mock_bleak, mock_logger, mock_wait_for, mock_get_running_loop
+    ):
+        """Test _disconnect_ble_by_address logs when cleanup disconnect times out."""
+        from mmrelay.meshtastic_utils import _disconnect_ble_by_address
+
+        async def _noop(*_args, **_kwargs):
+            """
+            Asynchronous no-op that ignores all positional and keyword arguments.
+
+            Returns:
+                None: Always returns None.
+            """
+            return None
+
+        mock_get_running_loop.side_effect = RuntimeError("no loop")
+        mock_wait_for.side_effect = asyncio.TimeoutError()
+
+        mock_client = Mock()
+        mock_client.is_connected = False
+        mock_client.disconnect = Mock(side_effect=_noop)
+        mock_bleak.return_value = mock_client
+
+        _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
+
+        mock_logger.debug.assert_any_call(
+            "Final disconnect for AA:BB:CC:DD:EE:FF timed out (cleanup)"
+        )
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_disconnect_ble_by_address_bleak_missing(self, mock_logger):
+        """Test _disconnect_ble_by_address handles missing Bleak cleanly."""
+        import builtins
+
+        from mmrelay.meshtastic_utils import _disconnect_ble_by_address
+
+        real_import = builtins.__import__
+
+        def _import_side_effect(name, *args, **kwargs):
+            """
+            Simulate an import hook that raises ImportError for the "bleak" module and otherwise performs a normal import.
+
+            Parameters:
+                name (str): The module name to import; when equal to "bleak" an ImportError is raised.
+                *args: Positional arguments forwarded to the real import function.
+                **kwargs: Keyword arguments forwarded to the real import function.
+
+            Returns:
+                module: The imported module object returned by the underlying import.
+
+            Raises:
+                ImportError: If `name` is exactly "bleak".
+            """
+            if name == "bleak":
+                raise ImportError()
+            return real_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=_import_side_effect):
+            _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
+
+        mock_logger.debug.assert_called_with(
+            "BleakClient not available for stale connection cleanup"
+        )
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    @patch("mmrelay.meshtastic_utils.asyncio.get_running_loop")
+    @patch("mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe")
+    @patch("bleak.BleakClient")
+    def test_disconnect_ble_by_address_timeout_handler(
+        self,
+        mock_bleak,
+        mock_run_coroutine_threadsafe,
+        mock_get_running_loop,
+        mock_logger,
+    ):
+        """Test _disconnect_ble_by_address handles FuturesTimeoutError."""
+        from concurrent.futures import TimeoutError as FuturesTimeoutError
+
+        from mmrelay.meshtastic_utils import _disconnect_ble_by_address
+
+        mock_client = Mock()
+        mock_client.disconnect = Mock()
+        mock_client.is_connected = False
+        mock_bleak.return_value = mock_client
+
+        # Simulate no running loop in this thread; fall back to global loop.
+        mock_loop = Mock()
+        mock_loop.is_running.return_value = True
+        mock_get_running_loop.side_effect = RuntimeError("no loop")
+
+        # Mock run_coroutine_threadsafe to return a mock future that times out
+        mock_future = Mock()
+        mock_future.cancel.return_value = True
+        mock_future.done.return_value = False
+        mock_future.result = Mock(side_effect=FuturesTimeoutError())
+        mock_run_coroutine_threadsafe.return_value = mock_future
+
+        with patch("mmrelay.meshtastic_utils.event_loop", mock_loop):
+            _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
+
+        # Verify warning was logged for timeout
+        mock_logger.warning.assert_called_with(
+            "Stale connection disconnect timed out after 10s for AA:BB:CC:DD:EE:FF"
+        )
+        # Verify future.cancel() was called
+        mock_future.cancel.assert_called_once()
+
+    def test_disconnect_ble_interface_none_input(self):
+        """Test _disconnect_ble_interface returns early when iface is None."""
+        from mmrelay.meshtastic_utils import _disconnect_ble_interface
+
+        # Should not raise any errors and return early
+        _disconnect_ble_interface(None)
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    @patch("mmrelay.meshtastic_utils.time")
+    def test_connect_meshtastic_ble_interface_creation_timeout(
+        self, _mock_time, mock_logger
+    ):
+        """Test connect_meshtastic handles BLEInterface creation timeout."""
+        from concurrent.futures import TimeoutError as FuturesTimeoutError
+
+        from mmrelay.meshtastic_utils import connect_meshtastic
+
+        config = {
+            "meshtastic": {
+                "connection_type": "ble",
+                "ble_address": "AA:BB:CC:DD:EE:FF",
+            },
+            "matrix_rooms": [],
+        }
+
+        # Mock BLE interface creation with the shared BLE executor
+        # Create a mock future whose .result() method raises FuturesTimeoutError
+        mock_future = Mock()
+        mock_future.result = Mock(side_effect=FuturesTimeoutError())
+        mock_future.cancel = Mock(return_value=True)
+
+        mock_executor = Mock()
+        mock_executor._shutdown = False
+        mock_executor.submit.return_value = mock_future
+
+        with patch("mmrelay.meshtastic_utils._ble_executor", mock_executor):
+            import mmrelay.meshtastic_utils as mu
+
+            mu._ble_future = None
+            mu._ble_future_address = None
+            mu._metadata_future = None
+            # The function will retry 6 times (MAX_TIMEOUT_RETRIES_INFINITE = 5 + 1)
+            # After all retries, it returns None (doesn't raise)
+            result = connect_meshtastic(passed_config=config)
+            self.assertIsNone(result)
+
+            # Verify meshtastic_iface was set to None
+            self.assertIsNone(mu.meshtastic_iface)
+
+            # Verify timeout error was logged 6 times (once per attempt)
+            error_calls = [
+                call
+                for call in mock_logger.exception.call_args_list
+                if "timed out after 90 seconds" in str(call)
+            ]
+            self.assertEqual(len(error_calls), 6)
+
+            # Verify that last error call contains BLE address
+            last_error_call = str(error_calls[-1])
+            self.assertIn("AA:BB:CC:DD:EE:FF", last_error_call)
+
+            # Verify final abort was logged after max retries (using logger.exception)
+            abort_calls = [
+                call
+                for call in mock_logger.exception.call_args_list
+                if "Connection timed out after" in str(call)
+                and "unlimited retries" in str(call)
+            ]
+            self.assertEqual(len(abort_calls), 1)
+
+            # Verify warnings were logged for each retry (5 retries, not 6 - after 6th timeout it aborts)
+            warning_calls = [
+                call
+                for call in mock_logger.warning.call_args_list
+                if "Connection attempt" in str(call) and "timed out" in str(call)
+            ]
+            self.assertEqual(len(warning_calls), 5)
+
+    @patch("mmrelay.meshtastic_utils._disconnect_ble_interface")
+    def test_connect_meshtastic_closes_existing_ble_interface(
+        self, mock_disconnect_iface
+    ):
+        """Test connect_meshtastic closes existing BLE interfaces explicitly."""
+        import mmrelay.meshtastic_utils as mu
+        from mmrelay.meshtastic_utils import connect_meshtastic
+
+        mock_iface = Mock()
+        mu.meshtastic_client = mock_iface
+        mu.meshtastic_iface = mock_iface
+
+        config = {"meshtastic": {}, "matrix_rooms": []}
+
+        result = connect_meshtastic(passed_config=config, force_connect=True)
+
+        self.assertIsNone(result)
+        mock_disconnect_iface.assert_called_once_with(mock_iface, reason="reconnect")
+        self.assertIsNone(mu.meshtastic_iface)
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    @patch("mmrelay.meshtastic_utils.time")
+    def test_connect_meshtastic_ble_connect_timeout(self, _mock_time, mock_logger):
+        """Test connect_meshtastic handles BLE connect() timeout."""
+        from concurrent.futures import TimeoutError as FuturesTimeoutError
+
+        from mmrelay.meshtastic_utils import connect_meshtastic
+
+        config = {
+            "meshtastic": {
+                "connection_type": "ble",
+                "ble_address": "AA:BB:CC:DD:EE:FF",
+            },
+            "matrix_rooms": [],
+        }
+
+        # Create two mock futures:
+        # 1. For interface creation: succeeds with a mock interface
+        # 2. For connect(): times out
+        mock_iface = Mock()
+        mock_iface.getMyNodeInfo.return_value = {"num": 123}
+        mock_iface.connect = Mock()  # Has connect() method to trigger connect() path
+        mock_iface.auto_reconnect = False
+
+        interface_future = Mock()
+        interface_future.result = Mock(return_value=mock_iface)
+        interface_future.cancel = Mock(return_value=True)
+
+        connect_future = Mock()
+        connect_future.result = Mock(side_effect=FuturesTimeoutError())
+        connect_future.cancel = Mock(return_value=True)
+
+        # Track which submit call we're handling
+        call_count = [0]
+
+        def submit_side_effect(_func, *_args, **_kwargs):
+            """
+            Test helper used as a side-effect function to simulate a two-stage submission flow.
+
+            Increments the shared call_count[0] each time it is invoked and, on the first invocation, returns the precreated interface_future; on subsequent invocations, returns the connect_future. The provided positional and keyword arguments are ignored.
+            """
+            call_count[0] += 1
+            if call_count[0] == 1:
+                # First call: interface creation
+                return interface_future
+            else:
+                # Second call: connect()
+                return connect_future
+
+        mock_executor = Mock()
+        mock_executor._shutdown = False
+        mock_executor.submit.side_effect = submit_side_effect
+
+        with patch("mmrelay.meshtastic_utils._ble_executor", mock_executor):
+            import mmrelay.meshtastic_utils as mu
+
+            mu._ble_future = None
+            mu._ble_future_address = None
+            mu._metadata_future = None
+            # The function will retry 6 times and return None (doesn't raise)
+            result = connect_meshtastic(passed_config=config)
+            self.assertIsNone(result)
+
+            # Verify meshtastic_iface was set to None
+            self.assertIsNone(mu.meshtastic_iface)
+
+            # Verify connect() timeout error was logged on first attempt
+            connect_timeout_calls = [
+                call
+                for call in mock_logger.exception.call_args_list
+                if "connect() call timed out after 30 seconds" in str(call)
+            ]
+            self.assertEqual(len(connect_timeout_calls), 1)
+
+            # Verify that subsequent attempts show interface creation timeouts
+            # (because meshtastic_iface is set to None after connect timeout)
+            interface_timeout_calls = [
+                call
+                for call in mock_logger.exception.call_args_list
+                if "timed out after 90 seconds" in str(call)
+            ]
+            self.assertEqual(len(interface_timeout_calls), 5)
+
+            # Verify final abort was logged after max retries (using logger.exception)
+            abort_calls = [
+                call
+                for call in mock_logger.exception.call_args_list
+                if "Connection timed out after" in str(call)
+                and "unlimited retries" in str(call)
+            ]
+            self.assertEqual(len(abort_calls), 1)
+
+            # Verify warnings were logged for each retry (5 warnings, not 6)
+            warning_calls = [
+                call
+                for call in mock_logger.warning.call_args_list
+                if "Connection attempt" in str(call) and "timed out" in str(call)
+            ]
+            self.assertEqual(len(warning_calls), 5)
 
 
 if __name__ == "__main__":

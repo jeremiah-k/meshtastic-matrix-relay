@@ -105,17 +105,16 @@ from mmrelay.message_queue import get_message_queue, queue_message
 # Import nio exception types with error handling for test environments.
 # matrix-nio is not marked py.typed in our env; keep import-untyped for mypy --strict.
 try:
-    from nio.exceptions import (
-        LocalProtocolError as NioLocalProtocolError,  # type: ignore[import-untyped]
-    )
-    from nio.exceptions import LocalTransportError as NioLocalTransportError
-    from nio.exceptions import RemoteProtocolError as NioRemoteProtocolError
-    from nio.exceptions import RemoteTransportError as NioRemoteTransportError
-    from nio.responses import (
-        LoginError as NioLoginError,  # type: ignore[import-untyped]
-    )
-    from nio.responses import LogoutError as NioLogoutError
-except ImportError:
+    nio_exceptions = importlib.import_module("nio.exceptions")
+    nio_responses = importlib.import_module("nio.responses")
+
+    NioLocalProtocolError = nio_exceptions.LocalProtocolError
+    NioLocalTransportError = nio_exceptions.LocalTransportError
+    NioRemoteProtocolError = nio_exceptions.RemoteProtocolError
+    NioRemoteTransportError = nio_exceptions.RemoteTransportError
+    NioLoginError = nio_responses.LoginError
+    NioLogoutError = nio_responses.LogoutError
+except (ImportError, AttributeError):
     # Fallback for test environments where nio imports might fail
     class _NioStubError(Exception):
         """Stub exception for nio errors in test mode"""
