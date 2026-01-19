@@ -147,17 +147,35 @@ def _shutdown_shared_executors() -> None:
 
     Attempts to cancel any pending futures and shutdown without waiting
     to prevent interpreter hangs when tasks are stuck.
+
+    Note: This is called via atexit during interpreter shutdown. It performs
+    cleanup without waiting to avoid blocking the interpreter exit sequence.
     """
-    with _metadata_future_lock:
-        executor = _metadata_executor
+    global _ble_future, _ble_future_address, _metadata_future
+
+    # Cancel any pending BLE operation
+    with _ble_executor_lock:
+        if _ble_future and not _ble_future.done():
+            logger.debug("Cancelling pending BLE future during executor shutdown")
+            _ble_future.cancel()
+        _ble_future = None
+        _ble_future_address = None
+
+        executor = _ble_executor
         if executor is not None and not getattr(executor, "_shutdown", False):
             try:
                 executor.shutdown(wait=False, cancel_futures=True)
             except TypeError:
                 executor.shutdown(wait=False)
 
-    with _ble_executor_lock:
-        executor = _ble_executor
+    # Cancel any pending metadata operation
+    with _metadata_future_lock:
+        if _metadata_future and not _metadata_future.done():
+            logger.debug("Cancelling pending metadata future during executor shutdown")
+            _metadata_future.cancel()
+        _metadata_future = None
+
+        executor = _metadata_executor
         if executor is not None and not getattr(executor, "_shutdown", False):
             try:
                 executor.shutdown(wait=False, cancel_futures=True)
@@ -1878,6 +1896,16 @@ def connect_meshtastic(
                                 # a new task. Raising TimeoutError here intentionally reuses the
                                 # existing retry/backoff logic rather than silently proceeding.
                                 with _ble_executor_lock:
+                                    # Check if shutting down before submitting new BLE tasks
+                                    if shutting_down:
+                                        logger.debug(
+                                            "Skipping BLE interface creation for %s (shutting down)",
+                                            ble_address,
+                                        )
+                                        raise TimeoutError(
+                                            f"BLE interface creation cancelled for {ble_address} (shutting down)."
+                                        )
+
                                     if _ble_future and not _ble_future.done():
                                         logger.debug(
                                             "BLE worker busy; skipping interface creation for %s",
@@ -1993,6 +2021,16 @@ def connect_meshtastic(
                             iface_param.connect()
 
                         with _ble_executor_lock:
+                            # Check if shutting down before submitting connect() tasks
+                            if shutting_down:
+                                logger.debug(
+                                    "Skipping BLE connect() for %s (shutting down)",
+                                    ble_address,
+                                )
+                                raise TimeoutError(
+                                    f"BLE connect cancelled for {ble_address} (shutting down)."
+                                )
+
                             if _ble_future and not _ble_future.done():
                                 logger.debug(
                                     "BLE worker busy; skipping connect() for %s",
