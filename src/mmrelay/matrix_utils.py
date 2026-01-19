@@ -1865,7 +1865,7 @@ async def login_matrix_bot(
         # Format username correctly using the original homeserver domain
         # This ensures the username uses the domain the user expects, not the discovered one
         if original_domain:
-            username = _normalize_bot_user_id(f"https://{original_domain}", username)
+            username = _normalize_bot_user_id(original_domain, username)
         else:
             username = _normalize_bot_user_id(homeserver, username)
 

@@ -6451,8 +6451,7 @@ class TestUncoveredMatrixUtils(unittest.TestCase):
         result3 = _normalize_bot_user_id("[::1]:8448", "carol")
         self.assertEqual(result3, "@carol:[::1]")
 
-    @patch("mmrelay.matrix_utils.logger")
-    def test_extract_localpart_from_mxid(self, mock_logger):
+    def test_extract_localpart_from_mxid(self):
         """Test _extract_localpart_from_mxid with different input formats."""
 
         # Test with full MXID
@@ -6479,8 +6478,7 @@ class TestUncoveredMatrixUtils(unittest.TestCase):
         result6 = _extract_localpart_from_mxid("@user_123:example.com")
         self.assertEqual(result6, "user_123")
 
-    @patch("mmrelay.matrix_utils.logger")
-    def test_normalize_bot_user_id_preserves_existing_server_part(self, mock_logger):
+    def test_normalize_bot_user_id_preserves_existing_server_part(self):
         """Test that _normalize_bot_user_id preserves existing server part in MXID."""
 
         # Test with full MXID - should preserve server part
