@@ -177,6 +177,24 @@ def _get_valid_device_id(device_id_value: Any) -> Optional[str]:
     return None
 
 
+def _extract_localpart_from_mxid(mxid: str | None) -> str | None:
+    """
+    Extract the localpart from a Matrix MXID.
+
+    Parameters:
+        mxid (str | None): A Matrix user ID (e.g., "@user:server") or localpart.
+
+    Returns:
+        str | None: The localpart portion of the MXID (without @ and server),
+        or the original value if it's already a localpart, or None if input is None.
+    """
+    if not mxid:
+        return mxid
+    if mxid.startswith("@"):
+        return mxid[1:].split(":", 1)[0]
+    return mxid
+
+
 def _iter_room_alias_entries(
     mapping: Any,
 ) -> Generator[Tuple[str, Callable[[str], None]], None, None]:
@@ -1775,6 +1793,11 @@ async def login_matrix_bot(
         if not (homeserver.startswith("https://") or homeserver.startswith("http://")):
             homeserver = "https://" + homeserver
 
+        # Store the original homeserver domain for username normalization
+        # This ensures the username uses the domain the user expects, not the discovered one
+        parsed = urlparse(homeserver)
+        original_domain = parsed.hostname or urlparse(f"//{homeserver}").hostname
+
         # Step 1: Perform server discovery to get the actual homeserver URL
         logger.info(f"Performing server discovery for {homeserver}...")
 
@@ -1839,8 +1862,12 @@ async def login_matrix_bot(
             username = input("Enter Matrix username (without @): ")
             prompted_for_credentials = True
 
-        # Format username correctly
-        username = _normalize_bot_user_id(homeserver, username)
+        # Format username correctly using the original homeserver domain
+        # This ensures the username uses the domain the user expects, not the discovered one
+        if original_domain:
+            username = _normalize_bot_user_id(f"https://{original_domain}", username)
+        else:
+            username = _normalize_bot_user_id(homeserver, username)
 
         if not username:
             logger.error("Username normalization failed")
@@ -1937,17 +1964,19 @@ async def login_matrix_bot(
         # ssl_context was created above for discovery
 
         # Initialize client with E2EE support
-        # Use most common pattern from matrix-nio examples: positional homeserver and user
+        # Extract localpart from full MXID for AsyncClient compatibility
+        localpart = _extract_localpart_from_mxid(username) or ""
         logger.debug("Creating AsyncClient with:")
         logger.debug(f"  homeserver: {homeserver}")
-        logger.debug(f"  username: {username}")
+        logger.debug(f"  username (MXID): {username}")
+        logger.debug(f"  localpart: {localpart}")
         logger.debug(f"  device_id: {existing_device_id}")
         logger.debug(f"  store_path: {store_path}")
         logger.debug(f"  e2ee_enabled: {e2ee_enabled}")
 
         client = AsyncClient(
             homeserver,
-            username or "",
+            localpart,
             device_id=existing_device_id,
             store_path=store_path,
             config=client_config,
@@ -1978,7 +2007,7 @@ async def login_matrix_bot(
                 from nio.api import Api  # type: ignore[import-untyped]
 
                 method, path, data = Api.login(
-                    user=username or "",
+                    user=localpart,
                     password=password,
                     device_name=device_name,
                     device_id=existing_device_id,
@@ -2199,7 +2228,6 @@ async def login_matrix_bot(
             return False
 
     except (
-        NioLoginError,
         NioLocalProtocolError,
         NioRemoteProtocolError,
         NioLocalTransportError,
