@@ -425,7 +425,12 @@ def _scan_for_ble_address(ble_address: str, timeout: float) -> bool:
                 try:
                     return await find_device(ble_address, timeout=timeout) is not None
                 except TypeError:
-                    return await find_device(ble_address) is not None
+                    return (
+                        await asyncio.wait_for(
+                            find_device(ble_address), timeout=timeout
+                        )
+                        is not None
+                    )
 
             devices = await BleakScanner.discover(timeout=timeout)
             return any(
