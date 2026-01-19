@@ -1767,13 +1767,10 @@ class TestMainAsyncFunction(unittest.TestCase):
         if "mmrelay.message_queue" in sys.modules:
             from mmrelay.message_queue import get_message_queue
 
-            try:
+            with contextlib.suppress(Exception):
                 queue = get_message_queue()
                 if hasattr(queue, "stop"):
                     queue.stop()
-            except Exception:
-                # Ignore errors during cleanup
-                pass
 
     def test_main_async_initialization_sequence(self):
         """Verify that the asynchronous main() startup sequence invokes database initialization, plugin loading, message-queue startup, and both Matrix and Meshtastic connection routines.
