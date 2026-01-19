@@ -1905,15 +1905,14 @@ class TestMainAsyncFunction(unittest.TestCase):
             patch("mmrelay.main.start_message_queue"),
             patch(
                 "mmrelay.main.connect_matrix",
-                new_callable=AsyncMock,
-                return_value=mock_matrix_client,
+                side_effect=_make_async_return(mock_matrix_client),
             ),
             patch("mmrelay.main.connect_meshtastic", return_value=None),
-            patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
+            patch("mmrelay.main.join_matrix_room", side_effect=_async_noop),
             patch("mmrelay.main.get_message_queue") as mock_get_queue,
             patch(
                 "mmrelay.main.meshtastic_utils.check_connection",
-                new_callable=AsyncMock,
+                side_effect=_async_noop,
             ),
             patch("mmrelay.main.shutdown_plugins"),
             patch("mmrelay.main.stop_message_queue"),
