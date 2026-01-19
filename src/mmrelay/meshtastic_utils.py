@@ -155,11 +155,15 @@ def _shutdown_shared_executors() -> None:
 
     # Cancel any pending BLE operation
     with _ble_executor_lock:
+        stale_address = _ble_future_address
         if _ble_future and not _ble_future.done():
             logger.debug("Cancelling pending BLE future during executor shutdown")
             _ble_future.cancel()
         _ble_future = None
         _ble_future_address = None
+        if stale_address:
+            with _ble_timeout_lock:
+                _ble_timeout_counts.pop(stale_address, None)
 
         executor = _ble_executor
         if executor is not None and not getattr(executor, "_shutdown", False):

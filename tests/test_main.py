@@ -296,7 +296,8 @@ class _ControlledExecutor:
             func (callable): The function or functools.partial to execute. Additional positional and keyword arguments are forwarded to the callable.
 
         Returns:
-            concurrent.futures.Future: Future containing the callable's result, or a Future with the exception set if the callable raised one.
+            concurrent.futures.Future: Future containing the callable's result. If the callable raises an exception,
+            it propagates to the caller (no Future is returned).
         """
         target = func
         if isinstance(func, functools.partial):
