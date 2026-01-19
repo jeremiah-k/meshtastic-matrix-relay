@@ -23,24 +23,3 @@ MESHNET_NAME_ABBREVIATION_LENGTH = 4  # Characters for short meshnet names
 SHORTNAME_FALLBACK_LENGTH = 3  # Characters for shortname fallback
 MESSAGE_PREVIEW_LENGTH = 40  # Characters for message preview in logs
 DISPLAY_NAME_DEFAULT_LENGTH = 5  # Default display name truncation
-
-# Component logger names
-COMPONENT_LOGGERS = {
-    "matrix_nio": ["nio", "nio.client", "nio.http", "nio.crypto", "nio.responses"],
-    "bleak": ["bleak", "bleak.backends"],
-    "meshtastic": [
-        "meshtastic",
-        "meshtastic.serial_interface",
-        "meshtastic.tcp_interface",
-        "meshtastic.ble_interface",
-    ],
-}
-
-# Log level styling
-LOG_LEVEL_STYLES = {
-    "DEBUG": {"color": "cyan"},
-    "INFO": {"color": "green"},
-    "WARNING": {"color": "yellow"},
-    "ERROR": {"color": "red"},
-    "CRITICAL": {"color": "red", "bold": True},
-}

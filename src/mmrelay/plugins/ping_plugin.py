@@ -15,10 +15,8 @@ from nio import (  # type: ignore[import-untyped]
 
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
+from mmrelay.constants.plugins import MAX_PUNCTUATION_LENGTH
 from mmrelay.plugins.base_plugin import BasePlugin
-
-# Maximum punctuation length before using shortened response
-MAX_PUNCTUATION_LENGTH = 5
 
 
 def match_case(source: str, target: str) -> str:

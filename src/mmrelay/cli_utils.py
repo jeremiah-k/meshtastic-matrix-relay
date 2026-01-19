@@ -70,33 +70,13 @@ except ImportError:
 
 # Import mmrelay modules - avoid circular imports by importing inside functions
 
+from mmrelay.constants.cli import (
+    CLI_COMMANDS,
+    DEPRECATED_COMMANDS,
+)
 from mmrelay.log_utils import get_logger
 
 logger = get_logger(__name__)
-
-# Command registry - single source of truth for CLI command syntax
-CLI_COMMANDS = {
-    # Config commands
-    "generate_config": "mmrelay config generate",
-    "check_config": "mmrelay config check",
-    # Auth commands
-    "auth_login": "mmrelay auth login",
-    "auth_status": "mmrelay auth status",
-    # Service commands
-    "service_install": "mmrelay service install",
-    # Main commands
-    "start_relay": "mmrelay",
-    "show_version": "mmrelay --version",
-    "show_help": "mmrelay --help",
-}
-
-# Deprecation mappings - maps old flags to new command keys
-DEPRECATED_COMMANDS = {
-    "--generate-config": "generate_config",
-    "--check-config": "check_config",
-    "--install-service": "service_install",
-    "--auth": "auth_login",
-}
 
 
 def get_command(command_key: str) -> str:
