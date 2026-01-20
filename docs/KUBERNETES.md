@@ -65,9 +65,9 @@ kubectl create secret generic mmrelay-matrix-credentials \
 # kubectl apply -f ./k8s/mmrelay-secret-credentials.yaml
 ```
 
-2. The deployment reads these environment variables to authenticate. If `credentials.json` does not already exist, it will be automatically generated on first startup.
+The deployment reads these environment variables to authenticate. If `credentials.json` does not already exist, it will be automatically generated on first startup.
 
-3. E2EE support is automatically enabled when credentials are created this way (Linux containers only).
+E2EE support is automatically enabled when credentials are created this way (Linux containers only).
 
 **Security Note:** After the first successful startup, the password is only needed if `credentials.json` is lost or corrupted. Consider using Kubernetes secret rotation policies.
 
@@ -555,11 +555,20 @@ MMRelay currently does not support horizontal scaling (multiple replicas) becaus
 
 Keep `replicas: 1` in your deployment.
 
-For high availability:
+For high availability, consider the following options:
 
 - Use pod anti-affinity to place replicas on different nodes
 - Ensure PVC can be remounted quickly during node failures
-- Consider using a StatefulSet instead of Deployment for better persistent volume handling
+
+**Recommended for Production:** Use a StatefulSet instead of Deployment. StatefulSets are designed for stateful applications like MMRelay because:
+
+- MMRelay uses an SQLite database (single-writer)
+- MMRelay maintains a stateful E2EE encryption session
+- StatefulSets provide stable network identities and ordered deployment
+- StatefulSets ensure volumes are properly attached before pods start
+- Rolling updates and scaling are more predictable with stateful applications
+
+StatefulSets provide better handling of persistent volumes and pod lifecycle, which is critical for data consistency when using SQLite and maintaining Matrix E2EE sessions.
 
 ### Network Policies
 

@@ -1553,12 +1553,14 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
             print()
 
             if config.get("use_credentials_file"):
+                from mmrelay.config import get_base_dir
+
+                base_dir = get_base_dir()
+                credentials_path = os.path.join(base_dir, "credentials.json")
                 print("   • Create credentials.json using 'mmrelay auth login'")
                 print("   • Update the secret with your credentials.json:")
                 print("      kubectl create secret generic mmrelay-credentials-json \\")
-                print(
-                    "        --from-file=credentials.json=$HOME/.mmrelay/credentials.json"
-                )
+                print(f"        --from-file=credentials.json={credentials_path}")
             else:
                 print("   • Create a secret with your Matrix credentials:")
                 print(
