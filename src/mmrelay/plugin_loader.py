@@ -19,8 +19,12 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 from mmrelay.config import get_app_path, get_base_dir
 from mmrelay.constants.plugins import (
+    COMMIT_HASH_PATTERN,
     DEFAULT_ALLOWED_COMMUNITY_HOSTS,
+    DEFAULT_BRANCHES,
     PIP_SOURCE_FLAGS,
+    PIPX_ENVIRONMENT_KEYS,
+    REF_NAME_PATTERN,
     RISKY_REQUIREMENT_PREFIXES,
 )
 from mmrelay.log_utils import get_logger
@@ -47,17 +51,6 @@ class ValidationResult(NamedTuple):
     ref_type: str | None
     ref_value: str | None
     repo_name: str | None
-
-
-# Precompiled regex patterns for validation
-COMMIT_HASH_PATTERN = re.compile(r"[0-9a-fA-F]{7,40}")
-REF_NAME_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")
-
-# Default branch names to try when ref is not specified
-DEFAULT_BRANCHES = ["main", "master"]
-
-# Environment keys that indicate pipx is being used (for security/testability)
-PIPX_ENVIRONMENT_KEYS = ("PIPX_HOME", "PIPX_LOCAL_VENVS", "PIPX_BIN_DIR")
 
 
 # Global scheduler management

@@ -16,11 +16,12 @@ import sys
 from pathlib import Path
 
 from mmrelay.constants.database import PROGRESS_COMPLETE, PROGRESS_TOTAL_STEPS
+from mmrelay.constants.network import SYSTEMCTL_FALLBACK
 from mmrelay.log_utils import get_logger
 from mmrelay.tools import get_service_template_path
 
 # Resolve systemctl path dynamically with fallback
-SYSTEMCTL = shutil.which("systemctl") or "/usr/bin/systemctl"
+SYSTEMCTL = shutil.which("systemctl") or SYSTEMCTL_FALLBACK
 logger = get_logger(name="Setup")
 
 

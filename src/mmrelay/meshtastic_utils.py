@@ -40,6 +40,10 @@ from mmrelay.constants.messages import (
     PORTNUM_TEXT_MESSAGE_APP,
 )
 from mmrelay.constants.network import (
+    BLE_FUTURE_WATCHDOG_SECS,
+    BLE_SCAN_TIMEOUT_SECS,
+    BLE_TIMEOUT_RESET_THRESHOLD,
+    BLE_TROUBLESHOOTING_GUIDANCE,
     CONFIG_KEY_BLE_ADDRESS,
     CONFIG_KEY_CONNECTION_TYPE,
     CONFIG_KEY_HOST,
@@ -54,6 +58,7 @@ from mmrelay.constants.network import (
     DEFAULT_MESHTASTIC_TIMEOUT,
     ERRNO_BAD_FILE_DESCRIPTOR,
     INFINITE_RETRIES,
+    MAX_TIMEOUT_RETRIES_INFINITE,
 )
 from mmrelay.db_utils import (
     get_longname,
@@ -69,16 +74,6 @@ try:
     BLE_AVAILABLE = importlib.util.find_spec("bleak") is not None
 except ValueError:
     BLE_AVAILABLE = "bleak" in sys.modules
-
-# Maximum number of timeout retries when retries are configured as infinite.
-MAX_TIMEOUT_RETRIES_INFINITE = 5
-
-# Operator guidance for BLE troubleshooting (reused across multiple timeout handlers)
-BLE_TROUBLESHOOTING_GUIDANCE = (
-    "Try: 1) Restarting BlueZ: 'sudo systemctl restart bluetooth', "
-    "2) Manually disconnecting device: 'bluetoothctl disconnect {ble_address}', "
-    "3) Rebooting your machine"
-)
 
 
 # Import BLE exceptions conditionally
@@ -136,9 +131,9 @@ _ble_future: Future[Any] | None = None
 _ble_future_address: str | None = None
 _ble_timeout_counts: dict[str, int] = {}
 _ble_timeout_lock = threading.Lock()
-_BLE_FUTURE_WATCHDOG_SECS = 120.0
-_BLE_TIMEOUT_RESET_THRESHOLD = 3
-_BLE_SCAN_TIMEOUT_SECS = 4.0
+_ble_future_watchdog_secs = BLE_FUTURE_WATCHDOG_SECS
+_ble_timeout_reset_threshold = BLE_TIMEOUT_RESET_THRESHOLD
+_ble_scan_timeout_secs = BLE_SCAN_TIMEOUT_SECS
 
 
 def _shutdown_shared_executors() -> None:
@@ -347,13 +342,13 @@ def _schedule_ble_future_cleanup(
                 return
         logger.warning(
             "BLE worker still running after %.0fs for %s; clearing stale future (%s)",
-            _BLE_FUTURE_WATCHDOG_SECS,
+            _ble_future_watchdog_secs,
             ble_address,
             reason,
         )
         _clear_ble_future(future)
 
-    timer = threading.Timer(_BLE_FUTURE_WATCHDOG_SECS, _cleanup)
+    timer = threading.Timer(_ble_future_watchdog_secs, _cleanup)
     timer.daemon = True
     future.add_done_callback(lambda _f: timer.cancel())
     timer.start()
@@ -391,7 +386,7 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
     """
     global _ble_executor, _ble_future, _ble_future_address
     with _ble_executor_lock:
-        if timeout_count < _BLE_TIMEOUT_RESET_THRESHOLD:
+        if timeout_count < _ble_timeout_reset_threshold:
             return
         logger.warning(
             "BLE worker timed out %s times for %s; recreating executor",
@@ -1866,7 +1861,7 @@ def connect_meshtastic(
                                     ble_scan_reason or "previous failure",
                                 )
                                 _scan_for_ble_address(
-                                    ble_address, _BLE_SCAN_TIMEOUT_SECS
+                                    ble_address, _ble_scan_timeout_secs
                                 )
                                 ble_scan_after_failure = False
                                 ble_scan_reason = None

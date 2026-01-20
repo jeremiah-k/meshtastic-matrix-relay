@@ -42,10 +42,22 @@ MATRIX_ROOM_SEND_TIMEOUT = 10.0  # seconds
 MATRIX_LOGIN_TIMEOUT = 30.0  # seconds
 MATRIX_SYNC_OPERATION_TIMEOUT = 60.0  # seconds
 
+# BLE-specific constants
+BLE_FUTURE_WATCHDOG_SECS = 120.0
+BLE_TIMEOUT_RESET_THRESHOLD = 3
+BLE_SCAN_TIMEOUT_SECS = 4.0
+BLE_TROUBLESHOOTING_GUIDANCE = (
+    "Try: 1) Restarting BlueZ: 'sudo systemctl restart bluetooth', "
+    "2) Manually disconnecting device: 'bluetoothctl disconnect {ble_address}', "
+    "3) Rebooting your machine"
+)
+MAX_TIMEOUT_RETRIES_INFINITE = 5
+
 # Error codes
 ERRNO_BAD_FILE_DESCRIPTOR = 9
 
 # System detection
+SYSTEMCTL_FALLBACK = "/usr/bin/systemctl"
 SYSTEMD_INIT_SYSTEM = "systemd"
 
 # Time conversion

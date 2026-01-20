@@ -6,6 +6,11 @@ import threading
 from typing import Any, Dict, Tuple, cast
 
 from mmrelay.config import get_data_dir
+from mmrelay.constants.database import (
+    DEFAULT_BUSY_TIMEOUT_MS,
+    DEFAULT_ENABLE_WAL,
+    DEFAULT_EXTRA_PRAGMAS,
+)
 from mmrelay.db_runtime import DatabaseManager
 from mmrelay.log_utils import get_logger
 
@@ -21,13 +26,6 @@ _cached_config_hash = None
 _db_manager: DatabaseManager | None = None
 _db_manager_signature: Tuple[str, bool, int, Tuple[Tuple[str, Any], ...]] | None = None
 _db_manager_lock = threading.Lock()
-
-DEFAULT_ENABLE_WAL = True
-DEFAULT_BUSY_TIMEOUT_MS = 5000
-DEFAULT_EXTRA_PRAGMAS: Dict[str, Any] = {
-    "synchronous": "NORMAL",
-    "temp_store": "MEMORY",
-}
 
 logger = get_logger(name="db_utils")
 
