@@ -59,24 +59,7 @@ kubectl edit configmap mmrelay-config
 kubectl rollout restart deployment/mmrelay
 ```
 
-### Option 2: Use Matrix Password in ConfigMap
-
-Edit `k8s-configmap.yaml` before applying:
-
-```yaml
-matrix:
-  homeserver: https://matrix.example.org
-  bot_user_id: "@bot:example.matrix.org"
-  password: your_password_here # Set this
-```
-
-After first successful startup, MMRelay will:
-
-1. Log in to Matrix using the password
-2. Create `credentials.json` in the PVC
-3. Remove the password from config for security
-
-### Option 3: Use External Auth (Recommended for Production)
+### Option 2: Use External Auth (Recommended for Production)
 
 ```bash
 # 1. Generate ConfigMap and apply resources
@@ -88,6 +71,7 @@ kubectl apply -f k8s-configmap.yaml -f k8s/pvc.yaml -f k8s/deployment.yaml
 # Run mmrelay auth login locally, then copy credentials.json
 
 # 3. Copy credentials.json to PVC
+# Note: Ensure only one pod is running before this command
 kubectl cp ~/.mmrelay/credentials.json $(kubectl get pod -l app=mmrelay -o jsonpath='{.items[0].metadata.name}'):/app/data/
 
 # 4. Restart pod to load credentials
@@ -96,22 +80,27 @@ kubectl rollout restart deployment/mmrelay
 
 ## Matrix Authentication Methods
 
-MMRelay supports three authentication approaches in Kubernetes:
+MMRelay supports two authentication approaches in Kubernetes:
 
-### 1. Password in ConfigMap (Easiest)
-
-- Edit `k8s-configmap.yaml` and add your password
-- MMRelay automatically creates credentials.json on first run
-- Remove password from config after first startup for security
-
-### 2. Secret for Password (More Secure)
+### 1. Secret for Password (Recommended)
 
 - Generate Secret: `mmrelay k8s secret > k8s-secret.yaml`
 - Edit the password field and apply: `kubectl apply -f k8s-secret.yaml`
-- Environment variable `MMRELAY_MATRIX_PASSWORD` is read from Secret
+- Edit `k8s/deployment.yaml` to add Secret environment variable (see below)
 - MMRelay automatically creates credentials.json on first run
 
-### 3. External Auth (Most Secure)
+To wire the Secret to your deployment, add this to the container spec in `deployment.yaml`:
+
+```yaml
+env:
+  - name: MMRELAY_MATRIX_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: mmrelay-matrix-password
+        key: MMRELAY_MATRIX_PASSWORD
+```
+
+### 2. External Auth (Most Secure)
 
 - Run `mmrelay auth login` locally on your machine
 - Copy `~/.mmrelay/credentials.json` to the PVC
@@ -188,6 +177,8 @@ The deployment includes health probes that check if the mmrelay process is runni
 
 Both use `pgrep -f mmrelay` to verify the process.
 
+**Note:** These are basic health checks that verify the process is running. They do not check if the application is actually healthy or can connect to external services (Matrix, Meshtastic). For more sophisticated monitoring, consider implementing an HTTP health endpoint or custom probe scripts.
+
 ## Troubleshooting
 
 ### Pod Won't Start
@@ -253,14 +244,17 @@ kubectl patch deployment mmrelay -p '{"spec":{"template":{"metadata":{"annotatio
 ## Removing the Deployment
 
 ```bash
-# Delete all resources
-kubectl delete -f k8s/
-
-# Or individually
+# Delete MMRelay resources by name (recommended)
 kubectl delete deployment mmrelay
 kubectl delete configmap mmrelay-config
 kubectl delete pvc mmrelay-data
 kubectl delete secret mmrelay-matrix-password  # If using Secret
+
+# Or delete specific files if you have only MMRelay manifests in k8s/
+kubectl delete -f k8s/deployment.yaml
+kubectl delete -f k8s/pvc.yaml
+kubectl delete -f k8s-configmap.yaml
+kubectl delete -f k8s-secret.yaml  # If using Secret
 ```
 
 ## Important Notes

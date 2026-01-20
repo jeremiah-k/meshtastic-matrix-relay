@@ -1556,17 +1556,14 @@ data:
 """)
         for line in sample_config.splitlines():
             print(f"    {line}")
-        print(file=sys.stderr)
-        print("To use this ConfigMap:", file=sys.stderr)
-        print("  1. Apply to Kubernetes:", file=sys.stderr)
-        print("     kubectl apply -f k8s-configmap.yaml", file=sys.stderr)
-        print("  2. Or pipe directly:", file=sys.stderr)
-        print("     mmrelay k8s configmap | kubectl apply -f -", file=sys.stderr)
-        print(file=sys.stderr)
-        print(
-            "Note: Edit the generated ConfigMap to add your actual settings.",
-            file=sys.stderr,
-        )
+        print()
+        print("To use this ConfigMap:")
+        print("  1. Apply to Kubernetes:")
+        print("     kubectl apply -f k8s-configmap.yaml")
+        print("  2. Or pipe directly:")
+        print("     mmrelay k8s configmap | kubectl apply -f -")
+        print()
+        print("Note: Edit the generated ConfigMap to add your actual settings.")
         return 0
 
     except (IOError, OSError, UnicodeDecodeError) as e:
@@ -1598,23 +1595,30 @@ metadata:
   name: mmrelay-matrix-password
 type: Opaque
 stringData:
-  MMRELAY_MATRIX_PASSWORD: your_secure_password_here""")
-    print(file=sys.stderr)
-    print("To use this Secret:", file=sys.stderr)
+   MMRELAY_MATRIX_PASSWORD: your_secure_password_here""")
+    print()
+    print("To use this Secret:")
+    print("  1. Edit the password field above with your actual password")
+    print("  2. Apply to Kubernetes:")
+    print("     kubectl apply -f k8s-secret.yaml")
+    print("  3. Update deployment to read from Secret:")
+    print("     Edit k8s/deployment.yaml and add to container spec:")
+    print()
+    print("       env:")
+    print("         - name: MMRELAY_MATRIX_PASSWORD")
+    print("           valueFrom:")
+    print("             secretKeyRef:")
+    print("               name: mmrelay-matrix-password")
+    print("               key: MMRELAY_MATRIX_PASSWORD")
+    print()
+    print("     Then apply: kubectl apply -f k8s/deployment.yaml")
+    print()
     print(
-        "  1. Edit the password field above with your actual password", file=sys.stderr
+        "Security Note: Never commit Secret files with real passwords to version control."
     )
-    print("  2. Apply to Kubernetes:", file=sys.stderr)
-    print("     kubectl apply -f k8s-secret.yaml", file=sys.stderr)
-    print("  3. Update deployment to read from Secret:", file=sys.stderr)
+    print()
     print(
-        "     kubectl set env deployment/mmrelay --from-secret=mmrelay-matrix-password",
-        file=sys.stderr,
-    )
-    print(file=sys.stderr)
-    print(
-        "Security Note: Never commit Secret files with real passwords to version control.",
-        file=sys.stderr,
+        "Security Note: Never commit Secret files with real passwords to version control."
     )
     return 0
 

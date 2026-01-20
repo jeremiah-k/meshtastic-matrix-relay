@@ -89,37 +89,7 @@ kubectl logs -f deployment/mmrelay
 
 MMRelay supports three authentication approaches for Kubernetes:
 
-### Method 1: Password in ConfigMap (Easiest, for testing)
-
-Generate ConfigMap and edit to add your password:
-
-```bash
-# Generate ConfigMap
-mmrelay k8s configmap > k8s-configmap.yaml
-
-# Edit to add password
-nano k8s-configmap.yaml
-```
-
-Add your password to the generated ConfigMap:
-
-```yaml
-matrix:
-  homeserver: https://matrix.example.org
-  bot_user_id: "@bot:example.matrix.org"
-  password: your_secure_password_here # Add this line
-```
-
-After first successful startup:
-
-1. MMRelay logs in to Matrix using the password
-2. Creates `credentials.json` automatically in the PVC
-3. You can remove the password from the ConfigMap for security
-
-**Pros:** Simple, no external tools needed
-**Cons:** Password stored in ConfigMap (remove after first run)
-
-### Method 2: Password in Kubernetes Secret (Recommended)
+### Method 1: Password in Kubernetes Secret (Recommended)
 
 Create a Secret for the Matrix password:
 
@@ -132,17 +102,34 @@ nano k8s-secret.yaml
 
 # 3. Apply Secret
 kubectl apply -f k8s-secret.yaml
+```
 
-# 4. Wire Secret to deployment
-kubectl set env deployment/mmrelay --from-secret=mmrelay-matrix-password
+Then, edit `k8s/deployment.yaml` to add the Secret environment variable to the container spec:
+
+```yaml
+containers:
+  - name: mmrelay
+    image: ghcr.io/jeremiah-k/mmrelay:v1.2.9
+    env:
+      - name: MMRELAY_MATRIX_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: mmrelay-matrix-password
+            key: MMRELAY_MATRIX_PASSWORD
+```
+
+Apply the updated deployment:
+
+```bash
+kubectl apply -f k8s/deployment.yaml
 ```
 
 The deployment reads `MMRELAY_MATRIX_PASSWORD` from the Secret and automatically creates `credentials.json`.
 
-**Pros:** Password stored in Kubernetes Secret (more secure)
-**Cons:** Requires Secret creation step
+**Pros:** Password stored in Kubernetes Secret (more secure), no deprecated kubectl commands
+**Cons:** Requires Secret creation step and deployment edit
 
-### Method 3: External Authentication with credentials.json (Most Secure)
+### Method 2: External Authentication with credentials.json (Most Secure)
 
 Run `mmrelay auth login` locally and copy credentials to the pod:
 
@@ -154,6 +141,7 @@ mmrelay auth login
 kubectl apply -f k8s/pvc.yaml -f k8s-configmap.yaml -f k8s/deployment.yaml
 
 # 3. Copy credentials.json to pod
+# Note: Ensure only one pod is running before this command
 kubectl cp ~/.mmrelay/credentials.json \
   $(kubectl get pod -l app=mmrelay -o jsonpath='{.items[0].metadata.name}'):/app/data/
 
@@ -199,7 +187,6 @@ The `k8s-configmap.yaml` file contains all MMRelay settings. Edit it before appl
 matrix:
   homeserver: https://matrix.example.org
   bot_user_id: "@bot:example.matrix.org"
-  password: optional_password_here
 
 matrix_rooms:
   - id: "#room:example.matrix.org"
@@ -312,6 +299,8 @@ readinessProbe:
 ```
 
 Pod is marked as "ready" only when mmrelay process is running. Traffic is not sent to the pod until it's ready.
+
+**Note:** These are basic health checks that verify the process is running. They do not check if the application is actually healthy, responsive, or can connect to external services (Matrix, Meshtastic). For more sophisticated monitoring, consider implementing an HTTP health endpoint or custom probe scripts.
 
 ## Resource Limits
 
@@ -599,14 +588,17 @@ cat backup.tar.gz | kubectl exec -i deployment/mmrelay -- tar xzf - -C /app
 ## Uninstalling
 
 ```bash
-# Delete all resources
-kubectl delete -f k8s/
-
-# Or individually
+# Delete MMRelay resources by name (recommended)
 kubectl delete deployment mmrelay
 kubectl delete configmap mmrelay-config
 kubectl delete pvc mmrelay-data
 kubectl delete secret mmrelay-matrix-password  # If using Secret
+
+# Or delete specific files if you have only MMRelay manifests in k8s/
+kubectl delete -f k8s/deployment.yaml
+kubectl delete -f k8s/pvc.yaml
+kubectl delete -f k8s-configmap.yaml
+kubectl delete -f k8s-secret.yaml  # If using Secret
 ```
 
 **Warning:** Deleting the PVC will delete all persisted data (credentials.json, database, E2EE keys). Backup before deletion.
@@ -637,6 +629,8 @@ spec:
         - key: node-role.kubernetes.io/master
           effect: NoSchedule
 ```
+
+**Warning:** Running application workloads on master/control plane nodes is generally not recommended for production clusters, as it can affect cluster stability and performance. Use this configuration only for testing or small-scale deployments in trusted environments.
 
 ### Custom Service (Optional)
 
