@@ -65,7 +65,7 @@ kubectl create secret generic mmrelay-matrix-credentials \
 # kubectl apply -f ./k8s/mmrelay-secret-credentials.yaml
 ```
 
-2. The deployment automatically reads these environment variables and creates `credentials.json` on first startup.
+2. The deployment reads these environment variables to authenticate. If `credentials.json` does not already exist, it will be automatically generated on first startup.
 
 3. E2EE support is automatically enabled when credentials are created this way (Linux containers only).
 
@@ -220,15 +220,15 @@ meshtastic:
 
 You can override any configuration value using environment variables:
 
-| Environment Variable                 | Configuration Path           | Example               |
-| ------------------------------------ | ---------------------------- | --------------------- |
-| `MMRELAY_MATRIX_HOMESERVER`          | `matrix.homeserver`          | `https://matrix.org`  |
-| `MMRELAY_MATRIX_BOT_USER_ID`         | `matrix.bot_user_id`         | `@bot:matrix.org`     |
-| `MMRELAY_MATRIX_PASSWORD`            | `matrix.password`            | `secret_password`     |
-| `MMRELAY_MESHTASTIC_HOST`            | `meshtastic.host`            | `192.168.1.100`       |
-| `MMRELAY_MESHTASTIC_CONNECTION_TYPE` | `meshtastic.connection_type` | `tcp`                 |
-| `MMRELAY_LOGGING_LEVEL`              | `logging.level`              | `debug`               |
-| `MMRELAY_DATABASE_PATH`              | `database.path`              | `/app/data/custom.db` |
+| Environment Variable                 | Configuration Path           | Example                      |
+| ------------------------------------ | ---------------------------- | ---------------------------- |
+| `MMRELAY_MATRIX_HOMESERVER`          | `matrix.homeserver`          | `https://matrix.example.org` |
+| `MMRELAY_MATRIX_BOT_USER_ID`         | `matrix.bot_user_id`         | `@bot:matrix.example.org`    |
+| `MMRELAY_MATRIX_PASSWORD`            | `matrix.password`            | `secret_password`            |
+| `MMRELAY_MESHTASTIC_HOST`            | `meshtastic.host`            | `192.168.1.100`              |
+| `MMRELAY_MESHTASTIC_CONNECTION_TYPE` | `meshtastic.connection_type` | `tcp`                        |
+| `MMRELAY_LOGGING_LEVEL`              | `logging.level`              | `debug`                      |
+| `MMRELAY_DATABASE_PATH`              | `database.path`              | `/app/data/custom.db`        |
 
 Add these to your deployment's `env` section or use `envFrom` with a Secret.
 
@@ -338,6 +338,8 @@ securityContext:
     - 20 # Replace with the device group ID (often "dialout")
   allowPrivilegeEscalation: false
 ```
+
+**Security Warning:** Running containers as root (runAsUser: 0) increases the attack surface and should only be used when necessary for device access. Prefer scoped permissions or specific capabilities when possible.
 
 If the device still cannot be opened, you may need broader permissions depending on your cluster's security policy. Consider adding specific capabilities (for example `CAP_SYS_ADMIN` or `CAP_MKNOD`) or, as a last resort:
 
@@ -745,8 +747,8 @@ mmrelay k8s generate-manifests
 # Use read -s to securely enter password without storing in shell history
 read -s -p "Enter Matrix password: " MMRELAY_MATRIX_PASSWORD && echo
 kubectl create secret generic mmrelay-matrix-credentials \
-  --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.org \
-  --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@mybot:matrix.org \
+  --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.example.org \
+  --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@mybot:matrix.example.org \
   --from-literal=MMRELAY_MATRIX_PASSWORD="$MMRELAY_MATRIX_PASSWORD"
 
 # 3. Customize ConfigMap

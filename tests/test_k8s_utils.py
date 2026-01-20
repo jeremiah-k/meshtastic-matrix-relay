@@ -4,7 +4,6 @@ import os
 import sys
 import tempfile
 import unittest
-from unittest import mock
 from unittest.mock import patch
 
 # Add src to path for imports
@@ -74,7 +73,9 @@ class TestK8sUtils(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create a real sample config file
             sample_config_path = os.path.join(tmpdir, "sample_config.yaml")
-            sample_config_content = "matrix:\n  homeserver: https://matrix.org\n"
+            sample_config_content = (
+                "matrix:\n  homeserver: https://matrix.example.org\n"
+            )
             with open(sample_config_path, "w", encoding="utf-8") as f:
                 f.write(sample_config_content)
 
@@ -105,9 +106,11 @@ class TestK8sUtils(unittest.TestCase):
                     self.assertIn("name: mmrelay-config", output_content)
                     self.assertIn("namespace: default", output_content)
                     self.assertIn("config.yaml: |", output_content)
-                    # Verify sample config content is embedded with proper indentation
-                    self.assertIn("  matrix:", output_content)
-                    self.assertIn("    homeserver: https://matrix.org", output_content)
+                # Verify sample config content is embedded with proper indentation
+                self.assertIn("  matrix:", output_content)
+                self.assertIn(
+                    "    homeserver: https://matrix.example.org", output_content
+                )
 
     def test_generate_manifests_creates_files(self):
         """Test that generate_manifests creates the expected files."""

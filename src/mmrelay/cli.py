@@ -1568,10 +1568,10 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
                     "      kubectl create secret generic mmrelay-matrix-credentials \\"
                 )
                 print(
-                    "        --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.org \\"
+                    "        --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.example.org \\"
                 )
                 print(
-                    "        --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@bot:matrix.org \\"
+                    "        --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@bot:matrix.example.org \\"
                 )
                 print(
                     "        --from-literal=MMRELAY_MATRIX_PASSWORD=$MMRELAY_MATRIX_PASSWORD"
