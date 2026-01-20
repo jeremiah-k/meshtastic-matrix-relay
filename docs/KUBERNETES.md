@@ -15,7 +15,7 @@ Official Kubernetes support for MMRelay with persistent storage and health monit
 
 ```bash
 # Generate ConfigMap from current sample_config.yaml
-mmrelay k8s generate configmap > k8s-configmap.yaml
+mmrelay k8s configmap > k8s-configmap.yaml
 ```
 
 ### Step 2: Edit ConfigMap
@@ -99,7 +99,7 @@ Generate ConfigMap and edit to add your password:
 
 ```bash
 # Generate ConfigMap
-mmrelay k8s generate configmap > k8s-configmap.yaml
+mmrelay k8s configmap > k8s-configmap.yaml
 
 # Edit to add password
 nano k8s-configmap.yaml
@@ -129,13 +129,16 @@ Create a Secret for the Matrix password:
 
 ```bash
 # 1. Generate Secret manifest
-mmrelay k8s generate secret > k8s-secret.yaml
+mmrelay k8s secret > k8s-secret.yaml
 
 # 2. Edit the password field
 nano k8s-secret.yaml
 
 # 3. Apply Secret
 kubectl apply -f k8s-secret.yaml
+
+# 4. Wire Secret to deployment
+kubectl set env deployment/mmrelay --from-secret=mmrelay-matrix-password
 ```
 
 The deployment reads `MMRELAY_MATRIX_PASSWORD` from the Secret and automatically creates `credentials.json`.
@@ -152,7 +155,7 @@ Run `mmrelay auth login` locally and copy credentials to the pod:
 mmrelay auth login
 
 # 2. Apply deployment (without password in config)
-kubectl apply -f k8s/pvc.yaml -f k8s/configmap.yaml -f k8s/deployment.yaml
+kubectl apply -f k8s/pvc.yaml -f k8s-configmap.yaml -f k8s/deployment.yaml
 
 # 3. Copy credentials.json to pod
 kubectl cp ~/.mmrelay/credentials.json \
@@ -255,7 +258,6 @@ spec:
   resources:
     requests:
       storage: 256Mi
-  storageClassName: standard
 ```
 
 ### Using Different Storage Class
@@ -406,9 +408,11 @@ spec:
   template:
     spec:
       hostNetwork: true
-      securityContext:
-        capabilities:
-          add: ["NET_ADMIN", "NET_RAW"]
+      containers:
+        - name: mmrelay
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN", "NET_RAW"]
 ```
 
 **Security Warning:** Enabling `hostNetwork: true` grants the pod direct access to the host's network interfaces, bypassing Kubernetes network policies. This exposes the host network to potential security risks. Only use this configuration in trusted environments with appropriate network segmentation and access controls.

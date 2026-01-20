@@ -6,13 +6,13 @@ Simple Kubernetes deployment for MMRelay with persistent storage for credentials
 
 ```bash
 # 1. Generate ConfigMap from sample config (always up-to-date)
-mmrelay k8s generate configmap > k8s-configmap.yaml
+mmrelay k8s configmap > k8s-configmap.yaml
 
 # 2. Edit ConfigMap to add your settings
 nano k8s-configmap.yaml
 
 # 3. Apply Kubernetes resources
-kubectl apply -f k8s/pvc.yaml -f k8s/deployment.yaml
+kubectl apply -f k8s-configmap.yaml -f k8s/pvc.yaml -f k8s/deployment.yaml
 
 # 4. Check deployment status
 kubectl get pods -l app=mmrelay
@@ -99,13 +99,13 @@ MMRelay supports three authentication approaches in Kubernetes:
 
 ### 1. Password in ConfigMap (Easiest)
 
-- Edit `configmap.yaml` and add your password
+- Edit `k8s-configmap.yaml` and add your password
 - MMRelay automatically creates credentials.json on first run
 - Remove password from config after first startup for security
 
 ### 2. Secret for Password (More Secure)
 
-- Generate Secret: `mmrelay k8s generate secret > k8s-secret.yaml`
+- Generate Secret: `mmrelay k8s secret > k8s-secret.yaml`
 - Edit the password field and apply: `kubectl apply -f k8s-secret.yaml`
 - Environment variable `MMRELAY_MATRIX_PASSWORD` is read from Secret
 - MMRelay automatically creates credentials.json on first run
@@ -171,9 +171,11 @@ spec:
   template:
     spec:
       hostNetwork: true
-      securityContext:
-        capabilities:
-          add: ["NET_ADMIN", "NET_RAW"]
+      containers:
+        - name: mmrelay
+          securityContext:
+            capabilities:
+              add: ["NET_ADMIN", "NET_RAW"]
 ```
 
 ## Health Checks

@@ -20,10 +20,8 @@ spec:
         fsGroup: 1000
       containers:
         - name: mmrelay
-          image: ghcr.io/anomaly/meshtastic-matrix-relay:latest
+          image: ghcr.io/jeremiah-k/meshtastic-matrix-relay:v1.2.8
           imagePullPolicy: Always
-          ports:
-            - containerPort: 4403
           resources:
             requests:
               cpu: 100m
@@ -31,12 +29,6 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
-          env:
-            - name: MMRELAY_LOGGING_LEVEL
-              valueFrom:
-                configMapKeyRef:
-                  name: mmrelay-config
-                  key: logging.level
           livenessProbe:
             exec:
               command:

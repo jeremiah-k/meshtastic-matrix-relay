@@ -1519,7 +1519,7 @@ def handle_service_command(args: argparse.Namespace) -> int:
         return 1
 
 
-def generate_k8s_configmap(args: argparse.Namespace) -> int:
+def generate_k8s_configmap(_args: argparse.Namespace) -> int:
     """
     Generate a Kubernetes ConfigMap manifest from the sample configuration.
 
@@ -1534,7 +1534,7 @@ def generate_k8s_configmap(args: argparse.Namespace) -> int:
         int: Exit code 0 on success, 1 on failure.
 
     Example:
-        mmrelay k8s generate configmap > k8s-configmap.yaml
+        mmrelay k8s configmap > k8s-configmap.yaml
         kubectl apply -f k8s-configmap.yaml
     """
     try:
@@ -1561,9 +1561,7 @@ data:
         print("  1. Apply to Kubernetes:", file=sys.stderr)
         print("     kubectl apply -f k8s-configmap.yaml", file=sys.stderr)
         print("  2. Or pipe directly:", file=sys.stderr)
-        print(
-            "     mmrelay k8s generate configmap | kubectl apply -f -", file=sys.stderr
-        )
+        print("     mmrelay k8s configmap | kubectl apply -f -", file=sys.stderr)
         print(file=sys.stderr)
         print(
             "Note: Edit the generated ConfigMap to add your actual settings.",
@@ -1576,7 +1574,7 @@ data:
         return 1
 
 
-def generate_k8s_secret(args: argparse.Namespace) -> int:
+def generate_k8s_secret(_args: argparse.Namespace) -> int:
     """
     Generate a Kubernetes Secret manifest for Matrix password.
 
@@ -1590,7 +1588,7 @@ def generate_k8s_secret(args: argparse.Namespace) -> int:
         int: Exit code 0 on success.
 
     Example:
-        mmrelay k8s generate secret > k8s-secret.yaml
+        mmrelay k8s secret > k8s-secret.yaml
         # Edit the password field
         kubectl apply -f k8s-secret.yaml
     """
@@ -1610,7 +1608,7 @@ stringData:
     print("     kubectl apply -f k8s-secret.yaml", file=sys.stderr)
     print("  3. Update deployment to read from Secret:", file=sys.stderr)
     print(
-        "     kubectl set env deployment/mmrelay --from=secret/mmrelay-matrix-password/matrix-password",
+        "     kubectl set env deployment/mmrelay --from-secret=mmrelay-matrix-password",
         file=sys.stderr,
     )
     print(file=sys.stderr)
