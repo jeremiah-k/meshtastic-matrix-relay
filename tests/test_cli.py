@@ -3313,7 +3313,11 @@ class TestK8SCommand(unittest.TestCase):
     """Test Kubernetes command handling."""
 
     def setUp(self):
-        """Set up test fixtures."""
+        """
+        Prepare common test fixtures for each test.
+        
+        Creates `self.mock_args` as a MagicMock to simulate CLI argument objects used by the tests.
+        """
         self.mock_args = MagicMock()
 
     @patch("builtins.input")
