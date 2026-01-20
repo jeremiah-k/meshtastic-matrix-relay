@@ -59,9 +59,10 @@ kubectl create secret generic mmrelay-matrix-credentials \
   --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.example.org \
   --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@bot:example.org \
   --from-literal=MMRELAY_MATRIX_PASSWORD="$MMRELAY_MATRIX_PASSWORD" \
-  --namespace=default  # Replace with your chosen namespace
+  --namespace=default  # Replace with the namespace chosen during manifest generation
 
-# Alternatively, if using credentials file authentication, apply the generated secret file:
+# If using credentials file authentication, apply the generated secret file instead:
+# (Uncomment and run this command instead of the kubectl create secret command above)
 # kubectl apply -f ./k8s/mmrelay-secret-credentials.yaml
 ```
 
@@ -96,7 +97,7 @@ mmrelay auth login
 ```bash
 kubectl create secret generic mmrelay-credentials-json \
   --from-file=credentials.json=$HOME/.mmrelay/credentials.json \
-  --namespace=default
+  --namespace=default  # Replace with the namespace chosen during manifest generation
 ```
 
 3. When generating manifests, choose "Credentials file" as the authentication method. This will generate the appropriate secret template and deployment configuration.
@@ -130,8 +131,8 @@ mmrelay config generate --output config.yaml
 3. **Create Kubernetes resources manually:**
 
 ```bash
-# Create namespace
-kubectl create namespace mmrelay  # Replace with your desired namespace
+# Create namespace (optional: use 'default' namespace instead)
+kubectl create namespace mmrelay  # Replace with your desired namespace, or omit to use 'default'
 
 # Create PersistentVolumeClaim
 kubectl apply -f - <<EOF
@@ -161,7 +162,7 @@ kubectl create secret generic mmrelay-matrix-credentials \
   --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.example.org \
   --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@bot:example.org \
   --from-literal=MMRELAY_MATRIX_PASSWORD="$MMRELAY_MATRIX_PASSWORD" \
-  --namespace=mmrelay  # Replace with your chosen namespace
+  --namespace=mmrelay  # Replace with the namespace chosen during manifest generation
 
 # Apply the deployment (use generated or create your own)
 kubectl apply -f mmrelay-deployment.yaml
@@ -303,18 +304,22 @@ meshtastic:
 
 **Deployment additions:**
 
-1. Add device mount:
+1. Add device mount and volume definition to the pod spec:
 
 ```yaml
-volumeMounts:
-  - name: serial-device
-    mountPath: /dev/ttyUSB0
-
-volumes:
-  - name: serial-device
-    hostPath:
-      path: /dev/ttyUSB0
-      type: CharDevice
+spec:
+  containers:
+    # ... existing container config ...
+    volumeMounts:
+      # ... existing mounts ...
+      - name: serial-device
+        mountPath: /dev/ttyUSB0
+  volumes:
+    # ... existing volumes ...
+    - name: serial-device
+      hostPath:
+        path: /dev/ttyUSB0
+        type: CharDevice
 ```
 
 2. Add node selector to ensure pod runs on the correct node:
@@ -449,6 +454,8 @@ readinessProbe:
   initialDelaySeconds: 10
   periodSeconds: 10
 ```
+
+**Note:** These probes use `pgrep` to check if the process is running. This is a basic health check that only verifies process existence. For production deployments, consider implementing a dedicated HTTP health check endpoint within the application that verifies connectivity to Matrix and Meshtastic services before returning a healthy status.
 
 Customize these based on your requirements.
 

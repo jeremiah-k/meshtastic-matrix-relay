@@ -73,6 +73,8 @@ spec:
               cpu: "500m"
 
           # Health check using process monitoring
+          # NOTE: pgrep is a basic process check. For production, consider implementing
+          # a dedicated health check endpoint that verifies connectivity to Matrix and Meshtastic.
           livenessProbe:
             exec:
               command:
