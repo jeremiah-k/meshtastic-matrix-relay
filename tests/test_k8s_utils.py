@@ -11,7 +11,6 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.k8s_utils import (
-    generate_config_only,
     generate_manifests,
     load_template,
     prompt_for_config,
@@ -54,17 +53,19 @@ class TestK8sUtils(unittest.TestCase):
         except FileNotFoundError:
             self.skipTest("Template files not yet packaged")
 
-    def test_generate_config_only_new_file(self):
-        """Test generating config.yaml to a new file."""
+    def test_generate_configmap_from_sample(self):
+        """Test generating ConfigMap from sample config."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            output_path = os.path.join(tmpdir, "test_config.yaml")
+            output_path = os.path.join(tmpdir, "configmap.yaml")
 
-            # Mock the sample config path to return the actual template location
+            # Mock the sample config path
             with patch("mmrelay.tools.get_sample_config_path") as mock_sample:
                 mock_sample.return_value = "/fake/sample_config.yaml"
 
                 with patch("builtins.open", mock.mock_open(read_data="test: config\n")):
-                    result = generate_config_only(output_path)
+                    from mmrelay.k8s_utils import generate_configmap_from_sample
+
+                    result = generate_configmap_from_sample("default", output_path)
                     # Function should return the path
                     self.assertEqual(result, output_path)
 
@@ -73,13 +74,12 @@ class TestK8sUtils(unittest.TestCase):
         config = {
             "namespace": "test-namespace",
             "image_tag": "latest",
-            "auth_method": "env",
+            "use_credentials_file": False,
             "connection_type": "tcp",
             "meshtastic_host": "meshtastic.local",
             "meshtastic_port": "4403",
             "storage_class": "standard",
             "storage_size": "1Gi",
-            "enable_e2ee": False,
         }
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -95,13 +95,19 @@ class TestK8sUtils(unittest.TestCase):
                         os.path.exists(file_path), f"File not found: {file_path}"
                     )
 
-                # Expected files
-                expected_files = ["pvc", "configmap", "secret", "deployment"]
+                # Expected files: pvc, configmap, deployment (no secret for env var auth)
+                expected_files = ["pvc", "configmap", "deployment"]
                 for expected in expected_files:
                     self.assertTrue(
                         any(expected in f for f in generated_files),
                         f"Missing expected file containing '{expected}'",
                     )
+
+                # Should NOT have credentials secret for env var auth
+                self.assertFalse(
+                    any("credentials" in f for f in generated_files),
+                    "Should not generate credentials secret for env var auth",
+                )
             except FileNotFoundError:
                 self.skipTest("Template files not yet packaged")
 
@@ -110,13 +116,12 @@ class TestK8sUtils(unittest.TestCase):
         config = {
             "namespace": "test-namespace",
             "image_tag": "v1.2.0",
-            "auth_method": "credentials",
+            "use_credentials_file": True,
             "connection_type": "tcp",
             "meshtastic_host": "192.168.1.100",
             "meshtastic_port": "4403",
             "storage_class": "gp2",
             "storage_size": "2Gi",
-            "enable_e2ee": True,
         }
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -143,12 +148,11 @@ class TestK8sUtils(unittest.TestCase):
         config = {
             "namespace": "test-namespace",
             "image_tag": "latest",
-            "auth_method": "env",
+            "use_credentials_file": False,
             "connection_type": "serial",
             "serial_device": "/dev/ttyUSB0",
             "storage_class": "standard",
             "storage_size": "1Gi",
-            "enable_e2ee": False,
         }
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -185,7 +189,7 @@ class TestK8sUtils(unittest.TestCase):
 
         self.assertEqual(config["namespace"], "default")
         self.assertEqual(config["image_tag"], "latest")
-        self.assertEqual(config["auth_method"], "env")
+        self.assertFalse(config["use_credentials_file"])
         self.assertEqual(config["connection_type"], "tcp")
         self.assertEqual(config["meshtastic_host"], "meshtastic.local")
 
@@ -195,24 +199,22 @@ class TestK8sUtils(unittest.TestCase):
         mock_input.side_effect = [
             "custom-ns",  # namespace
             "v1.2.0",  # image_tag
-            "2",  # auth_method (credentials)
+            "2",  # use_credentials_file (2=yes)
             "2",  # connection_type (serial)
             "/dev/ttyACM0",  # serial_device
             "fast-storage",  # storage_class
             "5Gi",  # storage_size
-            "y",  # enable_e2ee
         ]
 
         config = prompt_for_config()
 
         self.assertEqual(config["namespace"], "custom-ns")
         self.assertEqual(config["image_tag"], "v1.2.0")
-        self.assertEqual(config["auth_method"], "credentials")
+        self.assertTrue(config["use_credentials_file"])
         self.assertEqual(config["connection_type"], "serial")
         self.assertEqual(config["serial_device"], "/dev/ttyACM0")
         self.assertEqual(config["storage_class"], "fast-storage")
         self.assertEqual(config["storage_size"], "5Gi")
-        self.assertTrue(config["enable_e2ee"])
 
 
 if __name__ == "__main__":

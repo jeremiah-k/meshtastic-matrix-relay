@@ -31,9 +31,9 @@ mmrelay k8s generate-manifests
 
 # This will create:
 # - ./k8s/mmrelay-pvc.yaml (Persistent storage)
-# - ./k8s/mmrelay-configmap.yaml (Configuration)
-# - ./k8s/mmrelay-secret.yaml (Matrix credentials)
+# - ./k8s/mmrelay-configmap.yaml (Generated from sample_config.yaml)
 # - ./k8s/mmrelay-deployment.yaml (Application deployment)
+# - ./k8s/mmrelay-secret-credentials.yaml (Optional: only if using credentials file auth)
 ```
 
 The wizard will ask you about:
@@ -42,7 +42,6 @@ The wizard will ask you about:
 - Authentication method (environment variables or credentials file)
 - Connection type (TCP or serial)
 - Storage requirements
-- E2EE preferences
 
 After generation:
 
@@ -50,11 +49,20 @@ After generation:
 # Review the generated files
 ls -la ./k8s/
 
-# Edit the ConfigMap and Secret with your actual values
+# Edit the ConfigMap with your actual configuration values
 nano ./k8s/mmrelay-configmap.yaml
-nano ./k8s/mmrelay-secret.yaml
 
-# Apply to your cluster
+# If using environment variables (recommended), create the Matrix credentials secret:
+kubectl create secret generic mmrelay-matrix-credentials \
+  --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.example.org \
+  --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@bot:example.org \
+  --from-literal=MMRELAY_MATRIX_PASSWORD='your_password_here' \
+  --namespace=default
+
+# If using credentials file (advanced), apply the generated secret file instead:
+# kubectl apply -f ./k8s/mmrelay-secret-credentials.yaml
+
+# Apply the manifests to your cluster
 kubectl apply -f ./k8s/
 
 # Check status
@@ -66,9 +74,9 @@ kubectl logs -f deployment/mmrelay
 
 MMRelay supports two authentication methods for Kubernetes deployments. Choose the one that best fits your security requirements.
 
-### Method 1: Environment Variables (Recommended for Kubernetes)
+### Method 1: Environment Variables (Recommended)
 
-This method uses Kubernetes Secrets to provide Matrix credentials via environment variables.
+This method uses Kubernetes Secrets to provide Matrix credentials via environment variables. This is the recommended approach for Kubernetes deployments.
 
 **Advantages:**
 
@@ -76,6 +84,7 @@ This method uses Kubernetes Secrets to provide Matrix credentials via environmen
 - Works with external secret managers (Vault, AWS Secrets Manager, etc.)
 - Easy to rotate credentials
 - No pre-setup required
+- Simpler workflow
 
 **Setup:**
 
@@ -89,19 +98,19 @@ kubectl create secret generic mmrelay-matrix-credentials \
   --namespace=default
 ```
 
-2. The deployment automatically reads these environment variables and creates credentials.json on first startup.
+2. The deployment automatically reads these environment variables and creates `credentials.json` on first startup.
 
 3. E2EE support is automatically enabled when credentials are created this way (Linux containers only).
 
-**Security Note:** After the first successful startup, the password is only needed if credentials.json is lost. Consider using Kubernetes secret rotation policies.
+**Security Note:** After the first successful startup, the password is only needed if `credentials.json` is lost or corrupted. Consider using Kubernetes secret rotation policies.
 
 ### Method 2: Credentials File (Advanced)
 
-This method uses a pre-generated credentials.json file from `mmrelay auth login`.
+This method uses a pre-generated `credentials.json` file from `mmrelay auth login`. This is useful for advanced scenarios where you need full control over device identity or E2EE setup.
 
 **Advantages:**
 
-- Full control over device identity
+- Full control over device identity and E2EE keys
 - Pre-verified E2EE setup
 - Useful for migrating existing installations
 
@@ -123,9 +132,11 @@ kubectl create secret generic mmrelay-credentials-json \
   --namespace=default
 ```
 
-3. The generated deployment will mount this secret at `/app/data/credentials.json`.
+3. When generating manifests, choose "Credentials file" as the authentication method. This will generate the appropriate secret template and deployment configuration.
 
-**Note:** If you regenerate manifests, choose "Credentials file" as the authentication method to uncomment the appropriate volume mounts.
+4. The deployment will mount this secret at `/app/data/credentials.json`.
+
+**Note:** This method requires running `mmrelay auth login` locally before deploying to Kubernetes.
 
 ## Deployment Methods
 
@@ -144,7 +155,7 @@ If you prefer to create manifests manually or customize extensively:
 1. **Generate a sample config:**
 
 ```bash
-mmrelay k8s generate-config --output config.yaml
+mmrelay config generate --output config.yaml
 ```
 
 2. **Edit the config with your settings**
@@ -191,13 +202,15 @@ kubectl apply -f mmrelay-deployment.yaml
 
 ### ConfigMap Structure
 
-The ConfigMap contains your `config.yaml`. When using environment variable authentication, the Matrix section can be minimal:
+The ConfigMap is generated from MMRelay's `sample_config.yaml` and contains your `config.yaml`. The generated ConfigMap includes all available configuration options with sensible defaults.
+
+**When using environment variable authentication** (recommended), you can leave the Matrix password field empty in the ConfigMap, as credentials will be provided via the Kubernetes Secret:
 
 ```yaml
 matrix:
-  # Credentials provided by environment variables from Secret
   homeserver: https://matrix.example.org
   bot_user_id: "@bot:example.org"
+  # Password provided by MMRELAY_MATRIX_PASSWORD environment variable from Secret
 
 matrix_rooms:
   - id: "#room:example.org"
@@ -215,6 +228,23 @@ logging:
 plugins:
   ping:
     active: true
+```
+
+**When using credentials file authentication**, no Matrix credentials are needed in the ConfigMap at all, since `credentials.json` is mounted from a Secret:
+
+```yaml
+matrix:
+  # All credentials provided by /app/data/credentials.json
+
+matrix_rooms:
+  - id: "#room:example.org"
+    meshtastic_channel: 0
+
+meshtastic:
+  connection_type: tcp
+  host: meshtastic.local
+  meshnet_name: My Meshnet
+  broadcast_enabled: true
 ```
 
 ### Environment Variable Overrides

@@ -75,10 +75,10 @@ def prompt_for_config() -> dict[str, Any]:
 
     # Authentication method
     print("\nAuthentication Method:")
-    print("  1. Environment variables (recommended for Kubernetes)")
-    print("  2. Credentials file (from 'mmrelay auth login')")
+    print("  1. Environment variables (simple, uses K8s secrets)")
+    print("  2. Credentials file (advanced, E2EE support via 'mmrelay auth login')")
     auth_choice = input("Choose method [1]: ").strip() or "1"
-    config["auth_method"] = "env" if auth_choice == "1" else "credentials"
+    config["use_credentials_file"] = auth_choice == "2"
 
     # Connection type
     print("\nMeshtastic Connection Type:")
@@ -108,18 +108,57 @@ def prompt_for_config() -> dict[str, Any]:
         input("Storage size for data volume [1Gi]: ").strip() or "1Gi"
     )
 
-    # E2EE
-    e2ee_choice = (
-        input("\nEnable End-to-End Encryption (E2EE)? [y/N]: ").strip().lower()
-    )
-    config["enable_e2ee"] = e2ee_choice in ["y", "yes"]
-
     return config
+
+
+def generate_configmap_from_sample(namespace: str, output_path: str) -> str:
+    """
+    Generate a Kubernetes ConfigMap YAML from the sample config.
+
+    Parameters:
+        namespace (str): Kubernetes namespace
+        output_path (str): Path where ConfigMap YAML should be written
+
+    Returns:
+        str: Path to generated ConfigMap file
+    """
+    from mmrelay.tools import get_sample_config_path
+
+    sample_config_path = get_sample_config_path()
+
+    with open(sample_config_path, "r", encoding="utf-8") as f:
+        sample_config_content = f.read()
+
+    # Create ConfigMap YAML with embedded config
+    configmap_content = f"""apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mmrelay-config
+  namespace: {namespace}
+  labels:
+    app: mmrelay
+data:
+  config.yaml: |
+"""
+    # Indent each line of the config for proper YAML
+    for line in sample_config_content.split("\n"):
+        configmap_content += f"    {line}\n"
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(configmap_content)
+
+    return output_path
 
 
 def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[str]:
     """
     Generate Kubernetes manifest files based on configuration.
+
+    Generates:
+    - PersistentVolumeClaim for data storage
+    - ConfigMap from sample_config.yaml (single source of truth)
+    - Secret for credentials.json (if using credentials file auth)
+    - Deployment with proper volume mounts
 
     Parameters:
         config (dict): Configuration from prompt_for_config()
@@ -131,7 +170,7 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
     os.makedirs(output_dir, exist_ok=True)
     generated_files = []
 
-    # Generate PersistentVolumeClaim
+    # 1. Generate PersistentVolumeClaim
     pvc_template = load_template("persistentvolumeclaim.yaml")
     pvc_content = render_template(
         pvc_template,
@@ -146,43 +185,23 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
         f.write(pvc_content)
     generated_files.append(pvc_path)
 
-    # Generate ConfigMap (basic config structure)
-    configmap_template = load_template("configmap.yaml")
-    configmap_content = render_template(
-        configmap_template,
-        {
-            "NAMESPACE": config["namespace"],
-            "CONNECTION_TYPE": config["connection_type"],
-            "MESHTASTIC_HOST": config.get("meshtastic_host", "meshtastic.local"),
-            "MESHTASTIC_PORT": config.get("meshtastic_port", "4403"),
-            "SERIAL_DEVICE": config.get("serial_device", "/dev/ttyUSB0"),
-            "E2EE_ENABLED": str(config["enable_e2ee"]).lower(),
-        },
-    )
+    # 2. Generate ConfigMap from sample_config.yaml (single source of truth)
     configmap_path = os.path.join(output_dir, "mmrelay-configmap.yaml")
-    with open(configmap_path, "w", encoding="utf-8") as f:
-        f.write(configmap_content)
+    generate_configmap_from_sample(config["namespace"], configmap_path)
     generated_files.append(configmap_path)
 
-    # Generate Secret based on auth method
-    if config["auth_method"] == "env":
-        secret_template = load_template("secret-password.yaml")
-        secret_content = render_template(
-            secret_template, {"NAMESPACE": config["namespace"]}
-        )
-        secret_path = os.path.join(output_dir, "mmrelay-secret.yaml")
-    else:
+    # 3. Generate Secret (only if using credentials file)
+    if config.get("use_credentials_file", False):
         secret_template = load_template("secret-credentials.yaml")
         secret_content = render_template(
             secret_template, {"NAMESPACE": config["namespace"]}
         )
         secret_path = os.path.join(output_dir, "mmrelay-secret-credentials.yaml")
+        with open(secret_path, "w", encoding="utf-8") as f:
+            f.write(secret_content)
+        generated_files.append(secret_path)
 
-    with open(secret_path, "w", encoding="utf-8") as f:
-        f.write(secret_content)
-    generated_files.append(secret_path)
-
-    # Generate Deployment
+    # 4. Generate Deployment
     deployment_template = load_template("deployment.yaml")
     deployment_content = render_template(
         deployment_template,
@@ -192,15 +211,8 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
         },
     )
 
-    # Handle auth method sections
-    if config["auth_method"] == "env":
-        # Uncomment the envFrom section
-        deployment_content = deployment_content.replace(
-            "# AUTHENTICATION_ENV_SECTION\n        # For environment variable authentication, uncomment:\n        # envFrom:\n        #   - secretRef:\n        #       name: mmrelay-matrix-credentials",
-            "envFrom:\n          - secretRef:\n              name: mmrelay-matrix-credentials",
-        )
-    else:
-        # Uncomment credentials volume mount and volume
+    # Handle credentials file mounting (if enabled)
+    if config.get("use_credentials_file", False):
         deployment_content = deployment_content.replace(
             "# CREDENTIALS_VOLUME_MOUNT\n          # For credentials.json authentication, uncomment:\n          # - name: credentials\n          #   mountPath: /app/data/credentials.json\n          #   subPath: credentials.json\n          #   readOnly: true",
             "- name: credentials\n            mountPath: /app/data/credentials.json\n            subPath: credentials.json\n            readOnly: true",
@@ -210,7 +222,7 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
             "- name: credentials\n          secret:\n            secretName: mmrelay-credentials-json\n            items:\n              - key: credentials.json\n                path: credentials.json",
         )
 
-    # Handle serial connection
+    # Handle serial connection (if enabled)
     if config["connection_type"] == "serial":
         serial_device = config.get("serial_device", "/dev/ttyUSB0")
         deployment_content = deployment_content.replace(
@@ -228,41 +240,3 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
     generated_files.append(deployment_path)
 
     return generated_files
-
-
-def generate_config_only(output_path: str = "config.yaml") -> str:
-    """
-    Generate a sample config.yaml file from the template.
-
-    Parameters:
-        output_path (str): Path where config file should be written
-
-    Returns:
-        str: Path to generated config file
-    """
-    from mmrelay.tools import get_sample_config_path
-
-    sample_config_path = get_sample_config_path()
-
-    # Check if output file already exists
-    if os.path.exists(output_path):
-        print(f"⚠️  Warning: {output_path} already exists")
-        overwrite = input("Overwrite existing file? [y/N]: ").strip().lower()
-        if overwrite not in ["y", "yes"]:
-            print("Cancelled.")
-            return ""
-
-    # Copy sample config to output path
-    with open(sample_config_path, "r", encoding="utf-8") as src:
-        config_content = src.read()
-
-    with open(output_path, "w", encoding="utf-8") as dst:
-        dst.write(config_content)
-
-    print(f"✅ Generated sample config at: {output_path}")
-    print("\n📝 Next steps:")
-    print(f"   1. Edit {output_path} with your Matrix and Meshtastic settings")
-    print("   2. Create a Kubernetes ConfigMap from this file:")
-    print(f"      kubectl create configmap mmrelay-config --from-file={output_path}")
-
-    return output_path

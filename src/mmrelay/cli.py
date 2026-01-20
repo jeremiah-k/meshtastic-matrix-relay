@@ -211,7 +211,7 @@ def parse_arguments() -> argparse.Namespace:
     k8s_parser = subparsers.add_parser(
         "k8s",
         help="Kubernetes deployment",
-        description="Generate Kubernetes manifests and configurations for MMRelay",
+        description="Generate Kubernetes manifests for MMRelay deployment",
     )
     k8s_subparsers = k8s_parser.add_subparsers(
         dest="k8s_command", help="Kubernetes commands", required=True
@@ -219,18 +219,7 @@ def parse_arguments() -> argparse.Namespace:
     k8s_subparsers.add_parser(
         "generate-manifests",
         help="Generate Kubernetes YAML manifests",
-        description="Interactive wizard to generate Kubernetes deployment manifests",
-    )
-    k8s_config_parser = k8s_subparsers.add_parser(
-        "generate-config",
-        help="Generate sample config.yaml",
-        description="Generate a sample configuration file for Kubernetes ConfigMap",
-    )
-    k8s_config_parser.add_argument(
-        "--output",
-        "-o",
-        help="Output file path (default: config.yaml)",
-        default="config.yaml",
+        description="Interactive wizard to generate complete Kubernetes deployment manifests",
     )
 
     # Use parse_known_args to handle unknown arguments gracefully (e.g., pytest args)
@@ -1525,7 +1514,7 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
     """
     Dispatch the requested Kubernetes subcommand.
 
-    Supports "generate-manifests" and "generate-config" actions for Kubernetes deployment.
+    Supports "generate-manifests" action for Kubernetes deployment.
 
     Parameters:
         args (argparse.Namespace): Parsed CLI arguments with `k8s_command` attribute.
@@ -1555,9 +1544,34 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
                 print(f"   - {file_path}")
 
             print("\n📝 Next steps:")
-            print("   1. Review and customize the generated manifests")
-            print("   2. Edit the ConfigMap and Secret with your actual values")
-            print("   3. Apply the manifests to your cluster:")
+            print("   1. Review and edit the generated ConfigMap with your settings:")
+            print(f"      nano {output_dir}/mmrelay-configmap.yaml")
+
+            if config.get("use_credentials_file"):
+                print("   2. Create credentials.json using 'mmrelay auth login'")
+                print("   3. Update the secret with your credentials.json:")
+                print(
+                    f"      kubectl create secret generic mmrelay-credentials-json \\"
+                )
+                print(
+                    f"        --from-file=credentials.json=$HOME/.mmrelay/credentials.json"
+                )
+            else:
+                print("   2. Create a secret with your Matrix credentials:")
+                print(
+                    f"      kubectl create secret generic mmrelay-matrix-credentials \\"
+                )
+                print(
+                    f"        --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.org \\"
+                )
+                print(
+                    f"        --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@bot:matrix.org \\"
+                )
+                print(f"        --from-literal=MMRELAY_MATRIX_PASSWORD=your_password")
+
+            print(
+                f"   {3 if config.get('use_credentials_file') else 4}. Apply the manifests:"
+            )
             print(f"      kubectl apply -f {output_dir}/")
             print("\n📖 For detailed instructions, see docs/KUBERNETES.md")
 
@@ -1567,17 +1581,6 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
                 print("\n\nCancelled.")
             else:
                 print(f"Error: {e}")
-            return 1
-
-    elif args.k8s_command == "generate-config":
-        try:
-            from mmrelay.k8s_utils import generate_config_only
-
-            output_path = args.output
-            result = generate_config_only(output_path)
-            return 0 if result else 1
-        except (ImportError, Exception) as e:
-            print(f"Error: {e}")
             return 1
 
     else:
