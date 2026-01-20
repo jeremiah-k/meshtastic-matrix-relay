@@ -5,26 +5,29 @@ Simple Kubernetes deployment for MMRelay with persistent storage for credentials
 ## Quick Start
 
 ```bash
-# 1. Apply all manifests
-kubectl apply -f k8s/
+# 1. Generate ConfigMap from sample config (always up-to-date)
+mmrelay k8s generate configmap > k8s-configmap.yaml
 
-# 2. Check deployment status
+# 2. Edit ConfigMap to add your settings
+nano k8s-configmap.yaml
+
+# 3. Apply Kubernetes resources
+kubectl apply -f k8s/pvc.yaml -f k8s/configmap.yaml -f k8s/deployment.yaml
+
+# 4. Check deployment status
 kubectl get pods -l app=mmrelay
 
-# 3. View logs
+# 5. View logs
 kubectl logs -f deployment/mmrelay
 
-# 4. Get shell access (for debugging)
+# 6. Get shell access (for debugging)
 kubectl exec -it deployment/mmrelay -- /bin/bash
 ```
 
 ## Files
 
-- `deployment.yaml` - Main deployment with ConfigMap-based config
-- `deployment-with-secret.yaml` - Alternative deployment with Secret for password
-- `configmap.yaml` - Configuration template (edit before applying)
+- `deployment.yaml` - Main deployment
 - `pvc.yaml` - Persistent volume for credentials.json and data
-- `secret.yaml.example` - Example Secret for Matrix password
 
 ## How It Works
 

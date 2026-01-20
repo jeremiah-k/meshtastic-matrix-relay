@@ -11,11 +11,45 @@ Official Kubernetes support for MMRelay with persistent storage and health monit
 
 ## Quick Start
 
-### Step 1: Apply All Resources
+### Step 1: Generate ConfigMap (Always Up-to-Date)
 
 ```bash
-cd k8s/
-kubectl apply -f .
+# Generate ConfigMap from current sample_config.yaml
+mmrelay k8s generate configmap > k8s-configmap.yaml
+```
+
+### Step 2: Edit ConfigMap
+
+Edit the generated ConfigMap to add your Matrix and Meshtastic settings:
+
+```bash
+kubectl edit configmap mmrelay-config
+```
+
+Or edit the file directly:
+
+```bash
+nano k8s-configmap.yaml
+```
+
+### Step 3: Apply to Kubernetes
+
+```bash
+# Apply all resources
+kubectl apply -f k8s-configmap.yaml -f k8s/pvc.yaml -f k8s/deployment.yaml
+
+# Or use the k8s/ directory if you have all files
+kubectl apply -f k8s/
+```
+
+### Step 4: Verify Deployment
+
+```bash
+# Check pod is running
+kubectl get pods -l app=mmrelay
+
+# View logs
+kubectl logs -f deployment/mmrelay
 ```
 
 This creates:
@@ -60,13 +94,73 @@ MMRelay supports three authentication approaches for Kubernetes:
 
 ### Method 1: Password in ConfigMap (Easiest)
 
-Edit `k8s/configmap.yaml` before applying:
+Generate ConfigMap and edit to add your password:
+
+```bash
+# Generate ConfigMap
+mmrelay k8s generate configmap > k8s-configmap.yaml
+
+# Edit to add password
+nano k8s-configmap.yaml
+```
+
+Add your password to the generated ConfigMap:
 
 ```yaml
 matrix:
   homeserver: https://matrix.example.org
   bot_user_id: "@bot:example.matrix.org
   password: your_secure_password_here  # Add this line
+```
+
+After first successful startup:
+
+1. MMRelay logs in to Matrix using the password
+2. Creates `credentials.json` automatically in the PVC
+3. You can remove the password from the ConfigMap for security
+
+**Pros:** Simple, no external tools needed
+**Cons:** Password stored in ConfigMap (remove after first run)
+
+### Method 2: External Auth (Recommended for Production)
+
+Run `mmrelay auth login` locally and copy credentials to the pod:
+
+```bash
+# 1. Run auth locally
+mmrelay auth login
+
+# 2. Apply deployment (without password in config)
+kubectl apply -f k8s/pvc.yaml -f k8s/deployment.yaml -f k8s/configmap.yaml
+
+# 3. Get pod name
+POD_NAME=$(kubectl get pod -l app=mmrelay -o jsonpath='{.items[0].metadata.name}')
+
+# 4. Copy credentials.json to pod
+kubectl cp ~/.mmrelay/credentials.json ${POD_NAME}:/app/data/
+
+# 5. Restart pod to load credentials
+kubectl rollout restart deployment/mmrelay
+```
+
+**Pros:** No credentials stored in Kubernetes
+**Cons:** Requires local machine with mmrelay installed
+
+### Method 3: Use Existing credentials.json (Alternative)
+
+If you already have a `credentials.json` file:
+
+```bash
+# 1. Apply deployment (generate ConfigMap without password)
+mmrelay k8s generate configmap > k8s-configmap.yaml
+# Edit to remove password field
+kubectl apply -f k8s/pvc.yaml -f k8s/configmap.yaml -f k8s/deployment.yaml
+
+# 2. Copy credentials to pod
+kubectl cp credentials.json $(kubectl get pod -l app=mmrelay -o jsonpath='{.items[0].metadata.name}'):/app/data/
+
+# 3. Restart pod
+kubectl rollout restart deployment/mmrelay
 ```
 
 After first successful startup:

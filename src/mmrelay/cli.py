@@ -23,6 +23,7 @@ from mmrelay.cli_utils import (
     msg_run_auth_login,
     msg_setup_auth,
     msg_setup_authentication,
+    msg_suggest_check_config,
     msg_suggest_generate_config,
 )
 from mmrelay.config import (
@@ -63,7 +64,7 @@ def parse_arguments() -> argparse.Namespace:
     """
     Builds and parses the command-line interface for the Meshtastic Matrix Relay, including modern grouped subcommands and legacy hidden flags.
 
-    Supports global options (--config, --data-dir, --log-level, --logfile, --version), grouped subcommands (config, auth, service) and hidden backward-compatible flags (--generate-config, --install-service, --check-config, --auth). Unknown arguments are ignored when running outside of test environments; a warning is printed if unknown args are present and the process does not appear to be a test run.
+    Supports global options (--config, --data-dir, --log-level, --logfile, --version), grouped subcommands (config, auth, service, k8s) and hidden backward-compatible flags (--generate-config, --install-service, --check-config, --auth). Unknown arguments are ignored when running outside of test environments; a warning is printed if unknown args are present and the process does not appear to be a test run.
 
     Returns:
         Parsed argparse.Namespace containing the resolved command, subcommand, and option values.
@@ -197,6 +198,39 @@ def parse_arguments() -> argparse.Namespace:
         "service",
         help="Service management",
         description="Manage systemd user service for MMRelay",
+    )
+    service_subparsers = service_parser.add_subparsers(
+        dest="service_command", help="Service commands", required=True
+    )
+    service_subparsers.add_parser(
+        "install",
+        help="Install systemd user service",
+        description="Install or update systemd user service for MMRelay",
+    )
+
+    # KUBERNETES group
+    k8s_parser = subparsers.add_parser(
+        "k8s",
+        help="Kubernetes deployment helpers",
+        description="Generate Kubernetes manifests for deployment",
+    )
+    k8s_subparsers = k8s_parser.add_subparsers(
+        dest="k8s_command", help="K8s commands", required=True
+    )
+    k8s_subparsers.add_parser(
+        "generate",
+        help="Generate Kubernetes manifests",
+        description="Generate ConfigMap and Secret manifests from sample config",
+    )
+    k8s_subparsers.add_parser(
+        "configmap",
+        help="Generate ConfigMap manifest",
+        description="Generate Kubernetes ConfigMap from sample configuration",
+    )
+    k8s_subparsers.add_parser(
+        "secret",
+        help="Generate Secret manifest",
+        description="Generate Kubernetes Secret from sample configuration",
     )
     service_subparsers = service_parser.add_subparsers(
         dest="service_command", help="Service commands", required=True
@@ -1159,12 +1193,15 @@ def main() -> int:
 
 def handle_subcommand(args: argparse.Namespace) -> int:
     """
-    Dispatch the selected CLI subcommand to its handler.
+    Dispatches selected CLI subcommand to its handler.
 
-    Supports the "config", "auth", and "service" grouped subcommands and delegates execution to the corresponding handler.
+    Supports a "config", "auth", "service", and "k8s" grouped subcommands and delegates execution to the corresponding handler.
+
+    Parameters:
+        args (argparse.Namespace): CLI namespace containing `config_command` (one of "generate", "check", or "diagnose"), `auth_command` (one of "login", "status", or "logout"), `service_command` (one of "install"), or `k8s_command` (one of "configmap" or "secret").
 
     Returns:
-        Exit code returned by the invoked handler; `1` if the command is unknown.
+        int: Exit code (0 on success, 1 on failure or for unknown subcommands).
     """
     if args.command == "config":
         return handle_config_command(args)
@@ -1172,6 +1209,8 @@ def handle_subcommand(args: argparse.Namespace) -> int:
         return handle_auth_command(args)
     elif args.command == "service":
         return handle_service_command(args)
+    elif args.command == "k8s":
+        return handle_k8s_command(args)
 
     else:
         print(f"Unknown command: {args.command}")
@@ -1490,6 +1529,124 @@ def handle_service_command(args: argparse.Namespace) -> int:
             return 1
     else:
         print(f"Unknown service command: {args.service_command}")
+        return 1
+
+
+def generate_k8s_configmap(args: argparse.Namespace) -> int:
+    """
+    Generate a Kubernetes ConfigMap manifest from the sample configuration.
+
+    Reads the bundled sample_config.yaml and outputs it as a Kubernetes ConfigMap
+    manifest suitable for deployment. The output can be redirected to a file or piped
+    directly to kubectl apply.
+
+    Parameters:
+        args (argparse.Namespace): Parsed CLI arguments (unused but required for function signature).
+
+    Returns:
+        int: Exit code 0 on success, 1 on failure.
+
+    Example:
+        mmrelay k8s generate configmap > k8s-configmap.yaml
+        kubectl apply -f k8s-configmap.yaml
+    """
+    try:
+        sample_config_path = get_sample_config_path()
+
+        if not os.path.exists(sample_config_path):
+            print(f"Error: Sample config file not found at {sample_config_path}")
+            return 1
+
+        with open(sample_config_path, "r", encoding="utf-8") as f:
+            sample_config = f.read()
+
+        print("""apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mmrelay-config
+data:
+  config.yaml: |
+""")
+        for line in sample_config.splitlines():
+            print(f"    {line}")
+        print()
+        print("To use this ConfigMap:")
+        print("  1. Apply to Kubernetes:")
+        print("     kubectl apply -f k8s-configmap.yaml")
+        print("  2. Or pipe directly:")
+        print("     mmrelay k8s generate configmap | kubectl apply -f -")
+        print()
+        print("Note: Edit the generated ConfigMap to add your actual settings.")
+        return 0
+
+    except (IOError, OSError, UnicodeDecodeError) as e:
+        print(f"Error generating ConfigMap: {e}")
+        return 1
+
+
+def generate_k8s_secret(args: argparse.Namespace) -> int:
+    """
+    Generate a Kubernetes Secret manifest for Matrix password.
+
+    Creates a Secret manifest template for storing the Matrix password securely.
+    Users should fill in their actual password after generating.
+
+    Parameters:
+        args (argparse.Namespace): Parsed CLI arguments (unused but required for function signature).
+
+    Returns:
+        int: Exit code 0 on success.
+
+    Example:
+        mmrelay k8s generate secret > k8s-secret.yaml
+        # Edit the password field
+        kubectl apply -f k8s-secret.yaml
+    """
+    print("""apiVersion: v1
+kind: Secret
+metadata:
+  name: mmrelay-matrix-password
+type: Opaque
+stringData:
+  matrix-password: your_secure_password_here""")
+    print()
+    print("To use this Secret:")
+    print("  1. Edit the password field above with your actual password")
+    print("  2. Apply to Kubernetes:")
+    print("     kubectl apply -f k8s-secret.yaml")
+    print("  3. Update deployment to read from Secret:")
+    print(
+        "     kubectl set env deployment/mmrelay --from=secret/mmrelay-matrix-password/matrix-password"
+    )
+    print()
+    print(
+        "Security Note: Never commit Secret files with real passwords to version control."
+    )
+    return 0
+
+
+def handle_k8s_command(args: argparse.Namespace) -> int:
+    """
+    Dispatch the requested Kubernetes helper command.
+
+    Supports "configmap" and "secret" subcommands for generating Kubernetes manifests.
+
+    Parameters:
+        args (argparse.Namespace): Parsed CLI arguments with `k8s_command` attribute.
+
+    Returns:
+        int: Exit code (0 on success, 1 on failure or for unknown subcommands).
+
+    Supported subcommands:
+        - configmap: Generate Kubernetes ConfigMap manifest
+        - secret: Generate Kubernetes Secret manifest template
+    """
+    if args.k8s_command == "configmap":
+        return generate_k8s_configmap(args)
+    elif args.k8s_command == "secret":
+        return generate_k8s_secret(args)
+    else:
+        print(f"Unknown k8s command: {args.k8s_command}")
         return 1
 
 

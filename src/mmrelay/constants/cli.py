@@ -15,6 +15,9 @@ CLI_COMMANDS = {
     "auth_status": "mmrelay auth status",
     # Service commands
     "service_install": "mmrelay service install",
+    # Kubernetes commands
+    "k8s_generate_configmap": "mmrelay k8s generate configmap",
+    "k8s_generate_secret": "mmrelay k8s generate secret",
     # Main commands
     "start_relay": "mmrelay",
     "show_version": "mmrelay --version",
