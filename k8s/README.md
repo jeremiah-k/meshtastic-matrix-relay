@@ -114,11 +114,13 @@ By default, the PVC uses your cluster's default storage class for maximum portab
 
 ```yaml
 spec:
-  storageClassName: fast-ssd # Your storage class (optional)
+  storageClassName: fast-ssd # Your storage class (omit to use cluster default)
   resources:
     requests:
       storage: 1Gi # Adjust size
 ```
+
+**Note:** Omitting `storageClassName` uses the cluster's default StorageClass. If your cluster doesn't have a default configured, you must specify a class explicitly.
 
 ### Adjust Resource Limits
 
@@ -239,7 +241,7 @@ kubectl rollout restart deployment/mmrelay
 Or, for a rolling update without downtime:
 
 ```bash
-kubectl patch deployment mmrelay -p '{"spec":{"template":{"metadata":{"annotations":{"kubectl.kubernetes.io/restartedAt":"'$(date +%s)'"}}}}'
+kubectl rollout restart deployment/mmrelay
 ```
 
 ## Removing the Deployment

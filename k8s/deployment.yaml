@@ -35,7 +35,7 @@ spec:
                 - pgrep
                 - -f
                 - mmrelay
-            initialDelaySeconds: 10
+            initialDelaySeconds: 30
             periodSeconds: 10
           readinessProbe:
             exec:
@@ -43,7 +43,7 @@ spec:
                 - pgrep
                 - -f
                 - mmrelay
-            initialDelaySeconds: 5
+            initialDelaySeconds: 10
             periodSeconds: 5
           volumeMounts:
             - name: config

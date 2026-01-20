@@ -1547,15 +1547,13 @@ def generate_k8s_configmap(_args: argparse.Namespace) -> int:
         with open(sample_config_path, "r", encoding="utf-8") as f:
             sample_config = f.read()
 
-        print("""apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: mmrelay-config
-data:
-  config.yaml: |
-""")
-        for line in sample_config.splitlines():
-            print(f"    {line}")
+        config_map_data = {
+            "apiVersion": "v1",
+            "kind": "ConfigMap",
+            "metadata": {"name": "mmrelay-config"},
+            "data": {"config.yaml": sample_config},
+        }
+        print(yaml.dump(config_map_data, sort_keys=False, default_flow_style=False))
         print()
         print("To use this ConfigMap:")
         print("  1. Apply to Kubernetes:")
@@ -1589,13 +1587,14 @@ def generate_k8s_secret(_args: argparse.Namespace) -> int:
         # Edit the password field
         kubectl apply -f k8s-secret.yaml
     """
-    print("""apiVersion: v1
-kind: Secret
-metadata:
-  name: mmrelay-matrix-password
-type: Opaque
-stringData:
-   MMRELAY_MATRIX_PASSWORD: your_secure_password_here""")
+    secret_data = {
+        "apiVersion": "v1",
+        "kind": "Secret",
+        "metadata": {"name": "mmrelay-matrix-password"},
+        "type": "Opaque",
+        "stringData": {"MMRELAY_MATRIX_PASSWORD": "your_secure_password_here"},
+    }
+    print(yaml.dump(secret_data, sort_keys=False, default_flow_style=False))
     print()
     print("To use this Secret:")
     print("  1. Edit the password field above with your actual password")
@@ -1612,10 +1611,6 @@ stringData:
     print("               key: MMRELAY_MATRIX_PASSWORD")
     print()
     print("     Then apply: kubectl apply -f k8s/deployment.yaml")
-    print()
-    print(
-        "Security Note: Never commit Secret files with real passwords to version control."
-    )
     print()
     print(
         "Security Note: Never commit Secret files with real passwords to version control."

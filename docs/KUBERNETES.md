@@ -457,7 +457,7 @@ kubectl scale deployment mmrelay --replicas=1
 
 ```bash
 # Update to new image version
-kubectl set image deployment/mmrelay mmrelay=ghcr.io/jeremiah-k/mmrelay:v1.2.1
+kubectl set image deployment/mmrelay mmrelay=ghcr.io/jeremiah-k/mmrelay:v1.2.9
 
 # Watch rolling update
 kubectl rollout status deployment/mmrelay
@@ -627,7 +627,7 @@ spec:
   template:
     spec:
       tolerations:
-        - key: node-role.kubernetes.io/master
+        - key: dedicated-workload
           effect: NoSchedule
 ```
 
