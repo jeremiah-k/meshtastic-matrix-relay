@@ -1561,6 +1561,9 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
             else:
                 print("   2. Create a secret with your Matrix credentials:")
                 print(
+                    "      read -s -p 'Matrix password: ' MMRELAY_MATRIX_PASSWORD; echo"
+                )
+                print(
                     "      kubectl create secret generic mmrelay-matrix-credentials \\"
                 )
                 print(
@@ -1569,7 +1572,9 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
                 print(
                     "        --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@bot:matrix.org \\"
                 )
-                print("        --from-literal=MMRELAY_MATRIX_PASSWORD=your_password")
+                print(
+                    "        --from-literal=MMRELAY_MATRIX_PASSWORD=$MMRELAY_MATRIX_PASSWORD"
+                )
 
             print(
                 f"   {3 if config.get('use_credentials_file') else 4}. Apply the manifests:"

@@ -53,10 +53,12 @@ ls -la ./k8s/
 nano ./k8s/mmrelay-configmap.yaml
 
 # If using environment variables (recommended), create the Matrix credentials secret:
+# Use read -s to securely enter password without storing in shell history
+read -s -p "Enter Matrix password: " MMRELAY_MATRIX_PASSWORD && echo
 kubectl create secret generic mmrelay-matrix-credentials \
   --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.example.org \
   --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@bot:example.org \
-  --from-literal=MMRELAY_MATRIX_PASSWORD='your_password_here' \
+  --from-literal=MMRELAY_MATRIX_PASSWORD="$MMRELAY_MATRIX_PASSWORD" \
   --namespace=default
 
 # If using credentials file (advanced), apply the generated secret file instead:
@@ -67,7 +69,8 @@ kubectl apply -f ./k8s/
 
 # Check status
 kubectl get pods -l app=mmrelay
-kubectl logs -f deployment/mmrelay
+kubectl logs -f deploy/mmrelay
+# or: kubectl logs -f -l app=mmrelay
 ```
 
 ## Authentication Methods
@@ -91,10 +94,12 @@ This method uses Kubernetes Secrets to provide Matrix credentials via environmen
 1. Create a Kubernetes Secret with your Matrix credentials:
 
 ```bash
+# Use read -s to securely enter password without storing in shell history
+read -s -p "Enter Matrix password: " MMRELAY_MATRIX_PASSWORD && echo
 kubectl create secret generic mmrelay-matrix-credentials \
   --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.example.org \
   --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@bot:example.org \
-  --from-literal=MMRELAY_MATRIX_PASSWORD='your_password_here' \
+  --from-literal=MMRELAY_MATRIX_PASSWORD="$MMRELAY_MATRIX_PASSWORD" \
   --namespace=default
 ```
 
@@ -188,10 +193,12 @@ kubectl create configmap mmrelay-config \
 
 # Create Secret for Matrix credentials (choose one method from above)
 # Method 1: Environment variables
+# Use read -s to securely enter password without storing in shell history
+read -s -p "Enter Matrix password: " MMRELAY_MATRIX_PASSWORD && echo
 kubectl create secret generic mmrelay-matrix-credentials \
   --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.example.org \
   --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@bot:example.org \
-  --from-literal=MMRELAY_MATRIX_PASSWORD='your_password' \
+  --from-literal=MMRELAY_MATRIX_PASSWORD="$MMRELAY_MATRIX_PASSWORD" \
   --namespace=mmrelay
 
 # Apply the deployment (use generated or create your own)
@@ -361,6 +368,8 @@ nodeSelector:
 securityContext:
   privileged: true # Required for device access
 ```
+
+**Security Warning:** Running containers in privileged mode grants them all capabilities of the host machine, which is a significant security risk. This should only be used when absolutely necessary for device access. Consider using more granular security contexts or capabilities (e.g., `CAP_SYS_ADMIN`, `CAP_MKNOD`) if they can achieve the same outcome with less risk.
 
 ### BLE Connection
 
@@ -739,10 +748,12 @@ mmrelay k8s generate-manifests
 # Choose: namespace=default, auth=env, connection=tcp, storage=standard/1Gi
 
 # 2. Create Matrix credentials secret
+# Use read -s to securely enter password without storing in shell history
+read -s -p "Enter Matrix password: " MMRELAY_MATRIX_PASSWORD && echo
 kubectl create secret generic mmrelay-matrix-credentials \
   --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.org \
   --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@mybot:matrix.org \
-  --from-literal=MMRELAY_MATRIX_PASSWORD='my_secure_password'
+  --from-literal=MMRELAY_MATRIX_PASSWORD="$MMRELAY_MATRIX_PASSWORD"
 
 # 3. Customize ConfigMap
 nano k8s/mmrelay-configmap.yaml
@@ -755,10 +766,11 @@ kubectl apply -f k8s/
 kubectl get pods -l app=mmrelay -w
 
 # 6. Check logs
-kubectl logs -f deployment/mmrelay
+kubectl logs -f deploy/mmrelay
+# or: kubectl logs -f -l app=mmrelay
 
 # 7. Verify Matrix connection
-kubectl exec -it deployment/mmrelay -- mmrelay auth status
+kubectl exec -it deploy/mmrelay -- mmrelay auth status
 ```
 
 That's it! Your MMRelay is now running on Kubernetes.

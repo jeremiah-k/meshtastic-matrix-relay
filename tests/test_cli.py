@@ -23,6 +23,7 @@ import builtins
 import json
 import os
 import sys
+import tempfile
 import unittest
 import unittest.mock
 from unittest.mock import MagicMock, mock_open, patch
@@ -3320,7 +3321,7 @@ class TestK8SCommand(unittest.TestCase):
     @patch("mmrelay.k8s_utils.generate_manifests")
     @patch("mmrelay.k8s_utils.prompt_for_config")
     def test_handle_k8s_command_generate_manifests_success(
-        self, mock_prompt, mock_generate, mock_print, mock_input
+        self, mock_prompt, mock_generate, _mock_print, mock_input
     ):
         """Test successful Kubernetes manifest generation with env var auth."""
         self.mock_args.k8s_command = "generate-manifests"
@@ -3336,10 +3337,11 @@ class TestK8SCommand(unittest.TestCase):
             "storage_size": "1Gi",
         }
 
+        temp_dir = tempfile.gettempdir()
         mock_generate.return_value = [
-            "/tmp/mmrelay-pvc.yaml",
-            "/tmp/mmrelay-configmap.yaml",
-            "/tmp/mmrelay-deployment.yaml",
+            os.path.join(temp_dir, "mmrelay-pvc.yaml"),
+            os.path.join(temp_dir, "mmrelay-configmap.yaml"),
+            os.path.join(temp_dir, "mmrelay-deployment.yaml"),
         ]
 
         mock_input.return_value = ""
@@ -3358,7 +3360,7 @@ class TestK8SCommand(unittest.TestCase):
     @patch("mmrelay.k8s_utils.generate_manifests")
     @patch("mmrelay.k8s_utils.prompt_for_config")
     def test_handle_k8s_command_with_credentials_auth(
-        self, mock_prompt, mock_generate, mock_print, mock_input
+        self, mock_prompt, mock_generate, _mock_print, mock_input
     ):
         """Test Kubernetes manifest generation with credentials file auth."""
         self.mock_args.k8s_command = "generate-manifests"
@@ -3374,11 +3376,12 @@ class TestK8SCommand(unittest.TestCase):
             "storage_size": "2Gi",
         }
 
+        temp_dir = tempfile.gettempdir()
         mock_generate.return_value = [
-            "/tmp/mmrelay-pvc.yaml",
-            "/tmp/mmrelay-configmap.yaml",
-            "/tmp/mmrelay-secret-credentials.yaml",
-            "/tmp/mmrelay-deployment.yaml",
+            os.path.join(temp_dir, "mmrelay-pvc.yaml"),
+            os.path.join(temp_dir, "mmrelay-configmap.yaml"),
+            os.path.join(temp_dir, "mmrelay-secret-credentials.yaml"),
+            os.path.join(temp_dir, "mmrelay-deployment.yaml"),
         ]
 
         mock_input.return_value = "./custom-k8s"
@@ -3395,7 +3398,7 @@ class TestK8SCommand(unittest.TestCase):
     @patch("mmrelay.k8s_utils.generate_manifests")
     @patch("mmrelay.k8s_utils.prompt_for_config")
     def test_handle_k8s_command_eof_error_on_output_dir(
-        self, mock_prompt, mock_generate, mock_print, mock_input
+        self, mock_prompt, mock_generate, _mock_print, mock_input
     ):
         """Test EOFError handling when asking for output directory."""
         self.mock_args.k8s_command = "generate-manifests"
@@ -3411,7 +3414,8 @@ class TestK8SCommand(unittest.TestCase):
             "storage_size": "1Gi",
         }
 
-        mock_generate.return_value = ["/tmp/test.yaml"]
+        temp_dir = tempfile.gettempdir()
+        mock_generate.return_value = [os.path.join(temp_dir, "test.yaml")]
 
         mock_input.side_effect = EOFError()
 
@@ -3425,7 +3429,7 @@ class TestK8SCommand(unittest.TestCase):
     @patch("builtins.print")
     @patch("mmrelay.k8s_utils.prompt_for_config")
     def test_handle_k8s_command_keyboard_interrupt(
-        self, mock_prompt, mock_print, mock_input
+        self, mock_prompt, mock_print, _mock_input
     ):
         """Test KeyboardInterrupt handling."""
         self.mock_args.k8s_command = "generate-manifests"
@@ -3442,7 +3446,9 @@ class TestK8SCommand(unittest.TestCase):
     @patch("builtins.input")
     @patch("builtins.print")
     @patch("mmrelay.k8s_utils.prompt_for_config")
-    def test_handle_k8s_command_import_error(self, mock_prompt, mock_print, mock_input):
+    def test_handle_k8s_command_import_error(
+        self, mock_prompt, _mock_print, _mock_input
+    ):
         """Test ImportError when k8s_utils cannot be imported."""
         self.mock_args.k8s_command = "generate-manifests"
 
