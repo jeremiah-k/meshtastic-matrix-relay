@@ -236,6 +236,30 @@ make logs     # View logs
 
 For detailed Docker commands, configuration options, connection types, and troubleshooting, see the [Docker Guide](DOCKER.md).
 
+## Kubernetes
+
+MMRelay officially supports Kubernetes deployment with a built-in manifest generator.
+
+### Quick Kubernetes Setup
+
+```bash
+# Generate Kubernetes manifests interactively
+mmrelay k8s generate-manifests
+
+# Review and customize the generated manifests
+nano k8s/mmrelay-configmap.yaml
+nano k8s/mmrelay-secret.yaml
+
+# Deploy to your cluster
+kubectl apply -f k8s/
+
+# Check status
+kubectl get pods -l app=mmrelay
+kubectl logs -f deployment/mmrelay
+```
+
+For detailed Kubernetes deployment instructions, authentication methods, storage configuration, and troubleshooting, see the [Kubernetes Guide](KUBERNETES.md).
+
 ## Development
 
 ### Contributing

@@ -371,6 +371,23 @@ def load_database_config_from_env() -> dict[str, Any] | None:
     return config
 
 
+def load_matrix_config_from_env() -> dict[str, Any] | None:
+    """
+    Build a Matrix configuration fragment from environment variables.
+
+    Reads the environment variables specified by the module-level mapping and converts present values into a dictionary keyed by configuration keys. Useful for merging Matrix-related overrides into the main application config.
+
+    Returns:
+        dict[str, Any] | None: A dictionary of Matrix configuration values if any mapped environment variables were found, `None` otherwise.
+    """
+    config = _load_config_from_env_mapping(_MATRIX_ENV_VAR_MAPPINGS)
+    if config:
+        logger.debug(
+            f"Loaded Matrix configuration from environment variables: {list(config.keys())}"
+        )
+    return config
+
+
 def is_e2ee_enabled(config: dict[str, Any]) -> bool:
     """
     Determine whether End-to-End Encryption (E2EE) is enabled in the provided configuration.
@@ -440,7 +457,7 @@ def apply_env_config_overrides(config: dict[str, Any] | None) -> dict[str, Any]:
     Merge configuration values derived from environment variables into a configuration dictionary.
 
     If `config` is falsy, a new dict is created. Environment-derived fragments are merged into the top-level
-    keys "meshtastic", "logging", and "database" when present; existing keys in those sections are preserved.
+    keys "meshtastic", "logging", "database", and "matrix" when present; existing keys in those sections are preserved.
     The input dictionary may be mutated in place.
 
     Parameters:
@@ -469,6 +486,12 @@ def apply_env_config_overrides(config: dict[str, Any] | None) -> dict[str, Any]:
     if database_env_config:
         config.setdefault("database", {}).update(database_env_config)
         logger.debug("Applied database environment variable overrides")
+
+    # Apply Matrix configuration overrides
+    matrix_env_config = load_matrix_config_from_env()
+    if matrix_env_config:
+        config.setdefault("matrix", {}).update(matrix_env_config)
+        logger.debug("Applied Matrix environment variable overrides")
 
     return config
 
@@ -635,6 +658,20 @@ _LOGGING_ENV_VAR_MAPPINGS: list[dict[str, Any]] = [
 
 _DATABASE_ENV_VAR_MAPPINGS: list[dict[str, Any]] = [
     {"env_var": "MMRELAY_DATABASE_PATH", "config_key": "path", "type": "string"},
+]
+
+_MATRIX_ENV_VAR_MAPPINGS: list[dict[str, Any]] = [
+    {
+        "env_var": "MMRELAY_MATRIX_HOMESERVER",
+        "config_key": "homeserver",
+        "type": "string",
+    },
+    {
+        "env_var": "MMRELAY_MATRIX_BOT_USER_ID",
+        "config_key": "bot_user_id",
+        "type": "string",
+    },
+    {"env_var": "MMRELAY_MATRIX_PASSWORD", "config_key": "password", "type": "string"},
 ]
 
 

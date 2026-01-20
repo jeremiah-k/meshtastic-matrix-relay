@@ -1,13 +1,29 @@
 matrix:
   homeserver: https://example.matrix.org
-  # Modern authentication using password (recommended)
-  # MMRelay will automatically create secure credentials.json on startup
-  password: your_matrix_password_here  # Set your Matrix account password
-  # Security: After first successful start, remove this password from the file.
-  #           Linux/macOS: chmod 600 ~/.mmrelay/config.yaml
-  #           Windows: restrict file access to your user (e.g., via file Properties → Security)
-  #           Never commit this file with a password to version control.
   bot_user_id: "@botuser:example.matrix.org"
+  
+  # MATRIX AUTHENTICATION - Choose ONE method:
+  #
+  # Method 1 (RECOMMENDED): Use 'mmrelay auth login' command
+  # This creates secure credentials.json with E2EE support and persistent device identity.
+  # Run: mmrelay auth login
+  # Best for: All deployment types (pipx, Docker, Kubernetes)
+  #
+  # Method 2: Environment Variables (Kubernetes/Docker)
+  # Set these environment variables instead of using password in config:
+  #   MMRELAY_MATRIX_HOMESERVER=https://matrix.example.org
+  #   MMRELAY_MATRIX_BOT_USER_ID=@bot:example.org
+  #   MMRELAY_MATRIX_PASSWORD=your_password
+  # Best for: Kubernetes deployments with secrets, automated CI/CD
+  #
+  # Method 3 (LEGACY): Password in config.yaml
+  # Uncomment the password line below. MMRelay will create credentials.json on first run.
+  # IMPORTANT: Remove the password from this file after first successful startup!
+  # Security: chmod 600 ~/.mmrelay/config.yaml (Linux/macOS)
+  #password: your_matrix_password_here
+  #
+  # See docs/KUBERNETES.md for Kubernetes-specific authentication setup
+  # See docs/E2EE.md for End-to-End Encryption configuration
 
   # End-to-End Encryption (E2EE) configuration
   # E2EE is automatically enabled when using password-based authentication AND E2EE dependencies are installed (Linux/macOS only)

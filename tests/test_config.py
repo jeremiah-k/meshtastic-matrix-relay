@@ -27,6 +27,7 @@ from mmrelay.config import (
     load_credentials,
     load_database_config_from_env,
     load_logging_config_from_env,
+    load_matrix_config_from_env,
     load_meshtastic_config_from_env,
     save_credentials,
     set_secure_file_permissions,
@@ -1097,6 +1098,73 @@ class TestGetMeshtasticConfigValueUncoveredLines(unittest.TestCase):
             "Required configuration 'meshtastic.connection_type' is missing",
             str(cm.exception),
         )
+
+    # Tests for Matrix environment variable loading
+    @patch.dict(
+        os.environ,
+        {
+            "MMRELAY_MATRIX_HOMESERVER": "https://matrix.example.org",
+            "MMRELAY_MATRIX_BOT_USER_ID": "@bot:example.org",
+            "MMRELAY_MATRIX_PASSWORD": "test_password",
+        },
+    )
+    def test_load_matrix_config_from_env(self):
+        """Test that Matrix configuration is loaded from environment variables."""
+        config = load_matrix_config_from_env()
+        self.assertIsNotNone(config)
+        self.assertEqual(config["homeserver"], "https://matrix.example.org")
+        self.assertEqual(config["bot_user_id"], "@bot:example.org")
+        self.assertEqual(config["password"], "test_password")
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_load_matrix_config_from_env_empty(self):
+        """Test that Matrix config returns None when no env vars are set."""
+        # Clear any existing MMRELAY_MATRIX_* variables
+        for key in list(os.environ.keys()):
+            if key.startswith("MMRELAY_MATRIX_"):
+                del os.environ[key]
+        config = load_matrix_config_from_env()
+        self.assertIsNone(config)
+
+    @patch.dict(
+        os.environ,
+        {
+            "MMRELAY_MATRIX_HOMESERVER": "https://matrix.example.org",
+            "MMRELAY_MESHTASTIC_HOST": "meshtastic.local",
+        },
+    )
+    def test_apply_env_config_overrides_with_matrix(self):
+        """Test that Matrix env vars are applied via apply_env_config_overrides."""
+        config = {}
+        result = apply_env_config_overrides(config)
+
+        self.assertIn("matrix", result)
+        self.assertEqual(result["matrix"]["homeserver"], "https://matrix.example.org")
+        self.assertIn("meshtastic", result)
+        self.assertEqual(result["meshtastic"]["host"], "meshtastic.local")
+
+    @patch.dict(
+        os.environ,
+        {
+            "MMRELAY_MATRIX_PASSWORD": "env_password",
+        },
+    )
+    def test_apply_env_config_overrides_matrix_password_override(self):
+        """Test that Matrix password from env overrides config file password."""
+        config = {
+            "matrix": {
+                "homeserver": "https://matrix.example.org",
+                "bot_user_id": "@bot:example.org",
+                "password": "config_password",
+            }
+        }
+        result = apply_env_config_overrides(config)
+
+        # Environment variable should override config file
+        self.assertEqual(result["matrix"]["password"], "env_password")
+        # Other values should remain
+        self.assertEqual(result["matrix"]["homeserver"], "https://matrix.example.org")
+        self.assertEqual(result["matrix"]["bot_user_id"], "@bot:example.org")
 
 
 if __name__ == "__main__":

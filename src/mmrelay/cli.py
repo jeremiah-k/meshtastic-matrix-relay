@@ -207,6 +207,32 @@ def parse_arguments() -> argparse.Namespace:
         description="Install or update the systemd user service for MMRelay",
     )
 
+    # K8S group
+    k8s_parser = subparsers.add_parser(
+        "k8s",
+        help="Kubernetes deployment",
+        description="Generate Kubernetes manifests and configurations for MMRelay",
+    )
+    k8s_subparsers = k8s_parser.add_subparsers(
+        dest="k8s_command", help="Kubernetes commands", required=True
+    )
+    k8s_subparsers.add_parser(
+        "generate-manifests",
+        help="Generate Kubernetes YAML manifests",
+        description="Interactive wizard to generate Kubernetes deployment manifests",
+    )
+    k8s_config_parser = k8s_subparsers.add_parser(
+        "generate-config",
+        help="Generate sample config.yaml",
+        description="Generate a sample configuration file for Kubernetes ConfigMap",
+    )
+    k8s_config_parser.add_argument(
+        "--output",
+        "-o",
+        help="Output file path (default: config.yaml)",
+        default="config.yaml",
+    )
+
     # Use parse_known_args to handle unknown arguments gracefully (e.g., pytest args)
     args, unknown = parser.parse_known_args()
     # If there are unknown arguments and we're not in a test invocation, warn about them
@@ -1161,7 +1187,7 @@ def handle_subcommand(args: argparse.Namespace) -> int:
     """
     Dispatch the selected CLI subcommand to its handler.
 
-    Supports the "config", "auth", and "service" grouped subcommands and delegates execution to the corresponding handler.
+    Supports the "config", "auth", "service", and "k8s" grouped subcommands and delegates execution to the corresponding handler.
 
     Returns:
         Exit code returned by the invoked handler; `1` if the command is unknown.
@@ -1172,6 +1198,8 @@ def handle_subcommand(args: argparse.Namespace) -> int:
         return handle_auth_command(args)
     elif args.command == "service":
         return handle_service_command(args)
+    elif args.command == "k8s":
+        return handle_k8s_command(args)
 
     else:
         print(f"Unknown command: {args.command}")
@@ -1490,6 +1518,70 @@ def handle_service_command(args: argparse.Namespace) -> int:
             return 1
     else:
         print(f"Unknown service command: {args.service_command}")
+        return 1
+
+
+def handle_k8s_command(args: argparse.Namespace) -> int:
+    """
+    Dispatch the requested Kubernetes subcommand.
+
+    Supports "generate-manifests" and "generate-config" actions for Kubernetes deployment.
+
+    Parameters:
+        args (argparse.Namespace): Parsed CLI arguments with `k8s_command` attribute.
+
+    Returns:
+        int: `0` on success, `1` on failure or for unknown subcommands.
+    """
+    if args.k8s_command == "generate-manifests":
+        try:
+            from mmrelay.k8s_utils import generate_manifests, prompt_for_config
+
+            # Get configuration from user
+            config = prompt_for_config()
+
+            # Ask for output directory
+            output_dir = (
+                input("\nOutput directory for manifests [./k8s]: ").strip() or "./k8s"
+            )
+
+            # Generate manifests
+            print(f"\n📦 Generating Kubernetes manifests in {output_dir}...\n")
+            generated_files = generate_manifests(config, output_dir)
+
+            # Show what was generated
+            print("\n✅ Generated the following files:")
+            for file_path in generated_files:
+                print(f"   - {file_path}")
+
+            print("\n📝 Next steps:")
+            print("   1. Review and customize the generated manifests")
+            print("   2. Edit the ConfigMap and Secret with your actual values")
+            print("   3. Apply the manifests to your cluster:")
+            print(f"      kubectl apply -f {output_dir}/")
+            print("\n📖 For detailed instructions, see docs/KUBERNETES.md")
+
+            return 0
+        except (ImportError, KeyboardInterrupt) as e:
+            if isinstance(e, KeyboardInterrupt):
+                print("\n\nCancelled.")
+            else:
+                print(f"Error: {e}")
+            return 1
+
+    elif args.k8s_command == "generate-config":
+        try:
+            from mmrelay.k8s_utils import generate_config_only
+
+            output_path = args.output
+            result = generate_config_only(output_path)
+            return 0 if result else 1
+        except (ImportError, Exception) as e:
+            print(f"Error: {e}")
+            return 1
+
+    else:
+        print(f"Unknown k8s command: {args.k8s_command}")
         return 1
 
 
