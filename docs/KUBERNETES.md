@@ -59,48 +59,10 @@ kubectl create secret generic mmrelay-matrix-credentials \
   --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.example.org \
   --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@bot:example.org \
   --from-literal=MMRELAY_MATRIX_PASSWORD="$MMRELAY_MATRIX_PASSWORD" \
-  --namespace=default
+  --namespace=default  # Replace with your chosen namespace
 
-# If using credentials file (advanced), apply the generated secret file instead:
+# Alternatively, if using credentials file authentication, apply the generated secret file:
 # kubectl apply -f ./k8s/mmrelay-secret-credentials.yaml
-
-# Apply the manifests to your cluster
-kubectl apply -f ./k8s/
-
-# Check status
-kubectl get pods -l app=mmrelay
-kubectl logs -f deploy/mmrelay
-# or: kubectl logs -f -l app=mmrelay
-```
-
-## Authentication Methods
-
-MMRelay supports two authentication methods for Kubernetes deployments. Choose the one that best fits your security requirements.
-
-### Method 1: Environment Variables (Recommended)
-
-This method uses Kubernetes Secrets to provide Matrix credentials via environment variables. This is the recommended approach for Kubernetes deployments.
-
-**Advantages:**
-
-- Native Kubernetes secret management
-- Works with external secret managers (Vault, AWS Secrets Manager, etc.)
-- Easy to rotate credentials
-- No pre-setup required
-- Simpler workflow
-
-**Setup:**
-
-1. Create a Kubernetes Secret with your Matrix credentials:
-
-```bash
-# Use read -s to securely enter password without storing in shell history
-read -s -p "Enter Matrix password: " MMRELAY_MATRIX_PASSWORD && echo
-kubectl create secret generic mmrelay-matrix-credentials \
-  --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.example.org \
-  --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@bot:example.org \
-  --from-literal=MMRELAY_MATRIX_PASSWORD="$MMRELAY_MATRIX_PASSWORD" \
-  --namespace=default
 ```
 
 2. The deployment automatically reads these environment variables and creates `credentials.json` on first startup.
@@ -169,7 +131,7 @@ mmrelay config generate --output config.yaml
 
 ```bash
 # Create namespace
-kubectl create namespace mmrelay
+kubectl create namespace mmrelay  # Replace with your desired namespace
 
 # Create PersistentVolumeClaim
 kubectl apply -f - <<EOF
@@ -177,7 +139,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: mmrelay-data
-  namespace: mmrelay
+  namespace: mmrelay  # Replace with your chosen namespace
 spec:
   accessModes:
     - ReadWriteOnce
@@ -189,7 +151,7 @@ EOF
 # Create ConfigMap from your config file
 kubectl create configmap mmrelay-config \
   --from-file=config.yaml=config.yaml \
-  --namespace=mmrelay
+  --namespace=mmrelay  # Replace with your chosen namespace
 
 # Create Secret for Matrix credentials (choose one method from above)
 # Method 1: Environment variables
@@ -199,7 +161,7 @@ kubectl create secret generic mmrelay-matrix-credentials \
   --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.example.org \
   --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@bot:example.org \
   --from-literal=MMRELAY_MATRIX_PASSWORD="$MMRELAY_MATRIX_PASSWORD" \
-  --namespace=mmrelay
+  --namespace=mmrelay  # Replace with your chosen namespace
 
 # Apply the deployment (use generated or create your own)
 kubectl apply -f mmrelay-deployment.yaml
@@ -627,7 +589,7 @@ For advanced setup, you might want an init container:
 ```yaml
 initContainers:
   - name: setup
-    image: ghcr.io/jeremiah-k/mmrelay:latest
+    image: ghcr.io/jeremiah-k/mmrelay:v1.3.0 # Pin to specific version for production
     command: ["sh", "-c"]
     args:
       - |

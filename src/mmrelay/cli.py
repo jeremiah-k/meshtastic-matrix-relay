@@ -1550,16 +1550,17 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
             print("\n📝 Next steps:")
             print("   1. Review and edit the generated ConfigMap with your settings:")
             print(f"      nano {output_dir}/mmrelay-configmap.yaml")
+            print()
 
             if config.get("use_credentials_file"):
-                print("   2. Create credentials.json using 'mmrelay auth login'")
-                print("   3. Update the secret with your credentials.json:")
+                print("   • Create credentials.json using 'mmrelay auth login'")
+                print("   • Update the secret with your credentials.json:")
                 print("      kubectl create secret generic mmrelay-credentials-json \\")
                 print(
                     "        --from-file=credentials.json=$HOME/.mmrelay/credentials.json"
                 )
             else:
-                print("   2. Create a secret with your Matrix credentials:")
+                print("   • Create a secret with your Matrix credentials:")
                 print(
                     "      read -s -p 'Matrix password: ' MMRELAY_MATRIX_PASSWORD; echo"
                 )
@@ -1576,9 +1577,8 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
                     "        --from-literal=MMRELAY_MATRIX_PASSWORD=$MMRELAY_MATRIX_PASSWORD"
                 )
 
-            print(
-                f"   {3 if config.get('use_credentials_file') else 4}. Apply the manifests:"
-            )
+            print()
+            print("   2. Apply the manifests:")
             print(f"      kubectl apply -f {output_dir}/")
             print("\n📖 For detailed instructions, see docs/KUBERNETES.md")
 

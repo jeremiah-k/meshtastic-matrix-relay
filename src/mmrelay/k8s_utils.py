@@ -216,26 +216,50 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
 
     # Handle credentials file mounting (if enabled)
     if config.get("use_credentials_file", False):
+        original_content = deployment_content
         deployment_content = deployment_content.replace(
-            "# CREDENTIALS_VOLUME_MOUNT\n          # For credentials.json authentication, uncomment:\n          # - name: credentials\n          #   mountPath: /app/data/credentials.json\n          #   subPath: credentials.json\n          #   readOnly: true",
+            "# CREDENTIALS_VOLUME_MOUNT\n            # For credentials.json authentication, uncomment:\n            # - name: credentials\n            #   mountPath: /app/data/credentials.json\n            #   subPath: credentials.json\n            #   readOnly: true",
             "- name: credentials\n            mountPath: /app/data/credentials.json\n            subPath: credentials.json\n            readOnly: true",
         )
+        if deployment_content == original_content:
+            raise ValueError(
+                "Failed to replace CREDENTIALS_VOLUME_MOUNT marker in deployment template. "
+                "The template structure may have changed."
+            )
+        original_content = deployment_content
         deployment_content = deployment_content.replace(
             "# CREDENTIALS_VOLUME\n        # For credentials.json authentication, uncomment:\n        # - name: credentials\n        #   secret:\n        #     secretName: mmrelay-credentials-json\n        #     items:\n        #       - key: credentials.json\n        #         path: credentials.json",
             "- name: credentials\n          secret:\n            secretName: mmrelay-credentials-json\n            items:\n              - key: credentials.json\n                path: credentials.json",
         )
+        if deployment_content == original_content:
+            raise ValueError(
+                "Failed to replace CREDENTIALS_VOLUME marker in deployment template. "
+                "The template structure may have changed."
+            )
 
     # Handle serial connection (if enabled)
     if config["connection_type"] == "serial":
         serial_device = config.get("serial_device", "/dev/ttyUSB0")
+        original_content = deployment_content
         deployment_content = deployment_content.replace(
-            "# SERIAL_VOLUME_MOUNT\n          # For serial connections, uncomment and adjust the device path:\n          # - name: serial-device\n          #   mountPath: /dev/ttyUSB0",
+            "# SERIAL_VOLUME_MOUNT\n            # For serial connections, uncomment and adjust the device path:\n            # - name: serial-device\n            #   mountPath: /dev/ttyUSB0",
             f"- name: serial-device\n            mountPath: {serial_device}",
         )
+        if deployment_content == original_content:
+            raise ValueError(
+                "Failed to replace SERIAL_VOLUME_MOUNT marker in deployment template. "
+                "The template structure may have changed."
+            )
+        original_content = deployment_content
         deployment_content = deployment_content.replace(
             "# SERIAL_VOLUME\n        # For serial connections, uncomment and adjust:\n        # - name: serial-device\n        #   hostPath:\n        #     path: /dev/ttyUSB0\n        #     type: CharDevice",
             f"- name: serial-device\n          hostPath:\n            path: {serial_device}\n            type: CharDevice",
         )
+        if deployment_content == original_content:
+            raise ValueError(
+                "Failed to replace SERIAL_VOLUME marker in deployment template. "
+                "The template structure may have changed."
+            )
 
     deployment_path = os.path.join(output_dir, "mmrelay-deployment.yaml")
     with open(deployment_path, "w", encoding="utf-8") as f:

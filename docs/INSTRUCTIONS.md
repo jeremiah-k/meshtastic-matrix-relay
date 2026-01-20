@@ -248,7 +248,7 @@ mmrelay k8s generate-manifests
 
 # Review and customize the generated manifests
 nano k8s/mmrelay-configmap.yaml
-nano k8s/mmrelay-secret.yaml
+nano k8s/mmrelay-secret-credentials.yaml
 
 # Deploy to your cluster
 kubectl apply -f k8s/
