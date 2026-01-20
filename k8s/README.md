@@ -128,7 +128,7 @@ spec:
   storageClassName: fast-ssd # Your storage class
   resources:
     requests:
-      storage: 5Gi # Adjust size
+      storage: 1Gi # Adjust size
 ```
 
 ### Adjust Resource Limits

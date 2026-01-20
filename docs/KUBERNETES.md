@@ -284,9 +284,9 @@ Available environment variables:
 
 ## Storage Configuration
 
-### Default PVC (1Gi)
+### Default PVC (256Mi)
 
-The default `k8s/pvc.yaml` requests 1Gi of storage:
+The default `k8s/pvc.yaml` requests 256Mi of storage:
 
 ```yaml
 spec:
@@ -294,7 +294,7 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: 1Gi
+      storage: 256Mi
   storageClassName: standard
 ```
 
@@ -307,7 +307,7 @@ spec:
   storageClassName: fast-ssd # Change this
   resources:
     requests:
-      storage: 5Gi # Adjust size
+      storage: 1Gi # Adjust size
 ```
 
 Common storage classes:
@@ -320,8 +320,8 @@ Common storage classes:
 ### Storage Sizing
 
 - **Minimum**: 100Mi (basic usage)
-- **Recommended**: 1Gi (includes E2EE keys and database growth)
-- **Large deployment**: 5Gi+ (large message history, many plugins)
+- **Recommended**: 256Mi (includes E2EE keys and database growth)
+- **Large deployment**: 1Gi+ (large message history, many plugins)
 
 ## Health Monitoring
 
