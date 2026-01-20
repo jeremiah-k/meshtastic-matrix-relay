@@ -216,6 +216,48 @@ class TestK8sUtils(unittest.TestCase):
         self.assertEqual(config["storage_class"], "fast-storage")
         self.assertEqual(config["storage_size"], "5Gi")
 
+    @patch("builtins.input")
+    @patch("builtins.print")
+    def test_prompt_for_config_invalid_auth_choice(self, mock_print, mock_input):
+        """Test prompt_for_config with invalid authentication choice defaults to 1."""
+        mock_input.side_effect = [
+            "",  # namespace (default)
+            "",  # image_tag (latest)
+            "invalid",  # invalid auth_choice
+            "",  # connection_type (1)
+            "",  # meshtastic_host (meshtastic.local)
+            "",  # meshtastic_port (4403)
+            "",  # storage_class (standard)
+            "",  # storage_size (1Gi)
+        ]
+
+        config = prompt_for_config()
+
+        self.assertEqual(config["namespace"], "default")
+        self.assertFalse(config["use_credentials_file"])
+        mock_print.assert_any_call("Invalid choice; defaulting to 1.")
+
+    @patch("builtins.input")
+    @patch("builtins.print")
+    def test_prompt_for_config_invalid_connection_choice(self, mock_print, mock_input):
+        """Test prompt_for_config with invalid connection choice defaults to 1."""
+        mock_input.side_effect = [
+            "",  # namespace (default)
+            "",  # image_tag (latest)
+            "",  # auth_method (1)
+            "3",  # invalid connection_type
+            "",  # meshtastic_host (meshtastic.local)
+            "",  # meshtastic_port (4403)
+            "",  # storage_class (standard)
+            "",  # storage_size (1Gi)
+        ]
+
+        config = prompt_for_config()
+
+        self.assertEqual(config["namespace"], "default")
+        self.assertEqual(config["connection_type"], "tcp")
+        mock_print.assert_any_call("Invalid choice; defaulting to 1.")
+
 
 if __name__ == "__main__":
     unittest.main()
