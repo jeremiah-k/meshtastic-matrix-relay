@@ -218,11 +218,6 @@ def parse_arguments() -> argparse.Namespace:
         dest="k8s_command", help="K8s commands", required=True
     )
     k8s_subparsers.add_parser(
-        "generate",
-        help="Generate Kubernetes manifests",
-        description="Generate ConfigMap and Secret manifests from sample config",
-    )
-    k8s_subparsers.add_parser(
         "configmap",
         help="Generate ConfigMap manifest",
         description="Generate Kubernetes ConfigMap from sample configuration",
@@ -231,14 +226,6 @@ def parse_arguments() -> argparse.Namespace:
         "secret",
         help="Generate Secret manifest",
         description="Generate Kubernetes Secret from sample configuration",
-    )
-    service_subparsers = service_parser.add_subparsers(
-        dest="service_command", help="Service commands", required=True
-    )
-    service_subparsers.add_parser(
-        "install",
-        help="Install systemd user service",
-        description="Install or update the systemd user service for MMRelay",
     )
 
     # Use parse_known_args to handle unknown arguments gracefully (e.g., pytest args)
@@ -1569,14 +1556,19 @@ data:
 """)
         for line in sample_config.splitlines():
             print(f"    {line}")
-        print()
-        print("To use this ConfigMap:")
-        print("  1. Apply to Kubernetes:")
-        print("     kubectl apply -f k8s-configmap.yaml")
-        print("  2. Or pipe directly:")
-        print("     mmrelay k8s generate configmap | kubectl apply -f -")
-        print()
-        print("Note: Edit the generated ConfigMap to add your actual settings.")
+        print(file=sys.stderr)
+        print("To use this ConfigMap:", file=sys.stderr)
+        print("  1. Apply to Kubernetes:", file=sys.stderr)
+        print("     kubectl apply -f k8s-configmap.yaml", file=sys.stderr)
+        print("  2. Or pipe directly:", file=sys.stderr)
+        print(
+            "     mmrelay k8s generate configmap | kubectl apply -f -", file=sys.stderr
+        )
+        print(file=sys.stderr)
+        print(
+            "Note: Edit the generated ConfigMap to add your actual settings.",
+            file=sys.stderr,
+        )
         return 0
 
     except (IOError, OSError, UnicodeDecodeError) as e:
@@ -1609,18 +1601,22 @@ metadata:
 type: Opaque
 stringData:
   matrix-password: your_secure_password_here""")
-    print()
-    print("To use this Secret:")
-    print("  1. Edit the password field above with your actual password")
-    print("  2. Apply to Kubernetes:")
-    print("     kubectl apply -f k8s-secret.yaml")
-    print("  3. Update deployment to read from Secret:")
+    print(file=sys.stderr)
+    print("To use this Secret:", file=sys.stderr)
     print(
-        "     kubectl set env deployment/mmrelay --from=secret/mmrelay-matrix-password/matrix-password"
+        "  1. Edit the password field above with your actual password", file=sys.stderr
     )
-    print()
+    print("  2. Apply to Kubernetes:", file=sys.stderr)
+    print("     kubectl apply -f k8s-secret.yaml", file=sys.stderr)
+    print("  3. Update deployment to read from Secret:", file=sys.stderr)
     print(
-        "Security Note: Never commit Secret files with real passwords to version control."
+        "     kubectl set env deployment/mmrelay --from=secret/mmrelay-matrix-password/matrix-password",
+        file=sys.stderr,
+    )
+    print(file=sys.stderr)
+    print(
+        "Security Note: Never commit Secret files with real passwords to version control.",
+        file=sys.stderr,
     )
     return 0
 

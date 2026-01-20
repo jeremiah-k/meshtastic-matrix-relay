@@ -66,8 +66,8 @@ Edit `k8s/configmap.yaml` before applying:
 ```yaml
 matrix:
   homeserver: https://matrix.example.org
-  bot_user_id: "@bot:example.matrix.org
-  password: your_password_here  # Set this
+  bot_user_id: "@bot:example.matrix.org"
+  password: your_password_here # Set this
 ```
 
 After first successful startup, MMRelay will:
@@ -153,12 +153,16 @@ For serial connections, add device pass-through:
 spec:
   template:
     spec:
+      volumes:
+        - name: usb-devices
+          hostPath:
+            path: /dev/ttyUSB0
       containers:
         - name: mmrelay
           # ... other config ...
-      hostDevices:
-        - name: ttyUSB0
-          path: /dev/ttyUSB0
+          volumeDevices:
+            - name: usb-devices
+              devicePath: /dev/ttyUSB0
 ```
 
 For BLE, enable host networking (requires privileges):

@@ -58,27 +58,28 @@ This creates:
 - Persistent Volume Claim for data storage
 - Deployment with health checks
 
-### Step 2: Configure MMRelay
+### Updating Configuration
 
-Edit the ConfigMap:
+To update your configuration after deployment:
 
 ```bash
+# Edit ConfigMap
 kubectl edit configmap mmrelay-config
 ```
 
-Update these fields:
+Update these fields as needed:
 
 - `matrix.homeserver` - Your Matrix homeserver URL
 - `matrix.bot_user_id` - Your Matrix bot user ID
 - `meshtastic.host` - Your Meshtastic device hostname/IP
 
-### Step 3: Restart to Apply Changes
+Then restart the pod to apply changes:
 
 ```bash
 kubectl rollout restart deployment/mmrelay
 ```
 
-### Step 4: Verify Deployment
+Verify the update:
 
 ```bash
 # Check pod is running
@@ -92,7 +93,7 @@ kubectl logs -f deployment/mmrelay
 
 MMRelay supports three authentication approaches for Kubernetes:
 
-### Method 1: Password in ConfigMap (Easiest)
+### Method 1: Password in ConfigMap (Easiest, for testing)
 
 Generate ConfigMap and edit to add your password:
 
@@ -109,8 +110,8 @@ Add your password to the generated ConfigMap:
 ```yaml
 matrix:
   homeserver: https://matrix.example.org
-  bot_user_id: "@bot:example.matrix.org
-  password: your_secure_password_here  # Add this line
+  bot_user_id: "@bot:example.matrix.org"
+  password: your_secure_password_here # Add this line
 ```
 
 After first successful startup:
@@ -122,65 +123,19 @@ After first successful startup:
 **Pros:** Simple, no external tools needed
 **Cons:** Password stored in ConfigMap (remove after first run)
 
-### Method 2: External Auth (Recommended for Production)
+### Method 2: Password in Kubernetes Secret (Recommended)
 
-Run `mmrelay auth login` locally and copy credentials to the pod:
-
-```bash
-# 1. Run auth locally
-mmrelay auth login
-
-# 2. Apply deployment (without password in config)
-kubectl apply -f k8s/pvc.yaml -f k8s/deployment.yaml -f k8s/configmap.yaml
-
-# 3. Get pod name
-POD_NAME=$(kubectl get pod -l app=mmrelay -o jsonpath='{.items[0].metadata.name}')
-
-# 4. Copy credentials.json to pod
-kubectl cp ~/.mmrelay/credentials.json ${POD_NAME}:/app/data/
-
-# 5. Restart pod to load credentials
-kubectl rollout restart deployment/mmrelay
-```
-
-**Pros:** No credentials stored in Kubernetes
-**Cons:** Requires local machine with mmrelay installed
-
-### Method 3: Use Existing credentials.json (Alternative)
-
-If you already have a `credentials.json` file:
+Create a Secret for the Matrix password:
 
 ```bash
-# 1. Apply deployment (generate ConfigMap without password)
-mmrelay k8s generate configmap > k8s-configmap.yaml
-# Edit to remove password field
-kubectl apply -f k8s/pvc.yaml -f k8s/configmap.yaml -f k8s/deployment.yaml
+# 1. Generate Secret manifest
+mmrelay k8s generate secret > k8s-secret.yaml
 
-# 2. Copy credentials to pod
-kubectl cp credentials.json $(kubectl get pod -l app=mmrelay -o jsonpath='{.items[0].metadata.name}'):/app/data/
+# 2. Edit the password field
+nano k8s-secret.yaml
 
-# 3. Restart pod
-kubectl rollout restart deployment/mmrelay
-```
-
-After first successful startup:
-
-1. MMRelay logs in to Matrix using the password
-2. Creates `credentials.json` automatically in the PVC
-3. You can remove the password from ConfigMap for security
-
-**Pros:** Simple, no external tools needed
-**Cons:** Password stored in ConfigMap (remove after first run)
-
-### Method 2: Secret for Password (More Secure)
-
-```bash
-# 1. Create Secret from file
-echo -n "your_password" | kubectl create secret generic mmrelay-matrix-password \
-  --from-file=matrix-password=/dev/stdin
-
-# 2. Use deployment-with-secret.yaml
-kubectl apply -f deployment-with-secret.yaml
+# 3. Apply Secret
+kubectl apply -f k8s-secret.yaml
 ```
 
 The deployment reads `MMRELAY_MATRIX_PASSWORD` from the Secret and automatically creates `credentials.json`.
@@ -188,17 +143,22 @@ The deployment reads `MMRELAY_MATRIX_PASSWORD` from the Secret and automatically
 **Pros:** Password stored in Kubernetes Secret (more secure)
 **Cons:** Requires Secret creation step
 
-### Method 3: External Auth (Most Secure)
+### Method 3: External Authentication with credentials.json (Most Secure)
+
+Run `mmrelay auth login` locally and copy credentials to the pod:
 
 ```bash
 # 1. Run auth locally on your machine
 mmrelay auth login
 
-# 2. Copy credentials.json to pod
+# 2. Apply deployment (without password in config)
+kubectl apply -f k8s/pvc.yaml -f k8s/configmap.yaml -f k8s/deployment.yaml
+
+# 3. Copy credentials.json to pod
 kubectl cp ~/.mmrelay/credentials.json \
   $(kubectl get pod -l app=mmrelay -o jsonpath='{.items[0].metadata.name}'):/app/data/
 
-# 3. Restart deployment
+# 4. Restart deployment
 kubectl rollout restart deployment/mmrelay
 ```
 
@@ -239,7 +199,7 @@ The `k8s/configmap.yaml` file contains all MMRelay settings. Edit it before appl
 ```yaml
 matrix:
   homeserver: https://matrix.example.org
-  bot_user_id: "@bot:example.matrix.org
+  bot_user_id: "@bot:example.matrix.org"
   password: optional_password_here
 
 matrix_rooms:
@@ -408,17 +368,22 @@ meshtastic:
 
 ### Serial Connection
 
-Requires device pass-through to pod:
+Requires device pass-through to pod using hostPath volume:
 
 ```yaml
 # Edit k8s/deployment.yaml
 spec:
   template:
     spec:
-      hostDevices:
-        - name: ttyUSB0
-          path: /dev/ttyUSB0
-          group: 20 # dialout group on many systems
+      volumes:
+        - name: usb-devices
+          hostPath:
+            path: /dev/ttyUSB0
+      containers:
+        - name: mmrelay
+          volumeDevices:
+            - name: usb-devices
+              devicePath: /dev/ttyUSB0
 ```
 
 And in ConfigMap:
@@ -445,6 +410,8 @@ spec:
         capabilities:
           add: ["NET_ADMIN", "NET_RAW"]
 ```
+
+**Security Warning:** Enabling `hostNetwork: true` grants the pod direct access to the host's network interfaces, bypassing Kubernetes network policies. This exposes the host network to potential security risks. Only use this configuration in trusted environments with appropriate network segmentation and access controls.
 
 And in ConfigMap:
 
@@ -618,54 +585,15 @@ Common causes:
 ### Backup PVC Data
 
 ```bash
-# Create a pod with PVC mounted for backup
-kubectl run backup-pod --image=busybox --overrides='
-{
-  "spec": {
-    "containers": [{
-      "name": "backup",
-      "image": "busybox",
-      "command": ["tar", "czf", "-", "/app/data"],
-      "volumeMounts": [{
-        "name": "data",
-        "mountPath": "/app/data"
-      }]
-    }],
-    "volumes": [{
-      "name": "data",
-      "persistentVolumeClaim": {
-        "claimName": "mmrelay-data"
-      }
-    }]
-  }
-}' --rm -i --restart=Never > backup.tar.gz
+# Backup directly from running pod
+kubectl exec deployment/mmrelay -- tar czf - /app/data > backup.tar.gz
 ```
 
 ### Restore from Backup
 
 ```bash
-# Restore backup to PVC
-kubectl run restore-pod --image=busybox --overrides='
-{
-  "spec": {
-    "containers": [{
-      "name": "restore",
-      "image": "busybox",
-      "command": ["tar", "xzf", "-", "-C", "/app"],
-      "stdin": true,
-      "volumeMounts": [{
-        "name": "data",
-        "mountPath": "/app/data"
-      }]
-    }],
-    "volumes": [{
-      "name": "data",
-      "persistentVolumeClaim": {
-        "claimName": "mmrelay-data"
-      }
-    }]
-  }
-}' -i --restart=Never < backup.tar.gz
+# Restore backup to running pod
+cat backup.tar.gz | kubectl exec -i deployment/mmrelay -- tar xzf - -C /app
 ```
 
 ## Uninstalling
@@ -712,7 +640,7 @@ spec:
 
 ### Custom Service (Optional)
 
-Not required for TCP connections, but useful for node port access:
+Not required for TCP connections. If you need internal cluster access, use ClusterIP:
 
 ```yaml
 apiVersion: v1
@@ -726,8 +654,10 @@ spec:
     - port: 4403
       targetPort: 4403
       protocol: TCP
-  type: LoadBalancer # Or NodePort
+  type: ClusterIP
 ```
+
+**Note:** MMRelay initiates outbound connections to Meshtastic devices. A Service is only needed if you have specific requirements for inbound connections (e.g., metrics endpoints, web UI).
 
 ## Security Considerations
 
