@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: mmrelay
-  namespace: { { NAMESPACE } }
+  namespace: {{NAMESPACE}}
   labels:
     app: mmrelay
 spec:
@@ -60,17 +60,9 @@ spec:
             - name: data
               mountPath: /app/data
 
-            # CREDENTIALS_VOLUME_MOUNT
-            # For credentials.json authentication, uncomment:
-            # - name: credentials
-            #   mountPath: /app/data/credentials.json
-            #   subPath: credentials.json
-            #   readOnly: true
+            {{CREDENTIALS_VOLUME_MOUNT}}
 
-            # SERIAL_VOLUME_MOUNT
-            # For serial connections, uncomment and adjust the device path:
-            # - name: serial-device
-            #   mountPath: /dev/ttyUSB0
+            {{SERIAL_VOLUME_MOUNT}}
 
           resources:
             requests:
@@ -116,21 +108,9 @@ spec:
           persistentVolumeClaim:
             claimName: mmrelay-data
 
-        # CREDENTIALS_VOLUME
-        # For credentials.json authentication, uncomment:
-        # - name: credentials
-        #   secret:
-        #     secretName: mmrelay-credentials-json
-        #     items:
-        #       - key: credentials.json
-        #         path: credentials.json
+        {{CREDENTIALS_VOLUME}}
 
-        # SERIAL_VOLUME
-        # For serial connections, uncomment and adjust:
-        # - name: serial-device
-        #   hostPath:
-        #     path: /dev/ttyUSB0
-        #     type: CharDevice
+        {{SERIAL_VOLUME}}
 
       # For serial/BLE connections, you may need specific node selection
       # nodeSelector:

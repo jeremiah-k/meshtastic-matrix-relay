@@ -2,16 +2,20 @@
 
 import importlib.resources
 import os
+import re
 from typing import Any
+
+_PLACEHOLDER_RE = re.compile(r"\{\{([A-Za-z0-9_]+)\}\}")
+_UNRESOLVED_RE = re.compile(r"\{\{[^}]+\}\}")
 
 
 def get_k8s_template_path(template_name: str) -> str:
     """
     Resolve the filesystem path to a Kubernetes template file bundled in the mmrelay.tools.k8s package.
-    
+
     Parameters:
         template_name (str): Template filename (for example, "deployment.yaml").
-    
+
     Returns:
         str: Filesystem path to the specified template file.
     """
@@ -21,12 +25,12 @@ def get_k8s_template_path(template_name: str) -> str:
 def load_template(template_name: str) -> str:
     """
     Load a Kubernetes template by name and return its content.
-    
+
     The template file is resolved from the mmrelay.tools.k8s templates directory and read using UTF-8 encoding.
-    
+
     Parameters:
         template_name (str): Name of the template file to load (located in the k8s templates package).
-    
+
     Returns:
         str: The template file content.
     """
@@ -41,24 +45,67 @@ def render_template(template: str, variables: dict[str, Any]) -> str:
 
     Parameters:
         template (str): Template content with {{VARIABLE}} placeholders
-        variables (dict): Dictionary of variable names to values
+        variables (dict): Dictionary of variable names to values. Placeholders
+            on their own line are treated as block substitutions and will
+            inherit the line indentation.
 
     Returns:
         str: Rendered template
     """
-    rendered = template
-    for key, value in variables.items():
-        placeholder = f"{{{{{key}}}}}"
-        rendered = rendered.replace(placeholder, str(value))
+    placeholders = set(_PLACEHOLDER_RE.findall(template))
+    missing = sorted(placeholders - set(variables.keys()))
+    if missing:
+        missing_vars = ", ".join(missing)
+        raise ValueError(f"Missing template variables: {missing_vars}")
+
+    rendered_lines: list[str] = []
+    for line in template.splitlines():
+        match = _PLACEHOLDER_RE.fullmatch(line.strip())
+        if match:
+            key = match.group(1)
+            value = variables.get(key)
+            if value is None or value == "":
+                continue
+            value_str = str(value)
+            indent = line[: len(line) - len(line.lstrip(" "))]
+            for value_line in value_str.splitlines():
+                if value_line:
+                    rendered_lines.append(f"{indent}{value_line}")
+                else:
+                    rendered_lines.append("")
+            continue
+        rendered_lines.append(line)
+
+    rendered = "\n".join(rendered_lines)
+
+    def replace_inline(match: re.Match[str]) -> str:
+        key = match.group(1)
+        value = variables.get(key)
+        if value is None:
+            raise ValueError(f"Missing template value for '{key}'")
+        return str(value)
+
+    rendered = _PLACEHOLDER_RE.sub(replace_inline, rendered)
+
+    leftover = sorted(set(_PLACEHOLDER_RE.findall(rendered)))
+    if leftover:
+        leftover_vars = ", ".join(leftover)
+        raise ValueError(f"Unresolved template placeholders: {leftover_vars}")
+
+    unresolved_tokens = sorted(set(_UNRESOLVED_RE.findall(rendered)))
+    if unresolved_tokens:
+        unresolved = ", ".join(unresolved_tokens)
+        raise ValueError(f"Unresolved template placeholders: {unresolved}")
+
     return rendered
 
 
 def prompt_for_config() -> dict[str, Any]:
     """
     Interactively collect MMRelay deployment settings via console prompts for Kubernetes manifest generation.
-    
+
     Prompts the user for namespace, container image tag, authentication method, connection type and related connection details, and persistent storage settings. The function returns a dictionary with the collected configuration; keys present depend on choices (e.g., TCP vs serial connection).
-    
+
     Returns:
         dict: Collected configuration containing:
             - namespace (str): Kubernetes namespace to use.
@@ -130,11 +177,11 @@ def prompt_for_config() -> dict[str, Any]:
 def generate_configmap_from_sample(namespace: str, output_path: str) -> str:
     """
     Create a Kubernetes ConfigMap YAML that embeds the project's sample configuration under `data.config.yaml`.
-    
+
     Parameters:
         namespace (str): Kubernetes namespace to set on the ConfigMap.
         output_path (str): Filesystem path where the generated ConfigMap YAML will be written.
-    
+
     Returns:
         str: The path to the written ConfigMap file (`output_path`).
     """
@@ -218,61 +265,100 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
         generated_files.append(secret_path)
 
     # 4. Generate Deployment
+    serial_device = config.get("serial_device", "/dev/ttyUSB0")
+    credentials_volume_mount = "\n".join(
+        [
+            "- name: credentials",
+            "  mountPath: /app/data/credentials.json",
+            "  subPath: credentials.json",
+            "  readOnly: true",
+        ]
+    )
+    credentials_volume_mount_comment = "\n".join(
+        [
+            "# For credentials.json authentication, add:",
+            "# - name: credentials",
+            "#   mountPath: /app/data/credentials.json",
+            "#   subPath: credentials.json",
+            "#   readOnly: true",
+        ]
+    )
+    credentials_volume = "\n".join(
+        [
+            "- name: credentials",
+            "  secret:",
+            "    secretName: mmrelay-credentials-json",
+            "    items:",
+            "      - key: credentials.json",
+            "        path: credentials.json",
+        ]
+    )
+    credentials_volume_comment = "\n".join(
+        [
+            "# For credentials.json authentication, add:",
+            "# - name: credentials",
+            "#   secret:",
+            "#     secretName: mmrelay-credentials-json",
+            "#     items:",
+            "#       - key: credentials.json",
+            "#         path: credentials.json",
+        ]
+    )
+    serial_volume_mount = "\n".join(
+        [
+            "- name: serial-device",
+            f"  mountPath: {serial_device}",
+        ]
+    )
+    serial_volume_mount_comment = "\n".join(
+        [
+            "# For serial connections, add:",
+            "# - name: serial-device",
+            f"#   mountPath: {serial_device}",
+        ]
+    )
+    serial_volume = "\n".join(
+        [
+            "- name: serial-device",
+            "  hostPath:",
+            f"    path: {serial_device}",
+            "    type: CharDevice",
+        ]
+    )
+    serial_volume_comment = "\n".join(
+        [
+            "# For serial connections, add:",
+            "# - name: serial-device",
+            "#   hostPath:",
+            f"#     path: {serial_device}",
+            "#     type: CharDevice",
+        ]
+    )
+    if config.get("use_credentials_file", False):
+        credentials_volume_mount_block = credentials_volume_mount
+        credentials_volume_block = credentials_volume
+    else:
+        credentials_volume_mount_block = credentials_volume_mount_comment
+        credentials_volume_block = credentials_volume_comment
+    if config["connection_type"] == "serial":
+        serial_volume_mount_block = serial_volume_mount
+        serial_volume_block = serial_volume
+    else:
+        serial_volume_mount_block = serial_volume_mount_comment
+        serial_volume_block = serial_volume_comment
+
     deployment_template = load_template("deployment.yaml")
     deployment_content = render_template(
         deployment_template,
         {
             "NAMESPACE": config["namespace"],
             "IMAGE_TAG": config["image_tag"],
+            "CREDENTIALS_VOLUME_MOUNT": credentials_volume_mount_block,
+            "CREDENTIALS_VOLUME": credentials_volume_block,
+            "SERIAL_VOLUME_MOUNT": serial_volume_mount_block,
+            "SERIAL_VOLUME": serial_volume_block,
         },
     )
-
-    # Handle credentials file mounting (if enabled)
-    if config.get("use_credentials_file", False):
-        original_content = deployment_content
-        deployment_content = deployment_content.replace(
-            "# CREDENTIALS_VOLUME_MOUNT\n            # For credentials.json authentication, uncomment:\n            # - name: credentials\n            #   mountPath: /app/data/credentials.json\n            #   subPath: credentials.json\n            #   readOnly: true",
-            "- name: credentials\n            mountPath: /app/data/credentials.json\n            subPath: credentials.json\n            readOnly: true",
-        )
-        if deployment_content == original_content:
-            raise ValueError(
-                "Failed to replace CREDENTIALS_VOLUME_MOUNT marker in deployment template. "
-                "The template structure may have changed."
-            )
-        original_content = deployment_content
-        deployment_content = deployment_content.replace(
-            "# CREDENTIALS_VOLUME\n        # For credentials.json authentication, uncomment:\n        # - name: credentials\n        #   secret:\n        #     secretName: mmrelay-credentials-json\n        #     items:\n        #       - key: credentials.json\n        #         path: credentials.json",
-            "- name: credentials\n          secret:\n            secretName: mmrelay-credentials-json\n            items:\n              - key: credentials.json\n                path: credentials.json",
-        )
-        if deployment_content == original_content:
-            raise ValueError(
-                "Failed to replace CREDENTIALS_VOLUME marker in deployment template. "
-                "The template structure may have changed."
-            )
-
-    # Handle serial connection (if enabled)
-    if config["connection_type"] == "serial":
-        serial_device = config.get("serial_device", "/dev/ttyUSB0")
-        original_content = deployment_content
-        deployment_content = deployment_content.replace(
-            "# SERIAL_VOLUME_MOUNT\n            # For serial connections, uncomment and adjust the device path:\n            # - name: serial-device\n            #   mountPath: /dev/ttyUSB0",
-            f"- name: serial-device\n            mountPath: {serial_device}",
-        )
-        if deployment_content == original_content:
-            raise ValueError(
-                "Failed to replace SERIAL_VOLUME_MOUNT marker in deployment template. "
-                "The template structure may have changed."
-            )
-        original_content = deployment_content
-        deployment_content = deployment_content.replace(
-            "# SERIAL_VOLUME\n        # For serial connections, uncomment and adjust:\n        # - name: serial-device\n        #   hostPath:\n        #     path: /dev/ttyUSB0\n        #     type: CharDevice",
-            f"- name: serial-device\n          hostPath:\n            path: {serial_device}\n            type: CharDevice",
-        )
-        if deployment_content == original_content:
-            raise ValueError(
-                "Failed to replace SERIAL_VOLUME marker in deployment template. "
-                "The template structure may have changed."
-            )
 
     deployment_path = os.path.join(output_dir, "mmrelay-deployment.yaml")
     with open(deployment_path, "w", encoding="utf-8") as f:

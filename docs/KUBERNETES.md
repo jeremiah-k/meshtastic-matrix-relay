@@ -324,14 +324,25 @@ nodeSelector:
   kubernetes.io/hostname: node-with-device
 ```
 
-3. Add security context for device access:
+3. Add security context for device access (prefer scoped permissions):
 
 ```yaml
 securityContext:
-  privileged: true # Required for device access
+  runAsUser: 0
+  runAsGroup: 0
+  supplementalGroups:
+    - 20 # Replace with the device group ID (often "dialout")
+  allowPrivilegeEscalation: false
 ```
 
-**Security Warning:** Running containers in privileged mode grants them all capabilities of the host machine, which is a significant security risk. This should only be used when absolutely necessary for device access. Consider using more granular security contexts or capabilities (e.g., `CAP_SYS_ADMIN`, `CAP_MKNOD`) if they can achieve the same outcome with less risk.
+If the device still cannot be opened, you may need broader permissions depending on your cluster's security policy. Consider adding specific capabilities (for example `CAP_SYS_ADMIN` or `CAP_MKNOD`) or, as a last resort:
+
+```yaml
+securityContext:
+  privileged: true
+```
+
+**Security Warning:** Running containers in privileged mode grants them all capabilities of the host machine, which is a significant security risk. This should only be used when absolutely necessary for device access.
 
 ### BLE Connection
 
@@ -562,25 +573,40 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels:
-              name: kube-system
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
       ports:
         - protocol: UDP
           port: 53
-    # Allow Matrix homeserver (adjust as needed)
+        - protocol: TCP
+          port: 53
+    # Allow Matrix homeserver (external). Replace with your homeserver IP/CIDR.
     - to:
-        - podSelector: {}
+        - ipBlock:
+            cidr: 203.0.113.10/32
       ports:
         - protocol: TCP
           port: 443
         - protocol: TCP
           port: 8448
-    # Allow Meshtastic device
+    # Allow Meshtastic device (LAN). Replace with your device IP/CIDR.
     - to:
-        - podSelector: {}
+        - ipBlock:
+            cidr: 192.168.1.50/32
       ports:
         - protocol: TCP
           port: 4403
 ```
+
+Notes:
+
+- Update the DNS labels to match your cluster (CoreDNS labels can vary).
+- For external services, NetworkPolicy can only match IPs/CIDRs; if you need
+  hostname-based rules, use an egress gateway or proxy.
+- If your Matrix homeserver runs inside the cluster, replace the `ipBlock`
+  with namespace/pod selectors for that service.
 
 ### Init Containers
 

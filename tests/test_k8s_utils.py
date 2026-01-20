@@ -42,6 +42,22 @@ class TestK8sUtils(unittest.TestCase):
         result = render_template(template, variables)
         self.assertEqual(result, "Hello Bob")
 
+    def test_render_template_missing_variable_raises(self):
+        """Test that missing variables raise a ValueError."""
+        template = "Hello {{NAME}}"
+        with self.assertRaises(ValueError):
+            render_template(template, {})
+
+    def test_render_template_block_placeholder(self):
+        """Test block placeholder indentation handling."""
+        template = "items:\n  {{BLOCK}}\nend: true"
+        variables = {"BLOCK": "- name: one\n  value: 1"}
+        result = render_template(template, variables)
+        self.assertEqual(
+            result,
+            "items:\n  - name: one\n    value: 1\nend: true",
+        )
+
     def test_load_template_configmap(self):
         """Test loading a Kubernetes template file."""
         # This will test that the template file exists and is readable
