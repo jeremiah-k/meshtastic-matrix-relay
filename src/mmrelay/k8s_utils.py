@@ -7,26 +7,28 @@ from typing import Any
 
 def get_k8s_template_path(template_name: str) -> str:
     """
-    Get the filesystem path to a Kubernetes template file.
-
+    Resolve the filesystem path to a Kubernetes template file bundled in the mmrelay.tools.k8s package.
+    
     Parameters:
-        template_name (str): Name of the template file (e.g., "deployment.yaml")
-
+        template_name (str): Template filename (for example, "deployment.yaml").
+    
     Returns:
-        str: Filesystem path to the template file
+        str: Filesystem path to the specified template file.
     """
     return str(importlib.resources.files("mmrelay.tools.k8s").joinpath(template_name))
 
 
 def load_template(template_name: str) -> str:
     """
-    Load a Kubernetes template file as a string.
-
+    Load a Kubernetes template by name and return its content.
+    
+    The template file is resolved from the mmrelay.tools.k8s templates directory and read using UTF-8 encoding.
+    
     Parameters:
-        template_name (str): Name of the template file
-
+        template_name (str): Name of the template file to load (located in the k8s templates package).
+    
     Returns:
-        str: Template content
+        str: The template file content.
     """
     template_path = get_k8s_template_path(template_name)
     with open(template_path, "r", encoding="utf-8") as f:
@@ -53,10 +55,21 @@ def render_template(template: str, variables: dict[str, Any]) -> str:
 
 def prompt_for_config() -> dict[str, Any]:
     """
-    Interactively prompt user for Kubernetes deployment configuration.
-
+    Interactively collect MMRelay deployment settings via console prompts for Kubernetes manifest generation.
+    
+    Prompts the user for namespace, container image tag, authentication method, connection type and related connection details, and persistent storage settings. The function returns a dictionary with the collected configuration; keys present depend on choices (e.g., TCP vs serial connection).
+    
     Returns:
-        dict: Configuration values for manifest generation
+        dict: Collected configuration containing:
+            - namespace (str): Kubernetes namespace to use.
+            - image_tag (str): MMRelay container image tag.
+            - use_credentials_file (bool): True if a credentials file (Secret) should be used, False to use environment-variable-based auth.
+            - connection_type (str): "tcp" or "serial".
+            - meshtastic_host (str): Hostname/IP of Meshtastic device (present when connection_type == "tcp").
+            - meshtastic_port (str): Port of Meshtastic device (present when connection_type == "tcp").
+            - serial_device (str): Host serial device path (present when connection_type == "serial").
+            - storage_class (str): StorageClass name for the persistent volume.
+            - storage_size (str): Size for the persistent volume (e.g., "1Gi").
     """
     print("\n🚀 MMRelay Kubernetes Manifest Generator\n")
     print("This wizard will help you generate Kubernetes manifests for MMRelay.")
@@ -116,14 +129,14 @@ def prompt_for_config() -> dict[str, Any]:
 
 def generate_configmap_from_sample(namespace: str, output_path: str) -> str:
     """
-    Generate a Kubernetes ConfigMap YAML from the sample config.
-
+    Create a Kubernetes ConfigMap YAML that embeds the project's sample configuration under `data.config.yaml`.
+    
     Parameters:
-        namespace (str): Kubernetes namespace
-        output_path (str): Path where ConfigMap YAML should be written
-
+        namespace (str): Kubernetes namespace to set on the ConfigMap.
+        output_path (str): Filesystem path where the generated ConfigMap YAML will be written.
+    
     Returns:
-        str: Path to generated ConfigMap file
+        str: The path to the written ConfigMap file (`output_path`).
     """
     from mmrelay.tools import get_sample_config_path
 
