@@ -7,6 +7,7 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 - **[Installation Guide](INSTRUCTIONS.md)** - Complete setup instructions for MMRelay
 - **[E2EE Guide](E2EE.md)** - Matrix End-to-End Encryption setup and usage
 - **[Docker Guide](DOCKER.md)** - Docker deployment and configuration
+- **[Kubernetes Guide](KUBERNETES.md)** - Kubernetes deployment and configuration
 
 ## Advanced Configuration
 

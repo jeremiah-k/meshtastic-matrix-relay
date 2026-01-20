@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mmrelay-config
+data:
+  config.yaml: |
+    matrix:
+      homeserver: https://matrix.example.org
+      bot_user_id: "@botuser:example.matrix.org
+      # Remove password after first successful startup, or use mmrelay auth login
+      #password: your_matrix_password_here
+
+    matrix_rooms:
+      - id: "#your-room:example.matrix.org"
+        meshtastic_channel: 0
+
+    meshtastic:
+      connection_type: tcp
+      host: meshtastic.local
+      port: 4403
+      meshnet_name: Your Meshnet Name
+      broadcast_enabled: true
+
+    logging:
+      level: info
