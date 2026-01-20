@@ -79,9 +79,10 @@ After first successful startup, MMRelay will:
 ### Option 3: Use External Auth (Recommended for Production)
 
 ```bash
-# 1. Apply deployment (without password in config)
-kubectl apply -f k8s/pvc.yaml
-kubectl apply -f k8s/deployment.yaml
+# 1. Generate ConfigMap and apply resources
+mmrelay k8s configmap > k8s-configmap.yaml
+# Edit if needed before applying:
+kubectl apply -f k8s-configmap.yaml -f k8s/pvc.yaml -f k8s/deployment.yaml
 
 # 2. Get credentials.json from your local system
 # Run mmrelay auth login locally, then copy credentials.json

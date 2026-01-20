@@ -23,14 +23,10 @@ mmrelay k8s configmap > k8s-configmap.yaml
 Edit the generated ConfigMap to add your Matrix and Meshtastic settings:
 
 ```bash
-kubectl edit configmap mmrelay-config
-```
-
-Or edit the file directly:
-
-```bash
 nano k8s-configmap.yaml
 ```
+
+**Note:** The `kubectl edit configmap mmrelay-config` command is available after Step 3 (post-deployment). See the [Updating Configuration](#updating-configuration) section for details on editing the live ConfigMap.
 
 ### Step 3: Apply to Kubernetes
 
@@ -590,7 +586,7 @@ Common causes:
 
 ```bash
 # Backup directly from running pod
-kubectl exec deployment/mmrelay -- tar czf - /app/data > backup.tar.gz
+kubectl exec deployment/mmrelay -- tar czf - -C /app data > backup.tar.gz
 ```
 
 ### Restore from Backup

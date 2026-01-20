@@ -20,7 +20,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: mmrelay
-          image: ghcr.io/jeremiah-k/meshtastic-matrix-relay:v1.2.8
+          image: ghcr.io/jeremiah-k/mmrelay:v1.2.9
           imagePullPolicy: Always
           resources:
             requests:

@@ -1598,7 +1598,7 @@ metadata:
   name: mmrelay-matrix-password
 type: Opaque
 stringData:
-  matrix-password: your_secure_password_here""")
+  MMRELAY_MATRIX_PASSWORD: your_secure_password_here""")
     print(file=sys.stderr)
     print("To use this Secret:", file=sys.stderr)
     print(
