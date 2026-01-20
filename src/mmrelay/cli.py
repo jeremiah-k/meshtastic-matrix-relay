@@ -1530,9 +1530,13 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
             config = prompt_for_config()
 
             # Ask for output directory
-            output_dir = (
-                input("\nOutput directory for manifests [./k8s]: ").strip() or "./k8s"
-            )
+            try:
+                output_dir = (
+                    input("\nOutput directory for manifests [./k8s]: ").strip()
+                    or "./k8s"
+                )
+            except EOFError:
+                output_dir = "./k8s"
 
             # Generate manifests
             print(f"\n📦 Generating Kubernetes manifests in {output_dir}...\n")
@@ -1550,24 +1554,22 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
             if config.get("use_credentials_file"):
                 print("   2. Create credentials.json using 'mmrelay auth login'")
                 print("   3. Update the secret with your credentials.json:")
+                print("      kubectl create secret generic mmrelay-credentials-json \\")
                 print(
-                    f"      kubectl create secret generic mmrelay-credentials-json \\"
-                )
-                print(
-                    f"        --from-file=credentials.json=$HOME/.mmrelay/credentials.json"
+                    "        --from-file=credentials.json=$HOME/.mmrelay/credentials.json"
                 )
             else:
                 print("   2. Create a secret with your Matrix credentials:")
                 print(
-                    f"      kubectl create secret generic mmrelay-matrix-credentials \\"
+                    "      kubectl create secret generic mmrelay-matrix-credentials \\"
                 )
                 print(
-                    f"        --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.org \\"
+                    "        --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.org \\"
                 )
                 print(
-                    f"        --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@bot:matrix.org \\"
+                    "        --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@bot:matrix.org \\"
                 )
-                print(f"        --from-literal=MMRELAY_MATRIX_PASSWORD=your_password")
+                print("        --from-literal=MMRELAY_MATRIX_PASSWORD=your_password")
 
             print(
                 f"   {3 if config.get('use_credentials_file') else 4}. Apply the manifests:"
@@ -1576,9 +1578,11 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
             print("\n📖 For detailed instructions, see docs/KUBERNETES.md")
 
             return 0
-        except (ImportError, KeyboardInterrupt) as e:
+        except (ImportError, KeyboardInterrupt, EOFError) as e:
             if isinstance(e, KeyboardInterrupt):
                 print("\n\nCancelled.")
+            elif isinstance(e, EOFError):
+                print("\n\nInput unavailable; run in an interactive shell.")
             else:
                 print(f"Error: {e}")
             return 1

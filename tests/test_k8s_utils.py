@@ -5,7 +5,7 @@ import sys
 import tempfile
 import unittest
 from unittest import mock
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -135,7 +135,7 @@ class TestK8sUtils(unittest.TestCase):
                 )
 
                 # Check deployment file contains credentials volume
-                deployment_file = [f for f in generated_files if "deployment" in f][0]
+                deployment_file = next(f for f in generated_files if "deployment" in f)
                 with open(deployment_file, "r") as f:
                     deployment_content = f.read()
                     # Should have credentials volume mount uncommented
@@ -160,7 +160,7 @@ class TestK8sUtils(unittest.TestCase):
                 generated_files = generate_manifests(config, tmpdir)
 
                 # Check deployment file contains serial device volume
-                deployment_file = [f for f in generated_files if "deployment" in f][0]
+                deployment_file = next(f for f in generated_files if "deployment" in f)
                 with open(deployment_file, "r") as f:
                     deployment_content = f.read()
                     # Should have serial device volume mount uncommented

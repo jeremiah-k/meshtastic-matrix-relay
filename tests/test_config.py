@@ -1107,6 +1107,7 @@ class TestGetMeshtasticConfigValueUncoveredLines(unittest.TestCase):
             "MMRELAY_MATRIX_BOT_USER_ID": "@bot:example.org",
             "MMRELAY_MATRIX_PASSWORD": "test_password",
         },
+        clear=True,
     )
     def test_load_matrix_config_from_env(self):
         """Test that Matrix configuration is loaded from environment variables."""
@@ -1119,10 +1120,6 @@ class TestGetMeshtasticConfigValueUncoveredLines(unittest.TestCase):
     @patch.dict(os.environ, {}, clear=True)
     def test_load_matrix_config_from_env_empty(self):
         """Test that Matrix config returns None when no env vars are set."""
-        # Clear any existing MMRELAY_MATRIX_* variables
-        for key in list(os.environ.keys()):
-            if key.startswith("MMRELAY_MATRIX_"):
-                del os.environ[key]
         config = load_matrix_config_from_env()
         self.assertIsNone(config)
 
@@ -1132,6 +1129,7 @@ class TestGetMeshtasticConfigValueUncoveredLines(unittest.TestCase):
             "MMRELAY_MATRIX_HOMESERVER": "https://matrix.example.org",
             "MMRELAY_MESHTASTIC_HOST": "meshtastic.local",
         },
+        clear=True,
     )
     def test_apply_env_config_overrides_with_matrix(self):
         """Test that Matrix env vars are applied via apply_env_config_overrides."""
@@ -1148,6 +1146,7 @@ class TestGetMeshtasticConfigValueUncoveredLines(unittest.TestCase):
         {
             "MMRELAY_MATRIX_PASSWORD": "env_password",
         },
+        clear=True,
     )
     def test_apply_env_config_overrides_matrix_password_override(self):
         """Test that Matrix password from env overrides config file password."""

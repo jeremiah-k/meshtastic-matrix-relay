@@ -282,7 +282,7 @@ The generated manifests create a PVC with these defaults:
 
 ### Volume Mount Structure
 
-```
+```text
 /app/data/
 ├── credentials.json (if using auth login method)
 ├── data/

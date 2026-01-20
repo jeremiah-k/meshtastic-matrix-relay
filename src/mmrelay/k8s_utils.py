@@ -2,10 +2,7 @@
 
 import importlib.resources
 import os
-import sys
 from typing import Any
-
-import yaml
 
 
 def get_k8s_template_path(template_name: str) -> str:
@@ -78,6 +75,9 @@ def prompt_for_config() -> dict[str, Any]:
     print("  1. Environment variables (simple, uses K8s secrets)")
     print("  2. Credentials file (advanced, E2EE support via 'mmrelay auth login')")
     auth_choice = input("Choose method [1]: ").strip() or "1"
+    if auth_choice not in {"1", "2"}:
+        print("Invalid choice; defaulting to 1.")
+        auth_choice = "1"
     config["use_credentials_file"] = auth_choice == "2"
 
     # Connection type
@@ -85,6 +85,9 @@ def prompt_for_config() -> dict[str, Any]:
     print("  1. TCP (network)")
     print("  2. Serial")
     conn_choice = input("Choose connection type [1]: ").strip() or "1"
+    if conn_choice not in {"1", "2"}:
+        print("Invalid choice; defaulting to 1.")
+        conn_choice = "1"
     config["connection_type"] = "tcp" if conn_choice == "1" else "serial"
 
     if config["connection_type"] == "tcp":
