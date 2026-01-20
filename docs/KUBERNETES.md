@@ -372,7 +372,7 @@ kubectl get pods -l app=mmrelay
 kubectl describe pod -l app=mmrelay
 
 # View logs
-kubectl logs -f deployment/mmrelay
+kubectl logs -f deploy/mmrelay
 
 # View previous logs if pod restarted
 kubectl logs -l app=mmrelay --previous
@@ -648,7 +648,7 @@ To update to a new version:
 ```bash
 # Update the deployment image
 kubectl set image deployment/mmrelay \
-  mmrelay=ghcr.io/jeremiah-k/mmrelay:v1.3.0
+  mmrelay=ghcr.io/jeremiah-k/mmrelay:<VERSION>  # Replace with desired version
 
 # Or edit the deployment
 kubectl edit deployment mmrelay

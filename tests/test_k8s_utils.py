@@ -72,18 +72,42 @@ class TestK8sUtils(unittest.TestCase):
     def test_generate_configmap_from_sample(self):
         """Test generating ConfigMap from sample config."""
         with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a real sample config file
+            sample_config_path = os.path.join(tmpdir, "sample_config.yaml")
+            sample_config_content = "matrix:\n  homeserver: https://matrix.org\n"
+            with open(sample_config_path, "w", encoding="utf-8") as f:
+                f.write(sample_config_content)
+
             output_path = os.path.join(tmpdir, "configmap.yaml")
 
-            # Mock the sample config path
+            # Only patch get_sample_config_path - let file I/O execute normally
             with patch("mmrelay.tools.get_sample_config_path") as mock_sample:
-                mock_sample.return_value = "/fake/sample_config.yaml"
+                mock_sample.return_value = sample_config_path
 
-                with patch("builtins.open", mock.mock_open(read_data="test: config\n")):
-                    from mmrelay.k8s_utils import generate_configmap_from_sample
+                from mmrelay.k8s_utils import generate_configmap_from_sample
 
-                    result = generate_configmap_from_sample("default", output_path)
-                    # Function should return the path
-                    self.assertEqual(result, output_path)
+                result = generate_configmap_from_sample("default", output_path)
+
+                # Function should return the output path
+                self.assertEqual(result, output_path)
+
+                # Verify the file was actually created
+                self.assertTrue(
+                    os.path.exists(output_path),
+                    f"Output file not created: {output_path}",
+                )
+
+                # Verify the file contains expected YAML structure
+                with open(output_path, "r", encoding="utf-8") as f:
+                    output_content = f.read()
+                    self.assertIn("apiVersion: v1", output_content)
+                    self.assertIn("kind: ConfigMap", output_content)
+                    self.assertIn("name: mmrelay-config", output_content)
+                    self.assertIn("namespace: default", output_content)
+                    self.assertIn("config.yaml: |", output_content)
+                    # Verify sample config content is embedded with proper indentation
+                    self.assertIn("  matrix:", output_content)
+                    self.assertIn("    homeserver: https://matrix.org", output_content)
 
     def test_generate_manifests_creates_files(self):
         """Test that generate_manifests creates the expected files."""
@@ -198,7 +222,6 @@ class TestK8sUtils(unittest.TestCase):
             "",  # meshtastic_port (4403)
             "",  # storage_class (standard)
             "",  # storage_size (1Gi)
-            "",  # enable_e2ee (N)
         ]
 
         config = prompt_for_config()
