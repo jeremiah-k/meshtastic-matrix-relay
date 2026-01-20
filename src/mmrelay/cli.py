@@ -1567,7 +1567,7 @@ data:
         return 0
 
     except (IOError, OSError, UnicodeDecodeError) as e:
-        print(f"Error generating ConfigMap: {e}")
+        print(f"Error generating ConfigMap: {e}", file=sys.stderr)
         return 1
 
 
@@ -1644,7 +1644,7 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
     elif args.k8s_command == "secret":
         return generate_k8s_secret(args)
     else:
-        print(f"Unknown k8s command: {args.k8s_command}")
+        print(f"Unknown k8s command: {args.k8s_command}", file=sys.stderr)
         return 1
 
 

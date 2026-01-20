@@ -366,11 +366,12 @@ spec:
         - name: usb-devices
           hostPath:
             path: /dev/ttyUSB0
+            type: CharDevice
       containers:
         - name: mmrelay
-          volumeDevices:
+          volumeMounts:
             - name: usb-devices
-              devicePath: /dev/ttyUSB0
+              mountPath: /dev/ttyUSB0
 ```
 
 And in ConfigMap:

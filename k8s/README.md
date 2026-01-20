@@ -146,12 +146,13 @@ spec:
         - name: usb-devices
           hostPath:
             path: /dev/ttyUSB0
+            type: CharDevice
       containers:
         - name: mmrelay
           # ... other config ...
-          volumeDevices:
+          volumeMounts:
             - name: usb-devices
-              devicePath: /dev/ttyUSB0
+              mountPath: /dev/ttyUSB0
 ```
 
 For BLE, enable host networking (requires privileges):
