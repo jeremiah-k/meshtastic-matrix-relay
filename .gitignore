@@ -11,6 +11,9 @@ __pycache__/
 *.pyd
 *$py.class
 src/mmrelay.egg-info
+.opencode/
+.ralphy/
+
 
 # Docker files (use samples from src/mmrelay/tools/)
 docker-compose.yaml
