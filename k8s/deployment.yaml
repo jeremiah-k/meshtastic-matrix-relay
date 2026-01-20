@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mmrelay
+  labels:
+    app: mmrelay
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mmrelay
+  template:
+    metadata:
+      labels:
+        app: mmrelay
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: mmrelay
+          image: ghcr.io/anomaly/meshtastic-matrix-relay:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 4403
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          env:
+            - name: MMRELAY_LOGGING_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: mmrelay-config
+                  key: logging.level
+          livenessProbe:
+            exec:
+              command:
+                - pgrep
+                - -f
+                - mmrelay
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+                - pgrep
+                - -f
+                - mmrelay
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+            - name: data
+              mountPath: /app/data
+      volumes:
+        - name: config
+          configMap:
+            name: mmrelay-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: mmrelay-data

@@ -12,7 +12,7 @@ mmrelay k8s generate configmap > k8s-configmap.yaml
 nano k8s-configmap.yaml
 
 # 3. Apply Kubernetes resources
-kubectl apply -f k8s/pvc.yaml -f k8s/configmap.yaml -f k8s/deployment.yaml
+kubectl apply -f k8s/pvc.yaml -f k8s/deployment.yaml
 
 # 4. Check deployment status
 kubectl get pods -l app=mmrelay
@@ -61,7 +61,7 @@ kubectl rollout restart deployment/mmrelay
 
 ### Option 2: Use Matrix Password in ConfigMap
 
-Edit `k8s/configmap.yaml` before applying:
+Edit `k8s-configmap.yaml` before applying:
 
 ```yaml
 matrix:
@@ -82,7 +82,6 @@ After first successful startup, MMRelay will:
 # 1. Apply deployment (without password in config)
 kubectl apply -f k8s/pvc.yaml
 kubectl apply -f k8s/deployment.yaml
-kubectl apply -f k8s/configmap.yaml
 
 # 2. Get credentials.json from your local system
 # Run mmrelay auth login locally, then copy credentials.json
@@ -106,8 +105,8 @@ MMRelay supports three authentication approaches in Kubernetes:
 
 ### 2. Secret for Password (More Secure)
 
-- Create Secret: `kubectl apply -f k8s/secret.yaml.example`
-- Use `deployment-with-secret.yaml` which reads from Secret
+- Generate Secret: `mmrelay k8s generate secret > k8s-secret.yaml`
+- Edit the password field and apply: `kubectl apply -f k8s-secret.yaml`
 - Environment variable `MMRELAY_MATRIX_PASSWORD` is read from Secret
 - MMRelay automatically creates credentials.json on first run
 
@@ -121,11 +120,11 @@ MMRelay supports three authentication approaches in Kubernetes:
 
 ### Change Storage Class
 
-Edit `k8s/pvc.yaml`:
+By default, the PVC uses your cluster's default storage class for maximum portability. To specify a custom class, edit `k8s/pvc.yaml`:
 
 ```yaml
 spec:
-  storageClassName: fast-ssd # Your storage class
+  storageClassName: fast-ssd # Your storage class (optional)
   resources:
     requests:
       storage: 1Gi # Adjust size

@@ -31,14 +31,15 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 
 ```bash
 docs/
-├── README.md              # This file - documentation index
-├── INSTRUCTIONS.md        # Main installation and setup guide
-├── E2EE.md               # End-to-End Encryption guide
-├── DOCKER.md             # Docker deployment guide
-├── ADVANCED_CONFIGURATION.md # Advanced configuration options
-└── dev/                  # Developer documentation
-    ├── CONSTANTS.md      # Configuration constants reference
-    └── E2EE_IMPLEMENTATION_NOTES.md  # Technical implementation details
+ ├── README.md              # This file - documentation index
+ ├── INSTRUCTIONS.md        # Main installation and setup guide
+ ├── E2EE.md               # End-to-End Encryption guide
+ ├── DOCKER.md             # Docker deployment guide
+ ├── KUBERNETES.md          # Kubernetes deployment guide
+ ├── ADVANCED_CONFIGURATION.md # Advanced configuration options
+ └── dev/                  # Developer documentation
+     ├── CONSTANTS.md      # Configuration constants reference
+     └── E2EE_IMPLEMENTATION_NOTES.md  # Technical implementation details
 ```
 
 ## Getting Help

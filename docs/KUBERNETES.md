@@ -194,7 +194,7 @@ The Persistent Volume Claim (`mmrelay-data`) contains:
 
 ### ConfigMap Variables
 
-The `k8s/configmap.yaml` file contains all MMRelay settings. Edit it before applying:
+The `k8s-configmap.yaml` file contains all MMRelay settings. Edit it before applying:
 
 ```yaml
 matrix:

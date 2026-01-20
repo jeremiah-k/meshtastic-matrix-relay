@@ -8,4 +8,3 @@ spec:
   resources:
     requests:
       storage: 256Mi
-  storageClassName: standard
