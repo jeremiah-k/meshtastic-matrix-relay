@@ -60,7 +60,7 @@ setup(
     ],
     extras_require={
         "dev": [
-            "pyright==1.1.407",
+            "pyright==1.1.408",
             "mypy==1.19.1",
             "types-PyYAML==6.0.12.20250915",
         ],
