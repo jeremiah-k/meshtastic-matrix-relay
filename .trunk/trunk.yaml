@@ -37,6 +37,9 @@ lint:
       paths:
         - src/mmrelay/tools/sample_config.yaml
         - src/mmrelay/plugins/map_plugin.py
+    - linters: [prettier, yamllint]
+      paths:
+        - src/mmrelay/tools/k8s/*.yaml
     - linters: [bandit]
       paths:
         - src/mmrelay/setup_utils.py

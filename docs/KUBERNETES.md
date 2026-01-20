@@ -6,7 +6,6 @@ This guide explains how to deploy MMRelay on Kubernetes. MMRelay officially supp
 
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
-- [Authentication Methods](#authentication-methods)
 - [Deployment Methods](#deployment-methods)
 - [Configuration](#configuration)
 - [Storage and Persistence](#storage-and-persistence)

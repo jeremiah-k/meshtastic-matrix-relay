@@ -3315,7 +3315,7 @@ class TestK8SCommand(unittest.TestCase):
     def setUp(self):
         """
         Prepare common test fixtures for each test.
-        
+
         Creates `self.mock_args` as a MagicMock to simulate CLI argument objects used by the tests.
         """
         self.mock_args = MagicMock()

@@ -374,9 +374,9 @@ def load_database_config_from_env() -> dict[str, Any] | None:
 def load_matrix_config_from_env() -> dict[str, Any] | None:
     """
     Build a Matrix configuration fragment from environment variables.
-    
+
     Reads the Matrix-related environment variables defined in the module mapping and returns a configuration fragment suitable for merging into the top-level config.
-    
+
     Returns:
         dict[str, Any]: Dictionary of parsed Matrix configuration values if any mapped environment variables were present.
         None: If no relevant environment variables were set.
@@ -392,12 +392,12 @@ def load_matrix_config_from_env() -> dict[str, Any] | None:
 def is_e2ee_enabled(config: dict[str, Any]) -> bool:
     """
     Determine whether End-to-End Encryption (E2EE) is enabled in the given configuration.
-    
+
     If the platform does not support E2EE (Windows), this function always reports that E2EE is disabled. The function inspects the top-level `matrix` section and treats E2EE as enabled when either `matrix.encryption.enabled` or `matrix.e2ee.enabled` is true.
-    
+
     Parameters:
         config (dict[str, Any] | None): Top-level configuration mapping which may be empty or None.
-    
+
     Returns:
         bool: `True` if E2EE is enabled in the configuration and the platform supports E2EE, `False` otherwise.
     """

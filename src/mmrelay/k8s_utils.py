@@ -122,7 +122,7 @@ def prompt_for_config() -> dict[str, Any]:
     print("This wizard will help you generate Kubernetes manifests for MMRelay.")
     print("Press Ctrl+C at any time to cancel.\n")
 
-    config = {}
+    config: dict[str, Any] = {}
 
     # Namespace
     config["namespace"] = input("Kubernetes namespace [default]: ").strip() or "default"
