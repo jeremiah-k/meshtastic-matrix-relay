@@ -817,7 +817,7 @@ def _is_valid_serial_port(port: str) -> bool:
     is_windows = platform.system() == "Windows"
     if is_windows:
         # Windows: COM1, COM3, COM10, etc.
-        # COM followed by 1-3 digits (COM1 to COM999)
+        # COM followed by one or more digits (COM1, COM10, COM100, COM1000, etc.)
         return re.match(r"^COM\d+$", port) is not None
     else:
         # Linux/macOS: /dev/ttyUSB0, /dev/ttyACM0, /dev/cu.usbserial*, etc.

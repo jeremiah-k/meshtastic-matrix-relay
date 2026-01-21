@@ -58,14 +58,14 @@ class TestK8sUtils(unittest.TestCase):
             "items:\n  - name: one\n    value: 1\nend: true",
         )
 
-    def test_load_template_configmap(self):
+    def test_load_template_pvc(self):
         """Test loading a Kubernetes template file."""
         # This will test that the template file exists and is readable
         try:
-            content = load_template("configmap.yaml")
-            self.assertIn("apiVersion", content)
-            self.assertIn("ConfigMap", content)
-            self.assertIn("{{NAMESPACE}}", content)
+            content = load_template("persistentvolumeclaim.yaml.tpl")
+            self.assertIn("apiVersion: v1", content)
+            self.assertIn("kind: PersistentVolumeClaim", content)
+            self.assertIn("namespace: {{NAMESPACE}}", content)
         except FileNotFoundError:
             self.skipTest("Template files not yet packaged")
 
@@ -152,6 +152,18 @@ class TestK8sUtils(unittest.TestCase):
                     any("credentials" in f for f in generated_files),
                     "Should not generate credentials secret for env var auth",
                 )
+
+                # Check deployment file contains non-root security context for TCP connection
+                deployment_file = next(f for f in generated_files if "deployment" in f)
+                with open(deployment_file, "r") as f:
+                    deployment_content = f.read()
+                    # Should have non-root security context
+                    self.assertIn("runAsNonRoot: true", deployment_content)
+                    self.assertIn("runAsUser: 1000", deployment_content)
+                    self.assertIn("runAsGroup: 1000", deployment_content)
+                    self.assertIn("fsGroup: 1000", deployment_content)
+                    # Should NOT have root security context
+                    self.assertNotIn("runAsUser: 0", deployment_content)
             except FileNotFoundError:
                 self.skipTest("Template files not yet packaged")
 
@@ -210,6 +222,12 @@ class TestK8sUtils(unittest.TestCase):
                     # Should have serial device volume mount uncommented
                     self.assertIn("serial-device", deployment_content)
                     self.assertIn("/dev/ttyUSB0", deployment_content)
+                    # Should have root security context for serial connection
+                    self.assertIn("runAsUser: 0", deployment_content)
+                    self.assertIn("runAsGroup: 0", deployment_content)
+                    self.assertIn("supplementalGroups: [20]", deployment_content)
+                    # Should NOT have non-root security context
+                    self.assertNotIn("runAsNonRoot: true", deployment_content)
             except (FileNotFoundError, IndexError):
                 self.skipTest("Template files not yet packaged or generation failed")
 
