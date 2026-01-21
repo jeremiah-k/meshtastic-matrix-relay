@@ -1,47 +1,47 @@
 matrix:
-   # MATRIX AUTHENTICATION - Choose ONE method:
-   #
-   # Method 1 (RECOMMENDED): Use 'mmrelay auth login' command
-   # This creates secure credentials.json with E2EE support and persistent device identity.
-   # Run: mmrelay auth login
-   # Best for: All deployment types (pipx, Docker, Kubernetes)
-   # NO CONFIG FIELDS NEEDED - credentials.json provides all authentication data
-   #
-   # Method 2: Environment Variables (Kubernetes/Docker)
-   # Set these environment variables instead of using password in config:
-   #   MMRELAY_MATRIX_HOMESERVER=https://matrix.example.org
-   #   MMRELAY_MATRIX_BOT_USER_ID=@bot:example.org
-   #   MMRELAY_MATRIX_PASSWORD=your_password
-   # Best for: Kubernetes deployments with secrets, automated CI/CD
-   # NO CONFIG FIELDS NEEDED - environment variables provide all authentication data
-   #
-   # Method 3 (LEGACY): Password in config.yaml (NOT RECOMMENDED)
-   # Uncomment the fields below. MMRelay will create credentials.json on first run.
-   # IMPORTANT: Remove the password from this file after first successful startup!
-   # Security: chmod 600 ~/.mmrelay/config.yaml (Linux/macOS)
-   # ONLY USE THIS if you cannot use Method 1 or Method 2
-   #homeserver: https://example.matrix.org
-   #bot_user_id: "@botuser:example.matrix.org"
-   #password: your_matrix_password_here
-   #
-   # See docs/KUBERNETES.md for Kubernetes-specific authentication setup
-   # See docs/E2EE.md for End-to-End Encryption configuration
+  # MATRIX AUTHENTICATION - Choose ONE method:
+  #
+  # Method 1 (RECOMMENDED): Use 'mmrelay auth login' command
+  # This creates secure credentials.json with E2EE support and persistent device identity.
+  # Run: mmrelay auth login
+  # Best for: All deployment types (pipx, Docker, Kubernetes)
+  # NO CONFIG FIELDS NEEDED - credentials.json provides all authentication data
+  #
+  # Method 2: Environment Variables (Kubernetes/Docker)
+  # Set these environment variables instead of using password in config:
+  #   MMRELAY_MATRIX_HOMESERVER=https://matrix.example.org
+  #   MMRELAY_MATRIX_BOT_USER_ID=@bot:example.org
+  #   MMRELAY_MATRIX_PASSWORD=your_password
+  # Best for: Kubernetes deployments with secrets, automated CI/CD
+  # NO CONFIG FIELDS NEEDED - environment variables provide all authentication data
+  #
+  # Method 3 (LEGACY): Password in config.yaml (NOT RECOMMENDED)
+  # Uncomment the fields below. MMRelay will create credentials.json on first run.
+  # IMPORTANT: Remove the password from this file after first successful startup!
+  # Security: chmod 600 ~/.mmrelay/config.yaml (Linux/macOS)
+  # ONLY USE THIS if you cannot use Method 1 or Method 2
+  #homeserver: https://example.matrix.org
+  #bot_user_id: "@botuser:example.matrix.org"
+  #password: your_matrix_password_here
+  #
+  # See docs/KUBERNETES.md for Kubernetes-specific authentication setup
+  # See docs/E2EE.md for End-to-End Encryption configuration
 
   # End-to-End Encryption (E2EE) configuration
   # E2EE is automatically enabled when using password-based authentication AND E2EE dependencies are installed (Linux/macOS only)
   # NOTE: E2EE is not available on Windows due to dependency limitations
   #
-    # SETUP INSTRUCTIONS:
-    # 1. Install E2EE dependencies: pipx install 'mmrelay[e2e]' (Linux/macOS only)
-    # 2. Authenticate using Method 1 or Method 2 to create credentials.json
-    #    (If using the legacy config password, set it above and run once)
-    # 3. MMRelay will automatically create credentials.json with E2EE support
-    # 4. For interactive setup, use: mmrelay auth login
-    #
-    e2ee:
-        # Optional: When credentials.json is present, MMRelay auto-enables E2EE.
-        # Configure this section only if you want to override defaults (e.g., store_path).
-        enabled: false
+  # SETUP INSTRUCTIONS:
+  # 1. Install E2EE dependencies: pipx install 'mmrelay[e2e]' (Linux/macOS only)
+  # 2. Authenticate using Method 1 or Method 2 to create credentials.json
+  #    (If using the legacy config password, set it above and run once)
+  # 3. MMRelay will automatically create credentials.json with E2EE support
+  # 4. For interactive setup, use: mmrelay auth login
+  #
+  #e2ee:
+  #  # Optional: When credentials.json is present, MMRelay auto-enables E2EE.
+  #  # Configure this section only if you want to override defaults (e.g., store_path).
+  #  enabled: true
 
   # Message prefix customization (Meshtastic → Matrix direction)
   #prefix_enabled: true # Enable prefixes on messages from mesh (e.g., "[Alice/MyMesh]: message")
