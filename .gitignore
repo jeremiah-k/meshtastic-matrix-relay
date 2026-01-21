@@ -13,10 +13,6 @@ __pycache__/
 src/mmrelay.egg-info
 .opencode/
 
-# Ralphy - ignore progress tracking, track config
-.ralphy/progress.txt
-
-
 # Docker files (use samples from src/mmrelay/tools/)
 docker-compose.yaml
 .env
