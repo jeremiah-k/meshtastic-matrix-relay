@@ -787,7 +787,7 @@ class TestConfigChecker(unittest.TestCase):
                 "access_token": "test_token",
                 "bot_user_id": "@bot:matrix.org",
             },
-            "matrix_rooms": [{"id": "!room1:matrix.org"}],
+            "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
         }
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
@@ -799,6 +799,11 @@ class TestConfigChecker(unittest.TestCase):
 
         self.assertFalse(result)
         mock_print.assert_any_call("Error: Missing 'meshtastic' section in config")
+        mock_print.assert_any_call(
+            "   You need to configure Meshtastic connection settings."
+        )
+        mock_print.assert_any_call("   Example:")
+        mock_print.assert_any_call("     meshtastic:")
 
     @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
@@ -825,7 +830,7 @@ class TestConfigChecker(unittest.TestCase):
                 "access_token": "test_token",
                 "bot_user_id": "@bot:matrix.org",
             },
-            "matrix_rooms": [{"id": "!room1:matrix.org"}],
+            "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
             "meshtastic": {"host": "192.168.1.100"},
         }
         mock_get_paths.return_value = ["/test/config.yaml"]
@@ -840,6 +845,7 @@ class TestConfigChecker(unittest.TestCase):
         mock_print.assert_any_call(
             "Error: Missing 'connection_type' in 'meshtastic' section"
         )
+        mock_print.assert_any_call("   Add connection_type: 'tcp', 'serial', or 'ble'")
 
     @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
@@ -866,7 +872,7 @@ class TestConfigChecker(unittest.TestCase):
                 "access_token": "test_token",
                 "bot_user_id": "@bot:matrix.org",
             },
-            "matrix_rooms": [{"id": "!room1:matrix.org"}],
+            "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
             "meshtastic": {"connection_type": "invalid_type"},
         }
         mock_get_paths.return_value = ["/test/config.yaml"]
@@ -907,7 +913,7 @@ class TestConfigChecker(unittest.TestCase):
                 "access_token": "test_token",
                 "bot_user_id": "@bot:matrix.org",
             },
-            "matrix_rooms": [{"id": "!room1:matrix.org"}],
+            "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
             "meshtastic": {"connection_type": "serial"},
         }
         mock_get_paths.return_value = ["/test/config.yaml"]
@@ -929,7 +935,7 @@ class TestConfigChecker(unittest.TestCase):
     @patch("builtins.open", new_callable=mock_open)
     @patch("mmrelay.cli.validate_yaml_syntax")
     @patch("builtins.print")
-    def test_check_config_missing_tcp_host(
+    def test_check_config_valid_serial_port_linux(
         self,
         mock_print,
         mock_validate_yaml,
@@ -939,28 +945,27 @@ class TestConfigChecker(unittest.TestCase):
         mock_parse_args,
     ):
         """
-        Test that `check_config` fails when 'host' is missing for a TCP connection.
+        Test that check_config succeeds with valid Linux serial port format.
         """
         mock_parse_args.return_value = self.mock_args
-        invalid_config = {
+        valid_config = {
             "matrix": {
                 "homeserver": "https://matrix.org",
                 "access_token": "test_token",
                 "bot_user_id": "@bot:matrix.org",
             },
-            "matrix_rooms": [{"id": "!room1:matrix.org"}],
-            "meshtastic": {"connection_type": "tcp"},
+            "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
+            "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"},
         }
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
-        mock_validate_yaml.return_value = (True, None, invalid_config)
+        mock_validate_yaml.return_value = (True, None, valid_config)
 
         with patch("mmrelay.cli._validate_e2ee_config", return_value=True):
             with patch("mmrelay.cli._validate_credentials_json", return_value=False):
                 result = check_config()
 
-        self.assertFalse(result)
-        mock_print.assert_any_call("Error: Missing 'host' for 'tcp' connection type")
+        self.assertTrue(result)
 
     @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
@@ -968,7 +973,7 @@ class TestConfigChecker(unittest.TestCase):
     @patch("builtins.open", new_callable=mock_open)
     @patch("mmrelay.cli.validate_yaml_syntax")
     @patch("builtins.print")
-    def test_check_config_missing_ble_address(
+    def test_check_config_valid_serial_port_windows(
         self,
         mock_print,
         mock_validate_yaml,
@@ -978,30 +983,69 @@ class TestConfigChecker(unittest.TestCase):
         mock_parse_args,
     ):
         """
-        Test that check_config fails when 'ble_address' is missing for a BLE connection.
+        Test that check_config succeeds with valid Windows serial port format.
         """
         mock_parse_args.return_value = self.mock_args
-        invalid_config = {
+        valid_config = {
             "matrix": {
                 "homeserver": "https://matrix.org",
                 "access_token": "test_token",
                 "bot_user_id": "@bot:matrix.org",
             },
-            "matrix_rooms": [{"id": "!room1:matrix.org"}],
-            "meshtastic": {"connection_type": "ble"},
+            "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
+            "meshtastic": {"connection_type": "serial", "serial_port": "COM3"},
         }
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
-        mock_validate_yaml.return_value = (True, None, invalid_config)
+        mock_validate_yaml.return_value = (True, None, valid_config)
+
+        # Mock platform as Windows for this test
+        with patch("platform.system", return_value="Windows"):
+            with patch("mmrelay.cli._validate_e2ee_config", return_value=True):
+                with patch(
+                    "mmrelay.cli._validate_credentials_json", return_value=False
+                ):
+                    result = check_config()
+
+        self.assertTrue(result)
+
+    @patch("mmrelay.cli.parse_arguments")
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("builtins.print")
+    def test_check_config_valid_host_ipv4(
+        self,
+        mock_print,
+        mock_validate_yaml,
+        mock_open,
+        mock_isfile,
+        mock_get_paths,
+        mock_parse_args,
+    ):
+        """
+        Test that check_config succeeds with valid IPv4 host.
+        """
+        mock_parse_args.return_value = self.mock_args
+        valid_config = {
+            "matrix": {
+                "homeserver": "https://matrix.org",
+                "access_token": "test_token",
+                "bot_user_id": "@bot:matrix.org",
+            },
+            "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
+            "meshtastic": {"connection_type": "tcp", "host": "192.168.1.1"},
+        }
+        mock_get_paths.return_value = ["/test/config.yaml"]
+        mock_isfile.return_value = True
+        mock_validate_yaml.return_value = (True, None, valid_config)
 
         with patch("mmrelay.cli._validate_e2ee_config", return_value=True):
             with patch("mmrelay.cli._validate_credentials_json", return_value=False):
                 result = check_config()
 
-        self.assertFalse(result)
-        mock_print.assert_any_call(
-            "Error: Missing 'ble_address' for 'ble' connection type"
-        )
+        self.assertTrue(result)
 
     @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
@@ -1009,7 +1053,7 @@ class TestConfigChecker(unittest.TestCase):
     @patch("builtins.open", new_callable=mock_open)
     @patch("mmrelay.cli.validate_yaml_syntax")
     @patch("builtins.print")
-    def test_check_config_yaml_error(
+    def test_check_config_valid_host_ipv6(
         self,
         mock_print,
         mock_validate_yaml,
@@ -1019,17 +1063,27 @@ class TestConfigChecker(unittest.TestCase):
         mock_parse_args,
     ):
         """
-        Test that check_config returns False and prints an error message when a YAML parsing error occurs.
+        Test that check_config succeeds with valid IPv6 host.
         """
         mock_parse_args.return_value = self.mock_args
+        valid_config = {
+            "matrix": {
+                "homeserver": "https://matrix.org",
+                "access_token": "test_token",
+                "bot_user_id": "@bot:matrix.org",
+            },
+            "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
+            "meshtastic": {"connection_type": "tcp", "host": "2001:db8::1"},
+        }
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
-        mock_validate_yaml.return_value = (False, "Invalid YAML syntax", None)
+        mock_validate_yaml.return_value = (True, None, valid_config)
 
-        result = check_config()
+        with patch("mmrelay.cli._validate_e2ee_config", return_value=True):
+            with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+                result = check_config()
 
-        self.assertFalse(result)
-        mock_print.assert_any_call("YAML Syntax Error:\nInvalid YAML syntax")
+        self.assertTrue(result)
 
     @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")
@@ -1037,7 +1091,7 @@ class TestConfigChecker(unittest.TestCase):
     @patch("builtins.open", new_callable=mock_open)
     @patch("mmrelay.cli.validate_yaml_syntax")
     @patch("builtins.print")
-    def test_check_config_general_exception(
+    def test_check_config_valid_host_hostname(
         self,
         mock_print,
         mock_validate_yaml,
@@ -1047,22 +1101,109 @@ class TestConfigChecker(unittest.TestCase):
         mock_parse_args,
     ):
         """
-        Ensure check_config handles unexpected exceptions by returning False and printing the error to stderr.
-
-        Simulates validate_yaml raising Exception("General error") and verifies that check_config() returns False and that the message
-        "Error checking configuration: General error" is printed to sys.stderr.
+        Test that check_config succeeds with valid hostname.
         """
         mock_parse_args.return_value = self.mock_args
+        valid_config = {
+            "matrix": {
+                "homeserver": "https://matrix.org",
+                "access_token": "test_token",
+                "bot_user_id": "@bot:matrix.org",
+            },
+            "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
+            "meshtastic": {"connection_type": "tcp", "host": "meshtastic.local"},
+        }
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
-        mock_validate_yaml.side_effect = Exception("General error")
+        mock_validate_yaml.return_value = (True, None, valid_config)
 
-        result = check_config()
+        with patch("mmrelay.cli._validate_e2ee_config", return_value=True):
+            with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+                result = check_config()
 
-        self.assertFalse(result)
-        mock_print.assert_any_call(
-            "Error checking configuration: General error", file=sys.stderr
-        )
+        self.assertTrue(result)
+
+    @patch("mmrelay.cli.parse_arguments")
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("builtins.print")
+    def test_check_config_valid_ble_address_mac(
+        self,
+        mock_print,
+        mock_validate_yaml,
+        mock_open,
+        mock_isfile,
+        mock_get_paths,
+        mock_parse_args,
+    ):
+        """
+        Test that check_config succeeds with valid BLE MAC address.
+        """
+        mock_parse_args.return_value = self.mock_args
+        valid_config = {
+            "matrix": {
+                "homeserver": "https://matrix.org",
+                "access_token": "test_token",
+                "bot_user_id": "@bot:matrix.org",
+            },
+            "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
+            "meshtastic": {
+                "connection_type": "ble",
+                "ble_address": "AA:BB:CC:DD:EE:FF",
+            },
+        }
+        mock_get_paths.return_value = ["/test/config.yaml"]
+        mock_isfile.return_value = True
+        mock_validate_yaml.return_value = (True, None, valid_config)
+
+        with patch("mmrelay.cli._validate_e2ee_config", return_value=True):
+            with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+                result = check_config()
+
+        self.assertTrue(result)
+
+    @patch("mmrelay.cli.parse_arguments")
+    @patch("mmrelay.cli.get_config_paths")
+    @patch("os.path.isfile")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("builtins.print")
+    def test_check_config_valid_ble_address_device_name(
+        self,
+        mock_print,
+        mock_validate_yaml,
+        mock_open,
+        mock_isfile,
+        mock_get_paths,
+        mock_parse_args,
+    ):
+        """
+        Test that check_config succeeds with valid BLE device name.
+        """
+        mock_parse_args.return_value = self.mock_args
+        valid_config = {
+            "matrix": {
+                "homeserver": "https://matrix.org",
+                "access_token": "test_token",
+                "bot_user_id": "@bot:matrix.org",
+            },
+            "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
+            "meshtastic": {
+                "connection_type": "ble",
+                "ble_address": "MyMeshtasticDevice",
+            },
+        }
+        mock_get_paths.return_value = ["/test/config.yaml"]
+        mock_isfile.return_value = True
+        mock_validate_yaml.return_value = (True, None, valid_config)
+
+        with patch("mmrelay.cli._validate_e2ee_config", return_value=True):
+            with patch("mmrelay.cli._validate_credentials_json", return_value=False):
+                result = check_config()
+
+        self.assertTrue(result)
 
 
 if __name__ == "__main__":
