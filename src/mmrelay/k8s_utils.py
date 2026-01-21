@@ -205,7 +205,7 @@ data:
   config.yaml: |
 """
     # Indent each line of the config for proper YAML
-    for line in sample_config_content.split("\n"):
+    for line in sample_config_content.splitlines():
         configmap_content += f"    {line}\n"
 
     with open(output_path, "w", encoding="utf-8") as f:
@@ -363,7 +363,7 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
   runAsGroup: 1000
   fsGroup: 1000"""
 
-    deployment_template = load_template("deployment.yaml")
+    deployment_template = load_template("deployment.yaml.tpl")
     deployment_content = render_template(
         deployment_template,
         {
@@ -425,6 +425,9 @@ def check_configmap(configmap_path: str) -> bool:
         return False
 
     # Check if it's a ConfigMap
+    if not isinstance(configmap, dict):
+        print("❌ Error: ConfigMap YAML is empty or not a mapping")
+        return False
     if configmap.get("kind") != "ConfigMap":
         print(f"❌ Error: File is not a ConfigMap (kind: {configmap.get('kind')})")
         return False

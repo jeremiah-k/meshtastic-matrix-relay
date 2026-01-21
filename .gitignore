@@ -27,4 +27,4 @@ junit.xml
 MagicMock/
 
 # Generated Kubernetes manifests (user-specific, not to be committed)
-k8s/
+/k8s/

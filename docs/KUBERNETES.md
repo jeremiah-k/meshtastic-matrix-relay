@@ -122,11 +122,13 @@ mmrelay k8s generate-manifests
 
 If you prefer to create manifests manually or customize extensively:
 
-1. **Generate a sample config:**
+1.  **Generate a sample config:**
 
 ```bash
-mmrelay config generate --output config.yaml
+mmrelay config generate
 ```
+
+The config will be written to the default location; copy it if you want a local file.
 
 2. **Edit the config with your settings**
 

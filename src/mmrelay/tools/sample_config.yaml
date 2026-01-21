@@ -28,7 +28,8 @@ matrix:
   # See docs/E2EE.md for End-to-End Encryption configuration
 
   # End-to-End Encryption (E2EE) configuration
-  # E2EE is automatically enabled when using password-based authentication AND E2EE dependencies are installed (Linux/macOS only)
+  # E2EE is automatically enabled when using credentials.json (auth login or password/env-based auth)
+  # AND E2EE dependencies are installed (Linux/macOS only)
   # NOTE: E2EE is not available on Windows due to dependency limitations
   #
   # SETUP INSTRUCTIONS:

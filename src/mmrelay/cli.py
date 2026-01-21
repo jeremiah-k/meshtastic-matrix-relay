@@ -849,13 +849,13 @@ def _is_valid_host(host: str) -> bool:
             return True
 
     # Check for IPv6 (simplified check - colons present and not empty)
-    if ":" in host and re.match(r"^[\da-fA-F:.]+$", host):
+    if ":" in host:
         try:
             import ipaddress
 
             ipaddress.ip_address(host)
             return True
-        except ValueError:
+        except (ValueError, ImportError):
             pass
 
     # Validate as hostname (alphanumeric with hyphens and dots)
@@ -1830,6 +1830,9 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
             from mmrelay.k8s_utils import check_configmap
 
             configmap_path = getattr(args, "configmap_path", None)
+            if configmap_path is None:
+                print("Error: No ConfigMap path provided")
+                return 1
             return 0 if check_configmap(configmap_path) else 1
         except ImportError as e:
             print(f"Error importing k8s_utils: {e}")
