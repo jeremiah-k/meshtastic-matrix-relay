@@ -29,3 +29,6 @@ coverage.xml
 junit.xml
 .pytest_cache/
 MagicMock/
+
+# Generated Kubernetes manifests (user-specific, not to be committed)
+k8s/

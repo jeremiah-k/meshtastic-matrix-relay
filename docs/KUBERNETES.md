@@ -1,6 +1,6 @@
 # Kubernetes Deployment Guide
 
-This guide explains how to deploy MMRelay on Kubernetes. MMRelay officially supports Kubernetes as a deployment option alongside pipx and Docker.
+This guide explains how to deploy MMRelay on Kubernetes. Kubernetes deployment is currently in development and testing.
 
 ## Table of Contents
 
@@ -22,9 +22,12 @@ This guide explains how to deploy MMRelay on Kubernetes. MMRelay officially supp
 
 ## Quick Start
 
-The fastest way to deploy MMRelay on Kubernetes is using the built-in manifest generator:
+The fastest way to deploy MMRelay on Kubernetes is using the built-in manifest generator. You can run this from any directory - it doesn't require cloning the repository:
 
 ```bash
+# Create a deployment directory and navigate to it
+mkdir mmrelay-k8s && cd mmrelay-k8s
+
 # Generate Kubernetes manifests interactively
 mmrelay k8s generate-manifests
 
