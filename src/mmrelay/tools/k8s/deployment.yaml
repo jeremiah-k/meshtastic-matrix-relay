@@ -118,11 +118,6 @@ spec:
       # nodeSelector:
       #   kubernetes.io/hostname: specific-node-with-device
 
-      # Security context
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        runAsGroup: 1000
-        fsGroup: 1000
+      {{SECURITY_CONTEXT}}
 
       restartPolicy: Always

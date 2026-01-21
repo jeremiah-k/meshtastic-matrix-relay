@@ -1092,7 +1092,7 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                     meshtastic_channel = room["meshtastic_channel"]
                     if (
                         not isinstance(meshtastic_channel, int)
-                        or meshtastic_channel < 0
+                        or not 0 <= meshtastic_channel <= 7
                     ):
                         print(
                             f"Error: Room {room['id']} has invalid 'meshtastic_channel' value: {meshtastic_channel}"
@@ -1163,7 +1163,7 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                     if not _is_valid_serial_port(serial_port):
                         print(f"Error: Invalid 'serial_port' value: {serial_port}")
                         print("   serial_port must be a valid device path:")
-                        if WINDOWS_PLATFORM:
+                        if sys.platform == WINDOWS_PLATFORM:
                             print("     serial_port: COM3  # Windows")
                             print("     serial_port: COM10  # For COM ports above 9")
                         else:
@@ -1790,7 +1790,9 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
                 print("   • Create credentials.json using 'mmrelay auth login'")
                 print("   • Update the secret with your credentials.json:")
                 print("      kubectl create secret generic mmrelay-credentials-json \\")
-                print(f"        --from-file=credentials.json={credentials_path}")
+                print(
+                    f"        --from-file=credentials.json={credentials_path} --namespace={config['namespace']}"
+                )
             else:
                 print("   • Create a secret with your Matrix credentials:")
                 print(
@@ -1806,7 +1808,7 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
                     "        --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@bot:matrix.example.org \\"
                 )
                 print(
-                    "        --from-literal=MMRELAY_MATRIX_PASSWORD=$MMRELAY_MATRIX_PASSWORD"
+                    f"        --from-literal=MMRELAY_MATRIX_PASSWORD=$MMRELAY_MATRIX_PASSWORD --namespace={config['namespace']}"
                 )
 
             print()

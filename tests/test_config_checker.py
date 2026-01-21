@@ -1017,9 +1017,9 @@ class TestConfigChecker(unittest.TestCase):
     @patch("builtins.print")
     def test_check_config_valid_host_ipv4(
         self,
-        mock_print,
+        _mock_print,
         mock_validate_yaml,
-        mock_open,
+        _mock_open,
         mock_isfile,
         mock_get_paths,
         mock_parse_args,
@@ -1055,9 +1055,9 @@ class TestConfigChecker(unittest.TestCase):
     @patch("builtins.print")
     def test_check_config_valid_host_ipv6(
         self,
-        mock_print,
+        _mock_print,
         mock_validate_yaml,
-        mock_open,
+        _mock_open,
         mock_isfile,
         mock_get_paths,
         mock_parse_args,
@@ -1131,9 +1131,9 @@ class TestConfigChecker(unittest.TestCase):
     @patch("builtins.print")
     def test_check_config_valid_ble_address_mac(
         self,
-        mock_print,
+        _mock_print,
         mock_validate_yaml,
-        mock_open,
+        _mock_open,
         mock_isfile,
         mock_get_paths,
         mock_parse_args,
@@ -1172,9 +1172,9 @@ class TestConfigChecker(unittest.TestCase):
     @patch("builtins.print")
     def test_check_config_valid_ble_address_device_name(
         self,
-        mock_print,
+        _mock_print,
         mock_validate_yaml,
-        mock_open,
+        _mock_open,
         mock_isfile,
         mock_get_paths,
         mock_parse_args,

@@ -348,6 +348,21 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
         serial_volume_mount_block = serial_volume_mount_comment
         serial_volume_block = serial_volume_comment
 
+    # Generate security context based on connection type
+    if config["connection_type"] == "serial":
+        security_context_block = """securityContext:
+  # WARNING: Required for serial device access.
+  # This runs the container as root. Review your cluster's security policies.
+  runAsUser: 0
+  runAsGroup: 0
+  supplementalGroups: [20] # 'dialout' group, may vary"""
+    else:
+        security_context_block = """securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000"""
+
     deployment_template = load_template("deployment.yaml")
     deployment_content = render_template(
         deployment_template,
@@ -358,6 +373,7 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
             "CREDENTIALS_VOLUME": credentials_volume_block,
             "SERIAL_VOLUME_MOUNT": serial_volume_mount_block,
             "SERIAL_VOLUME": serial_volume_block,
+            "SECURITY_CONTEXT": security_context_block,
         },
     )
 

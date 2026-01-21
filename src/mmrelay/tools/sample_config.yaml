@@ -33,7 +33,8 @@ matrix:
   #
     # SETUP INSTRUCTIONS:
     # 1. Install E2EE dependencies: pipx install 'mmrelay[e2e]' (Linux/macOS only)
-    # 2. Set your password above and run MMRelay
+    # 2. Authenticate using Method 1 or Method 2 to create credentials.json
+    #    (If using the legacy config password, set it above and run once)
     # 3. MMRelay will automatically create credentials.json with E2EE support
     # 4. For interactive setup, use: mmrelay auth login
     #
