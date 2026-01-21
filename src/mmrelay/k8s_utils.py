@@ -1,5 +1,6 @@
 """Kubernetes manifest generation utilities for MMRelay."""
 
+import argparse
 import importlib.resources
 import os
 import re
@@ -366,3 +367,127 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
     generated_files.append(deployment_path)
 
     return generated_files
+
+
+def check_configmap(configmap_path: str) -> bool:
+    """
+    Validate configuration embedded in a Kubernetes ConfigMap YAML file.
+
+    Loads a ConfigMap YAML, extracts the embedded config.yaml from the data section,
+    and validates it using the same logic as `mmrelay config check`. This allows
+    users to validate their ConfigMap before deploying to Kubernetes.
+
+    Parameters:
+        configmap_path (str): Path to the ConfigMap YAML file to validate.
+
+    Returns:
+        bool: `True` if the ConfigMap is valid and the embedded config passes all
+        checks, `False` otherwise.
+    """
+
+    from mmrelay.config import validate_yaml_syntax
+
+    # Check if file exists
+    if not os.path.isfile(configmap_path):
+        print(f"❌ Error: ConfigMap file not found: {configmap_path}")
+        return False
+
+    # Load ConfigMap YAML
+    try:
+        with open(configmap_path, "r", encoding="utf-8") as f:
+            configmap_content = f.read()
+    except (OSError, UnicodeDecodeError) as e:
+        print(f"❌ Error reading ConfigMap file: {e}")
+        return False
+
+    # Validate YAML syntax
+    is_valid, message, configmap = validate_yaml_syntax(
+        configmap_content, configmap_path
+    )
+    if not is_valid:
+        print(f"❌ YAML Syntax Error in ConfigMap:\n{message}")
+        return False
+
+    # Check if it's a ConfigMap
+    if configmap.get("kind") != "ConfigMap":
+        print(f"❌ Error: File is not a ConfigMap (kind: {configmap.get('kind')})")
+        return False
+
+    # Check for data section
+    if "data" not in configmap:
+        print("❌ Error: ConfigMap is missing 'data' section")
+        return False
+
+    data_section = configmap["data"]
+    if not isinstance(data_section, dict):
+        print("❌ Error: ConfigMap 'data' section must be a mapping (YAML object)")
+        return False
+
+    # Check for config.yaml in data
+    if "config.yaml" not in data_section:
+        print("❌ Error: ConfigMap data section is missing 'config.yaml' key")
+        return False
+
+    # Extract embedded config
+    embedded_config_content = data_section["config.yaml"]
+    if not isinstance(embedded_config_content, str):
+        print("❌ Error: ConfigMap 'config.yaml' value must be a string (YAML text)")
+        return False
+
+    print(f"📋 Found embedded configuration in ConfigMap: {configmap_path}")
+
+    # Validate embedded config.yaml
+    print("\nValidating embedded configuration...")
+    is_config_valid, config_message, embedded_config = validate_yaml_syntax(
+        embedded_config_content, f"{configmap_path}:config.yaml"
+    )
+
+    if not is_config_valid:
+        print(f"❌ YAML Syntax Error in embedded config.yaml:\n{config_message}")
+        return False
+
+    if config_message:
+        print(f"⚠️  YAML Style Warnings in embedded config.yaml:\n{config_message}\n")
+
+    # Check if embedded config is empty
+    if not embedded_config:
+        print("❌ Error: Embedded config.yaml is empty or contains only comments")
+        return False
+
+    # Import and reuse check_config validation logic
+    # Create a temporary file with the embedded config
+    import tempfile
+
+    from mmrelay.cli import check_config
+
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+    ) as temp_file:
+        temp_file.write(embedded_config_content)
+        temp_config_path = temp_file.name
+
+    try:
+        # Create mock args pointing to temp config file
+        args_mock = argparse.Namespace()
+        args_mock.config = temp_config_path
+        args_mock.data_dir = None
+        args_mock.log_level = None
+        args_mock.logfile = None
+
+        # Run validation
+        result = check_config(args_mock)
+
+        if result:
+            print("\n✅ ConfigMap configuration is valid!")
+            print("   Ready to deploy to Kubernetes.")
+        else:
+            print("\n❌ ConfigMap configuration has errors.")
+            print("   Fix the issues above before deploying to Kubernetes.")
+
+        return result
+    finally:
+        # Clean up temp file
+        try:
+            os.unlink(temp_config_path)
+        except (OSError, PermissionError):
+            pass

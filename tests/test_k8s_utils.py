@@ -10,6 +10,7 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.k8s_utils import (
+    check_configmap,
     generate_manifests,
     load_template,
     prompt_for_config,
@@ -299,6 +300,169 @@ class TestK8sUtils(unittest.TestCase):
         self.assertEqual(config["namespace"], "default")
         self.assertEqual(config["connection_type"], "tcp")
         mock_print.assert_any_call("Invalid choice; defaulting to 1.")
+
+    def test_check_configmap_valid(self):
+        """Test check_configmap with a valid ConfigMap."""
+        valid_configmap_content = """apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mmrelay-config
+  namespace: default
+  labels:
+    app: mmrelay
+data:
+  config.yaml: |
+    matrix:
+      homeserver: https://matrix.example.org
+      bot_user_id: "@bot:example.org"
+      password: "testpassword"
+    matrix_rooms:
+      - id: "#test:example.org"
+        meshtastic_channel: 0
+    meshtastic:
+      connection_type: tcp
+      host: meshtastic.local
+      port: 4403
+      meshnet_name: Test Meshnet
+      broadcast_enabled: true
+    logging:
+      level: info
+"""
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(valid_configmap_content)
+            configmap_path = f.name
+
+        try:
+            result = check_configmap(configmap_path)
+            self.assertTrue(result, "Valid ConfigMap should pass validation")
+        finally:
+            os.unlink(configmap_path)
+
+    def test_check_configmap_missing_data_section(self):
+        """Test check_configmap with missing data section."""
+        invalid_configmap_content = """apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mmrelay-config
+"""
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(invalid_configmap_content)
+            configmap_path = f.name
+
+        try:
+            result = check_configmap(configmap_path)
+            self.assertFalse(
+                result, "ConfigMap without data section should fail validation"
+            )
+        finally:
+            os.unlink(configmap_path)
+
+    def test_check_configmap_missing_config_yaml(self):
+        """Test check_configmap with missing config.yaml key."""
+        invalid_configmap_content = """apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mmrelay-config
+data:
+  other-key: value
+"""
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(invalid_configmap_content)
+            configmap_path = f.name
+
+        try:
+            result = check_configmap(configmap_path)
+            self.assertFalse(
+                result, "ConfigMap without config.yaml key should fail validation"
+            )
+        finally:
+            os.unlink(configmap_path)
+
+    def test_check_configmap_invalid_yaml_syntax(self):
+        """Test check_configmap with malformed YAML."""
+        malformed_configmap_content = """apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mmrelay-config
+data
+  config.yaml: |
+    matrix:
+      homeserver: https://matrix.example.org
+"""
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(malformed_configmap_content)
+            configmap_path = f.name
+
+        try:
+            result = check_configmap(configmap_path)
+            self.assertFalse(result, "Malformed YAML should fail validation")
+        finally:
+            os.unlink(configmap_path)
+
+    def test_check_configmap_invalid_embedded_config(self):
+        """Test check_configmap with invalid embedded configuration."""
+        invalid_configmap_content = """apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mmrelay-config
+data:
+  config.yaml: |
+    matrix:
+      homeserver: "missing-protocol"
+      bot_user_id: "@bot:example.org"
+    matrix_rooms: []
+    meshtastic:
+      connection_type: tcp
+"""
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(invalid_configmap_content)
+            configmap_path = f.name
+
+        try:
+            result = check_configmap(configmap_path)
+            self.assertFalse(
+                result, "ConfigMap with invalid embedded config should fail validation"
+            )
+        finally:
+            os.unlink(configmap_path)
+
+    def test_check_configmap_not_a_configmap(self):
+        """Test check_configmap with non-ConfigMap YAML."""
+        not_configmap_content = """apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pod
+spec:
+  containers:
+    - name: test
+      image: test:latest
+"""
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(not_configmap_content)
+            configmap_path = f.name
+
+        try:
+            result = check_configmap(configmap_path)
+            self.assertFalse(result, "Non-ConfigMap YAML should fail validation")
+        finally:
+            os.unlink(configmap_path)
+
+    def test_check_configmap_file_not_found(self):
+        """Test check_configmap with non-existent file."""
+        result = check_configmap("/nonexistent/configmap.yaml")
+        self.assertFalse(result, "Non-existent file should fail validation")
 
 
 if __name__ == "__main__":

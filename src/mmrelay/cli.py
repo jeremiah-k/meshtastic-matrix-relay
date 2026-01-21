@@ -221,6 +221,15 @@ def parse_arguments() -> argparse.Namespace:
         help="Generate Kubernetes YAML manifests",
         description="Interactive wizard to generate complete Kubernetes deployment manifests",
     )
+    check_configmap_parser = k8s_subparsers.add_parser(
+        "check-configmap",
+        help="Validate ConfigMap configuration",
+        description="Validate configuration embedded in a Kubernetes ConfigMap before deployment",
+    )
+    check_configmap_parser.add_argument(
+        "configmap_path",
+        help="Path to the ConfigMap YAML file to validate",
+    )
 
     # Use parse_known_args to handle unknown arguments gracefully (e.g., pytest args)
     args, unknown = parser.parse_known_args()
@@ -1514,7 +1523,7 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
     """
     Dispatch the requested Kubernetes subcommand.
 
-    Supports "generate-manifests" action for Kubernetes deployment.
+    Supports "generate-manifests" and "check-configmap" actions for Kubernetes deployment.
 
     Parameters:
         args (argparse.Namespace): Parsed CLI arguments with `k8s_command` attribute.
@@ -1593,7 +1602,15 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
             else:
                 print(f"Error: {e}")
             return 1
+    elif args.k8s_command == "check-configmap":
+        try:
+            from mmrelay.k8s_utils import check_configmap
 
+            configmap_path = getattr(args, "configmap_path", None)
+            return 0 if check_configmap(configmap_path) else 1
+        except ImportError as e:
+            print(f"Error importing k8s_utils: {e}")
+            return 1
     else:
         print(f"Unknown k8s command: {args.k8s_command}")
         return 1
