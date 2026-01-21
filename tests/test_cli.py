@@ -713,6 +713,136 @@ class TestCLIValidationFunctions(unittest.TestCase):
             result = _validate_matrix_authentication("/path/to/config.yaml", None)
             self.assertFalse(result)
 
+    def test_is_valid_serial_port_linux_valid(self):
+        """Test _is_valid_serial_port with valid Linux serial ports."""
+        from mmrelay.cli import _is_valid_serial_port
+
+        self.assertTrue(_is_valid_serial_port("/dev/ttyUSB0"))
+        self.assertTrue(_is_valid_serial_port("/dev/ttyACM0"))
+        self.assertTrue(_is_valid_serial_port("/dev/cu.usbserial-1234"))
+        self.assertTrue(_is_valid_serial_port("/dev/ttyS0"))
+
+    def test_is_valid_serial_port_linux_invalid(self):
+        """Test _is_valid_serial_port with invalid Linux serial ports."""
+        from mmrelay.cli import _is_valid_serial_port
+
+        self.assertFalse(_is_valid_serial_port("/dev/"))
+        self.assertFalse(_is_valid_serial_port("ttyUSB0"))
+        self.assertFalse(_is_valid_serial_port("/dev/tty"))
+        self.assertFalse(_is_valid_serial_port(""))
+
+    def test_is_valid_serial_port_windows_valid(self):
+        """Test _is_valid_serial_port with valid Windows COM ports."""
+        from mmrelay.cli import _is_valid_serial_port
+
+        with patch("platform.system", return_value="Windows"):
+            self.assertTrue(_is_valid_serial_port("COM1"))
+            self.assertTrue(_is_valid_serial_port("COM10"))
+            self.assertTrue(_is_valid_serial_port("COM100"))
+            self.assertTrue(_is_valid_serial_port("COM999"))
+
+    def test_is_valid_serial_port_windows_invalid(self):
+        """Test _is_valid_serial_port with invalid Windows COM ports."""
+        from mmrelay.cli import _is_valid_serial_port
+
+        with patch("platform.system", return_value="Windows"):
+            self.assertFalse(_is_valid_serial_port("COM"))
+            self.assertFalse(_is_valid_serial_port("COMA"))
+            self.assertFalse(_is_valid_serial_port("COM1A"))
+            self.assertFalse(_is_valid_serial_port("COM 1"))
+            self.assertFalse(_is_valid_serial_port("/dev/ttyUSB0"))
+
+    def test_is_valid_serial_port_edge_cases(self):
+        """Test _is_valid_serial_port with edge cases."""
+        from mmrelay.cli import _is_valid_serial_port
+
+        self.assertFalse(_is_valid_serial_port(None))
+        self.assertFalse(_is_valid_serial_port(""))
+        self.assertFalse(_is_valid_serial_port(123))
+
+    def test_is_valid_host_ipv4_address(self):
+        """Test _is_valid_host with valid IPv4 addresses."""
+        from mmrelay.cli import _is_valid_host
+
+        self.assertTrue(_is_valid_host("192.168.1.1"))
+        self.assertTrue(_is_valid_host("10.0.0.1"))
+        self.assertTrue(_is_valid_host("127.0.0.1"))
+        self.assertTrue(_is_valid_host("255.255.255.255"))
+
+    def test_is_valid_host_ipv6_address(self):
+        """Test _is_valid_host with valid IPv6 addresses."""
+        from mmrelay.cli import _is_valid_host
+
+        self.assertTrue(_is_valid_host("::1"))
+        self.assertTrue(_is_valid_host("2001:db8::1"))
+        self.assertTrue(_is_valid_host("fe80::1"))
+        self.assertTrue(_is_valid_host("2001:0db8:85a3:0000:0000:8a2e:0370:7334"))
+
+    def test_is_valid_host_valid_hostname(self):
+        """Test _is_valid_host with valid hostnames."""
+        from mmrelay.cli import _is_valid_host
+
+        self.assertTrue(_is_valid_host("localhost"))
+        self.assertTrue(_is_valid_host("meshtastic.local"))
+        self.assertTrue(_is_valid_host("my-mesh-network.example.com"))
+        self.assertTrue(_is_valid_host("server"))
+        self.assertTrue(_is_valid_host("sub.domain.example"))
+
+    def test_is_valid_host_invalid_hostname(self):
+        """Test _is_valid_host with invalid hostnames."""
+        from mmrelay.cli import _is_valid_host
+
+        self.assertFalse(_is_valid_host("-invalid.com"))
+        self.assertFalse(_is_valid_host("invalid-.com"))
+        self.assertFalse(_is_valid_host("invalid..com"))
+        self.assertFalse(_is_valid_host("a" * 254))
+        self.assertFalse(_is_valid_host("a." * 100))
+
+    def test_is_valid_host_edge_cases(self):
+        """Test _is_valid_host with edge cases."""
+        from mmrelay.cli import _is_valid_host
+
+        self.assertFalse(_is_valid_host(None))
+        self.assertFalse(_is_valid_host(""))
+        self.assertFalse(_is_valid_host(123))
+        self.assertFalse(_is_valid_host("   "))
+
+    def test_is_valid_ble_address_mac_address(self):
+        """Test _is_valid_ble_address with valid MAC addresses."""
+        from mmrelay.cli import _is_valid_ble_address
+
+        self.assertTrue(_is_valid_ble_address("AA:BB:CC:DD:EE:FF"))
+        self.assertTrue(_is_valid_ble_address("aa:bb:cc:dd:ee:ff"))
+        self.assertTrue(_is_valid_ble_address("00:11:22:33:44:55"))
+        self.assertTrue(_is_valid_ble_address("FF:EE:DD:CC:BB:AA"))
+
+    def test_is_valid_ble_address_device_name(self):
+        """Test _is_valid_ble_address with valid device names."""
+        from mmrelay.cli import _is_valid_ble_address
+
+        self.assertTrue(_is_valid_ble_address("MyMeshtasticDevice"))
+        self.assertTrue(_is_valid_ble_address("T-Beam"))
+        self.assertTrue(_is_valid_ble_address("MeshDevice123"))
+        self.assertTrue(_is_valid_ble_address("LilyGO-T-Beam"))
+
+    def test_is_valid_ble_address_invalid(self):
+        """Test _is_valid_ble_address with invalid addresses."""
+        from mmrelay.cli import _is_valid_ble_address
+
+        self.assertFalse(_is_valid_ble_address(None))
+        self.assertFalse(_is_valid_ble_address(""))
+        self.assertFalse(_is_valid_ble_address("AA:BB:CC:DD:EE"))
+        self.assertFalse(_is_valid_ble_address("AA:BB:CC:DD:EE:FF:00"))
+        self.assertFalse(_is_valid_ble_address("GG:HH:II:JJ:KK:LL"))
+        self.assertFalse(_is_valid_ble_address("AA:BB:CC:DD:EE:GG"))
+
+    def test_is_valid_ble_address_edge_cases(self):
+        """Test _is_valid_ble_address with edge cases."""
+        from mmrelay.cli import _is_valid_ble_address
+
+        self.assertFalse(_is_valid_ble_address(123))
+        self.assertTrue(_is_valid_ble_address("   "))  # Spaces treated as device name
+
 
 class TestCLISubcommandHandlers(unittest.TestCase):
     """Test cases for CLI subcommand handler functions."""

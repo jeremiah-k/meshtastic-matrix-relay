@@ -113,6 +113,66 @@ class TestK8sUtils(unittest.TestCase):
                     "    homeserver: https://matrix.example.org", output_content
                 )
 
+    def test_generate_configmap_from_sample_custom_namespace(self):
+        """Test generating ConfigMap with custom namespace."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sample_config_path = os.path.join(tmpdir, "sample_config.yaml")
+            sample_config_content = (
+                "matrix:\n  homeserver: https://matrix.example.org\n"
+            )
+            with open(sample_config_path, "w", encoding="utf-8") as f:
+                f.write(sample_config_content)
+
+            output_path = os.path.join(tmpdir, "configmap.yaml")
+
+            with patch("mmrelay.tools.get_sample_config_path") as mock_sample:
+                mock_sample.return_value = sample_config_path
+
+                from mmrelay.k8s_utils import generate_configmap_from_sample
+
+                result = generate_configmap_from_sample("production", output_path)
+
+                self.assertEqual(result, output_path)
+                with open(output_path, "r", encoding="utf-8") as f:
+                    output_content = f.read()
+                    self.assertIn("namespace: production", output_content)
+
+    def test_generate_configmap_from_sample_multiline_config(self):
+        """Test generating ConfigMap with multiline sample config."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sample_config_path = os.path.join(tmpdir, "sample_config.yaml")
+            sample_config_content = """matrix:
+  homeserver: https://matrix.example.org
+  bot_user_id: "@bot:example.org"
+  password: "password"
+meshtastic:
+  connection_type: tcp
+  host: meshtastic.local
+  port: 4403
+"""
+            with open(sample_config_path, "w", encoding="utf-8") as f:
+                f.write(sample_config_content)
+
+            output_path = os.path.join(tmpdir, "configmap.yaml")
+
+            with patch("mmrelay.tools.get_sample_config_path") as mock_sample:
+                mock_sample.return_value = sample_config_path
+
+                from mmrelay.k8s_utils import generate_configmap_from_sample
+
+                result = generate_configmap_from_sample("default", output_path)
+
+                self.assertEqual(result, output_path)
+                with open(output_path, "r", encoding="utf-8") as f:
+                    output_content = f.read()
+                    # Verify all sections are properly indented
+                    self.assertIn(
+                        "    homeserver: https://matrix.example.org", output_content
+                    )
+                    self.assertIn('    bot_user_id: "@bot:example.org"', output_content)
+                    self.assertIn("  meshtastic:", output_content)
+                    self.assertIn("    connection_type: tcp", output_content)
+
     def test_generate_manifests_creates_files(self):
         """Test that generate_manifests creates the expected files."""
         config = {
@@ -481,6 +541,295 @@ spec:
         """Test check_configmap with non-existent file."""
         result = check_configmap("/nonexistent/configmap.yaml")
         self.assertFalse(result, "Non-existent file should fail validation")
+
+    def test_check_configmap_file_read_error(self):
+        """Test check_configmap with file read error (non-UTF-8 content)."""
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".yaml", delete=False) as f:
+            f.write(b"\xff\xfe Invalid UTF-8")
+            configmap_path = f.name
+
+        try:
+            result = check_configmap(configmap_path)
+            self.assertFalse(result, "Non-UTF-8 file should fail validation")
+        finally:
+            os.unlink(configmap_path)
+
+    def test_check_configmap_not_configmap_kind(self):
+        """Test check_configmap with wrong kind (not ConfigMap)."""
+        invalid_configmap_content = """apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pod
+data:
+  config.yaml: |
+    matrix:
+      homeserver: https://matrix.example.org
+"""
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(invalid_configmap_content)
+            configmap_path = f.name
+
+        try:
+            result = check_configmap(configmap_path)
+            self.assertFalse(result, "Pod kind should fail validation")
+        finally:
+            os.unlink(configmap_path)
+
+    def test_check_configmap_data_not_mapping(self):
+        """Test check_configmap with data section as list instead of mapping."""
+        invalid_configmap_content = """apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mmrelay-config
+data:
+  - item1
+  - item2
+"""
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(invalid_configmap_content)
+            configmap_path = f.name
+
+        try:
+            result = check_configmap(configmap_path)
+            self.assertFalse(result, "Data section as list should fail validation")
+        finally:
+            os.unlink(configmap_path)
+
+    def test_check_configmap_config_yaml_not_string(self):
+        """Test check_configmap with config.yaml value as list instead of string."""
+        invalid_configmap_content = """apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mmrelay-config
+data:
+  config.yaml:
+    - item1
+    - item2
+"""
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(invalid_configmap_content)
+            configmap_path = f.name
+
+        try:
+            result = check_configmap(configmap_path)
+            self.assertFalse(result, "config.yaml as list should fail validation")
+        finally:
+            os.unlink(configmap_path)
+
+    def test_check_configmap_empty_embedded_config(self):
+        """Test check_configmap with empty embedded config.yaml."""
+        empty_configmap_content = """apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mmrelay-config
+  namespace: default
+data:
+  config.yaml: |
+"""
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(empty_configmap_content)
+            configmap_path = f.name
+
+        try:
+            result = check_configmap(configmap_path)
+            self.assertFalse(result, "Empty embedded config should fail validation")
+        finally:
+            os.unlink(configmap_path)
+
+    def test_check_configmap_embedded_config_only_comments(self):
+        """Test check_configmap with embedded config containing only comments."""
+        comments_only_configmap_content = """apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mmrelay-config
+  namespace: default
+data:
+  config.yaml: |
+    # This is a comment
+    # Another comment
+"""
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(comments_only_configmap_content)
+            configmap_path = f.name
+
+        try:
+            result = check_configmap(configmap_path)
+            self.assertFalse(result, "Config with only comments should fail validation")
+        finally:
+            os.unlink(configmap_path)
+
+    def test_check_configmap_embedded_config_syntax_error(self):
+        """Test check_configmap with invalid YAML syntax in embedded config."""
+        invalid_embedded_content = """apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mmrelay-config
+  namespace: default
+data:
+  config.yaml: |
+    matrix:
+      homeserver: https://matrix.example.org
+    invalid yaml syntax here:
+      - item1
+    item2
+"""
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False, encoding="utf-8"
+        ) as f:
+            f.write(invalid_embedded_content)
+            configmap_path = f.name
+
+        try:
+            result = check_configmap(configmap_path)
+            self.assertFalse(result, "Invalid embedded YAML should fail validation")
+        finally:
+            os.unlink(configmap_path)
+
+    def test_generate_manifests_missing_namespace(self):
+        """Test generate_manifests with missing namespace key."""
+        config = {
+            "image_tag": "latest",
+            "connection_type": "tcp",
+            "storage_class": "standard",
+            "storage_size": "1Gi",
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with self.assertRaises(ValueError) as context:
+                generate_manifests(config, tmpdir)
+            self.assertIn("namespace", str(context.exception).lower())
+
+    def test_generate_manifests_missing_image_tag(self):
+        """Test generate_manifests with missing image_tag key."""
+        config = {
+            "namespace": "default",
+            "connection_type": "tcp",
+            "storage_class": "standard",
+            "storage_size": "1Gi",
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with self.assertRaises(ValueError) as context:
+                generate_manifests(config, tmpdir)
+            self.assertIn("image", str(context.exception).lower())
+
+    def test_generate_manifests_missing_connection_type(self):
+        """Test generate_manifests with missing connection_type key."""
+        config = {
+            "namespace": "default",
+            "image_tag": "latest",
+            "storage_class": "standard",
+            "storage_size": "1Gi",
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with self.assertRaises(ValueError) as context:
+                generate_manifests(config, tmpdir)
+            self.assertIn("connection", str(context.exception).lower())
+
+    def test_generate_manifests_missing_storage_class(self):
+        """Test generate_manifests with missing storage_class key."""
+        config = {
+            "namespace": "default",
+            "image_tag": "latest",
+            "connection_type": "tcp",
+            "storage_size": "1Gi",
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with self.assertRaises(ValueError) as context:
+                generate_manifests(config, tmpdir)
+            self.assertIn("storage_class", str(context.exception).lower())
+
+    def test_generate_manifests_missing_storage_size(self):
+        """Test generate_manifests with missing storage_size key."""
+        config = {
+            "namespace": "default",
+            "image_tag": "latest",
+            "connection_type": "tcp",
+            "storage_class": "standard",
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with self.assertRaises(ValueError) as context:
+                generate_manifests(config, tmpdir)
+            self.assertIn("storage", str(context.exception).lower())
+
+    def test_generate_manifests_missing_multiple_keys(self):
+        """Test generate_manifests with multiple missing required keys."""
+        config = {
+            "namespace": "default",
+            "connection_type": "tcp",
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with self.assertRaises(ValueError) as context:
+                generate_manifests(config, tmpdir)
+            error_msg = str(context.exception).lower()
+            self.assertIn("image", error_msg)
+            self.assertIn("storage", error_msg)
+
+    def test_render_template_block_placeholder_with_none(self):
+        """Test block placeholder with None value - should skip the placeholder line."""
+        template = "items:\n  {{BLOCK}}\nend: true"
+        variables = {"BLOCK": None}
+        result = render_template(template, variables)
+        self.assertEqual(
+            result,
+            "items:\nend: true",
+            "Block placeholder with None should be omitted",
+        )
+
+    def test_render_template_block_placeholder_with_empty_string(self):
+        """Test block placeholder with empty string value - should skip the placeholder line."""
+        template = "items:\n  {{BLOCK}}\nend: true"
+        variables = {"BLOCK": ""}
+        result = render_template(template, variables)
+        self.assertEqual(
+            result,
+            "items:\nend: true",
+            "Block placeholder with empty string should be omitted",
+        )
+
+    def test_render_template_block_placeholder_with_empty_lines(self):
+        """Test block placeholder with multiline value including empty lines."""
+        template = "items:\n  {{BLOCK}}\nend: true"
+        variables = {"BLOCK": "- name: one\n\n  value: 1\n\n- name: two\n  value: 2"}
+        result = render_template(template, variables)
+        self.assertEqual(
+            result,
+            "items:\n  - name: one\n\n    value: 1\n\n  - name: two\n    value: 2\nend: true",
+            "Block placeholder should preserve empty lines in multiline value",
+        )
+
+    def test_render_template_inline_placeholder_with_none_raises(self):
+        """Test inline placeholder with None value raises ValueError."""
+        template = "Hello {{NAME}}"
+        variables = {"NAME": None}
+        with self.assertRaises(ValueError) as context:
+            render_template(template, variables)
+        self.assertIn("NAME", str(context.exception))
+
+    def test_render_template_unresolved_placeholders(self):
+        """Test template with unresolved placeholders after substitution."""
+        template = "Hello {{NAME}}, your ID is {{ID}}"
+        variables = {"NAME": "Alice"}
+        with self.assertRaises(ValueError) as context:
+            render_template(template, variables)
+        self.assertIn("ID", str(context.exception))
+        self.assertIn("missing", str(context.exception).lower())
+
+    def test_render_template_malformed_placeholder(self):
+        """Test template with malformed/unresolved placeholder syntax."""
+        template = "Hello {{NAME}}, your status is {{-invalid}}"
+        variables = {"NAME": "Alice"}
+        with self.assertRaises(ValueError) as context:
+            render_template(template, variables)
+        self.assertIn("unresolved", str(context.exception).lower())
 
 
 if __name__ == "__main__":
