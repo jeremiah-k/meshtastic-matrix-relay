@@ -22,91 +22,33 @@ This guide explains how to deploy MMRelay on Kubernetes. Kubernetes deployment i
 
 ## Quick Start
 
-The fastest way to deploy MMRelay on Kubernetes is using the built-in manifest generator. You can run this from any directory - it doesn't require cloning the repository:
-
 ```bash
-# Create a deployment directory and navigate to it
-mkdir mmrelay-k8s && cd mmrelay-k8s
-
 # Generate Kubernetes manifests interactively
 mmrelay k8s generate-manifests
 
-# This will create:
-# - ./k8s/mmrelay-pvc.yaml (Persistent storage)
-# - ./k8s/mmrelay-configmap.yaml (Generated from sample_config.yaml)
-# - ./k8s/mmrelay-deployment.yaml (Application deployment)
-# - ./k8s/mmrelay-secret-credentials.yaml (Optional: only if using credentials file auth)
-```
+# Edit the ConfigMap with your configuration
+nano k8s/mmrelay-configmap.yaml
 
-The wizard will ask you about:
+# Set up Matrix credentials (choose one method)
 
-- Namespace
-- Authentication method (environment variables or credentials file)
-- Connection type (TCP or serial)
-- Storage requirements
-
-After generation:
-
-```bash
-# Review the generated files
-ls -la ./k8s/
-
-# Edit the ConfigMap with your actual configuration values
-nano ./k8s/mmrelay-configmap.yaml
-
-# If using environment variables (recommended), create the Matrix credentials secret:
-# Use read -s to securely enter password without storing in shell history
-read -s -p "Enter Matrix password: " MMRELAY_MATRIX_PASSWORD && echo
+# Method 1: Environment variables (recommended)
 kubectl create secret generic mmrelay-matrix-credentials \
   --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.example.org \
   --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@bot:example.org \
-  --from-literal=MMRELAY_MATRIX_PASSWORD="$MMRELAY_MATRIX_PASSWORD" \
-  --namespace=default  # Replace with the namespace chosen during manifest generation
+  --from-literal=MMRELAY_MATRIX_PASSWORD=your_password
 
-# If using credentials file authentication, apply the generated secret file instead:
-# (Uncomment and run this command instead of the kubectl create secret command above)
-# kubectl apply -f ./k8s/mmrelay-secret-credentials.yaml
+# Method 2: Credentials file from mmrelay auth login
+kubectl apply -f k8s/mmrelay-secret-credentials.yaml
+
+# Deploy to your cluster
+kubectl apply -f k8s/
+
+# Check status
+kubectl get pods -l app=mmrelay
+kubectl logs -f deployment/mmrelay
 ```
 
-The deployment reads these environment variables to authenticate. If `credentials.json` does not already exist, it will be automatically generated on first startup.
-
-E2EE support is automatically enabled when credentials are created this way (Linux containers only).
-
-**Security Note:** After the first successful startup, the password is only needed if `credentials.json` is lost or corrupted. Consider using Kubernetes secret rotation policies.
-
-### Method 2: Credentials File (Advanced)
-
-This method uses a pre-generated `credentials.json` file from `mmrelay auth login`. This is useful for advanced scenarios where you need full control over device identity or E2EE setup.
-
-**Advantages:**
-
-- Full control over device identity and E2EE keys
-- Pre-verified E2EE setup
-- Useful for migrating existing installations
-
-**Setup:**
-
-1. Run `mmrelay auth login` locally to generate credentials:
-
-```bash
-mmrelay auth login
-# Follow prompts to authenticate
-# This creates ~/.mmrelay/credentials.json
-```
-
-2. Create a Kubernetes Secret from the credentials file:
-
-```bash
-kubectl create secret generic mmrelay-credentials-json \
-  --from-file=credentials.json=$HOME/.mmrelay/credentials.json \
-  --namespace=default  # Replace with the namespace chosen during manifest generation
-```
-
-3. When generating manifests, choose "Credentials file" as the authentication method. This will generate the appropriate secret template and deployment configuration.
-
-4. The deployment will mount this secret at `/app/data/credentials.json`.
-
-**Note:** This method requires running `mmrelay auth login` locally before deploying to Kubernetes.
+See [Configuration](#configuration) and [Deployment Methods](#deployment-methods) for detailed options.
 
 ## Deployment Methods
 
