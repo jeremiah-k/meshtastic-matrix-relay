@@ -6,8 +6,17 @@ import os
 import re
 from typing import Any
 
+from mmrelay.log_utils import get_logger
+
 _PLACEHOLDER_RE = re.compile(r"\{\{([A-Za-z0-9_]+)\}\}")
 _UNRESOLVED_RE = re.compile(r"\{\{[^}]+\}\}")
+
+_MISSING_VARS_MSG = "Missing template variables: {vars}"
+_MISSING_VALUE_MSG = "Missing template value for '{key}'"
+_UNRESOLVED_PLACEHOLDERS_MSG = "Unresolved template placeholders: {vars}"
+_UNRESOLVED_TOKENS_MSG = "Unresolved template placeholders: {tokens}"
+
+logger = get_logger(__name__)
 
 
 def get_k8s_template_path(template_name: str) -> str:
@@ -57,7 +66,7 @@ def render_template(template: str, variables: dict[str, Any]) -> str:
     missing = sorted(placeholders - set(variables.keys()))
     if missing:
         missing_vars = ", ".join(missing)
-        raise ValueError(f"Missing template variables: {missing_vars}")
+        raise ValueError(_MISSING_VARS_MSG.format(vars=missing_vars))
 
     rendered_lines: list[str] = []
     for line in template.splitlines():
@@ -83,7 +92,7 @@ def render_template(template: str, variables: dict[str, Any]) -> str:
         key = match.group(1)
         value = variables.get(key)
         if value is None:
-            raise ValueError(f"Missing template value for '{key}'")
+            raise ValueError(_MISSING_VALUE_MSG.format(key=key))
         return str(value)
 
     rendered = _PLACEHOLDER_RE.sub(replace_inline, rendered)
@@ -91,12 +100,12 @@ def render_template(template: str, variables: dict[str, Any]) -> str:
     leftover = sorted(set(_PLACEHOLDER_RE.findall(rendered)))
     if leftover:
         leftover_vars = ", ".join(leftover)
-        raise ValueError(f"Unresolved template placeholders: {leftover_vars}")
+        raise ValueError(_UNRESOLVED_PLACEHOLDERS_MSG.format(vars=leftover_vars))
 
     unresolved_tokens = sorted(set(_UNRESOLVED_RE.findall(rendered)))
     if unresolved_tokens:
         unresolved = ", ".join(unresolved_tokens)
-        raise ValueError(f"Unresolved template placeholders: {unresolved}")
+        raise ValueError(_UNRESOLVED_TOKENS_MSG.format(tokens=unresolved))
 
     return rendered
 
@@ -231,6 +240,17 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
     Returns:
         list: Paths to generated manifest files
     """
+    required_keys = {
+        "namespace",
+        "storage_class",
+        "storage_size",
+        "connection_type",
+        "image_tag",
+    }
+    missing = sorted(required_keys - set(config))
+    if missing:
+        missing_keys = ", ".join(missing)
+        raise ValueError(f"Missing required config keys: {missing_keys}")
     os.makedirs(output_dir, exist_ok=True)
     generated_files = []
 
@@ -405,7 +425,7 @@ def check_configmap(configmap_path: str) -> bool:
 
     # Check if file exists
     if not os.path.isfile(configmap_path):
-        print(f"❌ Error: ConfigMap file not found: {configmap_path}")
+        logger.error(f"ConfigMap file not found: {configmap_path}")
         return False
 
     # Load ConfigMap YAML
@@ -413,7 +433,7 @@ def check_configmap(configmap_path: str) -> bool:
         with open(configmap_path, "r", encoding="utf-8") as f:
             configmap_content = f.read()
     except (OSError, UnicodeDecodeError) as e:
-        print(f"❌ Error reading ConfigMap file: {e}")
+        logger.error(f"Error reading ConfigMap file: {e}")
         return False
 
     # Validate YAML syntax
@@ -421,56 +441,58 @@ def check_configmap(configmap_path: str) -> bool:
         configmap_content, configmap_path
     )
     if not is_valid:
-        print(f"❌ YAML Syntax Error in ConfigMap:\n{message}")
+        logger.error(f"YAML Syntax Error in ConfigMap:\n{message}")
         return False
 
     # Check if it's a ConfigMap
     if not isinstance(configmap, dict):
-        print("❌ Error: ConfigMap YAML is empty or not a mapping")
+        logger.error("ConfigMap YAML is empty or not a mapping")
         return False
     if configmap.get("kind") != "ConfigMap":
-        print(f"❌ Error: File is not a ConfigMap (kind: {configmap.get('kind')})")
+        logger.error(f"File is not a ConfigMap (kind: {configmap.get('kind')})")
         return False
 
     # Check for data section
     if "data" not in configmap:
-        print("❌ Error: ConfigMap is missing 'data' section")
+        logger.error("ConfigMap is missing 'data' section")
         return False
 
     data_section = configmap["data"]
     if not isinstance(data_section, dict):
-        print("❌ Error: ConfigMap 'data' section must be a mapping (YAML object)")
+        logger.error("ConfigMap 'data' section must be a mapping (YAML object)")
         return False
 
     # Check for config.yaml in data
     if "config.yaml" not in data_section:
-        print("❌ Error: ConfigMap data section is missing 'config.yaml' key")
+        logger.error("ConfigMap data section is missing 'config.yaml' key")
         return False
 
     # Extract embedded config
     embedded_config_content = data_section["config.yaml"]
     if not isinstance(embedded_config_content, str):
-        print("❌ Error: ConfigMap 'config.yaml' value must be a string (YAML text)")
+        logger.error("ConfigMap 'config.yaml' value must be a string (YAML text)")
         return False
 
-    print(f"📋 Found embedded configuration in ConfigMap: {configmap_path}")
+    logger.info(f"Found embedded configuration in ConfigMap: {configmap_path}")
 
     # Validate embedded config.yaml
-    print("\nValidating embedded configuration...")
+    logger.info("Validating embedded configuration...")
     is_config_valid, config_message, embedded_config = validate_yaml_syntax(
         embedded_config_content, f"{configmap_path}:config.yaml"
     )
 
     if not is_config_valid:
-        print(f"❌ YAML Syntax Error in embedded config.yaml:\n{config_message}")
+        logger.error(f"YAML Syntax Error in embedded config.yaml:\n{config_message}")
         return False
 
     if config_message:
-        print(f"⚠️  YAML Style Warnings in embedded config.yaml:\n{config_message}\n")
+        logger.warning(
+            f"YAML Style Warnings in embedded config.yaml:\n{config_message}"
+        )
 
     # Check if embedded config is empty
     if not embedded_config:
-        print("❌ Error: Embedded config.yaml is empty or contains only comments")
+        logger.error("Embedded config.yaml is empty or contains only comments")
         return False
 
     # Import and reuse check_config validation logic
@@ -497,11 +519,11 @@ def check_configmap(configmap_path: str) -> bool:
         result = check_config(args_mock)
 
         if result:
-            print("\n✅ ConfigMap configuration is valid!")
-            print("   Ready to deploy to Kubernetes.")
+            logger.info("ConfigMap configuration is valid!")
+            logger.info("Ready to deploy to Kubernetes.")
         else:
-            print("\n❌ ConfigMap configuration has errors.")
-            print("   Fix the issues above before deploying to Kubernetes.")
+            logger.error("ConfigMap configuration has errors.")
+            logger.error("Fix the issues above before deploying to Kubernetes.")
 
         return result
     finally:

@@ -1,10 +1,11 @@
 """
-Command-line interface handling for the Meshtastic Matrix Relay.
+Command-line interface handling for Meshtastic Matrix Relay.
 """
 
 import argparse
 import importlib
 import importlib.resources
+import ipaddress
 import os
 import re
 import shutil
@@ -839,24 +840,11 @@ def _is_valid_host(host: str) -> bool:
         return False
 
     # Try to parse as IP address (handles both IPv4 and IPv6)
-
-    ipv4_pattern = r"^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$"
-    ipv4_match = re.match(ipv4_pattern, host)
-    if ipv4_match:
-        # Validate each octet is in range 0-255
-        octets = ipv4_match.groups()
-        if all(0 <= int(octet) <= 255 for octet in octets):
-            return True
-
-    # Check for IPv6 (simplified check - colons present and not empty)
-    if ":" in host:
-        try:
-            import ipaddress
-
-            ipaddress.ip_address(host)
-            return True
-        except (ValueError, ImportError):
-            pass
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        pass
 
     # Validate as hostname (alphanumeric with hyphens and dots)
     # RFC 952 and RFC 1123 hostname rules

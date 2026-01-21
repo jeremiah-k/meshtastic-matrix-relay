@@ -939,11 +939,11 @@ class TestConfigChecker(unittest.TestCase):
     @patch("builtins.print")
     def test_check_config_valid_serial_port_linux(
         self,
-        mock_print,
+        _mock_print,
         mock_get_e2ee_status,
         _mock_print_unified_e2ee,
         mock_validate_yaml,
-        mock_open,
+        _mock_open,
         mock_isfile,
         mock_get_paths,
         mock_parse_args,
@@ -988,11 +988,11 @@ class TestConfigChecker(unittest.TestCase):
     @patch("builtins.print")
     def test_check_config_valid_serial_port_windows(
         self,
-        mock_print,
+        _mock_print,
         mock_get_e2ee_status,
         _mock_print_unified_e2ee,
         mock_validate_yaml,
-        mock_open,
+        _mock_open,
         mock_isfile,
         mock_get_paths,
         mock_parse_args,
