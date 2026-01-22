@@ -248,6 +248,8 @@ meshtastic:
   serial_port: /dev/ttyUSB0
 ```
 
+> **Note:** The container internally always expects the device at `/dev/ttyUSB0`. Ensure your host device path in the generated manifest points to the correct device.
+
 **Deployment additions:**
 
 1. Add device mount and volume definition to the pod spec:

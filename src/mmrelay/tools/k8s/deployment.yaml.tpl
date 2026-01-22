@@ -38,16 +38,7 @@ spec:
             - name: MPLCONFIGDIR
               value: "/tmp/matplotlib"
 
-          # Matrix credentials from Kubernetes Secret (for env var authentication)
-          # If not using credentials.json, create the secret with:
-          #   kubectl create secret generic mmrelay-matrix-credentials \
-          #     --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.example.org \
-          #     --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@bot:matrix.example.org \
-          #     --from-literal=MMRELAY_MATRIX_PASSWORD=your_password
-          envFrom:
-            - secretRef:
-                name: mmrelay-matrix-credentials
-                optional: true
+          {{ENV_FROM_SECTION}}
 
           volumeMounts:
             # Mount config from ConfigMap

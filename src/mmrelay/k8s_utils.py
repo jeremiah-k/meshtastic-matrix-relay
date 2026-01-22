@@ -19,6 +19,36 @@ _MISSING_CONFIG_KEYS_MSG = "Missing required config keys: {keys}"
 
 logger = get_logger(__name__)
 
+_SERIAL_CONTAINER_DEVICE_PATH = "/dev/ttyUSB0"
+
+
+def _is_valid_k8s_namespace(namespace: str) -> bool:
+    """Validate Kubernetes namespace name (DNS subdomain format)."""
+    if not namespace or len(namespace) > 253:
+        return False
+    pattern = r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+    if not re.match(pattern, namespace):
+        return False
+    labels = namespace.split("-")
+    return all(len(label) <= 63 for label in labels)
+
+
+def _is_valid_k8s_resource_quantity(size: str) -> bool:
+    """Validate Kubernetes resource quantity (e.g., '1Gi', '500Mi')."""
+    pattern = r"^[0-9]+(\.[0-9]+)?(E|e|P|p|T|t|G|g|M|m|K|k)?(i|I)?$"
+    return re.match(pattern, size) is not None
+
+
+def _is_valid_host_path(path: str) -> bool:
+    """Validate that a path is a safe hostPath value."""
+    if not path or not isinstance(path, str):
+        return False
+    if ".." in path:
+        return False
+    if not path.startswith("/"):
+        return False
+    return True
+
 
 def get_k8s_template_path(template_name: str) -> str:
     """
@@ -56,9 +86,12 @@ def render_template(template: str, variables: dict[str, Any]) -> str:
 
     Parameters:
         template (str): Template content with {{VARIABLE}} placeholders
-        variables (dict): Dictionary of variable names to values. Placeholders
-            on their own line are treated as block substitutions and will
-            inherit the line indentation.
+        variables (dict): Dictionary of variable names to values.
+            - Placeholders on their own line are treated as block substitutions.
+              Block placeholders with None or empty string values are skipped entirely.
+            - Inline placeholders must always be present in the variables dict.
+              Inline placeholders with None or missing keys raise ValueError.
+        Block substitutions inherit the line indentation of the placeholder line.
 
     Returns:
         str: Rendered template
@@ -137,6 +170,12 @@ def prompt_for_config() -> dict[str, Any]:
 
     # Namespace
     config["namespace"] = input("Kubernetes namespace [default]: ").strip() or "default"
+    while not _is_valid_k8s_namespace(config["namespace"]):
+        print("Invalid namespace. Kubernetes namespaces must be DNS subdomain format.")
+        print("  Example: my-app, my-namespace, production")
+        config["namespace"] = (
+            input("Kubernetes namespace [default]: ").strip() or "default"
+        )
 
     # Image tag
     config["image_tag"] = input("MMRelay image tag [latest]: ").strip() or "latest"
@@ -173,6 +212,11 @@ def prompt_for_config() -> dict[str, Any]:
         config["serial_device"] = (
             input("Serial device path [/dev/ttyUSB0]: ").strip() or "/dev/ttyUSB0"
         )
+        if not _is_valid_host_path(config["serial_device"]):
+            print(f"Invalid device path: {config['serial_device']}")
+            config["serial_device"] = (
+                input("Serial device path [/dev/ttyUSB0]: ").strip() or "/dev/ttyUSB0"
+            )
 
     # Storage
     config["storage_class"] = (
@@ -181,6 +225,12 @@ def prompt_for_config() -> dict[str, Any]:
     config["storage_size"] = (
         input("Storage size for data volume [1Gi]: ").strip() or "1Gi"
     )
+    while not _is_valid_k8s_resource_quantity(config["storage_size"]):
+        print("Invalid storage size. Use Kubernetes resource quantity format.")
+        print("  Examples: 1Gi, 500Mi, 10Gi")
+        config["storage_size"] = (
+            input("Storage size for data volume [1Gi]: ").strip() or "1Gi"
+        )
 
     return config
 
@@ -329,7 +379,7 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
     serial_volume_mount = "\n".join(
         [
             "- name: serial-device",
-            f"  mountPath: {serial_device}",
+            f"  mountPath: {_SERIAL_CONTAINER_DEVICE_PATH}",
         ]
     )
     serial_volume_mount_comment = "\n".join(
@@ -341,6 +391,8 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
     )
     serial_volume = "\n".join(
         [
+            "# The host device path (user input) is used in hostPath",
+            "# The container device path is fixed for consistency with container OS",
             "- name: serial-device",
             "  hostPath:",
             f"    path: {serial_device}",
@@ -356,12 +408,42 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
             "#     type: CharDevice",
         ]
     )
+    env_from_section = "\n".join(
+        [
+            "# Matrix credentials from Kubernetes Secret (for env var authentication)",
+            "# If not using credentials.json, create a secret with:",
+            "#   kubectl create secret generic mmrelay-matrix-credentials \\",
+            "#     --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.example.org \\",
+            "#     --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@bot:matrix.example.org \\",
+            "#     --from-literal=MMRELAY_MATRIX_PASSWORD=your_password",
+            "envFrom:",
+            "  - secretRef:",
+            "      name: mmrelay-matrix-credentials",
+            "      optional: true",
+        ]
+    )
+    env_from_section_comment = "\n".join(
+        [
+            "# Matrix credentials from Kubernetes Secret (for env var authentication)",
+            "# If not using credentials.json, create a secret with:",
+            "#   kubectl create secret generic mmrelay-matrix-credentials \\",
+            "#     --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.example.org \\",
+            "#     --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@bot:matrix.example.org \\",
+            "#     --from-literal=MMRELAY_MATRIX_PASSWORD=your_password",
+            "# envFrom:  # Uncomment for environment variable authentication",
+            "#   - secretRef:",
+            "#       name: mmrelay-matrix-credentials",
+            "#       optional: true",
+        ]
+    )
     if config.get("use_credentials_file", False):
         credentials_volume_mount_block = credentials_volume_mount
         credentials_volume_block = credentials_volume
+        env_from_block = env_from_section_comment
     else:
         credentials_volume_mount_block = credentials_volume_mount_comment
         credentials_volume_block = credentials_volume_comment
+        env_from_block = env_from_section
     if config["connection_type"] == "serial":
         serial_volume_mount_block = serial_volume_mount
         serial_volume_block = serial_volume
@@ -392,6 +474,7 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
             "IMAGE_TAG": config["image_tag"],
             "CREDENTIALS_VOLUME_MOUNT": credentials_volume_mount_block,
             "CREDENTIALS_VOLUME": credentials_volume_block,
+            "ENV_FROM_SECTION": env_from_block,
             "SERIAL_VOLUME_MOUNT": serial_volume_mount_block,
             "SERIAL_VOLUME": serial_volume_block,
             "SECURITY_CONTEXT": security_context_block,

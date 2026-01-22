@@ -1805,11 +1805,16 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
             print("\n📖 For detailed instructions, see docs/KUBERNETES.md")
 
             return 0
-        except (ImportError, KeyboardInterrupt, EOFError) as e:
+        except (ImportError, KeyboardInterrupt, EOFError, OSError) as e:
             if isinstance(e, KeyboardInterrupt):
                 print("\n\nCancelled.")
             elif isinstance(e, EOFError):
                 print("\n\nInput unavailable; run in an interactive shell.")
+            elif isinstance(e, (PermissionError, OSError)):
+                print(f"Error: Unable to write files: {e}")
+                print(
+                    "   Check that you have write permissions for the output directory."
+                )
             else:
                 print(f"Error: {e}")
             return 1
