@@ -1,5 +1,7 @@
 # Kubernetes Deployment Guide
 
+> **Note**: Kubernetes deployment is currently in testing and development. This feature is subject to change while we refine it based on user feedback.
+
 This guide explains how to deploy MMRelay on Kubernetes. The goal is a simple, repeatable setup that works on most clusters.
 
 ## Prerequisites
@@ -45,6 +47,8 @@ kubectl create secret generic mmrelay-matrix-credentials \
   --from-literal=MMRELAY_MATRIX_BOT_USER_ID="<your-bot-user-id>" \
   --from-literal=MMRELAY_MATRIX_PASSWORD=$MMRELAY_MATRIX_PASSWORD
 ```
+
+> **Note:** Matrix environment variables are specifically for containerized deployments (Kubernetes/Docker). For a complete list of all environment variables, see [Advanced Configuration](ADVANCED_CONFIGURATION.md#environment-variable-overrides).
 
 If you chose to generate the Secret manifest, update the file and apply it instead:
 
