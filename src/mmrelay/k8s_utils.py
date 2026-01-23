@@ -2,8 +2,10 @@
 
 import argparse
 import importlib.resources
+import json
 import os
 import re
+import subprocess
 from typing import Any
 
 from mmrelay.log_utils import get_logger
@@ -20,6 +22,108 @@ _MISSING_CONFIG_KEYS_MSG = "Missing required config keys: {keys}"
 logger = get_logger(__name__)
 
 _SERIAL_CONTAINER_DEVICE_PATH = "/dev/ttyUSB0"
+
+
+def _get_storage_classes_from_kubectl() -> list[tuple[str, bool]] | None:
+    """Return storage class names and default flags using kubectl, if available."""
+    try:
+        result = subprocess.run(
+            ["kubectl", "get", "storageclass", "-o", "json"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        logger.debug("kubectl not found; skipping storage class discovery")
+        return None
+
+    if result.returncode != 0:
+        stderr = result.stderr.strip()
+        if stderr:
+            logger.debug("kubectl get storageclass failed: %s", stderr)
+        return None
+
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        logger.debug("Failed to parse kubectl storageclass JSON output")
+        return None
+
+    classes: list[tuple[str, bool]] = []
+    for item in payload.get("items", []):
+        metadata = item.get("metadata", {}) if isinstance(item, dict) else {}
+        name = metadata.get("name")
+        if not name:
+            continue
+        annotations = metadata.get("annotations", {}) or {}
+        default_annotation = annotations.get(
+            "storageclass.kubernetes.io/is-default-class", ""
+        )
+        legacy_default_annotation = annotations.get(
+            "storageclass.beta.kubernetes.io/is-default-class", ""
+        )
+        is_default = (
+            str(default_annotation).lower() == "true"
+            or str(legacy_default_annotation).lower() == "true"
+        )
+        classes.append((name, is_default))
+
+    return classes or None
+
+
+def _get_current_namespace_from_kubectl() -> str | None:
+    """Return the current namespace from kubectl context, if available."""
+    try:
+        result = subprocess.run(
+            ["kubectl", "config", "view", "--minify", "-o", "json"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        logger.debug("kubectl not found; skipping namespace discovery")
+        return None
+
+    if result.returncode != 0:
+        stderr = result.stderr.strip()
+        if stderr:
+            logger.debug("kubectl config view failed: %s", stderr)
+        return None
+
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        logger.debug("Failed to parse kubectl config JSON output")
+        return None
+
+    contexts = payload.get("contexts", [])
+    if not contexts:
+        return None
+
+    context = contexts[0].get("context", {}) if isinstance(contexts[0], dict) else {}
+    namespace = context.get("namespace")
+    if isinstance(namespace, str) and namespace.strip():
+        return namespace.strip()
+    return None
+
+
+def _render_matrix_credentials_secret(namespace: str) -> str:
+    """Render a Secret manifest for env-var based Matrix credentials."""
+    return f"""apiVersion: v1
+kind: Secret
+metadata:
+  name: mmrelay-matrix-credentials
+  namespace: {namespace}
+  labels:
+    app: mmrelay
+type: Opaque
+stringData:
+  # Environment-variable auth for Matrix credentials.
+  # Replace the placeholders below with your real values.
+  MMRELAY_MATRIX_HOMESERVER: "https://matrix.example.org"
+  MMRELAY_MATRIX_BOT_USER_ID: "@bot:example.org"
+  MMRELAY_MATRIX_PASSWORD: "your_password_here"
+"""
 
 
 def _is_valid_k8s_namespace(namespace: str) -> bool:
@@ -155,6 +259,7 @@ def prompt_for_config() -> dict[str, Any]:
             - namespace (str): Kubernetes namespace to use.
             - image_tag (str): MMRelay container image tag.
             - use_credentials_file (bool): True if a credentials file (Secret) should be used, False to use environment-variable-based auth.
+            - generate_secret_manifest (bool): True if a Secret manifest should be generated.
             - connection_type (str): "tcp" or "serial".
             - meshtastic_host (str): Hostname/IP of Meshtastic device (present when connection_type == "tcp").
             - meshtastic_port (str): Port of Meshtastic device (present when connection_type == "tcp").
@@ -169,7 +274,15 @@ def prompt_for_config() -> dict[str, Any]:
     config: dict[str, Any] = {}
 
     # Namespace
-    config["namespace"] = input("Kubernetes namespace [default]: ").strip() or "default"
+    namespace_default = _get_current_namespace_from_kubectl() or "default"
+    if not _is_valid_k8s_namespace(namespace_default):
+        namespace_default = "default"
+    if namespace_default != "default":
+        print(f"Detected namespace from kubectl context: {namespace_default}")
+    config["namespace"] = (
+        input(f"Kubernetes namespace [{namespace_default}]: ").strip()
+        or namespace_default
+    )
     while not _is_valid_k8s_namespace(config["namespace"]):
         print("Invalid namespace. Kubernetes namespaces must be DNS subdomain format.")
         print("  Example: my-app, my-namespace, production")
@@ -189,6 +302,13 @@ def prompt_for_config() -> dict[str, Any]:
         print("Invalid choice; defaulting to 1.")
         auth_choice = "1"
     config["use_credentials_file"] = auth_choice == "2"
+
+    # Secret manifest generation
+    print("\nSecret Manifest:")
+    print("  Generate a Kubernetes Secret manifest with placeholder values.")
+    print("  You can edit it later or create the Secret manually with kubectl.")
+    secret_choice = input("Generate Secret manifest file? [Y/n]: ").strip().lower()
+    config["generate_secret_manifest"] = secret_choice in {"", "y", "yes"}
 
     # Connection type
     print("\nMeshtastic Connection Type:")
@@ -219,8 +339,29 @@ def prompt_for_config() -> dict[str, Any]:
             )
 
     # Storage
+    storage_classes = _get_storage_classes_from_kubectl()
+    storage_class_default = "standard"
+    if storage_classes:
+        print("\nDetected StorageClasses:")
+        for name, is_default in storage_classes:
+            suffix = " (default)" if is_default else ""
+            print(f"  - {name}{suffix}")
+        default_storage_class = next(
+            (name for name, is_default in storage_classes if is_default), None
+        )
+        if default_storage_class:
+            storage_class_default = default_storage_class
+        else:
+            storage_class_default = storage_classes[0][0]
+            print(
+                f"No default StorageClass detected; using '{storage_class_default}' as the suggested default."
+            )
+
     config["storage_class"] = (
-        input("Storage class for persistent volume [standard]: ").strip() or "standard"
+        input(
+            f"Storage class for persistent volume [{storage_class_default}]: "
+        ).strip()
+        or storage_class_default
     )
     config["storage_size"] = (
         input("Storage size for data volume [1Gi]: ").strip() or "1Gi"
@@ -281,7 +422,7 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
     Generates:
     - PersistentVolumeClaim for data storage
     - ConfigMap from sample_config.yaml (single source of truth)
-    - Secret for credentials.json (if using credentials file auth)
+    - Optional Secret manifest (credentials.json or env-var auth)
     - Deployment with proper volume mounts
 
     Parameters:
@@ -325,13 +466,23 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
     generate_configmap_from_sample(config["namespace"], configmap_path)
     generated_files.append(configmap_path)
 
-    # 3. Generate Secret (only if using credentials file)
-    if config.get("use_credentials_file", False):
-        secret_template = load_template("secret-credentials.yaml.tpl")
-        secret_content = render_template(
-            secret_template, {"NAMESPACE": config["namespace"]}
-        )
-        secret_path = os.path.join(output_dir, "mmrelay-secret-credentials.yaml")
+    # 3. Generate Secret (optional)
+    generate_secret_manifest = config.get("generate_secret_manifest")
+    if generate_secret_manifest is None:
+        generate_secret_manifest = bool(config.get("use_credentials_file", False))
+
+    if generate_secret_manifest:
+        if config.get("use_credentials_file", False):
+            secret_template = load_template("secret-credentials.yaml.tpl")
+            secret_content = render_template(
+                secret_template, {"NAMESPACE": config["namespace"]}
+            )
+            secret_path = os.path.join(output_dir, "mmrelay-secret-credentials.yaml")
+        else:
+            secret_content = _render_matrix_credentials_secret(config["namespace"])
+            secret_path = os.path.join(
+                output_dir, "mmrelay-secret-matrix-credentials.yaml"
+            )
         with open(secret_path, "w", encoding="utf-8") as f:
             f.write(secret_content)
         generated_files.append(secret_path)

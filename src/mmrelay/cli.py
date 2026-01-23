@@ -1770,34 +1770,61 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
             print(f"      nano {output_dir}/mmrelay-configmap.yaml")
             print()
 
-            if config.get("use_credentials_file"):
-                from mmrelay.config import get_base_dir
+            generate_secret_manifest = config.get("generate_secret_manifest")
+            if generate_secret_manifest is None:
+                generate_secret_manifest = bool(
+                    config.get("use_credentials_file", False)
+                )
 
-                base_dir = get_base_dir()
-                credentials_path = os.path.join(base_dir, "credentials.json")
-                print("   • Create credentials.json using 'mmrelay auth login'")
-                print("   • Update the secret with your credentials.json:")
-                print("      kubectl create secret generic mmrelay-credentials-json \\")
-                print(
-                    f"        --from-file=credentials.json={credentials_path} --namespace={config['namespace']}"
-                )
+            if config.get("use_credentials_file"):
+                if generate_secret_manifest:
+                    print("   • Update the credentials Secret manifest:")
+                    print(f"      nano {output_dir}/mmrelay-secret-credentials.yaml")
+                    print("   • Apply it:")
+                    print(
+                        f"      kubectl apply -f {output_dir}/mmrelay-secret-credentials.yaml"
+                    )
+                else:
+                    from mmrelay.config import get_base_dir
+
+                    base_dir = get_base_dir()
+                    credentials_path = os.path.join(base_dir, "credentials.json")
+                    print("   • Create credentials.json using 'mmrelay auth login'")
+                    print("   • Update the secret with your credentials.json:")
+                    print(
+                        "      kubectl create secret generic mmrelay-credentials-json \\"
+                    )
+                    print(
+                        f"        --from-file=credentials.json={credentials_path} --namespace={config['namespace']}"
+                    )
             else:
-                print("   • Create a secret with your Matrix credentials:")
-                print(
-                    "      read -s -p 'Matrix password: ' MMRELAY_MATRIX_PASSWORD; echo"
-                )
-                print(
-                    "      kubectl create secret generic mmrelay-matrix-credentials \\"
-                )
-                print(
-                    "        --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.example.org \\"
-                )
-                print(
-                    "        --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@bot:matrix.example.org \\"
-                )
-                print(
-                    f"        --from-literal=MMRELAY_MATRIX_PASSWORD=$MMRELAY_MATRIX_PASSWORD --namespace={config['namespace']}"
-                )
+                if generate_secret_manifest:
+                    print("   • Update the Matrix credentials Secret manifest:")
+                    print(
+                        f"      nano {output_dir}/mmrelay-secret-matrix-credentials.yaml"
+                    )
+                    print("   • Apply it:")
+                    print(
+                        "      kubectl apply -f "
+                        f"{output_dir}/mmrelay-secret-matrix-credentials.yaml"
+                    )
+                else:
+                    print("   • Create a secret with your Matrix credentials:")
+                    print(
+                        "      read -s -p 'Matrix password: ' MMRELAY_MATRIX_PASSWORD; echo"
+                    )
+                    print(
+                        "      kubectl create secret generic mmrelay-matrix-credentials \\"
+                    )
+                    print(
+                        "        --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.example.org \\"
+                    )
+                    print(
+                        "        --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@bot:matrix.example.org \\"
+                    )
+                    print(
+                        f"        --from-literal=MMRELAY_MATRIX_PASSWORD=$MMRELAY_MATRIX_PASSWORD --namespace={config['namespace']}"
+                    )
 
             print()
             print("   2. Apply the manifests:")

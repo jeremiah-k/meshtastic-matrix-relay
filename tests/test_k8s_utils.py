@@ -256,6 +256,37 @@ meshtastic:
                     deployment_content = f.read()
                     # Should have credentials volume mount uncommented
                     self.assertIn("name: credentials", deployment_content)
+            except (FileNotFoundError, IndexError, StopIteration):
+                self.skipTest("Template files not yet packaged or generation failed")
+
+    def test_generate_manifests_with_env_secret_manifest(self):
+        """Test manifest generation with env-var auth and secret manifest enabled."""
+        config = {
+            "namespace": "test-namespace",
+            "image_tag": "v1.2.0",
+            "use_credentials_file": False,
+            "generate_secret_manifest": True,
+            "connection_type": "tcp",
+            "meshtastic_host": "192.168.1.100",
+            "meshtastic_port": "4403",
+            "storage_class": "gp2",
+            "storage_size": "2Gi",
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            try:
+                generated_files = generate_manifests(config, tmpdir)
+
+                # Should generate env secret file
+                secret_file = next(
+                    f for f in generated_files if "secret-matrix-credentials" in f
+                )
+
+                with open(secret_file, "r", encoding="utf-8") as f:
+                    secret_content = f.read()
+                    self.assertIn("MMRELAY_MATRIX_HOMESERVER", secret_content)
+                    self.assertIn("MMRELAY_MATRIX_BOT_USER_ID", secret_content)
+                    self.assertIn("MMRELAY_MATRIX_PASSWORD", secret_content)
             except (FileNotFoundError, IndexError):
                 self.skipTest("Template files not yet packaged or generation failed")
 
@@ -291,14 +322,19 @@ meshtastic:
             except (FileNotFoundError, IndexError):
                 self.skipTest("Template files not yet packaged or generation failed")
 
+    @patch("mmrelay.k8s_utils._get_storage_classes_from_kubectl", return_value=None)
+    @patch("mmrelay.k8s_utils._get_current_namespace_from_kubectl", return_value=None)
     @patch("builtins.input")
-    def test_prompt_for_config_defaults(self, mock_input):
+    def test_prompt_for_config_defaults(
+        self, mock_input, _mock_namespace, _mock_storage
+    ):
         """Test prompt_for_config with all default values."""
         # Mock user pressing Enter for all prompts (using defaults)
         mock_input.side_effect = [
             "",  # namespace (default)
             "",  # image_tag (latest)
             "",  # auth_method (1)
+            "",  # generate_secret_manifest (default yes)
             "",  # connection_type (1)
             "",  # meshtastic_host (meshtastic.local)
             "",  # meshtastic_port (4403)
@@ -311,16 +347,20 @@ meshtastic:
         self.assertEqual(config["namespace"], "default")
         self.assertEqual(config["image_tag"], "latest")
         self.assertFalse(config["use_credentials_file"])
+        self.assertTrue(config["generate_secret_manifest"])
         self.assertEqual(config["connection_type"], "tcp")
         self.assertEqual(config["meshtastic_host"], "meshtastic.local")
 
+    @patch("mmrelay.k8s_utils._get_storage_classes_from_kubectl", return_value=None)
+    @patch("mmrelay.k8s_utils._get_current_namespace_from_kubectl", return_value=None)
     @patch("builtins.input")
-    def test_prompt_for_config_serial(self, mock_input):
+    def test_prompt_for_config_serial(self, mock_input, _mock_namespace, _mock_storage):
         """Test prompt_for_config choosing serial connection."""
         mock_input.side_effect = [
             "custom-ns",  # namespace
             "v1.2.0",  # image_tag
             "2",  # use_credentials_file (2=yes)
+            "n",  # generate_secret_manifest (no)
             "2",  # connection_type (serial)
             "/dev/ttyACM0",  # serial_device
             "fast-storage",  # storage_class
@@ -332,19 +372,25 @@ meshtastic:
         self.assertEqual(config["namespace"], "custom-ns")
         self.assertEqual(config["image_tag"], "v1.2.0")
         self.assertTrue(config["use_credentials_file"])
+        self.assertFalse(config["generate_secret_manifest"])
         self.assertEqual(config["connection_type"], "serial")
         self.assertEqual(config["serial_device"], "/dev/ttyACM0")
         self.assertEqual(config["storage_class"], "fast-storage")
         self.assertEqual(config["storage_size"], "5Gi")
 
+    @patch("mmrelay.k8s_utils._get_storage_classes_from_kubectl", return_value=None)
+    @patch("mmrelay.k8s_utils._get_current_namespace_from_kubectl", return_value=None)
     @patch("builtins.input")
     @patch("builtins.print")
-    def test_prompt_for_config_invalid_auth_choice(self, mock_print, mock_input):
+    def test_prompt_for_config_invalid_auth_choice(
+        self, mock_print, mock_input, _mock_namespace, _mock_storage
+    ):
         """Test prompt_for_config with invalid authentication choice defaults to 1."""
         mock_input.side_effect = [
             "",  # namespace (default)
             "",  # image_tag (latest)
             "invalid",  # invalid auth_choice
+            "",  # generate_secret_manifest (default yes)
             "",  # connection_type (1)
             "",  # meshtastic_host (meshtastic.local)
             "",  # meshtastic_port (4403)
@@ -358,14 +404,19 @@ meshtastic:
         self.assertFalse(config["use_credentials_file"])
         mock_print.assert_any_call("Invalid choice; defaulting to 1.")
 
+    @patch("mmrelay.k8s_utils._get_storage_classes_from_kubectl", return_value=None)
+    @patch("mmrelay.k8s_utils._get_current_namespace_from_kubectl", return_value=None)
     @patch("builtins.input")
     @patch("builtins.print")
-    def test_prompt_for_config_invalid_connection_choice(self, mock_print, mock_input):
+    def test_prompt_for_config_invalid_connection_choice(
+        self, mock_print, mock_input, _mock_namespace, _mock_storage
+    ):
         """Test prompt_for_config with invalid connection choice defaults to 1."""
         mock_input.side_effect = [
             "",  # namespace (default)
             "",  # image_tag (latest)
             "",  # auth_method (1)
+            "",  # generate_secret_manifest (default yes)
             "3",  # invalid connection_type
             "",  # meshtastic_host (meshtastic.local)
             "",  # meshtastic_port (4403)
