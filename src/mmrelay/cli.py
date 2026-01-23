@@ -914,7 +914,9 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
 
     config_paths = get_config_paths(args)
     config_path = None
-    allow_missing_matrix_auth = bool(getattr(args, "allow_missing_matrix_auth", False))
+    allow_missing_matrix_auth = (
+        getattr(args, "allow_missing_matrix_auth", False) is True
+    )
 
     # Try each config path in order until we find one that exists
     for path in config_paths:
