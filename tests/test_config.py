@@ -867,9 +867,19 @@ class TestE2EESupport(unittest.TestCase):
                 False,
                 "legacy e2ee disabled",
             ),
+            (
+                {"matrix": {"encryption": {"enabled": "false"}}},
+                False,
+                "legacy e2ee string false",
+            ),
             # New key
             ({"matrix": {"e2ee": {"enabled": True}}}, True, "new e2ee enabled"),
             ({"matrix": {"e2ee": {"enabled": False}}}, False, "new e2ee disabled"),
+            (
+                {"matrix": {"e2ee": {"enabled": "true"}}},
+                False,
+                "new e2ee string true",
+            ),
             # Mixed keys (OR logic)
             (
                 {
