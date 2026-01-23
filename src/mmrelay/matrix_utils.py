@@ -433,7 +433,7 @@ def _display_room_channel_mappings(
                     logger.info(f"    ✅ {room_name}")
 
 
-def _can_auto_create_credentials(matrix_config: Dict[str, Any]) -> bool:
+def _can_auto_create_credentials(matrix_config: Dict[str, Any] | None) -> bool:
     """
     Determine whether the Matrix configuration contains the fields required to create credentials automatically.
 
@@ -443,6 +443,8 @@ def _can_auto_create_credentials(matrix_config: Dict[str, Any]) -> bool:
     Returns:
         True if `homeserver`, a user id (`bot_user_id` or `user_id`), and `password` are present as non-empty strings, False otherwise.
     """
+    if not isinstance(matrix_config, dict):
+        return False
     homeserver = matrix_config.get("homeserver")
     user = matrix_config.get("bot_user_id") or matrix_config.get("user_id")
     password = matrix_config.get("password")
@@ -1218,6 +1220,8 @@ async def connect_matrix(
     if matrix_client:
         return matrix_client
 
+    matrix_section = config.get("matrix") if isinstance(config, dict) else None
+
     # Check for credentials.json first
     credentials = None
     e2ee_device_id: Optional[str] = None
@@ -1253,19 +1257,16 @@ async def connect_matrix(
             )
 
         # If config also has Matrix login info, let the user know we're ignoring it
-        if config and "matrix" in config and "access_token" in config["matrix"]:
+        if isinstance(matrix_section, dict) and "access_token" in matrix_section:
             logger.info(
                 "NOTE: Ignoring Matrix login details in config.yaml in favor of credentials.json"
             )
     # Check if we can automatically create credentials from config.yaml
-    elif (
-        config and "matrix" in config and _can_auto_create_credentials(config["matrix"])
-    ):
+    elif _can_auto_create_credentials(matrix_section):
         logger.info(
             "No credentials.json found, but config.yaml has password field. Attempting automatic login..."
         )
 
-        matrix_section = config["matrix"]
         homeserver = matrix_section["homeserver"]
         username = matrix_section.get("bot_user_id") or matrix_section.get("user_id")
         # Normalize the username to ensure it's a full MXID
@@ -1320,7 +1321,12 @@ async def connect_matrix(
             logger.error(msg_require_auth_login())
             return None
 
-        matrix_section = config["matrix"]
+        if not isinstance(matrix_section, dict):
+            logger.error(
+                "Matrix configuration section is empty or invalid (expected a mapping under 'matrix')."
+            )
+            logger.error(msg_require_auth_login())
+            return None
 
         # Check for required fields in matrix section
         required_fields = ["homeserver", "access_token", "bot_user_id"]

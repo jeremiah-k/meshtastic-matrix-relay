@@ -371,17 +371,35 @@ def load_database_config_from_env() -> dict[str, Any] | None:
     return config
 
 
-def is_e2ee_enabled(config: dict[str, Any]) -> bool:
+def load_matrix_config_from_env() -> dict[str, Any] | None:
     """
-    Determine whether End-to-End Encryption (E2EE) is enabled in the provided configuration.
+    Build a Matrix configuration fragment from environment variables.
 
-    Checks the `matrix` section for either `matrix.encryption.enabled` or `matrix.e2ee.enabled` and returns True if either is set to True. On Windows (`sys.platform == "win32"`), E2EE is treated as unsupported and this function always returns False.
-
-    Parameters:
-        config (dict[str, Any]): Top-level configuration mapping (may be empty or None).
+    Reads the Matrix-related environment variables defined in the module mapping and returns a configuration fragment suitable for merging into the top-level config.
 
     Returns:
-        bool: `true` if E2EE is enabled in the configuration and the platform supports E2EE, `false` otherwise.
+        dict[str, Any]: Dictionary of parsed Matrix configuration values if any mapped environment variables were present.
+        None: If no relevant environment variables were set.
+    """
+    config = _load_config_from_env_mapping(_MATRIX_ENV_VAR_MAPPINGS)
+    if config:
+        logger.debug(
+            f"Loaded Matrix configuration from environment variables: {list(config.keys())}"
+        )
+    return config
+
+
+def is_e2ee_enabled(config: dict[str, Any] | None) -> bool:
+    """
+    Determine whether End-to-End Encryption (E2EE) is enabled in the given configuration.
+
+    If the platform does not support E2EE (Windows), this function always reports that E2EE is disabled. The function inspects the top-level `matrix` section and treats E2EE as enabled when either `matrix.encryption.enabled` or `matrix.e2ee.enabled` is true.
+
+    Parameters:
+        config (dict[str, Any] | None): Top-level configuration mapping which may be empty or None.
+
+    Returns:
+        bool: `True` if E2EE is enabled in the configuration and the platform supports E2EE, `False` otherwise.
     """
     # E2EE is not supported on Windows
     if sys.platform == "win32":
@@ -391,13 +409,21 @@ def is_e2ee_enabled(config: dict[str, Any]) -> bool:
         return False
 
     matrix_cfg = config.get("matrix", {}) or {}
-    if not matrix_cfg:
+    if not isinstance(matrix_cfg, dict) or not matrix_cfg:
         return False
 
-    encryption_enabled = cast(
-        bool, matrix_cfg.get("encryption", {}).get("enabled", False)
+    encryption_cfg = matrix_cfg.get("encryption")
+    if not isinstance(encryption_cfg, dict):
+        encryption_cfg = {}
+    e2ee_cfg = matrix_cfg.get("e2ee")
+    if not isinstance(e2ee_cfg, dict):
+        e2ee_cfg = {}
+    encryption_value = encryption_cfg.get("enabled", False)
+    encryption_enabled = (
+        encryption_value if isinstance(encryption_value, bool) else False
     )
-    e2ee_enabled = cast(bool, matrix_cfg.get("e2ee", {}).get("enabled", False))
+    e2ee_value = e2ee_cfg.get("enabled", False)
+    e2ee_enabled = e2ee_value if isinstance(e2ee_value, bool) else False
 
     return encryption_enabled or e2ee_enabled
 
@@ -435,12 +461,49 @@ def check_e2ee_enabled_silently(args: Any = None) -> bool:
     return False
 
 
+def _normalize_optional_dict_sections(
+    config: dict[str, Any],
+    section_names: tuple[str, ...],
+) -> None:
+    """
+    Normalize optional mapping sections that are present but null.
+
+    YAML allows keys with no value to parse as None; convert those to empty dicts
+    for known mapping sections so downstream code can safely use .get/.update.
+    """
+    for section_name in section_names:
+        if section_name in config and config[section_name] is None:
+            config[section_name] = {}
+
+
+def _get_mapping_section(
+    config: dict[str, Any], section_name: str
+) -> dict[str, Any] | None:
+    """
+    Return a mutable mapping for a config section, creating it when missing.
+
+    Returns None if the section exists but is not a mapping.
+    """
+    section = config.get(section_name)
+    if section is None:
+        section = {}
+        config[section_name] = section
+        return section
+    if not isinstance(section, dict):
+        logger.warning(
+            "Config section '%s' is not a mapping; skipping environment overrides",
+            section_name,
+        )
+        return None
+    return section
+
+
 def apply_env_config_overrides(config: dict[str, Any] | None) -> dict[str, Any]:
     """
     Merge configuration values derived from environment variables into a configuration dictionary.
 
     If `config` is falsy, a new dict is created. Environment-derived fragments are merged into the top-level
-    keys "meshtastic", "logging", and "database" when present; existing keys in those sections are preserved.
+    keys "meshtastic", "logging", "database", and "matrix" when present; existing keys in those sections are preserved.
     The input dictionary may be mutated in place.
 
     Parameters:
@@ -451,24 +514,52 @@ def apply_env_config_overrides(config: dict[str, Any] | None) -> dict[str, Any]:
     """
     if not config:
         config = {}
+    else:
+        _normalize_optional_dict_sections(
+            config,
+            (
+                "matrix",
+                "meshtastic",
+                "logging",
+                "database",
+                "db",
+                "plugins",
+                "custom-plugins",
+                "community-plugins",
+            ),
+        )
 
     # Apply Meshtastic configuration overrides
     meshtastic_env_config = load_meshtastic_config_from_env()
     if meshtastic_env_config:
-        config.setdefault("meshtastic", {}).update(meshtastic_env_config)
-        logger.debug("Applied Meshtastic environment variable overrides")
+        meshtastic_section = _get_mapping_section(config, "meshtastic")
+        if meshtastic_section is not None:
+            meshtastic_section.update(meshtastic_env_config)
+            logger.debug("Applied Meshtastic environment variable overrides")
 
     # Apply logging configuration overrides
     logging_env_config = load_logging_config_from_env()
     if logging_env_config:
-        config.setdefault("logging", {}).update(logging_env_config)
-        logger.debug("Applied logging environment variable overrides")
+        logging_section = _get_mapping_section(config, "logging")
+        if logging_section is not None:
+            logging_section.update(logging_env_config)
+            logger.debug("Applied logging environment variable overrides")
 
     # Apply database configuration overrides
     database_env_config = load_database_config_from_env()
     if database_env_config:
-        config.setdefault("database", {}).update(database_env_config)
-        logger.debug("Applied database environment variable overrides")
+        database_section = _get_mapping_section(config, "database")
+        if database_section is not None:
+            database_section.update(database_env_config)
+            logger.debug("Applied database environment variable overrides")
+
+    # Apply Matrix configuration overrides
+    matrix_env_config = load_matrix_config_from_env()
+    if matrix_env_config:
+        matrix_section = _get_mapping_section(config, "matrix")
+        if matrix_section is not None:
+            matrix_section.update(matrix_env_config)
+            logger.debug("Applied Matrix environment variable overrides")
 
     return config
 
@@ -637,6 +728,25 @@ _DATABASE_ENV_VAR_MAPPINGS: list[dict[str, Any]] = [
     {"env_var": "MMRELAY_DATABASE_PATH", "config_key": "path", "type": "string"},
 ]
 
+_MATRIX_ENV_VAR_MAPPINGS: list[dict[str, Any]] = [
+    {
+        "env_var": "MMRELAY_MATRIX_HOMESERVER",
+        "config_key": "homeserver",
+        "type": "string",
+    },
+    {
+        "env_var": "MMRELAY_MATRIX_BOT_USER_ID",
+        "config_key": "bot_user_id",
+        "type": "string",
+    },
+    {"env_var": "MMRELAY_MATRIX_PASSWORD", "config_key": "password", "type": "string"},
+    {
+        "env_var": "MMRELAY_MATRIX_ACCESS_TOKEN",
+        "config_key": "access_token",
+        "type": "string",
+    },
+]
+
 
 def _load_config_from_env_mapping(
     mappings: list[dict[str, Any]],
@@ -741,24 +851,19 @@ def set_config(module: Any, passed_config: dict[str, Any]) -> dict[str, Any]:
         if hasattr(module, "matrix_rooms") and "matrix_rooms" in passed_config:
             module.matrix_rooms = passed_config["matrix_rooms"]
 
-        # Only set matrix config variables if matrix section exists and has the required fields
-        # When using credentials.json, these will be loaded by connect_matrix() instead
+        # Only set matrix config variables if matrix section exists and has required fields
+        # When using credentials.json (from mmrelay auth login), these will be loaded by connect_matrix() instead
+        matrix_section = passed_config.get(CONFIG_SECTION_MATRIX)
         if (
             hasattr(module, "matrix_homeserver")
-            and CONFIG_SECTION_MATRIX in passed_config
-            and CONFIG_KEY_HOMESERVER in passed_config[CONFIG_SECTION_MATRIX]
-            and CONFIG_KEY_ACCESS_TOKEN in passed_config[CONFIG_SECTION_MATRIX]
-            and CONFIG_KEY_BOT_USER_ID in passed_config[CONFIG_SECTION_MATRIX]
+            and isinstance(matrix_section, dict)
+            and CONFIG_KEY_HOMESERVER in matrix_section
+            and CONFIG_KEY_ACCESS_TOKEN in matrix_section
+            and CONFIG_KEY_BOT_USER_ID in matrix_section
         ):
-            module.matrix_homeserver = passed_config[CONFIG_SECTION_MATRIX][
-                CONFIG_KEY_HOMESERVER
-            ]
-            module.matrix_access_token = passed_config[CONFIG_SECTION_MATRIX][
-                CONFIG_KEY_ACCESS_TOKEN
-            ]
-            module.bot_user_id = passed_config[CONFIG_SECTION_MATRIX][
-                CONFIG_KEY_BOT_USER_ID
-            ]
+            module.matrix_homeserver = matrix_section[CONFIG_KEY_HOMESERVER]
+            module.matrix_access_token = matrix_section[CONFIG_KEY_ACCESS_TOKEN]
+            module.bot_user_id = matrix_section[CONFIG_KEY_BOT_USER_ID]
 
     elif module_name == "meshtastic_utils":
         # Set Meshtastic-specific configuration

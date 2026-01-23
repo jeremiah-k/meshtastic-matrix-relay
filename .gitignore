@@ -11,6 +11,8 @@ __pycache__/
 *.pyd
 *$py.class
 src/mmrelay.egg-info
+.opencode/
+/build/
 
 # Docker files (use samples from src/mmrelay/tools/)
 docker-compose.yaml
@@ -24,3 +26,6 @@ coverage.xml
 junit.xml
 .pytest_cache/
 MagicMock/
+
+# Generated Kubernetes manifests (user-specific, not to be committed)
+/k8s/

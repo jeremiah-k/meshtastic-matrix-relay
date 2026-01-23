@@ -1,13 +1,18 @@
 """
-Command-line interface handling for the Meshtastic Matrix Relay.
+Command-line interface handling for Meshtastic Matrix Relay.
 """
 
 import argparse
 import importlib
 import importlib.resources
+import ipaddress
 import os
+import platform
+import re
 import shutil
+import subprocess
 import sys
+import tempfile
 from collections.abc import Mapping
 from typing import Any
 
@@ -26,6 +31,8 @@ from mmrelay.cli_utils import (
     msg_suggest_generate_config,
 )
 from mmrelay.config import (
+    apply_env_config_overrides,
+    get_base_dir,
     get_config_paths,
     set_secure_file_permissions,
     validate_yaml_syntax,
@@ -205,6 +212,30 @@ def parse_arguments() -> argparse.Namespace:
         "install",
         help="Install systemd user service",
         description="Install or update the systemd user service for MMRelay",
+    )
+
+    # K8S group
+    k8s_parser = subparsers.add_parser(
+        "k8s",
+        help="Kubernetes deployment",
+        description="Generate Kubernetes manifests for MMRelay deployment",
+    )
+    k8s_subparsers = k8s_parser.add_subparsers(
+        dest="k8s_command", help="Kubernetes commands", required=True
+    )
+    k8s_subparsers.add_parser(
+        "generate-manifests",
+        help="Generate Kubernetes YAML manifests",
+        description="Interactive wizard to generate complete Kubernetes deployment manifests",
+    )
+    check_configmap_parser = k8s_subparsers.add_parser(
+        "check-configmap",
+        help="Validate ConfigMap configuration",
+        description="Validate configuration embedded in a Kubernetes ConfigMap before deployment",
+    )
+    check_configmap_parser.add_argument(
+        "configmap_path",
+        help="Path to the ConfigMap YAML file to validate",
     )
 
     # Use parse_known_args to handle unknown arguments gracefully (e.g., pytest args)
@@ -771,6 +802,100 @@ def _print_environment_summary() -> None:
             print("   Install: pipx install 'mmrelay[e2e]'")
 
 
+def _is_valid_serial_port(port: str) -> bool:
+    """
+    Validate that serial port is in a valid format for the platform.
+
+    Args:
+        port (str): Serial port path to validate
+
+    Returns:
+        bool: True if port format is valid, False otherwise
+    """
+    if not isinstance(port, str) or not port:
+        return False
+
+    # Use platform.system() at runtime instead of WINDOWS_PLATFORM constant
+    # to handle edge cases like WSL or testing environments
+    is_windows = platform.system() == "Windows"
+    if is_windows:
+        # Windows: COM1, COM3, COM10, etc.
+        # COM followed by one or more digits (COM1, COM10, COM100, COM1000, etc.)
+        return re.match(r"^COM\d+$", port) is not None
+    else:
+        # Linux/macOS: /dev/ttyUSB0, /dev/ttyACM0, /dev/cu.usbserial*, etc.
+        # Must start with /dev/tty or /dev/cu followed by at least one character
+        linux_pattern = r"^/dev/(tty|cu).+$"
+        return re.match(linux_pattern, port) is not None
+
+
+def _is_valid_host(host: str) -> bool:
+    """
+    Validate that host is a valid IP address or hostname.
+
+    Args:
+        host (str): Host address to validate
+
+    Returns:
+        bool: True if host format is valid, False otherwise
+    """
+    if not isinstance(host, str) or not host:
+        return False
+
+    # Try to parse as IP address (handles both IPv4 and IPv6)
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        pass
+
+    # Validate as hostname (alphanumeric with hyphens and dots)
+    # RFC 952 and RFC 1123 hostname rules
+    hostname_pattern = r"^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$"
+    if not re.match(hostname_pattern, host):
+        return False
+
+    # Check length limits (hostname max 253 chars, each label max 63)
+    if len(host) > 253:
+        return False
+
+    labels = host.split(".")
+    for label in labels:
+        if len(label) > 63 or len(label) == 0:
+            return False
+
+    return True
+
+
+def _is_valid_ble_address(address: str) -> bool:
+    """
+    Validate that BLE address is a valid MAC address or non-empty device name.
+
+    Args:
+        address (str): BLE address to validate
+
+    Returns:
+        bool: True if the address format is valid, False otherwise
+    """
+    if not isinstance(address, str):
+        return False
+    trimmed_address = address.strip()
+    if not trimmed_address:
+        return False
+
+    # Check for standard MAC address: AA:BB:CC:DD:EE:FF (6 groups of 2 hex chars)
+    mac_pattern = r"^(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$"
+    if re.match(mac_pattern, trimmed_address):
+        return True
+
+    # Device name: non-empty string without colons (to avoid confusion with MAC)
+    # Accepts typical device names like "MyMeshtasticDevice", "T-Beam", etc.
+    if ":" not in trimmed_address and len(trimmed_address) > 0:
+        return True
+
+    return False
+
+
 def check_config(args: argparse.Namespace | None = None) -> bool:
     """
     Validate the application's YAML configuration along with required Matrix and Meshtastic settings.
@@ -790,6 +915,9 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
 
     config_paths = get_config_paths(args)
     config_path = None
+    allow_missing_matrix_auth = (
+        getattr(args, "allow_missing_matrix_auth", False) is True
+    )
 
     # Try each config path in order until we find one that exists
     for path in config_paths:
@@ -817,6 +945,9 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                     )
                     return False
 
+                # Merge environment variable overrides (if any)
+                config = apply_env_config_overrides(config)
+
                 # Check if we have valid credentials.json first
                 has_valid_credentials = _validate_credentials_json(config_path)
 
@@ -837,34 +968,44 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                 else:
                     # Without credentials.json, require full matrix section
                     if CONFIG_SECTION_MATRIX not in config:
-                        print("Error: Missing 'matrix' section in config")
-                        print(
-                            "   Either add matrix section with access_token or password and bot_user_id,"
-                        )
-                        print(f"   {msg_or_run_auth_login()}")
-                        return False
+                        if allow_missing_matrix_auth:
+                            print(
+                                "⚠️  Warning: Matrix authentication not found in config.yaml. "
+                                "Assuming environment variables or a Kubernetes Secret will provide it in-cluster."
+                            )
+                            config[CONFIG_SECTION_MATRIX] = {}
+                        else:
+                            print("Error: Missing 'matrix' section in config")
+                            print(
+                                "   Either add matrix section with access_token or password and bot_user_id,"
+                            )
+                            print(f"   {msg_or_run_auth_login()}")
+                            return False
 
                     matrix_section = config[CONFIG_SECTION_MATRIX]
                     if not isinstance(matrix_section, dict):
                         print("Error: 'matrix' section must be a mapping (YAML object)")
                         return False
 
-                    required_matrix_fields = [
-                        CONFIG_KEY_HOMESERVER,
-                        CONFIG_KEY_BOT_USER_ID,
-                    ]
-                    token = matrix_section.get(CONFIG_KEY_ACCESS_TOKEN)
-                    pwd = matrix_section.get("password")
-                    has_token = _is_valid_non_empty_string(token)
-                    # Allow explicitly empty password strings; require the value to be a string
-                    # (reject unquoted numeric types)
-                    has_password = isinstance(pwd, str)
-                    if not (has_token or has_password):
-                        print(
-                            "Error: Missing authentication in 'matrix' section: provide 'access_token' or 'password'"
-                        )
-                        print(f"   {msg_or_run_auth_login()}")
-                        return False
+                    if allow_missing_matrix_auth:
+                        required_matrix_fields = []
+                    else:
+                        required_matrix_fields = [
+                            CONFIG_KEY_HOMESERVER,
+                            CONFIG_KEY_BOT_USER_ID,
+                        ]
+                        token = matrix_section.get(CONFIG_KEY_ACCESS_TOKEN)
+                        pwd = matrix_section.get("password")
+                        has_token = _is_valid_non_empty_string(token)
+                        # Allow explicitly empty password strings; require the value to be a string
+                        # (reject unquoted numeric types)
+                        has_password = isinstance(pwd, str)
+                        if not (has_token or has_password):
+                            print(
+                                "Error: Missing authentication in 'matrix' section: provide 'access_token' or 'password'"
+                            )
+                            print(f"   {msg_or_run_auth_login()}")
+                            return False
 
                 missing_matrix_fields = [
                     field
@@ -909,10 +1050,21 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                 # Check matrix_rooms section
                 if "matrix_rooms" not in config or not config["matrix_rooms"]:
                     print("Error: Missing or empty 'matrix_rooms' section in config")
+                    print(
+                        "   You need to map at least one Matrix room to a Meshtastic channel."
+                    )
+                    print("   Example:")
+                    print("     matrix_rooms:")
+                    print('       - id: "!room:matrix.org"')
+                    print("         meshtastic_channel: 0")
                     return False
 
                 if not isinstance(config["matrix_rooms"], list):
                     print("Error: 'matrix_rooms' must be a list")
+                    print("   Example:")
+                    print("     matrix_rooms:")
+                    print('       - id: "!room:matrix.org"')
+                    print("         meshtastic_channel: 0")
                     return False
 
                 for i, room in enumerate(config["matrix_rooms"]):
@@ -920,22 +1072,61 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                         print(
                             f"Error: Room {i + 1} in 'matrix_rooms' must be a dictionary"
                         )
+                        print("   Example:")
+                        print("     matrix_rooms:")
+                        print('       - id: "!room:matrix.org"')
+                        print("         meshtastic_channel: 0")
                         return False
 
                     if "id" not in room:
                         print(
                             f"Error: Room {i + 1} in 'matrix_rooms' is missing the 'id' field"
                         )
+                        print(
+                            "   Add the 'id' field with your Matrix room ID or alias:"
+                        )
+                        print('     - id: "!room:matrix.org"')
+                        return False
+
+                    if "meshtastic_channel" not in room:
+                        print(
+                            f"Error: Room {room['id']} is missing the 'meshtastic_channel' field"
+                        )
+                        print(
+                            "   Add the 'meshtastic_channel' field (0-7 for primary channels):"
+                        )
+                        print(f'     - id: "{room["id"]}"')
+                        print("       meshtastic_channel: 0")
+                        return False
+
+                    meshtastic_channel = room["meshtastic_channel"]
+                    if (
+                        not isinstance(meshtastic_channel, int)
+                        or not 0 <= meshtastic_channel <= 7
+                    ):
+                        print(
+                            f"Error: Room {room['id']} has invalid 'meshtastic_channel' value: {meshtastic_channel}"
+                        )
+                        print(
+                            "   meshtastic_channel must be a non-negative integer (0-7 for primary channels)"
+                        )
                         return False
 
                 # Check meshtastic section
                 if CONFIG_SECTION_MESHTASTIC not in config:
                     print("Error: Missing 'meshtastic' section in config")
+                    print("   You need to configure Meshtastic connection settings.")
+                    print("   Example:")
+                    print("     meshtastic:")
+                    print("       connection_type: tcp  # or 'serial' or 'ble'")
+                    print("       host: meshtastic.local")
+                    print("       broadcast_enabled: true")
                     return False
 
                 meshtastic_section = config[CONFIG_SECTION_MESHTASTIC]
                 if "connection_type" not in meshtastic_section:
                     print("Error: Missing 'connection_type' in 'meshtastic' section")
+                    print("   Add connection_type: 'tcp', 'serial', or 'ble'")
                     return False
 
                 connection_type = meshtastic_section[CONFIG_KEY_CONNECTION_TYPE]
@@ -967,21 +1158,85 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                     and CONFIG_KEY_SERIAL_PORT not in meshtastic_section
                 ):
                     print("Error: Missing 'serial_port' for 'serial' connection type")
+                    print("   Add serial_port with your device path:")
+                    print("     meshtastic:")
+                    print("       connection_type: serial")
+                    print("       serial_port: /dev/ttyUSB0  # Linux/macOS")
+                    print("       # serial_port: COM3  # Windows")
                     return False
+
+                if (
+                    connection_type == CONNECTION_TYPE_SERIAL
+                    and CONFIG_KEY_SERIAL_PORT in meshtastic_section
+                ):
+                    serial_port = meshtastic_section[CONFIG_KEY_SERIAL_PORT]
+                    if not _is_valid_serial_port(serial_port):
+                        print(f"Error: Invalid 'serial_port' value: {serial_port}")
+                        print("   serial_port must be a valid device path:")
+                        if sys.platform == WINDOWS_PLATFORM:
+                            print("     serial_port: COM3  # Windows")
+                            print("     serial_port: COM10  # For COM ports above 9")
+                        else:
+                            print("     serial_port: /dev/ttyUSB0  # Linux/macOS (USB)")
+                            print("     serial_port: /dev/ttyACM0  # Linux/macOS (CDC)")
+                            print("     serial_port: /dev/cu.usbserial-*  # macOS")
+                        return False
 
                 if (
                     connection_type in [CONNECTION_TYPE_TCP, CONNECTION_TYPE_NETWORK]
                     and CONFIG_KEY_HOST not in meshtastic_section
                 ):
                     print("Error: Missing 'host' for 'tcp' connection type")
+                    print("   Add host with your Meshtastic device address:")
+                    print("     meshtastic:")
+                    print("       connection_type: tcp")
+                    print(
+                        "       host: meshtastic.local  # or IP address like 192.168.1.100"
+                    )
                     return False
+
+                if (
+                    connection_type in [CONNECTION_TYPE_TCP, CONNECTION_TYPE_NETWORK]
+                    and CONFIG_KEY_HOST in meshtastic_section
+                ):
+                    host = meshtastic_section[CONFIG_KEY_HOST]
+                    if not _is_valid_host(host):
+                        print(f"Error: Invalid 'host' value: {host}")
+                        print("   host must be a valid IP address or hostname:")
+                        print("     host: 192.168.1.100  # IPv4 address")
+                        print("     host: meshtastic.local  # Hostname")
+                        print("     host: 2001:db8::1  # IPv6 address")
+                        return False
 
                 if (
                     connection_type == CONNECTION_TYPE_BLE
                     and CONFIG_KEY_BLE_ADDRESS not in meshtastic_section
                 ):
                     print("Error: Missing 'ble_address' for 'ble' connection type")
+                    print("   Add ble_address with your device MAC address or name:")
+                    print("     meshtastic:")
+                    print("       connection_type: ble")
+                    print(
+                        "       ble_address: AA:BB:CC:DD:EE:FF  # or device name from 'meshtastic --ble-scan'"
+                    )
                     return False
+
+                if (
+                    connection_type == CONNECTION_TYPE_BLE
+                    and CONFIG_KEY_BLE_ADDRESS in meshtastic_section
+                ):
+                    ble_address = meshtastic_section[CONFIG_KEY_BLE_ADDRESS]
+                    if not _is_valid_ble_address(ble_address):
+                        print(f"Error: Invalid 'ble_address' value: {ble_address}")
+                        print(
+                            "   ble_address must be a valid MAC address or device name:"
+                        )
+                        print("     ble_address: AA:BB:CC:DD:EE:FF  # MAC address")
+                        print("     ble_address: MyMeshtasticDevice  # Device name")
+                        print(
+                            "   Find MAC/name with: meshtastic --ble-scan (requires pipx install 'mmrelay[ble]')"
+                        )
+                        return False
 
                 # Check for other important optional configurations and provide guidance
                 optional_configs: dict[str, dict[str, Any]] = {
@@ -1161,7 +1416,7 @@ def handle_subcommand(args: argparse.Namespace) -> int:
     """
     Dispatch the selected CLI subcommand to its handler.
 
-    Supports the "config", "auth", and "service" grouped subcommands and delegates execution to the corresponding handler.
+    Supports the "config", "auth", "service", and "k8s" grouped subcommands and delegates execution to the corresponding handler.
 
     Returns:
         Exit code returned by the invoked handler; `1` if the command is unknown.
@@ -1172,6 +1427,8 @@ def handle_subcommand(args: argparse.Namespace) -> int:
         return handle_auth_command(args)
     elif args.command == "service":
         return handle_service_command(args)
+    elif args.command == "k8s":
+        return handle_k8s_command(args)
 
     else:
         print(f"Unknown command: {args.command}")
@@ -1490,6 +1747,266 @@ def handle_service_command(args: argparse.Namespace) -> int:
             return 1
     else:
         print(f"Unknown service command: {args.service_command}")
+        return 1
+
+
+def handle_k8s_command(args: argparse.Namespace) -> int:
+    """
+    Dispatch the requested Kubernetes subcommand.
+
+    Supports "generate-manifests" and "check-configmap" actions for Kubernetes deployment.
+
+    Parameters:
+        args (argparse.Namespace): Parsed CLI arguments with `k8s_command` attribute.
+
+    Returns:
+        int: `0` on success, `1` on failure or for unknown subcommands.
+    """
+    if args.k8s_command == "generate-manifests":
+        try:
+            from mmrelay.k8s_utils import generate_manifests, prompt_for_config
+
+            # Get configuration from user
+            config = prompt_for_config()
+
+            # Ask for output directory
+            try:
+                output_dir = (
+                    input("\nOutput directory for manifests [./k8s]: ").strip()
+                    or "./k8s"
+                )
+            except EOFError:
+                output_dir = "./k8s"
+
+            # Generate manifests
+            print(f"\n📦 Generating Kubernetes manifests in {output_dir}...\n")
+            generated_files = generate_manifests(config, output_dir)
+
+            # Show what was generated
+            print("\n✅ Generated the following files:")
+            for file_path in generated_files:
+                print(f"   - {file_path}")
+
+            print("\n📝 Next steps:")
+            print("   1. Review and edit the generated ConfigMap with your settings:")
+            print(f"      nano {output_dir}/mmrelay-configmap.yaml")
+            print()
+
+            generate_secret_manifest = config.get("generate_secret_manifest", False)
+
+            create_secret_now = bool(config.get("create_secret_now", False))
+            if create_secret_now:
+                kubectl = shutil.which("kubectl")
+                if not kubectl:
+                    print("⚠️  kubectl not found; skipping automatic Secret creation.")
+                    create_secret_now = False
+                elif config.get("use_credentials_file"):
+                    credentials_path = config.get(
+                        "credentials_path"
+                    ) or os.path.expanduser("~/.mmrelay/credentials.json")
+                    create_cmd = [
+                        kubectl,
+                        "create",
+                        "secret",
+                        "generic",
+                        "mmrelay-credentials-json",
+                        f"--from-file=credentials.json={credentials_path}",
+                        "--namespace",
+                        config["namespace"],
+                        "--dry-run=client",
+                        "-o",
+                        "yaml",
+                    ]
+                    try:
+                        create_result = subprocess.run(
+                            create_cmd,
+                            capture_output=True,
+                            text=True,
+                            check=False,
+                            timeout=10,
+                        )
+                    except (OSError, subprocess.TimeoutExpired) as e:
+                        print(f"Error creating Secret: {e}")
+                        create_secret_now = False
+                    else:
+                        if create_result.returncode != 0:
+                            print("Error creating Secret:")
+                            print(create_result.stderr.strip())
+                            create_secret_now = False
+                        else:
+                            apply_result = subprocess.run(
+                                [kubectl, "apply", "-f", "-"],
+                                input=create_result.stdout,
+                                capture_output=True,
+                                text=True,
+                                check=False,
+                                timeout=10,
+                            )
+                            if apply_result.returncode == 0:
+                                print("✅ Matrix credentials Secret created.")
+                            else:
+                                print("Error applying Secret:")
+                                print(apply_result.stderr.strip())
+                                create_secret_now = False
+                else:
+                    homeserver = config.get("matrix_homeserver")
+                    bot_user_id = config.get("matrix_bot_user_id")
+                    password = config.get("matrix_password", "")
+                    if not (homeserver and bot_user_id):
+                        print(
+                            "⚠️  Missing Matrix credentials; skipping Secret creation."
+                        )
+                        create_secret_now = False
+                    else:
+                        tmp_path = None
+                        try:
+                            with tempfile.NamedTemporaryFile(
+                                mode="w", delete=False, encoding="utf-8"
+                            ) as tmp_file:
+                                tmp_path = tmp_file.name
+                                tmp_file.write(
+                                    f"MMRELAY_MATRIX_HOMESERVER={homeserver}\n"
+                                )
+                                tmp_file.write(
+                                    f"MMRELAY_MATRIX_BOT_USER_ID={bot_user_id}\n"
+                                )
+                                tmp_file.write(f"MMRELAY_MATRIX_PASSWORD={password}\n")
+                            try:
+                                os.chmod(tmp_path, 0o600)
+                            except OSError:
+                                pass
+                            create_cmd = [
+                                kubectl,
+                                "create",
+                                "secret",
+                                "generic",
+                                "mmrelay-matrix-credentials",
+                                f"--from-env-file={tmp_path}",
+                                "--namespace",
+                                config["namespace"],
+                                "--dry-run=client",
+                                "-o",
+                                "yaml",
+                            ]
+                            create_result = subprocess.run(
+                                create_cmd,
+                                capture_output=True,
+                                text=True,
+                                check=False,
+                                timeout=10,
+                            )
+                            if create_result.returncode != 0:
+                                print("Error creating Secret:")
+                                print(create_result.stderr.strip())
+                                create_secret_now = False
+                            else:
+                                apply_result = subprocess.run(
+                                    [kubectl, "apply", "-f", "-"],
+                                    input=create_result.stdout,
+                                    capture_output=True,
+                                    text=True,
+                                    check=False,
+                                    timeout=10,
+                                )
+                                if apply_result.returncode == 0:
+                                    print("✅ Matrix credentials Secret created.")
+                                else:
+                                    print("Error applying Secret:")
+                                    print(apply_result.stderr.strip())
+                                    create_secret_now = False
+                        except (OSError, subprocess.TimeoutExpired) as e:
+                            print(f"Error creating Secret: {e}")
+                            create_secret_now = False
+                        finally:
+                            if tmp_path:
+                                try:
+                                    os.unlink(tmp_path)
+                                except OSError:
+                                    pass
+
+            if config.get("use_credentials_file"):
+                if generate_secret_manifest:
+                    print("   • Update the credentials Secret manifest:")
+                    print(f"      nano {output_dir}/mmrelay-secret-credentials.yaml")
+                    print("   • Apply it:")
+                    print(
+                        f"      kubectl apply -f {output_dir}/mmrelay-secret-credentials.yaml"
+                    )
+                elif not create_secret_now:
+                    credentials_path = config.get("credentials_path") or os.path.join(
+                        get_base_dir(), "credentials.json"
+                    )
+                    print("   • Create credentials.json using 'mmrelay auth login'")
+                    print("   • Update the secret with your credentials.json:")
+                    print(
+                        "      kubectl create secret generic mmrelay-credentials-json \\"
+                    )
+                    print(
+                        "        --from-file=credentials.json="
+                        f"{credentials_path} --namespace={config['namespace']}"
+                    )
+            else:
+                if generate_secret_manifest:
+                    print("   • Update the Matrix credentials Secret manifest:")
+                    print(
+                        f"      nano {output_dir}/mmrelay-secret-matrix-credentials.yaml"
+                    )
+                    print("   • Apply it:")
+                    print(
+                        "      kubectl apply -f "
+                        f"{output_dir}/mmrelay-secret-matrix-credentials.yaml"
+                    )
+                elif not create_secret_now:
+                    print("   • Create a secret with your Matrix credentials:")
+                    print(
+                        "      read -s -p 'Matrix password: ' MMRELAY_MATRIX_PASSWORD; echo"
+                    )
+                    print(
+                        "      kubectl create secret generic mmrelay-matrix-credentials \\"
+                    )
+                    print(
+                        "        --from-literal=MMRELAY_MATRIX_HOMESERVER=<your-homeserver-url> \\"
+                    )
+                    print(
+                        "        --from-literal=MMRELAY_MATRIX_BOT_USER_ID=<your-bot-user-id> \\"
+                    )
+                    print(
+                        "        --from-literal=MMRELAY_MATRIX_PASSWORD="
+                        f"$MMRELAY_MATRIX_PASSWORD --namespace={config['namespace']}"
+                    )
+
+            print()
+            print("   2. Apply the manifests:")
+            print(f"      kubectl apply -f {output_dir}/")
+            print("\n📖 For detailed instructions, see docs/KUBERNETES.md")
+
+            return 0
+        except ValueError as e:
+            print(f"Error rendering manifests: {e}")
+            return 1
+        except (ImportError, KeyboardInterrupt, EOFError, OSError) as e:
+            if isinstance(e, KeyboardInterrupt):
+                print("\n\nCancelled.")
+            elif isinstance(e, EOFError):
+                print("\n\nInput unavailable; run in an interactive shell.")
+            elif isinstance(e, (PermissionError, OSError)):
+                print(f"Error: Unable to write files: {e}")
+                print(
+                    "   Check that you have write permissions for the output directory."
+                )
+            else:
+                print(f"Error: {e}")
+            return 1
+    elif args.k8s_command == "check-configmap":
+        try:
+            from mmrelay.k8s_utils import check_configmap
+
+            return 0 if check_configmap(args.configmap_path) else 1
+        except ImportError as e:
+            print(f"Error importing k8s_utils: {e}")
+            return 1
+    else:
+        print(f"Unknown k8s command: {args.k8s_command}")
         return 1
 
 

@@ -23,6 +23,7 @@ import builtins
 import json
 import os
 import sys
+import tempfile
 import unittest
 import unittest.mock
 from unittest.mock import MagicMock, mock_open, patch
@@ -123,6 +124,13 @@ class TestCLI(unittest.TestCase):
             self.assertIsNone(args.homeserver)
             self.assertIsNone(args.username)
             self.assertIsNone(args.password)
+
+    def test_parse_arguments_k8s_generate_manifests(self):
+        """Test parsing of k8s generate-manifests subcommand."""
+        with patch("sys.argv", ["mmrelay", "k8s", "generate-manifests"]):
+            args = parse_arguments()
+            self.assertEqual(args.command, "k8s")
+            self.assertEqual(args.k8s_command, "generate-manifests")
 
     @patch("mmrelay.cli._validate_credentials_json")
     @patch("mmrelay.config.os.makedirs")
@@ -704,6 +712,138 @@ class TestCLIValidationFunctions(unittest.TestCase):
         ):
             result = _validate_matrix_authentication("/path/to/config.yaml", None)
             self.assertFalse(result)
+
+    def test_is_valid_serial_port_linux_valid(self):
+        """Test _is_valid_serial_port with valid Linux serial ports."""
+        from mmrelay.cli import _is_valid_serial_port
+
+        with patch("platform.system", return_value="Linux"):
+            self.assertTrue(_is_valid_serial_port("/dev/ttyUSB0"))
+            self.assertTrue(_is_valid_serial_port("/dev/ttyACM0"))
+            self.assertTrue(_is_valid_serial_port("/dev/cu.usbserial-1234"))
+            self.assertTrue(_is_valid_serial_port("/dev/ttyS0"))
+
+    def test_is_valid_serial_port_linux_invalid(self):
+        """Test _is_valid_serial_port with invalid Linux serial ports."""
+        from mmrelay.cli import _is_valid_serial_port
+
+        with patch("platform.system", return_value="Linux"):
+            self.assertFalse(_is_valid_serial_port("/dev/"))
+            self.assertFalse(_is_valid_serial_port("ttyUSB0"))
+            self.assertFalse(_is_valid_serial_port("/dev/tty"))
+            self.assertFalse(_is_valid_serial_port(""))
+
+    def test_is_valid_serial_port_windows_valid(self):
+        """Test _is_valid_serial_port with valid Windows COM ports."""
+        from mmrelay.cli import _is_valid_serial_port
+
+        with patch("platform.system", return_value="Windows"):
+            self.assertTrue(_is_valid_serial_port("COM1"))
+            self.assertTrue(_is_valid_serial_port("COM10"))
+            self.assertTrue(_is_valid_serial_port("COM100"))
+            self.assertTrue(_is_valid_serial_port("COM999"))
+
+    def test_is_valid_serial_port_windows_invalid(self):
+        """Test _is_valid_serial_port with invalid Windows COM ports."""
+        from mmrelay.cli import _is_valid_serial_port
+
+        with patch("platform.system", return_value="Windows"):
+            self.assertFalse(_is_valid_serial_port("COM"))
+            self.assertFalse(_is_valid_serial_port("COMA"))
+            self.assertFalse(_is_valid_serial_port("COM1A"))
+            self.assertFalse(_is_valid_serial_port("COM 1"))
+            self.assertFalse(_is_valid_serial_port("/dev/ttyUSB0"))
+
+    def test_is_valid_serial_port_edge_cases(self):
+        """Test _is_valid_serial_port with edge cases."""
+        from mmrelay.cli import _is_valid_serial_port
+
+        self.assertFalse(_is_valid_serial_port(None))
+        self.assertFalse(_is_valid_serial_port(""))
+        self.assertFalse(_is_valid_serial_port(123))
+
+    def test_is_valid_host_ipv4_address(self):
+        """Test _is_valid_host with valid IPv4 addresses."""
+        from mmrelay.cli import _is_valid_host
+
+        self.assertTrue(_is_valid_host("192.168.1.1"))
+        self.assertTrue(_is_valid_host("10.0.0.1"))
+        self.assertTrue(_is_valid_host("127.0.0.1"))
+        self.assertTrue(_is_valid_host("255.255.255.255"))
+
+    def test_is_valid_host_ipv6_address(self):
+        """Test _is_valid_host with valid IPv6 addresses."""
+        from mmrelay.cli import _is_valid_host
+
+        self.assertTrue(_is_valid_host("::1"))
+        self.assertTrue(_is_valid_host("2001:db8::1"))
+        self.assertTrue(_is_valid_host("fe80::1"))
+        self.assertTrue(_is_valid_host("2001:0db8:85a3:0000:0000:8a2e:0370:7334"))
+
+    def test_is_valid_host_valid_hostname(self):
+        """Test _is_valid_host with valid hostnames."""
+        from mmrelay.cli import _is_valid_host
+
+        self.assertTrue(_is_valid_host("localhost"))
+        self.assertTrue(_is_valid_host("meshtastic.local"))
+        self.assertTrue(_is_valid_host("my-mesh-network.example.com"))
+        self.assertTrue(_is_valid_host("server"))
+        self.assertTrue(_is_valid_host("sub.domain.example"))
+
+    def test_is_valid_host_invalid_hostname(self):
+        """Test _is_valid_host with invalid hostnames."""
+        from mmrelay.cli import _is_valid_host
+
+        self.assertFalse(_is_valid_host("-invalid.com"))
+        self.assertFalse(_is_valid_host("invalid-.com"))
+        self.assertFalse(_is_valid_host("invalid..com"))
+        self.assertFalse(_is_valid_host("a" * 254))
+        self.assertFalse(_is_valid_host("a." * 100))
+
+    def test_is_valid_host_edge_cases(self):
+        """Test _is_valid_host with edge cases."""
+        from mmrelay.cli import _is_valid_host
+
+        self.assertFalse(_is_valid_host(None))
+        self.assertFalse(_is_valid_host(""))
+        self.assertFalse(_is_valid_host(123))
+        self.assertFalse(_is_valid_host("   "))
+
+    def test_is_valid_ble_address_mac_address(self):
+        """Test _is_valid_ble_address with valid MAC addresses."""
+        from mmrelay.cli import _is_valid_ble_address
+
+        self.assertTrue(_is_valid_ble_address("AA:BB:CC:DD:EE:FF"))
+        self.assertTrue(_is_valid_ble_address("aa:bb:cc:dd:ee:ff"))
+        self.assertTrue(_is_valid_ble_address("00:11:22:33:44:55"))
+        self.assertTrue(_is_valid_ble_address("FF:EE:DD:CC:BB:AA"))
+
+    def test_is_valid_ble_address_device_name(self):
+        """Test _is_valid_ble_address with valid device names."""
+        from mmrelay.cli import _is_valid_ble_address
+
+        self.assertTrue(_is_valid_ble_address("MyMeshtasticDevice"))
+        self.assertTrue(_is_valid_ble_address("T-Beam"))
+        self.assertTrue(_is_valid_ble_address("MeshDevice123"))
+        self.assertTrue(_is_valid_ble_address("LilyGO-T-Beam"))
+
+    def test_is_valid_ble_address_invalid(self):
+        """Test _is_valid_ble_address with invalid addresses."""
+        from mmrelay.cli import _is_valid_ble_address
+
+        self.assertFalse(_is_valid_ble_address(None))
+        self.assertFalse(_is_valid_ble_address(""))
+        self.assertFalse(_is_valid_ble_address("AA:BB:CC:DD:EE"))
+        self.assertFalse(_is_valid_ble_address("AA:BB:CC:DD:EE:FF:00"))
+        self.assertFalse(_is_valid_ble_address("GG:HH:II:JJ:KK:LL"))
+        self.assertFalse(_is_valid_ble_address("AA:BB:CC:DD:EE:GG"))
+
+    def test_is_valid_ble_address_edge_cases(self):
+        """Test _is_valid_ble_address with edge cases."""
+        from mmrelay.cli import _is_valid_ble_address
+
+        self.assertFalse(_is_valid_ble_address(123))
+        self.assertFalse(_is_valid_ble_address("   "))
 
 
 class TestCLISubcommandHandlers(unittest.TestCase):
@@ -2475,6 +2615,21 @@ class TestHandleSubcommand(unittest.TestCase):
         mock_handle_service.assert_called_once_with(self.mock_args)
         mock_print.assert_not_called()
 
+    @patch("mmrelay.cli.handle_k8s_command")
+    @patch("builtins.print")
+    def test_handle_subcommand_k8s(self, mock_print, mock_handle_k8s):
+        """Test dispatching to k8s command handler."""
+        self.mock_args.command = "k8s"
+        mock_handle_k8s.return_value = 0
+
+        from mmrelay.cli import handle_subcommand
+
+        result = handle_subcommand(self.mock_args)
+
+        self.assertEqual(result, 0)
+        mock_handle_k8s.assert_called_once_with(self.mock_args)
+        mock_print.assert_not_called()
+
     @patch("builtins.print")
     def test_handle_subcommand_unknown_command(self, mock_print):
         """Test handling of unknown command."""
@@ -3284,6 +3439,309 @@ class TestAnalyzeE2eeSetup(unittest.TestCase):
         self.assertTrue(result["dependencies_available"])
         self.assertTrue(result["credentials_available"])
         self.assertEqual(result["overall_status"], "ready")
+
+
+class TestK8SCommand(unittest.TestCase):
+    """Test Kubernetes command handling."""
+
+    def setUp(self):
+        """
+        Prepare common test fixtures for each test.
+
+        Creates `self.mock_args` as a MagicMock to simulate CLI argument objects used by the tests.
+        """
+        self.mock_args = MagicMock()
+
+    @patch("builtins.input")
+    @patch("builtins.print")
+    @patch("mmrelay.k8s_utils.generate_manifests")
+    @patch("mmrelay.k8s_utils.prompt_for_config")
+    def test_handle_k8s_command_generate_manifests_success(
+        self, mock_prompt, mock_generate, _mock_print, mock_input
+    ):
+        """Test successful Kubernetes manifest generation with env var auth."""
+        self.mock_args.k8s_command = "generate-manifests"
+
+        mock_prompt.return_value = {
+            "namespace": "default",
+            "image_tag": "latest",
+            "use_credentials_file": False,
+            "connection_type": "tcp",
+            "meshtastic_host": "meshtastic.local",
+            "meshtastic_port": "4403",
+            "storage_class": "standard",
+            "storage_size": "1Gi",
+        }
+
+        temp_dir = tempfile.gettempdir()
+        mock_generate.return_value = [
+            os.path.join(temp_dir, "mmrelay-pvc.yaml"),
+            os.path.join(temp_dir, "mmrelay-configmap.yaml"),
+            os.path.join(temp_dir, "mmrelay-deployment.yaml"),
+        ]
+
+        mock_input.return_value = ""
+
+        from mmrelay.cli import handle_k8s_command
+
+        result = handle_k8s_command(self.mock_args)
+
+        self.assertEqual(result, 0)
+        mock_prompt.assert_called_once()
+        mock_generate.assert_called_once()
+        mock_input.assert_called_once_with("\nOutput directory for manifests [./k8s]: ")
+
+    @patch("builtins.input")
+    @patch("builtins.print")
+    @patch("mmrelay.k8s_utils.generate_manifests")
+    @patch("mmrelay.k8s_utils.prompt_for_config")
+    def test_handle_k8s_command_with_credentials_auth(
+        self, mock_prompt, mock_generate, _mock_print, mock_input
+    ):
+        """Test Kubernetes manifest generation with credentials file auth."""
+        self.mock_args.k8s_command = "generate-manifests"
+
+        mock_prompt.return_value = {
+            "namespace": "custom-ns",
+            "image_tag": "v1.2.0",
+            "use_credentials_file": True,
+            "connection_type": "tcp",
+            "meshtastic_host": "192.168.1.100",
+            "meshtastic_port": "4403",
+            "storage_class": "gp2",
+            "storage_size": "2Gi",
+        }
+
+        temp_dir = tempfile.gettempdir()
+        mock_generate.return_value = [
+            os.path.join(temp_dir, "mmrelay-pvc.yaml"),
+            os.path.join(temp_dir, "mmrelay-configmap.yaml"),
+            os.path.join(temp_dir, "mmrelay-secret-credentials.yaml"),
+            os.path.join(temp_dir, "mmrelay-deployment.yaml"),
+        ]
+
+        mock_input.return_value = "./custom-k8s"
+
+        from mmrelay.cli import handle_k8s_command
+
+        result = handle_k8s_command(self.mock_args)
+
+        self.assertEqual(result, 0)
+        mock_generate.assert_called_once_with(mock_prompt.return_value, "./custom-k8s")
+
+    @patch("builtins.input")
+    @patch("builtins.print")
+    @patch("mmrelay.k8s_utils.generate_manifests")
+    @patch("mmrelay.k8s_utils.prompt_for_config")
+    def test_handle_k8s_command_eof_error_on_output_dir(
+        self, mock_prompt, mock_generate, _mock_print, mock_input
+    ):
+        """Test EOFError handling when asking for output directory."""
+        self.mock_args.k8s_command = "generate-manifests"
+
+        mock_prompt.return_value = {
+            "namespace": "default",
+            "image_tag": "latest",
+            "use_credentials_file": False,
+            "connection_type": "tcp",
+            "meshtastic_host": "meshtastic.local",
+            "meshtastic_port": "4403",
+            "storage_class": "standard",
+            "storage_size": "1Gi",
+        }
+
+        temp_dir = tempfile.gettempdir()
+        mock_generate.return_value = [os.path.join(temp_dir, "test.yaml")]
+
+        mock_input.side_effect = EOFError()
+
+        from mmrelay.cli import handle_k8s_command
+
+        result = handle_k8s_command(self.mock_args)
+
+        self.assertEqual(result, 0)
+
+    @patch("builtins.input")
+    @patch("builtins.print")
+    @patch("mmrelay.cli.subprocess.run")
+    @patch("mmrelay.cli.shutil.which", return_value="/usr/bin/kubectl")
+    @patch("mmrelay.k8s_utils.generate_manifests")
+    @patch("mmrelay.k8s_utils.prompt_for_config")
+    def test_handle_k8s_command_create_secret_now_env_success(
+        self,
+        mock_prompt,
+        mock_generate,
+        _mock_which,
+        mock_run,
+        mock_print,
+        mock_input,
+    ):
+        """Test create_secret_now flow for env-var Matrix auth."""
+        self.mock_args.k8s_command = "generate-manifests"
+
+        mock_prompt.return_value = {
+            "namespace": "default",
+            "image_tag": "latest",
+            "use_credentials_file": False,
+            "create_secret_now": True,
+            "matrix_homeserver": "https://matrix.example.org",
+            "matrix_bot_user_id": "@bot:example.org",
+            "matrix_password": "secret",
+            "connection_type": "tcp",
+            "meshtastic_host": "meshtastic.local",
+            "meshtastic_port": "4403",
+            "storage_class": "standard",
+            "storage_size": "1Gi",
+        }
+
+        temp_dir = tempfile.gettempdir()
+        mock_generate.return_value = [os.path.join(temp_dir, "test.yaml")]
+        mock_input.return_value = ""
+
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="secret-yaml", stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),
+        ]
+
+        from mmrelay.cli import handle_k8s_command
+
+        result = handle_k8s_command(self.mock_args)
+
+        self.assertEqual(result, 0)
+        mock_print.assert_any_call("✅ Matrix credentials Secret created.")
+        self.assertTrue(mock_run.called)
+
+    @patch("builtins.input")
+    @patch("builtins.print")
+    @patch("mmrelay.cli.subprocess.run")
+    @patch("mmrelay.cli.shutil.which", return_value="/usr/bin/kubectl")
+    @patch("mmrelay.k8s_utils.generate_manifests")
+    @patch("mmrelay.k8s_utils.prompt_for_config")
+    def test_handle_k8s_command_create_secret_now_credentials_success(
+        self,
+        mock_prompt,
+        mock_generate,
+        _mock_which,
+        mock_run,
+        mock_print,
+        mock_input,
+    ):
+        """Test create_secret_now flow for credentials.json auth."""
+        self.mock_args.k8s_command = "generate-manifests"
+
+        mock_prompt.return_value = {
+            "namespace": "default",
+            "image_tag": "latest",
+            "use_credentials_file": True,
+            "create_secret_now": True,
+            "credentials_path": os.path.join(tempfile.gettempdir(), "credentials.json"),
+            "connection_type": "tcp",
+            "meshtastic_host": "meshtastic.local",
+            "meshtastic_port": "4403",
+            "storage_class": "standard",
+            "storage_size": "1Gi",
+        }
+
+        temp_dir = tempfile.gettempdir()
+        mock_generate.return_value = [os.path.join(temp_dir, "test.yaml")]
+        mock_input.return_value = ""
+
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="secret-yaml", stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),
+        ]
+
+        from mmrelay.cli import handle_k8s_command
+
+        result = handle_k8s_command(self.mock_args)
+
+        self.assertEqual(result, 0)
+        mock_print.assert_any_call("✅ Matrix credentials Secret created.")
+        first_call_args = mock_run.call_args_list[0][0][0]
+        expected_path = os.path.join(tempfile.gettempdir(), "credentials.json")
+        self.assertIn(f"--from-file=credentials.json={expected_path}", first_call_args)
+
+    @patch("builtins.input")
+    @patch("builtins.print")
+    @patch("mmrelay.k8s_utils.generate_manifests")
+    @patch("mmrelay.k8s_utils.prompt_for_config")
+    def test_handle_k8s_command_generate_manifests_value_error(
+        self, mock_prompt, mock_generate, mock_print, mock_input
+    ):
+        """Test ValueError handling during manifest generation."""
+        self.mock_args.k8s_command = "generate-manifests"
+
+        mock_prompt.return_value = {
+            "namespace": "default",
+            "image_tag": "latest",
+            "use_credentials_file": False,
+            "connection_type": "tcp",
+            "meshtastic_host": "meshtastic.local",
+            "meshtastic_port": "4403",
+            "storage_class": "standard",
+            "storage_size": "1Gi",
+        }
+
+        mock_generate.side_effect = ValueError("Missing template variables: NAMESPACE")
+        mock_input.return_value = ""
+
+        from mmrelay.cli import handle_k8s_command
+
+        result = handle_k8s_command(self.mock_args)
+
+        self.assertEqual(result, 1)
+        mock_print.assert_any_call(
+            "Error rendering manifests: Missing template variables: NAMESPACE"
+        )
+
+    @patch("builtins.input")
+    @patch("builtins.print")
+    @patch("mmrelay.k8s_utils.prompt_for_config")
+    def test_handle_k8s_command_keyboard_interrupt(
+        self, mock_prompt, mock_print, _mock_input
+    ):
+        """Test KeyboardInterrupt handling."""
+        self.mock_args.k8s_command = "generate-manifests"
+
+        mock_prompt.side_effect = KeyboardInterrupt()
+
+        from mmrelay.cli import handle_k8s_command
+
+        result = handle_k8s_command(self.mock_args)
+
+        self.assertEqual(result, 1)
+        mock_print.assert_any_call("\n\nCancelled.")
+
+    @patch("builtins.input")
+    @patch("builtins.print")
+    @patch("mmrelay.k8s_utils.prompt_for_config")
+    def test_handle_k8s_command_import_error(
+        self, _mock_prompt, _mock_print, _mock_input
+    ):
+        """Test ImportError when k8s_utils cannot be imported."""
+        self.mock_args.k8s_command = "generate-manifests"
+
+        with patch.dict(
+            "sys.modules",
+            {"mmrelay.k8s_utils": None},
+        ):
+            from mmrelay.cli import handle_k8s_command
+
+            result = handle_k8s_command(self.mock_args)
+
+        self.assertEqual(result, 1)
+
+    @patch("builtins.print")
+    def test_handle_k8s_command_unknown_subcommand(self, mock_print):
+        """Test unknown k8s subcommand."""
+        self.mock_args.k8s_command = "invalid"
+
+        from mmrelay.cli import handle_k8s_command
+
+        result = handle_k8s_command(self.mock_args)
+
+        self.assertEqual(result, 1)
+        mock_print.assert_called_once_with("Unknown k8s command: invalid")
 
 
 if __name__ == "__main__":
