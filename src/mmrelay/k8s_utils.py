@@ -17,7 +17,7 @@ _UNRESOLVED_RE = re.compile(r"\{\{[^}]+\}\}")
 _MISSING_VARS_MSG = "Missing template variables: {vars}"
 _MISSING_VALUE_MSG = "Missing template value for '{key}'"
 _UNRESOLVED_PLACEHOLDERS_MSG = "Unresolved template placeholders: {vars}"
-_UNRESOLVED_TOKENS_MSG = "Unresolved template placeholders: {tokens}"
+_UNRESOLVED_TOKENS_MSG = "Malformed template tokens: {tokens}"
 _MISSING_CONFIG_KEYS_MSG = "Missing required config keys: {keys}"
 
 logger = get_logger(__name__)
@@ -138,13 +138,12 @@ stringData:
 
 def _is_valid_k8s_namespace(namespace: str) -> bool:
     """Validate Kubernetes namespace name (DNS subdomain format)."""
-    if not namespace or len(namespace) > 253:
+    if not namespace or len(namespace) > 63:
         return False
     pattern = r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
     if not re.match(pattern, namespace):
         return False
-    labels = namespace.split("-")
-    return all(len(label) <= 63 for label in labels)
+    return True
 
 
 def _is_valid_k8s_resource_quantity(size: str) -> bool:
@@ -256,6 +255,11 @@ def render_template(template: str, variables: dict[str, Any]) -> str:
         raise ValueError(_UNRESOLVED_TOKENS_MSG.format(tokens=unresolved))
 
     return rendered
+
+
+def _yaml_block(lines: list[str]) -> str:
+    """Render a YAML block from a list of lines."""
+    return "\n".join(lines)
 
 
 def prompt_for_config() -> dict[str, Any]:
@@ -499,7 +503,7 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
 
     # 4. Generate Deployment
     serial_device = config.get("serial_device", "/dev/ttyUSB0")
-    credentials_volume_mount = "\n".join(
+    credentials_volume_mount = _yaml_block(
         [
             "- name: credentials",
             "  mountPath: /app/data/credentials.json",
@@ -507,7 +511,7 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
             "  readOnly: true",
         ]
     )
-    credentials_volume_mount_comment = "\n".join(
+    credentials_volume_mount_comment = _yaml_block(
         [
             "# For credentials.json authentication, add:",
             "# - name: credentials",
@@ -516,7 +520,7 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
             "#   readOnly: true",
         ]
     )
-    credentials_volume = "\n".join(
+    credentials_volume = _yaml_block(
         [
             "- name: credentials",
             "  secret:",
@@ -526,7 +530,7 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
             "        path: credentials.json",
         ]
     )
-    credentials_volume_comment = "\n".join(
+    credentials_volume_comment = _yaml_block(
         [
             "# For credentials.json authentication, add:",
             "# - name: credentials",
@@ -537,20 +541,20 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
             "#         path: credentials.json",
         ]
     )
-    serial_volume_mount = "\n".join(
+    serial_volume_mount = _yaml_block(
         [
             "- name: serial-device",
             f"  mountPath: {_SERIAL_CONTAINER_DEVICE_PATH}",
         ]
     )
-    serial_volume_mount_comment = "\n".join(
+    serial_volume_mount_comment = _yaml_block(
         [
             "# For serial connections, add:",
             "# - name: serial-device",
             f"#   mountPath: {_SERIAL_CONTAINER_DEVICE_PATH}",
         ]
     )
-    serial_volume = "\n".join(
+    serial_volume = _yaml_block(
         [
             "# The host device path (user input) is used in hostPath",
             "# The container device path is fixed for consistency with container OS",
@@ -560,7 +564,7 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
             "    type: CharDevice",
         ]
     )
-    serial_volume_comment = "\n".join(
+    serial_volume_comment = _yaml_block(
         [
             "# For serial connections, add:",
             "# - name: serial-device",
@@ -569,7 +573,7 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
             "#     type: CharDevice",
         ]
     )
-    env_from_section = "\n".join(
+    env_from_section = _yaml_block(
         [
             "# Matrix credentials from Kubernetes Secret (for env var authentication)",
             "# If not using credentials.json, create a secret with:",
@@ -583,7 +587,7 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
             "      optional: true",
         ]
     )
-    env_from_section_comment = "\n".join(
+    env_from_section_comment = _yaml_block(
         [
             "# Matrix credentials from Kubernetes Secret (for env var authentication)",
             "# If not using credentials.json, create a secret with:",

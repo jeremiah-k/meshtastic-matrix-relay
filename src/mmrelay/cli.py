@@ -7,6 +7,7 @@ import importlib
 import importlib.resources
 import ipaddress
 import os
+import platform
 import re
 import shutil
 import sys
@@ -814,8 +815,6 @@ def _is_valid_serial_port(port: str) -> bool:
 
     # Use platform.system() at runtime instead of WINDOWS_PLATFORM constant
     # to handle edge cases like WSL or testing environments
-    import platform
-
     is_windows = platform.system() == "Windows"
     if is_windows:
         # Windows: COM1, COM3, COM10, etc.
@@ -1791,10 +1790,11 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
             print(f"      nano {output_dir}/mmrelay-configmap.yaml")
             print()
 
-            generate_secret_manifest = config.get(
-                "generate_secret_manifest",
-                bool(config.get("use_credentials_file", False)),
-            )
+            generate_secret_manifest = config.get("generate_secret_manifest")
+            if generate_secret_manifest is None:
+                generate_secret_manifest = bool(
+                    config.get("use_credentials_file", False)
+                )
 
             if config.get("use_credentials_file"):
                 if generate_secret_manifest:
