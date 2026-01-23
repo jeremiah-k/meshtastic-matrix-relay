@@ -37,8 +37,9 @@ def _get_storage_classes_from_kubectl() -> list[tuple[str, bool]] | None:
             capture_output=True,
             text=True,
             check=False,
+            timeout=5,
         )
-    except OSError as e:
+    except (OSError, subprocess.TimeoutExpired) as e:
         logger.debug("kubectl execution failed: %s", e)
         return None
 
@@ -88,8 +89,9 @@ def _get_current_namespace_from_kubectl() -> str | None:
             capture_output=True,
             text=True,
             check=False,
+            timeout=5,
         )
-    except OSError as e:
+    except (OSError, subprocess.TimeoutExpired) as e:
         logger.debug("kubectl execution failed: %s", e)
         return None
 

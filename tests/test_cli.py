@@ -3563,6 +3563,39 @@ class TestK8SCommand(unittest.TestCase):
 
     @patch("builtins.input")
     @patch("builtins.print")
+    @patch("mmrelay.k8s_utils.generate_manifests")
+    @patch("mmrelay.k8s_utils.prompt_for_config")
+    def test_handle_k8s_command_generate_manifests_value_error(
+        self, mock_prompt, mock_generate, mock_print, mock_input
+    ):
+        """Test ValueError handling during manifest generation."""
+        self.mock_args.k8s_command = "generate-manifests"
+
+        mock_prompt.return_value = {
+            "namespace": "default",
+            "image_tag": "latest",
+            "use_credentials_file": False,
+            "connection_type": "tcp",
+            "meshtastic_host": "meshtastic.local",
+            "meshtastic_port": "4403",
+            "storage_class": "standard",
+            "storage_size": "1Gi",
+        }
+
+        mock_generate.side_effect = ValueError("Missing template variables: NAMESPACE")
+        mock_input.return_value = ""
+
+        from mmrelay.cli import handle_k8s_command
+
+        result = handle_k8s_command(self.mock_args)
+
+        self.assertEqual(result, 1)
+        mock_print.assert_any_call(
+            "Error rendering manifests: Missing template variables: NAMESPACE"
+        )
+
+    @patch("builtins.input")
+    @patch("builtins.print")
     @patch("mmrelay.k8s_utils.prompt_for_config")
     def test_handle_k8s_command_keyboard_interrupt(
         self, mock_prompt, mock_print, _mock_input

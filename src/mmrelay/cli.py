@@ -1852,6 +1852,9 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
             print("\n📖 For detailed instructions, see docs/KUBERNETES.md")
 
             return 0
+        except ValueError as e:
+            print(f"Error rendering manifests: {e}")
+            return 1
         except (ImportError, KeyboardInterrupt, EOFError, OSError) as e:
             if isinstance(e, KeyboardInterrupt):
                 print("\n\nCancelled.")

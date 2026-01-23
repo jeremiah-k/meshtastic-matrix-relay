@@ -412,10 +412,14 @@ def is_e2ee_enabled(config: dict[str, Any] | None) -> bool:
     if not isinstance(matrix_cfg, dict) or not matrix_cfg:
         return False
 
-    encryption_enabled = cast(
-        bool, matrix_cfg.get("encryption", {}).get("enabled", False)
-    )
-    e2ee_enabled = cast(bool, matrix_cfg.get("e2ee", {}).get("enabled", False))
+    encryption_cfg = matrix_cfg.get("encryption")
+    if not isinstance(encryption_cfg, dict):
+        encryption_cfg = {}
+    e2ee_cfg = matrix_cfg.get("e2ee")
+    if not isinstance(e2ee_cfg, dict):
+        e2ee_cfg = {}
+    encryption_enabled = cast(bool, encryption_cfg.get("enabled", False))
+    e2ee_enabled = cast(bool, e2ee_cfg.get("enabled", False))
 
     return encryption_enabled or e2ee_enabled
 
