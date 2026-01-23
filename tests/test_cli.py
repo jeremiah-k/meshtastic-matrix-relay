@@ -717,19 +717,21 @@ class TestCLIValidationFunctions(unittest.TestCase):
         """Test _is_valid_serial_port with valid Linux serial ports."""
         from mmrelay.cli import _is_valid_serial_port
 
-        self.assertTrue(_is_valid_serial_port("/dev/ttyUSB0"))
-        self.assertTrue(_is_valid_serial_port("/dev/ttyACM0"))
-        self.assertTrue(_is_valid_serial_port("/dev/cu.usbserial-1234"))
-        self.assertTrue(_is_valid_serial_port("/dev/ttyS0"))
+        with patch("platform.system", return_value="Linux"):
+            self.assertTrue(_is_valid_serial_port("/dev/ttyUSB0"))
+            self.assertTrue(_is_valid_serial_port("/dev/ttyACM0"))
+            self.assertTrue(_is_valid_serial_port("/dev/cu.usbserial-1234"))
+            self.assertTrue(_is_valid_serial_port("/dev/ttyS0"))
 
     def test_is_valid_serial_port_linux_invalid(self):
         """Test _is_valid_serial_port with invalid Linux serial ports."""
         from mmrelay.cli import _is_valid_serial_port
 
-        self.assertFalse(_is_valid_serial_port("/dev/"))
-        self.assertFalse(_is_valid_serial_port("ttyUSB0"))
-        self.assertFalse(_is_valid_serial_port("/dev/tty"))
-        self.assertFalse(_is_valid_serial_port(""))
+        with patch("platform.system", return_value="Linux"):
+            self.assertFalse(_is_valid_serial_port("/dev/"))
+            self.assertFalse(_is_valid_serial_port("ttyUSB0"))
+            self.assertFalse(_is_valid_serial_port("/dev/tty"))
+            self.assertFalse(_is_valid_serial_port(""))
 
     def test_is_valid_serial_port_windows_valid(self):
         """Test _is_valid_serial_port with valid Windows COM ports."""

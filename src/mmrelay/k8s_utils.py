@@ -29,7 +29,7 @@ def _get_storage_classes_from_kubectl() -> list[tuple[str, bool]] | None:
     """Return storage class names and default flags using kubectl, if available."""
     kubectl = shutil.which("kubectl")
     if not kubectl:
-        logger.warning("kubectl not found; skipping storage class discovery")
+        logger.debug("kubectl not found; skipping storage class discovery")
         return None
     try:
         result = subprocess.run(
@@ -38,8 +38,8 @@ def _get_storage_classes_from_kubectl() -> list[tuple[str, bool]] | None:
             text=True,
             check=False,
         )
-    except FileNotFoundError:
-        logger.debug("kubectl not found; skipping storage class discovery")
+    except OSError as e:
+        logger.debug("kubectl execution failed: %s", e)
         return None
 
     if result.returncode != 0:
@@ -89,8 +89,8 @@ def _get_current_namespace_from_kubectl() -> str | None:
             text=True,
             check=False,
         )
-    except FileNotFoundError:
-        logger.debug("kubectl not found; skipping namespace discovery")
+    except OSError as e:
+        logger.debug("kubectl execution failed: %s", e)
         return None
 
     if result.returncode != 0:
@@ -129,6 +129,7 @@ type: Opaque
 stringData:
   # Environment-variable auth for Matrix credentials.
   # Replace the placeholders below with your real values.
+  # WARNING: Do not commit this file with real credentials to version control!
   MMRELAY_MATRIX_HOMESERVER: "<your-homeserver-url>"
   MMRELAY_MATRIX_BOT_USER_ID: "<your-bot-user-id>"
   MMRELAY_MATRIX_PASSWORD: "<your-password>"
@@ -148,7 +149,7 @@ def _is_valid_k8s_namespace(namespace: str) -> bool:
 
 def _is_valid_k8s_resource_quantity(size: str) -> bool:
     """Validate Kubernetes resource quantity (e.g., '1Gi', '500Mi')."""
-    pattern = r"^[0-9]+(\.[0-9]+)?(E|e|P|p|T|t|G|g|M|m|K|k)?(i|I)?$"
+    pattern = r"^[0-9]+(\.[0-9]+)?((E|e|P|p|T|t|G|g|M|m|K|k)(i|I)?)?$"
     return re.match(pattern, size) is not None
 
 

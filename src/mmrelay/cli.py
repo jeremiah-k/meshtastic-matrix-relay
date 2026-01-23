@@ -28,6 +28,7 @@ from mmrelay.cli_utils import (
     msg_suggest_generate_config,
 )
 from mmrelay.config import (
+    get_base_dir,
     get_config_paths,
     set_secure_file_permissions,
     validate_yaml_syntax,
@@ -1787,8 +1788,6 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
                         f"      kubectl apply -f {output_dir}/mmrelay-secret-credentials.yaml"
                     )
                 else:
-                    from mmrelay.config import get_base_dir
-
                     base_dir = get_base_dir()
                     credentials_path = os.path.join(base_dir, "credentials.json")
                     print("   • Create credentials.json using 'mmrelay auth login'")
@@ -1797,7 +1796,8 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
                         "      kubectl create secret generic mmrelay-credentials-json \\"
                     )
                     print(
-                        f"        --from-file=credentials.json={credentials_path} --namespace={config['namespace']}"
+                        "        --from-file=credentials.json="
+                        f"{credentials_path} --namespace={config['namespace']}"
                     )
             else:
                 if generate_secret_manifest:
@@ -1825,7 +1825,8 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
                         "        --from-literal=MMRELAY_MATRIX_BOT_USER_ID=<your-bot-user-id> \\"
                     )
                     print(
-                        f"        --from-literal=MMRELAY_MATRIX_PASSWORD=$MMRELAY_MATRIX_PASSWORD --namespace={config['namespace']}"
+                        "        --from-literal=MMRELAY_MATRIX_PASSWORD="
+                        f"$MMRELAY_MATRIX_PASSWORD --namespace={config['namespace']}"
                     )
 
             print()
@@ -1851,11 +1852,7 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
         try:
             from mmrelay.k8s_utils import check_configmap
 
-            configmap_path = getattr(args, "configmap_path", None)
-            if configmap_path is None:
-                print("Error: No ConfigMap path provided")
-                return 1
-            return 0 if check_configmap(configmap_path) else 1
+            return 0 if check_configmap(args.configmap_path) else 1
         except ImportError as e:
             print(f"Error importing k8s_utils: {e}")
             return 1

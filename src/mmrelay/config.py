@@ -732,6 +732,11 @@ _MATRIX_ENV_VAR_MAPPINGS: list[dict[str, Any]] = [
         "type": "string",
     },
     {"env_var": "MMRELAY_MATRIX_PASSWORD", "config_key": "password", "type": "string"},
+    {
+        "env_var": "MMRELAY_MATRIX_ACCESS_TOKEN",
+        "config_key": "access_token",
+        "type": "string",
+    },
 ]
 
 

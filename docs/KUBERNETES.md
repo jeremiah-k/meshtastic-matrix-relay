@@ -125,6 +125,8 @@ nodeSelector:
 
 3. Use a minimal security context:
 
+**Warning:** This runs the container as root to access the serial device. Use only when needed and prefer tight RBAC, node isolation, and least-privilege policies in your cluster.
+
 ```yaml
 securityContext:
   runAsUser: 0
@@ -154,6 +156,8 @@ If you must use BLE:
 - Requires Linux nodes with Bluetooth hardware
 - Usually requires `hostNetwork: true`
 - Often requires privileged mode; capability-only setups are cluster dependent
+
+**Warning:** `hostNetwork: true` and `privileged: true` are high-risk settings that grant broad access to the host. Only use them as a last resort and only if your cluster security policy allows it.
 
 Start with privileged and host networking only if your cluster policy allows it:
 
