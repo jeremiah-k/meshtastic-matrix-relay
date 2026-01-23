@@ -28,6 +28,7 @@ from mmrelay.cli_utils import (
     msg_suggest_generate_config,
 )
 from mmrelay.config import (
+    apply_env_config_overrides,
     get_base_dir,
     get_config_paths,
     set_secure_file_permissions,
@@ -913,6 +914,7 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
 
     config_paths = get_config_paths(args)
     config_path = None
+    allow_missing_matrix_auth = bool(getattr(args, "allow_missing_matrix_auth", False))
 
     # Try each config path in order until we find one that exists
     for path in config_paths:
@@ -940,6 +942,9 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                     )
                     return False
 
+                # Merge environment variable overrides (if any)
+                config = apply_env_config_overrides(config)
+
                 # Check if we have valid credentials.json first
                 has_valid_credentials = _validate_credentials_json(config_path)
 
@@ -960,34 +965,44 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                 else:
                     # Without credentials.json, require full matrix section
                     if CONFIG_SECTION_MATRIX not in config:
-                        print("Error: Missing 'matrix' section in config")
-                        print(
-                            "   Either add matrix section with access_token or password and bot_user_id,"
-                        )
-                        print(f"   {msg_or_run_auth_login()}")
-                        return False
+                        if allow_missing_matrix_auth:
+                            print(
+                                "⚠️  Warning: Matrix authentication not found in config.yaml. "
+                                "Assuming environment variables or a Kubernetes Secret will provide it in-cluster."
+                            )
+                            config[CONFIG_SECTION_MATRIX] = {}
+                        else:
+                            print("Error: Missing 'matrix' section in config")
+                            print(
+                                "   Either add matrix section with access_token or password and bot_user_id,"
+                            )
+                            print(f"   {msg_or_run_auth_login()}")
+                            return False
 
                     matrix_section = config[CONFIG_SECTION_MATRIX]
                     if not isinstance(matrix_section, dict):
                         print("Error: 'matrix' section must be a mapping (YAML object)")
                         return False
 
-                    required_matrix_fields = [
-                        CONFIG_KEY_HOMESERVER,
-                        CONFIG_KEY_BOT_USER_ID,
-                    ]
-                    token = matrix_section.get(CONFIG_KEY_ACCESS_TOKEN)
-                    pwd = matrix_section.get("password")
-                    has_token = _is_valid_non_empty_string(token)
-                    # Allow explicitly empty password strings; require the value to be a string
-                    # (reject unquoted numeric types)
-                    has_password = isinstance(pwd, str)
-                    if not (has_token or has_password):
-                        print(
-                            "Error: Missing authentication in 'matrix' section: provide 'access_token' or 'password'"
-                        )
-                        print(f"   {msg_or_run_auth_login()}")
-                        return False
+                    if allow_missing_matrix_auth:
+                        required_matrix_fields = []
+                    else:
+                        required_matrix_fields = [
+                            CONFIG_KEY_HOMESERVER,
+                            CONFIG_KEY_BOT_USER_ID,
+                        ]
+                        token = matrix_section.get(CONFIG_KEY_ACCESS_TOKEN)
+                        pwd = matrix_section.get("password")
+                        has_token = _is_valid_non_empty_string(token)
+                        # Allow explicitly empty password strings; require the value to be a string
+                        # (reject unquoted numeric types)
+                        has_password = isinstance(pwd, str)
+                        if not (has_token or has_password):
+                            print(
+                                "Error: Missing authentication in 'matrix' section: provide 'access_token' or 'password'"
+                            )
+                            print(f"   {msg_or_run_auth_login()}")
+                            return False
 
                 missing_matrix_fields = [
                     field

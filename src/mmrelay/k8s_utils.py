@@ -759,6 +759,7 @@ def check_configmap(configmap_path: str) -> bool:
         args_mock.data_dir = None
         args_mock.log_level = None
         args_mock.logfile = None
+        args_mock.allow_missing_matrix_auth = True
 
         # Run validation
         result = check_config(args_mock)
