@@ -389,7 +389,7 @@ def load_matrix_config_from_env() -> dict[str, Any] | None:
     return config
 
 
-def is_e2ee_enabled(config: dict[str, Any]) -> bool:
+def is_e2ee_enabled(config: dict[str, Any] | None) -> bool:
     """
     Determine whether End-to-End Encryption (E2EE) is enabled in the given configuration.
 

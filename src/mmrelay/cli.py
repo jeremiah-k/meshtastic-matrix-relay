@@ -874,17 +874,20 @@ def _is_valid_ble_address(address: str) -> bool:
     Returns:
         bool: True if the address format is valid, False otherwise
     """
-    if not isinstance(address, str) or not address:
+    if not isinstance(address, str):
+        return False
+    trimmed_address = address.strip()
+    if not trimmed_address:
         return False
 
     # Check for standard MAC address: AA:BB:CC:DD:EE:FF (6 groups of 2 hex chars)
     mac_pattern = r"^(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$"
-    if re.match(mac_pattern, address):
+    if re.match(mac_pattern, trimmed_address):
         return True
 
     # Device name: non-empty string without colons (to avoid confusion with MAC)
     # Accepts typical device names like "MyMeshtasticDevice", "T-Beam", etc.
-    if ":" not in address and len(address) > 0:
+    if ":" not in trimmed_address and len(trimmed_address) > 0:
         return True
 
     return False
@@ -1770,11 +1773,10 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
             print(f"      nano {output_dir}/mmrelay-configmap.yaml")
             print()
 
-            generate_secret_manifest = config.get("generate_secret_manifest")
-            if generate_secret_manifest is None:
-                generate_secret_manifest = bool(
-                    config.get("use_credentials_file", False)
-                )
+            generate_secret_manifest = config.get(
+                "generate_secret_manifest",
+                bool(config.get("use_credentials_file", False)),
+            )
 
             if config.get("use_credentials_file"):
                 if generate_secret_manifest:
@@ -1817,10 +1819,10 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
                         "      kubectl create secret generic mmrelay-matrix-credentials \\"
                     )
                     print(
-                        "        --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.example.org \\"
+                        "        --from-literal=MMRELAY_MATRIX_HOMESERVER=<your-homeserver-url> \\"
                     )
                     print(
-                        "        --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@bot:matrix.example.org \\"
+                        "        --from-literal=MMRELAY_MATRIX_BOT_USER_ID=<your-bot-user-id> \\"
                     )
                     print(
                         f"        --from-literal=MMRELAY_MATRIX_PASSWORD=$MMRELAY_MATRIX_PASSWORD --namespace={config['namespace']}"

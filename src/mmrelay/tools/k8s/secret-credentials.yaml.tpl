@@ -22,8 +22,8 @@ stringData:
   # Alternatively, paste the JSON content below:
   credentials.json: |
     {
-      "homeserver": "https://matrix.example.org",
-      "user_id": "@bot:example.org",
-      "device_id": "DEVICEID",
-      "access_token": "your_access_token_here"
+      "homeserver": "<your-homeserver-url>",
+      "user_id": "<your-bot-user-id>",
+      "device_id": "<your-device-id>",
+      "access_token": "<your-access-token>"
     }

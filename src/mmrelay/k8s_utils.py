@@ -5,6 +5,7 @@ import importlib.resources
 import json
 import os
 import re
+import shutil
 import subprocess
 from typing import Any
 
@@ -26,9 +27,13 @@ _SERIAL_CONTAINER_DEVICE_PATH = "/dev/ttyUSB0"
 
 def _get_storage_classes_from_kubectl() -> list[tuple[str, bool]] | None:
     """Return storage class names and default flags using kubectl, if available."""
+    kubectl = shutil.which("kubectl")
+    if not kubectl:
+        logger.warning("kubectl not found; skipping storage class discovery")
+        return None
     try:
         result = subprocess.run(
-            ["kubectl", "get", "storageclass", "-o", "json"],
+            [kubectl, "get", "storageclass", "-o", "json"],
             capture_output=True,
             text=True,
             check=False,
@@ -73,9 +78,13 @@ def _get_storage_classes_from_kubectl() -> list[tuple[str, bool]] | None:
 
 def _get_current_namespace_from_kubectl() -> str | None:
     """Return the current namespace from kubectl context, if available."""
+    kubectl = shutil.which("kubectl")
+    if not kubectl:
+        logger.debug("kubectl not found; skipping namespace discovery")
+        return None
     try:
         result = subprocess.run(
-            ["kubectl", "config", "view", "--minify", "-o", "json"],
+            [kubectl, "config", "view", "--minify", "-o", "json"],
             capture_output=True,
             text=True,
             check=False,
@@ -120,9 +129,9 @@ type: Opaque
 stringData:
   # Environment-variable auth for Matrix credentials.
   # Replace the placeholders below with your real values.
-  MMRELAY_MATRIX_HOMESERVER: "https://matrix.example.org"
-  MMRELAY_MATRIX_BOT_USER_ID: "@bot:example.org"
-  MMRELAY_MATRIX_PASSWORD: "your_password_here"
+  MMRELAY_MATRIX_HOMESERVER: "<your-homeserver-url>"
+  MMRELAY_MATRIX_BOT_USER_ID: "<your-bot-user-id>"
+  MMRELAY_MATRIX_PASSWORD: "<your-password>"
 """
 
 
@@ -332,7 +341,7 @@ def prompt_for_config() -> dict[str, Any]:
         config["serial_device"] = (
             input("Serial device path [/dev/ttyUSB0]: ").strip() or "/dev/ttyUSB0"
         )
-        if not _is_valid_host_path(config["serial_device"]):
+        while not _is_valid_host_path(config["serial_device"]):
             print(f"Invalid device path: {config['serial_device']}")
             config["serial_device"] = (
                 input("Serial device path [/dev/ttyUSB0]: ").strip() or "/dev/ttyUSB0"
@@ -537,7 +546,7 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
         [
             "# For serial connections, add:",
             "# - name: serial-device",
-            f"#   mountPath: {serial_device}",
+            f"#   mountPath: {_SERIAL_CONTAINER_DEVICE_PATH}",
         ]
     )
     serial_volume = "\n".join(

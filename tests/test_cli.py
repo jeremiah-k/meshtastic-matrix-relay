@@ -3581,7 +3581,7 @@ class TestK8SCommand(unittest.TestCase):
     @patch("builtins.print")
     @patch("mmrelay.k8s_utils.prompt_for_config")
     def test_handle_k8s_command_import_error(
-        self, mock_prompt, _mock_print, _mock_input
+        self, _mock_prompt, _mock_print, _mock_input
     ):
         """Test ImportError when k8s_utils cannot be imported."""
         self.mock_args.k8s_command = "generate-manifests"

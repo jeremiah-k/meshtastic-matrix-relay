@@ -41,8 +41,8 @@ Create a Secret with the three required variables:
 ```bash
 read -s -p "Matrix password: " MMRELAY_MATRIX_PASSWORD; echo
 kubectl create secret generic mmrelay-matrix-credentials \
-  --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.example.org \
-  --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@bot:example.org \
+  --from-literal=MMRELAY_MATRIX_HOMESERVER="<your-homeserver-url>" \
+  --from-literal=MMRELAY_MATRIX_BOT_USER_ID="<your-bot-user-id>" \
   --from-literal=MMRELAY_MATRIX_PASSWORD=$MMRELAY_MATRIX_PASSWORD
 ```
 
@@ -159,11 +159,13 @@ Start with privileged and host networking only if your cluster policy allows it:
 
 ```yaml
 spec:
-  hostNetwork: true
+  hostNetwork: true # WARNING: Grants direct access to the host network
   containers:
     - name: mmrelay
       securityContext:
-        privileged: true
+        privileged: true # CRITICAL: Grants all capabilities to the container
+
+Strongly consider the security implications before using these settings.
 ```
 
 ## Troubleshooting
