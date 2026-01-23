@@ -234,11 +234,12 @@ MMRelay officially supports Kubernetes deployment with a built-in manifest gener
 # Generate Kubernetes manifests interactively
 mmrelay k8s generate-manifests
 
-# Review and customize the generated manifests
+# Review and customize the generated ConfigMap
 nano k8s/mmrelay-configmap.yaml
 
-# For credentials file authentication, review the secret template:
+# If you chose to generate a Secret manifest, review it:
 nano k8s/mmrelay-secret-credentials.yaml
+# Or create the Secret directly with kubectl create secret
 
 # Deploy to your cluster
 kubectl apply -f k8s/

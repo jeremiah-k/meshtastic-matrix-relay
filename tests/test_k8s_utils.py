@@ -1,13 +1,9 @@
 """Tests for Kubernetes utilities."""
 
 import os
-import sys
 import tempfile
 import unittest
 from unittest.mock import patch
-
-# Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.k8s_utils import (
     check_configmap,
@@ -215,7 +211,7 @@ meshtastic:
 
                 # Check deployment file contains non-root security context for TCP connection
                 deployment_file = next(f for f in generated_files if "deployment" in f)
-                with open(deployment_file, "r") as f:
+                with open(deployment_file, "r", encoding="utf-8") as f:
                     deployment_content = f.read()
                     # Should have non-root security context
                     self.assertIn("runAsNonRoot: true", deployment_content)
@@ -253,7 +249,7 @@ meshtastic:
 
                 # Check deployment file contains credentials volume
                 deployment_file = next(f for f in generated_files if "deployment" in f)
-                with open(deployment_file, "r") as f:
+                with open(deployment_file, "r", encoding="utf-8") as f:
                     deployment_content = f.read()
                     # Should have credentials volume mount uncommented
                     self.assertIn("name: credentials", deployment_content)
@@ -288,7 +284,7 @@ meshtastic:
                     self.assertIn("MMRELAY_MATRIX_HOMESERVER", secret_content)
                     self.assertIn("MMRELAY_MATRIX_BOT_USER_ID", secret_content)
                     self.assertIn("MMRELAY_MATRIX_PASSWORD", secret_content)
-            except (FileNotFoundError, IndexError):
+            except (FileNotFoundError, StopIteration):
                 self.skipTest("Template files not yet packaged or generation failed")
 
     def test_generate_manifests_with_serial_connection(self):
@@ -309,7 +305,7 @@ meshtastic:
 
                 # Check deployment file contains serial device volume
                 deployment_file = next(f for f in generated_files if "deployment" in f)
-                with open(deployment_file, "r") as f:
+                with open(deployment_file, "r", encoding="utf-8") as f:
                     deployment_content = f.read()
                     # Should have serial device volume mount uncommented
                     self.assertIn("serial-device", deployment_content)

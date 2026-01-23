@@ -3634,7 +3634,7 @@ class TestK8SCommand(unittest.TestCase):
             "image_tag": "latest",
             "use_credentials_file": True,
             "create_secret_now": True,
-            "credentials_path": "/tmp/credentials.json",
+            "credentials_path": os.path.join(tempfile.gettempdir(), "credentials.json"),
             "connection_type": "tcp",
             "meshtastic_host": "meshtastic.local",
             "meshtastic_port": "4403",

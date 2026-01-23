@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 from typing import Any
 
 from mmrelay.log_utils import get_logger
@@ -790,7 +791,7 @@ def check_configmap(configmap_path: str) -> bool:
 
     if config_message:
         logger.warning(
-            f"YAML Style Warnings in embedded config.yaml:\n{config_message}"
+            "YAML Style Warnings in embedded config.yaml:\n%s", config_message
         )
 
     # Check if embedded config is empty
@@ -800,8 +801,6 @@ def check_configmap(configmap_path: str) -> bool:
 
     # Import and reuse check_config validation logic
     # Create a temporary file with the embedded config
-    import tempfile
-
     from mmrelay.cli import check_config
 
     with tempfile.NamedTemporaryFile(
