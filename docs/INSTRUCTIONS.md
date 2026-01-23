@@ -91,24 +91,10 @@ This interactive command will:
 - **Linux/macOS**: Full E2EE support with automatic encryption
 - **Windows**: Regular Matrix communication (E2EE not available due to library limitations)
 
-**Alternative Method**: Password-based automatic authentication:
-
-```yaml
-matrix:
-  homeserver: https://your-matrix-server.org
-  password: your_matrix_password
-  bot_user_id: @yourbot:your-matrix-server.org
-```
-
-This method automatically creates a secure credentials.json on startup and is compatible with Matrix 2.0/MAS. However, `mmrelay auth login` is still recommended for the most secure setup.
-
-**Security note:** After the first successful start, remove the `password` from your config and restrict permissions.
-On Linux/macOS: `chmod 600 ~/.mmrelay/config.yaml`. On Windows: use file Properties → Security to restrict access to your user.
-
 ### Configuration Tips
 
 - Review the comments in the sample configuration file for detailed explanations
-- **Always use `mmrelay auth login` for Matrix authentication** (standard method, required for E2EE)
+- **Use `mmrelay auth login` for Matrix authentication** (required for E2EE)
 - Configure your Meshtastic connection details in the config file
 - For advanced setups, check the plugin configuration options
 - For advanced features like message prefix customization, debug logging, and environment variable overrides, see the [Advanced Configuration Guide](ADVANCED_CONFIGURATION.md)
@@ -235,6 +221,35 @@ make logs     # View logs
 ```
 
 For detailed Docker commands, configuration options, connection types, and troubleshooting, see the [Docker Guide](DOCKER.md).
+
+## Kubernetes
+
+> **Note**: Kubernetes deployment is currently in testing and development. This feature is subject to change while we refine it based on user feedback.
+
+MMRelay officially supports Kubernetes deployment with a built-in manifest generator.
+
+### Quick Kubernetes Setup
+
+```bash
+# Generate Kubernetes manifests interactively
+mmrelay k8s generate-manifests
+
+# Review and customize the generated ConfigMap
+nano k8s/mmrelay-configmap.yaml
+
+# If you chose to generate a Secret manifest, review it:
+nano k8s/mmrelay-secret-credentials.yaml
+# Or create the Secret directly with kubectl create secret
+
+# Deploy to your cluster
+kubectl apply -f k8s/
+
+# Check status
+kubectl get pods -l app=mmrelay
+kubectl logs -f deployment/mmrelay
+```
+
+For detailed Kubernetes deployment instructions, authentication methods, storage configuration, and troubleshooting, see the [Kubernetes Guide](KUBERNETES.md).
 
 ## Development
 
