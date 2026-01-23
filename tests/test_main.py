@@ -542,10 +542,12 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.start_message_queue")
     @patch("mmrelay.main.connect_matrix")
     @patch("mmrelay.main.join_matrix_room")
+    @patch("mmrelay.main.shutdown_plugins")
     @patch("mmrelay.main.stop_message_queue")
     def test_main_meshtastic_connection_failure(
         self,
         mock_stop_queue,
+        _mock_shutdown_plugins,
         mock_join_room,
         mock_connect_matrix,
         mock_start_queue,
@@ -587,10 +589,12 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.start_message_queue")
     @patch("mmrelay.main.connect_meshtastic")
     @patch("mmrelay.main.connect_matrix")
+    @patch("mmrelay.main.shutdown_plugins")
     @patch("mmrelay.main.stop_message_queue")
     def test_main_matrix_connection_failure(
         self,
         mock_stop_queue,
+        _mock_shutdown_plugins,
         mock_connect_matrix,
         mock_connect_meshtastic,
         mock_start_queue,

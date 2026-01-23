@@ -96,6 +96,10 @@ async def main(config: dict[str, Any]) -> None:
 
     loop = asyncio.get_running_loop()
     meshtastic_utils.event_loop = loop
+    matrix_client = None
+    cleanup_done = False
+    plugins_loaded = False
+    message_queue_started = False
 
     # Initialize the SQLite database
     initialize_database()
@@ -125,43 +129,19 @@ async def main(config: dict[str, Any]) -> None:
     await loop.run_in_executor(
         None, functools.partial(load_plugins, passed_config=config)
     )
+    plugins_loaded = True
 
     # Start message queue with configured message delay
     message_delay = config.get("meshtastic", {}).get(
         "message_delay", DEFAULT_MESSAGE_DELAY
     )
     start_message_queue(message_delay=message_delay)
+    message_queue_started = True
 
     # Connect to Meshtastic
     meshtastic_utils.meshtastic_client = await asyncio.to_thread(
         connect_meshtastic, passed_config=config
     )
-
-    # Connect to Matrix
-    matrix_client = await connect_matrix(passed_config=config)
-
-    # Check if Matrix connection was successful
-    if matrix_client is None:
-        # The error is logged by connect_matrix, so we can just raise here.
-        raise ConnectionError(
-            "Failed to connect to Matrix. Cannot continue without Matrix client."
-        )
-
-    # Join the rooms specified in the config.yaml
-    for room in matrix_rooms:
-        await join_matrix_room(matrix_client, room["id"])
-
-    # Register the message callback for Matrix
-    matrix_logger.info("Listening for inbound Matrix messages...")
-    matrix_client.add_event_callback(
-        on_room_message,
-        (RoomMessageText, RoomMessageNotice, RoomMessageEmote, ReactionEvent),
-    )
-    # Add E2EE callbacks - MegolmEvent only goes to decryption failure handler
-    # Successfully decrypted messages will be converted to RoomMessageText etc. by matrix-nio
-    matrix_client.add_event_callback(on_decryption_failure, (MegolmEvent,))
-    # Add RoomMemberEvent callback to track room-specific display name changes
-    matrix_client.add_event_callback(on_room_member, (RoomMemberEvent,))
 
     # Set up shutdown event
     shutdown_event = asyncio.Event()
@@ -190,105 +170,24 @@ async def main(config: dict[str, Any]) -> None:
         """
         shutdown()
 
-    # Handle signals differently based on the platform
-    if sys.platform != WINDOWS_PLATFORM:
-        signals = [signal.SIGINT, signal.SIGTERM]
-        # Handle terminal hangups (e.g., SSH session closes) when supported.
-        if hasattr(signal, "SIGHUP"):
-            signals.append(signal.SIGHUP)
-        for sig in signals:
-            loop.add_signal_handler(sig, signal_handler)
-    else:
-        # On Windows, we can't use add_signal_handler, so we'll handle KeyboardInterrupt
-        pass
+    async def _cleanup() -> None:
+        nonlocal cleanup_done
+        if cleanup_done:
+            return
+        cleanup_done = True
+        _set_shutdown_flag()
 
-    # Start connection health monitoring using getMetadata() heartbeat
-    # This provides proactive connection detection for all interface types
-    _ = asyncio.create_task(meshtastic_utils.check_connection())
-
-    # Ensure message queue processor is started now that event loop is running
-    get_message_queue().ensure_processor_started()
-
-    # Start the Matrix client sync loop
-    try:
-        while not shutdown_event.is_set():
-            try:
-                if meshtastic_utils.meshtastic_client:
-                    nodes_snapshot = dict(meshtastic_utils.meshtastic_client.nodes)
-                    await loop.run_in_executor(
-                        None,
-                        update_longnames,
-                        nodes_snapshot,
-                    )
-                    await loop.run_in_executor(
-                        None,
-                        update_shortnames,
-                        nodes_snapshot,
-                    )
-                else:
-                    meshtastic_logger.warning("Meshtastic client is not connected.")
-
-                matrix_logger.info("Starting Matrix sync loop...")
-                sync_task = asyncio.create_task(
-                    matrix_client.sync_forever(timeout=30000)
-                )
-
-                shutdown_task = asyncio.create_task(shutdown_event.wait())
-
-                # Wait for either the matrix sync to fail, or for a shutdown
-                done, pending = await asyncio.wait(
-                    [sync_task, shutdown_task],
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
-
-                # Cancel any pending tasks
-                for task in pending:
-                    task.cancel()
-                    try:
-                        await task
-                    except asyncio.CancelledError:
-                        pass
-
-                if shutdown_event.is_set():
-                    matrix_logger.info("Shutdown event detected. Stopping sync loop...")
-                    break
-
-                # Check if sync_task completed with an exception
-                if sync_task in done:
-                    try:
-                        # This will raise the exception if the task failed
-                        sync_task.result()
-                        # If we get here, sync completed normally (shouldn't happen with sync_forever)
-                        matrix_logger.warning(
-                            "Matrix sync_forever completed unexpectedly"
-                        )
-                    except (
-                        Exception
-                    ) as exc:  # noqa: BLE001 — sync loop must keep retrying
-                        if isinstance(exc, (asyncio.TimeoutError, ClientError)):
-                            matrix_logger.warning(
-                                "Matrix sync timed out, retrying: %s", exc
-                            )
-                        else:
-                            matrix_logger.exception("Matrix sync failed")
-                        # The outer try/catch will handle the retry logic
-
-            except Exception:  # noqa: BLE001 — keep loop alive for retries
-                if shutdown_event.is_set():
-                    break
-                matrix_logger.exception("Error syncing with Matrix server")
-                await asyncio.sleep(5)  # Wait briefly before retrying
-    except KeyboardInterrupt:
-        shutdown()
-    finally:
         # Cleanup
-        matrix_logger.info("Stopping plugins...")
-        await loop.run_in_executor(None, shutdown_plugins)
-        matrix_logger.info("Stopping message queue...")
-        await loop.run_in_executor(None, stop_message_queue)
+        if plugins_loaded:
+            matrix_logger.info("Stopping plugins...")
+            await loop.run_in_executor(None, shutdown_plugins)
+        if message_queue_started:
+            matrix_logger.info("Stopping message queue...")
+            await loop.run_in_executor(None, stop_message_queue)
 
-        matrix_logger.info("Closing Matrix client...")
-        await matrix_client.close()
+        if matrix_client is not None:
+            matrix_logger.info("Closing Matrix client...")
+            await matrix_client.close()
         if meshtastic_utils.meshtastic_client:
             meshtastic_logger.info("Closing Meshtastic client...")
             try:
@@ -392,6 +291,128 @@ async def main(config: dict[str, Any]) -> None:
             await asyncio.gather(*pending_tasks, return_exceptions=True)
 
         matrix_logger.info("Shutdown complete.")
+
+    try:
+        # Connect to Matrix
+        matrix_client = await connect_matrix(passed_config=config)
+
+        # Check if Matrix connection was successful
+        if matrix_client is None:
+            # The error is logged by connect_matrix, so we can just raise here.
+            raise ConnectionError(
+                "Failed to connect to Matrix. Cannot continue without Matrix client."
+            )
+
+        # Join the rooms specified in the config.yaml
+        for room in matrix_rooms:
+            await join_matrix_room(matrix_client, room["id"])
+
+        # Register the message callback for Matrix
+        matrix_logger.info("Listening for inbound Matrix messages...")
+        matrix_client.add_event_callback(
+            on_room_message,
+            (RoomMessageText, RoomMessageNotice, RoomMessageEmote, ReactionEvent),
+        )
+        # Add E2EE callbacks - MegolmEvent only goes to decryption failure handler
+        # Successfully decrypted messages will be converted to RoomMessageText etc. by matrix-nio
+        matrix_client.add_event_callback(on_decryption_failure, (MegolmEvent,))
+        # Add RoomMemberEvent callback to track room-specific display name changes
+        matrix_client.add_event_callback(on_room_member, (RoomMemberEvent,))
+
+        # Handle signals differently based on the platform
+        if sys.platform != WINDOWS_PLATFORM:
+            signals = [signal.SIGINT, signal.SIGTERM]
+            # Handle terminal hangups (e.g., SSH session closes) when supported.
+            if hasattr(signal, "SIGHUP"):
+                signals.append(signal.SIGHUP)
+            for sig in signals:
+                loop.add_signal_handler(sig, signal_handler)
+        else:
+            # On Windows, we can't use add_signal_handler, so we'll handle KeyboardInterrupt
+            pass
+
+        # Start connection health monitoring using getMetadata() heartbeat
+        # This provides proactive connection detection for all interface types
+        _ = asyncio.create_task(meshtastic_utils.check_connection())
+
+        # Ensure message queue processor is started now that event loop is running
+        get_message_queue().ensure_processor_started()
+    except Exception:
+        await _cleanup()
+        raise
+    # Start the Matrix client sync loop
+    try:
+        while not shutdown_event.is_set():
+            try:
+                if meshtastic_utils.meshtastic_client:
+                    nodes_snapshot = dict(meshtastic_utils.meshtastic_client.nodes)
+                    await loop.run_in_executor(
+                        None,
+                        update_longnames,
+                        nodes_snapshot,
+                    )
+                    await loop.run_in_executor(
+                        None,
+                        update_shortnames,
+                        nodes_snapshot,
+                    )
+                else:
+                    meshtastic_logger.warning("Meshtastic client is not connected.")
+
+                matrix_logger.info("Starting Matrix sync loop...")
+                sync_task = asyncio.create_task(
+                    matrix_client.sync_forever(timeout=30000)
+                )
+
+                shutdown_task = asyncio.create_task(shutdown_event.wait())
+
+                # Wait for either the matrix sync to fail, or for a shutdown
+                done, pending = await asyncio.wait(
+                    [sync_task, shutdown_task],
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+
+                # Cancel any pending tasks
+                for task in pending:
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+
+                if shutdown_event.is_set():
+                    matrix_logger.info("Shutdown event detected. Stopping sync loop...")
+                    break
+
+                # Check if sync_task completed with an exception
+                if sync_task in done:
+                    try:
+                        # This will raise the exception if the task failed
+                        sync_task.result()
+                        # If we get here, sync completed normally (shouldn't happen with sync_forever)
+                        matrix_logger.warning(
+                            "Matrix sync_forever completed unexpectedly"
+                        )
+                    except (
+                        Exception
+                    ) as exc:  # noqa: BLE001 — sync loop must keep retrying
+                        if isinstance(exc, (asyncio.TimeoutError, ClientError)):
+                            matrix_logger.warning(
+                                "Matrix sync timed out, retrying: %s", exc
+                            )
+                        else:
+                            matrix_logger.exception("Matrix sync failed")
+                        # The outer try/catch will handle the retry logic
+
+            except Exception:  # noqa: BLE001 — keep loop alive for retries
+                if shutdown_event.is_set():
+                    break
+                matrix_logger.exception("Error syncing with Matrix server")
+                await asyncio.sleep(5)  # Wait briefly before retrying
+    except KeyboardInterrupt:
+        shutdown()
+    finally:
+        await _cleanup()
 
 
 def run_main(args: Any) -> int:

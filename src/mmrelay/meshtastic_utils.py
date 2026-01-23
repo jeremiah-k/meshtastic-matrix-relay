@@ -252,6 +252,14 @@ def _submit_coro(
             return await awaitable
 
         coro = _await_wrapper(coro)
+
+    if shutting_down:
+        if hasattr(coro, "close"):
+            coro.close()
+        cancelled_future: Future[Any] = Future()
+        cancelled_future.cancel()
+        return cancelled_future
+
     loop = loop or event_loop
     if (
         loop

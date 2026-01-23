@@ -1684,6 +1684,7 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
 
         # Execute the module to get the original function
         spec.loader.exec_module(source_module)
+        self.source_module = source_module
 
         # Get the original _submit_coro function
         self.original_submit_coro = source_module._submit_coro
@@ -1754,6 +1755,22 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
             self.assertIsInstance(result, Future)
             self.assertIsInstance(result.exception(), ValueError)
             self.assertEqual(str(result.exception()), "Test exception")
+
+    def test_submit_coro_returns_cancelled_future_when_shutting_down(self):
+        """Test _submit_coro short-circuits when shutting_down is True."""
+        from concurrent.futures import Future
+
+        async def test_coro():
+            return "unused"
+
+        original_shutdown = self.source_module.shutting_down
+        self.source_module.shutting_down = True
+        try:
+            result = self.original_submit_coro(test_coro())
+            self.assertIsInstance(result, Future)
+            self.assertTrue(result.cancelled())
+        finally:
+            self.source_module.shutting_down = original_shutdown
 
     def test_submit_coro_with_running_loop(self):
         """Test _submit_coro with a running loop - should use create_task."""
