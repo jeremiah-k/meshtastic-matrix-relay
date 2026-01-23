@@ -420,6 +420,7 @@ def prompt_for_config() -> dict[str, Any]:
             storage_class_default = default_storage_class
         else:
             storage_class_default = storage_classes[0][0]
+            # Use first available StorageClass when cluster has no default
             print(
                 f"No default StorageClass detected; using '{storage_class_default}' as the suggested default."
             )
@@ -817,6 +818,7 @@ def check_configmap(configmap_path: str) -> bool:
         args_mock.log_level = None
         args_mock.logfile = None
         args_mock.allow_missing_matrix_auth = True
+        # Kubernetes ConfigMap validation: auth may come from Secrets/env vars instead of config.yaml
 
         # Run validation
         result = check_config(args_mock)

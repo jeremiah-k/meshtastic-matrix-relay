@@ -851,8 +851,8 @@ def set_config(module: Any, passed_config: dict[str, Any]) -> dict[str, Any]:
         if hasattr(module, "matrix_rooms") and "matrix_rooms" in passed_config:
             module.matrix_rooms = passed_config["matrix_rooms"]
 
-        # Only set matrix config variables if matrix section exists and has the required fields
-        # When using credentials.json, these will be loaded by connect_matrix() instead
+        # Only set matrix config variables if matrix section exists and has required fields
+        # When using credentials.json (from mmrelay auth login), these will be loaded by connect_matrix() instead
         matrix_section = passed_config.get(CONFIG_SECTION_MATRIX)
         if (
             hasattr(module, "matrix_homeserver")
