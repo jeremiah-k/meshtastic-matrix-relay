@@ -169,6 +169,42 @@ meshtastic:
                     self.assertIn("  meshtastic:", output_content)
                     self.assertIn("    connection_type: tcp", output_content)
 
+    def test_generate_configmap_from_sample_applies_meshtastic_overrides(self):
+        """Test that Meshtastic overrides are applied to the sample config."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            sample_config_path = os.path.join(tmpdir, "sample_config.yaml")
+            sample_config_content = (
+                "meshtastic:\n"
+                "  connection_type: tcp\n"
+                '  host: meshtastic.local # Only used when connection is "tcp"\n'
+                '  serial_port: /dev/ttyUSB0 # Only used when connection is "serial"\n'
+                '  ble_address: AA:BB:CC:DD:EE:FF # Only used when connection is "ble"\n'
+            )
+            with open(sample_config_path, "w", encoding="utf-8") as f:
+                f.write(sample_config_content)
+
+            output_path = os.path.join(tmpdir, "configmap.yaml")
+
+            with patch("mmrelay.tools.get_sample_config_path") as mock_sample:
+                mock_sample.return_value = sample_config_path
+
+                from mmrelay.k8s_utils import generate_configmap_from_sample
+
+                config = {
+                    "connection_type": "tcp",
+                    "meshtastic_host": "192.168.1.126",
+                    "meshtastic_port": "4403",
+                }
+                result = generate_configmap_from_sample(
+                    "default", output_path, config=config
+                )
+
+                self.assertEqual(result, output_path)
+                with open(output_path, "r", encoding="utf-8") as f:
+                    output_content = f.read()
+                    self.assertIn("    host: 192.168.1.126", output_content)
+                    self.assertIn("    port: 4403", output_content)
+
     def test_generate_manifests_creates_files(self):
         """Test that generate_manifests creates the expected files."""
         config = {
@@ -176,7 +212,7 @@ meshtastic:
             "image_tag": "latest",
             "use_credentials_file": False,
             "connection_type": "tcp",
-            "meshtastic_host": "meshtastic.local",
+            "meshtastic_host": "192.168.1.126",
             "meshtastic_port": "4403",
             "storage_class": "standard",
             "storage_size": "1Gi",
@@ -220,6 +256,12 @@ meshtastic:
                     self.assertIn("fsGroup: 1000", deployment_content)
                     # Should NOT have root security context
                     self.assertNotIn("runAsUser: 0", deployment_content)
+
+                configmap_file = next(f for f in generated_files if "configmap" in f)
+                with open(configmap_file, "r", encoding="utf-8") as f:
+                    configmap_content = f.read()
+                    self.assertIn("host: 192.168.1.126", configmap_content)
+                    self.assertIn("port: 4403", configmap_content)
             except FileNotFoundError:
                 self.skipTest("Template files not yet packaged")
 

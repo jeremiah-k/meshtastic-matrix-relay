@@ -445,7 +445,153 @@ def prompt_for_config() -> dict[str, Any]:
     return config
 
 
-def generate_configmap_from_sample(namespace: str, output_path: str) -> str:
+def _format_yaml_scalar(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if value is None:
+        return "null"
+    text = str(value)
+    if re.match(r"^[A-Za-z0-9_./:-]+$", text) and text.lower() not in {
+        "true",
+        "false",
+        "null",
+        "~",
+    }:
+        return text
+    escaped = text.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _replace_yaml_value_line(line: str, new_value: Any) -> str:
+    prefix, separator, remainder = line.partition(":")
+    if not separator:
+        return line
+    _, comment_sep, comment = remainder.partition("#")
+    formatted = _format_yaml_scalar(new_value)
+    if comment_sep:
+        return f"{prefix}: {formatted} #{comment.strip()}"
+    return f"{prefix}: {formatted}"
+
+
+def _meshtastic_block_contains_key(lines: list[str], key: str) -> bool:
+    in_section = False
+    for line in lines:
+        if not in_section:
+            if line.strip() == "meshtastic:":
+                in_section = True
+            continue
+        if line and not line.startswith(" "):
+            return False
+        if line.strip().startswith(f"{key}:"):
+            return True
+    return False
+
+
+def _apply_meshtastic_overrides(
+    sample_config_content: str, config: dict[str, Any] | None
+) -> str:
+    if not config:
+        return sample_config_content
+    connection_type = config.get("connection_type")
+    if not connection_type:
+        return sample_config_content
+
+    host = config.get("meshtastic_host")
+    port = config.get("meshtastic_port")
+    serial_port = config.get("serial_device") or config.get("serial_port")
+    ble_address = config.get("ble_address")
+
+    lines = sample_config_content.splitlines()
+    has_port_line = _meshtastic_block_contains_key(lines, "port")
+    in_section = False
+    updated_lines: list[str] = []
+    inserted_port = False
+
+    for line in lines:
+        if not in_section:
+            updated_lines.append(line)
+            if line.strip() == "meshtastic:":
+                in_section = True
+            continue
+
+        if line and not line.startswith(" "):
+            if (
+                not inserted_port
+                and not has_port_line
+                and connection_type == "tcp"
+                and port
+            ):
+                updated_lines.append(
+                    f'  port: {_format_yaml_scalar(port)} # Only used when connection is "tcp"'
+                )
+            in_section = False
+            updated_lines.append(line)
+            continue
+
+        stripped = line.strip()
+        if stripped.startswith("connection_type:"):
+            updated_lines.append(_replace_yaml_value_line(line, connection_type))
+            continue
+        if stripped.startswith("host:"):
+            if connection_type == "tcp" and host:
+                updated_lines.append(_replace_yaml_value_line(line, host))
+            else:
+                updated_lines.append(line)
+            if (
+                connection_type == "tcp"
+                and port
+                and not has_port_line
+                and not inserted_port
+            ):
+                indent = line[: len(line) - len(line.lstrip(" "))]
+                updated_lines.append(
+                    f'{indent}port: {_format_yaml_scalar(port)} # Only used when connection is "tcp"'
+                )
+                inserted_port = True
+            continue
+        if stripped.startswith("port:"):
+            if connection_type == "tcp" and port:
+                updated_lines.append(_replace_yaml_value_line(line, port))
+            else:
+                updated_lines.append(line)
+            continue
+        if stripped.startswith("serial_port:"):
+            if connection_type == "serial" and serial_port:
+                updated_lines.append(_replace_yaml_value_line(line, serial_port))
+            else:
+                updated_lines.append(line)
+            continue
+        if stripped.startswith("ble_address:"):
+            if connection_type == "ble" and ble_address:
+                updated_lines.append(_replace_yaml_value_line(line, ble_address))
+            else:
+                updated_lines.append(line)
+            continue
+
+        updated_lines.append(line)
+
+    if (
+        in_section
+        and not inserted_port
+        and not has_port_line
+        and connection_type == "tcp"
+        and port
+    ):
+        updated_lines.append(
+            f'  port: {_format_yaml_scalar(port)} # Only used when connection is "tcp"'
+        )
+
+    updated_content = "\n".join(updated_lines)
+    if sample_config_content.endswith("\n"):
+        return f"{updated_content}\n"
+    return updated_content
+
+
+def generate_configmap_from_sample(
+    namespace: str, output_path: str, config: dict[str, Any] | None = None
+) -> str:
     """
     Create a Kubernetes ConfigMap YAML that embeds the project's sample configuration under `data.config.yaml`.
 
@@ -462,6 +608,8 @@ def generate_configmap_from_sample(namespace: str, output_path: str) -> str:
 
     with open(sample_config_path, "r", encoding="utf-8") as f:
         sample_config_content = f.read()
+
+    sample_config_content = _apply_meshtastic_overrides(sample_config_content, config)
 
     # Create ConfigMap YAML with embedded config
     configmap_content = f"""apiVersion: v1
@@ -532,7 +680,7 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
 
     # 2. Generate ConfigMap from sample_config.yaml (single source of truth)
     configmap_path = os.path.join(output_dir, "mmrelay-configmap.yaml")
-    generate_configmap_from_sample(config["namespace"], configmap_path)
+    generate_configmap_from_sample(config["namespace"], configmap_path, config=config)
     generated_files.append(configmap_path)
 
     # 3. Generate Secret (optional)

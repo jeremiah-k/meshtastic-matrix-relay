@@ -39,10 +39,8 @@ matrix:
   # 3. MMRelay will automatically create credentials.json with E2EE support
   # 4. For interactive setup, use: mmrelay auth login
   #
-  #e2ee:
-  #  # Optional: When credentials.json is present, MMRelay auto-enables E2EE.
-  #  # Configure this section only if you want to override defaults (e.g., store_path).
-  #  enabled: true
+  e2ee:
+    enabled: true
 
   # Message prefix customization (Meshtastic → Matrix direction)
   #prefix_enabled: true # Enable prefixes on messages from mesh (e.g., "[Alice/MyMesh]: message")
