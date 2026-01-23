@@ -28,8 +28,8 @@ lint:
     - isort@7.0.0
     - markdownlint@0.47.0
     - osv-scanner@2.3.2
-    - prettier@3.8.0
-    - ruff@0.14.13
+    - prettier@3.8.1
+    - ruff@0.14.14
     - trufflehog@3.92.5
     - yamllint@1.38.0
   ignore:
