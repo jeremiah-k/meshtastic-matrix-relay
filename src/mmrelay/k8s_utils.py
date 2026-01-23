@@ -17,7 +17,7 @@ _UNRESOLVED_RE = re.compile(r"\{\{[^}]+\}\}")
 _MISSING_VARS_MSG = "Missing template variables: {vars}"
 _MISSING_VALUE_MSG = "Missing template value for '{key}'"
 _UNRESOLVED_PLACEHOLDERS_MSG = "Unresolved template placeholders: {vars}"
-_UNRESOLVED_TOKENS_MSG = "Malformed template tokens: {tokens}"
+_UNRESOLVED_TOKENS_MSG = "Unresolved template tokens: {tokens}"
 _MISSING_CONFIG_KEYS_MSG = "Missing required config keys: {keys}"
 
 logger = get_logger(__name__)
