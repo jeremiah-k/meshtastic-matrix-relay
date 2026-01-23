@@ -368,6 +368,9 @@ def prompt_for_config() -> dict[str, Any]:
                     "Matrix bot user ID (e.g., @bot:example.org): "
                 ).strip()
             password = getpass.getpass("Matrix password (input hidden): ")
+            while not password:
+                print("Matrix password cannot be empty.")
+                password = getpass.getpass("Matrix password (input hidden): ")
             config["matrix_homeserver"] = homeserver
             config["matrix_bot_user_id"] = bot_user_id
             config["matrix_password"] = password

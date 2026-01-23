@@ -12,6 +12,7 @@ matrix:
   #   MMRELAY_MATRIX_HOMESERVER=https://matrix.example.org
   #   MMRELAY_MATRIX_BOT_USER_ID=@bot:example.org
   #   MMRELAY_MATRIX_PASSWORD=your_password
+  #   MMRELAY_MATRIX_ACCESS_TOKEN=your_access_token  # Optional alternative to password
   # Best for: Kubernetes deployments with secrets, automated CI/CD
   # NO CONFIG FIELDS NEEDED - environment variables provide all authentication data
   #

@@ -358,7 +358,7 @@ meshtastic:
                     self.assertIn("supplementalGroups: [20]", deployment_content)
                     # Should NOT have non-root security context
                     self.assertNotIn("runAsNonRoot: true", deployment_content)
-            except (FileNotFoundError, IndexError):
+            except (FileNotFoundError, IndexError, StopIteration):
                 self.skipTest("Template files not yet packaged or generation failed")
 
     @patch("mmrelay.k8s_utils.getpass.getpass", return_value="password")

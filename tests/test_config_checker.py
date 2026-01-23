@@ -1036,10 +1036,14 @@ class TestConfigChecker(unittest.TestCase):
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("mmrelay.cli._print_unified_e2ee_analysis")
+    @patch("mmrelay.e2ee_utils.get_e2ee_status")
     @patch("builtins.print")
     def test_check_config_valid_host_ipv4(
         self,
         _mock_print,
+        mock_get_e2ee_status,
+        _mock_print_unified_e2ee,
         mock_validate_yaml,
         _mock_open,
         mock_isfile,
@@ -1062,6 +1066,13 @@ class TestConfigChecker(unittest.TestCase):
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
         mock_validate_yaml.return_value = (True, None, valid_config)
+        mock_get_e2ee_status.return_value = {
+            "overall_status": "ready",
+            "enabled": True,
+            "available": True,
+            "configured": True,
+            "issues": [],
+        }
 
         with patch("mmrelay.cli._validate_e2ee_config", return_value=True):
             with patch("mmrelay.cli._validate_credentials_json", return_value=False):
@@ -1074,10 +1085,14 @@ class TestConfigChecker(unittest.TestCase):
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("mmrelay.cli._print_unified_e2ee_analysis")
+    @patch("mmrelay.e2ee_utils.get_e2ee_status")
     @patch("builtins.print")
     def test_check_config_valid_host_ipv6(
         self,
         _mock_print,
+        mock_get_e2ee_status,
+        _mock_print_unified_e2ee,
         mock_validate_yaml,
         _mock_open,
         mock_isfile,
@@ -1100,6 +1115,13 @@ class TestConfigChecker(unittest.TestCase):
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
         mock_validate_yaml.return_value = (True, None, valid_config)
+        mock_get_e2ee_status.return_value = {
+            "overall_status": "ready",
+            "enabled": True,
+            "available": True,
+            "configured": True,
+            "issues": [],
+        }
 
         with patch("mmrelay.cli._validate_e2ee_config", return_value=True):
             with patch("mmrelay.cli._validate_credentials_json", return_value=False):
@@ -1112,10 +1134,14 @@ class TestConfigChecker(unittest.TestCase):
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("mmrelay.cli._print_unified_e2ee_analysis")
+    @patch("mmrelay.e2ee_utils.get_e2ee_status")
     @patch("builtins.print")
     def test_check_config_valid_host_hostname(
         self,
         mock_print,
+        mock_get_e2ee_status,
+        _mock_print_unified_e2ee,
         mock_validate_yaml,
         mock_open,
         mock_isfile,
@@ -1138,6 +1164,13 @@ class TestConfigChecker(unittest.TestCase):
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
         mock_validate_yaml.return_value = (True, None, valid_config)
+        mock_get_e2ee_status.return_value = {
+            "overall_status": "ready",
+            "enabled": True,
+            "available": True,
+            "configured": True,
+            "issues": [],
+        }
 
         with patch("mmrelay.cli._validate_e2ee_config", return_value=True):
             with patch("mmrelay.cli._validate_credentials_json", return_value=False):
@@ -1150,10 +1183,14 @@ class TestConfigChecker(unittest.TestCase):
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("mmrelay.cli._print_unified_e2ee_analysis")
+    @patch("mmrelay.e2ee_utils.get_e2ee_status")
     @patch("builtins.print")
     def test_check_config_valid_ble_address_mac(
         self,
         _mock_print,
+        mock_get_e2ee_status,
+        _mock_print_unified_e2ee,
         mock_validate_yaml,
         _mock_open,
         mock_isfile,
@@ -1179,6 +1216,13 @@ class TestConfigChecker(unittest.TestCase):
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
         mock_validate_yaml.return_value = (True, None, valid_config)
+        mock_get_e2ee_status.return_value = {
+            "overall_status": "ready",
+            "enabled": True,
+            "available": True,
+            "configured": True,
+            "issues": [],
+        }
 
         with patch("mmrelay.cli._validate_e2ee_config", return_value=True):
             with patch("mmrelay.cli._validate_credentials_json", return_value=False):
@@ -1191,10 +1235,14 @@ class TestConfigChecker(unittest.TestCase):
     @patch("os.path.isfile")
     @patch("builtins.open", new_callable=mock_open)
     @patch("mmrelay.cli.validate_yaml_syntax")
+    @patch("mmrelay.cli._print_unified_e2ee_analysis")
+    @patch("mmrelay.e2ee_utils.get_e2ee_status")
     @patch("builtins.print")
     def test_check_config_valid_ble_address_device_name(
         self,
         _mock_print,
+        mock_get_e2ee_status,
+        _mock_print_unified_e2ee,
         mock_validate_yaml,
         _mock_open,
         mock_isfile,
@@ -1220,6 +1268,13 @@ class TestConfigChecker(unittest.TestCase):
         mock_get_paths.return_value = ["/test/config.yaml"]
         mock_isfile.return_value = True
         mock_validate_yaml.return_value = (True, None, valid_config)
+        mock_get_e2ee_status.return_value = {
+            "overall_status": "ready",
+            "enabled": True,
+            "available": True,
+            "configured": True,
+            "issues": [],
+        }
 
         with patch("mmrelay.cli._validate_e2ee_config", return_value=True):
             with patch("mmrelay.cli._validate_credentials_json", return_value=False):

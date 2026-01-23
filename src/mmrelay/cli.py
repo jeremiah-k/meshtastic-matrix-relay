@@ -1933,8 +1933,9 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
                         f"      kubectl apply -f {output_dir}/mmrelay-secret-credentials.yaml"
                     )
                 elif not create_secret_now:
-                    base_dir = get_base_dir()
-                    credentials_path = os.path.join(base_dir, "credentials.json")
+                    credentials_path = config.get("credentials_path") or os.path.join(
+                        get_base_dir(), "credentials.json"
+                    )
                     print("   • Create credentials.json using 'mmrelay auth login'")
                     print("   • Update the secret with your credentials.json:")
                     print(

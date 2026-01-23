@@ -3658,9 +3658,8 @@ class TestK8SCommand(unittest.TestCase):
         self.assertEqual(result, 0)
         mock_print.assert_any_call("✅ Matrix credentials Secret created.")
         first_call_args = mock_run.call_args_list[0][0][0]
-        self.assertIn(
-            "--from-file=credentials.json=/tmp/credentials.json", first_call_args
-        )
+        expected_path = os.path.join(tempfile.gettempdir(), "credentials.json")
+        self.assertIn(f"--from-file=credentials.json={expected_path}", first_call_args)
 
     @patch("builtins.input")
     @patch("builtins.print")
