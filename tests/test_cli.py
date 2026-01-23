@@ -3563,6 +3563,107 @@ class TestK8SCommand(unittest.TestCase):
 
     @patch("builtins.input")
     @patch("builtins.print")
+    @patch("mmrelay.cli.subprocess.run")
+    @patch("mmrelay.cli.shutil.which", return_value="/usr/bin/kubectl")
+    @patch("mmrelay.k8s_utils.generate_manifests")
+    @patch("mmrelay.k8s_utils.prompt_for_config")
+    def test_handle_k8s_command_create_secret_now_env_success(
+        self,
+        mock_prompt,
+        mock_generate,
+        _mock_which,
+        mock_run,
+        mock_print,
+        mock_input,
+    ):
+        """Test create_secret_now flow for env-var Matrix auth."""
+        self.mock_args.k8s_command = "generate-manifests"
+
+        mock_prompt.return_value = {
+            "namespace": "default",
+            "image_tag": "latest",
+            "use_credentials_file": False,
+            "create_secret_now": True,
+            "matrix_homeserver": "https://matrix.example.org",
+            "matrix_bot_user_id": "@bot:example.org",
+            "matrix_password": "secret",
+            "connection_type": "tcp",
+            "meshtastic_host": "meshtastic.local",
+            "meshtastic_port": "4403",
+            "storage_class": "standard",
+            "storage_size": "1Gi",
+        }
+
+        temp_dir = tempfile.gettempdir()
+        mock_generate.return_value = [os.path.join(temp_dir, "test.yaml")]
+        mock_input.return_value = ""
+
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="secret-yaml", stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),
+        ]
+
+        from mmrelay.cli import handle_k8s_command
+
+        result = handle_k8s_command(self.mock_args)
+
+        self.assertEqual(result, 0)
+        mock_print.assert_any_call("✅ Matrix credentials Secret created.")
+        self.assertTrue(mock_run.called)
+
+    @patch("builtins.input")
+    @patch("builtins.print")
+    @patch("mmrelay.cli.subprocess.run")
+    @patch("mmrelay.cli.shutil.which", return_value="/usr/bin/kubectl")
+    @patch("mmrelay.k8s_utils.generate_manifests")
+    @patch("mmrelay.k8s_utils.prompt_for_config")
+    def test_handle_k8s_command_create_secret_now_credentials_success(
+        self,
+        mock_prompt,
+        mock_generate,
+        _mock_which,
+        mock_run,
+        mock_print,
+        mock_input,
+    ):
+        """Test create_secret_now flow for credentials.json auth."""
+        self.mock_args.k8s_command = "generate-manifests"
+
+        mock_prompt.return_value = {
+            "namespace": "default",
+            "image_tag": "latest",
+            "use_credentials_file": True,
+            "create_secret_now": True,
+            "credentials_path": "/tmp/credentials.json",
+            "connection_type": "tcp",
+            "meshtastic_host": "meshtastic.local",
+            "meshtastic_port": "4403",
+            "storage_class": "standard",
+            "storage_size": "1Gi",
+        }
+
+        temp_dir = tempfile.gettempdir()
+        mock_generate.return_value = [os.path.join(temp_dir, "test.yaml")]
+        mock_input.return_value = ""
+
+        mock_run.side_effect = [
+            MagicMock(returncode=0, stdout="secret-yaml", stderr=""),
+            MagicMock(returncode=0, stdout="", stderr=""),
+        ]
+
+        from mmrelay.cli import handle_k8s_command
+
+        result = handle_k8s_command(self.mock_args)
+
+        self.assertEqual(result, 0)
+        mock_print.assert_any_call("✅ Matrix credentials Secret created.")
+        first_call_args = mock_run.call_args_list[0][0][0]
+        self.assertIn(
+            "--from-file=credentials.json=/tmp/credentials.json", first_call_args
+        )
+
+    @patch("builtins.input")
+    @patch("builtins.print")
     @patch("mmrelay.k8s_utils.generate_manifests")
     @patch("mmrelay.k8s_utils.prompt_for_config")
     def test_handle_k8s_command_generate_manifests_value_error(
