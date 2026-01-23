@@ -233,6 +233,7 @@ meshtastic:
             "namespace": "test-namespace",
             "image_tag": "v1.2.0",
             "use_credentials_file": True,
+            "generate_secret_manifest": True,
             "connection_type": "tcp",
             "meshtastic_host": "192.168.1.100",
             "meshtastic_port": "4403",
@@ -322,11 +323,12 @@ meshtastic:
             except (FileNotFoundError, IndexError):
                 self.skipTest("Template files not yet packaged or generation failed")
 
+    @patch("mmrelay.k8s_utils.getpass.getpass", return_value="password")
     @patch("mmrelay.k8s_utils._get_storage_classes_from_kubectl", return_value=None)
     @patch("mmrelay.k8s_utils._get_current_namespace_from_kubectl", return_value=None)
     @patch("builtins.input")
     def test_prompt_for_config_defaults(
-        self, mock_input, _mock_namespace, _mock_storage
+        self, mock_input, _mock_namespace, _mock_storage, _mock_getpass
     ):
         """Test prompt_for_config with all default values."""
         # Mock user pressing Enter for all prompts (using defaults)
@@ -334,7 +336,9 @@ meshtastic:
             "",  # namespace (default)
             "",  # image_tag (latest)
             "",  # auth_method (1)
-            "",  # generate_secret_manifest (default yes)
+            "",  # create_secret_now (yes)
+            "https://matrix.example.org",  # homeserver
+            "@bot:example.org",  # bot user id
             "",  # connection_type (1)
             "",  # meshtastic_host (meshtastic.local)
             "",  # meshtastic_port (4403)
@@ -347,7 +351,7 @@ meshtastic:
         self.assertEqual(config["namespace"], "default")
         self.assertEqual(config["image_tag"], "latest")
         self.assertFalse(config["use_credentials_file"])
-        self.assertTrue(config["generate_secret_manifest"])
+        self.assertTrue(config["create_secret_now"])
         self.assertEqual(config["connection_type"], "tcp")
         self.assertEqual(config["meshtastic_host"], "meshtastic.local")
 
@@ -360,6 +364,7 @@ meshtastic:
             "custom-ns",  # namespace
             "v1.2.0",  # image_tag
             "2",  # use_credentials_file (2=yes)
+            "n",  # create_secret_now (no)
             "n",  # generate_secret_manifest (no)
             "2",  # connection_type (serial)
             "/dev/ttyACM0",  # serial_device
@@ -372,25 +377,28 @@ meshtastic:
         self.assertEqual(config["namespace"], "custom-ns")
         self.assertEqual(config["image_tag"], "v1.2.0")
         self.assertTrue(config["use_credentials_file"])
-        self.assertFalse(config["generate_secret_manifest"])
+        self.assertFalse(config["create_secret_now"])
         self.assertEqual(config["connection_type"], "serial")
         self.assertEqual(config["serial_device"], "/dev/ttyACM0")
         self.assertEqual(config["storage_class"], "fast-storage")
         self.assertEqual(config["storage_size"], "5Gi")
 
+    @patch("mmrelay.k8s_utils.getpass.getpass", return_value="password")
     @patch("mmrelay.k8s_utils._get_storage_classes_from_kubectl", return_value=None)
     @patch("mmrelay.k8s_utils._get_current_namespace_from_kubectl", return_value=None)
     @patch("builtins.input")
     @patch("builtins.print")
     def test_prompt_for_config_invalid_auth_choice(
-        self, mock_print, mock_input, _mock_namespace, _mock_storage
+        self, mock_print, mock_input, _mock_namespace, _mock_storage, _mock_getpass
     ):
         """Test prompt_for_config with invalid authentication choice defaults to 1."""
         mock_input.side_effect = [
             "",  # namespace (default)
             "",  # image_tag (latest)
             "invalid",  # invalid auth_choice
-            "",  # generate_secret_manifest (default yes)
+            "",  # create_secret_now (yes)
+            "https://matrix.example.org",  # homeserver
+            "@bot:example.org",  # bot user id
             "",  # connection_type (1)
             "",  # meshtastic_host (meshtastic.local)
             "",  # meshtastic_port (4403)
@@ -404,19 +412,22 @@ meshtastic:
         self.assertFalse(config["use_credentials_file"])
         mock_print.assert_any_call("Invalid choice; defaulting to 1.")
 
+    @patch("mmrelay.k8s_utils.getpass.getpass", return_value="password")
     @patch("mmrelay.k8s_utils._get_storage_classes_from_kubectl", return_value=None)
     @patch("mmrelay.k8s_utils._get_current_namespace_from_kubectl", return_value=None)
     @patch("builtins.input")
     @patch("builtins.print")
     def test_prompt_for_config_invalid_connection_choice(
-        self, mock_print, mock_input, _mock_namespace, _mock_storage
+        self, mock_print, mock_input, _mock_namespace, _mock_storage, _mock_getpass
     ):
         """Test prompt_for_config with invalid connection choice defaults to 1."""
         mock_input.side_effect = [
             "",  # namespace (default)
             "",  # image_tag (latest)
             "",  # auth_method (1)
-            "",  # generate_secret_manifest (default yes)
+            "",  # create_secret_now (yes)
+            "https://matrix.example.org",  # homeserver
+            "@bot:example.org",  # bot user id
             "3",  # invalid connection_type
             "",  # meshtastic_host (meshtastic.local)
             "",  # meshtastic_port (4403)

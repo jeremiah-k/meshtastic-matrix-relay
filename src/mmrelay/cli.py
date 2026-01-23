@@ -10,7 +10,9 @@ import os
 import platform
 import re
 import shutil
+import subprocess
 import sys
+import tempfile
 from collections.abc import Mapping
 from typing import Any
 
@@ -1790,11 +1792,137 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
             print(f"      nano {output_dir}/mmrelay-configmap.yaml")
             print()
 
-            generate_secret_manifest = config.get("generate_secret_manifest")
-            if generate_secret_manifest is None:
-                generate_secret_manifest = bool(
-                    config.get("use_credentials_file", False)
-                )
+            generate_secret_manifest = config.get("generate_secret_manifest", False)
+
+            create_secret_now = bool(config.get("create_secret_now", False))
+            if create_secret_now:
+                kubectl = shutil.which("kubectl")
+                if not kubectl:
+                    print("⚠️  kubectl not found; skipping automatic Secret creation.")
+                    create_secret_now = False
+                elif config.get("use_credentials_file"):
+                    credentials_path = config.get(
+                        "credentials_path"
+                    ) or os.path.expanduser("~/.mmrelay/credentials.json")
+                    create_cmd = [
+                        kubectl,
+                        "create",
+                        "secret",
+                        "generic",
+                        "mmrelay-credentials-json",
+                        f"--from-file=credentials.json={credentials_path}",
+                        "--namespace",
+                        config["namespace"],
+                        "--dry-run=client",
+                        "-o",
+                        "yaml",
+                    ]
+                    try:
+                        create_result = subprocess.run(
+                            create_cmd,
+                            capture_output=True,
+                            text=True,
+                            check=False,
+                            timeout=10,
+                        )
+                    except (OSError, subprocess.TimeoutExpired) as e:
+                        print(f"Error creating Secret: {e}")
+                        create_secret_now = False
+                    else:
+                        if create_result.returncode != 0:
+                            print("Error creating Secret:")
+                            print(create_result.stderr.strip())
+                            create_secret_now = False
+                        else:
+                            apply_result = subprocess.run(
+                                [kubectl, "apply", "-f", "-"],
+                                input=create_result.stdout,
+                                capture_output=True,
+                                text=True,
+                                check=False,
+                                timeout=10,
+                            )
+                            if apply_result.returncode == 0:
+                                print("✅ Matrix credentials Secret created.")
+                            else:
+                                print("Error applying Secret:")
+                                print(apply_result.stderr.strip())
+                                create_secret_now = False
+                else:
+                    homeserver = config.get("matrix_homeserver")
+                    bot_user_id = config.get("matrix_bot_user_id")
+                    password = config.get("matrix_password", "")
+                    if not (homeserver and bot_user_id):
+                        print(
+                            "⚠️  Missing Matrix credentials; skipping Secret creation."
+                        )
+                        create_secret_now = False
+                    else:
+                        tmp_path = None
+                        try:
+                            with tempfile.NamedTemporaryFile(
+                                mode="w", delete=False, encoding="utf-8"
+                            ) as tmp_file:
+                                tmp_path = tmp_file.name
+                                tmp_file.write(
+                                    f"MMRELAY_MATRIX_HOMESERVER={homeserver}\n"
+                                )
+                                tmp_file.write(
+                                    f"MMRELAY_MATRIX_BOT_USER_ID={bot_user_id}\n"
+                                )
+                                tmp_file.write(f"MMRELAY_MATRIX_PASSWORD={password}\n")
+                            try:
+                                os.chmod(tmp_path, 0o600)
+                            except OSError:
+                                pass
+                            create_cmd = [
+                                kubectl,
+                                "create",
+                                "secret",
+                                "generic",
+                                "mmrelay-matrix-credentials",
+                                f"--from-env-file={tmp_path}",
+                                "--namespace",
+                                config["namespace"],
+                                "--dry-run=client",
+                                "-o",
+                                "yaml",
+                            ]
+                            create_result = subprocess.run(
+                                create_cmd,
+                                capture_output=True,
+                                text=True,
+                                check=False,
+                                timeout=10,
+                            )
+                            if create_result.returncode != 0:
+                                print("Error creating Secret:")
+                                print(create_result.stderr.strip())
+                                create_secret_now = False
+                            else:
+                                apply_result = subprocess.run(
+                                    [kubectl, "apply", "-f", "-"],
+                                    input=create_result.stdout,
+                                    capture_output=True,
+                                    text=True,
+                                    check=False,
+                                    timeout=10,
+                                )
+                                if apply_result.returncode == 0:
+                                    print("✅ Matrix credentials Secret created.")
+                                else:
+                                    print("Error applying Secret:")
+                                    print(apply_result.stderr.strip())
+                                    create_secret_now = False
+                        except (OSError, subprocess.TimeoutExpired) as e:
+                            print(f"Error creating Secret: {e}")
+                            create_secret_now = False
+                        finally:
+                            if tmp_path:
+                                try:
+                                    os.unlink(tmp_path)
+                                except OSError:
+                                    pass
 
             if config.get("use_credentials_file"):
                 if generate_secret_manifest:
@@ -1804,7 +1932,7 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
                     print(
                         f"      kubectl apply -f {output_dir}/mmrelay-secret-credentials.yaml"
                     )
-                else:
+                elif not create_secret_now:
                     base_dir = get_base_dir()
                     credentials_path = os.path.join(base_dir, "credentials.json")
                     print("   • Create credentials.json using 'mmrelay auth login'")
@@ -1827,7 +1955,7 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
                         "      kubectl apply -f "
                         f"{output_dir}/mmrelay-secret-matrix-credentials.yaml"
                     )
-                else:
+                elif not create_secret_now:
                     print("   • Create a secret with your Matrix credentials:")
                     print(
                         "      read -s -p 'Matrix password: ' MMRELAY_MATRIX_PASSWORD; echo"

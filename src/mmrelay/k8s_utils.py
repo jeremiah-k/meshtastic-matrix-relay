@@ -1,6 +1,7 @@
 """Kubernetes manifest generation utilities for MMRelay."""
 
 import argparse
+import getpass
 import importlib.resources
 import json
 import os
@@ -319,12 +320,62 @@ def prompt_for_config() -> dict[str, Any]:
         auth_choice = "1"
     config["use_credentials_file"] = auth_choice == "2"
 
-    # Secret manifest generation
-    print("\nSecret Manifest:")
-    print("  Generate a Kubernetes Secret manifest with placeholder values.")
-    print("  You can edit it later or create the Secret manually with kubectl.")
-    secret_choice = input("Generate Secret manifest file? [Y/n]: ").strip().lower()
-    config["generate_secret_manifest"] = secret_choice in {"", "y", "yes"}
+    # Secret creation options
+    if config["use_credentials_file"]:
+        print("\nMatrix Secret:")
+        print(
+            "  Create the credentials.json Secret now (recommended), or generate a manifest."
+        )
+        secret_now_choice = (
+            input("Create Secret now with kubectl? [Y/n]: ").strip().lower()
+        )
+        create_now = secret_now_choice in {"", "y", "yes"}
+        config["create_secret_now"] = create_now
+        if create_now:
+            default_credentials_path = os.path.expanduser("~/.mmrelay/credentials.json")
+            config["credentials_path"] = (
+                input(
+                    f"Path to credentials.json [{default_credentials_path}]: "
+                ).strip()
+                or default_credentials_path
+            )
+            config["generate_secret_manifest"] = False
+        else:
+            manifest_choice = (
+                input("Generate Secret manifest file? [y/N]: ").strip().lower()
+            )
+            config["generate_secret_manifest"] = manifest_choice in {"y", "yes"}
+    else:
+        print("\nMatrix Secret:")
+        print(
+            "  Create the Matrix credentials Secret now (recommended), or generate a manifest."
+        )
+        secret_now_choice = (
+            input("Create Secret now with kubectl? [Y/n]: ").strip().lower()
+        )
+        create_now = secret_now_choice in {"", "y", "yes"}
+        config["create_secret_now"] = create_now
+        if create_now:
+            homeserver = input("Matrix homeserver URL: ").strip()
+            while not homeserver:
+                print("Homeserver URL cannot be empty.")
+                homeserver = input("Matrix homeserver URL: ").strip()
+            bot_user_id = input("Matrix bot user ID (e.g., @bot:example.org): ").strip()
+            while not bot_user_id:
+                print("Matrix bot user ID cannot be empty.")
+                bot_user_id = input(
+                    "Matrix bot user ID (e.g., @bot:example.org): "
+                ).strip()
+            password = getpass.getpass("Matrix password (input hidden): ")
+            config["matrix_homeserver"] = homeserver
+            config["matrix_bot_user_id"] = bot_user_id
+            config["matrix_password"] = password
+            config["generate_secret_manifest"] = False
+        else:
+            manifest_choice = (
+                input("Generate Secret manifest file? [y/N]: ").strip().lower()
+            )
+            config["generate_secret_manifest"] = manifest_choice in {"y", "yes"}
 
     # Connection type
     print("\nMeshtastic Connection Type:")
@@ -485,7 +536,7 @@ def generate_manifests(config: dict[str, Any], output_dir: str = ".") -> list[st
     # 3. Generate Secret (optional)
     generate_secret_manifest = config.get("generate_secret_manifest")
     if generate_secret_manifest is None:
-        generate_secret_manifest = bool(config.get("use_credentials_file", False))
+        generate_secret_manifest = False
 
     if generate_secret_manifest:
         if config.get("use_credentials_file", False):
