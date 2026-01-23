@@ -841,7 +841,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
         from mmrelay.cli import _is_valid_ble_address
 
         self.assertFalse(_is_valid_ble_address(123))
-        self.assertTrue(_is_valid_ble_address("   "))  # Spaces treated as device name
+        self.assertFalse(_is_valid_ble_address("   "))
 
 
 class TestCLISubcommandHandlers(unittest.TestCase):
