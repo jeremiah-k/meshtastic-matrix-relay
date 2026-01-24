@@ -441,7 +441,7 @@ def _scan_for_ble_address(ble_address: str, timeout: float) -> bool:
             find_device = getattr(BleakScanner, "find_device_by_address", None)
             if callable(find_device):
                 try:
-                    result = await find_device(ble_address, timeout=timeout)
+                    result = await find_device(ble_address, timeout=timeout)  # type: ignore[misc]
                     return result is not None
                 except TypeError:
                     return False
