@@ -1305,7 +1305,10 @@ class TestBleHelperFunctions(unittest.TestCase):
         from mmrelay.meshtastic_utils import _scan_for_ble_address
 
         async def _find_device(_address: str):
-            return object()
+            return None
+
+        async def _wait_for(coro, timeout=None):
+            return await coro
 
         fake_bleak = SimpleNamespace(
             BleakScanner=SimpleNamespace(find_device_by_address=_find_device)
@@ -1318,8 +1321,10 @@ class TestBleHelperFunctions(unittest.TestCase):
                 "mmrelay.meshtastic_utils.asyncio.get_running_loop",
                 side_effect=RuntimeError(),
             ),
+            patch("mmrelay.meshtastic_utils.asyncio.wait_for", side_effect=_wait_for),
         ):
-            self.assertTrue(_scan_for_ble_address("AA:BB", 0.1))
+            result = _scan_for_ble_address("AA:BB", 0.1)
+            self.assertFalse(result)
 
     def test_scan_for_ble_address_discover_fallback(self):
         """Cover BleakScanner.discover() fallback when find_device_by_address is absent."""

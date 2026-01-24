@@ -130,6 +130,7 @@ def wait_for_service_start() -> None:
 
     from mmrelay.runtime_utils import is_running_as_service
 
+    Progress = SpinnerColumn = TextColumn = TimeElapsedColumn = None
     running_as_service = is_running_as_service()
     if not running_as_service:
         try:
@@ -139,15 +140,16 @@ def wait_for_service_start() -> None:
                 TextColumn,
                 TimeElapsedColumn,
             )
-        except Exception:
+        except ImportError:
+            Progress = SpinnerColumn = TextColumn = TimeElapsedColumn = None
             running_as_service = True
 
     # Create a Rich progress display with spinner and elapsed time
-    if not running_as_service:
-        with Progress(  # type: ignore[name-defined]
-            SpinnerColumn(),  # type: ignore[name-defined]
-            TextColumn("[bold green]Starting mmrelay service..."),  # type: ignore[name-defined]
-            TimeElapsedColumn(),  # type: ignore[name-defined]
+    if not running_as_service and Progress is not None:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold green]Starting mmrelay service..."),
+            TimeElapsedColumn(),
             transient=True,
         ) as progress:
             # Add a task that will run for approximately 10 seconds

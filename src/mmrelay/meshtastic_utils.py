@@ -1631,7 +1631,7 @@ def _get_portnum_name(portnum: Any) -> str:
 
 
 def _get_node_display_name(
-    from_id: int | str, interface: Any, fallback: str = ""
+    from_id: int | str, interface: Any, fallback: str | None = None
 ) -> str:
     """
     Get a human-readable display name for a Meshtastic node.
@@ -1642,7 +1642,7 @@ def _get_node_display_name(
     Parameters:
         from_id: Meshtastic node identifier (int or str)
         interface: Meshtastic interface with nodes mapping
-        fallback: Optional fallback string if no name found
+        fallback: Optional fallback string if no name found; when None, uses the node ID
 
     Returns:
         str: Node display name or node ID if no name available
