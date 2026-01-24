@@ -502,30 +502,15 @@ def _is_ble_discovery_error(error: Exception) -> bool:
     if "Timed out waiting for connection completion" in message:
         return True
 
-    def _is_type_or_tuple(candidate: object) -> bool:
-        if isinstance(candidate, type):
-            return True
-        if isinstance(candidate, tuple):
-            return all(isinstance(item, type) for item in candidate)
-        return False
-
     ble_interface = getattr(meshtastic.ble_interface, "BLEInterface", None)
     ble_error_type = getattr(ble_interface, "BLEError", None)
-    if (
-        ble_error_type
-        and _is_type_or_tuple(ble_error_type)
-        and isinstance(error, ble_error_type)
-    ):
+    if ble_error_type and isinstance(error, ble_error_type):
         return True
 
     mesh_interface = getattr(meshtastic, "mesh_interface", None)
     mesh_interface_class = getattr(mesh_interface, "MeshInterface", None)
     mesh_error_type = getattr(mesh_interface_class, "MeshInterfaceError", None)
-    if (
-        mesh_error_type
-        and _is_type_or_tuple(mesh_error_type)
-        and isinstance(error, mesh_error_type)
-    ):
+    if mesh_error_type and isinstance(error, mesh_error_type):
         return True
 
     return False

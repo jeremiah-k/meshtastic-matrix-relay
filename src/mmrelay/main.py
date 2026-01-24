@@ -132,6 +132,44 @@ async def main(config: dict[str, Any]) -> None:
     )
     start_message_queue(message_delay=message_delay)
 
+    # Connect to Meshtastic
+    meshtastic_utils.meshtastic_client = await asyncio.to_thread(
+        connect_meshtastic, passed_config=config
+    )
+
+    # Connect to Matrix
+    matrix_client = await connect_matrix(passed_config=config)
+
+    # Check if Matrix connection was successful
+    if matrix_client is None:
+        # The error is logged by connect_matrix, so we can just raise here.
+        raise ConnectionError(
+            "Failed to connect to Matrix. Cannot continue without Matrix client."
+        )
+
+    # Join the rooms specified in the config.yaml
+    for room in matrix_rooms:
+        await join_matrix_room(matrix_client, room["id"])
+
+    # Register the message callback for Matrix
+    matrix_logger.info("Listening for inbound Matrix messages...")
+    matrix_client.add_event_callback(
+        cast(Any, on_room_message),
+        cast(
+            Any,
+            (RoomMessageText, RoomMessageNotice, RoomMessageEmote, ReactionEvent),
+        ),
+    )
+    # Add E2EE callbacks - MegolmEvent only goes to decryption failure handler
+    # Successfully decrypted messages will be converted to RoomMessageText etc. by matrix-nio
+    matrix_client.add_event_callback(
+        cast(Any, on_decryption_failure), cast(Any, (MegolmEvent,))
+    )
+    # Add RoomMemberEvent callback to track room-specific display name changes
+    matrix_client.add_event_callback(
+        cast(Any, on_room_member), cast(Any, (RoomMemberEvent,))
+    )
+
     # Set up shutdown event
     shutdown_event = asyncio.Event()
 
@@ -170,62 +208,6 @@ async def main(config: dict[str, Any]) -> None:
     else:
         # On Windows, we can't use add_signal_handler, so we'll handle KeyboardInterrupt
         pass
-
-    # Connect to Meshtastic
-    meshtastic_utils.meshtastic_client = await asyncio.to_thread(
-        connect_meshtastic, passed_config=config
-    )
-
-    # Connect to Matrix (retry until connected or shutdown)
-    matrix_client = None
-    matrix_retry_delay = 10
-    while not shutdown_event.is_set():
-        try:
-            matrix_client = await connect_matrix(passed_config=config)
-            if matrix_client is None:
-                raise ConnectionError(
-                    "Failed to connect to Matrix. Cannot continue without Matrix client."
-                )
-            break
-        except ConnectionError as exc:
-            matrix_logger.error("Matrix connection failed: %s", exc)
-        except Exception:
-            matrix_logger.exception("Matrix connection failed")
-
-        if shutdown_event.is_set():
-            break
-
-        matrix_logger.info(
-            "Retrying Matrix connection in %s seconds...", matrix_retry_delay
-        )
-        await asyncio.sleep(matrix_retry_delay)
-
-    if matrix_client is None:
-        shutdown()
-        return
-
-    # Join the rooms specified in the config.yaml
-    for room in matrix_rooms:
-        await join_matrix_room(matrix_client, room["id"])
-
-    # Register the message callback for Matrix
-    matrix_logger.info("Listening for inbound Matrix messages...")
-    matrix_client.add_event_callback(
-        cast(Any, on_room_message),
-        cast(
-            Any,
-            (RoomMessageText, RoomMessageNotice, RoomMessageEmote, ReactionEvent),
-        ),
-    )
-    # Add E2EE callbacks - MegolmEvent only goes to decryption failure handler
-    # Successfully decrypted messages will be converted to RoomMessageText etc. by matrix-nio
-    matrix_client.add_event_callback(
-        cast(Any, on_decryption_failure), cast(Any, (MegolmEvent,))
-    )
-    # Add RoomMemberEvent callback to track room-specific display name changes
-    matrix_client.add_event_callback(
-        cast(Any, on_room_member), cast(Any, (RoomMemberEvent,))
-    )
 
     # Start connection health monitoring using getMetadata() heartbeat
     # This provides proactive connection detection for all interface types
