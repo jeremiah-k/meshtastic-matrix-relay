@@ -441,14 +441,10 @@ def _scan_for_ble_address(ble_address: str, timeout: float) -> bool:
             find_device = getattr(BleakScanner, "find_device_by_address", None)
             if callable(find_device):
                 try:
-                    return await find_device(ble_address, timeout=timeout) is not None
+                    result = await find_device(ble_address, timeout=timeout)
+                    return result is not None
                 except TypeError:
-                    return (
-                        await asyncio.wait_for(
-                            find_device(ble_address), timeout=timeout
-                        )
-                        is not None
-                    )
+                    return False
 
             devices = await BleakScanner.discover(timeout=timeout)
             return any(
@@ -1615,6 +1611,47 @@ def _get_portnum_name(portnum: Any) -> str:
     return f"UNKNOWN (type={type(portnum).__name__})"
 
 
+def _get_node_display_name(
+    from_id: int | str, interface: Any, fallback: str = ""
+) -> str:
+    """
+    Get a human-readable display name for a Meshtastic node.
+
+    Prioritizes short name from interface, then short name from database,
+    then long name from database, falling back to node ID if none found.
+
+    Parameters:
+        from_id: Meshtastic node identifier (int or str)
+        interface: Meshtastic interface with nodes mapping
+        fallback: Optional fallback string if no name found
+
+    Returns:
+        str: Node display name or node ID if no name available
+    """
+    from_id_str = str(from_id)
+
+    if interface and hasattr(interface, "nodes"):
+        nodes = interface.nodes
+        if nodes and isinstance(nodes, dict):
+            if from_id_str in nodes:
+                node = nodes[from_id_str]
+                if isinstance(node, dict):
+                    user = node.get("user")
+                    if user and isinstance(user, dict):
+                        if short_name := user.get("shortName"):
+                            return short_name
+
+    from mmrelay.db_utils import get_longname, get_shortname
+
+    if short_name := get_shortname(from_id_str):
+        return short_name
+
+    if long_name := get_longname(from_id_str):
+        return long_name
+
+    return fallback if fallback is not None else from_id_str
+
+
 def serial_port_exists(port_name: str) -> bool:
     """
     Determine whether a serial port with the given device name exists on the system.
@@ -1766,10 +1803,12 @@ def connect_meshtastic(
         and (retry_limit == 0 or attempts <= retry_limit)
         and not shutting_down
     ):
+        # Initialize before try block to avoid unbound variable errors
+        ble_address: str | None = None
+        supports_auto_reconnect = False
+
         try:
             client = None
-            ble_address: str | None = None
-            supports_auto_reconnect = False
             if connection_type == CONNECTION_TYPE_SERIAL:
                 # Serial connection
                 serial_port = config["meshtastic"].get(CONFIG_KEY_SERIAL_PORT)
@@ -2228,24 +2267,6 @@ def connect_meshtastic(
                 wait_time,
             )
             time.sleep(wait_time)
-        except (serial.SerialException, BleakDBusError, BleakError) as e:
-            # Handle specific connection errors
-            if shutting_down:
-                logger.debug("Shutdown in progress. Aborting connection attempts.")
-                break
-            attempts += 1
-            if retry_limit == 0 or attempts <= retry_limit:
-                wait_time = min(2**attempts, 60)  # Consistent exponential backoff
-                logger.warning(
-                    "Connection attempt %s failed: %s. Retrying in %s seconds...",
-                    attempts,
-                    e,
-                    wait_time,
-                )
-                time.sleep(wait_time)
-            else:
-                logger.exception("Connection failed after %s attempts", attempts)
-                return None
         except Exception as e:
             if shutting_down:
                 logger.debug("Shutdown in progress. Aborting connection attempts.")
@@ -2440,15 +2461,43 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             decoded.get("portnum") if decoded and isinstance(decoded, dict) else None
         )
         portnum_name = _get_portnum_name(portnum)
+        from_id = packet.get("fromId") or packet.get("from")
+        from_display = ""
+        if from_id is not None:
+            from_display = _get_node_display_name(from_id, interface, fallback="")
         details_map = {
-            "from": packet.get("fromId") or packet.get("from"),
+            "from": from_display or from_id,
             "channel": packet.get("channel"),
             "id": packet.get("id"),
         }
         details_map.update(_get_packet_details(decoded, packet, portnum_name))
-        details = [f"type={portnum_name}"]
-        details.extend(f"{k}={v}" for k, v in details_map.items() if v is not None)
-        logger.debug(f"Received non-text Meshtastic message: {', '.join(details)}")
+
+        details = [f"{portnum_name}"]
+        for key, value in details_map.items():
+            if value is not None:
+                if key == "from" and from_display and from_display != value:
+                    details.append(f"from={value}")
+                elif key == "batt":
+                    details.append(f"{value}")
+                elif key == "voltage":
+                    details.append(f"v={value}")
+                elif key == "temp":
+                    details.append(f"t={value}")
+                elif key == "humidity":
+                    details.append(f"h={value}")
+                elif key == "signal":
+                    details.append(f"s={value}")
+                elif key == "relayed":
+                    details.append(f"r={value}")
+                elif key == "priority" and value != "BACKGROUND":
+                    details.append(f"p={value}")
+                else:
+                    details.append(f"{key}={value}")
+
+        prefix = "[" + " ".join(details) + "]"
+        if from_display:
+            prefix = f"{from_display} {prefix}"
+        logger.debug(prefix)
 
     # Check if config is available
     if config is None:

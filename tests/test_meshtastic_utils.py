@@ -267,8 +267,7 @@ class TestMeshtasticUtils(unittest.TestCase):
 
             # Verify debug log was called with packet type information
             log_output = "\n".join(cm.output)
-            self.assertIn("Received non-text Meshtastic message", log_output)
-            self.assertIn("type=REMOTE_HARDWARE_APP", log_output)
+            self.assertIn("REMOTE_HARDWARE_APP", log_output)
             self.assertIn("from=123456789", log_output)
             self.assertIn("channel=0", log_output)
             self.assertIn("id=12345", log_output)
@@ -1255,8 +1254,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
 
             # Verify debug log was called with packet type information (portnum None)
             log_output = "\n".join(cm.output)
-            self.assertIn("Received non-text Meshtastic message", log_output)
-            self.assertIn("type=UNKNOWN (None)", log_output)
+            self.assertIn("UNKNOWN (None)", log_output)
             self.assertIn("from=123456789", log_output)
             self.assertIn("channel=0", log_output)
             self.assertIn("id=12345", log_output)
@@ -1314,8 +1312,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
 
             # Verify debug log was called with packet type information
             log_output = "\n".join(cm.output)
-            self.assertIn("Received non-text Meshtastic message", log_output)
-            self.assertIn("type=TEXT_MESSAGE_APP", log_output)
+            self.assertIn("TEXT_MESSAGE_APP", log_output)
             self.assertIn("from=123456789", log_output)
             self.assertIn("channel=0", log_output)
             self.assertIn("id=12345", log_output)
