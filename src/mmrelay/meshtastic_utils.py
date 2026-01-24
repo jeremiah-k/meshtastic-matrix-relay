@@ -2466,16 +2466,18 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         if from_id is not None:
             from_display = _get_node_display_name(from_id, interface, fallback="")
         details_map = {
-            "from": from_display or from_id,
+            "from": from_id,
             "channel": packet.get("channel"),
             "id": packet.get("id"),
         }
         details_map.update(_get_packet_details(decoded, packet, portnum_name))
 
-        details = [f"{portnum_name}"]
+        details = []
+        if from_display:
+            details.append(from_display)
         for key, value in details_map.items():
             if value is not None:
-                if key == "from" and from_display and from_display != value:
+                if key == "from":
                     details.append(f"from={value}")
                 elif key == "batt":
                     details.append(f"{value}")
@@ -2489,14 +2491,12 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                     details.append(f"s={value}")
                 elif key == "relayed":
                     details.append(f"r={value}")
-                elif key == "priority" and value != "BACKGROUND":
+                elif key == "priority":
                     details.append(f"p={value}")
                 else:
                     details.append(f"{key}={value}")
 
-        prefix = "[" + " ".join(details) + "]"
-        if from_display:
-            prefix = f"{from_display} {prefix}"
+        prefix = f"[{portnum_name}] " + " ".join(details)
         logger.debug(prefix)
 
     # Check if config is available
