@@ -200,6 +200,23 @@ class _ImmediateEvent:
         return None
 
 
+class _AutoSetEvent:
+    """Event that is unset until wait() is called, then sets itself."""
+
+    def __init__(self) -> None:
+        self._set = False
+
+    def is_set(self) -> bool:
+        return self._set
+
+    def set(self) -> None:
+        self._set = True
+
+    async def wait(self) -> None:
+        self._set = True
+        return None
+
+
 class _CloseFutureBase(concurrent.futures.Future):
     """Future with a cancel flag for shutdown test assertions."""
 
@@ -565,7 +582,12 @@ class TestMain(unittest.TestCase):
         mock_connect_matrix.side_effect = _make_async_return(None)
         mock_join_room.side_effect = _async_noop
 
-        # Call main function (should exit early due to connection failures)
+        shutdown_event = _AutoSetEvent()
+
+        async def _sleep_and_set(*_args, **_kwargs):
+            shutdown_event.set()
+
+        # Call main function (should exit after one retry)
         with (
             patch(
                 "mmrelay.main.asyncio.get_running_loop",
@@ -575,9 +597,10 @@ class TestMain(unittest.TestCase):
                 "mmrelay.main.asyncio.to_thread",
                 side_effect=inline_to_thread,
             ),
+            patch("mmrelay.main.asyncio.Event", return_value=shutdown_event),
+            patch("mmrelay.main.asyncio.sleep", side_effect=_sleep_and_set),
         ):
-            with contextlib.suppress(ConnectionError):
-                asyncio.run(main(self.mock_config))
+            asyncio.run(main(self.mock_config))
 
         # Should still proceed with Matrix connection
         mock_connect_matrix.assert_called_once()
@@ -609,7 +632,13 @@ class TestMain(unittest.TestCase):
         mock_connect_matrix.side_effect = _make_async_raise(
             Exception("Matrix connection failed")
         )
-        # Should raise the Matrix connection exception
+
+        shutdown_event = _AutoSetEvent()
+
+        async def _sleep_and_set(*_args, **_kwargs):
+            shutdown_event.set()
+
+        # Should retry and exit when shutdown is signaled
         with (
             patch(
                 "mmrelay.main.asyncio.get_running_loop",
@@ -619,10 +648,12 @@ class TestMain(unittest.TestCase):
                 "mmrelay.main.asyncio.to_thread",
                 side_effect=inline_to_thread,
             ),
+            patch("mmrelay.main.asyncio.Event", return_value=shutdown_event),
+            patch("mmrelay.main.asyncio.sleep", side_effect=_sleep_and_set),
         ):
-            with self.assertRaises(Exception) as context:
-                asyncio.run(main(self.mock_config))
-        self.assertIn("Matrix connection failed", str(context.exception))
+            asyncio.run(main(self.mock_config))
+
+        mock_connect_matrix.assert_called_once()
 
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
@@ -658,7 +689,7 @@ class TestMain(unittest.TestCase):
                 "mmrelay.main.asyncio.get_running_loop",
                 side_effect=_make_patched_get_running_loop(),
             ),
-            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+            patch("mmrelay.main.asyncio.Event", return_value=_AutoSetEvent()),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
             patch("mmrelay.main.get_message_queue") as mock_get_queue,
         ):
@@ -716,7 +747,7 @@ class TestMain(unittest.TestCase):
 
         executor = _ControlledExecutor()
         with (
-            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+            patch("mmrelay.main.asyncio.Event", return_value=_AutoSetEvent()),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
             patch(
                 "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
@@ -778,7 +809,7 @@ class TestMain(unittest.TestCase):
 
         executor = _ControlledExecutor(close_future_factory=_TimeoutCloseFuture)
         with (
-            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+            patch("mmrelay.main.asyncio.Event", return_value=_AutoSetEvent()),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
             patch(
                 "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
@@ -823,7 +854,7 @@ class TestMain(unittest.TestCase):
 
         executor = _ControlledExecutor(close_future_factory=_ErrorCloseFuture)
         with (
-            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+            patch("mmrelay.main.asyncio.Event", return_value=_AutoSetEvent()),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
             patch(
                 "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
@@ -874,7 +905,7 @@ class TestMain(unittest.TestCase):
 
         executor = _ControlledExecutor(shutdown_typeerror=True)
         with (
-            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+            patch("mmrelay.main.asyncio.Event", return_value=_AutoSetEvent()),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
             patch(
                 "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
@@ -915,7 +946,7 @@ class TestMain(unittest.TestCase):
 
         executor = _ControlledExecutor(submit_timeout=True)
         with (
-            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+            patch("mmrelay.main.asyncio.Event", return_value=_AutoSetEvent()),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
             patch(
                 "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
@@ -1995,7 +2026,7 @@ class TestMainAsyncFunction(unittest.TestCase):
             patch("mmrelay.main.shutdown_plugins"),
             patch("mmrelay.main.stop_message_queue"),
             patch("mmrelay.main.sys.platform", "linux"),
-            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+            patch("mmrelay.main.asyncio.Event", return_value=_AutoSetEvent()),
         ):
             mock_queue = MagicMock()
             mock_queue.ensure_processor_started = MagicMock()
