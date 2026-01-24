@@ -410,7 +410,7 @@ class Plugin(BasePlugin):
         Returns:
             list[str]: A list of command strings that the plugin responds to (typically containing the plugin's name).
         """
-        return [self.plugin_name]  # type: ignore[return-value]
+        return [cast(str, self.plugin_name)]
 
     def get_mesh_commands(self) -> list[str]:
         """
