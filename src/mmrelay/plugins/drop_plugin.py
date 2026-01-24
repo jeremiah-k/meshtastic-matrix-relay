@@ -44,13 +44,14 @@ class Plugin(BasePlugin):
         Returns:
             position (dict[str, Any] | None): The node's `position` dictionary (typically containing latitude and longitude) if the node is found and has position data; `None` if the node is not found or has no `position`.
         """
-        for _node, info in meshtastic_client.nodes.items():
-            if info["user"]["id"] == node_id:
-                if "position" in info:
-                    pos: dict[str, Any] = info["position"]
-                    return pos
-                else:
-                    return None
+        if meshtastic_client.nodes:
+            for _node, info in meshtastic_client.nodes.items():
+                if info["user"]["id"] == node_id:
+                    if "position" in info:
+                        pos: dict[str, Any] = info["position"]
+                        return pos
+                    else:
+                        return None
         return None
 
     async def handle_meshtastic_message(

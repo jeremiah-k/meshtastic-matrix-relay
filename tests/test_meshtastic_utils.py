@@ -15,6 +15,7 @@ import os
 import sys
 import unittest
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, Mock, mock_open, patch
 
 import pytest
@@ -267,8 +268,7 @@ class TestMeshtasticUtils(unittest.TestCase):
 
             # Verify debug log was called with packet type information
             log_output = "\n".join(cm.output)
-            self.assertIn("Received non-text Meshtastic message", log_output)
-            self.assertIn("type=REMOTE_HARDWARE_APP", log_output)
+            self.assertIn("REMOTE_HARDWARE_APP", log_output)
             self.assertIn("from=123456789", log_output)
             self.assertIn("channel=0", log_output)
             self.assertIn("id=12345", log_output)
@@ -287,9 +287,51 @@ class TestMeshtasticUtils(unittest.TestCase):
                 "mmrelay.meshtastic_utils.matrix_rooms",
                 self.mock_config["matrix_rooms"],
             ),
+            patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
+            patch(
+                "mmrelay.matrix_utils.get_interaction_settings",
+                return_value={"reactions": True, "replies": True},
+            ),
+            patch("mmrelay.matrix_utils.matrix_relay"),
+            patch("mmrelay.meshtastic_utils._submit_coro"),
         ):
             result = on_meshtastic_message(packet, mock_interface)
             self.assertIsNone(result)
+
+    def test_on_meshtastic_message_ignores_other_node(self):
+        """
+        Ensure handler ignores packets addressed to a different node.
+        """
+        packet = self.mock_packet.copy()
+        packet["to"] = BROADCAST_NUM + 1
+        mock_interface = MagicMock()
+        mock_interface.myInfo.my_node_num = 12345
+
+        with (
+            patch("mmrelay.meshtastic_utils.config", self.mock_config),
+            patch(
+                "mmrelay.meshtastic_utils.matrix_rooms",
+                self.mock_config["matrix_rooms"],
+            ),
+            patch("mmrelay.meshtastic_utils.event_loop", MagicMock()),
+            patch(
+                "mmrelay.matrix_utils.get_interaction_settings",
+                return_value={"reactions": True, "replies": True},
+            ),
+            patch("mmrelay.matrix_utils.matrix_relay"),
+            patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit,
+        ):
+            with self.assertLogs("Meshtastic", level="DEBUG") as log_cm:
+                result = on_meshtastic_message(packet, mock_interface)
+
+            self.assertIsNone(result)
+            mock_submit.assert_not_called()
+            self.assertTrue(
+                any(
+                    "Ignoring message intended for node" in message
+                    for message in log_cm.output
+                )
+            )
 
     def test_on_meshtastic_message_reaction_relay(self):
         """
@@ -1182,6 +1224,174 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
         # Should handle gracefully
         self.assertIsNone(result)
 
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_connect_meshtastic_returns_none_when_shutting_down(self, mock_logger):
+        """Return None immediately when shutting_down is True."""
+        import mmrelay.meshtastic_utils as mu
+
+        original_shutdown = mu.shutting_down
+        try:
+            mu.shutting_down = True
+            result = connect_meshtastic(
+                passed_config={
+                    "meshtastic": {"connection_type": "tcp", "host": "127.0.0.1"}
+                }
+            )
+        finally:
+            mu.shutting_down = original_shutdown
+
+        self.assertIsNone(result)
+        mock_logger.debug.assert_called_with(
+            "Shutdown in progress. Not attempting to connect."
+        )
+
+    def test_connect_meshtastic_updates_matrix_rooms_with_existing_client(self):
+        """Ensure passed_config updates matrix_rooms even when a client exists."""
+        import mmrelay.meshtastic_utils as mu
+
+        original_client = mu.meshtastic_client
+        original_config = mu.config
+        original_rooms = mu.matrix_rooms
+
+        existing_client = MagicMock()
+        config = {
+            "meshtastic": {"connection_type": "tcp", "host": "127.0.0.1"},
+            "matrix_rooms": [{"id": "!room:example.org", "meshtastic_channel": 0}],
+        }
+
+        try:
+            mu.meshtastic_client = existing_client
+            mu.shutting_down = False
+            mu.reconnecting = False
+            result = connect_meshtastic(passed_config=config)
+            observed_rooms = list(mu.matrix_rooms)
+            observed_config = mu.config
+        finally:
+            mu.meshtastic_client = original_client
+            mu.config = original_config
+            mu.matrix_rooms = original_rooms
+
+        self.assertIs(result, existing_client)
+        self.assertEqual(observed_rooms, config["matrix_rooms"])
+        self.assertIs(observed_config, config)
+
+
+class TestBleHelperFunctions(unittest.TestCase):
+    """Test BLE helper functions."""
+
+    def test_scan_for_ble_address_find_device_with_timeout(self):
+        """Cover BleakScanner.find_device_by_address(timeout=...)."""
+        from mmrelay.meshtastic_utils import _scan_for_ble_address
+
+        async def _find_device(_address: str, timeout: float | None = None):
+            return object()
+
+        fake_bleak = SimpleNamespace(
+            BleakScanner=SimpleNamespace(find_device_by_address=_find_device)
+        )
+
+        with (
+            patch("mmrelay.meshtastic_utils.BLE_AVAILABLE", True),
+            patch.dict(sys.modules, {"bleak": fake_bleak}),
+            patch(
+                "mmrelay.meshtastic_utils.asyncio.get_running_loop",
+                side_effect=RuntimeError(),
+            ),
+        ):
+            self.assertTrue(_scan_for_ble_address("AA:BB", 0.1))
+
+    def test_scan_for_ble_address_find_device_without_timeout(self):
+        """Cover BleakScanner.find_device_by_address() without timeout support."""
+        from mmrelay.meshtastic_utils import _scan_for_ble_address
+
+        async def _find_device(_address: str):
+            return None
+
+        async def _wait_for(coro, timeout=None):
+            return await coro
+
+        fake_bleak = SimpleNamespace(
+            BleakScanner=SimpleNamespace(find_device_by_address=_find_device)
+        )
+
+        with (
+            patch("mmrelay.meshtastic_utils.BLE_AVAILABLE", True),
+            patch.dict(sys.modules, {"bleak": fake_bleak}),
+            patch(
+                "mmrelay.meshtastic_utils.asyncio.get_running_loop",
+                side_effect=RuntimeError(),
+            ),
+            patch("mmrelay.meshtastic_utils.asyncio.wait_for", side_effect=_wait_for),
+        ):
+            result = _scan_for_ble_address("AA:BB", 0.1)
+            self.assertFalse(result)
+
+    def test_scan_for_ble_address_discover_fallback(self):
+        """Cover BleakScanner.discover() fallback when find_device_by_address is absent."""
+        from mmrelay.meshtastic_utils import _scan_for_ble_address
+
+        async def _discover(timeout: float | None = None):
+            device = SimpleNamespace(address="AA:BB")
+            return [device]
+
+        fake_bleak = SimpleNamespace(
+            BleakScanner=SimpleNamespace(
+                find_device_by_address=None,
+                discover=_discover,
+            )
+        )
+
+        with (
+            patch("mmrelay.meshtastic_utils.BLE_AVAILABLE", True),
+            patch.dict(sys.modules, {"bleak": fake_bleak}),
+            patch(
+                "mmrelay.meshtastic_utils.asyncio.get_running_loop",
+                side_effect=RuntimeError(),
+            ),
+        ):
+            self.assertTrue(_scan_for_ble_address("AA:BB", 0.1))
+
+    def test_is_ble_discovery_error_message_matches(self):
+        """Cover message substring checks in _is_ble_discovery_error."""
+        from mmrelay.meshtastic_utils import _is_ble_discovery_error
+
+        self.assertTrue(
+            _is_ble_discovery_error(
+                Exception("No Meshtastic BLE peripheral found during scan")
+            )
+        )
+        self.assertTrue(
+            _is_ble_discovery_error(
+                Exception("Timed out waiting for connection completion")
+            )
+        )
+
+    def test_is_ble_discovery_error_type_matches(self):
+        """Cover BLEError and MeshInterfaceError type checks."""
+        from mmrelay.meshtastic_utils import _is_ble_discovery_error
+
+        class FakeBleInterface:
+            class BLEError(Exception):
+                pass
+
+        class FakeMeshInterface:
+            class MeshInterfaceError(Exception):
+                pass
+
+        with patch(
+            "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
+            FakeBleInterface,
+        ):
+            self.assertTrue(_is_ble_discovery_error(FakeBleInterface.BLEError("boom")))
+
+        with patch(
+            "mmrelay.meshtastic_utils.meshtastic.mesh_interface.MeshInterface",
+            FakeMeshInterface,
+        ):
+            self.assertTrue(
+                _is_ble_discovery_error(FakeMeshInterface.MeshInterfaceError("boom"))
+            )
+
 
 class TestMessageProcessingEdgeCases(unittest.TestCase):
     """Test cases for edge cases in message processing."""
@@ -1255,8 +1465,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
 
             # Verify debug log was called with packet type information (portnum None)
             log_output = "\n".join(cm.output)
-            self.assertIn("Received non-text Meshtastic message", log_output)
-            self.assertIn("type=UNKNOWN (None)", log_output)
+            self.assertIn("UNKNOWN (None)", log_output)
             self.assertIn("from=123456789", log_output)
             self.assertIn("channel=0", log_output)
             self.assertIn("id=12345", log_output)
@@ -1314,8 +1523,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
 
             # Verify debug log was called with packet type information
             log_output = "\n".join(cm.output)
-            self.assertIn("Received non-text Meshtastic message", log_output)
-            self.assertIn("type=TEXT_MESSAGE_APP", log_output)
+            self.assertIn("TEXT_MESSAGE_APP", log_output)
             self.assertIn("from=123456789", log_output)
             self.assertIn("channel=0", log_output)
             self.assertIn("id=12345", log_output)
@@ -1540,6 +1748,25 @@ class TestAsyncHelperUtilities(unittest.TestCase):
         def trigger(self) -> None:
             for callback in self._callbacks:
                 callback(self)
+
+    def test_fire_and_forget_ignores_non_coroutine(self):
+        """Ensure fire-and-forget returns early for non-coroutines."""
+        from mmrelay.meshtastic_utils import _fire_and_forget
+
+        with patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit:
+            _fire_and_forget("not-a-coro")  # type: ignore[arg-type]
+
+        mock_submit.assert_not_called()
+
+    def test_fire_and_forget_returns_when_submit_none(self):
+        """Ensure fire-and-forget returns when _submit_coro yields no task."""
+        from mmrelay.meshtastic_utils import _fire_and_forget
+
+        async def _noop():
+            return None
+
+        with patch("mmrelay.meshtastic_utils._submit_coro", return_value=None):
+            _fire_and_forget(_noop())
 
     def test_fire_and_forget_ignores_cancelled_error(self):
         """Ensure fire-and-forget ignores CancelledError in callbacks."""

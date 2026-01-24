@@ -372,7 +372,7 @@ class Plugin(BasePlugin):
     def description(self) -> str:
         """
         Provide a brief human-readable description of the plugin for listings and help.
-        
+
         Returns:
             str: One-line description mentioning map generation and supported `zoom` and `size` options.
         """
@@ -410,7 +410,7 @@ class Plugin(BasePlugin):
         Returns:
             list[str]: A list of command strings that the plugin responds to (typically containing the plugin's name).
         """
-        return [self.plugin_name]
+        return [cast(str, self.plugin_name)]
 
     def get_mesh_commands(self) -> list[str]:
         """

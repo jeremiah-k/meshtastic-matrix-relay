@@ -29,7 +29,10 @@ from mmrelay.constants.messages import (
 )
 
 # Initialize Rich console only if available
-console = Console() if RICH_AVAILABLE else None
+if RICH_AVAILABLE:
+    console = Console()  # type: ignore[name-defined]
+else:
+    console = None
 
 # Define custom log level styles - not used directly but kept for reference
 # Rich 14.0.0+ supports level_styles parameter, but we're using an approach
@@ -251,7 +254,7 @@ def _configure_logger(
     if not _cli_mode:
         if color_enabled and RICH_AVAILABLE:
             # Use Rich handler with colors
-            console_handler: logging.Handler = RichHandler(
+            console_handler: logging.Handler = RichHandler(  # type: ignore[name-defined]
                 rich_tracebacks=rich_tracebacks_enabled,
                 console=console,
                 show_time=True,

@@ -8,7 +8,7 @@ import concurrent.futures
 import functools
 import signal
 import sys
-from typing import Any
+from typing import Any, cast
 
 from aiohttp import ClientError
 
@@ -154,14 +154,21 @@ async def main(config: dict[str, Any]) -> None:
     # Register the message callback for Matrix
     matrix_logger.info("Listening for inbound Matrix messages...")
     matrix_client.add_event_callback(
-        on_room_message,
-        (RoomMessageText, RoomMessageNotice, RoomMessageEmote, ReactionEvent),
+        cast(Any, on_room_message),
+        cast(
+            Any,
+            (RoomMessageText, RoomMessageNotice, RoomMessageEmote, ReactionEvent),
+        ),
     )
     # Add E2EE callbacks - MegolmEvent only goes to decryption failure handler
     # Successfully decrypted messages will be converted to RoomMessageText etc. by matrix-nio
-    matrix_client.add_event_callback(on_decryption_failure, (MegolmEvent,))
+    matrix_client.add_event_callback(
+        cast(Any, on_decryption_failure), cast(Any, (MegolmEvent,))
+    )
     # Add RoomMemberEvent callback to track room-specific display name changes
-    matrix_client.add_event_callback(on_room_member, (RoomMemberEvent,))
+    matrix_client.add_event_callback(
+        cast(Any, on_room_member), cast(Any, (RoomMemberEvent,))
+    )
 
     # Set up shutdown event
     shutdown_event = asyncio.Event()

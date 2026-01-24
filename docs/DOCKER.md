@@ -152,81 +152,33 @@ MMRelay uses a single configuration file: `~/.mmrelay/config.yaml`. All settings
 
 ## Matrix Authentication
 
-MMRelay requires Matrix authentication to connect to your Matrix homeserver. There are two approaches, with the auth system being strongly recommended for security and functionality.
+MMRelay requires Matrix authentication. Use the auth system for secure authentication with E2EE support.
 
 ### Auth System (`mmrelay auth login`)
 
-The auth system provides E2EE support and persistent device identity.
+Run this on your host system (not in Docker):
 
 ```bash
-# Run this on your host system (not in Docker)
 mmrelay auth login
 ```
 
-**What this does:**
+This creates `~/.mmrelay/credentials.json` with:
 
-- Creates `~/.mmrelay/credentials.json` with secure session credentials
-- Generates a persistent device ID for your MMRelay instance
-- Sets up encryption key storage for E2EE support
-- Establishes proper Matrix session lifecycle
+- E2EE support for encrypted rooms
+- Persistent device identity (no "new device" notifications)
+- Automatic token refresh and key management
+- Matrix 2.0 / MAS (Authentication Service) compatibility
 
-**Features:**
-
-- **E2EE Support**: Provides encrypted room participation
-- **Persistent Device Identity**: Same device across restarts, no "new device" notifications
-- **Automatic Key Management**: Handles encryption keys, sharing, and storage
-- **Convenience**: No manual token capture from browser sessions required
-- **Secure Storage**: Credentials stored with restricted file permissions (600 on Unix systems)
-
-### Password-based Authentication (Non-Interactive)
-
-Alternative authentication method for Docker deployments where interactive authentication isn't possible. This method uses a password in config.yaml for automatic credential creation.
-
-```yaml
-# In your config.yaml file
-matrix:
-  homeserver: https://matrix.example.org
-  password: your_matrix_password  # Your Matrix account password
-  bot_user_id: @yourbot:example.org
-```
-
-**How it works:**
-
-1. **Add password to config.yaml** as shown above
-2. **Remove or comment out** any `access_token` line if present
-3. **Start the container** - MMRelay will automatically:
-   - Log in to Matrix using your password
-   - Create `credentials.json` with secure session tokens
-   - Enable E2EE support if configured
-   - Continue normal operation
-
-**This method is ideal for:**
-
-- Docker deployments without interactive terminals
-- Automated deployments and CI/CD pipelines
-- Users who haven't cloned the repository
-- Environments without Python installed locally
-
-**Security Note:** The password is only used once during initial setup to create `credentials.json`. For enhanced security, remove the `password` field from your `config.yaml` after the first successful startup. On SSO/OIDC-only homeservers (password logins disabled), this method will fail — use the auth system method instead.
-
-**Docker Compose tip:**
-
-```yaml
-volumes:
-  # For SELinux systems, add :Z
-  - ${MMRELAY_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro,Z
-  - ${MMRELAY_HOME:-$HOME}/.mmrelay:/app/data:Z
-  # Non-SELinux:
-  # - ${MMRELAY_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
-  # - ${MMRELAY_HOME:-$HOME}/.mmrelay:/app/data
-```
+The `credentials.json` file is automatically mounted to `/app/data/credentials.json` in the container.
 
 ### Authentication Precedence
 
 MMRelay checks for authentication in this order:
 
-1. **`credentials.json`** (from auth system) - full features
-2. **`config.yaml` matrix section (password-based)** - automatic credential creation; E2EE supported when dependencies are available
+1. **`credentials.json`** (from `mmrelay auth login`) - recommended
+2. **`config.yaml` matrix section (password)** - fallback; password in config file automatically creates credentials.json
+
+> **Note**: For security and full functionality, use `mmrelay auth login`. The password-based method in `config.yaml` is available as a fallback option.
 
 ## Make Commands Reference
 

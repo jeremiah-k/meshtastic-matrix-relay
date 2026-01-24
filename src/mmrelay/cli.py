@@ -962,7 +962,7 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                     if not isinstance(matrix_section, dict):
                         print("Error: 'matrix' section must be a mapping (YAML object)")
                         return False
-                    required_matrix_fields = (
+                    required_matrix_fields: list[str] = (
                         []
                     )  # No fields required from config when using credentials.json
                 else:
