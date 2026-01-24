@@ -441,7 +441,11 @@ def _scan_for_ble_address(ble_address: str, timeout: float) -> bool:
             find_device = getattr(BleakScanner, "find_device_by_address", None)
             if callable(find_device):
                 try:
-                    result = await find_device(ble_address, timeout=timeout)  # type: ignore[misc]
+                    coro: Coroutine[Any, Any, Any] = cast(
+                        Coroutine[Any, Any, Any],
+                        find_device(ble_address, timeout=timeout),
+                    )
+                    result = await coro
                     return result is not None
                 except TypeError:
                     return False
@@ -1639,7 +1643,7 @@ def _get_node_display_name(
                     user = node.get("user")
                     if user and isinstance(user, dict):
                         if short_name := user.get("shortName"):
-                            return short_name
+                            return cast(str, short_name)
 
     from mmrelay.db_utils import get_longname, get_shortname
 

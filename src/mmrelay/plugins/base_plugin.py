@@ -47,7 +47,7 @@ from mmrelay.plugin_loader import (
 )
 
 # Global config variable that will be set from main.py
-config = None
+config: dict[str, Any] | None = None
 
 # Track if we've already shown the deprecated warning
 _deprecated_warning_shown = False

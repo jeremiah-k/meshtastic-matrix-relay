@@ -14,6 +14,7 @@ Usage:
 import asyncio
 import sys
 from pathlib import Path
+from typing import Any
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -32,8 +33,8 @@ class E2EEDebugger:
     """E2EE debugging utility"""
 
     def __init__(self):
-        self.config = None
-        self.client = None
+        self.config: dict[str, Any] | None = None
+        self.client: Any | None = None
 
     async def connect_and_diagnose(self):
         """Connect to Matrix and perform comprehensive E2EE diagnosis"""
@@ -80,22 +81,26 @@ class E2EEDebugger:
 
     async def diagnose_client_state(self):
         """Diagnose Matrix client E2EE state"""
+        if self.client is None:
+            print("❌ No Matrix client available for diagnostics")
+            return
+        client = self.client
         print("\n🔍 CLIENT E2EE STATE DIAGNOSIS")
         print("-" * 40)
 
         # Basic client info
         print("📊 Basic Client Information:")
-        print(f"   User ID: {getattr(self.client, 'user_id', 'None')}")
-        print(f"   Device ID: {getattr(self.client, 'device_id', 'None')}")
+        print(f"   User ID: {getattr(client, 'user_id', 'None')}")
+        print(f"   Device ID: {getattr(client, 'device_id', 'None')}")
         print(
-            f"   Access Token: {'***' if getattr(self.client, 'access_token', None) else 'None'}"
+            f"   Access Token: {'***' if getattr(client, 'access_token', None) else 'None'}"
         )
-        print(f"   Store Path: {getattr(self.client, 'store_path', 'None')}")
+        print(f"   Store Path: {getattr(client, 'store_path', 'None')}")
 
         # E2EE configuration
         print("\n🔐 E2EE Configuration:")
-        if hasattr(self.client, "config") and self.client.config:
-            config = self.client.config
+        if hasattr(client, "config") and client.config:
+            config = client.config
             print(
                 f"   Encryption Enabled: {getattr(config, 'encryption_enabled', 'Unknown')}"
             )
@@ -108,18 +113,16 @@ class E2EEDebugger:
         # E2EE capabilities
         print("\n🛠️  E2EE Capabilities:")
         print(
-            f"   Should Upload Keys: {getattr(self.client, 'should_upload_keys', 'Unknown')}"
+            f"   Should Upload Keys: {getattr(client, 'should_upload_keys', 'Unknown')}"
         )
-        print(f"   Has OLM: {hasattr(self.client, 'olm')}")
+        print(f"   Has OLM: {hasattr(client, 'olm')}")
 
-        if hasattr(self.client, "olm") and self.client.olm:
-            print(f"   OLM Account: {bool(getattr(self.client.olm, 'account', None))}")
-            print(
-                f"   Device Store: {bool(getattr(self.client, 'device_store', None))}"
-            )
+        if hasattr(client, "olm") and client.olm:
+            print(f"   OLM Account: {bool(getattr(client.olm, 'account', None))}")
+            print(f"   Device Store: {bool(getattr(client, 'device_store', None))}")
 
         # Store information
-        store_path = getattr(self.client, "store_path", None)
+        store_path = getattr(client, "store_path", None)
         if store_path:
             store_exists = Path(store_path).exists()
             print(f"   Store Directory Exists: {store_exists}")
@@ -129,19 +132,23 @@ class E2EEDebugger:
 
     async def diagnose_room_encryption(self):
         """Diagnose room encryption state"""
+        if self.client is None:
+            print("❌ No Matrix client available for diagnostics")
+            return
+        client = self.client
         print("\n🏠 ROOM ENCRYPTION DIAGNOSIS")
         print("-" * 40)
 
-        rooms = getattr(self.client, "rooms", {})
+        rooms = getattr(client, "rooms", {})
         print(f"📊 Room Summary: {len(rooms)} total rooms")
 
         if not rooms:
             print("⚠️  No rooms found - performing sync to populate rooms...")
             try:
                 await asyncio.wait_for(
-                    self.client.sync(timeout=10000, full_state=True), timeout=15.0
+                    client.sync(timeout=10000, full_state=True), timeout=15.0
                 )
-                rooms = getattr(self.client, "rooms", {})
+                rooms = getattr(client, "rooms", {})
                 print(f"   After sync: {len(rooms)} rooms found")
             except Exception as e:
                 print(f"   Sync failed: {e}")
@@ -186,10 +193,14 @@ class E2EEDebugger:
 
     async def test_message_parameters(self):
         """Test message sending parameter logic"""
+        if self.client is None:
+            print("❌ No Matrix client available for diagnostics")
+            return
+        client = self.client
         print("\n📤 MESSAGE SENDING PARAMETER TEST")
         print("-" * 40)
 
-        rooms = getattr(self.client, "rooms", {})
+        rooms = getattr(client, "rooms", {})
         if not rooms:
             print("❌ No rooms available for testing")
             return

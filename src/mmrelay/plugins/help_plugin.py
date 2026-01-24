@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, cast
 
 # matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
 from nio import (  # type: ignore[import-untyped]
@@ -66,7 +66,7 @@ class Plugin(BasePlugin):
         Returns:
             list[str]: Command names handled by this plugin (for example, ['help']).
         """
-        return [self.plugin_name]
+        return [self.plugin_name]  # type: ignore[return-value]
 
     def get_mesh_commands(self) -> list[str]:
         """

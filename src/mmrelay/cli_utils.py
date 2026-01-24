@@ -26,6 +26,7 @@ import asyncio
 import os
 import ssl
 from types import ModuleType
+from typing import Any, cast
 
 try:
     import certifi
@@ -421,14 +422,14 @@ def _handle_matrix_error(
         exception, "status_code"
     ):
         if (
-            hasattr(exception, "errcode") and exception.errcode == "M_FORBIDDEN"
-        ) or exception.status_code == 401:
+            hasattr(exception, "errcode") and exception.errcode == "M_FORBIDDEN"  # type: ignore[attr-defined]
+        ) or exception.status_code == 401:  # type: ignore[attr-defined]
             error_category = "credentials"
-        elif exception.status_code in [500, 502, 503]:
+        elif exception.status_code in [500, 502, 503]:  # type: ignore[attr-defined]
             error_category = "server"
         else:
             error_category = "other"
-            error_detail = str(exception.status_code)
+            error_detail = str(exception.status_code)  # type: ignore[attr-defined]
     # Handle network/transport exceptions
     elif isinstance(
         exception,
@@ -572,7 +573,7 @@ async def logout_matrix_bot(password: str) -> bool:
             ssl_context = _create_ssl_context()
 
             # Create a temporary client to fetch user_id
-            temp_client = AsyncClient(homeserver, ssl=ssl_context)
+            temp_client = AsyncClient(homeserver, ssl=ssl_context)  # type: ignore[arg-type]
             temp_client.access_token = access_token
 
             # Fetch user_id using whoami
@@ -582,7 +583,7 @@ async def logout_matrix_bot(password: str) -> bool:
             )
 
             if hasattr(whoami_response, "user_id"):
-                user_id = whoami_response.user_id
+                user_id = whoami_response.user_id  # type: ignore[assignment]
                 logger.info(f"Successfully fetched user_id: {user_id}")
                 print(f"✅ Successfully fetched user_id: {user_id}")
 
@@ -627,6 +628,14 @@ async def logout_matrix_bot(password: str) -> bool:
         else:
             print("❌ Local cleanup completed with some errors.")
         return success
+    assert homeserver is not None
+    assert user_id is not None
+    assert access_token is not None
+    assert device_id is not None
+    homeserver_str = cast(str, homeserver)
+    user_id_str = cast(str, user_id)
+    access_token_str = cast(str, access_token)
+    device_id_str = cast(str, device_id)
 
     logger.info(f"Verifying password for {user_id}...")
     print(f"🔐 Verifying password for {user_id}...")
@@ -642,7 +651,8 @@ async def logout_matrix_bot(password: str) -> bool:
 
         # Create a temporary client to verify the password
         # We'll try to login with the password to verify it's correct
-        temp_client = AsyncClient(homeserver, user_id, ssl=ssl_context)
+        ssl_param = cast(Any, ssl_context) if ssl_context is not None else None
+        temp_client = AsyncClient(homeserver_str, user_id_str, ssl=ssl_param)
 
         try:
             # Attempt login with the provided password
@@ -697,11 +707,11 @@ async def logout_matrix_bot(password: str) -> bool:
         print("🚪 Logging out from Matrix server...")
         main_client = None
         try:
-            main_client = AsyncClient(homeserver, user_id, ssl=ssl_context)
+            main_client = AsyncClient(homeserver_str, user_id_str, ssl=ssl_param)
             main_client.restore_login(
-                user_id=user_id,
-                device_id=device_id,
-                access_token=access_token,
+                user_id=user_id_str,
+                device_id=device_id_str,
+                access_token=access_token_str,
             )
 
             # Logout from the server (invalidates the access token)

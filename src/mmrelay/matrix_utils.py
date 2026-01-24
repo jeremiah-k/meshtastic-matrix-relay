@@ -1263,6 +1263,7 @@ async def connect_matrix(
             )
     # Check if we can automatically create credentials from config.yaml
     elif _can_auto_create_credentials(matrix_section):
+        matrix_section = cast(dict[str, Any], matrix_section)
         logger.info(
             "No credentials.json found, but config.yaml has password field. Attempting automatic login..."
         )

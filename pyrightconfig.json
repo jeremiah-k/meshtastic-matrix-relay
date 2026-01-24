@@ -1,0 +1,6 @@
+{
+  "venvPath": ".",
+  "venv": "venv",
+  "include": ["src", "scripts"],
+  "exclude": ["tests"]
+}
