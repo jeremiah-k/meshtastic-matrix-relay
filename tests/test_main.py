@@ -1453,6 +1453,10 @@ class TestRunMainFunction(unittest.TestCase):
         mock_print_banner.assert_called_once()
         mock_asyncio_run.assert_called_once()
 
+        from mmrelay.radio.registry import get_radio_registry
+
+        get_radio_registry().set_active_backend("meshtastic")
+
     @patch("mmrelay.main.print_banner")
     @patch("mmrelay.config.load_config")
     @patch("mmrelay.config.load_credentials")
@@ -1502,6 +1506,33 @@ class TestRunMainFunction(unittest.TestCase):
             result = run_main(mock_args)
 
         self.assertEqual(result, 0)
+        mock_asyncio_run.assert_called_once()
+
+    @patch("mmrelay.main.print_banner")
+    @patch("mmrelay.config.load_config")
+    @patch("mmrelay.config.load_credentials")
+    def test_run_main_radio_backend_disabled(
+        self, mock_load_credentials, mock_load_config, mock_print_banner
+    ):
+        """run_main should allow explicit radio disable without meshtastic config."""
+        mock_config = {
+            "matrix": {"homeserver": "https://matrix.org"},
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+            "radio_backend": "none",
+        }
+        mock_load_config.return_value = mock_config
+        mock_load_credentials.return_value = None
+
+        mock_args = MagicMock()
+        mock_args.data_dir = None
+        mock_args.log_level = None
+
+        with patch("mmrelay.main.asyncio.run") as mock_asyncio_run:
+            mock_asyncio_run.side_effect = _close_coro_if_possible
+            result = run_main(mock_args)
+
+        self.assertEqual(result, 0)
+        mock_print_banner.assert_called_once()
         mock_asyncio_run.assert_called_once()
 
     @patch("mmrelay.main.print_banner")

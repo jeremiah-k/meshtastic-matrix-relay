@@ -34,6 +34,8 @@ from mmrelay.config import (
     apply_env_config_overrides,
     get_base_dir,
     get_config_paths,
+    get_radio_backend_selection,
+    is_meshtastic_enabled,
     set_secure_file_permissions,
     validate_yaml_syntax,
 )
@@ -1111,6 +1113,60 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                             "   meshtastic_channel must be a non-negative integer (0-7 for primary channels)"
                         )
                         return False
+
+                backend_name, explicit_disable = get_radio_backend_selection(config)
+                if backend_name and backend_name.lower() != "meshtastic":
+                    # Skip Meshtastic validation when another backend is selected
+                    if "db" in config:
+                        print(
+                            "\nWarning: 'db' section is deprecated. Please use 'database' instead.",
+                            file=sys.stderr,
+                        )
+                        print(
+                            "This option still works but may be removed in future versions.\n",
+                            file=sys.stderr,
+                        )
+                    print("\n✅ Configuration file is valid!")
+                    return True
+
+                if explicit_disable:
+                    print(
+                        "\nWarning: Radio backend disabled; running without radio.",
+                        file=sys.stderr,
+                    )
+                    if "db" in config:
+                        print(
+                            "\nWarning: 'db' section is deprecated. Please use 'database' instead.",
+                            file=sys.stderr,
+                        )
+                        print(
+                            "This option still works but may be removed in future versions.\n",
+                            file=sys.stderr,
+                        )
+                    print("\n✅ Configuration file is valid!")
+                    return True
+
+                if not is_meshtastic_enabled(config):
+                    if CONFIG_SECTION_MESHTASTIC not in config:
+                        print(
+                            "Error: No radio backend configured. Add a meshtastic section or set radio_backend: none."
+                        )
+                        return False
+                    print(
+                        "\nWarning: Meshtastic disabled; running without radio.",
+                        file=sys.stderr,
+                    )
+                    if "db" in config:
+                        print(
+                            "\nWarning: 'db' section is deprecated. Please use 'database' instead.",
+                            file=sys.stderr,
+                        )
+                        print(
+                            "This option still works but may be removed in future versions.\n",
+                            file=sys.stderr,
+                        )
+                    print("\n✅ Configuration file is valid!")
+                    return True
 
                 # Check meshtastic section
                 if CONFIG_SECTION_MESHTASTIC not in config:

@@ -15,11 +15,66 @@ from mmrelay.constants.config import (
     CONFIG_KEY_ACCESS_TOKEN,
     CONFIG_KEY_BOT_USER_ID,
     CONFIG_KEY_HOMESERVER,
+    CONFIG_KEY_RADIO_BACKEND,
     CONFIG_SECTION_MATRIX,
 )
 
 # Global variable to store the custom data directory
 custom_data_dir: str | None = None
+
+
+_RADIO_BACKEND_DISABLED_VALUES = {"none", "disabled", "off"}
+
+
+def normalize_radio_backend(value: Any) -> str | None:
+    """
+    Normalize a configured radio backend name.
+
+    Returns None for empty values or explicit disable values like "none".
+    """
+    if not isinstance(value, str):
+        return None
+    candidate = value.strip()
+    if not candidate:
+        return None
+    lowered = candidate.lower()
+    if lowered in _RADIO_BACKEND_DISABLED_VALUES:
+        return None
+    return lowered
+
+
+def get_radio_backend_selection(config: dict[str, Any]) -> tuple[str | None, bool]:
+    """
+    Return the requested backend name and whether the config explicitly disables radio.
+
+    A value like "none" or "disabled" returns (None, True).
+    """
+    raw = config.get(CONFIG_KEY_RADIO_BACKEND)
+    normalized = normalize_radio_backend(raw)
+    explicit_disable = raw is not None and normalized is None
+    return normalized, explicit_disable
+
+
+def is_meshtastic_enabled(config: dict[str, Any]) -> bool:
+    """
+    Return True when the meshtastic section exists and is enabled.
+    """
+    meshtastic_config = config.get("meshtastic")
+    if not isinstance(meshtastic_config, dict):
+        return False
+    return bool(meshtastic_config.get("enabled", True))
+
+
+def is_meshtastic_selected(config: dict[str, Any]) -> bool:
+    """
+    Return True if Meshtastic is the selected backend for this config.
+    """
+    backend_name, explicit_disable = get_radio_backend_selection(config)
+    if explicit_disable:
+        return False
+    if backend_name:
+        return backend_name.lower() == "meshtastic"
+    return is_meshtastic_enabled(config)
 
 
 def set_secure_file_permissions(file_path: str, mode: int = 0o600) -> None:

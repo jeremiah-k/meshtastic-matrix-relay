@@ -489,33 +489,21 @@ class MessageQueue:
 
     def _should_send_message(self) -> bool:
         """
-        Determine whether the queue may send a Meshtastic message.
+        Determine whether the queue may send a radio message.
 
-        Performs runtime checks: ensures the global reconnecting flag is false, a Meshtastic client object exists, and—if the client exposes a connectivity indicator—that indicator reports connected. If importing Meshtastic utilities fails, triggers an asynchronous stop of the queue.
+        Performs runtime checks against the active radio backend and ensures it reports connected. If the radio registry cannot be imported, triggers an asynchronous stop of the queue.
 
         Returns:
-            `True` if not reconnecting, a Meshtastic client exists, and the client is connected when checkable; `False` otherwise.
+            `True` if an active backend exists and reports connected; `False` otherwise.
         """
         # Import here to avoid circular imports
         try:
-            from mmrelay.meshtastic_utils import meshtastic_client, reconnecting
+            from mmrelay.radio.registry import get_radio_registry
 
-            # Don't send during reconnection
-            if reconnecting:
-                logger.debug("Not sending - reconnecting is True")
+            registry = get_radio_registry()
+            if not registry.is_ready():
+                logger.debug("Not sending - radio backend not ready")
                 return False
-
-            # Don't send if no client
-            if meshtastic_client is None:
-                logger.debug("Not sending - meshtastic_client is None")
-                return False
-
-            # Check if client is connected
-            if hasattr(meshtastic_client, "is_connected"):
-                is_conn = meshtastic_client.is_connected
-                if not (is_conn() if callable(is_conn) else is_conn):
-                    logger.debug("Not sending - client not connected")
-                    return False
 
             logger.debug("Connection check passed - ready to send")
             return True
@@ -524,7 +512,7 @@ class MessageQueue:
             # ImportError indicates a serious problem with application structure,
             # often during shutdown as modules are unloaded.
             logger.critical(
-                f"Cannot import meshtastic_utils - serious application error: {e}. Stopping message queue."
+                f"Cannot import radio registry - serious application error: {e}. Stopping message queue."
             )
             # Stop asynchronously to avoid blocking the event loop thread.
             threading.Thread(

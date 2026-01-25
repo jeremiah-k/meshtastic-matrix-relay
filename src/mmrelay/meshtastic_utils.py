@@ -23,7 +23,11 @@ import serial.tools.list_ports  # type: ignore[import-untyped]  # Import serial 
 from meshtastic.protobuf import mesh_pb2, portnums_pb2  # type: ignore[import-untyped]
 from pubsub import pub  # type: ignore[import-untyped]
 
-from mmrelay.config import get_meshtastic_config_value
+from mmrelay.config import (
+    get_meshtastic_config_value,
+    get_radio_backend_selection,
+    is_meshtastic_enabled,
+)
 from mmrelay.constants.config import (
     CONFIG_KEY_MESHNET_NAME,
     CONFIG_SECTION_MESHTASTIC,
@@ -1718,6 +1722,24 @@ def connect_meshtastic(
         # If config is valid, extract matrix_rooms
         if config and "matrix_rooms" in config:
             matrix_rooms = config["matrix_rooms"]
+
+    if config is not None:
+        backend_name, explicit_disable = get_radio_backend_selection(config)
+        if backend_name:
+            if backend_name.lower() != "meshtastic":
+                logger.info(
+                    "Configured radio backend '%s' is not Meshtastic; skipping connection.",
+                    backend_name,
+                )
+                return None
+        elif explicit_disable:
+            logger.info(
+                "Radio backend disabled by configuration; skipping Meshtastic connection."
+            )
+            return None
+        elif CONFIG_SECTION_MESHTASTIC in config and not is_meshtastic_enabled(config):
+            logger.info("Meshtastic disabled by configuration; skipping connection.")
+            return None
 
     with meshtastic_lock:
         if meshtastic_client and not force_connect:

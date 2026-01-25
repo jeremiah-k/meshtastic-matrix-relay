@@ -26,6 +26,7 @@ from nio.events.room_events import RoomMemberEvent  # type: ignore[import-untype
 # Import meshtastic_utils as a module to set event_loop
 from mmrelay import __version__, meshtastic_utils
 from mmrelay.cli_utils import msg_suggest_check_config, msg_suggest_generate_config
+from mmrelay.config import get_radio_backend_selection, is_meshtastic_enabled
 from mmrelay.constants.app import APP_DISPLAY_NAME, WINDOWS_PLATFORM
 from mmrelay.constants.queue import DEFAULT_MESSAGE_DELAY
 from mmrelay.db_utils import (
@@ -53,6 +54,8 @@ from mmrelay.message_queue import (
     stop_message_queue,
 )
 from mmrelay.plugin_loader import load_plugins, shutdown_plugins
+from mmrelay.radio.backends.meshtastic_backend import MeshtasticBackend
+from mmrelay.radio.registry import get_radio_registry
 
 # Initialize logger
 logger = get_logger(name=APP_DISPLAY_NAME)
@@ -76,6 +79,128 @@ def print_banner() -> None:
         _banner_printed = True
 
 
+def _select_active_backend_name(
+    config: dict[str, Any],
+) -> str | None:
+    """
+    Determine the active backend name based on configuration.
+
+    Returns:
+        str | None: Selected backend name, or None if no backend is configured.
+    """
+    backend_name, explicit_disable = get_radio_backend_selection(config)
+    if backend_name:
+        return backend_name
+    if explicit_disable:
+        return None
+    if is_meshtastic_enabled(config):
+        return "meshtastic"
+    return None
+
+
+def _has_radio_config(config: dict[str, Any]) -> bool:
+    """
+    Return True when config selects a backend or explicitly disables radio.
+    """
+    backend_name, explicit_disable = get_radio_backend_selection(config)
+    if backend_name:
+        return True
+    if explicit_disable:
+        return True
+    meshtastic_section = config.get("meshtastic")
+    if (
+        isinstance(meshtastic_section, dict)
+        and meshtastic_section.get("enabled") is False
+    ):
+        return True
+    return is_meshtastic_enabled(config)
+
+
+def _close_meshtastic_client() -> None:
+    """
+    Close the Meshtastic client connection with timeout protection.
+    """
+    if not meshtastic_utils.meshtastic_client:
+        return
+
+    meshtastic_logger.info("Closing Meshtastic client...")
+    try:
+        # Timeout wrapper to prevent infinite hanging during shutdown
+        # The meshtastic library can sometimes hang indefinitely during close()
+        # operations, especially with BLE connections. This timeout ensures
+        # the application can shut down gracefully within 10 seconds.
+
+        def _close_meshtastic() -> None:
+            """
+            Close and clean up the active Meshtastic client connection.
+
+            If a BLE interface is the active client, perform an explicit BLE disconnect to release the adapter.
+            Clears meshtastic_utils.meshtastic_client (and meshtastic_utils.meshtastic_iface when applicable).
+            Does nothing if no client is present.
+            """
+            if meshtastic_utils.meshtastic_client:
+                if (
+                    meshtastic_utils.meshtastic_client
+                    is meshtastic_utils.meshtastic_iface
+                ):
+                    # BLE shutdown needs an explicit disconnect to release
+                    # the adapter; a plain close() can leave BlueZ stuck.
+                    meshtastic_utils._disconnect_ble_interface(
+                        meshtastic_utils.meshtastic_iface,
+                        reason="shutdown",
+                    )
+                    meshtastic_utils.meshtastic_iface = None
+                else:
+                    meshtastic_utils.meshtastic_client.close()
+                meshtastic_utils.meshtastic_client = None
+
+        # Avoid the context manager here: __exit__ would wait for the
+        # worker thread and could block forever if BLE shutdown hangs,
+        # negating the timeout protection.
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(_close_meshtastic)
+        close_timed_out = False
+        try:
+            future.result(timeout=10.0)  # 10-second timeout
+        except concurrent.futures.TimeoutError:
+            close_timed_out = True
+            meshtastic_logger.warning(
+                "Meshtastic client close timed out - may cause notification errors"
+            )
+            # Best-effort cancellation; the underlying close may be
+            # stuck in BLE/DBus, but we cannot block shutdown.
+            future.cancel()
+        except Exception:  # noqa: BLE001 - shutdown must keep going
+            meshtastic_logger.exception(
+                "Unexpected error during Meshtastic client close"
+            )
+        else:
+            meshtastic_logger.info("Meshtastic client closed successfully")
+        finally:
+            if not future.done():
+                if not close_timed_out:
+                    meshtastic_logger.warning(
+                        "Meshtastic client close timed out - may cause notification errors"
+                    )
+                future.cancel()
+            try:
+                # Do not wait for shutdown; if close hangs we still
+                # want the process to exit promptly.
+                executor.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                # cancel_futures is unsupported on older Python versions.
+                executor.shutdown(wait=False)
+    except concurrent.futures.TimeoutError:
+        meshtastic_logger.warning(
+            "Meshtastic client close timed out - forcing shutdown"
+        )
+    except Exception as e:
+        meshtastic_logger.error(
+            f"Unexpected error during Meshtastic client close: {e}",
+            exc_info=True,
+        )
+
+
 async def main(config: dict[str, Any]) -> None:
     """
     Coordinate startup, runtime, and orderly shutdown of the relay between Meshtastic and Matrix.
@@ -86,6 +211,7 @@ async def main(config: dict[str, Any]) -> None:
         config (dict[str, Any]): Application configuration. Relevant keys:
             - "matrix_rooms": list of room dictionaries, each containing at least an "id" key.
             - "meshtastic": optional dict; may include "message_delay" to configure outbound pacing.
+            - "radio_backend": optional string to select the active backend or "none" to disable radio.
             - "database" (preferred) or legacy "db": optional dict containing "msg_map" with a "wipe_on_restart" boolean to control wiping the message map at startup and shutdown.
 
     Raises:
@@ -99,6 +225,13 @@ async def main(config: dict[str, Any]) -> None:
 
     # Initialize the SQLite database
     initialize_database()
+
+    radio_registry = get_radio_registry()
+    radio_registry.register_backend(
+        MeshtasticBackend(connect_fn=connect_meshtastic, to_thread=asyncio.to_thread),
+        replace=True,
+    )
+    active_backend_name: str | None = None
 
     # Check database config for wipe_on_restart (preferred format)
     database_config = config.get("database", {})
@@ -126,16 +259,36 @@ async def main(config: dict[str, Any]) -> None:
         None, functools.partial(load_plugins, passed_config=config)
     )
 
+    active_backend_name = _select_active_backend_name(config)
+    if active_backend_name:
+        if not radio_registry.set_active_backend(active_backend_name):
+            logger.error(
+                "Requested radio backend '%s' is not registered. Continuing without radio.",
+                active_backend_name,
+            )
+            active_backend_name = None
+            radio_registry.set_active_backend(None)
+    else:
+        radio_registry.set_active_backend(None)
+
+    if not active_backend_name:
+        logger.info("No radio backend configured; running without radio.")
+
     # Start message queue with configured message delay
-    message_delay = config.get("meshtastic", {}).get(
-        "message_delay", DEFAULT_MESSAGE_DELAY
-    )
+    message_delay = DEFAULT_MESSAGE_DELAY
+    if active_backend_name == "meshtastic":
+        message_delay = config.get("meshtastic", {}).get(
+            "message_delay", DEFAULT_MESSAGE_DELAY
+        )
     start_message_queue(message_delay=message_delay)
 
-    # Connect to Meshtastic
-    meshtastic_utils.meshtastic_client = await asyncio.to_thread(
-        connect_meshtastic, passed_config=config
-    )
+    if active_backend_name:
+        connected = await radio_registry.connect_active_backend(config)
+        if not connected:
+            logger.warning(
+                "Radio backend '%s' did not connect; continuing without radio.",
+                active_backend_name,
+            )
 
     # Connect to Matrix
     matrix_client = await connect_matrix(passed_config=config)
@@ -209,9 +362,10 @@ async def main(config: dict[str, Any]) -> None:
         # On Windows, we can't use add_signal_handler, so we'll handle KeyboardInterrupt
         pass
 
-    # Start connection health monitoring using getMetadata() heartbeat
-    # This provides proactive connection detection for all interface types
-    _ = asyncio.create_task(meshtastic_utils.check_connection())
+    if active_backend_name == "meshtastic":
+        # Start connection health monitoring using getMetadata() heartbeat
+        # This provides proactive connection detection for all interface types
+        _ = asyncio.create_task(meshtastic_utils.check_connection())
 
     # Ensure message queue processor is started now that event loop is running
     get_message_queue().ensure_processor_started()
@@ -220,20 +374,21 @@ async def main(config: dict[str, Any]) -> None:
     try:
         while not shutdown_event.is_set():
             try:
-                if meshtastic_utils.meshtastic_client:
-                    nodes_snapshot = dict(meshtastic_utils.meshtastic_client.nodes)
-                    await loop.run_in_executor(
-                        None,
-                        update_longnames,
-                        nodes_snapshot,
-                    )
-                    await loop.run_in_executor(
-                        None,
-                        update_shortnames,
-                        nodes_snapshot,
-                    )
-                else:
-                    meshtastic_logger.warning("Meshtastic client is not connected.")
+                if active_backend_name == "meshtastic":
+                    if meshtastic_utils.meshtastic_client:
+                        nodes_snapshot = dict(meshtastic_utils.meshtastic_client.nodes)
+                        await loop.run_in_executor(
+                            None,
+                            update_longnames,
+                            nodes_snapshot,
+                        )
+                        await loop.run_in_executor(
+                            None,
+                            update_shortnames,
+                            nodes_snapshot,
+                        )
+                    else:
+                        meshtastic_logger.warning("Meshtastic client is not connected.")
 
                 matrix_logger.info("Starting Matrix sync loop...")
                 sync_task = asyncio.create_task(
@@ -296,83 +451,11 @@ async def main(config: dict[str, Any]) -> None:
 
         matrix_logger.info("Closing Matrix client...")
         await matrix_client.close()
-        if meshtastic_utils.meshtastic_client:
-            meshtastic_logger.info("Closing Meshtastic client...")
-            try:
-                # Timeout wrapper to prevent infinite hanging during shutdown
-                # The meshtastic library can sometimes hang indefinitely during close()
-                # operations, especially with BLE connections. This timeout ensures
-                # the application can shut down gracefully within 10 seconds.
 
-                def _close_meshtastic() -> None:
-                    """
-                    Close and clean up the active Meshtastic client connection.
+        if active_backend_name and active_backend_name != "meshtastic":
+            await radio_registry.disconnect_active_backend()
 
-                    If a BLE interface is the active client, perform an explicit BLE disconnect to release the adapter.
-                    Clears meshtastic_utils.meshtastic_client (and meshtastic_utils.meshtastic_iface when applicable).
-                    Does nothing if no client is present.
-                    """
-                    if meshtastic_utils.meshtastic_client:
-                        if (
-                            meshtastic_utils.meshtastic_client
-                            is meshtastic_utils.meshtastic_iface
-                        ):
-                            # BLE shutdown needs an explicit disconnect to release
-                            # the adapter; a plain close() can leave BlueZ stuck.
-                            meshtastic_utils._disconnect_ble_interface(
-                                meshtastic_utils.meshtastic_iface,
-                                reason="shutdown",
-                            )
-                            meshtastic_utils.meshtastic_iface = None
-                        else:
-                            meshtastic_utils.meshtastic_client.close()
-                        meshtastic_utils.meshtastic_client = None
-
-                # Avoid the context manager here: __exit__ would wait for the
-                # worker thread and could block forever if BLE shutdown hangs,
-                # negating the timeout protection.
-                executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-                future = executor.submit(_close_meshtastic)
-                close_timed_out = False
-                try:
-                    future.result(timeout=10.0)  # 10-second timeout
-                except concurrent.futures.TimeoutError:
-                    close_timed_out = True
-                    meshtastic_logger.warning(
-                        "Meshtastic client close timed out - may cause notification errors"
-                    )
-                    # Best-effort cancellation; the underlying close may be
-                    # stuck in BLE/DBus, but we cannot block shutdown.
-                    future.cancel()
-                except Exception:  # noqa: BLE001 - shutdown must keep going
-                    meshtastic_logger.exception(
-                        "Unexpected error during Meshtastic client close"
-                    )
-                else:
-                    meshtastic_logger.info("Meshtastic client closed successfully")
-                finally:
-                    if not future.done():
-                        if not close_timed_out:
-                            meshtastic_logger.warning(
-                                "Meshtastic client close timed out - may cause notification errors"
-                            )
-                        future.cancel()
-                    try:
-                        # Do not wait for shutdown; if close hangs we still
-                        # want the process to exit promptly.
-                        executor.shutdown(wait=False, cancel_futures=True)
-                    except TypeError:
-                        # cancel_futures is unsupported on older Python versions.
-                        executor.shutdown(wait=False)
-            except concurrent.futures.TimeoutError:
-                meshtastic_logger.warning(
-                    "Meshtastic client close timed out - forcing shutdown"
-                )
-            except Exception as e:
-                meshtastic_logger.error(
-                    f"Unexpected error during Meshtastic client close: {e}",
-                    exc_info=True,
-                )
+        _close_meshtastic_client()
 
         # Attempt to wipe message_map on shutdown if enabled
         if wipe_on_restart:
@@ -405,7 +488,7 @@ def run_main(args: Any) -> int:
     """
     Start the application: load configuration, validate required keys, and run the main async runner.
 
-    Loads and applies configuration (optionally overriding logging level from args), initializes module configuration, verifies required configuration sections (required keys are ["meshtastic", "matrix_rooms"] when credentials.json is present, otherwise ["matrix", "meshtastic", "matrix_rooms"]), and executes the main async entrypoint. Returns process exit codes: 0 for successful completion or user interrupt, 1 for configuration errors or unhandled exceptions.
+    Loads and applies configuration (optionally overriding logging level from args), initializes module configuration, verifies required configuration sections (matrix rooms plus matrix credentials when needed), checks that a radio backend is selected or explicitly disabled, and executes the main async entrypoint. Returns process exit codes: 0 for successful completion or user interrupt, 1 for configuration errors or unhandled exceptions.
 
     Parameters:
         args: Parsed command-line arguments (may be None). Recognized option used here: `log_level` to override the configured logging level.
@@ -478,11 +561,11 @@ def run_main(args: Any) -> int:
     credentials = load_credentials()
 
     if credentials:
-        # With credentials.json, only meshtastic and matrix_rooms are required
-        required_keys = ["meshtastic", "matrix_rooms"]
+        # With credentials.json, only matrix_rooms is required
+        required_keys = ["matrix_rooms"]
     else:
-        # Without credentials.json, all sections are required
-        required_keys = ["matrix", "meshtastic", "matrix_rooms"]
+        # Without credentials.json, matrix and matrix_rooms are required
+        required_keys = ["matrix", "matrix_rooms"]
 
     # Check each key individually for better debugging
     for key in required_keys:
@@ -507,6 +590,12 @@ def run_main(args: Any) -> int:
                 f"  • Create a valid config.yaml file or {msg_suggest_generate_config()}"
             )
             logger.error(f"  • {msg_suggest_check_config()}")
+        return 1
+
+    if not _has_radio_config(config):
+        logger.error(
+            "No radio backend configured. Add a meshtastic section or set radio_backend: none to run without radio."
+        )
         return 1
 
     try:

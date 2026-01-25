@@ -247,14 +247,14 @@ class TestMessageQueue(unittest.TestCase):
         mock_future.result.assert_called_once_with(timeout=1.0)
 
     def test_should_send_message_import_error_stops_queue(self):
-        """_should_send_message should stop when meshtastic_utils import fails."""
+        """_should_send_message should stop when radio registry import fails."""
         queue = MessageQueue()
 
         original_import = __import__
 
         def raising_import(name, globals=None, locals=None, fromlist=(), level=0):
             """
-            Raise ImportError when attempting to import "mmrelay.meshtastic_utils"; otherwise delegate to the original import function.
+            Raise ImportError when attempting to import "mmrelay.radio.registry"; otherwise delegate to the original import function.
 
             Parameters:
                 name (str): The module name to import.
@@ -267,9 +267,9 @@ class TestMessageQueue(unittest.TestCase):
                 Any: The result of the original import call (a module or an attribute from a module).
 
             Raises:
-                ImportError: If `name` is exactly "mmrelay.meshtastic_utils".
+                ImportError: If `name` is exactly "mmrelay.radio.registry".
             """
-            if name == "mmrelay.meshtastic_utils":
+            if name == "mmrelay.radio.registry":
                 raise ImportError("missing")
             return original_import(name, globals, locals, fromlist, level)
 
