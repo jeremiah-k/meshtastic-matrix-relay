@@ -4,7 +4,6 @@ It uses Meshtastic-python and Matrix nio client library to interface with the ra
 """
 
 import asyncio
-import concurrent.futures
 import functools
 import signal
 import sys
@@ -114,91 +113,6 @@ def _has_radio_config(config: dict[str, Any]) -> bool:
     ):
         return True
     return is_meshtastic_enabled(config)
-
-
-def _close_meshtastic_client() -> None:
-    """
-    Close the Meshtastic client connection with timeout protection.
-    """
-    if not meshtastic_utils.meshtastic_client:
-        return
-
-    meshtastic_logger.info("Closing Meshtastic client...")
-    try:
-        # Timeout wrapper to prevent infinite hanging during shutdown
-        # The meshtastic library can sometimes hang indefinitely during close()
-        # operations, especially with BLE connections. This timeout ensures
-        # the application can shut down gracefully within 10 seconds.
-
-        def _close_meshtastic() -> None:
-            """
-            Close and clean up the active Meshtastic client connection.
-
-            If a BLE interface is the active client, perform an explicit BLE disconnect to release the adapter.
-            Clears meshtastic_utils.meshtastic_client (and meshtastic_utils.meshtastic_iface when applicable).
-            Does nothing if no client is present.
-            """
-            if meshtastic_utils.meshtastic_client:
-                if (
-                    meshtastic_utils.meshtastic_client
-                    is meshtastic_utils.meshtastic_iface
-                ):
-                    # BLE shutdown needs an explicit disconnect to release
-                    # the adapter; a plain close() can leave BlueZ stuck.
-                    meshtastic_utils._disconnect_ble_interface(
-                        meshtastic_utils.meshtastic_iface,
-                        reason="shutdown",
-                    )
-                    meshtastic_utils.meshtastic_iface = None
-                else:
-                    meshtastic_utils.meshtastic_client.close()
-                meshtastic_utils.meshtastic_client = None
-
-        # Avoid the context manager here: __exit__ would wait for the
-        # worker thread and could block forever if BLE shutdown hangs,
-        # negating the timeout protection.
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        future = executor.submit(_close_meshtastic)
-        close_timed_out = False
-        try:
-            future.result(timeout=10.0)  # 10-second timeout
-        except concurrent.futures.TimeoutError:
-            close_timed_out = True
-            meshtastic_logger.warning(
-                "Meshtastic client close timed out - may cause notification errors"
-            )
-            # Best-effort cancellation; the underlying close may be
-            # stuck in BLE/DBus, but we cannot block shutdown.
-            future.cancel()
-        except Exception:  # noqa: BLE001 - shutdown must keep going
-            meshtastic_logger.exception(
-                "Unexpected error during Meshtastic client close"
-            )
-        else:
-            meshtastic_logger.info("Meshtastic client closed successfully")
-        finally:
-            if not future.done():
-                if not close_timed_out:
-                    meshtastic_logger.warning(
-                        "Meshtastic client close timed out - may cause notification errors"
-                    )
-                future.cancel()
-            try:
-                # Do not wait for shutdown; if close hangs we still
-                # want the process to exit promptly.
-                executor.shutdown(wait=False, cancel_futures=True)
-            except TypeError:
-                # cancel_futures is unsupported on older Python versions.
-                executor.shutdown(wait=False)
-    except concurrent.futures.TimeoutError:
-        meshtastic_logger.warning(
-            "Meshtastic client close timed out - forcing shutdown"
-        )
-    except Exception as e:
-        meshtastic_logger.error(
-            f"Unexpected error during Meshtastic client close: {e}",
-            exc_info=True,
-        )
 
 
 async def main(config: dict[str, Any]) -> None:
@@ -391,9 +305,16 @@ async def main(config: dict[str, Any]) -> None:
                         meshtastic_logger.warning("Meshtastic client is not connected.")
 
                 matrix_logger.info("Starting Matrix sync loop...")
-                sync_task = asyncio.create_task(
-                    matrix_client.sync_forever(timeout=30000)
-                )
+
+                async def _run_sync_forever() -> bool:
+                    try:
+                        await matrix_client.sync_forever(timeout=30000)
+                        return True
+                    except KeyboardInterrupt:
+                        shutdown()
+                        return False
+
+                sync_task = asyncio.create_task(_run_sync_forever())
 
                 shutdown_task = asyncio.create_task(shutdown_event.wait())
 
@@ -411,19 +332,22 @@ async def main(config: dict[str, Any]) -> None:
                     except asyncio.CancelledError:
                         pass
 
-                if shutdown_event.is_set():
-                    matrix_logger.info("Shutdown event detected. Stopping sync loop...")
-                    break
-
                 # Check if sync_task completed with an exception
                 if sync_task in done:
                     try:
                         # This will raise the exception if the task failed
-                        sync_task.result()
+                        completed_normally = sync_task.result()
                         # If we get here, sync completed normally (shouldn't happen with sync_forever)
-                        matrix_logger.warning(
-                            "Matrix sync_forever completed unexpectedly"
-                        )
+                        if completed_normally:
+                            matrix_logger.warning(
+                                "Matrix sync_forever completed unexpectedly"
+                            )
+                    except KeyboardInterrupt:
+                        shutdown()
+                        break
+                    except SystemExit:
+                        shutdown()
+                        raise
                     except (
                         Exception
                     ) as exc:  # noqa: BLE001 — sync loop must keep retrying
@@ -434,6 +358,10 @@ async def main(config: dict[str, Any]) -> None:
                         else:
                             matrix_logger.exception("Matrix sync failed")
                         # The outer try/catch will handle the retry logic
+
+                if shutdown_event.is_set():
+                    matrix_logger.info("Shutdown event detected. Stopping sync loop...")
+                    break
 
             except Exception:  # noqa: BLE001 — keep loop alive for retries
                 if shutdown_event.is_set():
@@ -452,10 +380,8 @@ async def main(config: dict[str, Any]) -> None:
         matrix_logger.info("Closing Matrix client...")
         await matrix_client.close()
 
-        if active_backend_name and active_backend_name != "meshtastic":
+        if active_backend_name:
             await radio_registry.disconnect_active_backend()
-
-        _close_meshtastic_client()
 
         # Attempt to wipe message_map on shutdown if enabled
         if wipe_on_restart:

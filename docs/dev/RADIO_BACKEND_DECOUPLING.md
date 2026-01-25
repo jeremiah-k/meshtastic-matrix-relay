@@ -60,12 +60,12 @@ The current codebase has Meshtastic tightly coupled in several areas:
 Create an abstract base class that defines the contract for all radio backends:
 
 ```python
-# src/mmrelay/radio/base_radio.py
+# src/mmrelay/radio/base_backend.py
 
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Optional
 
-class BaseRadio(ABC):
+class BaseRadioBackend(ABC):
     """Abstract base class for radio backends."""
 
     # Backend identification
@@ -137,34 +137,38 @@ class BaseRadio(ABC):
         pass
 ```
 
-### 2. Radio Manager
+### 2. Radio Registry (Current Implementation)
 
-Create a central manager to handle multiple radio backends:
+Track the available backends and select a single active backend. Multi-backend routing can be layered on later.
 
 ```python
-# src/mmrelay/radio/radio_manager.py
+# src/mmrelay/radio/registry.py
 
-class RadioManager:
-    """Manages multiple radio backends and coordinates message routing."""
+class RadioRegistry:
+    """Tracks available backends and a single active backend."""
 
     def __init__(self):
-        self.backends: Dict[str, BaseRadio] = {}
-        self.active_backends: List[str] = []
+        self.backends: Dict[str, BaseRadioBackend] = {}
+        self.active_backend: Optional[str] = None
 
-    async def register_backend(self, backend: BaseRadio, config: Dict[str, Any]) -> bool:
-        """Register and initialize a radio backend."""
+    def register_backend(self, backend: BaseRadioBackend) -> None:
+        """Register a backend implementation."""
         pass
 
-    async def send_to_backend(self, backend_name: str, text: str, **kwargs) -> bool:
-        """Send a message to a specific backend."""
+    def set_active_backend(self, backend_name: Optional[str]) -> bool:
+        """Select the active backend by name."""
         pass
 
-    async def broadcast_to_all(self, text: str, **kwargs) -> Dict[str, bool]:
-        """Broadcast a message to all active backends."""
+    def get_active_backend(self) -> Optional[BaseRadioBackend]:
+        """Return the active backend instance."""
         pass
 
-    def get_backend(self, backend_name: str) -> Optional[BaseRadio]:
-        """Get a specific backend instance."""
+    async def connect_active_backend(self, config: Dict[str, Any]) -> bool:
+        """Connect the active backend."""
+        pass
+
+    async def disconnect_active_backend(self) -> None:
+        """Disconnect the active backend."""
         pass
 ```
 
@@ -253,9 +257,9 @@ relay:
 **Files to Create:**
 
 - `src/mmrelay/radio/__init__.py`
-- `src/mmrelay/radio/base_radio.py` - Abstract base class
+- `src/mmrelay/radio/base_backend.py` - Abstract base class
 - `src/mmrelay/radio/message.py` - Standardized message format
-- `src/mmrelay/radio/radio_manager.py` - Multi-backend manager
+- `src/mmrelay/radio/registry.py` - Backend registry (single active backend)
 
 **Files to Modify:**
 None (pure addition)
@@ -263,14 +267,14 @@ None (pure addition)
 **Testing:**
 
 - Unit tests for new abstract classes
-- Integration tests for RadioManager
+- Integration tests for RadioRegistry
 
 ### Phase 2: Meshtastic Backend Adapter
 
 **Files to Create:**
 
 - `src/mmrelay/radio/backends/__init__.py`
-- `src/mmrelay/radio/backends/meshtastic_backend.py` - Wrapper implementing BaseRadio
+- `src/mmrelay/radio/backends/meshtastic_backend.py` - Wrapper implementing BaseRadioBackend
 
 **Files to Modify:**
 
@@ -278,7 +282,7 @@ None (pure addition)
 
 **Strategy:**
 
-1. Create `MeshtasticBackend` class that implements `BaseRadio`
+1. Create `MeshtasticBackend` class that implements `BaseRadioBackend`
 2. Wrap existing `meshtastic_utils` functionality
 3. Maintain all existing behavior
 4. Add compatibility layer for existing direct imports
@@ -292,13 +296,13 @@ None (pure addition)
 
 **Files to Modify:**
 
-- `src/mmrelay/main.py` - Use RadioManager instead of direct imports
+- `src/mmrelay/main.py` - Use RadioRegistry instead of direct imports
 - `src/mmrelay/matrix_utils.py` - Use RadioMessage abstraction
 - `src/mmrelay/config.py` - Support new `radios:` section (with backward compat)
 
 **Strategy:**
 
-1. Modify `main.py` to initialize RadioManager
+1. Modify `main.py` to initialize RadioRegistry
 2. Auto-detect legacy `meshtastic:` config and create MeshtasticBackend
 3. Keep all existing behavior working
 4. Add deprecation warnings for legacy config (not removing support)
@@ -313,7 +317,7 @@ None (pure addition)
 
 **Files to Modify:**
 
-- `src/mmrelay/plugins/base_plugin.py` - Update `send_message()` to use RadioManager
+- `src/mmrelay/plugins/base_plugin.py` - Update `send_message()` to use RadioRegistry
 
 **Strategy:**
 
@@ -364,8 +368,8 @@ Maintain existing public functions:
 ```python
 # meshtastic_utils.py - keep these as compatibility wrappers
 def connect_meshtastic(passed_config=None):
-    """Legacy function - wraps RadioManager"""
-    # Call RadioManager internally
+    """Legacy function - wraps RadioRegistry"""
+    # Call RadioRegistry internally
     pass
 
 def send_text_reply(...):
@@ -408,7 +412,7 @@ self.send_message(text="Hello", channel=0)  # Still works, uses first backend
 ### Unit Tests
 
 - Test each abstraction layer independently
-- Mock backends for RadioManager tests
+- Mock backends for RadioRegistry tests
 - Test message format conversions
 
 ### Integration Tests
@@ -427,7 +431,7 @@ self.send_message(text="Hello", channel=0)  # Still works, uses first backend
 
 1. All existing Meshtastic functionality works unchanged
 2. Old configuration files work without modification
-3. New RadioManager can be extended with additional backends
+3. New RadioRegistry can be extended with additional backends
 4. Unit test coverage >90% for new components
 5. All existing integration tests pass
 6. Documentation complete and clear
@@ -440,7 +444,7 @@ self.send_message(text="Hello", channel=0)  # Still works, uses first backend
 - Phase 4 (Plugin Integration): 1 week
 - Phase 5 (Documentation): 1 week
 
-**Total: 7-10 weeks for complete implementation**
+### Total: 7-10 weeks for complete implementation
 
 ## Future Enhancements
 
@@ -454,7 +458,7 @@ After decoupling is complete, these become possible:
 
 ## Questions to Resolve
 
-1. Should RadioManager support runtime backend registration, or only at startup?
+1. Should RadioRegistry support runtime backend registration, or only at startup?
 2. How to handle backend-specific features in plugins (e.g., telemetry)?
 3. Should message queue be per-backend or global?
 4. How to handle different rate limits across backends?
@@ -470,7 +474,7 @@ Current coupling points:
 
 New files:
 
-- `radio/base_radio.py`: ~200 lines
+- `radio/base_backend.py`: ~200 lines
 - `radio/message.py`: ~150 lines
-- `radio/radio_manager.py`: ~300 lines
+- `radio/registry.py`: ~300 lines
 - `radio/backends/meshtastic_backend.py`: ~400 lines

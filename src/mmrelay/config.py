@@ -51,7 +51,7 @@ def get_radio_backend_selection(config: dict[str, Any]) -> tuple[str | None, boo
     """
     raw = config.get(CONFIG_KEY_RADIO_BACKEND)
     normalized = normalize_radio_backend(raw)
-    explicit_disable = raw is not None and normalized is None
+    explicit_disable = isinstance(raw, str) and normalized is None
     return normalized, explicit_disable
 
 

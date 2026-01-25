@@ -676,7 +676,7 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.connect_matrix")
     @patch("mmrelay.main.join_matrix_room")
     @patch("mmrelay.main.stop_message_queue")
-    @patch("mmrelay.main.meshtastic_utils._disconnect_ble_interface")
+    @patch("mmrelay.meshtastic_utils._disconnect_ble_interface")
     def test_main_shutdown_disconnects_ble_interface(
         self,
         mock_disconnect_iface,
@@ -719,7 +719,7 @@ class TestMain(unittest.TestCase):
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
             patch(
-                "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
+                "mmrelay.radio.backends.meshtastic_backend.concurrent.futures.ThreadPoolExecutor",
                 return_value=executor,
             ),
         ):
@@ -738,7 +738,7 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.join_matrix_room")
     @patch("mmrelay.main.shutdown_plugins")
     @patch("mmrelay.main.stop_message_queue")
-    @patch("mmrelay.main.meshtastic_logger")
+    @patch("mmrelay.radio.backends.meshtastic_backend.meshtastic_logger")
     def test_main_shutdown_timeout_cancels_future(
         self,
         mock_meshtastic_logger,
@@ -781,7 +781,7 @@ class TestMain(unittest.TestCase):
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
             patch(
-                "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
+                "mmrelay.radio.backends.meshtastic_backend.concurrent.futures.ThreadPoolExecutor",
                 return_value=executor,
             ),
         ):
@@ -800,7 +800,7 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.join_matrix_room")
     @patch("mmrelay.main.shutdown_plugins")
     @patch("mmrelay.main.stop_message_queue")
-    @patch("mmrelay.main.meshtastic_logger")
+    @patch("mmrelay.radio.backends.meshtastic_backend.meshtastic_logger")
     def test_main_shutdown_logs_unexpected_close_error(
         self,
         mock_meshtastic_logger,
@@ -826,7 +826,7 @@ class TestMain(unittest.TestCase):
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
             patch(
-                "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
+                "mmrelay.radio.backends.meshtastic_backend.concurrent.futures.ThreadPoolExecutor",
                 return_value=executor,
             ),
         ):
@@ -877,7 +877,7 @@ class TestMain(unittest.TestCase):
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
             patch(
-                "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
+                "mmrelay.radio.backends.meshtastic_backend.concurrent.futures.ThreadPoolExecutor",
                 return_value=executor,
             ),
         ):
@@ -893,7 +893,7 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.connect_matrix")
     @patch("mmrelay.main.join_matrix_room")
     @patch("mmrelay.main.stop_message_queue")
-    @patch("mmrelay.main.meshtastic_logger")
+    @patch("mmrelay.radio.backends.meshtastic_backend.meshtastic_logger")
     def test_main_shutdown_submit_timeout_triggers_outer_warning(
         self,
         mock_meshtastic_logger,
@@ -918,7 +918,7 @@ class TestMain(unittest.TestCase):
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
             patch(
-                "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
+                "mmrelay.radio.backends.meshtastic_backend.concurrent.futures.ThreadPoolExecutor",
                 return_value=executor,
             ),
         ):
@@ -1383,6 +1383,10 @@ def test_main_database_wipe_config(
             "mmrelay.main.meshtastic_utils.check_connection", new_callable=AsyncMock
         ) as mock_check_conn,
         patch("mmrelay.main.wipe_message_map") as mock_wipe,
+        patch(
+            "mmrelay.main.asyncio.get_running_loop",
+            side_effect=_make_patched_get_running_loop(),
+        ),
     ):
         mock_queue = MagicMock()
         mock_queue.ensure_processor_started = MagicMock()

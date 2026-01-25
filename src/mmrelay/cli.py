@@ -1114,9 +1114,7 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                         )
                         return False
 
-                backend_name, explicit_disable = get_radio_backend_selection(config)
-                if backend_name and backend_name.lower() != "meshtastic":
-                    # Skip Meshtastic validation when another backend is selected
+                def _warn_db_deprecated() -> None:
                     if "db" in config:
                         print(
                             "\nWarning: 'db' section is deprecated. Please use 'database' instead.",
@@ -1126,6 +1124,11 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                             "This option still works but may be removed in future versions.\n",
                             file=sys.stderr,
                         )
+
+                backend_name, explicit_disable = get_radio_backend_selection(config)
+                if backend_name and backend_name.lower() != "meshtastic":
+                    # Skip Meshtastic validation when another backend is selected
+                    _warn_db_deprecated()
                     print("\n✅ Configuration file is valid!")
                     return True
 
@@ -1134,37 +1137,7 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                         "\nWarning: Radio backend disabled; running without radio.",
                         file=sys.stderr,
                     )
-                    if "db" in config:
-                        print(
-                            "\nWarning: 'db' section is deprecated. Please use 'database' instead.",
-                            file=sys.stderr,
-                        )
-                        print(
-                            "This option still works but may be removed in future versions.\n",
-                            file=sys.stderr,
-                        )
-                    print("\n✅ Configuration file is valid!")
-                    return True
-
-                if not is_meshtastic_enabled(config):
-                    if CONFIG_SECTION_MESHTASTIC not in config:
-                        print(
-                            "Error: No radio backend configured. Add a meshtastic section or set radio_backend: none."
-                        )
-                        return False
-                    print(
-                        "\nWarning: Meshtastic disabled; running without radio.",
-                        file=sys.stderr,
-                    )
-                    if "db" in config:
-                        print(
-                            "\nWarning: 'db' section is deprecated. Please use 'database' instead.",
-                            file=sys.stderr,
-                        )
-                        print(
-                            "This option still works but may be removed in future versions.\n",
-                            file=sys.stderr,
-                        )
+                    _warn_db_deprecated()
                     print("\n✅ Configuration file is valid!")
                     return True
 
@@ -1178,6 +1151,15 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                     print("       host: meshtastic.local")
                     print("       broadcast_enabled: true")
                     return False
+
+                if not is_meshtastic_enabled(config):
+                    print(
+                        "\nWarning: Meshtastic disabled; running without radio.",
+                        file=sys.stderr,
+                    )
+                    _warn_db_deprecated()
+                    print("\n✅ Configuration file is valid!")
+                    return True
 
                 meshtastic_section = config[CONFIG_SECTION_MESHTASTIC]
                 if "connection_type" not in meshtastic_section:
@@ -1351,15 +1333,7 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                         print(warning)
 
                 # Check for deprecated db section
-                if "db" in config:
-                    print(
-                        "\nWarning: 'db' section is deprecated. Please use 'database' instead.",
-                        file=sys.stderr,
-                    )
-                    print(
-                        "This option still works but may be removed in future versions.\n",
-                        file=sys.stderr,
-                    )
+                _warn_db_deprecated()
 
                 print("\n✅ Configuration file is valid!")
                 return True

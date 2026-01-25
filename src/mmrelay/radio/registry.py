@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from mmrelay.log_utils import get_logger
 from mmrelay.radio.backends.meshtastic_backend import MeshtasticBackend
 from mmrelay.radio.base_backend import BaseRadioBackend
+
+logger = get_logger(name="Radio")
 
 
 class RadioRegistry:
@@ -19,10 +22,13 @@ class RadioRegistry:
         name = backend.backend_name
         key = name.lower()
         if key in self._backends and not replace:
+            logger.debug("Backend '%s' already registered, skipping", name)
             return
         self._backends[key] = backend
+        logger.debug("Registered backend '%s'", name)
         if self._active_backend is None:
             self._active_backend = key
+            logger.debug("Auto-activated backend '%s'", name)
 
     def set_active_backend(self, name: str | None) -> bool:
         if name is None:
@@ -73,5 +79,4 @@ def get_radio_registry() -> RadioRegistry:
     if _registry is None:
         _registry = RadioRegistry()
         _registry.register_backend(MeshtasticBackend())
-        _registry.set_active_backend("meshtastic")
     return _registry
