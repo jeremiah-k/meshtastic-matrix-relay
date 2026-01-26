@@ -224,7 +224,7 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
         """
         Verify MessageQueue handles an ImportError raised during message processing without crashing.
 
-        Starts the queue, causes MessageQueue._should_send_message to raise ImportError while a message is processed, enqueues a message, waits for processing to occur, and asserts the queue remains in a stable running state and that an exception or error was logged.
+        Starts queue, causes MessageQueue._should_send_message to raise ImportError while a message is processed, enqueues a message, waits for processing to occur, and asserts that queue remains in a stable running state and that an exception or error was logged.
         """
 
         async def async_test():
@@ -236,24 +236,25 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
             self.queue.start(message_delay=TEST_MESSAGE_DELAY_LOW)
             self.queue.ensure_processor_started()
 
-            # Mock the import to raise ImportError
-            with patch(
-                "mmrelay.message_queue.MessageQueue._should_send_message"
-            ) as mock_should_send:
-                mock_should_send.side_effect = ImportError("Module not found")
+            # Mock import to raise ImportError - replace instance attribute set in setUp
+            original_should_send = self.queue._should_send_message
+            self.queue._should_send_message = lambda: (_ for _ in ()).throw(
+                ImportError("Module not found")
+            )
 
-                # Queue a message
-                success = self.queue.enqueue(
-                    lambda: "result", description="Test message"
-                )
-                self.assertTrue(success)
+            # Queue a message
+            success = self.queue.enqueue(lambda: "result", description="Test message")
+            self.assertTrue(success)
 
-                # Wait for processing
-                await asyncio.sleep(0.2)
+            # Wait for processing
+            await asyncio.sleep(0.2)
 
-                # The queue may or may not be stopped depending on implementation
-                # Just check that it handled the error gracefully
-                self.assertIsInstance(self.queue.is_running(), bool)
+            # The queue may or may not be stopped depending on implementation
+            # Just check that it handled the error gracefully
+            self.assertIsInstance(self.queue.is_running(), bool)
+
+            # Restore original method
+            self.queue._should_send_message = original_should_send
 
         # Run the async test with proper event loop handling
         try:
@@ -266,7 +267,7 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
             else:
                 raise
 
-        # Verify we logged the failure path
+        # Verify we logged a failure path
         assert mock_logger.exception.called or mock_logger.error.called
 
     def test_message_mapping_with_invalid_result(self):
