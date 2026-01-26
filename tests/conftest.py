@@ -635,6 +635,7 @@ def reset_meshtastic_globals():
         "reconnecting": getattr(mu, "reconnecting", False),
         "shutting_down": getattr(mu, "shutting_down", False),
         "reconnect_task": getattr(mu, "reconnect_task", None),
+        "check_conn_task": getattr(mu, "check_conn_task", None),
         "subscribed_to_messages": getattr(mu, "subscribed_to_messages", False),
         "subscribed_to_connection_lost": getattr(
             mu, "subscribed_to_connection_lost", False
@@ -649,6 +650,7 @@ def reset_meshtastic_globals():
     mu.reconnecting = False
     mu.shutting_down = False
     mu.reconnect_task = None
+    mu.check_conn_task = None
     mu.subscribed_to_messages = False
     mu.subscribed_to_connection_lost = False
     mu._metadata_future = None

@@ -21,6 +21,7 @@ class MeshtasticBackend(BaseRadioBackend):
     ) -> None:
         self._connect_fn = connect_fn or meshtastic_utils.connect_meshtastic
         self._to_thread = to_thread or asyncio.to_thread
+        self._client: Any | None = None
 
     @property
     def backend_name(self) -> str:
@@ -32,21 +33,23 @@ class MeshtasticBackend(BaseRadioBackend):
             await maybe_client if inspect.isawaitable(maybe_client) else maybe_client
         )
         if client is None:
+            self._client = None
             meshtastic_utils.meshtastic_client = None
             return False
-        if client is not None and meshtastic_utils.meshtastic_client is None:
-            meshtastic_utils.meshtastic_client = client
+        self._client = client
+        meshtastic_utils.meshtastic_client = client
         return True
 
     async def disconnect(self) -> None:
-        if not meshtastic_utils.meshtastic_client:
+        client = self._client or meshtastic_utils.meshtastic_client
+        if not client:
             return
 
         def _close_meshtastic_client() -> None:
             """
             Close the Meshtastic client connection with timeout protection.
             """
-            if not meshtastic_utils.meshtastic_client:
+            if not (self._client or meshtastic_utils.meshtastic_client):
                 return
 
             meshtastic_logger.info("Closing Meshtastic client...")
@@ -64,11 +67,9 @@ class MeshtasticBackend(BaseRadioBackend):
                     Clears meshtastic_utils.meshtastic_client (and meshtastic_utils.meshtastic_iface when applicable).
                     Does nothing if no client is present.
                     """
-                    if meshtastic_utils.meshtastic_client:
-                        if (
-                            meshtastic_utils.meshtastic_client
-                            is meshtastic_utils.meshtastic_iface
-                        ):
+                    client_ref = self._client or meshtastic_utils.meshtastic_client
+                    if client_ref:
+                        if client_ref is meshtastic_utils.meshtastic_iface:
                             # BLE shutdown needs an explicit disconnect to release
                             # the adapter; a plain close() can leave BlueZ stuck.
                             meshtastic_utils._disconnect_ble_interface(
@@ -77,8 +78,9 @@ class MeshtasticBackend(BaseRadioBackend):
                             )
                             meshtastic_utils.meshtastic_iface = None
                         else:
-                            meshtastic_utils.meshtastic_client.close()
+                            client_ref.close()
                         meshtastic_utils.meshtastic_client = None
+                        self._client = None
 
                 # Avoid the context manager here: __exit__ would wait for the
                 # worker thread and could block forever if BLE shutdown hangs,
@@ -133,7 +135,7 @@ class MeshtasticBackend(BaseRadioBackend):
     def is_connected(self) -> bool:
         if meshtastic_utils.reconnecting:
             return False
-        client = meshtastic_utils.meshtastic_client
+        client = self._client or meshtastic_utils.meshtastic_client
         if client is None:
             return False
         is_conn = getattr(client, "is_connected", None)
@@ -141,5 +143,8 @@ class MeshtasticBackend(BaseRadioBackend):
             return True
         return is_conn() if callable(is_conn) else bool(is_conn)
 
+    def get_message_delay(self, config: dict[str, Any], default: float) -> float:
+        return config.get("meshtastic", {}).get("message_delay", default)
+
     def get_client(self) -> Any:
-        return meshtastic_utils.meshtastic_client
+        return self._client or meshtastic_utils.meshtastic_client

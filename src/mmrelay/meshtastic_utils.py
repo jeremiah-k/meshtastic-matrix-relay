@@ -113,6 +113,7 @@ reconnecting = False
 shutting_down = False
 
 reconnect_task = None  # To keep track of the reconnect task
+check_conn_task = None  # To keep track of the connection check task
 meshtastic_iface_lock = (
     threading.Lock()
 )  # To prevent race conditions on BLE interface singleton creation

@@ -24,6 +24,10 @@ class BaseRadioBackend(ABC):
     def is_connected(self) -> bool:
         """Return True if the backend is currently connected."""
 
+    def get_message_delay(self, config: dict[str, Any], default: float) -> float:
+        """Return the configured message delay for this backend."""
+        return default
+
     def get_client(self) -> Any:
         """Return the underlying client, if one exists."""
         return None

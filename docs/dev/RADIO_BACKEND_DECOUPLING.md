@@ -65,6 +65,8 @@ Create an abstract base class that defines the contract for all radio backends:
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Optional
 
+from mmrelay.radio.message import RadioMessage
+
 class BaseRadioBackend(ABC):
     """Abstract base class for radio backends."""
 
@@ -99,7 +101,7 @@ class BaseRadioBackend(ABC):
 
     # Message handling
     @abstractmethod
-    def register_message_callback(self, callback: Callable[[Dict[str, Any]], None]) -> None:
+    def register_message_callback(self, callback: Callable[[RadioMessage], None]) -> None:
         """Register a callback to be invoked when messages are received from the radio."""
         pass
 
@@ -137,7 +139,7 @@ class BaseRadioBackend(ABC):
         pass
 ```
 
-### 2. Radio Registry (Current Implementation)
+### 2. Radio Registry (Single-Backend Support)
 
 Track the available backends and select a single active backend. Multi-backend routing can be layered on later.
 
@@ -460,7 +462,7 @@ After decoupling is complete, these become possible:
 
 1. Should RadioRegistry support runtime backend registration, or only at startup?
 2. How to handle backend-specific features in plugins (e.g., telemetry)?
-3. Should message queue be per-backend or global?
+3. Should message queue be per-backend or global? (Initial implementation uses a global queue; per-backend queues may be needed for future multi-backend rate-limit differences.)
 4. How to handle different rate limits across backends?
 
 ## Appendix: Key Files and Line Counts

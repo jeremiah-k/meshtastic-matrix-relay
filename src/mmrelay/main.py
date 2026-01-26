@@ -190,10 +190,9 @@ async def main(config: dict[str, Any]) -> None:
 
     # Start message queue with configured message delay
     message_delay = DEFAULT_MESSAGE_DELAY
-    if active_backend_name == "meshtastic":
-        message_delay = config.get("meshtastic", {}).get(
-            "message_delay", DEFAULT_MESSAGE_DELAY
-        )
+    active_backend = radio_registry.get_active_backend()
+    if active_backend:
+        message_delay = active_backend.get_message_delay(config, DEFAULT_MESSAGE_DELAY)
     start_message_queue(message_delay=message_delay)
 
     if active_backend_name:
@@ -203,6 +202,8 @@ async def main(config: dict[str, Any]) -> None:
                 "Radio backend '%s' did not connect; continuing without radio.",
                 active_backend_name,
             )
+            active_backend_name = None
+            radio_registry.set_active_backend(None)
 
     # Connect to Matrix
     matrix_client = await connect_matrix(passed_config=config)
@@ -279,7 +280,9 @@ async def main(config: dict[str, Any]) -> None:
     if active_backend_name == "meshtastic":
         # Start connection health monitoring using getMetadata() heartbeat
         # This provides proactive connection detection for all interface types
-        _ = asyncio.create_task(meshtastic_utils.check_connection())
+        meshtastic_utils.check_conn_task = asyncio.create_task(
+            meshtastic_utils.check_connection()
+        )
 
     # Ensure message queue processor is started now that event loop is running
     get_message_queue().ensure_processor_started()
@@ -392,6 +395,12 @@ async def main(config: dict[str, Any]) -> None:
         if meshtastic_utils.reconnect_task:
             meshtastic_utils.reconnect_task.cancel()
             meshtastic_logger.info("Cancelled Meshtastic reconnect task.")
+
+        check_conn_task = getattr(meshtastic_utils, "check_conn_task", None)
+        if check_conn_task:
+            check_conn_task.cancel()
+            meshtastic_logger.info("Cancelled Meshtastic connection check task.")
+            meshtastic_utils.check_conn_task = None
 
         # Cancel any remaining tasks (including the check_conn_task)
         current_task = asyncio.current_task()
