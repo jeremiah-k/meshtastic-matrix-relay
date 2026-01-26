@@ -169,6 +169,11 @@ def _run_main_with_sync(
     if event_cls is None:
         event_cls = _ToggleEvent
 
+    from mmrelay.radio.registry import get_radio_registry
+
+    registry = get_radio_registry()
+    previous_backend = registry.get_active_backend_name()
+
     with contextlib.ExitStack() as stack:
         stack.enter_context(patch("mmrelay.main.initialize_database"))
         stack.enter_context(patch("mmrelay.main.load_plugins"))
@@ -200,7 +205,10 @@ def _run_main_with_sync(
         mock_queue.ensure_processor_started = MagicMock()
         mock_get_queue.return_value = mock_queue
 
-        asyncio.run(main(config))
+        try:
+            asyncio.run(main(config))
+        finally:
+            registry.set_active_backend(previous_backend)
 
 
 def _make_patched_get_running_loop():
@@ -1550,6 +1558,9 @@ def test_main_unregistered_backend_clears_active_backend() -> None:
             self.set_calls.append(name)
             return name is None
 
+        def get_active_backend(self) -> Any | None:
+            return None
+
         async def connect_active_backend(self, _config: dict[str, Any]) -> bool:
             raise AssertionError("connect_active_backend should not be called")
 
@@ -1624,6 +1635,175 @@ def test_main_sync_loop_unexpected_error_logs() -> None:
         _run_main_with_sync(_sync_forever)
 
     mock_exc.assert_any_call("Matrix sync failed")
+
+
+def test_main_sync_loop_keyboard_interrupt_result_path() -> None:
+    """KeyboardInterrupt from sync_task.result should trigger shutdown and exit loop."""
+
+    class _StubTask:
+        def __init__(self, result_exc: Exception | None = None) -> None:
+            self._result_exc = result_exc
+            self.cancel_called = False
+            self.result_called = False
+
+        def cancel(self) -> bool:
+            self.cancel_called = True
+            return True
+
+        def result(self) -> None:
+            self.result_called = True
+            if self._result_exc is not None:
+                raise self._result_exc
+            return None
+
+        def __await__(self):
+            async def _wait() -> None:
+                if self.cancel_called:
+                    raise asyncio.CancelledError()
+                return None
+
+            return _wait().__await__()
+
+    sync_task = _StubTask(result_exc=KeyboardInterrupt())
+    shutdown_task = _StubTask()
+    create_calls = 0
+
+    def _create_task_side_effect(coro):
+        nonlocal create_calls
+        coro.close()
+        create_calls += 1
+        return sync_task if create_calls == 1 else shutdown_task
+
+    async def _wait_side_effect(*_args, **_kwargs):
+        return ({sync_task}, {shutdown_task})
+
+    config = {
+        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+        "radio_backend": "none",
+    }
+    mock_matrix_client = _make_matrix_client(AsyncMock())
+
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(patch("mmrelay.main.initialize_database"))
+        stack.enter_context(patch("mmrelay.main.load_plugins"))
+        stack.enter_context(patch("mmrelay.main.start_message_queue"))
+        stack.enter_context(patch("mmrelay.main.stop_message_queue"))
+        stack.enter_context(patch("mmrelay.main.shutdown_plugins"))
+        stack.enter_context(
+            patch(
+                "mmrelay.main.asyncio.get_running_loop",
+                side_effect=_make_patched_get_running_loop(),
+            )
+        )
+        stack.enter_context(patch("mmrelay.main.asyncio.Event", new=_ToggleEvent))
+        stack.enter_context(
+            patch(
+                "mmrelay.main.asyncio.create_task",
+                side_effect=_create_task_side_effect,
+            )
+        )
+        stack.enter_context(patch("mmrelay.main.asyncio.wait", new=_wait_side_effect))
+        mock_connect_matrix = stack.enter_context(
+            patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
+        )
+        mock_connect_matrix.return_value = mock_matrix_client
+        stack.enter_context(
+            patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
+        )
+        mock_get_queue = stack.enter_context(patch("mmrelay.main.get_message_queue"))
+        mock_queue = MagicMock()
+        mock_queue.ensure_processor_started = MagicMock()
+        mock_get_queue.return_value = mock_queue
+
+        asyncio.run(main(config))
+
+    assert sync_task.result_called is True
+    assert shutdown_task.cancel_called is True
+
+
+def test_main_sync_loop_system_exit_raises() -> None:
+    """SystemExit from sync_forever should be re-raised after shutdown."""
+
+    class _StubTask:
+        def __init__(self, result_exc: Exception | None = None) -> None:
+            self._result_exc = result_exc
+            self.cancel_called = False
+            self.result_called = False
+
+        def cancel(self) -> bool:
+            self.cancel_called = True
+            return True
+
+        def result(self) -> None:
+            self.result_called = True
+            if self._result_exc is not None:
+                raise self._result_exc
+            return None
+
+        def __await__(self):
+            async def _wait() -> None:
+                if self.cancel_called:
+                    raise asyncio.CancelledError()
+                return None
+
+            return _wait().__await__()
+
+    sync_task = _StubTask(result_exc=SystemExit())
+    shutdown_task = _StubTask()
+    create_calls = 0
+
+    def _create_task_side_effect(coro):
+        nonlocal create_calls
+        coro.close()
+        create_calls += 1
+        return sync_task if create_calls == 1 else shutdown_task
+
+    async def _wait_side_effect(*_args, **_kwargs):
+        return ({sync_task}, {shutdown_task})
+
+    config = {
+        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+        "radio_backend": "none",
+    }
+    mock_matrix_client = _make_matrix_client(AsyncMock())
+
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(patch("mmrelay.main.initialize_database"))
+        stack.enter_context(patch("mmrelay.main.load_plugins"))
+        stack.enter_context(patch("mmrelay.main.start_message_queue"))
+        stack.enter_context(patch("mmrelay.main.stop_message_queue"))
+        stack.enter_context(patch("mmrelay.main.shutdown_plugins"))
+        stack.enter_context(
+            patch(
+                "mmrelay.main.asyncio.get_running_loop",
+                side_effect=_make_patched_get_running_loop(),
+            )
+        )
+        stack.enter_context(patch("mmrelay.main.asyncio.Event", new=_ToggleEvent))
+        stack.enter_context(
+            patch(
+                "mmrelay.main.asyncio.create_task",
+                side_effect=_create_task_side_effect,
+            )
+        )
+        stack.enter_context(patch("mmrelay.main.asyncio.wait", new=_wait_side_effect))
+        mock_connect_matrix = stack.enter_context(
+            patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
+        )
+        mock_connect_matrix.return_value = mock_matrix_client
+        stack.enter_context(
+            patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
+        )
+        mock_get_queue = stack.enter_context(patch("mmrelay.main.get_message_queue"))
+        mock_queue = MagicMock()
+        mock_queue.ensure_processor_started = MagicMock()
+        mock_get_queue.return_value = mock_queue
+
+        with pytest.raises(SystemExit):
+            asyncio.run(main(config))
+
+    assert sync_task.result_called is True
+    assert shutdown_task.cancel_called is True
 
 
 def test_main_sync_loop_wait_error_breaks_cleanly() -> None:
@@ -1754,6 +1934,30 @@ class TestRunMainFunction(unittest.TestCase):
 
         self.assertEqual(result, 0)
         mock_asyncio_run.assert_called_once()
+
+    @patch("mmrelay.main.print_banner")
+    @patch("mmrelay.config.load_config")
+    @patch("mmrelay.config.load_credentials")
+    def test_run_main_missing_keys_with_credentials(
+        self, mock_load_credentials, mock_load_config, mock_print_banner
+    ):
+        """run_main should fail when required keys are missing with credentials.json."""
+        mock_config = {
+            "meshtastic": {"connection_type": "serial"},
+        }
+        mock_load_config.return_value = mock_config
+        mock_load_credentials.return_value = {"access_token": "test_token"}
+
+        mock_args = MagicMock()
+        mock_args.data_dir = None
+        mock_args.log_level = None
+
+        with patch("mmrelay.main.asyncio.run") as mock_asyncio_run:
+            mock_asyncio_run.side_effect = _close_coro_if_possible
+            result = run_main(mock_args)
+
+        self.assertEqual(result, 1)
+        mock_print_banner.assert_called_once()
 
     @patch("mmrelay.main.print_banner")
     @patch("mmrelay.config.load_config")

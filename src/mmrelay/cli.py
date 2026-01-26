@@ -1125,21 +1125,24 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                             file=sys.stderr,
                         )
 
-                backend_name, explicit_disable = get_radio_backend_selection(config)
-                if backend_name and backend_name.lower() != "meshtastic":
-                    # Skip Meshtastic validation when another backend is selected
+                def _exit_as_valid_non_meshtastic(
+                    warning: str | None = None,
+                ) -> bool:
+                    if warning:
+                        print(f"\n{warning}", file=sys.stderr)
                     _warn_db_deprecated()
                     print("\n✅ Configuration file is valid!")
                     return True
 
+                backend_name, explicit_disable = get_radio_backend_selection(config)
+                if backend_name and backend_name.lower() != "meshtastic":
+                    # Skip Meshtastic validation when another backend is selected
+                    return _exit_as_valid_non_meshtastic()
+
                 if explicit_disable:
-                    print(
-                        "\nWarning: Radio backend disabled; running without radio.",
-                        file=sys.stderr,
+                    return _exit_as_valid_non_meshtastic(
+                        "Warning: Radio backend disabled; running without radio."
                     )
-                    _warn_db_deprecated()
-                    print("\n✅ Configuration file is valid!")
-                    return True
 
                 # Check meshtastic section
                 if CONFIG_SECTION_MESHTASTIC not in config:
@@ -1153,13 +1156,9 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                     return False
 
                 if not is_meshtastic_enabled(config):
-                    print(
-                        "\nWarning: Meshtastic disabled; running without radio.",
-                        file=sys.stderr,
+                    return _exit_as_valid_non_meshtastic(
+                        "Warning: Meshtastic disabled; running without radio."
                     )
-                    _warn_db_deprecated()
-                    print("\n✅ Configuration file is valid!")
-                    return True
 
                 meshtastic_section = config[CONFIG_SECTION_MESHTASTIC]
                 if "connection_type" not in meshtastic_section:

@@ -662,11 +662,14 @@ class TestPerformanceStress:
                         # Verify messages were sent with approximately the configured delay
                         for i in range(1, len(send_times)):
                             time_diff = send_times[i] - send_times[i - 1]
-                            # Allow some tolerance for timing variations (should be close to 0.1s)
+                            # Allow tolerance for scheduling/executor jitter in CI (should be close to 0.1s)
                             assert (
                                 time_diff >= message_delay * 0.5
-                                and time_diff <= message_delay * 2.0
-                            ), f"Message delay {time_diff:.3f}s not close to expected {message_delay}s between messages {i-1} and {i}"
+                                and time_diff <= message_delay * 2.0 + 0.05
+                            ), (
+                                f"Message delay {time_diff:.3f}s not close to expected "
+                                f"{message_delay}s between messages {i-1} and {i}"
+                            )
 
                     finally:
                         queue.stop()

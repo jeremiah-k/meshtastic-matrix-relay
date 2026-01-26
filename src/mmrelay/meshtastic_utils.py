@@ -26,7 +26,7 @@ from pubsub import pub  # type: ignore[import-untyped]
 from mmrelay.config import (
     get_meshtastic_config_value,
     get_radio_backend_selection,
-    is_meshtastic_enabled,
+    is_meshtastic_selected,
 )
 from mmrelay.constants.config import (
     CONFIG_KEY_MESHNET_NAME,
@@ -1726,20 +1726,21 @@ def connect_meshtastic(
 
     if config is not None:
         backend_name, explicit_disable = get_radio_backend_selection(config)
-        if backend_name:
-            if backend_name.lower() != "meshtastic":
-                logger.info(
-                    "Configured radio backend '%s' is not Meshtastic; skipping connection.",
-                    backend_name,
-                )
-                return None
-        elif explicit_disable:
+        if backend_name and backend_name.lower() != "meshtastic":
+            logger.info(
+                "Configured radio backend '%s' is not Meshtastic; skipping connection.",
+                backend_name,
+            )
+            return None
+        if explicit_disable:
             logger.info(
                 "Radio backend disabled by configuration; skipping Meshtastic connection."
             )
             return None
-        elif CONFIG_SECTION_MESHTASTIC in config and not is_meshtastic_enabled(config):
-            logger.info("Meshtastic disabled by configuration; skipping connection.")
+        if CONFIG_SECTION_MESHTASTIC in config and not is_meshtastic_selected(config):
+            logger.info(
+                "Meshtastic is not the selected radio backend or is disabled; skipping connection."
+            )
             return None
 
     with meshtastic_lock:
