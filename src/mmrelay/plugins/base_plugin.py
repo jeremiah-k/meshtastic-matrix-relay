@@ -45,6 +45,7 @@ from mmrelay.plugin_loader import logger as plugins_logger
 from mmrelay.plugin_loader import (
     schedule_job,
 )
+from mmrelay.radio.registry import get_radio_registry
 
 # Global config variable that will be set from main.py
 config: dict[str, Any] | None = None
@@ -65,6 +66,7 @@ class BasePlugin(ABC):
     - Database storage for plugin-specific data
     - Channel and direct message handling
     - Matrix message sending capabilities
+    - Radio message sending via backend abstraction
     - Scheduling support for background tasks
     - Command matching and routing
 
@@ -403,9 +405,9 @@ class BasePlugin(ABC):
 
     def get_my_node_id(self) -> int | None:
         """
-        Return the relay's Meshtastic node ID.
+        Return the relay's node ID from the active radio backend.
 
-        Caches the ID after the first successful retrieval to avoid repeated connections.
+        Caches the ID after the first successful retrieval to avoid repeated lookups.
 
         Returns:
             int: The relay's node ID if available, `None` otherwise.
@@ -413,11 +415,14 @@ class BasePlugin(ABC):
         if hasattr(self, "_my_node_id") and self._my_node_id is not None:
             return self._my_node_id
 
-        from mmrelay.meshtastic_utils import connect_meshtastic
+        backend = get_radio_registry().get_active_backend()
+        if backend is None:
+            self.logger.debug("No active radio backend, cannot get node ID")
+            return None
 
-        meshtastic_client = connect_meshtastic()
-        if meshtastic_client and meshtastic_client.myInfo:
-            self._my_node_id = meshtastic_client.myInfo.my_node_num
+        client = backend.get_client()
+        if client and hasattr(client, "myInfo") and client.myInfo:
+            self._my_node_id = client.myInfo.my_node_num
             return self._my_node_id
         return None
 
@@ -444,7 +449,7 @@ class BasePlugin(ABC):
         self, text: str, channel: int = 0, destination_id: int | None = None
     ) -> bool:
         """
-        Queue a text message for broadcast or direct delivery on the Meshtastic network.
+        Queue a text message for broadcast or direct delivery via the radio backend.
 
         Parameters:
             text: Message content to send.
@@ -454,26 +459,19 @@ class BasePlugin(ABC):
         Returns:
             `true` if the message was queued successfully, `false` otherwise.
         """
-        from mmrelay.meshtastic_utils import connect_meshtastic
-
-        meshtastic_client = connect_meshtastic()
-        if not meshtastic_client:
-            self.logger.error("No Meshtastic client available")
+        backend = get_radio_registry().get_active_backend()
+        if backend is None:
+            self.logger.error("No active radio backend available")
             return False
 
         description = f"Plugin {self.plugin_name}: {text[:DEFAULT_TEXT_TRUNCATION_LENGTH]}{'...' if len(text) > DEFAULT_TEXT_TRUNCATION_LENGTH else ''}"
 
-        send_kwargs: dict[str, Any] = {
-            "text": text,
-            "channelIndex": channel,
-        }
-        if destination_id:
-            send_kwargs["destinationId"] = destination_id
-
         return queue_message(
-            meshtastic_client.sendText,
+            backend.send_message,
             description=description,
-            **send_kwargs,
+            text=text,
+            channel=channel,
+            destination_id=destination_id,
         )
 
     def is_channel_enabled(

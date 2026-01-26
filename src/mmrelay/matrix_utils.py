@@ -101,6 +101,7 @@ from mmrelay.meshtastic_utils import connect_meshtastic, send_text_reply
 
 # Import meshtastic protobuf for port numbers when needed
 from mmrelay.message_queue import get_message_queue, queue_message
+from mmrelay.radio.registry import get_radio_registry
 
 # Import nio exception types with error handling for test environments.
 # matrix-nio is not marked py.typed in our env; keep import-untyped for mypy --strict.
@@ -1079,6 +1080,16 @@ async def _connect_meshtastic() -> Any:
         meshtastic_iface: The Meshtastic interface or proxy object produced by the synchronous connector.
     """
     return await asyncio.to_thread(connect_meshtastic)
+
+
+def _get_radio_backend() -> Any:
+    """
+    Get the active radio backend for sending messages.
+
+    Returns:
+        The active radio backend instance, or None if no backend is configured.
+    """
+    return get_radio_registry().get_active_backend()
 
 
 async def _get_meshtastic_interface_and_channel(
@@ -2833,7 +2844,7 @@ async def send_reply_to_meshtastic(
     """
     Queue a Meshtastic delivery for a Matrix reply, optionally sending it as a structured reply that targets a specific Meshtastic message.
 
-    Creates and attaches message-mapping metadata when storage is enabled, respects the channel from room_config, and honors an optional relay_config override. Enqueues either a structured reply (when reply_id is provided) or a regular broadcast and logs outcomes; the function handles errors internally and does not raise.
+    Creates and attaches message-mapping metadata when storage is enabled, respects the channel from room_config, and honors an optional relay_config override. Enqueues either a structured reply (when reply_id is provided) or a regular broadcast and logs outcomes; function handles errors internally and does not raise.
 
     Parameters:
         reply_message (str): Meshtastic-ready text payload to send.
@@ -2841,22 +2852,31 @@ async def send_reply_to_meshtastic(
         room_config (dict): Room-specific configuration; must include "meshtastic_channel" (integer channel index).
         room (MatrixRoom): Matrix room object; room.room_id is used in mapping metadata.
         event (RoomMessageText | RoomMessageNotice | ReactionEvent | RoomMessageEmote): Matrix event object; event.event_id is used in mapping metadata.
-        text (str): Original Matrix message text used when building mapping metadata.
-        storage_enabled (bool): If True, create and attach a message-mapping record for correlation of future replies/reactions.
-        local_meshnet_name (str): Local meshnet name to include in mapping metadata when present.
-        reply_id (int | None): If provided, send as a structured Meshtastic reply targeting this Meshtastic message ID; if None, send as a regular broadcast.
-        relay_config (dict[str, Any] | None): Optional config override to control Meshtastic broadcast and message-map settings.
+        text (str): Original text from Matrix event (used for storage in mapping metadata).
+        storage_enabled (bool): Whether message mapping/storage is enabled.
+        local_meshnet_name (str): Local meshnet name for prefixing and formatting decisions.
+        reply_id (int | None): Optional Meshtastic message ID to reply to; if provided, the message is sent as a structured reply.
+        relay_config (dict | None): Optional per-reply configuration override (e.g., for testing).
 
     Returns:
-        bool: `True` if the message was successfully queued for delivery to Meshtastic, `False` otherwise.
+        bool: `True` if the message was successfully queued to Meshtastic, `False` otherwise.
     """
-    (
-        meshtastic_interface,
-        meshtastic_channel,
-    ) = await _get_meshtastic_interface_and_channel(room_config, "relay reply")
+    backend = _get_radio_backend()
     from mmrelay.meshtastic_utils import logger as meshtastic_logger
 
-    if not meshtastic_interface or meshtastic_channel is None:
+    if backend is None:
+        meshtastic_logger.error("No active radio backend available for sending")
+        return False
+
+    meshtastic_channel = room_config.get("meshtastic_channel")
+    if (
+        meshtastic_channel is None
+        or not isinstance(meshtastic_channel, int)
+        or meshtastic_channel < 0
+    ):
+        meshtastic_logger.error(
+            f"Invalid meshtastic_channel value in room config: {meshtastic_channel!r}"
+        )
         return False
 
     effective_config = relay_config if relay_config is not None else config
@@ -2884,65 +2904,46 @@ async def send_reply_to_meshtastic(
                 event.event_id, room.room_id, text, local_meshnet_name, msgs_to_keep
             )
 
-        if reply_id is not None:
-            # Send as a structured reply using our custom function
-            # Queue structured reply message for delivery to Meshtastic.
-            success = queue_message(
-                send_text_reply,
-                meshtastic_interface,
-                text=reply_message,
-                reply_id=reply_id,
-                channelIndex=meshtastic_channel,
-                description=f"Reply from {full_display_name} to message {reply_id}",
-                mapping_info=mapping_info,
-            )
+        # Send as structured reply if reply_id is provided, otherwise as regular message
+        description_suffix = (
+            f"to message {reply_id}" if reply_id is not None else "(regular message)"
+        )
+        description = f"Reply from {full_display_name} {description_suffix}"
 
-            if success:
-                # Get queue size to determine logging approach
-                queue_size = get_message_queue().get_queue_size()
-
-                if queue_size > 1:
-                    meshtastic_logger.info(
-                        f"Relaying Matrix reply from {full_display_name} to radio broadcast as structured reply (queued: {queue_size} messages)"
-                    )
-                else:
-                    meshtastic_logger.info(
-                        f"Relaying Matrix reply from {full_display_name} to radio broadcast as structured reply"
-                    )
-                return True
-            else:
-                meshtastic_logger.error(
-                    "Failed to relay structured reply to Meshtastic"
+        # Wrap async backend.send_message for use with queue_message
+        # queue_message expects a sync callable, so we use a lambda with asyncio.run
+        def _send_via_backend() -> Any:
+            return asyncio.run(
+                backend.send_message(
+                    text=reply_message,
+                    channel=meshtastic_channel,
+                    destination_id=None,
+                    reply_to_id=reply_id,
                 )
-                return False
-        else:
-            # Send as regular message (fallback for when no reply_id is available)
-            success = queue_message(
-                meshtastic_interface.sendText,
-                text=reply_message,
-                channelIndex=meshtastic_channel,
-                description=f"Reply from {full_display_name} (fallback to regular message)",
-                mapping_info=mapping_info,
             )
 
-            if success:
-                # Get queue size to determine logging approach
-                queue_size = get_message_queue().get_queue_size()
+        success = queue_message(
+            _send_via_backend,
+            description=description,
+            mapping_info=mapping_info,
+        )
 
-                if queue_size > 1:
-                    meshtastic_logger.info(
-                        f"Relaying Matrix reply from {full_display_name} to radio broadcast (queued: {queue_size} messages)"
-                    )
-                else:
-                    meshtastic_logger.info(
-                        f"Relaying Matrix reply from {full_display_name} to radio broadcast"
-                    )
-                return True
+        if success:
+            # Get queue size to determine logging approach
+            queue_size = get_message_queue().get_queue_size()
+
+            if queue_size > 1:
+                meshtastic_logger.info(
+                    f"Relaying Matrix reply from {full_display_name} to radio broadcast {description_suffix} (queued: {queue_size} messages)"
+                )
             else:
-                meshtastic_logger.error("Failed to relay reply message to Meshtastic")
-                return False
-
-        # Message mapping is now handled automatically by the queue system
+                meshtastic_logger.info(
+                    f"Relaying Matrix reply from {full_display_name} to radio broadcast {description_suffix}"
+                )
+            return True
+        else:
+            meshtastic_logger.error("Failed to relay reply message to Meshtastic")
+            return False
 
     except Exception:  # noqa: BLE001 - error boundary for Meshtastic send path
         # Keep the bridge alive for unexpected Meshtastic send errors
@@ -3305,14 +3306,20 @@ async def on_room_message(
             reaction_message = f'{shortname}/{short_meshnet_name} reacted {reaction_emoji} to "{abbreviated_text}"'
 
             # Relay the remote reaction to the local meshnet.
-            (
-                meshtastic_interface,
-                meshtastic_channel,
-            ) = await _get_meshtastic_interface_and_channel(
-                room_config, "relay reaction"
-            )
-            # _get_meshtastic_interface_and_channel validates channel and returns None on failure.
-            if not meshtastic_interface:
+            backend = _get_radio_backend()
+            if backend is None:
+                logger.error("No active radio backend available for sending")
+                return
+
+            meshtastic_channel = room_config.get("meshtastic_channel")
+            if (
+                meshtastic_channel is None
+                or not isinstance(meshtastic_channel, int)
+                or meshtastic_channel < 0
+            ):
+                logger.error(
+                    f"Invalid meshtastic_channel value in room config: {meshtastic_channel!r}"
+                )
                 return
 
             if get_meshtastic_config_value(
@@ -3322,21 +3329,30 @@ async def on_room_message(
                     f"Relaying reaction from remote meshnet {meshnet_name} to radio broadcast"
                 )
                 logger.debug(
-                    f"Sending reaction to Meshtastic with meshnet={local_meshnet_name}: {reaction_message}"
+                    f"Sending reaction to radio with meshnet={local_meshnet_name}: {reaction_message}"
                 )
+
+                # Wrap async backend.send_message for use with queue_message
+                # queue_message expects a sync callable, so we use a lambda with asyncio.run
+                def _send_via_backend() -> Any:
+                    return asyncio.run(
+                        backend.send_message(
+                            text=reaction_message,
+                            channel=meshtastic_channel,
+                            destination_id=None,
+                            reply_to_id=None,
+                        )
+                    )
+
                 success = queue_message(
-                    meshtastic_interface.sendText,
-                    text=reaction_message,
-                    channelIndex=meshtastic_channel,
+                    _send_via_backend,
                     description=f"Remote reaction from {meshnet_name}",
                 )
 
                 if success:
-                    logger.debug(
-                        f"Queued remote reaction to Meshtastic: {reaction_message}"
-                    )
+                    logger.debug(f"Queued remote reaction to radio: {reaction_message}")
                 else:
-                    logger.error("Failed to relay remote reaction to Meshtastic")
+                    logger.error("Failed to relay remote reaction to radio")
                     return
             # We've relayed the remote reaction to our local mesh, so we're done.
             return
@@ -3377,14 +3393,21 @@ async def on_room_message(
             reaction_message = (
                 f'{prefix}reacted {reaction_emoji} to "{abbreviated_text}"'
             )
-            (
-                meshtastic_interface,
-                meshtastic_channel,
-            ) = await _get_meshtastic_interface_and_channel(
-                room_config, "relay reaction"
-            )
-            # _get_meshtastic_interface_and_channel validates channel and returns None on failure.
-            if not meshtastic_interface:
+
+            backend = _get_radio_backend()
+            if backend is None:
+                logger.error("No active radio backend available for sending")
+                return
+
+            meshtastic_channel = room_config.get("meshtastic_channel")
+            if (
+                meshtastic_channel is None
+                or not isinstance(meshtastic_channel, int)
+                or meshtastic_channel < 0
+            ):
+                logger.error(
+                    f"Invalid meshtastic_channel value in room config: {meshtastic_channel!r}"
+                )
                 return
 
             if get_meshtastic_config_value(
@@ -3394,21 +3417,30 @@ async def on_room_message(
                     f"Relaying reaction from {full_display_name} to radio broadcast"
                 )
                 logger.debug(
-                    f"Sending reaction to Meshtastic with meshnet={local_meshnet_name}: {reaction_message}"
+                    f"Sending reaction to radio with meshnet={local_meshnet_name}: {reaction_message}"
                 )
+
+                # Wrap async backend.send_message for use with queue_message
+                # queue_message expects a sync callable, so we use a lambda with asyncio.run
+                def _send_via_backend() -> Any:
+                    return asyncio.run(
+                        backend.send_message(
+                            text=reaction_message,
+                            channel=meshtastic_channel,
+                            destination_id=None,
+                            reply_to_id=None,
+                        )
+                    )
+
                 success = queue_message(
-                    meshtastic_interface.sendText,
-                    text=reaction_message,
-                    channelIndex=meshtastic_channel,
+                    _send_via_backend,
                     description=f"Local reaction from {full_display_name}",
                 )
 
                 if success:
-                    logger.debug(
-                        f"Queued local reaction to Meshtastic: {reaction_message}"
-                    )
+                    logger.debug(f"Queued local reaction to radio: {reaction_message}")
                 else:
-                    logger.error("Failed to relay local reaction to Meshtastic")
+                    logger.error("Failed to relay local reaction to radio")
                     return
             return
 
@@ -3591,17 +3623,24 @@ async def on_room_message(
         )
         return
 
-    # Connect to Meshtastic and validate channel for regular messages
-    (
-        meshtastic_interface,
-        meshtastic_channel,
-    ) = await _get_meshtastic_interface_and_channel(room_config, "relay message")
-
-    if not meshtastic_interface:
-        # The helper function already logs the specific error
+    # Connect to radio backend and validate channel for regular messages
+    backend = _get_radio_backend()
+    if backend is None:
+        logger.error("No active radio backend available for sending")
         return
 
-    # If message is from Matrix and broadcast_enabled is True, relay to Meshtastic
+    meshtastic_channel = room_config.get("meshtastic_channel")
+    if (
+        meshtastic_channel is None
+        or not isinstance(meshtastic_channel, int)
+        or meshtastic_channel < 0
+    ):
+        logger.error(
+            f"Invalid meshtastic_channel value in room config: {meshtastic_channel!r}"
+        )
+        return
+
+    # If message is from Matrix and broadcast_enabled is True, relay to radio
     # Note: If relay_reactions is False, we won't store message_map, but we can still relay.
     # The lack of message_map storage just means no reaction bridging will occur.
     if not found_matching_plugin:
@@ -3621,10 +3660,20 @@ async def on_room_message(
                     msgs_to_keep,
                 )
 
+            # Wrap async backend.send_message for use with queue_message
+            # queue_message expects a sync callable, so we use a lambda with asyncio.run
+            def _send_via_backend() -> Any:
+                return asyncio.run(
+                    backend.send_message(
+                        text=full_message,
+                        channel=meshtastic_channel,
+                        destination_id=None,
+                        reply_to_id=None,
+                    )
+                )
+
             success = queue_message(
-                meshtastic_interface.sendText,
-                text=full_message,
-                channelIndex=meshtastic_channel,
+                _send_via_backend,
                 description=f"Message from {full_display_name}",
                 mapping_info=mapping_info,
             )
@@ -3642,7 +3691,7 @@ async def on_room_message(
                         f"Relaying message from {full_display_name} to radio broadcast"
                     )
             else:
-                meshtastic_logger.error("Failed to relay message to Meshtastic")
+                meshtastic_logger.error("Failed to relay message to radio")
                 return
             # Message mapping is now handled automatically by the queue system
         else:

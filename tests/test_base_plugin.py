@@ -689,42 +689,179 @@ class TestBasePlugin(unittest.TestCase):
         self.assertEqual(result, 123456789)
         mock_connect_meshtastic.assert_called_once()
 
-    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    def test_get_my_node_id_caches_on_success(self, mock_connect_meshtastic):
+    @patch("mmrelay.plugins.base_plugin.get_radio_registry")
+    def test_get_my_node_id_caches_on_success(self, mock_get_registry):
         """Test that get_my_node_id caches the node ID on a successful call."""
+        from mmrelay.radio.registry import get_radio_registry
+
         plugin = MockPlugin()
+
+        # Mock the entire chain: registry -> backend -> client -> myInfo
         mock_client = MagicMock()
         mock_client.myInfo.my_node_num = 123456789
-        mock_connect_meshtastic.return_value = mock_client
+        mock_backend = MagicMock()
+        mock_backend.get_client.return_value = mock_client
+        mock_registry = MagicMock()
+        mock_registry.get_active_backend.return_value = mock_backend
 
-        # First call should connect and cache
-        self.assertEqual(plugin.get_my_node_id(), 123456789)
-        mock_connect_meshtastic.assert_called_once()
+        # Patch get_radio_registry to return our mock
+        with patch(
+            "mmrelay.radio.registry.get_radio_registry", return_value=mock_registry
+        ):
+            # First call should retrieve and cache
+            self.assertEqual(plugin.get_my_node_id(), 123456789)
+            mock_registry.get_active_backend.assert_called_once()
+            mock_backend.get_client.assert_called_once()
 
-        # Second call should use the cache
-        self.assertEqual(plugin.get_my_node_id(), 123456789)
-        mock_connect_meshtastic.assert_called_once()  # Still called only once
+            # Second call should use cache
+            self.assertEqual(plugin.get_my_node_id(), 123456789)
+            mock_registry.get_active_backend.assert_called_once()  # Still called only once
+            mock_backend.get_client.assert_called_once()  # Still called only once
 
-    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    def test_get_my_node_id_no_client(self, mock_connect_meshtastic):
-        """Test that get_my_node_id returns None when no client is available."""
+    @patch("mmrelay.plugins.base_plugin.get_radio_registry")
+    def test_get_my_node_id_no_client(self, mock_get_registry):
+        """Test that get_my_node_id returns None when there is no active backend."""
+        from mmrelay.radio.registry import get_radio_registry
+
         plugin = MockPlugin()
 
-        mock_connect_meshtastic.return_value = None
+        # Mock registry that returns None for active backend
+        mock_registry = MagicMock()
+        mock_registry.get_active_backend.return_value = None
 
-        result = plugin.get_my_node_id()
+        # Patch get_radio_registry to return our mock
+        with patch(
+            "mmrelay.radio.registry.get_radio_registry", return_value=mock_registry
+        ):
+            result = plugin.get_my_node_id()
 
-        self.assertIsNone(result)
+            self.assertIsNone(result)
+            mock_registry.get_active_backend.assert_called_once()
 
-    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    def test_get_my_node_id_no_myinfo(self, mock_connect_meshtastic):
-        """Test that get_my_node_id returns None when client has no myInfo."""
+    @patch("mmrelay.plugins.base_plugin.get_radio_registry")
+    def test_get_my_node_id_no_myinfo(self, mock_get_registry):
+        """Test that get_my_node_id returns None when backend client has no myInfo."""
+        from mmrelay.radio.registry import get_radio_registry
+
         plugin = MockPlugin()
 
         # Mock client without myInfo
         mock_client = MagicMock()
         mock_client.myInfo = None
-        mock_connect_meshtastic.return_value = mock_client
+        mock_backend = MagicMock()
+        mock_backend.get_client.return_value = mock_client
+        mock_registry = MagicMock()
+        mock_registry.get_active_backend.return_value = mock_backend
+
+        # Patch get_radio_registry to return our mock
+        with patch(
+            "mmrelay.radio.registry.get_radio_registry", return_value=mock_registry
+        ):
+            result = plugin.get_my_node_id()
+
+            self.assertIsNone(result)
+            mock_registry.get_active_backend.assert_called_once()
+            mock_backend.get_client.assert_called_once()
+
+        # Second call should use the cache
+        self.assertEqual(plugin.get_my_node_id(), 123456789)
+        mock_get_registry.assert_called_once()  # Still called only once
+        mock_registry.get_active_backend.assert_called_once()  # Still called only once
+        mock_backend.get_client.assert_called_once()  # Still called only once
+
+    @patch("mmrelay.radio.registry.get_radio_registry")
+    def test_get_my_node_id_no_client(self, mock_get_registry):
+        """Test that get_my_node_id returns None when there is no active backend."""
+        plugin = MockPlugin()
+
+        # Mock the registry that returns None for the active backend
+        mock_registry = MagicMock()
+        mock_registry.get_active_backend.return_value = None
+        mock_get_registry.return_value = mock_registry
+
+        result = plugin.get_my_node_id()
+
+        self.assertIsNone(result)
+        mock_get_registry.assert_called_once()
+        mock_registry.get_active_backend.assert_called_once()
+
+    @patch("mmrelay.radio.registry.get_radio_registry")
+    def test_get_my_node_id_no_myinfo(self, mock_get_registry):
+        """Test that get_my_node_id returns None when the backend client has no myInfo."""
+        plugin = MockPlugin()
+
+        # Mock the client without myInfo
+        mock_client = MagicMock()
+        mock_client.myInfo = None
+        mock_backend = MagicMock()
+        mock_backend.get_client.return_value = mock_client
+        mock_registry = MagicMock()
+        mock_registry.get_active_backend.return_value = mock_backend
+        mock_get_registry.return_value = mock_registry
+
+        result = plugin.get_my_node_id()
+
+        self.assertIsNone(result)
+        mock_get_registry.assert_called_once()
+        mock_registry.get_active_backend.assert_called_once()
+        mock_backend.get_client.assert_called_once()
+
+        # Second call should use the cache
+        self.assertEqual(plugin.get_my_node_id(), 123456789)
+        mock_get_registry.assert_called_once()  # Still called only once
+        mock_registry.get_active_backend.assert_called_once()  # Still called only once
+        mock_backend.get_client.assert_called_once()  # Still called only once
+
+    @patch("mmrelay.plugins.base_plugin.get_radio_registry")
+    def test_get_my_node_id_no_client(self, mock_get_registry):
+        """Test that get_my_node_id returns None when there is no active backend."""
+        plugin = MockPlugin()
+
+        # Mock registry that returns None for the active backend
+        mock_registry = MagicMock()
+        mock_registry.get_active_backend.return_value = None
+        mock_get_registry.return_value = mock_registry
+
+        result = plugin.get_my_node_id()
+
+        self.assertIsNone(result)
+        mock_get_registry.assert_called_once()
+        mock_registry.get_active_backend.assert_called_once()
+
+    @patch("mmrelay.plugins.base_plugin.get_radio_registry")
+    def test_get_my_node_id_no_myinfo(self, mock_get_registry):
+        """Test that get_my_node_id returns None when the backend client has no myInfo."""
+        plugin = MockPlugin()
+
+        # Mock client without myInfo
+        mock_client = MagicMock()
+        mock_client.myInfo = None
+        mock_backend = MagicMock()
+        mock_backend.get_client.return_value = mock_client
+        mock_registry = MagicMock()
+        mock_registry.get_active_backend.return_value = mock_backend
+        mock_get_registry.return_value = mock_registry
+
+        result = plugin.get_my_node_id()
+
+        self.assertIsNone(result)
+        mock_get_registry.assert_called_once()
+        mock_registry.get_active_backend.assert_called_once()
+        mock_backend.get_client.assert_called_once()
+
+    @patch.object(MockPlugin, "get_radio_registry")
+    def test_get_my_node_id_no_myinfo(self, mock_get_registry):
+        """Test that get_my_node_id returns None when backend client has no myInfo."""
+        plugin = MockPlugin()
+
+        # Mock client without myInfo
+        mock_client = MagicMock()
+        mock_client.myInfo = None
+        mock_backend = MagicMock()
+        mock_backend.get_client.return_value = mock_client
+        mock_registry = MagicMock()
+        mock_registry.get_active_backend.return_value = mock_backend
+        mock_get_registry.return_value = mock_registry
 
         result = plugin.get_my_node_id()
 
