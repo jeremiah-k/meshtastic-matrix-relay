@@ -1731,17 +1731,15 @@ def connect_meshtastic(
                 "Configured radio backend '%s' is not Meshtastic; skipping connection.",
                 backend_name,
             )
-            return None
-        if explicit_disable:
+        elif explicit_disable:
             logger.info(
                 "Radio backend disabled by configuration; skipping Meshtastic connection."
             )
-            return None
-        if CONFIG_SECTION_MESHTASTIC in config:
+        else:
             logger.info(
                 "Meshtastic is not the selected radio backend or is disabled; skipping connection."
             )
-            return None
+        return None
 
     with meshtastic_lock:
         if meshtastic_client and not force_connect:
