@@ -1724,7 +1724,7 @@ def connect_meshtastic(
         if config and "matrix_rooms" in config:
             matrix_rooms = config["matrix_rooms"]
 
-    if config is not None:
+    if config is not None and not is_meshtastic_selected(config):
         backend_name, explicit_disable = get_radio_backend_selection(config)
         if backend_name and backend_name.lower() != "meshtastic":
             logger.info(
@@ -1737,7 +1737,7 @@ def connect_meshtastic(
                 "Radio backend disabled by configuration; skipping Meshtastic connection."
             )
             return None
-        if CONFIG_SECTION_MESHTASTIC in config and not is_meshtastic_selected(config):
+        if CONFIG_SECTION_MESHTASTIC in config:
             logger.info(
                 "Meshtastic is not the selected radio backend or is disabled; skipping connection."
             )
@@ -3027,5 +3027,5 @@ if __name__ == "__main__":
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     event_loop = loop  # Set the event loop for use in callbacks
-    _check_connection_task = loop.create_task(check_connection())
+    check_conn_task = loop.create_task(check_connection())
     loop.run_forever()

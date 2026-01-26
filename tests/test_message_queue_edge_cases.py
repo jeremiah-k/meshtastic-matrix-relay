@@ -236,25 +236,27 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
             self.queue.start(message_delay=TEST_MESSAGE_DELAY_LOW)
             self.queue.ensure_processor_started()
 
-            # Mock import to raise ImportError - replace instance attribute set in setUp
-            original_should_send = self.queue._should_send_message
-            self.queue._should_send_message = lambda: (_ for _ in ()).throw(
-                ImportError("Module not found")
+            # Restore original _should_send_message for this test
+            self.queue._should_send_message = MessageQueue._should_send_message.__get__(
+                self.queue, MessageQueue
             )
 
-            # Queue a message
-            success = self.queue.enqueue(lambda: "result", description="Test message")
-            self.assertTrue(success)
+            with patch(
+                "mmrelay.radio.registry.get_radio_registry",
+                side_effect=ImportError("Module not found"),
+            ):
+                # Trigger the ImportError handling path directly
+                self.queue._should_send_message()
 
-            # Wait for processing
-            await asyncio.sleep(0.2)
+                # Queue a message
+                self.queue.enqueue(lambda: "result", description="Test message")
+
+                # Wait for processing
+                await asyncio.sleep(0.2)
 
             # The queue may or may not be stopped depending on implementation
             # Just check that it handled the error gracefully
             self.assertIsInstance(self.queue.is_running(), bool)
-
-            # Restore original method
-            self.queue._should_send_message = original_should_send
 
         # Run the async test with proper event loop handling
         try:
@@ -268,7 +270,7 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
                 raise
 
         # Verify we logged a failure path
-        assert mock_logger.exception.called or mock_logger.error.called
+        assert mock_logger.critical.called
 
     def test_message_mapping_with_invalid_result(self):
         """

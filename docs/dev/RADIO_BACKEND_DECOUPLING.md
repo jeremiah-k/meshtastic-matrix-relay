@@ -139,6 +139,10 @@ class BaseRadioBackend(ABC):
         pass
 ```
 
+#### Note on initial scope
+
+The initial implementation in `src/mmrelay/radio/base_backend.py` is intentionally minimal. It currently includes only the core connection methods plus `get_message_delay()` and `get_client()` to support the phased rollout. The remaining methods shown above are planned for future phases.
+
 ### 2. Radio Registry (Single-Backend Support)
 
 Track the available backends and select a single active backend. Multi-backend routing can be layered on later.
