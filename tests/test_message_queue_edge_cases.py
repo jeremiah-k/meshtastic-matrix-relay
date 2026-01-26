@@ -57,6 +57,7 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
         mmrelay.meshtastic_utils.subscribed_to_connection_lost = False
 
         self.queue = MessageQueue()
+        self.queue._should_send_message = lambda: True
 
     def tearDown(self):
         if self.queue.is_running():

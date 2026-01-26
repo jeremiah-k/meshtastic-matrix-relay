@@ -135,21 +135,22 @@ class TestPerformanceStress:
                 ]
 
                 try:
-                    with patch(
-                        "mmrelay.plugin_loader.load_plugins", return_value=[]
-                    ), patch(
-                        "mmrelay.matrix_utils.get_matrix_prefix",
-                        return_value="[TestMesh/TN] ",
-                    ), patch(
-                        "mmrelay.db_utils.get_longname", return_value="Test Node"
-                    ), patch(
-                        "mmrelay.db_utils.get_shortname", return_value="TN"
-                    ), patch(
-                        "mmrelay.matrix_utils.matrix_relay",
-                        new_callable=AsyncMock,
-                        side_effect=mock_matrix_relay,
+                    with (
+                        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
+                        patch(
+                            "mmrelay.matrix_utils.get_matrix_prefix",
+                            return_value="[TestMesh/TN] ",
+                        ),
+                        patch(
+                            "mmrelay.db_utils.get_longname", return_value="Test Node"
+                        ),
+                        patch("mmrelay.db_utils.get_shortname", return_value="TN"),
+                        patch(
+                            "mmrelay.matrix_utils.matrix_relay",
+                            new_callable=AsyncMock,
+                            side_effect=mock_matrix_relay,
+                        ),
                     ):
-
                         start_time = time.time()
 
                         for i in range(message_count):
@@ -204,6 +205,7 @@ class TestPerformanceStress:
             ):
                 with patch("mmrelay.meshtastic_utils.reconnecting", False):
                     queue = MessageQueue()
+                    queue._should_send_message = lambda: True
                     queue.start(
                         message_delay=DEFAULT_MESSAGE_DELAY
                     )  # Use default delay (2.5s)
@@ -395,31 +397,31 @@ class TestPerformanceStress:
                     {"id": "!room:matrix.org", "meshtastic_channel": 0}
                 ]
 
-                with patch(
-                    "mmrelay.plugin_loader.load_plugins", return_value=plugins
-                ), patch("mmrelay.meshtastic_utils.config", mock_config), patch(
-                    "mmrelay.meshtastic_utils.matrix_rooms", mock_matrix_rooms
-                ), patch(
-                    "mmrelay.matrix_utils.get_interaction_settings",
-                    return_value=mock_interactions,
-                ), patch(
-                    "mmrelay.matrix_utils.message_storage_enabled", return_value=False
-                ), patch(
-                    "mmrelay.db_utils.save_longname", return_value=None
-                ), patch(
-                    "mmrelay.db_utils.save_shortname", return_value=None
-                ), patch(
-                    "mmrelay.matrix_utils.matrix_relay", MagicMock(return_value=False)
-                ), patch(
-                    "mmrelay.meshtastic_utils._submit_coro"
-                ) as mock_submit, patch(
-                    "mmrelay.meshtastic_utils._wait_for_result"
-                ) as mock_wait, patch(
-                    "mmrelay.meshtastic_utils.shutting_down", False
-                ), patch(
-                    "mmrelay.meshtastic_utils.event_loop", meshtastic_loop_safety
+                with (
+                    patch("mmrelay.plugin_loader.load_plugins", return_value=plugins),
+                    patch("mmrelay.meshtastic_utils.config", mock_config),
+                    patch("mmrelay.meshtastic_utils.matrix_rooms", mock_matrix_rooms),
+                    patch(
+                        "mmrelay.matrix_utils.get_interaction_settings",
+                        return_value=mock_interactions,
+                    ),
+                    patch(
+                        "mmrelay.matrix_utils.message_storage_enabled",
+                        return_value=False,
+                    ),
+                    patch("mmrelay.db_utils.save_longname", return_value=None),
+                    patch("mmrelay.db_utils.save_shortname", return_value=None),
+                    patch(
+                        "mmrelay.matrix_utils.matrix_relay",
+                        MagicMock(return_value=False),
+                    ),
+                    patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit,
+                    patch("mmrelay.meshtastic_utils._wait_for_result") as mock_wait,
+                    patch("mmrelay.meshtastic_utils.shutting_down", False),
+                    patch(
+                        "mmrelay.meshtastic_utils.event_loop", meshtastic_loop_safety
+                    ),
                 ):
-
                     fast_submit, fast_wait = fast_async_helpers
 
                     mock_submit.side_effect = fast_submit
@@ -481,6 +483,7 @@ class TestPerformanceStress:
             ):
                 with patch("mmrelay.meshtastic_utils.reconnecting", False):
                     queue = MessageQueue()
+                    queue._should_send_message = lambda: True
                     queue.start(
                         message_delay=0.5
                     )  # 0.5s delay for reasonable test duration
@@ -626,6 +629,7 @@ class TestPerformanceStress:
             ):
                 with patch("mmrelay.meshtastic_utils.reconnecting", False):
                     queue = MessageQueue()
+                    queue._should_send_message = lambda: True
                     message_delay = 0.1  # 100ms delay between messages (will warn about 2.1s minimum)
                     queue.start(message_delay=message_delay)
                     # Ensure processor starts now that event loop is running
@@ -668,7 +672,7 @@ class TestPerformanceStress:
                                 and time_diff <= message_delay * 2.0 + 0.05
                             ), (
                                 f"Message delay {time_diff:.3f}s not close to expected "
-                                f"{message_delay}s between messages {i-1} and {i}"
+                                f"{message_delay}s between messages {i - 1} and {i}"
                             )
 
                     finally:
@@ -760,6 +764,7 @@ class TestPerformanceStress:
             ):
                 with patch("mmrelay.meshtastic_utils.reconnecting", False):
                     queue = MessageQueue()
+                    queue._should_send_message = lambda: True
                     queue.start(
                         message_delay=MINIMUM_MESSAGE_DELAY
                     )  # Use realistic 2.1s delay
