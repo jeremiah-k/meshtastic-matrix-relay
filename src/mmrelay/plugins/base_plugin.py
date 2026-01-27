@@ -471,13 +471,19 @@ class BasePlugin(ABC):
         def _send_via_backend() -> Any:
             import asyncio
 
-            return asyncio.run(
-                backend.send_message(
-                    text=text,
-                    channel=channel,
-                    destination_id=destination_id,
+            try:
+                return asyncio.run(
+                    backend.send_message(
+                        text=text,
+                        channel=channel,
+                        destination_id=destination_id,
+                    )
                 )
-            )
+            except Exception as e:
+                self.logger.error(
+                    f"Error sending message via radio backend: {e}", exc_info=True
+                )
+                return None
 
         return queue_message(
             _send_via_backend,

@@ -1129,15 +1129,19 @@ def _run_backend_send(
 
     MessageQueue executes send functions in a ThreadPoolExecutor, so asyncio.run is safe here.
     """
-    result = backend.send_message(
-        text=text,
-        channel=channel,
-        destination_id=destination_id,
-        reply_to_id=reply_to_id,
-    )
-    if inspect.isawaitable(result):
-        return asyncio.run(result)
-    return result
+    try:
+        result = backend.send_message(
+            text=text,
+            channel=channel,
+            destination_id=destination_id,
+            reply_to_id=reply_to_id,
+        )
+        if inspect.isawaitable(result):
+            return asyncio.run(result)
+        return result
+    except Exception as e:
+        logger.error(f"Error sending message via radio backend: {e}", exc_info=True)
+        return None
 
 
 async def _get_meshtastic_interface_and_channel(

@@ -1162,7 +1162,7 @@ async def test_on_room_message_no_meshtastic_interface_returns(
     )
 
     # Mock radio backend to return None (no backend available)
-    with patch("mmrelay.radio.registry.get_radio_registry") as mock_registry:
+    with patch("mmrelay.matrix_utils.get_radio_registry") as mock_registry:
         mock_registry_instance = MagicMock()
         mock_registry.return_value = mock_registry_instance
         mock_registry_instance.get_active_backend.return_value = None
@@ -2296,7 +2296,7 @@ async def test_send_reply_to_meshtastic_no_reply_id(_mock_radio_backend):
 async def test_send_reply_to_meshtastic_returns_when_interface_missing(monkeypatch):
     """Return early when the Meshtastic interface cannot be obtained."""
     # Mock radio backend to return None (no backend available)
-    with patch("mmrelay.radio.registry.get_radio_registry") as mock_registry:
+    with patch("mmrelay.matrix_utils.get_radio_registry") as mock_registry:
         mock_registry_instance = MagicMock()
         mock_registry.return_value = mock_registry_instance
         mock_registry_instance.get_active_backend.return_value = None

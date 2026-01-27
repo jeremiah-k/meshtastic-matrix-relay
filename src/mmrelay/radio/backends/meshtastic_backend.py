@@ -196,28 +196,36 @@ class MeshtasticBackend(BaseRadioBackend):
             backend_logger.error("No Meshtastic interface available for sending")
             return None
 
-        # Use reply function if this is a reply
-        if reply_to_id is not None:
-            # Import send_text_reply here to avoid circular imports
-            from mmrelay.meshtastic_utils import send_text_reply
+        try:
+            # Use reply function if this is a reply
+            if reply_to_id is not None:
+                # Import send_text_reply here to avoid circular imports
+                from mmrelay.meshtastic_utils import send_text_reply
 
-            return send_text_reply(
-                interface,
-                text=text,
-                reply_id=(
-                    int(reply_to_id) if isinstance(reply_to_id, str) else reply_to_id
-                ),
-                destinationId=destination_id or meshtastic.BROADCAST_ADDR,
-                channelIndex=channel if channel is not None else 0,
+                return send_text_reply(
+                    interface,
+                    text=text,
+                    reply_id=(
+                        int(reply_to_id)
+                        if isinstance(reply_to_id, str)
+                        else reply_to_id
+                    ),
+                    destinationId=destination_id or meshtastic.BROADCAST_ADDR,
+                    channelIndex=channel if channel is not None else 0,
+                )
+            else:
+                # Regular message without reply
+                send_kwargs: dict[str, Any] = {
+                    "channelIndex": channel if channel is not None else 0
+                }
+                if destination_id is not None:
+                    send_kwargs["destinationId"] = destination_id
+                return interface.sendText(text, **send_kwargs)
+        except Exception as e:
+            backend_logger.error(
+                f"Error sending message via Meshtastic backend: {e}", exc_info=True
             )
-        else:
-            # Regular message without reply
-            send_kwargs: dict[str, Any] = {
-                "channelIndex": channel if channel is not None else 0
-            }
-            if destination_id is not None:
-                send_kwargs["destinationId"] = destination_id
-            return interface.sendText(text, **send_kwargs)
+            return None
 
     def register_message_callback(
         self,
