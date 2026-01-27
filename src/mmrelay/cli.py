@@ -1346,7 +1346,7 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                         print(warning)
 
                 # Check for deprecated db section
-                _warn_db_deprecated()
+                _warn_db_deprecated(config)
 
                 print("\n✅ Configuration file is valid!")
                 return True

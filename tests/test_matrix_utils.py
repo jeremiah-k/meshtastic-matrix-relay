@@ -307,8 +307,13 @@ async def test_on_room_message_remote_prefers_meshtastic_text(
         await on_room_message(mock_room, mock_event)
 
         mock_queue_message.assert_called_once()
-        queued_kwargs = mock_queue_message.call_args.kwargs
-        assert "Hello from remote mesh" in queued_kwargs["text"]
+        sent_func = mock_queue_message.call_args[0][0]
+        await asyncio.to_thread(sent_func)
+        _mock_radio_backend.send_message.assert_called_once()
+        assert (
+            "Hello from remote mesh"
+            in _mock_radio_backend.send_message.call_args.kwargs["text"]
+        )
 
 
 async def test_on_room_message_ignore_bot(
@@ -7091,7 +7096,6 @@ async def test_send_reply_to_meshtastic_defaults_config_when_missing(
             "local_meshnet",
         )
 
-    mock_queue.assert_called_once()
     mock_queue.assert_called_once()
 
 
