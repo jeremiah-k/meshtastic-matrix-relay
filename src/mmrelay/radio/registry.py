@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 from mmrelay.log_utils import get_logger
@@ -75,11 +76,14 @@ class RadioRegistry:
 
 
 _registry: RadioRegistry | None = None
+_registry_lock = threading.Lock()
 
 
 def get_radio_registry() -> RadioRegistry:
     global _registry
     if _registry is None:
-        _registry = RadioRegistry()
-        _registry.register_backend(MeshtasticBackend())
+        with _registry_lock:
+            if _registry is None:
+                _registry = RadioRegistry()
+                _registry.register_backend(MeshtasticBackend())
     return _registry

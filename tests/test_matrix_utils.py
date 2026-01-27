@@ -113,70 +113,13 @@ async def test_on_room_message_simple_text(
     dummy_queue.get_queue_size.return_value = 0
 
     real_loop = asyncio.get_running_loop()
-
-    class DummyLoop:
-        def __init__(self, loop):
-            """
-            Create an instance bound to the given asyncio event loop.
-
-            Parameters:
-                loop (asyncio.AbstractEventLoop): Event loop used to schedule and run the instance's asynchronous tasks.
-            """
-            self._loop = loop
-
-        def is_running(self):
-            """
-            Indicates whether the component is running.
-
-            Returns:
-                `True` since this implementation always reports the component as running.
-            """
-            return True
-
-        def create_task(self, coro):
-            """
-            Schedule an awaitable on this instance's event loop and return the created Task.
-
-            Parameters:
-                coro: An awaitable or coroutine to schedule on this object's event loop.
-
-            Returns:
-                asyncio.Task: The Task object wrapping the scheduled coroutine.
-            """
-            return self._loop.create_task(coro)
-
-        async def run_in_executor(self, _executor, func, *args):
-            """
-            Invoke a callable synchronously and return its result.
-
-            _executor is accepted for API compatibility but ignored.
-            func is the callable to invoke; any positional args are forwarded to it.
-
-            Returns:
-                The value returned by `func(*args)`.
-            """
-            return func(*args)
-
-        def run_until_complete(self, coro):
-            """
-            Run a coroutine until it completes.
-
-            This is a dummy implementation that runs the coroutine directly
-            using the test's event loop.
-
-            Parameters:
-                coro: The coroutine to run
-
-            Returns:
-                The result of the coroutine
-            """
-            return self._loop.run_until_complete(coro)
+    test_loop = InlineExecutorLoop(real_loop)
 
     with (
         patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
         patch(
             "mmrelay.matrix_utils.asyncio.get_running_loop",
-            return_value=DummyLoop(real_loop),
+            return_value=test_loop,
         ),
         patch(
             "mmrelay.matrix_utils.get_user_display_name",
@@ -229,70 +172,13 @@ async def test_on_room_message_remote_prefers_meshtastic_text(
     dummy_queue.get_queue_size.return_value = 0
 
     real_loop = asyncio.get_running_loop()
-
-    class DummyLoop:
-        def __init__(self, loop):
-            """
-            Create an instance bound to the given asyncio event loop.
-
-            Parameters:
-                loop (asyncio.AbstractEventLoop): Event loop used to schedule and run the instance's asynchronous tasks.
-            """
-            self._loop = loop
-
-        def is_running(self):
-            """
-            Indicates whether the component is running.
-
-            Returns:
-                `True` since this implementation always reports the component as running.
-            """
-            return True
-
-        def create_task(self, coro):
-            """
-            Schedule an awaitable on this instance's event loop and return the created Task.
-
-            Parameters:
-                coro: An awaitable or coroutine to schedule on this object's event loop.
-
-            Returns:
-                asyncio.Task: The Task object wrapping the scheduled coroutine.
-            """
-            return self._loop.create_task(coro)
-
-        async def run_in_executor(self, _executor, func, *args):
-            """
-            Invoke a callable synchronously and return its result.
-
-            _executor is accepted for API compatibility but ignored.
-            func is the callable to invoke; any positional args are forwarded to it.
-
-            Returns:
-                The value returned by `func(*args)`.
-            """
-            return func(*args)
-
-        def run_until_complete(self, coro):
-            """
-            Run a coroutine until it completes.
-
-            This is a dummy implementation that runs the coroutine directly
-            using the test's event loop.
-
-            Parameters:
-                coro: The coroutine to run
-
-            Returns:
-                The result of the coroutine
-            """
-            return self._loop.run_until_complete(coro)
+    test_loop = InlineExecutorLoop(real_loop)
 
     with (
         patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
         patch(
             "mmrelay.matrix_utils.asyncio.get_running_loop",
-            return_value=DummyLoop(real_loop),
+            return_value=test_loop,
         ),
         patch("mmrelay.matrix_utils.get_message_queue", return_value=dummy_queue),
         patch(
@@ -482,50 +368,7 @@ async def test_on_room_message_reaction_enabled(
     test_config["meshtastic"]["message_interactions"]["reactions"] = True
 
     real_loop = asyncio.get_running_loop()
-
-    class DummyLoop:
-        def __init__(self, loop):
-            """
-            Create an instance bound to the given asyncio event loop.
-
-            Parameters:
-                loop (asyncio.AbstractEventLoop): Event loop used to schedule and run the instance's asynchronous tasks.
-            """
-            self._loop = loop
-
-        def is_running(self):
-            """
-            Indicates whether the component is running.
-
-            Returns:
-                `True` since this implementation always reports the component as running.
-            """
-            return True
-
-        def create_task(self, coro):
-            """
-            Schedule an awaitable on this instance's event loop and return the created Task.
-
-            Parameters:
-                coro: An awaitable or coroutine to schedule on this object's event loop.
-
-            Returns:
-                asyncio.Task: The Task object wrapping the scheduled coroutine.
-            """
-            return self._loop.create_task(coro)
-
-        async def run_in_executor(self, _executor, func, *args):
-            """
-            Invoke a callable synchronously and return its result.
-
-            _executor: Ignored; present for API compatibility.
-            func: Callable to invoke.
-            *args: Positional arguments forwarded to `func`.
-
-            Returns:
-                The value returned by `func(*args)`.
-            """
-            return func(*args)
+    test_loop = InlineExecutorLoop(real_loop)
 
     dummy_queue = MagicMock()
     dummy_queue.get_queue_size.return_value = 0
@@ -544,7 +387,7 @@ async def test_on_room_message_reaction_enabled(
         ),
         patch(
             "mmrelay.matrix_utils.asyncio.get_running_loop",
-            return_value=DummyLoop(real_loop),
+            return_value=test_loop,
         ),
         patch("mmrelay.matrix_utils.get_message_queue", return_value=dummy_queue),
         patch(
@@ -677,64 +520,7 @@ async def test_on_room_message_detection_sensor_enabled(
     test_config["meshtastic"]["broadcast_enabled"] = True
 
     real_loop = asyncio.get_running_loop()
-
-    class DummyLoop:
-        def __init__(self, loop):
-            """
-            Create an instance bound to the given asyncio event loop.
-
-            Parameters:
-                loop (asyncio.AbstractEventLoop): Event loop used to schedule and run the instance's asynchronous tasks.
-            """
-            self._loop = loop
-
-        def is_running(self):
-            """
-            Indicates whether the component is running.
-
-            Returns:
-                `True` since this implementation always reports the component as running.
-            """
-            return True
-
-        def create_task(self, coro):
-            """
-            Schedule an awaitable on this instance's event loop and return the created Task.
-
-            Parameters:
-                coro: An awaitable or coroutine to schedule on this object's event loop.
-
-            Returns:
-                asyncio.Task: The Task object wrapping the scheduled coroutine.
-            """
-            return self._loop.create_task(coro)
-
-        async def run_in_executor(self, _executor, func, *args):
-            """
-            Invoke a callable synchronously and return its result.
-
-            _executor is accepted for API compatibility but ignored.
-            func is the callable to invoke; any positional args are forwarded to it.
-
-            Returns:
-                The value returned by `func(*args)`.
-            """
-            return func(*args)
-
-        def run_until_complete(self, coro):
-            """
-            Run a coroutine until it completes.
-
-            This is a dummy implementation that runs the coroutine directly
-            using the test's event loop.
-
-            Parameters:
-                coro: The coroutine to run
-
-            Returns:
-                The result of the coroutine
-            """
-            return self._loop.run_until_complete(coro)
+    test_loop = InlineExecutorLoop(real_loop)
 
     # Act - Process the detection sensor message
     with (
@@ -748,7 +534,7 @@ async def test_on_room_message_detection_sensor_enabled(
         patch("mmrelay.matrix_utils.bot_user_id", test_config["matrix"]["bot_user_id"]),
         patch(
             "mmrelay.matrix_utils.asyncio.get_running_loop",
-            return_value=DummyLoop(real_loop),
+            return_value=test_loop,
         ),
     ):
         # Mock the room.user_name method to return our test display name
@@ -2438,64 +2224,7 @@ async def test_send_reply_to_meshtastic_with_reply_id(mock_radio_backend):
     mock_event = MagicMock()
 
     real_loop = asyncio.get_running_loop()
-
-    class DummyLoop:
-        def __init__(self, loop):
-            """
-            Create an instance bound to the given asyncio event loop.
-
-            Parameters:
-                loop (asyncio.AbstractEventLoop): Event loop used to schedule and run the instance's asynchronous tasks.
-            """
-            self._loop = loop
-
-        def is_running(self):
-            """
-            Indicates whether the component is running.
-
-            Returns:
-                `True` since this implementation always reports the component as running.
-            """
-            return True
-
-        def create_task(self, coro):
-            """
-            Schedule an awaitable on this instance's event loop and return the created Task.
-
-            Parameters:
-                coro: An awaitable or coroutine to schedule on this object's event loop.
-
-            Returns:
-                asyncio.Task: The Task object wrapping the scheduled coroutine.
-            """
-            return self._loop.create_task(coro)
-
-        async def run_in_executor(self, _executor, func, *args):
-            """
-            Invoke a callable synchronously and return its result.
-
-            _executor is accepted for API compatibility but ignored.
-            func is the callable to invoke; any positional args are forwarded to it.
-
-            Returns:
-                The value returned by `func(*args)`.
-            """
-            return func(*args)
-
-        def run_until_complete(self, coro):
-            """
-            Run a coroutine until it completes.
-
-            This is a dummy implementation that runs the coroutine directly
-            using the test's event loop.
-
-            Parameters:
-                coro: The coroutine to run
-
-            Returns:
-                The result of the coroutine
-            """
-            return self._loop.run_until_complete(coro)
+    test_loop = InlineExecutorLoop(real_loop)
 
     with (
         patch(
@@ -2503,7 +2232,7 @@ async def test_send_reply_to_meshtastic_with_reply_id(mock_radio_backend):
         ),
         patch(
             "mmrelay.matrix_utils.asyncio.get_running_loop",
-            return_value=DummyLoop(real_loop),
+            return_value=test_loop,
         ),
         patch("mmrelay.matrix_utils.queue_message", return_value=True) as mock_queue,
     ):
@@ -2534,64 +2263,7 @@ async def test_send_reply_to_meshtastic_no_reply_id(_mock_radio_backend):
     mock_event = MagicMock()
 
     real_loop = asyncio.get_running_loop()
-
-    class DummyLoop:
-        def __init__(self, loop):
-            """
-            Create an instance bound to the given asyncio event loop.
-
-            Parameters:
-                loop (asyncio.AbstractEventLoop): Event loop used to schedule and run the instance's asynchronous tasks.
-            """
-            self._loop = loop
-
-        def is_running(self):
-            """
-            Indicates whether the component is running.
-
-            Returns:
-                `True` since this implementation always reports the component as running.
-            """
-            return True
-
-        def create_task(self, coro):
-            """
-            Schedule an awaitable on this instance's event loop and return the created Task.
-
-            Parameters:
-                coro: An awaitable or coroutine to schedule on this object's event loop.
-
-            Returns:
-                asyncio.Task: The Task object wrapping the scheduled coroutine.
-            """
-            return self._loop.create_task(coro)
-
-        async def run_in_executor(self, _executor, func, *args):
-            """
-            Invoke a callable synchronously and return its result.
-
-            _executor is accepted for API compatibility but ignored.
-            func is the callable to invoke; any positional args are forwarded to it.
-
-            Returns:
-                The value returned by `func(*args)`.
-            """
-            return func(*args)
-
-        def run_until_complete(self, coro):
-            """
-            Run a coroutine until it completes.
-
-            This is a dummy implementation that runs the coroutine directly
-            using the test's event loop.
-
-            Parameters:
-                coro: The coroutine to run
-
-            Returns:
-                The result of the coroutine
-            """
-            return self._loop.run_until_complete(coro)
+    test_loop = InlineExecutorLoop(real_loop)
 
     with (
         patch(
@@ -2599,7 +2271,7 @@ async def test_send_reply_to_meshtastic_no_reply_id(_mock_radio_backend):
         ),
         patch(
             "mmrelay.matrix_utils.asyncio.get_running_loop",
-            return_value=DummyLoop(real_loop),
+            return_value=test_loop,
         ),
         patch("mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()),
         patch("mmrelay.matrix_utils.queue_message", return_value=True) as mock_queue,

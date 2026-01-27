@@ -82,7 +82,9 @@ class TestMeshtasticBackendSend:
         )
 
         # Verify sendText was called with destination
-        mock_send_text.assert_called_once_with("Direct message", channelIndex=0)
+        mock_send_text.assert_called_once_with(
+            "Direct message", channelIndex=0, destinationId=999999
+        )
         assert result is not None
 
     @pytest.mark.asyncio

@@ -1092,6 +1092,30 @@ def _get_radio_backend() -> Any:
     return get_radio_registry().get_active_backend()
 
 
+def _get_backend_and_channel(
+    room_config: dict[str, Any],
+    *,
+    log: logging.Logger,
+) -> tuple[Any | None, int | None]:
+    backend = _get_radio_backend()
+    if backend is None:
+        log.error("No active radio backend available for sending")
+        return None, None
+
+    meshtastic_channel = room_config.get("meshtastic_channel")
+    if (
+        meshtastic_channel is None
+        or not isinstance(meshtastic_channel, int)
+        or meshtastic_channel < 0
+    ):
+        log.error(
+            f"Invalid meshtastic_channel value in room config: {meshtastic_channel!r}"
+        )
+        return None, None
+
+    return backend, meshtastic_channel
+
+
 def _run_backend_send(
     backend: Any,
     *,
@@ -2885,22 +2909,12 @@ async def send_reply_to_meshtastic(
     Returns:
         bool: `True` if the message was successfully queued to Meshtastic, `False` otherwise.
     """
-    backend = _get_radio_backend()
     from mmrelay.meshtastic_utils import logger as meshtastic_logger
 
-    if backend is None:
-        meshtastic_logger.error("No active radio backend available for sending")
-        return False
-
-    meshtastic_channel = room_config.get("meshtastic_channel")
-    if (
-        meshtastic_channel is None
-        or not isinstance(meshtastic_channel, int)
-        or meshtastic_channel < 0
-    ):
-        meshtastic_logger.error(
-            f"Invalid meshtastic_channel value in room config: {meshtastic_channel!r}"
-        )
+    backend, meshtastic_channel = _get_backend_and_channel(
+        room_config, log=meshtastic_logger
+    )
+    if backend is None or meshtastic_channel is None:
         return False
 
     effective_config = relay_config if relay_config is not None else config
@@ -3327,20 +3341,10 @@ async def on_room_message(
             reaction_message = f'{shortname}/{short_meshnet_name} reacted {reaction_emoji} to "{abbreviated_text}"'
 
             # Relay the remote reaction to the local meshnet.
-            backend = _get_radio_backend()
-            if backend is None:
-                logger.error("No active radio backend available for sending")
-                return
-
-            meshtastic_channel = room_config.get("meshtastic_channel")
-            if (
-                meshtastic_channel is None
-                or not isinstance(meshtastic_channel, int)
-                or meshtastic_channel < 0
-            ):
-                logger.error(
-                    f"Invalid meshtastic_channel value in room config: {meshtastic_channel!r}"
-                )
+            backend, meshtastic_channel = _get_backend_and_channel(
+                room_config, log=logger
+            )
+            if backend is None or meshtastic_channel is None:
                 return
 
             if get_meshtastic_config_value(
@@ -3412,20 +3416,10 @@ async def on_room_message(
                 f'{prefix}reacted {reaction_emoji} to "{abbreviated_text}"'
             )
 
-            backend = _get_radio_backend()
-            if backend is None:
-                logger.error("No active radio backend available for sending")
-                return
-
-            meshtastic_channel = room_config.get("meshtastic_channel")
-            if (
-                meshtastic_channel is None
-                or not isinstance(meshtastic_channel, int)
-                or meshtastic_channel < 0
-            ):
-                logger.error(
-                    f"Invalid meshtastic_channel value in room config: {meshtastic_channel!r}"
-                )
+            backend, meshtastic_channel = _get_backend_and_channel(
+                room_config, log=logger
+            )
+            if backend is None or meshtastic_channel is None:
                 return
 
             if get_meshtastic_config_value(
@@ -3639,20 +3633,8 @@ async def on_room_message(
         return
 
     # Connect to radio backend and validate channel for regular messages
-    backend = _get_radio_backend()
-    if backend is None:
-        logger.error("No active radio backend available for sending")
-        return
-
-    meshtastic_channel = room_config.get("meshtastic_channel")
-    if (
-        meshtastic_channel is None
-        or not isinstance(meshtastic_channel, int)
-        or meshtastic_channel < 0
-    ):
-        logger.error(
-            f"Invalid meshtastic_channel value in room config: {meshtastic_channel!r}"
-        )
+    backend, meshtastic_channel = _get_backend_and_channel(room_config, log=logger)
+    if backend is None or meshtastic_channel is None:
         return
 
     # If message is from Matrix and broadcast_enabled is True, relay to radio

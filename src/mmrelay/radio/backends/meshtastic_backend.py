@@ -194,9 +194,12 @@ class MeshtasticBackend(BaseRadioBackend):
             )
         else:
             # Regular message without reply
-            return interface.sendText(
-                text, channelIndex=channel if channel is not None else 0
-            )
+            send_kwargs: dict[str, Any] = {
+                "channelIndex": channel if channel is not None else 0
+            }
+            if destination_id is not None:
+                send_kwargs["destinationId"] = destination_id
+            return interface.sendText(text, **send_kwargs)
 
     def register_message_callback(
         self,
