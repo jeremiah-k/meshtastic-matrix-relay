@@ -255,17 +255,17 @@ class TestMessageQueue(unittest.TestCase):
         def raising_import(name, globals=None, locals=None, fromlist=(), level=0):
             """
             Raise ImportError when importing "mmrelay.radio.registry"; otherwise delegate to the original import function.
-            
+
             Parameters:
                 name (str): Module name being imported.
                 globals (dict|None): Globals to pass to the import machinery.
                 locals (dict|None): Locals to pass to the import machinery.
                 fromlist (tuple): Names for "from <module> import ..." semantics.
                 level (int): Package import level (0 for absolute imports).
-            
+
             Returns:
                 Any: The imported module or attribute as returned by the original import function.
-            
+
             Raises:
                 ImportError: If `name` is exactly "mmrelay.radio.registry".
             """

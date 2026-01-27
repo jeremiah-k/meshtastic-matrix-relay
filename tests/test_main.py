@@ -93,7 +93,7 @@ def _close_coro_if_possible(coro: Any) -> None:
         coro: An awaitable object (e.g., coroutine object or generator-based coroutine). If it has a `close()` method it will be called; otherwise the object is left untouched.
     """
     if inspect.isawaitable(coro) and hasattr(coro, "close"):
-        getattr(coro, "close")()
+        coro.close()
     return None
 
 

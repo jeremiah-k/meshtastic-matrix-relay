@@ -196,7 +196,7 @@ class TestPerformanceStress:
             # Mock Meshtastic client to allow message sending
             """
             Run a MessageQueue performance test that enqueues 20 messages with the default delay and verifies processing timing and throughput.
-            
+
             Enqueues 20 messages via a mock send function into a MessageQueue configured with DEFAULT_MESSAGE_DELAY, waits for all messages to be processed within a timeout, and asserts that the observed processing time meets the expected minimum delay (with a small tolerance) and that throughput exceeds 0.2 messages per second.
             """
             with patch(
@@ -346,7 +346,7 @@ class TestPerformanceStress:
     ):
         """
         Measure processing performance of Meshtastic messages through multiple plugins.
-        
+
         Simulates processing multiple messages through a set of mock plugins, asserts that each plugin's handle_meshtastic_message is invoked for every message, that total processing completes within the test timeout (10 seconds), and that the aggregate plugin call rate exceeds 100 calls per second.
         """
         import tempfile
@@ -474,7 +474,7 @@ class TestPerformanceStress:
             # Mock Meshtastic client to allow message sending
             """
             Run a concurrent enqueue/processing test of MessageQueue across multiple threads.
-            
+
             Starts a MessageQueue with a 0.5 second per-message delay, spawns multiple threads that enqueue messages concurrently, waits for all messages to be processed, and asserts that every message was processed and that processing time and throughput meet the test's minimum expectations.
             """
             with patch(
@@ -622,7 +622,7 @@ class TestPerformanceStress:
             # Mock Meshtastic client to allow message sending
             """
             Verify MessageQueue enforces the configured delay between consecutive message sends by measuring inter-send intervals.
-            
+
             This test enqueues multiple messages, records the timestamps when each message is actually sent, and asserts that each successive inter-send interval falls within an acceptable tolerance around the configured message delay.
             """
             with patch(
@@ -737,7 +737,7 @@ class TestPerformanceStress:
     def test_realistic_throughput_benchmark(self):
         """
         Benchmark realistic message throughput with mixed message types under enforced rate limiting.
-        
+
         Runs a 30-second scenario that enqueues messages from multiple simulated nodes at randomized intervals into a MessageQueue configured with the minimum send delay, waits for the queue to drain, and asserts that throughput respects the configured rate limit, meets a minimum expected throughput when measurable, and processes multiple message types. Prints a brief summary of queued/processed counts, throughput, and per-type counts before stopping the queue.
         """
         import asyncio
@@ -746,9 +746,9 @@ class TestPerformanceStress:
         async def run_throughput_test():
             """
             Run a 30-second throughput benchmark that enqueues mixed Meshtastic message types into a MessageQueue and validates rate-limiting, throughput, and type diversity.
-            
+
             This coroutine seeds the RNG for deterministic behavior, starts a MessageQueue with MINIMUM_MESSAGE_DELAY, enqueues randomized messages of several types from multiple mock node IDs for 30 seconds, records timestamps of processed messages, waits up to 15 seconds for the queue to drain, and computes throughput using the active processing window when possible. It asserts basic invariants (multiple messages queued, at least one processed), that observed throughput respects the configured rate limit and meets a minimum expectation when applicable, and that multiple message types were processed. A brief summary of duration, queued/processed counts, throughput, and per-type counts is printed. The queue is stopped on completion.
-            
+
             Raises:
                 AssertionError: if queue draining, throughput, or type-diversity checks fail.
             """

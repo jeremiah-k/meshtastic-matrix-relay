@@ -6,7 +6,7 @@ import inspect
 import time
 from typing import Any, Awaitable, Callable
 
-import meshtastic
+import meshtastic  # type: ignore[import-untyped]
 
 import mmrelay.meshtastic_utils as meshtastic_utils
 from mmrelay.constants.network import CONNECTION_TYPE_BLE
@@ -343,7 +343,9 @@ class MeshtasticBackend(BaseRadioBackend):
             from mmrelay.config import get_meshtastic_config_value
 
             meshnet_name = (
-                get_meshtastic_config_value(meshtastic_utils.config, "meshnet_name", "")
+                get_meshtastic_config_value(
+                    meshtastic_utils.config or {}, "meshnet_name", ""
+                )
                 or "default"
             )
 
@@ -377,16 +379,19 @@ class MeshtasticBackend(BaseRadioBackend):
 
     def get_message_delay(self, config: dict[str, Any], default: float) -> float:
         """
-        Retrieve the configured Meshtastic message delay.
+        Retrieve configured Meshtastic message delay.
 
         Parameters:
             config (dict[str, Any]): Application configuration; may contain a "meshtastic" section with a "message_delay" value.
-            default (float): Fallback delay in seconds used when the configuration does not specify "meshtastic.message_delay".
+            default (float): Fallback delay in seconds used when configuration does not specify "meshtastic.message_delay".
 
         Returns:
-            float: Message delay in seconds from the configuration or the provided default.
+            float: Message delay in seconds from configuration or provided default.
         """
-        return config.get("meshtastic", {}).get("message_delay", default)
+        delay = config.get("meshtastic", {}).get("message_delay", default)
+        if not isinstance(delay, (int, float)):
+            return default
+        return float(delay)
 
     def get_client(self) -> Any:
         """

@@ -83,16 +83,16 @@ def _select_active_backend_name(
 ) -> str | None:
     """
     Select the active radio backend name according to the provided configuration.
-    
+
     Priority:
     1. Use an explicit backend selection if present.
     2. If radio is explicitly disabled, return None.
     3. If Meshtastic is enabled, return "meshtastic".
     4. Otherwise return None.
-    
+
     Parameters:
         config (dict[str, Any]): Loaded application configuration.
-    
+
     Returns:
         str | None: The chosen backend name, or `None` when no backend is configured.
     """
@@ -109,10 +109,10 @@ def _select_active_backend_name(
 def _has_radio_config(config: dict[str, Any]) -> bool:
     """
     Determine whether the configuration either selects a radio backend or explicitly disables radio.
-    
+
     Parameters:
         config (dict[str, Any]): Application configuration mapping.
-    
+
     Returns:
         `True` if a radio backend name is specified, radio is explicitly disabled, a legacy `meshtastic` section explicitly sets `enabled: False`, or Meshtastic is enabled via the current config rules; `False` otherwise.
     """
@@ -133,16 +133,16 @@ def _has_radio_config(config: dict[str, Any]) -> bool:
 async def main(config: dict[str, Any]) -> None:
     """
     Coordinate startup, runtime, and orderly shutdown of the relay between Meshtastic and Matrix.
-    
+
     Initializes the database and plugins, starts the message queue and the configured radio backend (if any), connects to Matrix and joins configured rooms, registers Matrix event handlers, runs the Matrix sync loop with retry and health checks, and performs a coordinated shutdown (optionally wiping the message map on start and stop).
-    
+
     Parameters:
         config (dict[str, Any]): Application configuration. Relevant keys:
             - "matrix_rooms": list of room dictionaries (each must include an "id" key).
             - "meshtastic": optional dict; may include "message_delay" to configure outbound pacing.
             - "radio_backend": optional string to select the active backend or "none" to disable radio.
             - "database" (preferred) or legacy "db": optional dict containing "msg_map" with a "wipe_on_restart" boolean to control wiping the message map at startup and shutdown.
-    
+
     Raises:
         ConnectionError: If a Matrix client cannot be obtained and operation cannot continue.
     """
@@ -327,9 +327,9 @@ async def main(config: dict[str, Any]) -> None:
                 async def _run_sync_forever() -> bool:
                     """
                     Run the Matrix client's continuous sync loop until it exits or shutdown is requested.
-                    
+
                     If a KeyboardInterrupt occurs during syncing, this function initiates shutdown.
-                    
+
                     Returns:
                         bool: `True` if the sync loop exited normally, `False` if shutdown was triggered by a KeyboardInterrupt.
                     """

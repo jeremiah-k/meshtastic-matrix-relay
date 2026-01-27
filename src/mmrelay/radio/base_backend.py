@@ -19,7 +19,7 @@ class BaseRadioBackend(ABC):
     def backend_name(self) -> str:
         """
         Unique identifier for this backend (for example, 'meshtastic').
-        
+
         Returns:
             The backend's unique identifier string (e.g., 'meshtastic').
         """
@@ -28,10 +28,10 @@ class BaseRadioBackend(ABC):
     async def connect(self, config: dict[str, Any]) -> bool:
         """
         Connect the backend using the provided configuration.
-        
+
         Parameters:
             config (dict[str, Any]): Backend-specific connection settings.
-        
+
         Returns:
             bool: `true` if the backend connected successfully, `false` otherwise.
         """
@@ -44,7 +44,7 @@ class BaseRadioBackend(ABC):
     def is_connected(self) -> bool:
         """
         Report whether the backend is currently connected.
-        
+
         Returns:
             bool: `True` if the backend is connected, `False` otherwise.
         """
@@ -74,13 +74,13 @@ class BaseRadioBackend(ABC):
     ) -> Any:
         """
         Send a text message through the backend to an optional channel or destination.
-        
+
         Parameters:
             text (str): Message content to send.
             channel (int | None): Optional channel identifier to send the message on.
             destination_id (int | None): Optional destination identifier for the recipient.
             reply_to_id (int | str | None): Optional existing message identifier to mark this message as a reply.
-        
+
         Returns:
             Any: Backend-specific result of the send operation.
         """
@@ -88,11 +88,11 @@ class BaseRadioBackend(ABC):
     def get_message_delay(self, _config: dict[str, Any], default: float) -> float:
         """
         Provide the message send delay configured for this backend.
-        
+
         Parameters:
             _config (dict[str, Any]): Backend configuration dictionary (ignored by the base implementation).
             default (float): Fallback delay in seconds to use if the backend does not supply a value.
-        
+
         Returns:
             float: The delay in seconds to wait between sending messages.
         """
@@ -101,7 +101,7 @@ class BaseRadioBackend(ABC):
     def get_client(self) -> Any:
         """
         Retrieve the backend's underlying client instance.
-        
+
         Returns:
             The client object if one exists, otherwise None.
         """

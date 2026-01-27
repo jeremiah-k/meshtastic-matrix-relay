@@ -16,6 +16,7 @@ from typing import (
     Any,
     Awaitable,
     Callable,
+    Coroutine,
     Dict,
     Generator,
     Optional,
@@ -1075,7 +1076,7 @@ def bot_command(
 async def _connect_meshtastic() -> Any:
     """
     Obtain a Meshtastic interface for interacting with the radio backend.
-    
+
     Returns:
         meshtastic_iface: A Meshtastic interface or proxy object for sending and receiving messages via the radio backend.
     """
@@ -1099,15 +1100,15 @@ def _get_backend_and_channel(
 ) -> tuple[Any | None, int | None]:
     """
     Return the active radio backend and a validated Meshtastic channel number for a room configuration.
-    
+
     Parameters:
         room_config (dict[str, Any]): Room-specific configuration mapping; expects a "meshtastic_channel" entry.
         log (logging.Logger): Logger used to report configuration or backend errors.
-    
+
     Returns:
         tuple: (backend, channel) where `backend` is the active radio backend instance or `None` if none is available,
         and `channel` is the validated channel number (int) from the config or `None` if the config value is missing or invalid.
-    
+
     Notes:
         Logs an error and returns (None, None) when no backend is available or when `meshtastic_channel` is absent, not an int, or negative.
     """
@@ -1140,17 +1141,17 @@ def _run_backend_send(
 ) -> Any:
     """
     Execute a radio backend's send_message call from a synchronous context and return its result.
-    
+
     Parameters:
         backend (Any): Radio backend instance exposing a `send_message` method.
         text (str): Message text to send.
         channel (int | None): Meshtastic channel number to use, or `None` to let the backend decide.
         destination_id (int | None): Target device/node id for directed messages, or `None` for broadcast.
         reply_to_id (int | str | None): Identifier of a Meshtastic message being replied to, if any.
-    
+
     Returns:
         Any: The value returned by the backend's `send_message` call, or `None` if sending failed.
-    
+
     Notes:
         If the backend's `send_message` returns an awaitable, this function will run it to completion before returning the result.
     """
@@ -1162,7 +1163,7 @@ def _run_backend_send(
             reply_to_id=reply_to_id,
         )
         if inspect.isawaitable(result):
-            return asyncio.run(result)
+            return asyncio.run(cast(Coroutine[Any, Any, Any], result))
         return result
     except Exception as e:
         logger.error(f"Error sending message via radio backend: {e}", exc_info=True)
@@ -1174,11 +1175,11 @@ async def _get_meshtastic_interface_and_channel(
 ) -> tuple[Any | None, int | None]:
     """
     Get a connected Meshtastic interface and the room's validated Meshtastic channel.
-    
+
     Parameters:
         room_config (dict): Room configuration; must contain "meshtastic_channel" set to a non-negative integer.
         purpose (str): Short description of the caller's intent used for contextual error messages.
-    
+
     Returns:
         tuple:
             - meshtastic_interface (Any | None): A connected Meshtastic interface object, or `None` if a connection could not be established.
@@ -2980,9 +2981,9 @@ async def send_reply_to_meshtastic(
         def _send_via_backend() -> Any:
             """
             Send a Meshtastic message through the selected radio backend.
-            
+
             Calls the backend send shim with the preconfigured message, channel, and reply target and returns whatever the backend's send operation produces.
-            
+
             Returns:
                 The value returned by the backend's send operation (backend-specific), or `None` if the send failed.
             """
@@ -3397,7 +3398,7 @@ async def on_room_message(
                 def _send_via_backend() -> Any:
                     """
                     Send a prepared message through the active radio backend.
-                    
+
                     Returns:
                         The value returned by the backend's `send_message` implementation (backend-specific).
                     """
@@ -3478,7 +3479,7 @@ async def on_room_message(
                 def _send_via_backend() -> Any:
                     """
                     Send a prepared message through the active radio backend.
-                    
+
                     Returns:
                         The value returned by the backend's `send_message` implementation (backend-specific).
                     """
@@ -3709,7 +3710,7 @@ async def on_room_message(
             def _send_via_backend() -> Any:
                 """
                 Send a prepared Meshtastic message through the active radio backend.
-                
+
                 Returns:
                     The result returned by the backend's send operation (type depends on backend implementation).
                 """

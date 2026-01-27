@@ -926,11 +926,11 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
     def _warn_db_deprecated(target_config: dict[str, Any]) -> None:
         """
         Emit a deprecation warning when the legacy 'db' configuration section is present.
-        
+
         If the given configuration mapping contains a top-level "db" key, prints a two-line
         warning to standard error advising that "db" is deprecated and that "database"
         should be used instead.
-        
+
         Parameters:
             target_config (dict[str, Any]): The configuration mapping to inspect.
         """
@@ -950,11 +950,11 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
     ) -> bool:
         """
         Print an informational message (optionally a warning), emit a deprecated-db notice, and indicate the configuration is valid for non-Meshtastic operation.
-        
+
         Parameters:
             target_config (dict[str, Any]): The parsed configuration dictionary to inspect for deprecated database settings.
             warning (str | None): Optional warning message to print to stderr before validation confirmation.
-        
+
         Returns:
             bool: `True` to indicate the configuration should be treated as valid (non-Meshtastic).
         """

@@ -51,9 +51,9 @@ class RadioMessage:
     def __post_init__(self) -> None:
         """
         Validate and normalize RadioMessage fields after initialization.
-        
+
         Performs post-construction checks and enforces required values. Raises ValueError if `text`, `sender_id`, or `backend` are empty. If `sender_name` is empty, sets a fallback of the form "Node {id_fallback}" where `id_fallback` is the full `sender_id` when shorter than 8 characters or the first 8 characters otherwise. If `meshnet_name` is empty, sets it to "default".
-        
+
         Raises:
             ValueError: with RADIO_MSG_TEXT_REQUIRED if `text` is empty.
             ValueError: with RADIO_MSG_SENDER_ID_REQUIRED if `sender_id` is empty.

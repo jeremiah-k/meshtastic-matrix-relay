@@ -52,7 +52,7 @@ class MockRadioBackend:
     def __init__(self):
         """
         Initialize the mock radio backend.
-        
+
         Creates:
         - backend_name: set to "mock".
         - send_message: a MagicMock callable that returns True by default (can be inspected/asserted by tests).
@@ -68,7 +68,7 @@ class MockRadioBackend:
 def mock_radio_backend():
     """
     Provide a MockRadioBackend and patch the radio registry to expose it as the active, ready backend for tests.
-    
+
     Returns:
         mock_backend (MockRadioBackend): A mock radio backend instance that tests can use to assert send/connection behavior.
     """
@@ -87,10 +87,10 @@ def mock_radio_backend():
 def _mock_radio_backend(mock_radio_backend):
     """
     Alias pytest fixture that returns the provided mock radio backend under a shorter name.
-    
+
     Parameters:
         mock_radio_backend: The MockRadioBackend instance provided by the primary fixture.
-    
+
     Returns:
         The same MockRadioBackend instance passed in.
     """

@@ -406,9 +406,9 @@ class BasePlugin(ABC):
     def get_my_node_id(self) -> int | None:
         """
         Retrieve the relay's node ID from the active radio backend.
-        
+
         Caches the ID after the first successful lookup to avoid repeated backend queries.
-        
+
         Returns:
             int or None: The relay's node ID, or None if no active backend or the ID is unavailable.
         """
@@ -450,14 +450,14 @@ class BasePlugin(ABC):
     ) -> bool:
         """
         Queue a text message for broadcast or direct delivery via the active radio backend.
-        
+
         Parameters:
-        	text (str): Message content to send.
-        	channel (int): Channel index to send the message on (defaults to 0).
-        	destination_id (int | None): Destination node ID for a direct message; if omitted the message is broadcast.
-        
+                text (str): Message content to send.
+                channel (int): Channel index to send the message on (defaults to 0).
+                destination_id (int | None): Destination node ID for a direct message; if omitted the message is broadcast.
+
         Returns:
-        	bool: `True` if the message was queued successfully, `False` otherwise.
+                bool: `True` if the message was queued successfully, `False` otherwise.
         """
         backend = get_radio_registry().get_active_backend()
         if backend is None:
@@ -471,7 +471,7 @@ class BasePlugin(ABC):
         def _send_via_backend() -> Any:
             """
             Send the prepared message through the active radio backend.
-            
+
             Returns:
                 The value returned by the backend's send_message call, or `None` if an error occurred while sending.
             """
