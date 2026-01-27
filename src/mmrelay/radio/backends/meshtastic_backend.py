@@ -288,100 +288,92 @@ class MeshtasticBackend(BaseRadioBackend):
             backend_logger.debug("Callback already registered, skipping")
             return
 
-        # Subscribe to Meshtastic messages if not already subscribed
-        if not meshtastic_utils.subscribed_to_messages:
-            from pubsub import pub  # type: ignore[import-untyped]
+        # Subscribe to Meshtastic messages (pubsub supports multiple subscribers)
+        from pubsub import pub  # type: ignore[import-untyped]
 
-            # Wrapper to convert Meshtastic packet to RadioMessage
-            def _packet_to_radio_message(
-                packet: dict[str, Any], interface: Any
-            ) -> None:
-                """
-                Convert a Meshtastic receive packet into a RadioMessage and invoke the registered message callback.
+        # Wrapper to convert Meshtastic packet to RadioMessage
+        def _packet_to_radio_message(packet: dict[str, Any], interface: Any) -> None:
+            """
+            Convert a Meshtastic receive packet into a RadioMessage and invoke the registered message callback.
 
-                Processes the provided Meshtastic `packet` (expected to contain keys like `decoded`, `fromId`/`from`, `to`, `id`, `channel`) and the given `interface`, extracts message text (or a portnum-derived label), sender id/name, timestamp, channel, direct/destination status, message id, reply id, and meshnet name, constructs a RadioMessage with backend="meshtastic", and calls the outer-registered callback with that RadioMessage. The function returns immediately if no callback is registered or if `packet["decoded"]` is None.
-                """
-                if callback is None:
-                    return
+            Processes the provided Meshtastic `packet` (expected to contain keys like `decoded`, `fromId`/`from`, `to`, `id`, `channel`) and the given `interface`, extracts message text (or a portnum-derived label), sender id/name, timestamp, channel, direct/destination status, message id, reply id, and meshnet name, constructs a RadioMessage with backend="meshtastic", and calls the outer-registered callback with that RadioMessage. The function returns immediately if no callback is registered or if `packet["decoded"]` is None.
+            """
+            if callback is None:
+                return
 
-                decoded = packet.get("decoded", {})
-                if decoded is None:
-                    return
+            decoded = packet.get("decoded", {})
+            if decoded is None:
+                return
 
-                # Extract text content
-                text = decoded.get("text", "")
-                if not text and "portnum" in decoded:
-                    # Non-text message, create description
-                    portnum = decoded.get("portnum")
-                    portnum_name = (
-                        meshtastic_utils._get_portnum_name(portnum)
-                        if portnum
-                        else "unknown"
-                    )
-                    text = f"[{portnum_name}]"
-
-                # Extract sender info
-                from_id = packet.get("fromId") or packet.get("from", "")
-                # Convert to string for slicing (from_id can be int), but pass original
-                # to _get_node_display_name which accepts int | str
-                from_id_str = str(from_id) if from_id else ""
-                sender_name = meshtastic_utils._get_node_display_name(
-                    from_id,
-                    interface,
-                    fallback=f"Node {from_id_str[:8] if from_id_str else 'Unknown'}",
+            # Extract text content
+            text = decoded.get("text", "")
+            if not text and "portnum" in decoded:
+                # Non-text message, create description
+                portnum = decoded.get("portnum")
+                portnum_name = (
+                    meshtastic_utils._get_portnum_name(portnum)
+                    if portnum
+                    else "unknown"
                 )
+                text = f"[{portnum_name}]"
 
-                # Extract message ID and reply ID
-                message_id = packet.get("id")
-                reply_to_id = decoded.get("replyId")
+            # Extract sender info
+            from_id = packet.get("fromId") or packet.get("from", "")
+            # Convert to string for slicing (from_id can be int), but pass original
+            # to _get_node_display_name which accepts int | str
+            from_id_str = str(from_id) if from_id else ""
+            sender_name = meshtastic_utils._get_node_display_name(
+                from_id,
+                interface,
+                fallback=f"Node {from_id_str[:8] if from_id_str else 'Unknown'}",
+            )
 
-                # Determine if this is a direct message
-                to_id = packet.get("to")
-                is_direct = bool(to_id and to_id != meshtastic.BROADCAST_ADDR)
+            # Extract message ID and reply ID
+            message_id = packet.get("id")
+            reply_to_id = decoded.get("replyId")
 
-                # Extract channel
-                channel = packet.get("channel")
+            # Determine if this is a direct message
+            to_id = packet.get("to")
+            is_direct = bool(to_id and to_id != meshtastic.BROADCAST_ADDR)
 
-                # Get meshnet name from config
-                from mmrelay.config import get_meshtastic_config_value
+            # Extract channel
+            channel = packet.get("channel")
 
-                meshnet_name = (
-                    get_meshtastic_config_value(
-                        meshtastic_utils.config, "meshnet_name", ""
-                    )
-                    or "default"
-                )
+            # Get meshnet name from config
+            from mmrelay.config import get_meshtastic_config_value
 
-                # Create RadioMessage
-                radio_message = RadioMessage(
-                    text=text,
-                    sender_id=str(from_id) if from_id else "unknown",
-                    sender_name=sender_name,
-                    timestamp=time.time(),
-                    backend="meshtastic",
-                    meshnet_name=meshnet_name,
-                    channel=channel,
-                    is_direct_message=is_direct,
-                    destination_id=(
-                        int(to_id)
-                        if to_id and to_id != meshtastic.BROADCAST_ADDR
-                        else None
-                    ),
-                    message_id=message_id,
-                    reply_to_id=reply_to_id,
-                )
+            meshnet_name = (
+                get_meshtastic_config_value(meshtastic_utils.config, "meshnet_name", "")
+                or "default"
+            )
 
-                # Call user callback
-                try:
-                    callback(radio_message)
-                except Exception:
-                    backend_logger.exception("Error in radio message callback")
+            # Create RadioMessage
+            radio_message = RadioMessage(
+                text=text,
+                sender_id=str(from_id) if from_id else "unknown",
+                sender_name=sender_name,
+                timestamp=time.time(),
+                backend="meshtastic",
+                meshnet_name=meshnet_name,
+                channel=channel,
+                is_direct_message=is_direct,
+                destination_id=(
+                    int(to_id) if to_id and to_id != meshtastic.BROADCAST_ADDR else None
+                ),
+                message_id=message_id,
+                reply_to_id=reply_to_id,
+            )
 
-            # Subscribe to Meshtastic messages
-            pub.subscribe(_packet_to_radio_message, "meshtastic.receive")
-            meshtastic_utils.subscribed_to_messages = True
-            self._callback_registered = True
-            backend_logger.debug("Registered message callback for Meshtastic backend")
+            # Call user callback
+            try:
+                callback(radio_message)
+            except Exception:
+                backend_logger.exception("Error in radio message callback")
+
+        # Subscribe to Meshtastic messages
+        pub.subscribe(_packet_to_radio_message, "meshtastic.receive")
+        self._callback_registered = True
+        backend_logger.debug("Registered message callback for Meshtastic backend")
 
     def get_message_delay(self, config: dict[str, Any], default: float) -> float:
         """
