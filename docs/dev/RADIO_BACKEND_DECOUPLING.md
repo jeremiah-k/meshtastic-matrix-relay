@@ -141,7 +141,15 @@ class BaseRadioBackend(ABC):
 
 #### Note on initial scope
 
-The initial implementation in `src/mmrelay/radio/base_backend.py` is intentionally minimal. It currently includes only the core connection methods plus `get_message_delay()` and `get_client()` to support the phased rollout. The remaining methods shown above are planned for future phases.
+The initial implementation in `src/mmrelay/radio/base_backend.py` is intentionally minimal. It currently includes only the core connection methods plus `get_message_delay()` and `get_client()` to support the phased rollout.
+
+The following abstract methods/properties shown in the design above are **not yet implemented** and are planned for future phases:
+
+- `backend_prefix` (property)
+- `get_nodes()`
+- `get_node_info()`
+- `get_meshnet_name()`
+- `supports_feature()`
 
 ### 2. Radio Registry (Single-Backend Support)
 
@@ -202,7 +210,11 @@ class RadioMessage:
     # Channel/routing
     channel: Optional[int] = None
     is_direct_message: bool = False
-    destination_id: Optional[str] = None
+    destination_id: int | None = None
+
+    # Message routing (for replies/reactions)
+    message_id: int | str | None = None
+    reply_to_id: int | str | None = None
 
     # Message metadata (backend-specific data stored as dict)
     metadata: Dict[str, Any] = field(default_factory=dict)

@@ -120,10 +120,10 @@ def _mock_run_with_keyboard_interrupt(coro: Any) -> None:
 def _make_async_raise(exc: Exception):
     """
     Return an async callable that raises the given exception when awaited.
-    
+
     Parameters:
         exc (Exception): Exception instance to be raised by the returned coroutine.
-    
+
     Returns:
         Callable[..., Coroutine]: An async function that raises `exc` when awaited.
     """
@@ -137,10 +137,10 @@ def _make_async_raise(exc: Exception):
 def _make_matrix_client(sync_forever: Callable[..., Any]) -> AsyncMock:
     """
     Create a configured AsyncMock that simulates a Matrix client using the supplied sync loop coroutine.
-    
+
     Parameters:
         sync_forever (Callable[..., Any]): Coroutine function used to simulate the client's sync_forever loop.
-    
+
     Returns:
         AsyncMock: Mock Matrix client with `add_event_callback` (MagicMock), `close` (AsyncMock), and `sync_forever` set to the provided coroutine.
     """
@@ -159,12 +159,12 @@ def _run_main_with_sync(
 ) -> None:
     """
     Execute the mmrelay main entrypoint with a mocked Matrix client whose sync loop and shutdown behavior are controlled for tests.
-    
+
     Parameters:
         sync_forever (Callable[..., Any]): Coroutine function to use as the Matrix client's `sync_forever` implementation; it drives the simulated sync loop behavior.
         event_cls (type | None): Optional Event-like class to replace asyncio.Event during the run; defaults to `_ToggleEvent` when omitted to enable fast shutdown.
         wait_side_effect (Callable[..., Any] | None): Optional side effect to substitute for `asyncio.wait`, allowing tests to simulate wait-time behavior or raise errors.
-    
+
     Notes:
         - The function patches various initialization/shutdown helpers (database, plugins, message queue, etc.) so the environment is test-friendly.
         - It injects a mocked Matrix client returned by `connect_matrix` and ensures `get_message_queue().ensure_processor_started` is available.
@@ -323,7 +323,7 @@ class _ToggleEvent:
     def __init__(self) -> None:
         """
         Initialize the event object to an initially unset state and reset the internal check counter.
-        
+
         Attributes:
             _set (bool): Whether the event has been set; starts as False.
             _checks (int): Number of is_set checks performed; starts at 0.
@@ -334,9 +334,9 @@ class _ToggleEvent:
     def is_set(self) -> bool:
         """
         Indicates whether the event is set and, on the second call, marks the event as set.
-        
+
         This method increments an internal call counter; it returns `False` the first time it's called and sets the internal `_set` flag to `True` before returning `True` on the second and subsequent calls.
-        
+
         Returns:
             bool: `True` if the event is set (on the second and later calls), `False` otherwise.
         """
@@ -355,7 +355,7 @@ class _ToggleEvent:
     async def wait(self) -> None:
         """
         Waits until the event is set.
-        
+
         This coroutine yields to the event loop and completes once the instance's internal `_set` flag becomes True.
         """
         while not self._set:
@@ -1519,9 +1519,9 @@ def test_main_database_wipe_config(
 ):
     """
     Verify that main() wipes the message map when the configuration requests a database message-map wipe and that the message queue processor is started.
-    
+
     Constructs a minimal config containing one Matrix room and a database section under the provided db_key with msg_map.wipe_on_restart set to True, runs main(config) (the Matrix sync loop is configured to raise KeyboardInterrupt to stop startup), and asserts that wipe_message_map() was invoked and the message queue processor was started.
-    
+
     Parameters:
         db_key (str): Configuration key to use for database settings (supports current "database" and legacy "db").
     """
@@ -1584,19 +1584,21 @@ def test_main_unregistered_backend_clears_active_backend() -> None:
         def __init__(self) -> None:
             """
             Initialize the event stub.
-            
+
             Creates an empty list `set_calls` used to record values passed to `set()` (or `None` when no value is provided).
             """
             self.set_calls: list[str | None] = []
 
-        def register_backend(self, _backend: Any, *, replace: bool = False) -> None:
+        def register_backend(
+            self, _backend: Any, *, replace: bool = False
+        ) -> None:  # noqa: ARG002
             """
             Register a radio backend in the application's backend registry.
-            
+
             If a backend with the same identifier is already registered, the existing
             registration is left unchanged unless `replace` is True, in which case the
             existing backend is replaced.
-            
+
             Parameters:
                 _backend (Any): Backend implementation object to register. Expected to
                     expose the backend's identifying attributes (e.g., name) and the
@@ -1609,10 +1611,10 @@ def test_main_unregistered_backend_clears_active_backend() -> None:
         def set_active_backend(self, name: str | None) -> bool:
             """
             Set the active backend name or clear the active backend when given None.
-            
+
             Parameters:
                 name (str | None): The backend name to activate, or `None` to clear the active backend.
-            
+
             Returns:
                 bool: `True` if the active backend was cleared (`name` is `None`), `False` otherwise.
             """
@@ -1622,7 +1624,7 @@ def test_main_unregistered_backend_clears_active_backend() -> None:
         def get_active_backend(self) -> Any | None:
             """
             Return the currently active radio backend, or None if no backend is selected.
-            
+
             Returns:
                 The active backend instance, or `None` if no backend is active.
             """
@@ -1631,7 +1633,7 @@ def test_main_unregistered_backend_clears_active_backend() -> None:
         async def connect_active_backend(self, _config: dict[str, Any]) -> bool:
             """
             Stub implementation that signals this method must not be invoked.
-            
+
             Raises:
                 AssertionError: always raised with the message "connect_active_backend should not be called".
             """
@@ -1640,7 +1642,7 @@ def test_main_unregistered_backend_clears_active_backend() -> None:
         async def disconnect_active_backend(self) -> None:
             """
             Disconnect the currently active radio backend and perform related cleanup.
-            
+
             This method signals the active backend to disconnect, releases any associated
             resources (clients, interfaces, executors) and clears internal references so
             the application no longer considers a backend active.
@@ -1684,11 +1686,11 @@ def test_main_sync_loop_completed_normally_warns() -> None:
     async def _sync_forever(*_args, **_kwargs):
         """
         No-op coroutine used as a stand-in for a client's sync_forever that immediately completes.
-        
+
         Parameters:
             *_args: Ignored positional arguments.
             **_kwargs: Ignored keyword arguments.
-        
+
         Returns:
             None
         """
@@ -1706,9 +1708,9 @@ def test_main_sync_loop_timeout_warns() -> None:
     async def _sync_forever(*_args, **_kwargs):
         """
         Coroutine that immediately raises asyncio.TimeoutError when awaited.
-        
+
         This helper ignores any positional and keyword arguments and is useful for simulating a sync loop timing out in tests.
-        
+
         Raises:
             asyncio.TimeoutError: Always raised when the coroutine is awaited.
         """
@@ -1729,7 +1731,7 @@ def test_main_sync_loop_unexpected_error_logs() -> None:
     async def _sync_forever(*_args, **_kwargs):
         """
         Coroutine used in tests that immediately raises an error when awaited.
-        
+
         Raises:
             ValueError: Always raised with the message "boom".
         """
@@ -1748,7 +1750,7 @@ def test_main_sync_loop_keyboard_interrupt_result_path() -> None:
         def __init__(self, result_exc: Exception | None = None) -> None:
             """
             Initialize the future stub with an optional exception to raise when result() is called.
-            
+
             Parameters:
                 result_exc (Exception | None): Exception instance to be raised by result(); if None, result() will not raise.
             """
@@ -1759,7 +1761,7 @@ def test_main_sync_loop_keyboard_interrupt_result_path() -> None:
         def cancel(self) -> bool:
             """
             Record that cancel() was invoked on this Future.
-            
+
             Returns:
                 True if the cancel request was recorded.
             """
@@ -1769,14 +1771,14 @@ def test_main_sync_loop_keyboard_interrupt_result_path() -> None:
         def result(self) -> None:
             """
             Retrieve the stored result or raise a stored exception.
-            
+
             This method marks the instance as having had result() called by setting the
             result_called flag. If an exception was stored on the object, that exception is
             raised; otherwise the method returns None.
-            
+
             Returns:
                 None: When no exception is stored.
-            
+
             Raises:
                 Exception: Re-raises the stored exception if one was set on the instance.
             """
@@ -1788,13 +1790,14 @@ def test_main_sync_loop_keyboard_interrupt_result_path() -> None:
         def __await__(self):
             """
             Provide awaitable behavior for this future: awaiting completes immediately unless the future was cancelled, in which case it raises asyncio.CancelledError.
-            
+
             Returns:
                 None: The awaitable yields None when not cancelled.
-            
+
             Raises:
                 asyncio.CancelledError: If the future's cancel flag is set.
             """
+
             async def _wait() -> None:
                 if self.cancel_called:
                     raise asyncio.CancelledError()
@@ -1809,13 +1812,13 @@ def test_main_sync_loop_keyboard_interrupt_result_path() -> None:
     def _create_task_side_effect(coro):
         """
         Side-effect function used by tests to emulate asyncio.create_task behavior.
-        
+
         Closes the passed coroutine, increments the local creation counter, and returns a predetermined task object:
         returns `sync_task` on the first invocation and `shutdown_task` on subsequent invocations.
-        
+
         Parameters:
             coro: An awaitable/coroutine that would normally be scheduled; it will be closed by this function.
-        
+
         Returns:
             An asyncio Task-like object: `sync_task` for the first call, `shutdown_task` thereafter.
         """
@@ -1827,7 +1830,7 @@ def test_main_sync_loop_keyboard_interrupt_result_path() -> None:
     async def _wait_side_effect(*_args, **_kwargs):
         """
         Simulate asyncio.wait returning the sync task as completed and the shutdown task as pending.
-        
+
         Returns:
             tuple: A pair (done, pending) where `done` is a set containing the sync task and `pending` is a set containing the shutdown task.
         """
@@ -1884,7 +1887,7 @@ def test_main_sync_loop_system_exit_raises() -> None:
         def __init__(self, result_exc: Exception | None = None) -> None:
             """
             Initialize the future stub with an optional exception to raise when result() is called.
-            
+
             Parameters:
                 result_exc (Exception | None): Exception instance to be raised by result(); if None, result() will not raise.
             """
@@ -1895,7 +1898,7 @@ def test_main_sync_loop_system_exit_raises() -> None:
         def cancel(self) -> bool:
             """
             Record that cancel() was invoked on this Future.
-            
+
             Returns:
                 True if the cancel request was recorded.
             """
@@ -1905,14 +1908,14 @@ def test_main_sync_loop_system_exit_raises() -> None:
         def result(self) -> None:
             """
             Retrieve the stored result or raise a stored exception.
-            
+
             This method marks the instance as having had result() called by setting the
             result_called flag. If an exception was stored on the object, that exception is
             raised; otherwise the method returns None.
-            
+
             Returns:
                 None: When no exception is stored.
-            
+
             Raises:
                 Exception: Re-raises the stored exception if one was set on the instance.
             """
@@ -1924,13 +1927,14 @@ def test_main_sync_loop_system_exit_raises() -> None:
         def __await__(self):
             """
             Provide awaitable behavior for this future: awaiting completes immediately unless the future was cancelled, in which case it raises asyncio.CancelledError.
-            
+
             Returns:
                 None: The awaitable yields None when not cancelled.
-            
+
             Raises:
                 asyncio.CancelledError: If the future's cancel flag is set.
             """
+
             async def _wait() -> None:
                 if self.cancel_called:
                     raise asyncio.CancelledError()
@@ -1945,13 +1949,13 @@ def test_main_sync_loop_system_exit_raises() -> None:
     def _create_task_side_effect(coro):
         """
         Side-effect function used by tests to emulate asyncio.create_task behavior.
-        
+
         Closes the passed coroutine, increments the local creation counter, and returns a predetermined task object:
         returns `sync_task` on the first invocation and `shutdown_task` on subsequent invocations.
-        
+
         Parameters:
             coro: An awaitable/coroutine that would normally be scheduled; it will be closed by this function.
-        
+
         Returns:
             An asyncio Task-like object: `sync_task` for the first call, `shutdown_task` thereafter.
         """
@@ -1963,7 +1967,7 @@ def test_main_sync_loop_system_exit_raises() -> None:
     async def _wait_side_effect(*_args, **_kwargs):
         """
         Simulate asyncio.wait returning the sync task as completed and the shutdown task as pending.
-        
+
         Returns:
             tuple: A pair (done, pending) where `done` is a set containing the sync task and `pending` is a set containing the shutdown task.
         """
@@ -2020,7 +2024,7 @@ def test_main_sync_loop_wait_error_breaks_cleanly() -> None:
     async def _sync_forever(*_args, **_kwargs):
         """
         No-op sync task that yields control to the event loop once and then completes.
-        
+
         This coroutine yields to the event loop a single tick and then finishes without producing a value.
         """
         await asyncio.sleep(0)
@@ -2029,7 +2033,7 @@ def test_main_sync_loop_wait_error_breaks_cleanly() -> None:
     def _wait_side_effect(*_args, **_kwargs):
         """
         Test helper that always raises a RuntimeError to simulate a failure from asyncio.wait.
-        
+
         Raises:
             RuntimeError: "wait failure"
         """
