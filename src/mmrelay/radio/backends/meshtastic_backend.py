@@ -31,6 +31,15 @@ class MeshtasticBackend(BaseRadioBackend):
         connect_fn: Callable[..., Any] | None = None,
         to_thread: Callable[..., Awaitable[Any]] | None = None,
     ) -> None:
+        """
+        Initialize a MeshtasticBackend instance.
+        
+        Parameters:
+            connect_fn (Callable[..., Any] | None): Optional function used to establish and return a Meshtastic client. If not provided, defaults to meshtastic_utils.connect_meshtastic.
+            to_thread (Callable[..., Awaitable[Any]] | None): Optional helper to run blocking callables in a thread (e.g., asyncio.to_thread). If not provided, defaults to asyncio.to_thread.
+        
+        The constructor also initializes internal state used by the backend: the client reference, the user message callback placeholder, and a flag tracking whether a callback subscription has been registered.
+        """
         self._connect_fn = connect_fn or meshtastic_utils.connect_meshtastic
         self._to_thread = to_thread or asyncio.to_thread
         self._client: Any | None = None
@@ -39,9 +48,27 @@ class MeshtasticBackend(BaseRadioBackend):
 
     @property
     def backend_name(self) -> str:
+        """
+        Provide the backend identifier used to distinguish this radio backend.
+        
+        Returns:
+            The string "meshtastic" identifying this backend.
+        """
         return "meshtastic"
 
     async def connect(self, config: dict[str, Any]) -> bool:
+        """
+        Establishes a Meshtastic client from the provided configuration and stores it for use.
+        
+        Parameters:
+            config (dict[str, Any]): Application configuration; may include a "meshtastic" mapping with an optional "connection_type" key that influences how the connection is performed.
+        
+        Returns:
+            bool: `true` if a Meshtastic client was created and stored, `false` otherwise.
+        
+        Side effects:
+            Sets self._client and meshtastic_utils.meshtastic_client to the connected client on success, or clears them on failure.
+        """
         connection_type = None
         meshtastic_cfg = config.get("meshtastic")
         if isinstance(meshtastic_cfg, dict):
@@ -72,6 +99,11 @@ class MeshtasticBackend(BaseRadioBackend):
         return True
 
     async def disconnect(self) -> None:
+        """
+        Close the active Meshtastic client connection with a guarded shutdown.
+        
+        If a Meshtastic client is present (either local or global), attempts a best-effort shutdown that enforces a 10-second timeout to avoid blocking application exit. Performs BLE-specific disconnect steps when the BLE interface is active, clears internal and global client/interface references, and logs warnings or errors if shutdown times out or fails.
+        """
         client = self._client or meshtastic_utils.meshtastic_client
         if not client:
             return
@@ -93,11 +125,8 @@ class MeshtasticBackend(BaseRadioBackend):
                 def _close_meshtastic() -> None:
                     """
                     Close and clean up the active Meshtastic client connection.
-
-                    If a BLE interface is the active client, perform an explicit BLE disconnect to release
-                    the adapter; a plain close() can leave BlueZ stuck.
-                    Clears meshtastic_utils.meshtastic_client (and meshtastic_utils.meshtastic_iface when applicable).
-                    Does nothing if no client is present.
+                    
+                    If a BLE interface is active, perform an explicit BLE disconnect to release the adapter; otherwise call the client's close method. Clears meshtastic_utils.meshtastic_client and self._client, and clears meshtastic_utils.meshtastic_iface when a BLE disconnect is performed. Does nothing if no client is present.
                     """
                     client_ref = self._client or meshtastic_utils.meshtastic_client
                     if client_ref:
@@ -165,6 +194,14 @@ class MeshtasticBackend(BaseRadioBackend):
             await maybe_result
 
     def is_connected(self) -> bool:
+        """
+        Determine whether the Meshtastic backend currently has an active connection.
+        
+        Checks a global reconnecting flag and the configured client; if no client exists or a reconnect is in progress, reports not connected. If the client lacks an `is_connected` attribute, the function treats the client as connected; if `is_connected` is present and callable it is invoked, otherwise its truthiness is used.
+        
+        Returns:
+            bool: `True` if the backend is considered connected, `False` otherwise.
+        """
         if meshtastic_utils.reconnecting:
             return False
         client = self._client or meshtastic_utils.meshtastic_client
@@ -186,10 +223,16 @@ class MeshtasticBackend(BaseRadioBackend):
         reply_to_id: int | str | None = None,
     ) -> Any:
         """
-        Send a message via Meshtastic backend.
-
-        Uses send_text_reply() if reply_to_id is provided, otherwise
-        uses the interface's sendText() method.
+        Send a text message over the Meshtastic connection.
+        
+        Parameters:
+            text (str): Message text to send.
+            channel (int | None): Channel index to send on; defaults to 0 when omitted.
+            destination_id (int | None): Destination node id; when omitted messages are broadcast.
+            reply_to_id (int | str | None): If provided, send as a reply to this message id. A numeric string will be converted to an integer.
+        
+        Returns:
+            Any: The underlying Meshtastic send result (e.g., acknowledgement or message object), or `None` if no client is available or an error occurred.
         """
         interface = self._client or meshtastic_utils.meshtastic_client
         if interface is None:
@@ -232,10 +275,12 @@ class MeshtasticBackend(BaseRadioBackend):
         callback: Callable[[RadioMessage], None],
     ) -> None:
         """
-        Register a callback to be invoked when Meshtastic messages are received.
-
-        Wraps the existing pubsub mechanism and converts Meshtastic packets
-        to RadioMessage objects before calling the user callback.
+        Register a callback to receive converted RadioMessage objects for incoming Meshtastic packets.
+        
+        Subscribes to Meshtastic messages (once) and converts incoming packets into RadioMessage instances before invoking the provided callback.
+        
+        Parameters:
+            callback (Callable[[RadioMessage], None]): Function called with each converted RadioMessage.
         """
         self._message_callback = callback
 
@@ -252,10 +297,9 @@ class MeshtasticBackend(BaseRadioBackend):
                 packet: dict[str, Any], interface: Any
             ) -> None:
                 """
-                Convert incoming Meshtastic packet to RadioMessage and invoke callback.
-
-                Extracts relevant fields from the Meshtastic packet and creates
-                a RadioMessage object for the callback.
+                Convert a Meshtastic receive packet into a RadioMessage and invoke the registered message callback.
+                
+                Processes the provided Meshtastic `packet` (expected to contain keys like `decoded`, `fromId`/`from`, `to`, `id`, `channel`) and the given `interface`, extracts message text (or a portnum-derived label), sender id/name, timestamp, channel, direct/destination status, message id, reply id, and meshnet name, constructs a RadioMessage with backend="meshtastic", and calls the outer-registered callback with that RadioMessage. The function returns immediately if no callback is registered or if `packet["decoded"]` is None.
                 """
                 if callback is None:
                     return
@@ -337,7 +381,23 @@ class MeshtasticBackend(BaseRadioBackend):
             backend_logger.debug("Registered message callback for Meshtastic backend")
 
     def get_message_delay(self, config: dict[str, Any], default: float) -> float:
+        """
+        Retrieve the configured Meshtastic message delay.
+        
+        Parameters:
+            config (dict[str, Any]): Application configuration; may contain a "meshtastic" section with a "message_delay" value.
+            default (float): Fallback delay in seconds used when the configuration does not specify "meshtastic.message_delay".
+        
+        Returns:
+            float: Message delay in seconds from the configuration or the provided default.
+        """
         return config.get("meshtastic", {}).get("message_delay", default)
 
     def get_client(self) -> Any:
+        """
+        Return the active Meshtastic client instance used by this backend.
+        
+        Returns:
+            The Meshtastic client attached to this backend if present, otherwise the global meshtastic_utils.meshtastic_client; may be `None` when no client is available.
+        """
         return self._client or meshtastic_utils.meshtastic_client

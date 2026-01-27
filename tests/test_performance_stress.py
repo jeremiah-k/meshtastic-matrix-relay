@@ -195,9 +195,9 @@ class TestPerformanceStress:
         async def run_test():
             # Mock Meshtastic client to allow message sending
             """
-            Asynchronously tests MessageQueue performance under rapid enqueueing with configured delay.
-
-            Enqueues 20 messages using a mock send function into the MessageQueue, ensuring all messages are processed. Verifies that the queue respects the 2.5s configured delay between messages, all messages are processed, and the processing rate exceeds 0.2 messages per second.
+            Run a MessageQueue performance test that enqueues 20 messages with the default delay and verifies processing timing and throughput.
+            
+            Enqueues 20 messages via a mock send function into a MessageQueue configured with DEFAULT_MESSAGE_DELAY, waits for all messages to be processed within a timeout, and asserts that the observed processing time meets the expected minimum delay (with a small tolerance) and that throughput exceeds 0.2 messages per second.
             """
             with patch(
                 "mmrelay.meshtastic_utils.meshtastic_client",
@@ -345,9 +345,9 @@ class TestPerformanceStress:
         self, meshtastic_loop_safety, fast_async_helpers
     ):
         """
-        Test the performance of processing messages through multiple plugins.
-
-        Simulates processing 100 messages through 10 mock plugins, ensuring each plugin's handler is called for every message. Asserts that all plugin handlers are invoked the correct number of times, total processing completes in under 10 seconds, and the aggregate plugin call rate exceeds 100 calls per second.
+        Measure processing performance of Meshtastic messages through multiple plugins.
+        
+        Simulates processing multiple messages through a set of mock plugins, asserts that each plugin's handle_meshtastic_message is invoked for every message, that total processing completes within the test timeout (10 seconds), and that the aggregate plugin call rate exceeds 100 calls per second.
         """
         import tempfile
 
@@ -473,9 +473,9 @@ class TestPerformanceStress:
         async def run_concurrent_test():
             # Mock Meshtastic client to allow message sending
             """
-            Test concurrent enqueuing and processing of messages in MessageQueue from multiple threads.
-
-            This function starts a MessageQueue with a minimal configured delay, spawns several threads to enqueue messages concurrently, and waits for all messages to be processed. It asserts that all messages are processed within the expected time frame and that the processing rate meets minimum performance requirements.
+            Run a concurrent enqueue/processing test of MessageQueue across multiple threads.
+            
+            Starts a MessageQueue with a 0.5 second per-message delay, spawns multiple threads that enqueue messages concurrently, waits for all messages to be processed, and asserts that every message was processed and that processing time and throughput meet the test's minimum expectations.
             """
             with patch(
                 "mmrelay.meshtastic_utils.meshtastic_client",
@@ -621,7 +621,9 @@ class TestPerformanceStress:
         async def run_rate_limit_test():
             # Mock Meshtastic client to allow message sending
             """
-            Asynchronously verifies that the MessageQueue respects the configured delay between message sends by measuring the intervals between processed messages to confirm timing behavior.
+            Verify MessageQueue enforces the configured delay between consecutive message sends by measuring inter-send intervals.
+            
+            This test enqueues multiple messages, records the timestamps when each message is actually sent, and asserts that each successive inter-send interval falls within an acceptable tolerance around the configured message delay.
             """
             with patch(
                 "mmrelay.meshtastic_utils.meshtastic_client",
@@ -734,28 +736,21 @@ class TestPerformanceStress:
     @pytest.mark.performance  # New realistic throughput benchmark
     def test_realistic_throughput_benchmark(self):
         """
-        Benchmark message throughput under realistic conditions with mixed message types and enforced rate limiting.
-
-        Simulates a mesh network by asynchronously queuing and processing messages of various types from multiple nodes over a fixed duration. Validates that throughput uses the configured delay, achieves at least 65% of theoretical maximum throughput, and processes multiple message types. Prints detailed throughput statistics after completion.
+        Benchmark realistic message throughput with mixed message types under enforced rate limiting.
+        
+        Runs a 30-second scenario that enqueues messages from multiple simulated nodes at randomized intervals into a MessageQueue configured with the minimum send delay, waits for the queue to drain, and asserts that throughput respects the configured rate limit, meets a minimum expected throughput when measurable, and processes multiple message types. Prints a brief summary of queued/processed counts, throughput, and per-type counts before stopping the queue.
         """
         import asyncio
         import random
 
         async def run_throughput_test():
             """
-            Run a 30-second realistic throughput benchmark that enqueues mixed-message traffic into a MessageQueue and validates rate-limiting and basic throughput/diversity expectations.
-
-            This coroutine:
-            - Seeds the RNG for deterministic test behavior.
-            - Starts a MessageQueue processor with a 2.1 second enforced send delay.
-            - Enqueues messages of several types from multiple mock node IDs at randomized intervals (0.5–3.0s) for 30 seconds.
-            - Records timestamps of processed messages, waits up to 15s for the queue to drain, and computes throughput using the active processing window (first to last processed timestamp) when possible.
-            - Asserts minimal test invariants: multiple messages were queued and at least one processed; throughput does not exceed the rate-limit-derived upper bound and — when >= 2 messages were processed — meets a minimum expected throughput; message-type diversity is observed.
-            - Prints a brief summary of duration, queued/processed counts, throughput, and per-type counts.
-            - Stops the MessageQueue on completion.
-
+            Run a 30-second throughput benchmark that enqueues mixed Meshtastic message types into a MessageQueue and validates rate-limiting, throughput, and type diversity.
+            
+            This coroutine seeds the RNG for deterministic behavior, starts a MessageQueue with MINIMUM_MESSAGE_DELAY, enqueues randomized messages of several types from multiple mock node IDs for 30 seconds, records timestamps of processed messages, waits up to 15 seconds for the queue to drain, and computes throughput using the active processing window when possible. It asserts basic invariants (multiple messages queued, at least one processed), that observed throughput respects the configured rate limit and meets a minimum expectation when applicable, and that multiple message types were processed. A brief summary of duration, queued/processed counts, throughput, and per-type counts is printed. The queue is stopped on completion.
+            
             Raises:
-                AssertionError: if queue draining, throughput, or diversity checks fail.
+                AssertionError: if queue draining, throughput, or type-diversity checks fail.
             """
             random.seed(0)  # Reduce flakiness in CI
             with patch(

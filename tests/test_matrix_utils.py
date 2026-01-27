@@ -50,6 +50,14 @@ class MockRadioBackend:
     """Mock radio backend that simulates a connected radio."""
 
     def __init__(self):
+        """
+        Initialize the mock radio backend.
+        
+        Creates:
+        - backend_name: set to "mock".
+        - send_message: a MagicMock callable that returns True by default (can be inspected/asserted by tests).
+        - is_connected: a MagicMock callable that returns True by default (represents a connected radio).
+        """
         self.backend_name = "mock"
         self.send_message = MagicMock(return_value=True)
         self.is_connected = MagicMock(return_value=True)
@@ -58,7 +66,12 @@ class MockRadioBackend:
 # Fixture to mock the radio backend
 @pytest.fixture
 def mock_radio_backend():
-    """Mock the radio backend to return our mock instance."""
+    """
+    Provide a MockRadioBackend and patch the radio registry to expose it as the active, ready backend for tests.
+    
+    Returns:
+        mock_backend (MockRadioBackend): A mock radio backend instance that tests can use to assert send/connection behavior.
+    """
     mock_backend = MockRadioBackend()
 
     with patch("mmrelay.matrix_utils.get_radio_registry") as mock_registry:
@@ -72,6 +85,15 @@ def mock_radio_backend():
 
 @pytest.fixture
 def _mock_radio_backend(mock_radio_backend):
+    """
+    Alias pytest fixture that returns the provided mock radio backend under a shorter name.
+    
+    Parameters:
+        mock_radio_backend: The MockRadioBackend instance provided by the primary fixture.
+    
+    Returns:
+        The same MockRadioBackend instance passed in.
+    """
     return mock_radio_backend
 
 

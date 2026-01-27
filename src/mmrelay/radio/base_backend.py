@@ -17,11 +17,24 @@ class BaseRadioBackend(ABC):
     @property
     @abstractmethod
     def backend_name(self) -> str:
-        """Return the unique backend identifier (e.g., 'meshtastic')."""
+        """
+        Unique identifier for this backend (for example, 'meshtastic').
+        
+        Returns:
+            The backend's unique identifier string (e.g., 'meshtastic').
+        """
 
     @abstractmethod
     async def connect(self, config: dict[str, Any]) -> bool:
-        """Connect the backend using the provided configuration."""
+        """
+        Connect the backend using the provided configuration.
+        
+        Parameters:
+            config (dict[str, Any]): Backend-specific connection settings.
+        
+        Returns:
+            bool: `true` if the backend connected successfully, `false` otherwise.
+        """
 
     @abstractmethod
     async def disconnect(self) -> None:
@@ -29,7 +42,12 @@ class BaseRadioBackend(ABC):
 
     @abstractmethod
     def is_connected(self) -> bool:
-        """Return True if the backend is currently connected."""
+        """
+        Report whether the backend is currently connected.
+        
+        Returns:
+            bool: `True` if the backend is connected, `False` otherwise.
+        """
 
     @abstractmethod
     def register_message_callback(
@@ -54,12 +72,37 @@ class BaseRadioBackend(ABC):
         destination_id: int | None = None,
         reply_to_id: int | str | None = None,
     ) -> Any:
-        """Send a message via the radio backend."""
+        """
+        Send a text message through the backend to an optional channel or destination.
+        
+        Parameters:
+            text (str): Message content to send.
+            channel (int | None): Optional channel identifier to send the message on.
+            destination_id (int | None): Optional destination identifier for the recipient.
+            reply_to_id (int | str | None): Optional existing message identifier to mark this message as a reply.
+        
+        Returns:
+            Any: Backend-specific result of the send operation.
+        """
 
     def get_message_delay(self, _config: dict[str, Any], default: float) -> float:
-        """Return the configured message delay for this backend."""
+        """
+        Provide the message send delay configured for this backend.
+        
+        Parameters:
+            _config (dict[str, Any]): Backend configuration dictionary (ignored by the base implementation).
+            default (float): Fallback delay in seconds to use if the backend does not supply a value.
+        
+        Returns:
+            float: The delay in seconds to wait between sending messages.
+        """
         return default
 
     def get_client(self) -> Any:
-        """Return the underlying client, if one exists."""
+        """
+        Retrieve the backend's underlying client instance.
+        
+        Returns:
+            The client object if one exists, otherwise None.
+        """
         return None

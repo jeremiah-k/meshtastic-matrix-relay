@@ -489,12 +489,12 @@ class MessageQueue:
 
     def _should_send_message(self) -> bool:
         """
-        Determine whether the queue may send a radio message.
-
-        Performs runtime checks against the active radio backend and ensures it reports connected. If the radio registry cannot be imported, triggers an asynchronous stop of the queue.
-
+        Determine whether the queue may send a radio message by checking the active radio backend registry readiness.
+        
+        If the radio registry cannot be imported, starts an asynchronous stop of the queue and returns False.
+        
         Returns:
-            `True` if an active backend exists and reports connected; `False` otherwise.
+            `True` if a ready radio backend is present, `False` otherwise.
         """
         # Import here to avoid circular imports
         try:
