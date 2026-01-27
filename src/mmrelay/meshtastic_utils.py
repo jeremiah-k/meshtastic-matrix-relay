@@ -506,6 +506,10 @@ def _is_ble_discovery_error(error: Exception) -> bool:
         return True
     if "Timed out waiting for connection completion" in message:
         return True
+    if "Notify acquired" in message:
+        return True
+    if "Async operation timed out" in message:
+        return True
 
     def _is_type_or_tuple(candidate: object) -> bool:
         if isinstance(candidate, type):
@@ -1934,7 +1938,7 @@ def connect_meshtastic(
                                 logger.debug(
                                     "Using official meshtastic library (auto_reconnect not available)"
                                 )
-                            if ble_scan_after_failure and not supports_auto_reconnect:
+                            if ble_scan_after_failure:
                                 logger.debug(
                                     "Scanning for BLE device before retrying %s (%s)",
                                     ble_address,
@@ -2322,11 +2326,11 @@ def connect_meshtastic(
             if (
                 connection_type == CONNECTION_TYPE_BLE
                 and ble_address
-                and not supports_auto_reconnect
                 and _is_ble_discovery_error(e)
             ):
                 ble_scan_after_failure = True
                 ble_scan_reason = type(e).__name__
+                _disconnect_ble_by_address(ble_address)
             if retry_limit == 0 or attempts <= retry_limit:
                 wait_time = min(2**attempts, 60)
                 logger.warning(
