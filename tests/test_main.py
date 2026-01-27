@@ -93,7 +93,7 @@ def _close_coro_if_possible(coro: Any) -> None:
         coro: An awaitable object (e.g., coroutine object or generator-based coroutine). If it has a `close()` method it will be called; otherwise the object is left untouched.
     """
     if inspect.isawaitable(coro) and hasattr(coro, "close"):
-        coro.close()
+        getattr(coro, "close")()
     return None
 
 
@@ -365,12 +365,12 @@ class _ToggleEvent:
 class _StubTask:
     """Minimal task stub for tests that need Future-like behavior."""
 
-    def __init__(self, result_exc: Exception | None = None) -> None:
+    def __init__(self, result_exc: BaseException | None = None) -> None:
         """
         Initialize the future stub with an optional exception to raise when result() is called.
 
         Parameters:
-            result_exc (Exception | None): Exception instance to be raised by result(); if None, result() will not raise.
+            result_exc (BaseException | None): Exception instance to be raised by result(); if None, result() will not raise.
         """
         self._result_exc = result_exc
         self.cancel_called = False
@@ -452,12 +452,12 @@ class _CloseFutureBase(concurrent.futures.Future):
 class _TimeoutCloseFuture(_CloseFutureBase):
     """Future that raises TimeoutError immediately on result()."""
 
-    def result(self, _timeout: float | None = None) -> None:
+    def result(self, timeout: float | None = None) -> None:
         """
         Always raises a concurrent.futures.TimeoutError to simulate a timed-out close future.
 
         Parameters:
-            _timeout (float | None): Ignored timeout value.
+            timeout (float | None): Ignored timeout value.
 
         Raises:
             concurrent.futures.TimeoutError: Always raised when called.
@@ -468,12 +468,12 @@ class _TimeoutCloseFuture(_CloseFutureBase):
 class _ErrorCloseFuture(_CloseFutureBase):
     """Future that raises an unexpected error on result()."""
 
-    def result(self, _timeout: float | None = None) -> None:
+    def result(self, timeout: float | None = None) -> None:
         """
         Always raises a ValueError with message "boom".
 
         Parameters:
-            _timeout (float | None): Ignored; present for API compatibility.
+            timeout (float | None): Ignored; present for API compatibility.
 
         Raises:
             ValueError: Always raised with message "boom".
@@ -1011,7 +1011,9 @@ class TestMain(unittest.TestCase):
         ):
             asyncio.run(main(self.mock_config))
 
-        self.assertTrue(executor.close_future.cancel_called)
+        close_future = executor.close_future
+        assert isinstance(close_future, _CloseFutureBase)
+        self.assertTrue(close_future.cancel_called)
         mock_meshtastic_logger.warning.assert_any_call(
             "Meshtastic client close timed out - may cause notification errors"
         )
@@ -1651,7 +1653,7 @@ def test_main_unregistered_backend_clears_active_backend() -> None:
             """
             self.set_calls: list[str | None] = []
 
-        def register_backend(self, _backend: Any, *, _replace: bool = False) -> None:
+        def register_backend(self, _backend: Any, *, replace: bool = False) -> None:
             """
             Register a radio backend in the application's backend registry.
 
@@ -1663,7 +1665,7 @@ def test_main_unregistered_backend_clears_active_backend() -> None:
                 _backend (Any): Backend implementation object to register. Expected to
                     expose the backend's identifying attributes (e.g., name) and the
                     runtime interface required by the registry.
-                _replace (bool): If True, replace an existing backend with the same
+                replace (bool): If True, replace an existing backend with the same
                     identifier. Defaults to False.
             """
             return None
@@ -2346,7 +2348,7 @@ class TestMainAsyncFunction(unittest.TestCase):
 
         # Reset meshtastic_utils globals
         if "mmrelay.meshtastic_utils" in sys.modules:
-            module = sys.modules["mmrelay.meshtastic_utils"]
+            module: Any = sys.modules["mmrelay.meshtastic_utils"]
             module.config = None
             module.matrix_rooms = []
             module.meshtastic_client = None
@@ -2379,7 +2381,7 @@ class TestMainAsyncFunction(unittest.TestCase):
 
         # Reset matrix_utils globals
         if "mmrelay.matrix_utils" in sys.modules:
-            module = sys.modules["mmrelay.matrix_utils"]
+            module: Any = sys.modules["mmrelay.matrix_utils"]
             module.config = None
             module.matrix_homeserver = None
             module.matrix_rooms = None
@@ -2394,20 +2396,20 @@ class TestMainAsyncFunction(unittest.TestCase):
 
         # Reset config globals
         if "mmrelay.config" in sys.modules:
-            module = sys.modules["mmrelay.config"]
+            module: Any = sys.modules["mmrelay.config"]
             # Reset custom_data_dir if it was set
             if hasattr(module, "custom_data_dir"):
                 module.custom_data_dir = None
 
         # Reset main module globals if any
         if "mmrelay.main" in sys.modules:
-            module = sys.modules["mmrelay.main"]
+            module: Any = sys.modules["mmrelay.main"]
             # Reset banner printed state to ensure consistent test behavior
             module._banner_printed = False
 
         # Reset plugin_loader caches
         if "mmrelay.plugin_loader" in sys.modules:
-            module = sys.modules["mmrelay.plugin_loader"]
+            module: Any = sys.modules["mmrelay.plugin_loader"]
             if hasattr(module, "_reset_caches_for_tests"):
                 module._reset_caches_for_tests()
 
@@ -2532,12 +2534,12 @@ class TestMainAsyncFunction(unittest.TestCase):
         real_get_running_loop = asyncio.get_running_loop
 
         def _patched_get_running_loop():
-            loop = real_get_running_loop()
+            loop: Any = real_get_running_loop()
             if not hasattr(loop, "_signal_handler_patched"):
 
-                def _fake_add_signal_handler(_sig, handler):
-                    captured_handlers.append(handler)
-                    handler()
+                def _fake_add_signal_handler(sig, callback, *args):
+                    captured_handlers.append(callback)
+                    callback()
 
                 loop.add_signal_handler = _fake_add_signal_handler
                 loop._signal_handler_patched = True
@@ -2601,16 +2603,16 @@ class TestMainAsyncFunction(unittest.TestCase):
             Returns:
                 asyncio.AbstractEventLoop: The running event loop with signal registration patched.
             """
-            loop = real_get_running_loop()
+            loop: Any = real_get_running_loop()
             if not hasattr(loop, "_signal_capture_patched"):
 
-                def _fake_add_signal_handler(sig, _handler):
+                def _fake_add_signal_handler(sig, callback, *args):
                     """
                     Record the given signal identifier by appending it to the module-level captured_signals list for testing.
 
                     Parameters:
                         sig: The signal identifier (e.g., an int or signal.Signals) to capture.
-                        _handler: The signal handler callable (ignored).
+                        callback: The signal handler callable (ignored).
                     """
                     captured_signals.append(sig)
 
