@@ -362,6 +362,68 @@ class _ToggleEvent:
             await asyncio.sleep(3600)
 
 
+class _StubTask:
+    """Minimal task stub for tests that need Future-like behavior."""
+
+    def __init__(self, result_exc: Exception | None = None) -> None:
+        """
+        Initialize the future stub with an optional exception to raise when result() is called.
+
+        Parameters:
+            result_exc (Exception | None): Exception instance to be raised by result(); if None, result() will not raise.
+        """
+        self._result_exc = result_exc
+        self.cancel_called = False
+        self.result_called = False
+
+    def cancel(self) -> bool:
+        """
+        Record that cancel() was invoked on this Future.
+
+        Returns:
+            True if the cancel request was recorded.
+        """
+        self.cancel_called = True
+        return True
+
+    def result(self) -> None:
+        """
+        Retrieve the stored result or raise a stored exception.
+
+        This method marks the instance as having had result() called by setting the
+        result_called flag. If an exception was stored on the object, that exception is
+        raised; otherwise the method returns None.
+
+        Returns:
+            None: When no exception is stored.
+
+        Raises:
+            Exception: Re-raises the stored exception if one was set on the instance.
+        """
+        self.result_called = True
+        if self._result_exc is not None:
+            raise self._result_exc
+        return None
+
+    def __await__(self):
+        """
+        Provide awaitable behavior for this future: awaiting completes immediately unless the future was cancelled, in which case it raises asyncio.CancelledError.
+
+        Returns:
+            None: The awaitable yields None when not cancelled.
+
+        Raises:
+            asyncio.CancelledError: If the future's cancel flag is set.
+        """
+
+        async def _wait() -> None:
+            if self.cancel_called:
+                raise asyncio.CancelledError()
+            return None
+
+        return _wait().__await__()
+
+
 class _CloseFutureBase(concurrent.futures.Future):
     """Future with a cancel flag for shutdown test assertions."""
 
@@ -1589,9 +1651,7 @@ def test_main_unregistered_backend_clears_active_backend() -> None:
             """
             self.set_calls: list[str | None] = []
 
-        def register_backend(
-            self, _backend: Any, *, replace: bool = False
-        ) -> None:  # noqa: ARG002
+        def register_backend(self, _backend: Any, *, _replace: bool = False) -> None:
             """
             Register a radio backend in the application's backend registry.
 
@@ -1603,7 +1663,7 @@ def test_main_unregistered_backend_clears_active_backend() -> None:
                 _backend (Any): Backend implementation object to register. Expected to
                     expose the backend's identifying attributes (e.g., name) and the
                     runtime interface required by the registry.
-                replace (bool): If True, replace an existing backend with the same
+                _replace (bool): If True, replace an existing backend with the same
                     identifier. Defaults to False.
             """
             return None
@@ -1746,65 +1806,6 @@ def test_main_sync_loop_unexpected_error_logs() -> None:
 def test_main_sync_loop_keyboard_interrupt_result_path() -> None:
     """KeyboardInterrupt from sync_task.result should trigger shutdown and exit loop."""
 
-    class _StubTask:
-        def __init__(self, result_exc: Exception | None = None) -> None:
-            """
-            Initialize the future stub with an optional exception to raise when result() is called.
-
-            Parameters:
-                result_exc (Exception | None): Exception instance to be raised by result(); if None, result() will not raise.
-            """
-            self._result_exc = result_exc
-            self.cancel_called = False
-            self.result_called = False
-
-        def cancel(self) -> bool:
-            """
-            Record that cancel() was invoked on this Future.
-
-            Returns:
-                True if the cancel request was recorded.
-            """
-            self.cancel_called = True
-            return True
-
-        def result(self) -> None:
-            """
-            Retrieve the stored result or raise a stored exception.
-
-            This method marks the instance as having had result() called by setting the
-            result_called flag. If an exception was stored on the object, that exception is
-            raised; otherwise the method returns None.
-
-            Returns:
-                None: When no exception is stored.
-
-            Raises:
-                Exception: Re-raises the stored exception if one was set on the instance.
-            """
-            self.result_called = True
-            if self._result_exc is not None:
-                raise self._result_exc
-            return None
-
-        def __await__(self):
-            """
-            Provide awaitable behavior for this future: awaiting completes immediately unless the future was cancelled, in which case it raises asyncio.CancelledError.
-
-            Returns:
-                None: The awaitable yields None when not cancelled.
-
-            Raises:
-                asyncio.CancelledError: If the future's cancel flag is set.
-            """
-
-            async def _wait() -> None:
-                if self.cancel_called:
-                    raise asyncio.CancelledError()
-                return None
-
-            return _wait().__await__()
-
     sync_task = _StubTask(result_exc=KeyboardInterrupt())
     shutdown_task = _StubTask()
     create_calls = 0
@@ -1882,65 +1883,6 @@ def test_main_sync_loop_keyboard_interrupt_result_path() -> None:
 
 def test_main_sync_loop_system_exit_raises() -> None:
     """SystemExit from sync_forever should be re-raised after shutdown."""
-
-    class _StubTask:
-        def __init__(self, result_exc: Exception | None = None) -> None:
-            """
-            Initialize the future stub with an optional exception to raise when result() is called.
-
-            Parameters:
-                result_exc (Exception | None): Exception instance to be raised by result(); if None, result() will not raise.
-            """
-            self._result_exc = result_exc
-            self.cancel_called = False
-            self.result_called = False
-
-        def cancel(self) -> bool:
-            """
-            Record that cancel() was invoked on this Future.
-
-            Returns:
-                True if the cancel request was recorded.
-            """
-            self.cancel_called = True
-            return True
-
-        def result(self) -> None:
-            """
-            Retrieve the stored result or raise a stored exception.
-
-            This method marks the instance as having had result() called by setting the
-            result_called flag. If an exception was stored on the object, that exception is
-            raised; otherwise the method returns None.
-
-            Returns:
-                None: When no exception is stored.
-
-            Raises:
-                Exception: Re-raises the stored exception if one was set on the instance.
-            """
-            self.result_called = True
-            if self._result_exc is not None:
-                raise self._result_exc
-            return None
-
-        def __await__(self):
-            """
-            Provide awaitable behavior for this future: awaiting completes immediately unless the future was cancelled, in which case it raises asyncio.CancelledError.
-
-            Returns:
-                None: The awaitable yields None when not cancelled.
-
-            Raises:
-                asyncio.CancelledError: If the future's cancel flag is set.
-            """
-
-            async def _wait() -> None:
-                if self.cancel_called:
-                    raise asyncio.CancelledError()
-                return None
-
-            return _wait().__await__()
 
     sync_task = _StubTask(result_exc=SystemExit())
     shutdown_task = _StubTask()
