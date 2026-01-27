@@ -45,7 +45,6 @@ from mmrelay.matrix_utils import (
     on_room_member,
     on_room_message,
 )
-from mmrelay.meshtastic_utils import connect_meshtastic
 from mmrelay.meshtastic_utils import logger as meshtastic_logger
 from mmrelay.message_queue import (
     get_message_queue,
@@ -53,7 +52,6 @@ from mmrelay.message_queue import (
     stop_message_queue,
 )
 from mmrelay.plugin_loader import load_plugins, shutdown_plugins
-from mmrelay.radio.backends.meshtastic_backend import MeshtasticBackend
 from mmrelay.radio.registry import get_radio_registry
 
 # Initialize logger
@@ -156,10 +154,6 @@ async def main(config: dict[str, Any]) -> None:
     initialize_database()
 
     radio_registry = get_radio_registry()
-    radio_registry.register_backend(
-        MeshtasticBackend(connect_fn=connect_meshtastic, to_thread=asyncio.to_thread),
-        replace=True,
-    )
     active_backend_name: str | None = None
 
     # Check database config for wipe_on_restart (preferred format)

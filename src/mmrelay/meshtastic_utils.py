@@ -422,7 +422,8 @@ def _scan_for_ble_address(ble_address: str, timeout: float) -> bool:
     """
     Performs a best-effort BLE scan to check whether a device with the given address is discoverable.
 
-    If the Bleak library is unavailable or an active asyncio event loop is running, the function does not perform a scan and returns `false`.
+    If the Bleak library is unavailable, the function does not perform a scan and returns `false`.
+    When an asyncio event loop is already running, the scan is executed in a background thread to avoid blocking.
 
     Returns:
         `true` if the device address was observed in a scan within the given timeout; `false` if the device was not observed, the scan failed, Bleak is unavailable, or scanning was skipped due to an active event loop.
@@ -476,10 +477,27 @@ def _scan_for_ble_address(ble_address: str, timeout: float) -> bool:
 
     if running_loop and running_loop.is_running():
         logger.debug(
-            "Skipping BLE scan for %s; running event loop is active",
+            "Running event loop detected; scanning in background thread for %s",
             ble_address,
         )
-        return False
+        try:
+            result = _run_async_in_thread(
+                _scan(),
+                timeout=timeout + 2.0,
+                label=f"ble-scan-{ble_address}",
+                timeout_log_level=logging.DEBUG,
+            )
+            return bool(result)
+        except (
+            BleakError,
+            BleakDBusError,
+            OSError,
+            RuntimeError,
+            asyncio.TimeoutError,
+            TimeoutError,
+        ) as exc:
+            logger.debug("BLE scan failed for %s: %s", ble_address, exc)
+            return False
 
     try:
         return asyncio.run(_scan())
@@ -668,6 +686,50 @@ def _run_blocking_with_timeout(
     if action_error is not None:
         logger.debug("%s failed: %s", label, action_error)
         raise action_error
+
+
+def _run_async_in_thread(
+    coro: Coroutine[Any, Any, Any],
+    timeout: float,
+    label: str,
+    timeout_log_level: int | None = logging.WARNING,
+) -> Any:
+    """
+    Run an async coroutine in a background thread with a timeout and return its result.
+
+    Parameters:
+        coro (Coroutine[Any, Any, Any]): Coroutine to execute in a new event loop.
+        timeout (float): Maximum seconds to wait for completion.
+        label (str): Short label used for logging/exception messages.
+        timeout_log_level (int | None): Logging level for timeouts, or None to suppress.
+
+    Returns:
+        Any: The coroutine result.
+
+    Raises:
+        TimeoutError: If the coroutine does not finish before the timeout expires.
+        Exception: Any exception raised by the coroutine.
+    """
+    result_holder: dict[str, Any] = {"value": None, "error": None}
+
+    def _runner() -> None:
+        """
+        Execute the coroutine in a private event loop and capture its result or error.
+        """
+        try:
+            result_holder["value"] = asyncio.run(coro)
+        except Exception as exc:  # noqa: BLE001 - passthrough to caller
+            result_holder["error"] = exc
+
+    _run_blocking_with_timeout(
+        _runner,
+        timeout=timeout,
+        label=label,
+        timeout_log_level=timeout_log_level,
+    )
+    if result_holder["error"] is not None:
+        raise result_holder["error"]
+    return result_holder["value"]
 
 
 def _wait_for_result(
@@ -1334,10 +1396,31 @@ def _disconnect_ble_by_address(address: str) -> None:
 
         if loop and loop.is_running():
             logger.debug(
-                "Found running event loop; scheduling disconnect task for %s",
+                "Found running event loop; running disconnect in background thread for %s",
                 address,
             )
-            _fire_and_forget(disconnect_stale_connection(), loop=loop)
+            try:
+                _run_async_in_thread(
+                    disconnect_stale_connection(),
+                    timeout=10.0,
+                    label=f"ble-stale-disconnect-{address}",
+                    timeout_log_level=logging.WARNING,
+                )
+                logger.debug(
+                    "Stale connection disconnect completed for %s",
+                    address,
+                )
+            except TimeoutError:
+                logger.warning(
+                    "Stale connection disconnect timed out after 10s for %s",
+                    address,
+                )
+            except Exception as e:  # noqa: BLE001 - best-effort cleanup
+                logger.debug(
+                    "Error during BLE disconnect cleanup for %s",
+                    address,
+                    exc_info=e,
+                )
             return
 
         if event_loop and getattr(event_loop, "is_running", lambda: False)():
