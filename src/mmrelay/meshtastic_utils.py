@@ -496,10 +496,13 @@ def _scan_for_ble_address(ble_address: str, timeout: float) -> bool:
 
 def _is_ble_discovery_error(error: Exception) -> bool:
     """
-    Determine whether an exception represents a BLE discovery or connection completion failure.
-
+    Detects whether an exception corresponds to a BLE discovery or connection-completion failure.
+    
+    Parameters:
+        error (Exception): The exception to inspect.
+    
     Returns:
-        True if the exception indicates a BLE discovery or connection completion failure, False otherwise.
+        bool: `True` if the exception indicates a BLE discovery or connection completion failure, `False` otherwise.
     """
     message = str(error)
     if "No Meshtastic BLE peripheral" in message:
@@ -512,6 +515,14 @@ def _is_ble_discovery_error(error: Exception) -> bool:
         return True
 
     def _is_type_or_tuple(candidate: object) -> bool:
+        """
+        Determine if `candidate` is a type or a tuple containing only types.
+        
+        An empty tuple is considered valid (returns `True`) because every element satisfies the condition vacuously.
+        
+        Returns:
+            `True` if `candidate` is a type or a tuple whose elements are all types, `False` otherwise.
+        """
         if isinstance(candidate, type):
             return True
         if isinstance(candidate, tuple):
@@ -1699,16 +1710,16 @@ def connect_meshtastic(
     force_connect: bool = False,
 ) -> Any:
     """
-    Establishes a Meshtastic client connection using the configured connection type (serial, BLE, or TCP).
-
-    On success updates the module-level client state (meshtastic_client), may update matrix_rooms when a config is provided, and subscribes to meshtastic receive and connection-lost events once for the process lifetime. Honors shutdown and reconnect state and will respect `force_connect` to replace an existing connection.
-
+    Establishes and returns a Meshtastic client connection using the configured connection type (serial, BLE, or TCP).
+    
+    On success updates module-level client and interface state, may update module-level `matrix_rooms` when a config is provided, and subscribes to Meshtastic message and connection-lost events once for the process lifetime. Respects shutdown and reconnect state; when `force_connect` is True, replaces an existing connection.
+    
     Parameters:
-        passed_config (dict[str, Any] | None): Optional configuration to use in place of the module-level config; if provided and contains "matrix_rooms", that value will be used to update module-level matrix_rooms.
-        force_connect (bool): If True, forces creating a new connection even if a client already exists.
-
+        passed_config (dict[str, Any] | None): Optional configuration to use instead of the module-level config; if present and contains "matrix_rooms", that mapping will replace the module-level `matrix_rooms`.
+        force_connect (bool): If True, force creation of a new connection even if a client already exists.
+    
     Returns:
-        The connected Meshtastic client instance on success, or `None` if a connection could not be established or shutdown is in progress.
+        meshtastic_client (Any | None): The connected Meshtastic client instance on success, or `None` if a connection could not be established or shutdown is in progress.
     """
     global meshtastic_client, meshtastic_iface, shutting_down, reconnecting, config
     global matrix_rooms, _ble_future, _ble_future_address

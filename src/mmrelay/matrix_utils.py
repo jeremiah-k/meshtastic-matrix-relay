@@ -1074,10 +1074,10 @@ def bot_command(
 
 async def _connect_meshtastic() -> Any:
     """
-    Obtain a Meshtastic interface usable from asynchronous code.
-
+    Obtain a Meshtastic interface for interacting with the radio backend.
+    
     Returns:
-        meshtastic_iface: The Meshtastic interface or proxy object produced by the synchronous connector.
+        meshtastic_iface: A Meshtastic interface or proxy object for sending and receiving messages via the radio backend.
     """
     return await asyncio.to_thread(connect_meshtastic)
 
@@ -1097,6 +1097,20 @@ def _get_backend_and_channel(
     *,
     log: logging.Logger,
 ) -> tuple[Any | None, int | None]:
+    """
+    Return the active radio backend and a validated Meshtastic channel number for a room configuration.
+    
+    Parameters:
+        room_config (dict[str, Any]): Room-specific configuration mapping; expects a "meshtastic_channel" entry.
+        log (logging.Logger): Logger used to report configuration or backend errors.
+    
+    Returns:
+        tuple: (backend, channel) where `backend` is the active radio backend instance or `None` if none is available,
+        and `channel` is the validated channel number (int) from the config or `None` if the config value is missing or invalid.
+    
+    Notes:
+        Logs an error and returns (None, None) when no backend is available or when `meshtastic_channel` is absent, not an int, or negative.
+    """
     backend = _get_radio_backend()
     if backend is None:
         log.error("No active radio backend available for sending")
@@ -1125,9 +1139,20 @@ def _run_backend_send(
     reply_to_id: int | str | None,
 ) -> Any:
     """
-    Run backend.send_message from a synchronous context.
-
-    MessageQueue executes send functions in a ThreadPoolExecutor, so asyncio.run is safe here.
+    Execute a radio backend's send_message call from a synchronous context and return its result.
+    
+    Parameters:
+        backend (Any): Radio backend instance exposing a `send_message` method.
+        text (str): Message text to send.
+        channel (int | None): Meshtastic channel number to use, or `None` to let the backend decide.
+        destination_id (int | None): Target device/node id for directed messages, or `None` for broadcast.
+        reply_to_id (int | str | None): Identifier of a Meshtastic message being replied to, if any.
+    
+    Returns:
+        Any: The value returned by the backend's `send_message` call, or `None` if sending failed.
+    
+    Notes:
+        If the backend's `send_message` returns an awaitable, this function will run it to completion before returning the result.
     """
     try:
         result = backend.send_message(
@@ -1148,15 +1173,15 @@ async def _get_meshtastic_interface_and_channel(
     room_config: dict[str, Any], purpose: str
 ) -> tuple[Any | None, int | None]:
     """
-    Return a connected Meshtastic interface and the room's validated Meshtastic channel.
-
+    Get a connected Meshtastic interface and the room's validated Meshtastic channel.
+    
     Parameters:
-        room_config (dict): Room configuration; must contain a non-negative integer under "meshtastic_channel".
-        purpose (str): Short description of the caller's intent used in logged error messages.
-
+        room_config (dict): Room configuration; must contain "meshtastic_channel" set to a non-negative integer.
+        purpose (str): Short description of the caller's intent used for contextual error messages.
+    
     Returns:
-        tuple: (meshtastic_interface, channel)
-            - meshtastic_interface (Any | None): A connected Meshtastic interface object, or `None` if a connection could not be made.
+        tuple:
+            - meshtastic_interface (Any | None): A connected Meshtastic interface object, or `None` if a connection could not be established.
             - channel (int | None): The validated non-negative channel number from the room config, or `None` if missing or invalid.
     """
     from mmrelay.meshtastic_utils import logger as meshtastic_logger
@@ -2953,6 +2978,14 @@ async def send_reply_to_meshtastic(
         description = f"Reply from {full_display_name} {description_suffix}"
 
         def _send_via_backend() -> Any:
+            """
+            Send a Meshtastic message through the selected radio backend.
+            
+            Calls the backend send shim with the preconfigured message, channel, and reply target and returns whatever the backend's send operation produces.
+            
+            Returns:
+                The value returned by the backend's send operation (backend-specific), or `None` if the send failed.
+            """
             return _run_backend_send(
                 backend,
                 text=reply_message,
@@ -3362,6 +3395,12 @@ async def on_room_message(
                 )
 
                 def _send_via_backend() -> Any:
+                    """
+                    Send a prepared message through the active radio backend.
+                    
+                    Returns:
+                        The value returned by the backend's `send_message` implementation (backend-specific).
+                    """
                     return _run_backend_send(
                         backend,
                         text=reaction_message,
@@ -3437,6 +3476,12 @@ async def on_room_message(
                 )
 
                 def _send_via_backend() -> Any:
+                    """
+                    Send a prepared message through the active radio backend.
+                    
+                    Returns:
+                        The value returned by the backend's `send_message` implementation (backend-specific).
+                    """
                     return _run_backend_send(
                         backend,
                         text=reaction_message,
@@ -3662,6 +3707,12 @@ async def on_room_message(
                 )
 
             def _send_via_backend() -> Any:
+                """
+                Send a prepared Meshtastic message through the active radio backend.
+                
+                Returns:
+                    The result returned by the backend's send operation (type depends on backend implementation).
+                """
                 return _run_backend_send(
                     backend,
                     text=full_message,

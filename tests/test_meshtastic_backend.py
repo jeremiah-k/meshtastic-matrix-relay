@@ -214,7 +214,7 @@ class TestMeshtasticBackendIsConnected:
 
     def test_is_connected_no_is_connected_field(self) -> None:
         """
-        Verify that is_connected returns True when client exists but no is_connected field.
+        Ensure is_connected treats the presence of a client that lacks an `is_connected` attribute as connected.
         """
         mock_client = MagicMock()
         # Simulate a client without is_connected

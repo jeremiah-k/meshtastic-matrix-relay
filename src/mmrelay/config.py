@@ -29,8 +29,12 @@ _RADIO_BACKEND_DISABLED_VALUES = {"none", "disabled", "off"}
 def normalize_radio_backend(value: Any) -> str | None:
     """
     Normalize a configured radio backend name.
-
-    Returns None for empty values or explicit disable values like "none".
+    
+    Parameters:
+        value (Any): The configured backend value to normalize.
+    
+    Returns:
+        str | None: The backend name normalized to lowercase, or `None` if the input is not a string, is empty after trimming, or represents an explicit disabled value (for example: "none", "false", "no").
     """
     if not isinstance(value, str):
         return None
@@ -45,9 +49,15 @@ def normalize_radio_backend(value: Any) -> str | None:
 
 def get_radio_backend_selection(config: dict[str, Any]) -> tuple[str | None, bool]:
     """
-    Return the requested backend name and whether the config explicitly disables radio.
-
-    A value like "none" or "disabled" returns (None, True).
+    Determine the requested radio backend and whether the configuration explicitly disables radio.
+    
+    Reads the value at CONFIG_KEY_RADIO_BACKEND in `config` and returns the normalized backend name or `None`. The second returned value is `True` when the config provided an explicit disable value (for example `"none"` or `"disabled"`), `False` otherwise.
+    
+    Parameters:
+        config (dict): Configuration mapping to read the radio backend selection from.
+    
+    Returns:
+        (str | None, bool): A tuple where the first element is the normalized backend name or `None` if no backend is selected, and the second element is `True` if the configuration explicitly requests disabling the radio, `False` otherwise.
     """
     raw = config.get(CONFIG_KEY_RADIO_BACKEND)
     normalized = normalize_radio_backend(raw)
@@ -57,7 +67,13 @@ def get_radio_backend_selection(config: dict[str, Any]) -> tuple[str | None, boo
 
 def is_meshtastic_enabled(config: dict[str, Any]) -> bool:
     """
-    Return True when the meshtastic section exists and is enabled.
+    Determine whether Meshtastic is enabled in the given configuration.
+    
+    Parameters:
+        config (dict): Top-level configuration mapping.
+    
+    Returns:
+        `True` if the `meshtastic` section is a mapping and its `enabled` value is present and truthy or missing (defaults to `True`), `False` otherwise.
     """
     meshtastic_config = config.get("meshtastic")
     if not isinstance(meshtastic_config, dict):
@@ -67,7 +83,10 @@ def is_meshtastic_enabled(config: dict[str, Any]) -> bool:
 
 def is_meshtastic_selected(config: dict[str, Any]) -> bool:
     """
-    Return True if Meshtastic is the selected backend for this config.
+    Determine whether Meshtastic is the configured radio backend for the given config.
+    
+    Returns:
+        True if Meshtastic is selected as the radio backend, False otherwise.
     """
     backend_name, explicit_disable = get_radio_backend_selection(config)
     if explicit_disable:

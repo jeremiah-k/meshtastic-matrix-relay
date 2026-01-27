@@ -405,12 +405,12 @@ class BasePlugin(ABC):
 
     def get_my_node_id(self) -> int | None:
         """
-        Return the relay's node ID from the active radio backend.
-
-        Caches the ID after the first successful retrieval to avoid repeated lookups.
-
+        Retrieve the relay's node ID from the active radio backend.
+        
+        Caches the ID after the first successful lookup to avoid repeated backend queries.
+        
         Returns:
-            int: The relay's node ID if available, `None` otherwise.
+            int or None: The relay's node ID, or None if no active backend or the ID is unavailable.
         """
         if hasattr(self, "_my_node_id") and self._my_node_id is not None:
             return self._my_node_id
@@ -449,15 +449,15 @@ class BasePlugin(ABC):
         self, text: str, channel: int = 0, destination_id: int | None = None
     ) -> bool:
         """
-        Queue a text message for broadcast or direct delivery via the radio backend.
-
+        Queue a text message for broadcast or direct delivery via the active radio backend.
+        
         Parameters:
-            text: Message content to send.
-            channel: Channel index to send the message on (defaults to 0).
-            destination_id: Destination node ID for a direct message; if omitted the message is broadcast.
-
+        	text (str): Message content to send.
+        	channel (int): Channel index to send the message on (defaults to 0).
+        	destination_id (int | None): Destination node ID for a direct message; if omitted the message is broadcast.
+        
         Returns:
-            `true` if the message was queued successfully, `false` otherwise.
+        	bool: `True` if the message was queued successfully, `False` otherwise.
         """
         backend = get_radio_registry().get_active_backend()
         if backend is None:
@@ -469,6 +469,12 @@ class BasePlugin(ABC):
         # Wrap async backend.send_message for use with queue_message
         # queue_message expects a sync callable, so we use a lambda with asyncio.run
         def _send_via_backend() -> Any:
+            """
+            Send the prepared message through the active radio backend.
+            
+            Returns:
+                The value returned by the backend's send_message call, or `None` if an error occurred while sending.
+            """
             import asyncio
 
             try:
