@@ -6,7 +6,7 @@ import inspect
 import time
 from typing import Any, Awaitable, Callable
 
-from pubsub import pub  # type: ignore[import-untyped]
+import meshtastic
 
 import mmrelay.meshtastic_utils as meshtastic_utils
 from mmrelay.log_utils import get_logger
@@ -246,9 +246,11 @@ class MeshtasticBackend(BaseRadioBackend):
                 if not text and "portnum" in decoded:
                     # Non-text message, create description
                     portnum = decoded.get("portnum")
-                    from mmrelay.constants.messages import _get_portnum_name
-
-                    portnum_name = _get_portnum_name(portnum) if portnum else "unknown"
+                    portnum_name = (
+                        meshtastic_utils._get_portnum_name(portnum)
+                        if portnum
+                        else "unknown"
+                    )
                     text = f"[{portnum_name}]"
 
                 # Extract sender info

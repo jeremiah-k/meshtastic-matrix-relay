@@ -921,6 +921,27 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
         getattr(args, "allow_missing_matrix_auth", False) is True
     )
 
+    # Helper functions for config validation
+    def _warn_db_deprecated() -> None:
+        if "db" in config:
+            print(
+                "\nWarning: 'db' section is deprecated. Please use 'database' instead.",
+                file=sys.stderr,
+            )
+            print(
+                "This option still works but may be removed in future versions.\n",
+                file=sys.stderr,
+            )
+
+    def _exit_as_valid_non_meshtastic(
+        warning: str | None = None,
+    ) -> bool:
+        if warning:
+            print(f"\n{warning}", file=sys.stderr)
+        _warn_db_deprecated()
+        print("\n✅ Configuration file is valid!")
+        return True
+
     # Try each config path in order until we find one that exists
     for path in config_paths:
         if os.path.isfile(path):
@@ -1113,26 +1134,6 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                             "   meshtastic_channel must be a non-negative integer (0-7 for primary channels)"
                         )
                         return False
-
-                def _warn_db_deprecated() -> None:
-                    if "db" in config:
-                        print(
-                            "\nWarning: 'db' section is deprecated. Please use 'database' instead.",
-                            file=sys.stderr,
-                        )
-                        print(
-                            "This option still works but may be removed in future versions.\n",
-                            file=sys.stderr,
-                        )
-
-                def _exit_as_valid_non_meshtastic(
-                    warning: str | None = None,
-                ) -> bool:
-                    if warning:
-                        print(f"\n{warning}", file=sys.stderr)
-                    _warn_db_deprecated()
-                    print("\n✅ Configuration file is valid!")
-                    return True
 
                 backend_name, explicit_disable = get_radio_backend_selection(config)
                 if backend_name and backend_name.lower() != "meshtastic":

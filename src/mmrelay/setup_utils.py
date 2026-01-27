@@ -147,9 +147,9 @@ def wait_for_service_start() -> None:
     # Create a Rich progress display with spinner and elapsed time
     if not running_as_service and Progress is not None:
         with Progress(
-            SpinnerColumn(),
-            TextColumn("[bold green]Starting mmrelay service..."),
-            TimeElapsedColumn(),
+            SpinnerColumn(),  # type: ignore[call-arg]
+            TextColumn("[bold green]Starting mmrelay service..."),  # type: ignore[call-arg]
+            TimeElapsedColumn(),  # type: ignore[call-arg]
             transient=True,
         ) as progress:
             # Add a task that will run for approximately 10 seconds

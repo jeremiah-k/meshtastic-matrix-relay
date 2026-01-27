@@ -32,26 +32,6 @@ class BaseRadioBackend(ABC):
         """Return True if the backend is currently connected."""
 
     @abstractmethod
-    async def send_message(
-        self,
-        text: str,
-        channel: int | None = None,
-        destination_id: int | None = None,
-        reply_to_id: int | str | None = None,
-    ) -> Any:
-        """
-        Send a message via the radio backend.
-
-        Parameters:
-            text: Message text to send.
-            channel: Channel index (0-based), or None for default.
-            destination_id: Destination node ID, or None for broadcast.
-            reply_to_id: Message ID to reply to, or None for new message.
-
-        Returns:
-            Result from send operation (typically sent message object or None).
-        """
-
     def register_message_callback(
         self,
         callback: Callable[[RadioMessage], None],
@@ -65,6 +45,16 @@ class BaseRadioBackend(ABC):
         Parameters:
             callback: Function to call with RadioMessage when messages arrive.
         """
+
+    @abstractmethod
+    async def send_message(
+        self,
+        text: str,
+        channel: int | None = None,
+        destination_id: int | None = None,
+        reply_to_id: int | str | None = None,
+    ) -> Any:
+        """Send a message via the radio backend."""
 
     def get_message_delay(self, config: dict[str, Any], default: float) -> float:
         """Return the configured message delay for this backend."""

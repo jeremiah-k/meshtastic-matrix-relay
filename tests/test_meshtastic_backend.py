@@ -5,8 +5,7 @@ Tests that MeshtasticBackend properly implements BaseRadioBackend interface
 and correctly wraps existing Meshtastic functionality.
 """
 
-import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 

@@ -22,6 +22,7 @@ from typing import (
     Tuple,
     cast,
 )
+from unittest.mock import MagicMock
 from urllib.parse import urlparse
 
 # matrix-nio is not marked py.typed in our environment, so mypy treats it as untyped.
@@ -97,7 +98,7 @@ from mmrelay.db_utils import (
 from mmrelay.log_utils import get_logger
 
 # Do not import plugin_loader here to avoid circular imports
-from mmrelay.meshtastic_utils import connect_meshtastic, send_text_reply
+from mmrelay.meshtastic_utils import connect_meshtastic
 
 # Import meshtastic protobuf for port numbers when needed
 from mmrelay.message_queue import get_message_queue, queue_message
