@@ -44,6 +44,32 @@ from mmrelay.matrix_utils import (
 )
 from tests.helpers import InlineExecutorLoop
 
+
+# Mock radio backend for testing
+class MockRadioBackend:
+    """Mock radio backend that simulates a connected radio."""
+
+    def __init__(self):
+        self.backend_name = "mock"
+        self.send_message = AsyncMock()
+        self.is_connected = MagicMock(return_value=True)
+
+
+# Fixture to mock the radio backend
+@pytest.fixture
+def mock_radio_backend():
+    """Mock the radio backend to return our mock instance."""
+    mock_backend = MockRadioBackend()
+
+    with patch("mmrelay.radio.registry.get_radio_registry") as mock_registry:
+        mock_registry_instance = MagicMock()
+        mock_registry.return_value = mock_registry_instance
+        mock_registry_instance.get_active_backend.return_value = mock_backend
+        mock_registry_instance.is_ready.return_value = True
+
+        yield mock_backend
+
+
 # Matrix room message handling tests - converted from unittest.TestCase to standalone pytest functions
 #
 # Conversion rationale:
@@ -58,6 +84,7 @@ async def test_on_room_message_simple_text(
     mock_room,
     mock_event,
     test_config,
+    mock_radio_backend,
 ):
     """
     Test that a non-reaction text message event is processed and queued for Meshtastic relay.
@@ -125,6 +152,21 @@ async def test_on_room_message_simple_text(
             """
             return func(*args)
 
+        def run_until_complete(self, coro):
+            """
+            Run a coroutine until it completes.
+
+            This is a dummy implementation that runs the coroutine directly
+            using the test's event loop.
+
+            Parameters:
+                coro: The coroutine to run
+
+            Returns:
+                The result of the coroutine
+            """
+            return self._loop.run_until_complete(coro)
+
     with (
         patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
         patch(
@@ -139,7 +181,6 @@ async def test_on_room_message_simple_text(
         patch(
             "mmrelay.matrix_utils.queue_message", return_value=True
         ) as mock_queue_message,
-        patch("mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()),
         patch("mmrelay.matrix_utils.bot_start_time", 1234567880),
         patch("mmrelay.matrix_utils.config", test_config),
         patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
@@ -148,8 +189,11 @@ async def test_on_room_message_simple_text(
         await on_room_message(mock_room, mock_event)
 
         mock_queue_message.assert_called_once()
-        queued_kwargs = mock_queue_message.call_args.kwargs
-        assert "Hello, world!" in queued_kwargs["text"]
+        # Verify the radio backend's send_message was called with expected text
+        mock_radio_backend.send_message.assert_called_once()
+        assert (
+            "Hello, world!" in mock_radio_backend.send_message.call_args.kwargs["text"]
+        )
 
 
 async def test_on_room_message_remote_prefers_meshtastic_text(
@@ -221,6 +265,21 @@ async def test_on_room_message_remote_prefers_meshtastic_text(
                 The value returned by `func(*args)`.
             """
             return func(*args)
+
+        def run_until_complete(self, coro):
+            """
+            Run a coroutine until it completes.
+
+            This is a dummy implementation that runs the coroutine directly
+            using the test's event loop.
+
+            Parameters:
+                coro: The coroutine to run
+
+            Returns:
+                The result of the coroutine
+            """
+            return self._loop.run_until_complete(coro)
 
     with (
         patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
@@ -305,23 +364,22 @@ async def test_on_room_message_reply_enabled(
 
 
 @patch("mmrelay.plugin_loader.load_plugins", return_value=[])
-@patch("mmrelay.matrix_utils.connect_meshtastic")
 @patch("mmrelay.matrix_utils.queue_message")
 @patch("mmrelay.matrix_utils.bot_start_time", 1234567880)
 @patch("mmrelay.matrix_utils.get_user_display_name")
 async def test_on_room_message_reply_disabled(
     mock_get_user_display_name,
     mock_queue_message,
-    _mock_connect_meshtastic,
     _mock_load_plugins,
     mock_room,
     mock_event,
     test_config,
+    mock_radio_backend,
 ):
     """
     Test that reply messages are relayed with full content when reply interactions are disabled.
 
-    Ensures that when reply interactions are disabled in the configuration, the entire event body—including quoted original messages—is queued for Meshtastic relay without stripping quoted lines.
+    Ensures that when reply interaction are disabled in the configuration, the entire event body—including quoted original messages—is queued for Meshtastic relay without stripping quoted lines.
     """
 
     # Create a proper async mock function
@@ -360,11 +418,17 @@ async def test_on_room_message_reply_disabled(
 
             # Assert that the message was queued
             mock_queue_message.assert_called_once()
-            call_args = mock_queue_message.call_args[1]
-            assert mock_event.body in call_args["text"]
+            # Verify the radio backend's send_message was called with expected text
+            mock_radio_backend.send_message.assert_called_once()
+            assert (
+                mock_event.body
+                in mock_radio_backend.send_message.call_args.kwargs["text"]
+            )
 
 
-async def test_on_room_message_reaction_enabled(mock_room, test_config):
+async def test_on_room_message_reaction_enabled(
+    mock_room, test_config, mock_radio_backend
+):
     # This is a reaction event
     """
     Verify that a Matrix reaction event is converted into a Meshtastic relay message and queued when reaction interactions are enabled.
@@ -472,7 +536,6 @@ async def test_on_room_message_reaction_enabled(mock_room, test_config):
         patch(
             "mmrelay.matrix_utils.queue_message", return_value=True
         ) as mock_queue_message,
-        patch("mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()),
         patch("mmrelay.matrix_utils.bot_start_time", 1234567880),
         patch("mmrelay.matrix_utils.config", test_config),
         patch("mmrelay.matrix_utils.matrix_rooms", test_config["matrix_rooms"]),
@@ -483,7 +546,11 @@ async def test_on_room_message_reaction_enabled(mock_room, test_config):
         mock_queue_message.assert_called_once()
         queued_kwargs = mock_queue_message.call_args.kwargs
         assert queued_kwargs["description"].startswith("Local reaction")
-        assert "reacted" in queued_kwargs["text"]
+        # Verify the send function is called with the correct text
+        sent_func = mock_queue_message.call_args[0][0]
+        sent_func()
+        mock_radio_backend.send_message.assert_called_once()
+        assert "reacted" in mock_radio_backend.send_message.call_args.kwargs["text"]
 
 
 @patch("mmrelay.matrix_utils.connect_meshtastic")
@@ -639,6 +706,21 @@ async def test_on_room_message_detection_sensor_enabled(
                 The value returned by `func(*args)`.
             """
             return func(*args)
+
+        def run_until_complete(self, coro):
+            """
+            Run a coroutine until it completes.
+
+            This is a dummy implementation that runs the coroutine directly
+            using the test's event loop.
+
+            Parameters:
+                coro: The coroutine to run
+
+            Returns:
+                The result of the coroutine
+            """
+            return self._loop.run_until_complete(coro)
 
     # Act - Process the detection sensor message
     with (
@@ -830,7 +912,9 @@ async def test_on_room_message_suppressed_message_returns(
     mock_queue_message.assert_not_called()
 
 
-async def test_on_room_message_remote_reaction_relay_success(monkeypatch, mock_room):
+async def test_on_room_message_remote_reaction_relay_success(
+    monkeypatch, mock_room, mock_radio_backend
+):
     """Remote meshnet reactions should be relayed to the local mesh when enabled."""
     from mmrelay.matrix_utils import RoomMessageEmote
 
@@ -860,10 +944,6 @@ async def test_on_room_message_remote_reaction_relay_success(monkeypatch, mock_r
         "matrix": {"bot_user_id": "@bot:matrix.org"},
     }
 
-    class DummyInterface:
-        def __init__(self):
-            self.sendText = MagicMock()
-
     monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
     monkeypatch.setattr("mmrelay.matrix_utils.config", config, raising=False)
     monkeypatch.setattr(
@@ -877,18 +957,18 @@ async def test_on_room_message_remote_reaction_relay_success(monkeypatch, mock_r
 
     with (
         patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
-        patch(
-            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
-            AsyncMock(return_value=(DummyInterface(), 0)),
-        ),
         patch("mmrelay.matrix_utils.queue_message", return_value=True) as mock_queue,
     ):
         await on_room_message(mock_room, mock_event)
 
     mock_queue.assert_called_once()
     queued_kwargs = mock_queue.call_args.kwargs
-    assert "reacted" in queued_kwargs["text"]
     assert queued_kwargs["description"] == "Remote reaction from remote_mesh"
+    # Verify the send function is called with the correct text
+    sent_func = mock_queue.call_args[0][0]
+    sent_func()
+    mock_radio_backend.send_message.assert_called_once()
+    assert "reacted" in mock_radio_backend.send_message.call_args.kwargs["text"]
 
 
 async def test_on_room_message_reaction_missing_mapping_logs_debug(
@@ -948,7 +1028,7 @@ async def test_on_room_message_reaction_missing_mapping_logs_debug(
 
 
 async def test_on_room_message_local_reaction_queue_failure_logs(
-    monkeypatch, mock_room
+    monkeypatch, mock_room, mock_radio_backend
 ):
     """Local reaction failures should log an error."""
     from nio import ReactionEvent
@@ -986,19 +1066,11 @@ async def test_on_room_message_local_reaction_queue_failure_logs(
         raising=False,
     )
 
-    class DummyInterface:
-        def __init__(self):
-            self.sendText = MagicMock()
-
     with (
         patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
         patch(
             "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
             return_value=("mesh_id", mock_room.room_id, "text", "meshnet"),
-        ),
-        patch(
-            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
-            AsyncMock(return_value=(DummyInterface(), 0)),
         ),
         patch(
             "mmrelay.matrix_utils.get_user_display_name",
@@ -1010,7 +1082,7 @@ async def test_on_room_message_local_reaction_queue_failure_logs(
         await on_room_message(mock_room, mock_event)
 
     mock_queue.assert_called_once()
-    mock_logger.error.assert_any_call("Failed to relay local reaction to Meshtastic")
+    mock_logger.error.assert_any_call("Failed to relay local reaction to radio")
 
 
 async def test_on_room_message_reply_handled_short_circuits(
@@ -1289,19 +1361,22 @@ async def test_on_room_message_no_meshtastic_interface_returns(
         raising=False,
     )
 
-    with (
-        patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
-        patch(
-            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
-            AsyncMock(return_value=(None, None)),
-        ),
-        patch("mmrelay.matrix_utils.queue_message") as mock_queue_message,
-        patch(
-            "mmrelay.matrix_utils.get_user_display_name",
-            AsyncMock(return_value="User"),
-        ),
-    ):
-        await on_room_message(mock_room, mock_event)
+    # Mock radio backend to return None (no backend available)
+    with patch("mmrelay.radio.registry.get_radio_registry") as mock_registry:
+        mock_registry_instance = MagicMock()
+        mock_registry.return_value = mock_registry_instance
+        mock_registry_instance.get_active_backend.return_value = None
+        mock_registry_instance.is_ready.return_value = False
+
+        with (
+            patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
+            patch("mmrelay.matrix_utils.queue_message") as mock_queue_message,
+            patch(
+                "mmrelay.matrix_utils.get_user_display_name",
+                AsyncMock(return_value="User"),
+            ),
+        ):
+            await on_room_message(mock_room, mock_event)
 
     mock_queue_message.assert_not_called()
 
@@ -1350,14 +1425,10 @@ async def test_on_room_message_broadcast_disabled_no_queue(
 
 
 async def test_on_room_message_queue_failure_logs_error(
-    monkeypatch, mock_room, mock_event, test_config
+    monkeypatch, mock_room, mock_event, test_config, mock_radio_backend
 ):
     """Queue failures should log and stop processing."""
     test_config["meshtastic"]["broadcast_enabled"] = True
-
-    class DummyInterface:
-        def __init__(self):
-            self.sendText = MagicMock()
 
     monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
     monkeypatch.setattr("mmrelay.matrix_utils.config", test_config, raising=False)
@@ -1372,10 +1443,6 @@ async def test_on_room_message_queue_failure_logs_error(
 
     with (
         patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
-        patch(
-            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
-            AsyncMock(return_value=(DummyInterface(), 0)),
-        ),
         patch("mmrelay.matrix_utils.queue_message", return_value=False) as mock_queue,
         patch("mmrelay.meshtastic_utils.logger") as mock_meshtastic_logger,
         patch(
@@ -1386,9 +1453,7 @@ async def test_on_room_message_queue_failure_logs_error(
         await on_room_message(mock_room, mock_event)
 
     mock_queue.assert_called_once()
-    mock_meshtastic_logger.error.assert_any_call(
-        "Failed to relay message to Meshtastic"
-    )
+    mock_meshtastic_logger.error.assert_any_call("Failed to relay message to radio")
 
 
 # Matrix utility function tests - converted from unittest.TestCase to standalone pytest functions
@@ -2352,7 +2417,7 @@ async def test_get_user_display_name_handles_comm_errors(monkeypatch):
     assert result == "@user:matrix.org"
 
 
-async def test_send_reply_to_meshtastic_with_reply_id():
+async def test_send_reply_to_meshtastic_with_reply_id(mock_radio_backend):
     """Test sending a reply to Meshtastic with reply_id."""
     mock_room_config = {"meshtastic_channel": 0}
     mock_room = MagicMock()
@@ -2403,6 +2468,21 @@ async def test_send_reply_to_meshtastic_with_reply_id():
             """
             return func(*args)
 
+        def run_until_complete(self, coro):
+            """
+            Run a coroutine until it completes.
+
+            This is a dummy implementation that runs the coroutine directly
+            using the test's event loop.
+
+            Parameters:
+                coro: The coroutine to run
+
+            Returns:
+                The result of the coroutine
+            """
+            return self._loop.run_until_complete(coro)
+
     with (
         patch(
             "mmrelay.matrix_utils.config", {"meshtastic": {"broadcast_enabled": True}}
@@ -2411,7 +2491,6 @@ async def test_send_reply_to_meshtastic_with_reply_id():
             "mmrelay.matrix_utils.asyncio.get_running_loop",
             return_value=DummyLoop(real_loop),
         ),
-        patch("mmrelay.matrix_utils.connect_meshtastic", return_value=MagicMock()),
         patch("mmrelay.matrix_utils.queue_message", return_value=True) as mock_queue,
     ):
         await send_reply_to_meshtastic(
@@ -2427,8 +2506,11 @@ async def test_send_reply_to_meshtastic_with_reply_id():
         )
 
         mock_queue.assert_called_once()
-        call_kwargs = mock_queue.call_args.kwargs
-        assert call_kwargs["reply_id"] == 12345
+        # Verify the send function is called with the correct reply_id
+        sent_func = mock_queue.call_args[0][0]
+        sent_func()
+        mock_radio_backend.send_message.assert_called_once()
+        assert mock_radio_backend.send_message.call_args.kwargs["reply_to_id"] == 12345
 
 
 async def test_send_reply_to_meshtastic_no_reply_id():
@@ -2482,6 +2564,21 @@ async def test_send_reply_to_meshtastic_no_reply_id():
             """
             return func(*args)
 
+        def run_until_complete(self, coro):
+            """
+            Run a coroutine until it completes.
+
+            This is a dummy implementation that runs the coroutine directly
+            using the test's event loop.
+
+            Parameters:
+                coro: The coroutine to run
+
+            Returns:
+                The result of the coroutine
+            """
+            return self._loop.run_until_complete(coro)
+
     with (
         patch(
             "mmrelay.matrix_utils.config", {"meshtastic": {"broadcast_enabled": True}}
@@ -2512,30 +2609,34 @@ async def test_send_reply_to_meshtastic_no_reply_id():
 
 async def test_send_reply_to_meshtastic_returns_when_interface_missing(monkeypatch):
     """Return early when the Meshtastic interface cannot be obtained."""
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
-        AsyncMock(return_value=(None, None)),
-        raising=False,
-    )
-    mock_queue = MagicMock()
-    monkeypatch.setattr("mmrelay.matrix_utils.queue_message", mock_queue, raising=False)
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.config", {"meshtastic": {}}, raising=False
-    )
+    # Mock radio backend to return None (no backend available)
+    with patch("mmrelay.radio.registry.get_radio_registry") as mock_registry:
+        mock_registry_instance = MagicMock()
+        mock_registry.return_value = mock_registry_instance
+        mock_registry_instance.get_active_backend.return_value = None
+        mock_registry_instance.is_ready.return_value = False
 
-    await send_reply_to_meshtastic(
-        reply_message="Test reply",
-        full_display_name="Alice",
-        room_config={"meshtastic_channel": 0},
-        room=MagicMock(),
-        event=MagicMock(),
-        text="Original text",
-        storage_enabled=False,
-        local_meshnet_name="TestMesh",
-        reply_id=123,
-    )
+        mock_queue = MagicMock()
+        monkeypatch.setattr(
+            "mmrelay.matrix_utils.queue_message", mock_queue, raising=False
+        )
+        monkeypatch.setattr(
+            "mmrelay.matrix_utils.config", {"meshtastic": {}}, raising=False
+        )
 
-    mock_queue.assert_not_called()
+        await send_reply_to_meshtastic(
+            reply_message="Test reply",
+            full_display_name="Alice",
+            room_config={"meshtastic_channel": 0},
+            room=MagicMock(),
+            event=MagicMock(),
+            text="Original text",
+            storage_enabled=False,
+            local_meshnet_name="TestMesh",
+            reply_id=123,
+        )
+
+        mock_queue.assert_not_called()
 
 
 async def test_send_reply_to_meshtastic_structured_reply_queue_size(monkeypatch):
@@ -6944,7 +7045,9 @@ async def test_matrix_relay_logs_unexpected_exception():
 
 
 @pytest.mark.asyncio
-async def test_send_reply_to_meshtastic_defaults_config_when_missing():
+async def test_send_reply_to_meshtastic_defaults_config_when_missing(
+    mock_radio_backend,
+):
     """send_reply_to_meshtastic should tolerate a missing global config."""
     room = MagicMock()
     room.room_id = "!room:example.org"
@@ -6953,11 +7056,6 @@ async def test_send_reply_to_meshtastic_defaults_config_when_missing():
     room_config = {"meshtastic_channel": 0}
 
     with (
-        patch(
-            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
-            new_callable=AsyncMock,
-            return_value=(MagicMock(), 0),
-        ) as mock_get_interface,
         patch("mmrelay.matrix_utils.get_meshtastic_config_value", return_value=True),
         patch("mmrelay.matrix_utils.queue_message", return_value=True) as mock_queue,
         patch("mmrelay.matrix_utils._create_mapping_info", return_value=None),
@@ -6974,7 +7072,7 @@ async def test_send_reply_to_meshtastic_defaults_config_when_missing():
             "local_meshnet",
         )
 
-    mock_get_interface.assert_called_once()
+    mock_queue.assert_called_once()
     mock_queue.assert_called_once()
 
 

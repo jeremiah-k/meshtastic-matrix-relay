@@ -466,12 +466,22 @@ class BasePlugin(ABC):
 
         description = f"Plugin {self.plugin_name}: {text[:DEFAULT_TEXT_TRUNCATION_LENGTH]}{'...' if len(text) > DEFAULT_TEXT_TRUNCATION_LENGTH else ''}"
 
+        # Wrap async backend.send_message for use with queue_message
+        # queue_message expects a sync callable, so we use a lambda with asyncio.run
+        def _send_via_backend() -> Any:
+            import asyncio
+
+            return asyncio.run(
+                backend.send_message(
+                    text=text,
+                    channel=channel,
+                    destination_id=destination_id,
+                )
+            )
+
         return queue_message(
-            backend.send_message,
+            _send_via_backend,
             description=description,
-            text=text,
-            channel=channel,
-            destination_id=destination_id,
         )
 
     def is_channel_enabled(
