@@ -43,6 +43,9 @@ class RadioRegistry:
     def get_backend(self, name: str) -> BaseRadioBackend | None:
         return self._backends.get(name.lower())
 
+    def get_backend_names(self) -> list[str]:
+        return list(self._backends.keys())
+
     def get_active_backend(self) -> BaseRadioBackend | None:
         if self._active_backend is None:
             return None

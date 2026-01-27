@@ -59,6 +59,7 @@ from mmrelay.constants.network import (
 )
 from mmrelay.e2ee_utils import E2EEStatus
 from mmrelay.log_utils import get_logger
+from mmrelay.radio.registry import get_radio_registry
 from mmrelay.tools import get_sample_config_path
 
 logger = get_logger(__name__)
@@ -922,8 +923,8 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
     )
 
     # Helper functions for config validation
-    def _warn_db_deprecated() -> None:
-        if "db" in config:
+    def _warn_db_deprecated(target_config: dict[str, Any]) -> None:
+        if "db" in target_config:
             print(
                 "\nWarning: 'db' section is deprecated. Please use 'database' instead.",
                 file=sys.stderr,
@@ -934,11 +935,12 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
             )
 
     def _exit_as_valid_non_meshtastic(
+        target_config: dict[str, Any],
         warning: str | None = None,
     ) -> bool:
         if warning:
             print(f"\n{warning}", file=sys.stderr)
-        _warn_db_deprecated()
+        _warn_db_deprecated(target_config)
         print("\n✅ Configuration file is valid!")
         return True
 
@@ -1137,12 +1139,23 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
 
                 backend_name, explicit_disable = get_radio_backend_selection(config)
                 if backend_name and backend_name.lower() != "meshtastic":
+                    registry = get_radio_registry()
+                    if registry.get_backend(backend_name) is None:
+                        available_backends = ", ".join(
+                            sorted(registry.get_backend_names())
+                        )
+                        print(
+                            f"Error: Unknown radio backend '{backend_name}'. "
+                            f"Available backends: {available_backends}"
+                        )
+                        return False
                     # Skip Meshtastic validation when another backend is selected
-                    return _exit_as_valid_non_meshtastic()
+                    return _exit_as_valid_non_meshtastic(config)
 
                 if explicit_disable:
                     return _exit_as_valid_non_meshtastic(
-                        "Warning: Radio backend disabled; running without radio."
+                        config,
+                        "Warning: Radio backend disabled; running without radio.",
                     )
 
                 # Check meshtastic section
@@ -1158,7 +1171,7 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
 
                 if not is_meshtastic_enabled(config):
                     return _exit_as_valid_non_meshtastic(
-                        "Warning: Meshtastic disabled; running without radio."
+                        config, "Warning: Meshtastic disabled; running without radio."
                     )
 
                 meshtastic_section = config[CONFIG_SECTION_MESHTASTIC]

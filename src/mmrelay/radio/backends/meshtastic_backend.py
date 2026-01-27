@@ -112,7 +112,7 @@ class MeshtasticBackend(BaseRadioBackend):
                     # Best-effort cancellation; the underlying close may be
                     # stuck in BLE/DBus, but we cannot block shutdown.
                     future.cancel()
-                except Exception:  # noqa: BLE001 - shutdown must keep going
+                except Exception:
                     meshtastic_logger.exception(
                         "Unexpected error during Meshtastic client close"
                     )
@@ -158,13 +158,7 @@ class MeshtasticBackend(BaseRadioBackend):
         # Handle both callable methods and bool attributes
         if callable(is_conn):
             return bool(is_conn())
-        else:
-            # Attribute is a value, convert to bool
-            return (
-                bool(is_conn)
-                if not isinstance(is_conn, bool)
-                else bool(is_conn()) if callable(is_conn) else True
-            )
+        return bool(is_conn)
 
     async def send_message(
         self,
@@ -304,8 +298,8 @@ class MeshtasticBackend(BaseRadioBackend):
                 # Call user callback
                 try:
                     callback(radio_message)
-                except Exception as e:
-                    backend_logger.exception(f"Error in radio message callback: {e}")
+                except Exception:
+                    backend_logger.exception("Error in radio message callback")
 
             # Subscribe to Meshtastic messages
             pub.subscribe(_packet_to_radio_message, "meshtastic.receive")

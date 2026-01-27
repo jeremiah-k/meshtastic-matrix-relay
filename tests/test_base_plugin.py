@@ -1259,7 +1259,7 @@ class TestBasePlugin(unittest.TestCase):
 
     @patch("mmrelay.plugins.base_plugin.queue_message")
     @patch("mmrelay.plugins.base_plugin.get_radio_registry")
-    def test_send_message_no_client(self, mock_get_registry, mock_queue):
+    def test_send_message_no_client(self, mock_get_registry, _mock_queue):
         """Test send_message when no radio backend available."""
         mock_registry = MagicMock()
         mock_registry.get_active_backend.return_value = None

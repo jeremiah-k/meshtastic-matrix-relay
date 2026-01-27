@@ -56,7 +56,7 @@ class BaseRadioBackend(ABC):
     ) -> Any:
         """Send a message via the radio backend."""
 
-    def get_message_delay(self, config: dict[str, Any], default: float) -> float:
+    def get_message_delay(self, _config: dict[str, Any], default: float) -> float:
         """Return the configured message delay for this backend."""
         return default
 

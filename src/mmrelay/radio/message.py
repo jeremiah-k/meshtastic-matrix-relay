@@ -8,6 +8,10 @@ enabling clean separation between radio-specific implementations and relay logic
 from dataclasses import dataclass, field
 from typing import Any
 
+RADIO_MSG_TEXT_REQUIRED = "RadioMessage.text cannot be empty"
+RADIO_MSG_SENDER_ID_REQUIRED = "RadioMessage.sender_id is required"
+RADIO_MSG_BACKEND_REQUIRED = "RadioMessage.backend is required"
+
 
 @dataclass
 class RadioMessage:
@@ -52,10 +56,10 @@ class RadioMessage:
         for invalid messages.
         """
         if not self.text:
-            raise ValueError("RadioMessage.text cannot be empty")
+            raise ValueError(RADIO_MSG_TEXT_REQUIRED)
 
         if not self.sender_id:
-            raise ValueError("RadioMessage.sender_id is required")
+            raise ValueError(RADIO_MSG_SENDER_ID_REQUIRED)
 
         if not self.sender_name:
             # Use a fallback if sender_name is not provided
@@ -66,7 +70,7 @@ class RadioMessage:
             object.__setattr__(self, "sender_name", f"Node {id_fallback}")
 
         if not self.backend:
-            raise ValueError("RadioMessage.backend is required")
+            raise ValueError(RADIO_MSG_BACKEND_REQUIRED)
 
         if not self.meshnet_name:
             # Default meshnet name if not provided

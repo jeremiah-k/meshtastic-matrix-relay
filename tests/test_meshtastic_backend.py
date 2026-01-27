@@ -134,13 +134,13 @@ class TestMeshtasticBackendCallback:
 
         # First registration
         with patch("mmrelay.meshtastic_utils.subscribed_to_messages", False):
-            backend.register_message_callback(lambda msg: None)
+            backend.register_message_callback(lambda _msg: None)
             assert backend._callback_registered is True
 
         # Second registration should skip
         with patch("mmrelay.meshtastic_utils.subscribed_to_messages", True):
             backend._callback_registered = False  # Reset flag
-            backend.register_message_callback(lambda msg: None)
+            backend.register_message_callback(lambda _msg: None)
             # Should not register again (subscribed already true)
             # and flag should stay False since we skipped
 
@@ -161,7 +161,7 @@ class TestMeshtasticBackendCallback:
             ):
                 with patch("mmrelay.meshtastic_utils.config", {}):
                     with patch("pubsub.pub.subscribe"):
-                        backend.register_message_callback(lambda msg: None)
+                        backend.register_message_callback(lambda _msg: None)
 
                         # Verify callback was registered
                         assert backend._callback_registered is True

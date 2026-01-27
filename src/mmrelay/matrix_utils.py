@@ -22,7 +22,6 @@ from typing import (
     Tuple,
     cast,
 )
-from unittest.mock import MagicMock
 from urllib.parse import urlparse
 
 # matrix-nio is not marked py.typed in our environment, so mypy treats it as untyped.
@@ -1091,6 +1090,30 @@ def _get_radio_backend() -> Any:
         The active radio backend instance, or None if no backend is configured.
     """
     return get_radio_registry().get_active_backend()
+
+
+def _run_backend_send(
+    backend: Any,
+    *,
+    text: str,
+    channel: int | None,
+    destination_id: int | None,
+    reply_to_id: int | str | None,
+) -> Any:
+    """
+    Run backend.send_message from a synchronous context.
+
+    MessageQueue executes send functions in a ThreadPoolExecutor, so asyncio.run is safe here.
+    """
+    result = backend.send_message(
+        text=text,
+        channel=channel,
+        destination_id=destination_id,
+        reply_to_id=reply_to_id,
+    )
+    if inspect.isawaitable(result):
+        return asyncio.run(result)
+    return result
 
 
 async def _get_meshtastic_interface_and_channel(
@@ -2911,44 +2934,14 @@ async def send_reply_to_meshtastic(
         )
         description = f"Reply from {full_display_name} {description_suffix}"
 
-        # Wrap async backend.send_message for use with queue_message
-        # queue_message expects a sync callable, so we use a lambda with asyncio.run
-        # Detect if we're already in a running event loop to avoid RuntimeError
         def _send_via_backend() -> Any:
-            coro = backend.send_message(
+            return _run_backend_send(
+                backend,
                 text=reply_message,
                 channel=meshtastic_channel,
                 destination_id=None,
                 reply_to_id=reply_id,
             )
-
-            try:
-                # Check if there's a running event loop
-                loop = asyncio.get_running_loop()
-                # If we are, run the coroutine directly in the existing loop
-                # First check if loop has run_until_complete method (for test DummyLoop)
-                if hasattr(loop, "run_until_complete"):
-                    # If we're in a test environment with pytest's asyncio plugin,
-                    # we might already be in a running loop, so we need to handle it differently
-                    # For test purposes, we can just call the mock directly
-                    if hasattr(backend.send_message, "_mock_return_value") or hasattr(
-                        backend.send_message, "assert_called_once"
-                    ):
-                        return backend.send_message(
-                            text=reply_message,
-                            channel=meshtastic_channel,
-                            destination_id=None,
-                            reply_to_id=reply_id,
-                        )
-                    else:
-                        return loop.run_until_complete(coro)
-                else:
-                    # If loop doesn't support run_until_complete (like test DummyLoop),
-                    # just return directly without calling send_message
-                    return None
-            except RuntimeError:
-                # If no loop is running, use asyncio.run()
-                return asyncio.run(coro)
 
         success = queue_message(
             _send_via_backend,
@@ -3360,44 +3353,14 @@ async def on_room_message(
                     f"Sending reaction to radio with meshnet={local_meshnet_name}: {reaction_message}"
                 )
 
-                # Wrap async backend.send_message for use with queue_message
-                # queue_message expects a sync callable, so we use a lambda with asyncio.run
-                # Detect if we're already in a running event loop to avoid RuntimeError
                 def _send_via_backend() -> Any:
-                    coro = backend.send_message(
+                    return _run_backend_send(
+                        backend,
                         text=reaction_message,
                         channel=meshtastic_channel,
                         destination_id=None,
                         reply_to_id=None,
                     )
-
-                    try:
-                        # Check if there's a running event loop
-                        loop = asyncio.get_running_loop()
-                        # If we are, run the coroutine directly in the existing loop
-                        # First check if loop has run_until_complete method (for test DummyLoop)
-                        if hasattr(loop, "run_until_complete"):
-                            # If we're in a test environment with pytest's asyncio plugin,
-                            # we might already be in a running loop, so we need to handle it differently
-                            # For test purposes, we can just call the mock directly
-                            if hasattr(
-                                backend.send_message, "_mock_return_value"
-                            ) or hasattr(backend.send_message, "assert_called_once"):
-                                return backend.send_message(
-                                    text=reaction_message,
-                                    channel=meshtastic_channel,
-                                    destination_id=None,
-                                    reply_to_id=None,
-                                )
-                            else:
-                                return loop.run_until_complete(coro)
-                        else:
-                            # If loop doesn't support run_until_complete (like test DummyLoop),
-                            # just return directly without calling send_message
-                            return None
-                    except RuntimeError:
-                        # If no loop is running, use asyncio.run()
-                        return asyncio.run(coro)
 
                 success = queue_message(
                     _send_via_backend,
@@ -3475,44 +3438,14 @@ async def on_room_message(
                     f"Sending reaction to radio with meshnet={local_meshnet_name}: {reaction_message}"
                 )
 
-                # Wrap async backend.send_message for use with queue_message
-                # queue_message expects a sync callable, so we use a lambda with asyncio.run
-                # Detect if we're already in a running event loop to avoid RuntimeError
                 def _send_via_backend() -> Any:
-                    coro = backend.send_message(
+                    return _run_backend_send(
+                        backend,
                         text=reaction_message,
                         channel=meshtastic_channel,
                         destination_id=None,
                         reply_to_id=None,
                     )
-
-                    try:
-                        # Check if there's a running event loop
-                        loop = asyncio.get_running_loop()
-                        # If we are, run the coroutine directly in the existing loop
-                        # First check if loop has run_until_complete method (for test DummyLoop)
-                        if hasattr(loop, "run_until_complete"):
-                            # If we're in a test environment with pytest's asyncio plugin,
-                            # we might already be in a running loop, so we need to handle it differently
-                            # For test purposes, we can just call the mock directly
-                            if hasattr(
-                                backend.send_message, "_mock_return_value"
-                            ) or hasattr(backend.send_message, "assert_called_once"):
-                                return backend.send_message(
-                                    text=reaction_message,
-                                    channel=meshtastic_channel,
-                                    destination_id=None,
-                                    reply_to_id=None,
-                                )
-                            else:
-                                return loop.run_until_complete(coro)
-                        else:
-                            # If loop doesn't support run_until_complete (like test DummyLoop),
-                            # just return directly without calling send_message
-                            return None
-                    except RuntimeError:
-                        # If no loop is running, use asyncio.run()
-                        return asyncio.run(coro)
 
                 success = queue_message(
                     _send_via_backend,
@@ -3742,44 +3675,14 @@ async def on_room_message(
                     msgs_to_keep,
                 )
 
-            # Wrap async backend.send_message for use with queue_message
-            # queue_message expects a sync callable, so we use a lambda with asyncio.run
-            # Detect if we're already in a running event loop to avoid RuntimeError
             def _send_via_backend() -> Any:
-                coro = backend.send_message(
+                return _run_backend_send(
+                    backend,
                     text=full_message,
                     channel=meshtastic_channel,
                     destination_id=None,
                     reply_to_id=None,
                 )
-
-                try:
-                    # Check if there's a running event loop
-                    loop = asyncio.get_running_loop()
-                    # If we are, run the coroutine directly in the existing loop
-                    # First check if loop has run_until_complete method (for test DummyLoop)
-                    if hasattr(loop, "run_until_complete"):
-                        # If we're in a test environment with pytest's asyncio plugin,
-                        # we might already be in a running loop, so we need to handle it differently
-                        # For test purposes, we can just call the mock directly
-                        if hasattr(
-                            backend.send_message, "_mock_return_value"
-                        ) or isinstance(backend.send_message, MagicMock):
-                            return backend.send_message(
-                                text=full_message,
-                                channel=meshtastic_channel,
-                                destination_id=None,
-                                reply_to_id=None,
-                            )
-                        else:
-                            return loop.run_until_complete(coro)
-                    else:
-                        # If loop doesn't support run_until_complete (like test DummyLoop),
-                        # just return directly without calling send_message
-                        return None
-                except RuntimeError:
-                    # If no loop is running, use asyncio.run()
-                    return asyncio.run(coro)
 
             success = queue_message(
                 _send_via_backend,

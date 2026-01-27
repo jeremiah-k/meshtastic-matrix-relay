@@ -51,7 +51,7 @@ class MockRadioBackend:
 
     def __init__(self):
         self.backend_name = "mock"
-        self.send_message = AsyncMock()
+        self.send_message = MagicMock(return_value=True)
         self.is_connected = MagicMock(return_value=True)
 
 
@@ -61,13 +61,18 @@ def mock_radio_backend():
     """Mock the radio backend to return our mock instance."""
     mock_backend = MockRadioBackend()
 
-    with patch("mmrelay.radio.registry.get_radio_registry") as mock_registry:
+    with patch("mmrelay.matrix_utils.get_radio_registry") as mock_registry:
         mock_registry_instance = MagicMock()
         mock_registry.return_value = mock_registry_instance
         mock_registry_instance.get_active_backend.return_value = mock_backend
         mock_registry_instance.is_ready.return_value = True
 
         yield mock_backend
+
+
+@pytest.fixture
+def _mock_radio_backend(mock_radio_backend):
+    return mock_radio_backend
 
 
 # Matrix room message handling tests - converted from unittest.TestCase to standalone pytest functions
@@ -189,7 +194,8 @@ async def test_on_room_message_simple_text(
         await on_room_message(mock_room, mock_event)
 
         mock_queue_message.assert_called_once()
-        # Verify the radio backend's send_message was called with expected text
+        sent_func = mock_queue_message.call_args[0][0]
+        await asyncio.to_thread(sent_func)
         mock_radio_backend.send_message.assert_called_once()
         assert (
             "Hello, world!" in mock_radio_backend.send_message.call_args.kwargs["text"]
@@ -200,6 +206,7 @@ async def test_on_room_message_remote_prefers_meshtastic_text(
     mock_room,
     mock_event,
     test_config,
+    _mock_radio_backend,
 ):
     """Ensure remote mesh messages fall back to raw meshtastic_text when body is empty."""
     mock_event.body = ""
@@ -418,6 +425,8 @@ async def test_on_room_message_reply_disabled(
 
             # Assert that the message was queued
             mock_queue_message.assert_called_once()
+            sent_func = mock_queue_message.call_args[0][0]
+            await asyncio.to_thread(sent_func)
             # Verify the radio backend's send_message was called with expected text
             mock_radio_backend.send_message.assert_called_once()
             assert (
@@ -548,7 +557,7 @@ async def test_on_room_message_reaction_enabled(
         assert queued_kwargs["description"].startswith("Local reaction")
         # Verify the send function is called with the correct text
         sent_func = mock_queue_message.call_args[0][0]
-        sent_func()
+        await asyncio.to_thread(sent_func)
         mock_radio_backend.send_message.assert_called_once()
         assert "reacted" in mock_radio_backend.send_message.call_args.kwargs["text"]
 
@@ -966,7 +975,7 @@ async def test_on_room_message_remote_reaction_relay_success(
     assert queued_kwargs["description"] == "Remote reaction from remote_mesh"
     # Verify the send function is called with the correct text
     sent_func = mock_queue.call_args[0][0]
-    sent_func()
+    await asyncio.to_thread(sent_func)
     mock_radio_backend.send_message.assert_called_once()
     assert "reacted" in mock_radio_backend.send_message.call_args.kwargs["text"]
 
@@ -1028,7 +1037,7 @@ async def test_on_room_message_reaction_missing_mapping_logs_debug(
 
 
 async def test_on_room_message_local_reaction_queue_failure_logs(
-    monkeypatch, mock_room, mock_radio_backend
+    monkeypatch, mock_room, _mock_radio_backend
 ):
     """Local reaction failures should log an error."""
     from nio import ReactionEvent
@@ -1173,7 +1182,7 @@ async def test_on_room_message_remote_meshnet_empty_after_prefix_skips(
 
 
 async def test_on_room_message_portnum_string_digits(
-    monkeypatch, mock_room, mock_event, test_config
+    monkeypatch, mock_room, mock_event, test_config, _mock_radio_backend
 ):
     """Numeric string portnum values should be handled without errors."""
     mock_event.source = {"content": {"body": "Message", "meshtastic_portnum": "123"}}
@@ -1218,7 +1227,7 @@ async def test_on_room_message_portnum_string_digits(
 
 
 async def test_on_room_message_plugin_handle_exception_logs_and_continues(
-    monkeypatch, mock_room, mock_event, test_config
+    monkeypatch, mock_room, mock_event, test_config, _mock_radio_backend
 ):
     """Plugin handler exceptions should be logged and not stop relaying."""
 
@@ -1273,7 +1282,7 @@ async def test_on_room_message_plugin_handle_exception_logs_and_continues(
 
 
 async def test_on_room_message_plugin_match_exception_does_not_block(
-    monkeypatch, mock_room, mock_event, test_config
+    monkeypatch, mock_room, mock_event, test_config, _mock_radio_backend
 ):
     """Plugin match errors should be logged and ignored."""
 
@@ -1382,7 +1391,7 @@ async def test_on_room_message_no_meshtastic_interface_returns(
 
 
 async def test_on_room_message_broadcast_disabled_no_queue(
-    monkeypatch, mock_room, mock_event, test_config
+    monkeypatch, mock_room, mock_event, test_config, _mock_radio_backend
 ):
     """broadcast_enabled=False should avoid queueing messages."""
     test_config["meshtastic"]["broadcast_enabled"] = False
@@ -1425,7 +1434,7 @@ async def test_on_room_message_broadcast_disabled_no_queue(
 
 
 async def test_on_room_message_queue_failure_logs_error(
-    monkeypatch, mock_room, mock_event, test_config, mock_radio_backend
+    monkeypatch, mock_room, mock_event, test_config, _mock_radio_backend
 ):
     """Queue failures should log and stop processing."""
     test_config["meshtastic"]["broadcast_enabled"] = True
@@ -2508,12 +2517,12 @@ async def test_send_reply_to_meshtastic_with_reply_id(mock_radio_backend):
         mock_queue.assert_called_once()
         # Verify the send function is called with the correct reply_id
         sent_func = mock_queue.call_args[0][0]
-        sent_func()
+        await asyncio.to_thread(sent_func)
         mock_radio_backend.send_message.assert_called_once()
         assert mock_radio_backend.send_message.call_args.kwargs["reply_to_id"] == 12345
 
 
-async def test_send_reply_to_meshtastic_no_reply_id():
+async def test_send_reply_to_meshtastic_no_reply_id(_mock_radio_backend):
     """Test sending a reply to Meshtastic without reply_id."""
     mock_room_config = {"meshtastic_channel": 0}
     mock_room = MagicMock()
@@ -2639,7 +2648,9 @@ async def test_send_reply_to_meshtastic_returns_when_interface_missing(monkeypat
         mock_queue.assert_not_called()
 
 
-async def test_send_reply_to_meshtastic_structured_reply_queue_size(monkeypatch):
+async def test_send_reply_to_meshtastic_structured_reply_queue_size(
+    monkeypatch, _mock_radio_backend
+):
     """Structured replies log queue size details when queued."""
     mock_interface = MagicMock()
     mock_queue = MagicMock(return_value=True)
@@ -2679,7 +2690,9 @@ async def test_send_reply_to_meshtastic_structured_reply_queue_size(monkeypatch)
     assert mock_queue.called
 
 
-async def test_send_reply_to_meshtastic_structured_reply_failure(monkeypatch):
+async def test_send_reply_to_meshtastic_structured_reply_failure(
+    monkeypatch, _mock_radio_backend
+):
     """Structured replies return after queueing failures."""
     mock_interface = MagicMock()
     mock_queue = MagicMock(return_value=False)
@@ -2714,7 +2727,9 @@ async def test_send_reply_to_meshtastic_structured_reply_failure(monkeypatch):
     assert mock_queue.called
 
 
-async def test_send_reply_to_meshtastic_fallback_queue_size(monkeypatch):
+async def test_send_reply_to_meshtastic_fallback_queue_size(
+    monkeypatch, _mock_radio_backend
+):
     """Fallback replies log queue size details when queued."""
     mock_interface = MagicMock()
     mock_interface.sendText = MagicMock()
@@ -2755,7 +2770,9 @@ async def test_send_reply_to_meshtastic_fallback_queue_size(monkeypatch):
     assert mock_queue.called
 
 
-async def test_send_reply_to_meshtastic_fallback_failure(monkeypatch):
+async def test_send_reply_to_meshtastic_fallback_failure(
+    monkeypatch, _mock_radio_backend
+):
     """Fallback replies return after queueing failures."""
     mock_interface = MagicMock()
     mock_interface.sendText = MagicMock()
@@ -3161,7 +3178,9 @@ async def test_upload_image_returns_upload_error_on_network_exception():
 
 
 @pytest.mark.asyncio
-async def test_on_room_message_emote_reaction_uses_original_event_id(monkeypatch):
+async def test_on_room_message_emote_reaction_uses_original_event_id(
+    monkeypatch, _mock_radio_backend
+):
     """Emote reactions with m.relates_to should populate original_matrix_event_id for reaction handling."""
     from mmrelay.matrix_utils import RoomMessageEmote
 
@@ -3543,7 +3562,7 @@ async def test_on_room_message_command_short_circuits(
 
 @pytest.mark.asyncio
 async def test_on_room_message_requires_mention_before_filtering_command(
-    monkeypatch, mock_room, mock_event, test_config
+    monkeypatch, mock_room, mock_event, test_config, _mock_radio_backend
 ):
     """Plugins that require mentions should not block relaying unmentioned commands."""
     test_config["meshtastic"]["broadcast_enabled"] = True
@@ -7046,7 +7065,7 @@ async def test_matrix_relay_logs_unexpected_exception():
 
 @pytest.mark.asyncio
 async def test_send_reply_to_meshtastic_defaults_config_when_missing(
-    mock_radio_backend,
+    _mock_radio_backend,
 ):
     """send_reply_to_meshtastic should tolerate a missing global config."""
     room = MagicMock()
@@ -7077,7 +7096,7 @@ async def test_send_reply_to_meshtastic_defaults_config_when_missing(
 
 
 @pytest.mark.asyncio
-async def test_on_room_message_creates_mapping_info():
+async def test_on_room_message_creates_mapping_info(_mock_radio_backend):
     """on_room_message should build mapping info when storage is enabled."""
     room = MagicMock()
     room.room_id = "!room:matrix.org"
