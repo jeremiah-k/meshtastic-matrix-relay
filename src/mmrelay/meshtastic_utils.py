@@ -2052,9 +2052,15 @@ def connect_meshtastic(
                                     raise TimeoutError(
                                         f"BLE connection attempt timed out for {ble_address}."
                                     ) from err
-                            except Exception:
+                            except Exception as exc:
                                 # BLEInterface constructor failed - this is a critical error
                                 logger.exception("BLE interface creation failed")
+                                if _is_ble_discovery_error(exc):
+                                    logger.warning(
+                                        BLE_TROUBLESHOOTING_GUIDANCE.format(
+                                            ble_address=ble_address
+                                        )
+                                    )
                                 raise
                         else:
                             logger.debug(
