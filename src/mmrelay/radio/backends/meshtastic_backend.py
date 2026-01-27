@@ -9,6 +9,7 @@ from typing import Any, Awaitable, Callable
 import meshtastic
 
 import mmrelay.meshtastic_utils as meshtastic_utils
+from mmrelay.constants.network import CONNECTION_TYPE_BLE
 from mmrelay.log_utils import get_logger
 from mmrelay.radio.base_backend import BaseRadioBackend
 from mmrelay.radio.message import RadioMessage
@@ -41,7 +42,24 @@ class MeshtasticBackend(BaseRadioBackend):
         return "meshtastic"
 
     async def connect(self, config: dict[str, Any]) -> bool:
-        maybe_client = self._to_thread(self._connect_fn, passed_config=config)
+        connection_type = None
+        meshtastic_cfg = config.get("meshtastic")
+        if isinstance(meshtastic_cfg, dict):
+            connection_type = meshtastic_cfg.get("connection_type")
+
+        use_thread = True
+        if (
+            connection_type == CONNECTION_TYPE_BLE
+            and self._connect_fn is meshtastic_utils.connect_meshtastic
+        ):
+            # Avoid nested thread/event-loop usage during BLE initialization.
+            use_thread = False
+
+        maybe_client = (
+            self._to_thread(self._connect_fn, passed_config=config)
+            if use_thread
+            else self._connect_fn(passed_config=config)
+        )
         client = (
             await maybe_client if inspect.isawaitable(maybe_client) else maybe_client
         )
