@@ -38,6 +38,7 @@ from nio import (  # type: ignore[import-untyped]
     RoomMessageEmote,
     RoomMessageNotice,
     RoomMessageText,
+    SyncError,
     UploadError,
     UploadResponse,
 )
@@ -1678,26 +1679,20 @@ async def connect_matrix(
             raise ConnectionError("Matrix sync failed") from exc
 
     # If the sync returned an explicit error response, treat it as a failure.
-    if (
-        hasattr(sync_response, "__class__")
-        and "Error" in sync_response.__class__.__name__
-    ):
+    if isinstance(sync_response, SyncError):
         error_type = sync_response.__class__.__name__
         error_details = _get_detailed_matrix_error_message(sync_response)
         logger.error(f"Initial sync failed: {error_type}")
         logger.error(f"Error details: {error_details}")
 
-        if "SyncError" in error_type:
-            logger.error(
-                "This usually indicates a network connectivity issue or server problem."
-            )
-            logger.error("Troubleshooting steps:")
-            logger.error("1. Check your internet connection")
-            logger.error(
-                f"2. Verify the homeserver URL is correct: {matrix_homeserver}"
-            )
-            logger.error("3. Ensure the Matrix server is online and accessible")
-            logger.error("4. Check if your credentials are still valid")
+        logger.error(
+            "This usually indicates a network connectivity issue or server problem."
+        )
+        logger.error("Troubleshooting steps:")
+        logger.error("1. Check your internet connection")
+        logger.error(f"2. Verify the homeserver URL is correct: {matrix_homeserver}")
+        logger.error("3. Ensure the Matrix server is online and accessible")
+        logger.error("4. Check if your credentials are still valid")
 
         try:
             await matrix_client.close()

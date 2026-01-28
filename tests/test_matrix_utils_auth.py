@@ -351,7 +351,7 @@ async def test_connect_matrix_with_e2ee_credentials(
     mock_exists,
     mock_isfile,
     mock_listdir,
-    mock_makedirs,
+    _mock_makedirs,
 ):
     """Test Matrix connection with E2EE credentials."""
     mock_exists.return_value = True

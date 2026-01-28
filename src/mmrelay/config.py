@@ -621,17 +621,13 @@ def save_credentials(
     config_dir = ""
     try:
         if not credentials_path:
-            matrix_config = relay_config.get("matrix", {})
-            if isinstance(matrix_config, dict):
-                credentials_path = (
-                    os.getenv("MMRELAY_CREDENTIALS_PATH")
-                    or relay_config.get("credentials_path")
-                    or matrix_config.get("credentials_path")
-                )
-            else:
-                credentials_path = os.getenv(
-                    "MMRELAY_CREDENTIALS_PATH"
-                ) or relay_config.get("credentials_path")
+            credentials_path = os.getenv(
+                "MMRELAY_CREDENTIALS_PATH"
+            ) or relay_config.get("credentials_path")
+            if not credentials_path:
+                matrix_config = relay_config.get("matrix", {})
+                if isinstance(matrix_config, dict):
+                    credentials_path = matrix_config.get("credentials_path")
         if credentials_path:
             credentials_path = os.path.expanduser(credentials_path)
             path_is_dir = os.path.isdir(credentials_path)

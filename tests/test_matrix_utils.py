@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, mock_open, patch
 
 import pytest
+from nio import SyncError
 
 from mmrelay.matrix_utils import (
     ImageUploadError,
@@ -3520,7 +3521,7 @@ async def test_connect_matrix_sync_error_closes_client(monkeypatch):
     """If initial sync returns an error response, the client should close and raise."""
     mock_client = MagicMock()
     mock_client.rooms = {}
-    error_response = type("SyncError", (), {})()
+    error_response = SyncError("sync failed")
     mock_client.sync = AsyncMock(return_value=error_response)
     mock_client.close = AsyncMock()
     mock_client.should_upload_keys = False
@@ -3568,7 +3569,7 @@ async def test_connect_matrix_sync_error_close_failure_logs():
     """Sync error handling should ignore close failures and still raise."""
     mock_client = MagicMock()
     mock_client.rooms = {}
-    error_response = type("SyncError", (), {})()
+    error_response = SyncError("sync failed")
     mock_client.sync = AsyncMock(return_value=error_response)
     mock_client.close = AsyncMock(side_effect=RuntimeError("close failed"))
     mock_client.should_upload_keys = False
@@ -3605,9 +3606,7 @@ async def test_connect_matrix_sync_error_close_failure_logs():
 
 
 @pytest.mark.asyncio
-async def test_connect_matrix_sync_validation_error_retries_with_invite_safe_filter(
-    monkeypatch,
-):
+async def test_connect_matrix_sync_validation_error_retries_with_invite_safe_filter():
     """ValidationError from invite events triggers invite-safe sync retry."""
     import jsonschema
 
@@ -3623,7 +3622,7 @@ async def test_connect_matrix_sync_validation_error_retries_with_invite_safe_fil
     # Set up two sync calls: first fails with ValidationError, second succeeds
     call_count = [0]
 
-    async def mock_sync(*args, **kwargs):
+    async def mock_sync(*_args, **_kwargs):
         call_count[0] += 1
         if call_count[0] == 1:
             # First sync raises ValidationError (caught, triggers invite-safe filter)
