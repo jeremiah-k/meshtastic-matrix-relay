@@ -66,7 +66,7 @@ class Plugin(BasePlugin):
         Returns:
             list[str]: Command names handled by this plugin (for example, ['help']).
         """
-        return [self.plugin_name]  # type: ignore[list-item]
+        return [self.plugin_name] if self.plugin_name else []
 
     def get_mesh_commands(self) -> list[str]:
         """

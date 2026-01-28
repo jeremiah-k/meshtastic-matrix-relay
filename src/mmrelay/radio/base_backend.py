@@ -98,6 +98,16 @@ class BaseRadioBackend(ABC):
         """
         return default
 
+    def get_nodes(self) -> dict[str, Any]:
+        """
+        Retrieve the list of nodes known to the backend.
+
+        Returns:
+            dict: A dictionary of nodes, where keys are node identifiers and values are node objects.
+                Node objects should contain at least a "user" key with "id", "longName", and "shortName" fields.
+        """
+        return {}
+
     def get_client(self) -> Any:
         """
         Retrieve the backend's underlying client instance.

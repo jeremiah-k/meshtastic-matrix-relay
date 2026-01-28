@@ -183,7 +183,7 @@ class Plugin(BasePlugin):
         Returns:
             list[str]: A list containing the plugin's Matrix command (the plugin_name).
         """
-        return [self.plugin_name]  # type: ignore[list-item]
+        return [self.plugin_name] if self.plugin_name else []
 
     def get_mesh_commands(self) -> list[str]:
         """
@@ -192,7 +192,7 @@ class Plugin(BasePlugin):
         Returns:
             list[str]: The mesh command names provided by the plugin (typically a single-element list containing the plugin's name).
         """
-        return [self.plugin_name]  # type: ignore[list-item]
+        return [self.plugin_name] if self.plugin_name else []
 
     async def handle_room_message(
         self,

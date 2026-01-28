@@ -27,6 +27,7 @@ from mmrelay import __version__, meshtastic_utils
 from mmrelay.cli_utils import msg_suggest_check_config, msg_suggest_generate_config
 from mmrelay.config import get_radio_backend_selection, is_meshtastic_enabled
 from mmrelay.constants.app import APP_DISPLAY_NAME, WINDOWS_PLATFORM
+from mmrelay.constants.network import MATRIX_SYNC_FOREVER_TIMEOUT
 from mmrelay.constants.queue import DEFAULT_MESSAGE_DELAY
 from mmrelay.db_utils import (
     initialize_database,
@@ -300,9 +301,10 @@ async def main(config: dict[str, Any]) -> None:
     try:
         while not shutdown_event.is_set():
             try:
-                if active_backend_name == "meshtastic":
-                    if meshtastic_utils.meshtastic_client:
-                        nodes_snapshot = dict(meshtastic_utils.meshtastic_client.nodes)
+                active_backend = radio_registry.get_active_backend()
+                if active_backend and hasattr(active_backend, "get_nodes"):
+                    nodes_snapshot = active_backend.get_nodes()
+                    if nodes_snapshot:
                         await loop.run_in_executor(
                             None,
                             update_longnames,
@@ -313,8 +315,6 @@ async def main(config: dict[str, Any]) -> None:
                             update_shortnames,
                             nodes_snapshot,
                         )
-                    else:
-                        meshtastic_logger.warning("Meshtastic client is not connected.")
 
                 matrix_logger.info("Starting Matrix sync loop...")
 
@@ -328,7 +328,9 @@ async def main(config: dict[str, Any]) -> None:
                         bool: `True` if the sync loop exited normally, `False` if shutdown was triggered by a KeyboardInterrupt.
                     """
                     try:
-                        await matrix_client.sync_forever(timeout=30000)
+                        await matrix_client.sync_forever(
+                            timeout=MATRIX_SYNC_FOREVER_TIMEOUT
+                        )
                         return True
                     except KeyboardInterrupt:
                         shutdown()

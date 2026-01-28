@@ -402,6 +402,19 @@ class MeshtasticBackend(BaseRadioBackend):
             return default
         return float(delay)
 
+    def get_nodes(self) -> dict[str, Any]:
+        """
+        Retrieve the list of nodes known to the Meshtastic backend.
+
+        Returns:
+            dict: A dictionary of nodes, where keys are node identifiers and values are node objects.
+                Node objects contain a "user" key with "id", "longName", and "shortName" fields.
+        """
+        client = self._client or meshtastic_utils.meshtastic_client
+        if client and hasattr(client, "nodes"):
+            return client.nodes
+        return {}
+
     def get_client(self) -> Any:
         """
         Return the active Meshtastic client instance used by this backend.
