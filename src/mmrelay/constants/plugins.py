@@ -29,6 +29,19 @@ REF_NAME_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")
 # Default branch names to try when ref is not specified
 DEFAULT_BRANCHES = ["main", "master"]
 
+# Plugin operation timeouts (seconds)
+PLUGIN_DEFAULT_TIMEOUT = 120
+PLUGIN_GIT_OPERATION_TIMEOUT = 120
+PLUGIN_GIT_INSTALL_TIMEOUT = 600
+PLUGIN_PIP_INSTALL_TIMEOUT = 300
+
+# Plugin retry configuration
+PLUGIN_DEFAULT_RETRY_ATTEMPTS = 3
+PLUGIN_DEFAULT_RETRY_DELAY = 2.0
+
+# Weather plugin constants
+WEATHER_API_TIMEOUT = 10.0
+
 # Environment keys that indicate pipx is being used (for security/testability)
 PIPX_ENVIRONMENT_KEYS = ("PIPX_HOME", "PIPX_LOCAL_VENVS", "PIPX_BIN_DIR")
 

@@ -52,6 +52,24 @@ BLE_TROUBLESHOOTING_GUIDANCE = (
     "3) Rebooting your machine"
 )
 MAX_TIMEOUT_RETRIES_INFINITE = 5
+BLE_INTERFACE_CREATION_TIMEOUT = 90.0  # seconds (3x 30s connection timeout + overhead)
+BLE_CONNECT_TIMEOUT = 30.0  # seconds
+BLE_DISCONNECT_TIMEOUT = 3.0  # seconds
+BLE_CLIENT_DISCONNECT_TIMEOUT = 2.0  # seconds
+BLE_INTERFACE_CLOSE_TIMEOUT = 5.0  # seconds
+BLE_WORKER_CANCEL_TIMEOUT = 0.2  # seconds
+BLE_STALE_CONNECTION_TIMEOUT = 10.0  # seconds
+BLE_SCAN_BUFFER_TIMEOUT = 2.0  # seconds (additional buffer for scan operations)
+BLE_MAX_DISCONNECT_RETRIES = 3  # maximum retries for interface disconnect
+BLE_MAX_CLIENT_DISCONNECT_RETRIES = 2  # maximum retries for client disconnect
+BLE_STALE_DISCONNECT_MAX_RETRIES = (
+    3  # maximum retries for stale BlueZ connection disconnect
+)
+
+# Executor configuration
+EXECUTOR_MAX_WORKERS_SINGLE = (
+    1  # for sequential operations like BLE and metadata retrieval
+)
 
 # Error codes
 ERRNO_BAD_FILE_DESCRIPTOR = 9

@@ -24,6 +24,12 @@ from mmrelay.constants.plugins import (
     DEFAULT_BRANCHES,
     PIP_SOURCE_FLAGS,
     PIPX_ENVIRONMENT_KEYS,
+    PLUGIN_DEFAULT_RETRY_ATTEMPTS,
+    PLUGIN_DEFAULT_RETRY_DELAY,
+    PLUGIN_DEFAULT_TIMEOUT,
+    PLUGIN_GIT_INSTALL_TIMEOUT,
+    PLUGIN_GIT_OPERATION_TIMEOUT,
+    PLUGIN_PIP_INSTALL_TIMEOUT,
     REF_NAME_PATTERN,
     RISKY_REQUIREMENT_PREFIXES,
 )
@@ -696,7 +702,7 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
                         "--requirement",
                         temp_path,
                     ]
-                    _run(cmd, timeout=600)
+                    _run(cmd, timeout=PLUGIN_GIT_INSTALL_TIMEOUT)
                     installed_packages = True
                 finally:
                     # Clean up the temporary file
@@ -745,7 +751,7 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
 
                 try:
                     cmd.extend(["-r", temp_path])
-                    _run(cmd, timeout=600)
+                    _run(cmd, timeout=PLUGIN_GIT_INSTALL_TIMEOUT)
                     installed_packages = True
                 finally:
                     # Clean up the temporary file
@@ -834,9 +840,9 @@ def get_community_plugin_dirs() -> list[str]:
 
 def _run(
     cmd: list[str],
-    timeout: float = 120,
-    retry_attempts: int = 1,
-    retry_delay: float = 1,
+    timeout: float = PLUGIN_DEFAULT_TIMEOUT,
+    retry_attempts: int = PLUGIN_DEFAULT_RETRY_ATTEMPTS,
+    retry_delay: float = PLUGIN_DEFAULT_RETRY_DELAY,
     **kwargs: Any,
 ) -> subprocess.CompletedProcess[str]:
     # Validate command to prevent shell injection
@@ -896,7 +902,7 @@ def _run(
 
 
 def _run_git(
-    cmd: list[str], timeout: float = 120, **kwargs: Any
+    cmd: list[str], timeout: float = PLUGIN_GIT_OPERATION_TIMEOUT, **kwargs: Any
 ) -> subprocess.CompletedProcess[str]:
     """
     Execute a git command with conservative retry defaults and a non-interactive environment.
@@ -909,8 +915,8 @@ def _run_git(
     Returns:
         subprocess.CompletedProcess[str]: Completed process containing `returncode`, `stdout`, and `stderr`.
     """
-    kwargs.setdefault("retry_attempts", 3)
-    kwargs.setdefault("retry_delay", 2)
+    kwargs.setdefault("retry_attempts", PLUGIN_DEFAULT_RETRY_ATTEMPTS)
+    kwargs.setdefault("retry_delay", PLUGIN_DEFAULT_RETRY_DELAY)
     # Ensure non-interactive git by default
     env = dict(os.environ)
     if "env" in kwargs:
@@ -1810,7 +1816,7 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
                                     )
                                 _run(
                                     [pipx_path, "inject", "mmrelay", missing_pkg],
-                                    timeout=300,
+                                    timeout=PLUGIN_PIP_INSTALL_TIMEOUT,
                                 )
                             else:
                                 in_venv = (
@@ -1831,7 +1837,7 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
                                 ]
                                 if not in_venv:
                                     cmd += ["--user"]
-                                _run(cmd, timeout=300)
+                                _run(cmd, timeout=PLUGIN_PIP_INSTALL_TIMEOUT)
 
                             logger.info(
                                 f"Successfully installed {missing_pkg}, retrying plugin load"
