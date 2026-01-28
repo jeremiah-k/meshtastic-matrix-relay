@@ -2664,7 +2664,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             self.assertEqual(result["firmware_version"], "2.3.15")
             # Verify timeout was logged
             mock_logger.debug.assert_called_with(
-                "getMetadata() timed out after 30 seconds"
+                "getMetadata() timed out after %s seconds", 30.0
             )
             # Ensure we deferred cleanup when worker is still running.
             timeout_future.add_done_callback.assert_called_once()

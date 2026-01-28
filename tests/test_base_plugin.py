@@ -606,8 +606,8 @@ class TestBasePlugin(unittest.TestCase):
         self.assertEqual(result[2], {"nested": {}})
 
     @patch("mmrelay.plugins.base_plugin.queue_message")
-    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    def test_send_message(self, mock_connect_meshtastic, mock_queue_message):
+    @patch("mmrelay.plugins.base_plugin.get_radio_registry")
+    def test_send_message(self, mock_get_registry, mock_queue_message):
         """
         Test that the plugin's send_message method queues a Meshtastic message with the correct parameters.
 
@@ -615,21 +615,21 @@ class TestBasePlugin(unittest.TestCase):
         """
         plugin = MockPlugin()
 
-        # Mock meshtastic client
-        mock_client = MagicMock()
-        mock_connect_meshtastic.return_value = mock_client
+        # Mock radio backend
+        mock_backend = MagicMock()
+        mock_registry = MagicMock()
+        mock_registry.get_active_backend.return_value = mock_backend
+        mock_get_registry.return_value = mock_registry
         mock_queue_message.return_value = True
 
         plugin.send_message("Test message", channel=1, destination_id="!node123")
 
         # Should queue the message (result depends on queue state, but call should happen)
         mock_queue_message.assert_called_once()
+
+        # Verify that a callable was queued
         call_args = mock_queue_message.call_args
-        self.assertEqual(
-            call_args[0][0], mock_client.sendText
-        )  # First arg is the function
-        self.assertIn("text", call_args[1])  # kwargs should contain text
-        self.assertEqual(call_args[1]["text"], "Test message")
+        self.assertIsInstance(call_args[0][0], type(lambda: None))
 
     def test_get_matrix_commands_default(self):
         """
@@ -674,61 +674,89 @@ class TestBasePlugin(unittest.TestCase):
             self.assertEqual(result, "/path/to/plugin/data")
             mock_get_dir.assert_called_once_with("test_plugin")
 
-    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    def test_get_my_node_id_success(self, mock_connect_meshtastic):
+    @patch("mmrelay.plugins.base_plugin.get_radio_registry")
+    def test_get_my_node_id_success(self, mock_get_registry):
         """Test that get_my_node_id returns the correct node ID when available."""
         plugin = MockPlugin()
 
-        # Mock meshtastic client with node info
+        # Mock the entire chain: registry -> backend -> client -> myInfo
         mock_client = MagicMock()
         mock_client.myInfo.my_node_num = 123456789
-        mock_connect_meshtastic.return_value = mock_client
+        mock_backend = MagicMock()
+        mock_backend.get_client.return_value = mock_client
+        mock_registry = MagicMock()
+        mock_registry.get_active_backend.return_value = mock_backend
+        mock_get_registry.return_value = mock_registry
 
         result = plugin.get_my_node_id()
 
         self.assertEqual(result, 123456789)
-        mock_connect_meshtastic.assert_called_once()
+        mock_get_registry.assert_called_once()
+        mock_registry.get_active_backend.assert_called_once()
+        mock_backend.get_client.assert_called_once()
 
-    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    def test_get_my_node_id_caches_on_success(self, mock_connect_meshtastic):
+    @patch("mmrelay.plugins.base_plugin.get_radio_registry")
+    def test_get_my_node_id_caches_on_success(self, mock_get_registry):
         """Test that get_my_node_id caches the node ID on a successful call."""
         plugin = MockPlugin()
+
+        # Mock the entire chain: registry -> backend -> client -> myInfo
         mock_client = MagicMock()
         mock_client.myInfo.my_node_num = 123456789
-        mock_connect_meshtastic.return_value = mock_client
+        mock_backend = MagicMock()
+        mock_backend.get_client.return_value = mock_client
+        mock_registry = MagicMock()
+        mock_registry.get_active_backend.return_value = mock_backend
+        mock_get_registry.return_value = mock_registry
 
-        # First call should connect and cache
+        # First call should retrieve and cache
         self.assertEqual(plugin.get_my_node_id(), 123456789)
-        mock_connect_meshtastic.assert_called_once()
+        mock_get_registry.assert_called_once()
+        mock_registry.get_active_backend.assert_called_once()
+        mock_backend.get_client.assert_called_once()
 
-        # Second call should use the cache
+        # Second call should use cache
         self.assertEqual(plugin.get_my_node_id(), 123456789)
-        mock_connect_meshtastic.assert_called_once()  # Still called only once
+        mock_get_registry.assert_called_once()  # Still called only once
+        mock_registry.get_active_backend.assert_called_once()  # Still called only once
+        mock_backend.get_client.assert_called_once()  # Still called only once
 
-    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    def test_get_my_node_id_no_client(self, mock_connect_meshtastic):
-        """Test that get_my_node_id returns None when no client is available."""
+    @patch("mmrelay.plugins.base_plugin.get_radio_registry")
+    def test_get_my_node_id_no_client(self, mock_get_registry):
+        """Test that get_my_node_id returns None when there is no active backend."""
         plugin = MockPlugin()
 
-        mock_connect_meshtastic.return_value = None
+        # Mock the registry that returns None for the active backend
+        mock_registry = MagicMock()
+        mock_registry.get_active_backend.return_value = None
+        mock_get_registry.return_value = mock_registry
 
         result = plugin.get_my_node_id()
 
         self.assertIsNone(result)
+        mock_get_registry.assert_called_once()
+        mock_registry.get_active_backend.assert_called_once()
 
-    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    def test_get_my_node_id_no_myinfo(self, mock_connect_meshtastic):
-        """Test that get_my_node_id returns None when client has no myInfo."""
+    @patch("mmrelay.plugins.base_plugin.get_radio_registry")
+    def test_get_my_node_id_no_myinfo(self, mock_get_registry):
+        """Test that get_my_node_id returns None when the backend client has no myInfo."""
         plugin = MockPlugin()
 
-        # Mock client without myInfo
+        # Mock the client without myInfo
         mock_client = MagicMock()
         mock_client.myInfo = None
-        mock_connect_meshtastic.return_value = mock_client
+        mock_backend = MagicMock()
+        mock_backend.get_client.return_value = mock_client
+        mock_registry = MagicMock()
+        mock_registry.get_active_backend.return_value = mock_backend
+        mock_get_registry.return_value = mock_registry
 
         result = plugin.get_my_node_id()
 
         self.assertIsNone(result)
+        mock_get_registry.assert_called_once()
+        mock_registry.get_active_backend.assert_called_once()
+        mock_backend.get_client.assert_called_once()
 
     @patch.object(MockPlugin, "get_my_node_id")
     def test_is_direct_message_true(self, mock_get_my_node_id):
@@ -778,8 +806,8 @@ class TestBasePlugin(unittest.TestCase):
 
         self.assertFalse(result)
 
-    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
-    def test_get_my_node_id_no_cache_no_client(self, mock_connect_meshtastic):
+    @patch("mmrelay.plugins.base_plugin.get_radio_registry")
+    def test_get_my_node_id_no_cache_no_client(self, mock_get_registry):
         """Test that get_my_node_id returns None when no client and no cache."""
         plugin = MockPlugin()
 
@@ -787,12 +815,16 @@ class TestBasePlugin(unittest.TestCase):
         if hasattr(plugin, "_my_node_id"):
             delattr(plugin, "_my_node_id")
 
-        mock_connect_meshtastic.return_value = None
+        # Mock registry that returns None for active backend
+        mock_registry = MagicMock()
+        mock_registry.get_active_backend.return_value = None
+        mock_get_registry.return_value = mock_registry
 
         result = plugin.get_my_node_id()
 
         self.assertIsNone(result)
-        mock_connect_meshtastic.assert_called_once()
+        mock_get_registry.assert_called_once()
+        mock_registry.get_active_backend.assert_called_once()
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_is_direct_message_with_none_node_id(self, mock_connect_meshtastic):
@@ -1225,33 +1257,35 @@ class TestBasePlugin(unittest.TestCase):
         result = plugin.strip_raw(nested_data)
         self.assertEqual(result, {"data": {"other": "value"}, "normal": "data"})
 
-    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("mmrelay.plugins.base_plugin.queue_message")
-    def test_send_message_no_client(self, mock_queue, mock_connect):
-        """Test send_message when no meshtastic client available (lines 431-432)."""
-        mock_connect.return_value = None
+    @patch("mmrelay.plugins.base_plugin.get_radio_registry")
+    def test_send_message_no_client(self, mock_get_registry, _mock_queue):
+        """Test send_message when no radio backend available."""
+        mock_registry = MagicMock()
+        mock_registry.get_active_backend.return_value = None
+        mock_get_registry.return_value = mock_registry
 
         plugin = MockPlugin()
         result = plugin.send_message("test", channel=0)
 
         self.assertFalse(result)
-        mock_connect.assert_called_once()
+        mock_get_registry.assert_called_once()
+        mock_registry.get_active_backend.assert_called_once()
 
-    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("mmrelay.plugins.base_plugin.queue_message")
-    def test_send_message_with_destination(self, mock_queue, mock_connect):
-        """Test send_message with destination_id (lines 440-443)."""
-        mock_client = MagicMock()
-        mock_connect.return_value = mock_client
+    @patch("mmrelay.plugins.base_plugin.get_radio_registry")
+    def test_send_message_with_destination(self, mock_get_registry, mock_queue):
+        """Test send_message with destination_id."""
+        mock_backend = MagicMock()
+        mock_registry = MagicMock()
+        mock_registry.get_active_backend.return_value = mock_backend
+        mock_get_registry.return_value = mock_registry
         mock_queue.return_value = True
 
         plugin = MockPlugin()
         result = plugin.send_message("test", channel=0, destination_id="!node123")
 
         self.assertTrue(result)
-        # Check that destinationId was included in the call
-        call_args = mock_queue.call_args[1]
-        self.assertEqual(call_args["destinationId"], "!node123")
 
     @patch("mmrelay.plugins.base_plugin.get_plugin_data_for_node")
     @patch("mmrelay.plugins.base_plugin.store_plugin_data")

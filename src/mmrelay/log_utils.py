@@ -3,7 +3,11 @@ import contextlib
 import logging
 import os
 from logging.handlers import RotatingFileHandler
-from typing import Any, Dict, Iterator, Set
+from typing import TYPE_CHECKING, Any, Dict, Iterator, Set
+
+if TYPE_CHECKING:
+    from rich.console import Console
+    from rich.logging import RichHandler
 
 # Import Rich components only when not running as a service
 try:
@@ -30,7 +34,7 @@ from mmrelay.constants.messages import (
 
 # Initialize Rich console only if available
 if RICH_AVAILABLE:
-    console = Console()  # type: ignore[name-defined]
+    console: Console | None = Console()
 else:
     console = None
 
@@ -254,7 +258,7 @@ def _configure_logger(
     if not _cli_mode:
         if color_enabled and RICH_AVAILABLE:
             # Use Rich handler with colors
-            console_handler: logging.Handler = RichHandler(  # type: ignore[name-defined]
+            console_handler: logging.Handler = RichHandler(
                 rich_tracebacks=rich_tracebacks_enabled,
                 console=console,
                 show_time=True,

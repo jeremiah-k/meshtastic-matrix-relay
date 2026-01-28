@@ -17,13 +17,14 @@ runtimes:
 # This is the section where you manage your linters. (https://docs.trunk.io/check/configuration)
 lint:
   enabled:
+    - pyright@1.1.408
     - dotenv-linter@4.0.0
     - hadolint@2.14.0
     - taplo@0.10.0
     - actionlint@1.7.10
     - bandit@1.9.3
     - black@26.1.0
-    - checkov@3.2.497
+    - checkov@3.2.499
     - git-diff-check
     - isort@7.0.0
     - markdownlint@0.47.0

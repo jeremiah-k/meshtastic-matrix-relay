@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 from mmrelay.constants.database import PROGRESS_COMPLETE, PROGRESS_TOTAL_STEPS
 from mmrelay.constants.network import SYSTEMCTL_FALLBACK
@@ -130,18 +131,23 @@ def wait_for_service_start() -> None:
 
     from mmrelay.runtime_utils import is_running_as_service
 
-    Progress = SpinnerColumn = TextColumn = TimeElapsedColumn = None
+    Progress: Any = None
+    SpinnerColumn: Any = None
+    TextColumn: Any = None
+    TimeElapsedColumn: Any = None
     running_as_service = is_running_as_service()
     if not running_as_service:
         try:
-            from rich.progress import (
-                Progress,
-                SpinnerColumn,
-                TextColumn,
-                TimeElapsedColumn,
-            )
+            from rich.progress import Progress as ProgressType
+            from rich.progress import SpinnerColumn as SpinnerColumnType
+            from rich.progress import TextColumn as TextColumnType
+            from rich.progress import TimeElapsedColumn as TimeElapsedColumnType
+
+            Progress = ProgressType
+            SpinnerColumn = SpinnerColumnType
+            TextColumn = TextColumnType
+            TimeElapsedColumn = TimeElapsedColumnType
         except ImportError:
-            Progress = SpinnerColumn = TextColumn = TimeElapsedColumn = None
             running_as_service = True
 
     # Create a Rich progress display with spinner and elapsed time

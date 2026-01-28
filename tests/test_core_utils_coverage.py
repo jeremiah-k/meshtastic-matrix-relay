@@ -124,8 +124,8 @@ class TestMeshtasticUtilsCoverage(unittest.TestCase):
             )
 
             self.assertIsNone(result)
-            mock_logger.error.assert_called_with(
-                "No Meshtastic configuration section found. Cannot connect to Meshtastic."
+            mock_logger.info.assert_called_with(
+                "Meshtastic is not the selected radio backend or is disabled; skipping connection."
             )
 
     def test_connect_meshtastic_no_connection_type(self):

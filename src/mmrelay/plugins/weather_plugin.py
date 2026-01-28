@@ -18,7 +18,7 @@ from nio import (  # type: ignore[import-untyped]
 
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
-from mmrelay.constants.plugins import MAX_FORECAST_LENGTH
+from mmrelay.constants.plugins import MAX_FORECAST_LENGTH, WEATHER_API_TIMEOUT
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
@@ -101,7 +101,7 @@ class Plugin(BasePlugin):
         )
 
         try:
-            response = requests.get(url, timeout=10)
+            response = requests.get(url, timeout=WEATHER_API_TIMEOUT)
             response.raise_for_status()
         except (requests.exceptions.RequestException, AttributeError):
             self.logger.exception("Error fetching weather data")
@@ -764,7 +764,7 @@ class Plugin(BasePlugin):
             response = requests.get(
                 url,
                 params={"name": query, "count": 1, "format": "json"},
-                timeout=10,
+                timeout=WEATHER_API_TIMEOUT,
             )
             response.raise_for_status()
         except requests.exceptions.RequestException:

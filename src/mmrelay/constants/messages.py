@@ -23,3 +23,7 @@ MESHNET_NAME_ABBREVIATION_LENGTH = 4  # Characters for short meshnet names
 SHORTNAME_FALLBACK_LENGTH = 3  # Characters for shortname fallback
 MESSAGE_PREVIEW_LENGTH = 40  # Characters for message preview in logs
 DISPLAY_NAME_DEFAULT_LENGTH = 5  # Default display name truncation
+
+# Metadata retrieval constants
+METADATA_RETRIEVAL_TIMEOUT = 30.0  # seconds
+METADATA_MAX_OUTPUT_LENGTH = 4096  # characters
