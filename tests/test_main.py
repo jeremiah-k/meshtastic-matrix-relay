@@ -606,7 +606,7 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
     @patch("mmrelay.main.start_message_queue")
-    @patch("mmrelay.main.connect_meshtastic")
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     @patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
     @patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
     @patch("mmrelay.main.update_longnames")
@@ -760,7 +760,11 @@ class TestMain(unittest.TestCase):
         # Should return 0 for graceful shutdown
         self.assertEqual(result, 0)
 
-    @patch("mmrelay.main.connect_meshtastic")
+    @patch(
+        "mmrelay.radio.backends.meshtastic_backend.MeshtasticBackend.connect",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
     @patch("mmrelay.main.start_message_queue")
@@ -782,9 +786,6 @@ class TestMain(unittest.TestCase):
 
         Simulates a failed Meshtastic connection and verifies that the Matrix connection is still attempted during application startup.
         """
-        # Mock Meshtastic connection to return None (failure)
-        mock_connect_meshtastic.return_value = None
-
         # Mock Matrix connection to fail early to avoid hanging
         mock_connect_matrix.side_effect = _make_async_return(None)
         mock_join_room.side_effect = _async_noop
@@ -809,7 +810,11 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
     @patch("mmrelay.main.start_message_queue")
-    @patch("mmrelay.main.connect_meshtastic")
+    @patch(
+        "mmrelay.radio.backends.meshtastic_backend.MeshtasticBackend.connect",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
     @patch("mmrelay.main.connect_matrix")
     @patch("mmrelay.main.stop_message_queue")
     def test_main_matrix_connection_failure(
@@ -828,7 +833,10 @@ class TestMain(unittest.TestCase):
         """
         # Mock Meshtastic client
         mock_meshtastic_client = MagicMock()
-        mock_connect_meshtastic.return_value = mock_meshtastic_client
+        from mmrelay.radio.registry import get_radio_registry
+
+        radio_registry = get_radio_registry()
+        radio_registry.get_active_backend()._client = mock_meshtastic_client
 
         mock_connect_matrix.side_effect = _make_async_raise(
             Exception("Matrix connection failed")
@@ -851,7 +859,11 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
     @patch("mmrelay.main.start_message_queue")
-    @patch("mmrelay.main.connect_meshtastic")
+    @patch(
+        "mmrelay.radio.backends.meshtastic_backend.MeshtasticBackend.connect",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
     @patch("mmrelay.main.connect_matrix")
     @patch("mmrelay.main.join_matrix_room")
     @patch("mmrelay.main.shutdown_plugins")
@@ -870,7 +882,12 @@ class TestMain(unittest.TestCase):
         """Shutdown should close the Meshtastic client when present."""
 
         mock_meshtastic_client = MagicMock()
-        mock_connect_meshtastic.return_value = mock_meshtastic_client
+
+        # Patch the backend to return our mock client
+        from mmrelay.radio.registry import get_radio_registry
+
+        radio_registry = get_radio_registry()
+        radio_registry.get_active_backend()._client = mock_meshtastic_client
 
         mock_matrix_client = MagicMock()
         mock_matrix_client.close = AsyncMock()
@@ -893,10 +910,14 @@ class TestMain(unittest.TestCase):
 
         mock_meshtastic_client.close.assert_called_once()
 
+    @patch(
+        "mmrelay.radio.backends.meshtastic_backend.MeshtasticBackend.connect",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
     @patch("mmrelay.main.start_message_queue")
-    @patch("mmrelay.main.connect_meshtastic")
     @patch("mmrelay.main.connect_matrix")
     @patch("mmrelay.main.join_matrix_room")
     @patch("mmrelay.main.stop_message_queue")
@@ -907,31 +928,30 @@ class TestMain(unittest.TestCase):
         _mock_stop_queue,
         mock_join_room,
         mock_connect_matrix,
-        mock_connect_meshtastic,
         _mock_start_queue,
         _mock_load_plugins,
         _mock_init_db,
+        mock_connect_meshtastic,
     ):
         """Shutdown should use BLE-specific disconnect when the interface is BLE."""
 
         mock_iface = MagicMock()
+        import mmrelay.meshtastic_utils as mu
 
-        def _connect_meshtastic(*_args, **_kwargs):
-            """
-            Install the test Meshtastic interface into mmrelay.meshtastic_utils and return it.
+        mu.meshtastic_iface = mock_iface
+        mu.meshtastic_client = mock_iface
 
-            This helper ignores any positional or keyword arguments. It assigns the module-level
-            `mock_iface` to `mmrelay.meshtastic_utils.meshtastic_iface` and returns that object.
+        # Set the backend's client directly
+        from mmrelay.radio.registry import get_radio_registry
 
-            Returns:
-                mock_iface: The mock Meshtastic interface that was assigned.
-            """
-            import mmrelay.meshtastic_utils as mu
+        radio_registry = get_radio_registry()
+        # Ensure we have an active backend
+        if radio_registry.get_active_backend() is None:
+            from mmrelay.radio.backends.meshtastic_backend import MeshtasticBackend
 
-            mu.meshtastic_iface = mock_iface
-            return mock_iface
-
-        mock_connect_meshtastic.side_effect = _connect_meshtastic
+            radio_registry.register_backend(MeshtasticBackend())
+            radio_registry.set_active_backend("meshtastic")
+        radio_registry.get_active_backend()._client = mock_iface
 
         mock_matrix_client = MagicMock()
         mock_matrix_client.close = AsyncMock()
@@ -950,14 +970,16 @@ class TestMain(unittest.TestCase):
             asyncio.run(main(self.mock_config))
 
         mock_disconnect_iface.assert_called_once_with(mock_iface, reason="shutdown")
-        import mmrelay.meshtastic_utils as mu
-
         self.assertIsNone(mu.meshtastic_iface)
 
+    @patch(
+        "mmrelay.radio.backends.meshtastic_backend.MeshtasticBackend.connect",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
     @patch("mmrelay.main.start_message_queue")
-    @patch("mmrelay.main.connect_meshtastic")
     @patch("mmrelay.main.connect_matrix")
     @patch("mmrelay.main.join_matrix_room")
     @patch("mmrelay.main.shutdown_plugins")
@@ -970,31 +992,21 @@ class TestMain(unittest.TestCase):
         _mock_shutdown_plugins,
         mock_join_room,
         mock_connect_matrix,
-        mock_connect_meshtastic,
         _mock_start_queue,
         _mock_load_plugins,
         _mock_init_db,
+        mock_connect_meshtastic,
     ):
         """Shutdown should cancel futures when Meshtastic close times out."""
 
         mock_iface = MagicMock()
 
-        def _connect_meshtastic(*_args, **_kwargs):
-            """
-            Install the provided mock Meshtastic interface into the mmrelay.meshtastic_utils module for tests.
+        # Set the backend's client directly
+        from mmrelay.radio.registry import get_radio_registry
 
-            Sets mmrelay.meshtastic_utils.meshtastic_client to the mock interface and mmrelay.meshtastic_utils.meshtastic_iface to None.
+        radio_registry = get_radio_registry()
+        radio_registry.get_active_backend()._client = mock_iface
 
-            Returns:
-                The mock Meshtastic interface that was installed.
-            """
-            import mmrelay.meshtastic_utils as mu
-
-            mu.meshtastic_client = mock_iface
-            mu.meshtastic_iface = None
-            return mock_iface
-
-        mock_connect_meshtastic.side_effect = _connect_meshtastic
         mock_matrix_client = MagicMock()
         mock_matrix_client.close = AsyncMock()
         mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
@@ -1018,10 +1030,14 @@ class TestMain(unittest.TestCase):
             "Meshtastic client close timed out - may cause notification errors"
         )
 
+    @patch(
+        "mmrelay.radio.backends.meshtastic_backend.MeshtasticBackend.connect",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
     @patch("mmrelay.main.start_message_queue")
-    @patch("mmrelay.main.connect_meshtastic")
     @patch("mmrelay.main.connect_matrix")
     @patch("mmrelay.main.join_matrix_room")
     @patch("mmrelay.main.shutdown_plugins")
@@ -1034,14 +1050,19 @@ class TestMain(unittest.TestCase):
         _mock_shutdown_plugins,
         mock_join_room,
         mock_connect_matrix,
-        mock_connect_meshtastic,
         _mock_start_queue,
         _mock_load_plugins,
         _mock_init_db,
+        mock_connect_meshtastic,
     ):
         """Shutdown should log unexpected errors from close futures."""
 
-        mock_connect_meshtastic.return_value = MagicMock()
+        # Set the backend's client directly
+        from mmrelay.radio.registry import get_radio_registry
+
+        radio_registry = get_radio_registry()
+        radio_registry.get_active_backend()._client = MagicMock()
+
         mock_matrix_client = MagicMock()
         mock_matrix_client.close = AsyncMock()
         mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
@@ -1065,10 +1086,14 @@ class TestMain(unittest.TestCase):
             )
         )
 
+    @patch(
+        "mmrelay.radio.backends.meshtastic_backend.MeshtasticBackend.connect",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
     @patch("mmrelay.main.start_message_queue")
-    @patch("mmrelay.main.connect_meshtastic")
     @patch("mmrelay.main.connect_matrix")
     @patch("mmrelay.main.join_matrix_room")
     @patch("mmrelay.main.shutdown_plugins")
@@ -1079,10 +1104,10 @@ class TestMain(unittest.TestCase):
         _mock_shutdown_plugins,
         mock_join_room,
         mock_connect_matrix,
-        mock_connect_meshtastic,
         _mock_start_queue,
         _mock_load_plugins,
         _mock_init_db,
+        mock_connect_meshtastic,
     ):
         """
         Ensure main retries executor.shutdown without cancel_futures when a TypeError occurs.
@@ -1092,7 +1117,12 @@ class TestMain(unittest.TestCase):
         with cancel_futures=False.
         """
 
-        mock_connect_meshtastic.return_value = MagicMock()
+        # Set the backend's client directly
+        from mmrelay.radio.registry import get_radio_registry
+
+        radio_registry = get_radio_registry()
+        radio_registry.get_active_backend()._client = MagicMock()
+
         mock_matrix_client = MagicMock()
         mock_matrix_client.close = AsyncMock()
         mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
@@ -1112,10 +1142,14 @@ class TestMain(unittest.TestCase):
         self.assertEqual(executor.calls[0], (False, True))
         self.assertEqual(executor.calls[1], (False, False))
 
+    @patch(
+        "mmrelay.radio.backends.meshtastic_backend.MeshtasticBackend.connect",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
     @patch("mmrelay.main.start_message_queue")
-    @patch("mmrelay.main.connect_meshtastic")
     @patch("mmrelay.main.connect_matrix")
     @patch("mmrelay.main.join_matrix_room")
     @patch("mmrelay.main.stop_message_queue")
@@ -1126,14 +1160,19 @@ class TestMain(unittest.TestCase):
         _mock_stop_queue,
         mock_join_room,
         mock_connect_matrix,
-        mock_connect_meshtastic,
         _mock_start_queue,
         _mock_load_plugins,
         _mock_init_db,
+        mock_connect_meshtastic,
     ):
         """Submit-time timeouts should hit the outer shutdown warning."""
 
-        mock_connect_meshtastic.return_value = MagicMock()
+        # Set the backend's client directly
+        from mmrelay.radio.registry import get_radio_registry
+
+        radio_registry = get_radio_registry()
+        radio_registry.get_active_backend()._client = MagicMock()
+
         mock_matrix_client = MagicMock()
         mock_matrix_client.close = AsyncMock()
         mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
@@ -1570,7 +1609,7 @@ class TestMainFunctionEdgeCases(unittest.TestCase):
 @patch("mmrelay.main.load_plugins")
 @patch("mmrelay.main.start_message_queue")
 @patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
-@patch("mmrelay.main.connect_meshtastic")
+@patch("mmrelay.meshtastic_utils.connect_meshtastic")
 @patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
 def test_main_database_wipe_config(
     mock_join,
@@ -2449,7 +2488,9 @@ class TestMainAsyncFunction(unittest.TestCase):
                 return_value=mock_matrix_client,
             ) as mock_connect_matrix,
             patch(
-                "mmrelay.main.connect_meshtastic", return_value=MagicMock()
+                "mmrelay.radio.backends.meshtastic_backend.MeshtasticBackend.connect",
+                new_callable=AsyncMock,
+                return_value=True,
             ) as mock_connect_mesh,
             patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
             patch("mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt),
@@ -2500,7 +2541,11 @@ class TestMainAsyncFunction(unittest.TestCase):
                 new_callable=AsyncMock,
                 return_value=mock_matrix_client,
             ),
-            patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
+            patch(
+                "mmrelay.radio.backends.meshtastic_backend.MeshtasticBackend.connect",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
             patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock) as mock_join,
             patch("mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt),
             patch(
@@ -2557,7 +2602,7 @@ class TestMainAsyncFunction(unittest.TestCase):
                 "mmrelay.main.connect_matrix",
                 side_effect=_make_async_return(mock_matrix_client),
             ),
-            patch("mmrelay.main.connect_meshtastic", return_value=None),
+            patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=None),
             patch("mmrelay.main.join_matrix_room", side_effect=_async_noop),
             patch("mmrelay.main.get_message_queue") as mock_get_queue,
             patch(
@@ -2634,7 +2679,7 @@ class TestMainAsyncFunction(unittest.TestCase):
                 "mmrelay.main.connect_matrix",
                 side_effect=_make_async_return(mock_matrix_client),
             ),
-            patch("mmrelay.main.connect_meshtastic", return_value=None),
+            patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=None),
             patch("mmrelay.main.join_matrix_room", side_effect=_async_noop),
             patch("mmrelay.main.get_message_queue") as mock_get_queue,
             patch(
@@ -2681,7 +2726,7 @@ class TestMainAsyncFunction(unittest.TestCase):
                 new_callable=AsyncMock,
                 return_value=mock_matrix_client,
             ),
-            patch("mmrelay.main.connect_meshtastic", return_value=None),
+            patch("mmrelay.meshtastic_utils.connect_meshtastic", return_value=None),
             patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
             patch("mmrelay.main.get_message_queue") as mock_get_queue,
             patch(
@@ -2722,7 +2767,7 @@ class TestMainAsyncFunction(unittest.TestCase):
             patch("mmrelay.main.load_plugins"),
             patch("mmrelay.main.start_message_queue"),
             patch("mmrelay.main.connect_matrix", new_callable=AsyncMock),
-            patch("mmrelay.main.connect_meshtastic"),
+            patch("mmrelay.meshtastic_utils.connect_meshtastic"),
             patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
             patch("mmrelay.config.load_config", return_value=config),
             contextlib.suppress(KeyboardInterrupt),
