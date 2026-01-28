@@ -604,16 +604,24 @@ def save_credentials(
     credentials: dict[str, Any], credentials_path: str | None = None
 ) -> None:
     """
-    Persist a JSON-serializable credentials mapping to <base_dir>/credentials.json.
+    Persist a JSON-serializable credentials mapping to a credentials.json path.
 
-    Writes the provided credentials (a JSON-serializable mapping) to the application's
-    base configuration directory as credentials.json, creating the base directory if
-    necessary. On Unix-like systems the file permissions are adjusted to be
-    restrictive (0o600) when possible. I/O and permission errors are caught and
-    logged; the function does not raise them.
+    Writes the provided credentials (a JSON-serializable mapping) to the resolved
+    credentials path, creating the target directory if necessary. When
+    `credentials_path` is not provided, the function resolves the path in order:
+    1) MMRELAY_CREDENTIALS_PATH environment variable
+    2) relay_config["credentials_path"]
+    3) relay_config["matrix"]["credentials_path"] (when matrix config is a dict)
+    If the resolved path points to a directory, "credentials.json" is appended.
+    On Unix-like systems the file permissions are adjusted to be restrictive (0o600)
+    when possible. I/O and permission errors are caught and logged; the function
+    does not raise them.
 
     Parameters:
         credentials (dict): JSON-serializable mapping of credentials to persist.
+        credentials_path (str | None): Optional path or directory override for
+            where to save credentials.json. If omitted, the path is resolved from
+            environment/config defaults.
 
     Returns:
         None

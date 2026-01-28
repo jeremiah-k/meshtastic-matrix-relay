@@ -3643,6 +3643,8 @@ async def test_connect_matrix_sync_validation_error_retries_with_invite_safe_fil
     # Patch jsonschema.exceptions to simulate ImportError for ValidationError only
     with (
         patch("mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock()),
+        patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+        patch("mmrelay.matrix_utils.os.path.isfile", return_value=False),
         patch(
             "mmrelay.matrix_utils._resolve_aliases_in_mapping",
             AsyncMock(return_value=None),
@@ -3724,6 +3726,7 @@ async def test_connect_matrix_sync_validation_error_retry_failure_closes_client(
 
     with (
         patch("mmrelay.matrix_utils.AsyncClient", fake_async_client),
+        patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
         patch("mmrelay.matrix_utils.matrix_client", None),
         patch("mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock()),
         patch("mmrelay.matrix_utils.os.path.isfile", return_value=False),
@@ -4008,7 +4011,7 @@ async def test_connect_matrix_ignores_config_access_token_when_credentials_prese
         patch("mmrelay.matrix_utils.os.path.isfile", return_value=True),
         patch("builtins.open", new_callable=MagicMock),
         patch(
-            "json.load",
+            "mmrelay.matrix_utils.json.load",
             return_value={
                 "homeserver": "https://matrix.example.org",
                 "user_id": "@bot:example.org",
