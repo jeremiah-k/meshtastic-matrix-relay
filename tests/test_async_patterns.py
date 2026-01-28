@@ -183,9 +183,9 @@ class TestAsyncPatterns(unittest.TestCase):
 
     def test_async_error_propagation(self):
         """
-        Test that exceptions in async operations are correctly propagated and can be handled by the caller.
-
-        This test verifies that when an async method raises an exception, the exception is either handled gracefully by the function under test or properly propagated to the caller for handling.
+        Verify that exceptions raised by async operations during Matrix connection are either handled or propagated with the expected message.
+        
+        Patches the Matrix AsyncClient to raise during sync and asserts that connect_matrix either returns a non-None client (indicating graceful handling) or raises a ConnectionError whose message contains "Matrix sync failed".
         """
 
         async def test_error_handling():
