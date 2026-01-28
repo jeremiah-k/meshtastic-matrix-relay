@@ -3704,6 +3704,7 @@ async def test_connect_matrix_credentials_load_exception_uses_config(monkeypatch
 
     with (
         patch("mmrelay.matrix_utils.os.path.exists", return_value=True),
+        patch("mmrelay.matrix_utils.os.path.isfile", return_value=True),
         patch("builtins.open", side_effect=OSError("boom")),
         patch(
             "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
@@ -3715,7 +3716,7 @@ async def test_connect_matrix_credentials_load_exception_uses_config(monkeypatch
 
     assert client is mock_client
     assert any(
-        "Error loading credentials" in call.args[0]
+        "Ignoring invalid credentials file" in call.args[0]
         for call in mock_logger.warning.call_args_list
     )
 
@@ -3764,9 +3765,10 @@ async def test_connect_matrix_ignores_config_access_token_when_credentials_prese
 
     with (
         patch("mmrelay.matrix_utils.os.path.exists", return_value=True),
+        patch("mmrelay.matrix_utils.os.path.isfile", return_value=True),
         patch("builtins.open", new_callable=MagicMock),
         patch(
-            "mmrelay.matrix_utils.json.load",
+            "json.load",
             return_value={
                 "homeserver": "https://matrix.example.org",
                 "user_id": "@bot:example.org",
@@ -4306,6 +4308,7 @@ async def test_connect_matrix_whoami_missing_device_id_warns(monkeypatch):
 
     with (
         patch("mmrelay.matrix_utils.os.path.exists", return_value=True),
+        patch("mmrelay.matrix_utils.os.path.isfile", return_value=True),
         patch("builtins.open", new_callable=MagicMock),
         patch(
             "mmrelay.matrix_utils.json.load",
@@ -4366,6 +4369,7 @@ async def test_connect_matrix_whoami_failure_warns(monkeypatch):
 
     with (
         patch("mmrelay.matrix_utils.os.path.exists", return_value=True),
+        patch("mmrelay.matrix_utils.os.path.isfile", return_value=True),
         patch("builtins.open", new_callable=MagicMock),
         patch(
             "mmrelay.matrix_utils.json.load",
@@ -4433,6 +4437,7 @@ async def test_connect_matrix_save_credentials_failure_warns(monkeypatch):
 
     with (
         patch("mmrelay.matrix_utils.os.path.exists", return_value=True),
+        patch("mmrelay.matrix_utils.os.path.isfile", return_value=True),
         patch("builtins.open", new_callable=MagicMock),
         patch(
             "mmrelay.matrix_utils.json.load",

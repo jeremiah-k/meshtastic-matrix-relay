@@ -335,6 +335,7 @@ async def test_connect_matrix_alias_resolution_failure(
 @patch("mmrelay.matrix_utils.os.makedirs")
 @patch("mmrelay.matrix_utils.os.listdir")
 @patch("mmrelay.matrix_utils.os.path.exists")
+@patch("mmrelay.matrix_utils.os.path.isfile")
 @patch("builtins.open")
 @patch("mmrelay.matrix_utils.json.load")
 @patch("mmrelay.matrix_utils._create_ssl_context")
@@ -348,11 +349,13 @@ async def test_connect_matrix_with_e2ee_credentials(
     mock_json_load,
     mock_open,
     mock_exists,
+    mock_isfile,
     mock_listdir,
     mock_makedirs,
 ):
     """Test Matrix connection with E2EE credentials."""
     mock_exists.return_value = True
+    mock_isfile.return_value = True
     mock_json_load.return_value = {
         "homeserver": "https://matrix.example.org",
         "user_id": "@bot:example.org",
