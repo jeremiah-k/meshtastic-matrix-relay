@@ -28,7 +28,7 @@ class Plugin(BasePlugin):
     """
 
     is_core_plugin = True
-    plugin_name = "help"
+    plugin_name = "help"  # type: ignore[reportIncompatibleVariableOverride]
 
     @property
     def description(self) -> str:

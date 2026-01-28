@@ -505,9 +505,6 @@ class MessageQueue:
                 logger.debug("Not sending - radio backend not ready")
                 return False
 
-            logger.debug("Connection check passed - ready to send")
-            return True
-
         except ImportError as e:
             # ImportError indicates a serious problem with application structure,
             # often during shutdown as modules are unloaded.
@@ -519,6 +516,9 @@ class MessageQueue:
                 target=self.stop, name="MessageQueueStopper", daemon=True
             ).start()
             return False
+        else:
+            logger.debug("Connection check passed - ready to send")
+            return True
 
     async def _handle_message_mapping(
         self, result: Any, mapping_info: dict[str, Any]

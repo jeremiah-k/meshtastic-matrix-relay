@@ -23,7 +23,7 @@ from mmrelay.constants.config import (
 custom_data_dir: str | None = None
 
 
-_RADIO_BACKEND_DISABLED_VALUES = {"none", "disabled", "off"}
+_RADIO_BACKEND_DISABLED_VALUES = {"none", "disabled", "off", "false", "no"}
 
 
 def normalize_radio_backend(value: Any) -> str | None:

@@ -426,7 +426,7 @@ def _scan_for_ble_address(ble_address: str, timeout: float) -> bool:
     When an asyncio event loop is already running, the scan is executed in a background thread to avoid blocking.
 
     Returns:
-        `true` if the device address was observed in a scan within the given timeout; `false` if the device was not observed, the scan failed, Bleak is unavailable, or scanning was skipped due to an active event loop.
+        `true` if the device address was observed in a scan within the given timeout; `false` if the device was not observed, the scan failed, or Bleak is unavailable.
     """
     if not BLE_AVAILABLE:
         return False
