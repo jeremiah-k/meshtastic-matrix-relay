@@ -180,13 +180,13 @@ class MockMegolmEvent:
 class MockWhoamiError(Exception):
     def __init__(self, message="Whoami error"):
         """
-        Initialize the Whoami error exception.
-
+        Create a Whoami error carrying a human-readable message.
+        
         Parameters:
-            message (str): Human-readable error message. Defaults to "Whoami error".
-
+            message (str): Error message describing the condition. Defaults to "Whoami error".
+        
         Attributes:
-            message (str): The provided message (also available as the exception's first arg).
+            message (str): The provided error message (also available as the exception's first argument).
         """
         super().__init__(message)
         self.message = message
@@ -201,10 +201,13 @@ class MockSyncError(Exception):
         soft_logout: bool = False,
     ):
         """
-        Initialize a SyncError-like exception for nio mocks.
-
-        Mirrors the attributes used by matrix-nio SyncError so isinstance checks and
-        message parsing behave like the real response type in tests.
+        Create a mock SyncError carrying the attributes used by matrix-nio for tests.
+        
+        Parameters:
+            message (str): Human-readable error message.
+            status_code (str | None): Optional error status code returned by the server.
+            retry_after_ms (int | None): Optional suggested retry delay in milliseconds.
+            soft_logout (bool): Whether the error indicates a soft logout condition.
         """
         super().__init__(message)
         self.message = message

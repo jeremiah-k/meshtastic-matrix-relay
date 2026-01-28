@@ -1195,14 +1195,14 @@ async def connect_matrix(
     passed_config: dict[str, Any] | None = None,
 ) -> AsyncClient | None:
     """
-    Prepare and return a configured Matrix AsyncClient using available credentials and configuration.
-
+    Initialize and return a configured Matrix AsyncClient using available credentials and configuration.
+    
     Parameters:
-        passed_config (dict | None): Optional configuration override for this connection attempt; when provided it is used instead of the module-level config for this call.
-
+        passed_config (dict[str, Any] | None): Optional configuration override for this connection attempt; when provided it is used instead of the module-level config for this call.
+    
     Returns:
-        AsyncClient | None: An initialized AsyncClient ready for use, or `None` if connection or credential setup failed.
-
+        AsyncClient | None: A configured and initialized Matrix AsyncClient when connection and setup succeed, or `None` if connection or credential setup failed.
+    
     Raises:
         ValueError: If the required top-level "matrix_rooms" configuration is missing.
         ConnectionError: If the initial Matrix sync fails or times out.
@@ -1717,12 +1717,12 @@ async def connect_matrix(
     # Resolve room aliases in config (supports list[str|dict] and dict[str->str|dict])
     async def _resolve_alias(alias: str) -> str | None:
         """
-        Resolve a Matrix room alias to its canonical room ID.
-
-        Attempts to resolve the given room alias via the module-level Matrix client. If the alias is resolved, the canonical room ID string is returned; if the client is unavailable, the alias cannot be resolved, or an error occurs, `None` is returned. Underlying client and network errors are caught internally.
-
+        Return the canonical Matrix room ID for the given room alias.
+        
+        If the module-level Matrix client is unavailable or the alias cannot be resolved, returns None. Network and client errors are handled internally and do not raise.
+        
         Returns:
-            str | None: The resolved room ID when available, `None` otherwise.
+            The resolved room ID string if successful, None otherwise.
         """
         if not matrix_client:
             logger.warning(
