@@ -51,7 +51,7 @@ def get_radio_backend_selection(config: dict[str, Any]) -> tuple[str | None, boo
     """
     Determine the requested radio backend and whether the configuration explicitly disables radio.
 
-    Reads the value at CONFIG_KEY_RADIO_BACKEND in `config` and returns the normalized backend name or `None`. The second returned value is `True` when the config provided an explicit disable value (for example `"none"` or `"disabled"`), `False` otherwise.
+    Reads the value at CONFIG_KEY_RADIO_BACKEND in `config` and returns the normalized backend name or `None`. The second returned value is `True` when the config provided an explicit disable value (for example `"none"`, `"disabled"`, or boolean `false`), `False` otherwise.
 
     Parameters:
         config (dict): Configuration mapping to read the radio backend selection from.
@@ -61,7 +61,7 @@ def get_radio_backend_selection(config: dict[str, Any]) -> tuple[str | None, boo
     """
     raw = config.get(CONFIG_KEY_RADIO_BACKEND)
     normalized = normalize_radio_backend(raw)
-    explicit_disable = isinstance(raw, str) and normalized is None
+    explicit_disable = (isinstance(raw, str) and normalized is None) or raw is False
     return normalized, explicit_disable
 
 

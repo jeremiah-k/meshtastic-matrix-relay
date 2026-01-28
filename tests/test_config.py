@@ -1176,5 +1176,103 @@ class TestGetMeshtasticConfigValueUncoveredLines(unittest.TestCase):
         self.assertEqual(result["matrix"]["bot_user_id"], "@bot:example.org")
 
 
+class TestRadioBackendSelection(unittest.TestCase):
+    """Test radio backend selection and normalization."""
+
+    def test_normalize_radio_backend_string_none(self):
+        """Test normalize_radio_backend with 'none' string."""
+        from mmrelay.config import normalize_radio_backend
+
+        result = normalize_radio_backend("none")
+        self.assertIsNone(result)
+
+    def test_normalize_radio_backend_string_disabled(self):
+        """Test normalize_radio_backend with 'disabled' string."""
+        from mmrelay.config import normalize_radio_backend
+
+        result = normalize_radio_backend("disabled")
+        self.assertIsNone(result)
+
+    def test_normalize_radio_backend_string_false(self):
+        """Test normalize_radio_backend with 'false' string."""
+        from mmrelay.config import normalize_radio_backend
+
+        result = normalize_radio_backend("false")
+        self.assertIsNone(result)
+
+    def test_normalize_radio_backend_boolean_false(self):
+        """Test normalize_radio_backend with boolean False."""
+        from mmrelay.config import normalize_radio_backend
+
+        result = normalize_radio_backend(False)
+        self.assertIsNone(result)
+
+    def test_normalize_radio_backend_integer_zero(self):
+        """Test normalize_radio_backend with integer 0."""
+        from mmrelay.config import normalize_radio_backend
+
+        result = normalize_radio_backend(0)
+        self.assertIsNone(result)
+
+    def test_normalize_radio_backend_none_value(self):
+        """Test normalize_radio_backend with None value."""
+        from mmrelay.config import normalize_radio_backend
+
+        result = normalize_radio_backend(None)
+        self.assertIsNone(result)
+
+    def test_normalize_radio_backend_valid_backend(self):
+        """Test normalize_radio_backend with valid backend name."""
+        from mmrelay.config import normalize_radio_backend
+
+        result = normalize_radio_backend("meshtastic")
+        self.assertEqual(result, "meshtastic")
+
+    def test_get_radio_backend_selection_string_none(self):
+        """Test get_radio_backend_selection with 'none' string."""
+        from mmrelay.config import get_radio_backend_selection
+
+        config = {"radio_backend": "none"}
+        backend, explicit_disable = get_radio_backend_selection(config)
+        self.assertIsNone(backend)
+        self.assertTrue(explicit_disable)
+
+    def test_get_radio_backend_selection_boolean_false(self):
+        """Test get_radio_backend_selection with boolean False."""
+        from mmrelay.config import get_radio_backend_selection
+
+        config = {"radio_backend": False}
+        backend, explicit_disable = get_radio_backend_selection(config)
+        self.assertIsNone(backend)
+        self.assertTrue(explicit_disable)
+
+    def test_get_radio_backend_selection_integer_zero_not_explicit(self):
+        """Test get_radio_backend_selection with integer 0 is not explicit disable."""
+        from mmrelay.config import get_radio_backend_selection
+
+        config = {"radio_backend": 0}
+        backend, explicit_disable = get_radio_backend_selection(config)
+        self.assertIsNone(backend)
+        self.assertFalse(explicit_disable)
+
+    def test_get_radio_backend_selection_none_value_not_explicit(self):
+        """Test get_radio_backend_selection with None is not explicit disable."""
+        from mmrelay.config import get_radio_backend_selection
+
+        config = {"radio_backend": None}
+        backend, explicit_disable = get_radio_backend_selection(config)
+        self.assertIsNone(backend)
+        self.assertFalse(explicit_disable)
+
+    def test_get_radio_backend_selection_valid_backend(self):
+        """Test get_radio_backend_selection with valid backend."""
+        from mmrelay.config import get_radio_backend_selection
+
+        config = {"radio_backend": "meshtastic"}
+        backend, explicit_disable = get_radio_backend_selection(config)
+        self.assertEqual(backend, "meshtastic")
+        self.assertFalse(explicit_disable)
+
+
 if __name__ == "__main__":
     unittest.main()

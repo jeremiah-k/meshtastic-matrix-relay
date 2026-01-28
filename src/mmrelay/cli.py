@@ -1095,13 +1095,10 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                 # Check matrix_rooms section
                 if "matrix_rooms" not in config or not config["matrix_rooms"]:
                     print("Error: Missing or empty 'matrix_rooms' section in config")
-                    print(
-                        "   You need to map at least one Matrix room to a Meshtastic channel."
-                    )
+                    print("   You need to map at least one Matrix room.")
                     print("   Example:")
                     print("     matrix_rooms:")
                     print('       - id: "!room:matrix.org"')
-                    print("         meshtastic_channel: 0")
                     return False
 
                 if not isinstance(config["matrix_rooms"], list):
@@ -1109,7 +1106,6 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                     print("   Example:")
                     print("     matrix_rooms:")
                     print('       - id: "!room:matrix.org"')
-                    print("         meshtastic_channel: 0")
                     return False
 
                 for i, room in enumerate(config["matrix_rooms"]):
@@ -1120,7 +1116,6 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                         print("   Example:")
                         print("     matrix_rooms:")
                         print('       - id: "!room:matrix.org"')
-                        print("         meshtastic_channel: 0")
                         return False
 
                     if "id" not in room:
@@ -1133,6 +1128,28 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                         print('     - id: "!room:matrix.org"')
                         return False
 
+                backend_name, explicit_disable = get_radio_backend_selection(config)
+                if backend_name and backend_name.lower() != "meshtastic":
+                    registry = get_radio_registry()
+                    if registry.get_backend(backend_name) is None:
+                        available_backends = ", ".join(
+                            sorted(registry.get_backend_names())
+                        )
+                        print(
+                            f"Error: Unknown radio backend '{backend_name}'. "
+                            f"Available backends: {available_backends}"
+                        )
+                        return False
+                    # Skip Meshtastic validation when another backend is selected
+                    return _exit_as_valid_non_meshtastic(config)
+
+                if explicit_disable:
+                    return _exit_as_valid_non_meshtastic(
+                        config,
+                        "Warning: Radio backend disabled; running without radio.",
+                    )
+
+                for room in config["matrix_rooms"]:
                     if "meshtastic_channel" not in room:
                         print(
                             f"Error: Room {room['id']} is missing the 'meshtastic_channel' field"
@@ -1156,27 +1173,6 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                             "   meshtastic_channel must be a non-negative integer (0-7 for primary channels)"
                         )
                         return False
-
-                backend_name, explicit_disable = get_radio_backend_selection(config)
-                if backend_name and backend_name.lower() != "meshtastic":
-                    registry = get_radio_registry()
-                    if registry.get_backend(backend_name) is None:
-                        available_backends = ", ".join(
-                            sorted(registry.get_backend_names())
-                        )
-                        print(
-                            f"Error: Unknown radio backend '{backend_name}'. "
-                            f"Available backends: {available_backends}"
-                        )
-                        return False
-                    # Skip Meshtastic validation when another backend is selected
-                    return _exit_as_valid_non_meshtastic(config)
-
-                if explicit_disable:
-                    return _exit_as_valid_non_meshtastic(
-                        config,
-                        "Warning: Radio backend disabled; running without radio.",
-                    )
 
                 # Check meshtastic section
                 if CONFIG_SECTION_MESHTASTIC not in config:
