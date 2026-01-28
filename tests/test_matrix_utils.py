@@ -7,7 +7,7 @@ import sys
 import types
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, mock_open, patch
 
 import pytest
 
@@ -3564,6 +3564,47 @@ async def test_connect_matrix_sync_error_closes_client(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_connect_matrix_sync_error_close_failure_logs():
+    """Sync error handling should ignore close failures and still raise."""
+    mock_client = MagicMock()
+    mock_client.rooms = {}
+    error_response = type("SyncError", (), {})()
+    mock_client.sync = AsyncMock(return_value=error_response)
+    mock_client.close = AsyncMock(side_effect=RuntimeError("close failed"))
+    mock_client.should_upload_keys = False
+    mock_client.get_displayname = AsyncMock(
+        return_value=SimpleNamespace(displayname="Bot")
+    )
+
+    def fake_async_client(*_args, **_kwargs):
+        return mock_client
+
+    config = {
+        "matrix": {
+            "homeserver": "https://example.org",
+            "access_token": "token",
+            "bot_user_id": "@bot:example.org",
+        },
+        "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
+    }
+
+    with (
+        patch("mmrelay.matrix_utils.AsyncClient", fake_async_client),
+        patch("mmrelay.matrix_utils.matrix_client", None),
+        patch("mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock()),
+        patch("mmrelay.matrix_utils.os.path.isfile", return_value=False),
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+    ):
+        with pytest.raises(ConnectionError):
+            await connect_matrix(config)
+
+    assert mock_client.close.await_count == 1
+    mock_logger.debug.assert_any_call(
+        "Ignoring error while closing client after sync failure"
+    )
+
+
+@pytest.mark.asyncio
 async def test_connect_matrix_sync_validation_error_retries_with_invite_safe_filter(
     monkeypatch,
 ):
@@ -3641,6 +3682,58 @@ async def test_connect_matrix_sync_validation_error_retries_with_invite_safe_fil
     # Verify client attributes were set with invite-safe filter
     assert hasattr(mock_client, "mmrelay_sync_filter")
     assert hasattr(mock_client, "mmrelay_first_sync_filter")
+
+
+@pytest.mark.asyncio
+async def test_connect_matrix_sync_validation_error_retry_failure_closes_client():
+    """Failed invite-safe retry should close the client and raise ConnectionError."""
+    import jsonschema
+
+    mock_client = MagicMock()
+    mock_client.rooms = {}
+    mock_client.should_upload_keys = False
+    mock_client.get_displayname = AsyncMock(
+        return_value=SimpleNamespace(displayname="Bot")
+    )
+    mock_client.close = AsyncMock(side_effect=RuntimeError("close failed"))
+
+    call_count = {"count": 0}
+
+    async def mock_sync(*_args, **_kwargs):
+        call_count["count"] += 1
+        if call_count["count"] == 1:
+            raise jsonschema.exceptions.ValidationError(
+                message="Invalid schema",
+                path=(),
+                schema_path=(),
+            )
+        raise RuntimeError("retry failed")
+
+    mock_client.sync = mock_sync
+
+    def fake_async_client(*_args, **_kwargs):
+        return mock_client
+
+    config = {
+        "matrix": {
+            "homeserver": "https://example.org",
+            "access_token": "token",
+            "bot_user_id": "@bot:example.org",
+        },
+        "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
+    }
+
+    with (
+        patch("mmrelay.matrix_utils.AsyncClient", fake_async_client),
+        patch("mmrelay.matrix_utils.matrix_client", None),
+        patch("mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock()),
+        patch("mmrelay.matrix_utils.os.path.isfile", return_value=False),
+    ):
+        with pytest.raises(ConnectionError):
+            await connect_matrix(config)
+
+    assert call_count["count"] == 2
+    assert mock_client.close.await_count == 1
 
 
 @pytest.mark.asyncio
@@ -3798,6 +3891,74 @@ async def test_connect_matrix_credentials_load_exception_uses_config(monkeypatch
     assert any(
         "Ignoring invalid credentials file" in call.args[0]
         for call in mock_logger.warning.call_args_list
+    )
+
+
+@pytest.mark.asyncio
+async def test_connect_matrix_explicit_credentials_path_is_used():
+    """Explicit credentials_path should be expanded and used first."""
+    mock_client = MagicMock()
+    mock_client.rooms = {}
+    mock_client.sync = AsyncMock(return_value=SimpleNamespace())
+    mock_client.should_upload_keys = False
+    mock_client.get_displayname = AsyncMock(
+        return_value=SimpleNamespace(displayname="Bot")
+    )
+    mock_client.close = AsyncMock()
+    mock_client.restore_login = MagicMock()
+
+    expanded_path = "/tmp/explicit_credentials.json"
+    credentials_json = (
+        '{"homeserver": "https://matrix.example.org", '
+        '"access_token": "token", '
+        '"user_id": "@bot:example.org", '
+        '"device_id": "DEVICE123"}'
+    )
+
+    def fake_isfile(path):
+        return path == expanded_path
+
+    config = {
+        "credentials_path": "~/explicit_credentials.json",
+        "matrix": {
+            "homeserver": "https://example.org",
+            "access_token": "ignored",
+            "bot_user_id": "@ignored:example.org",
+        },
+        "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
+    }
+
+    with (
+        patch(
+            "mmrelay.matrix_utils.os.path.expanduser", return_value=expanded_path
+        ) as mock_expand,
+        patch("mmrelay.matrix_utils.os.path.isfile", side_effect=fake_isfile),
+        patch("builtins.open", mock_open(read_data=credentials_json)),
+        patch("mmrelay.matrix_utils.AsyncClient", lambda *_a, **_k: mock_client),
+        patch("mmrelay.matrix_utils.matrix_client", None),
+        patch("mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock()),
+        patch(
+            "mmrelay.matrix_utils._resolve_aliases_in_mapping",
+            AsyncMock(return_value=None),
+        ),
+        patch(
+            "mmrelay.matrix_utils._display_room_channel_mappings",
+            lambda *_args, **_kwargs: None,
+        ),
+        patch(
+            "mmrelay.e2ee_utils.get_e2ee_status",
+            return_value={"overall_status": "ok"},
+        ),
+        patch("mmrelay.e2ee_utils.get_room_encryption_warnings", return_value=[]),
+    ):
+        client = await connect_matrix(config)
+
+    assert client is mock_client
+    mock_expand.assert_called_once_with("~/explicit_credentials.json")
+    mock_client.restore_login.assert_called_once_with(
+        user_id="@bot:example.org",
+        device_id="DEVICE123",
+        access_token="token",
     )
 
 
