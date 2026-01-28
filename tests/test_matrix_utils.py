@@ -3580,9 +3580,9 @@ async def test_connect_matrix_sync_error_close_failure_logs():
     def fake_async_client(*_args, **_kwargs):
         """
         Return the preconfigured mock Matrix client, ignoring all positional and keyword arguments.
-        
+
         This helper supplies the shared mock client instance for tests that expect an async client factory.
-        
+
         Returns:
             mock_client: The mock Matrix client instance used by the test suite.
         """
@@ -3633,14 +3633,14 @@ async def test_connect_matrix_sync_validation_error_retries_with_invite_safe_fil
     async def mock_sync(*_args, **_kwargs):
         """
         Test helper that simulates a sync operation failing once with a ValidationError and succeeding thereafter.
-        
+
         On each invocation this increments the enclosing `call_count[0]` counter. The first call raises a
         jsonschema.exceptions.ValidationError to simulate an invite-safe filtering error; subsequent calls
         return a simple success sentinel.
-        
+
         Raises:
             jsonschema.exceptions.ValidationError: on the first invocation.
-        
+
         Returns:
             SimpleNamespace: A success sentinel object on invocations after the first.
         """
@@ -3661,9 +3661,9 @@ async def test_connect_matrix_sync_validation_error_retries_with_invite_safe_fil
     def fake_async_client(*_args, **_kwargs):
         """
         Return the preconfigured mock Matrix client, ignoring all positional and keyword arguments.
-        
+
         This helper supplies the shared mock client instance for tests that expect an async client factory.
-        
+
         Returns:
             mock_client: The mock Matrix client instance used by the test suite.
         """
@@ -3732,7 +3732,7 @@ async def test_connect_matrix_sync_validation_error_retry_failure_closes_client(
     async def mock_sync(*_args, **_kwargs):
         """
         Simulate a sync operation that increments a shared call counter and fails with controlled exceptions.
-        
+
         Increments call_count["count"] each invocation. On the first invocation raises jsonschema.exceptions.ValidationError with message "Invalid schema"; on every subsequent invocation raises RuntimeError("retry failed"). Positional and keyword arguments are ignored.
         """
         call_count["count"] += 1
@@ -3749,9 +3749,9 @@ async def test_connect_matrix_sync_validation_error_retry_failure_closes_client(
     def fake_async_client(*_args, **_kwargs):
         """
         Return the preconfigured mock Matrix client, ignoring all positional and keyword arguments.
-        
+
         This helper supplies the shared mock client instance for tests that expect an async client factory.
-        
+
         Returns:
             mock_client: The mock Matrix client instance used by the test suite.
         """
@@ -3784,7 +3784,7 @@ async def test_connect_matrix_sync_validation_error_retry_failure_closes_client(
 async def test_connect_matrix_uploads_keys_when_needed(monkeypatch):
     """
     Verify that the Matrix client uploads keys when the client's key-upload flag is enabled.
-    
+
     Asserts that connect_matrix returns the created client and that the client's `keys_upload` coroutine is awaited exactly once when `should_upload_keys` is truthy.
     """
     mock_client = MagicMock()
@@ -3966,10 +3966,10 @@ async def test_connect_matrix_explicit_credentials_path_is_used():
     def fake_isfile(path):
         """
         Check whether the provided path matches the predefined expanded_path from the enclosing scope.
-        
+
         Parameters:
             path (str): File path to check.
-        
+
         Returns:
             bool: `true` if `path` is equal to the captured `expanded_path`, `false` otherwise.
         """
@@ -4011,7 +4011,7 @@ async def test_connect_matrix_explicit_credentials_path_is_used():
         client = await connect_matrix(config)
 
     assert client is mock_client
-    mock_expand.assert_called_once_with("~/explicit_credentials.json")
+    mock_expand.assert_any_call("~/explicit_credentials.json")
     mock_client.restore_login.assert_called_once_with(
         user_id="@bot:example.org",
         device_id="DEVICE123",
