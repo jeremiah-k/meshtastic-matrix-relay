@@ -24,6 +24,12 @@ from mmrelay.constants.plugins import (
     DEFAULT_BRANCHES,
     PIP_SOURCE_FLAGS,
     PIPX_ENVIRONMENT_KEYS,
+    PLUGIN_DEFAULT_RETRY_ATTEMPTS,
+    PLUGIN_DEFAULT_RETRY_DELAY,
+    PLUGIN_DEFAULT_TIMEOUT,
+    PLUGIN_GIT_INSTALL_TIMEOUT,
+    PLUGIN_GIT_OPERATION_TIMEOUT,
+    PLUGIN_PIP_INSTALL_TIMEOUT,
     REF_NAME_PATTERN,
     RISKY_REQUIREMENT_PREFIXES,
 )
@@ -696,7 +702,7 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
                         "--requirement",
                         temp_path,
                     ]
-                    _run(cmd, timeout=600)
+                    _run(cmd, timeout=PLUGIN_GIT_INSTALL_TIMEOUT)
                     installed_packages = True
                 finally:
                     # Clean up the temporary file
@@ -745,7 +751,7 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
 
                 try:
                     cmd.extend(["-r", temp_path])
-                    _run(cmd, timeout=600)
+                    _run(cmd, timeout=PLUGIN_GIT_INSTALL_TIMEOUT)
                     installed_packages = True
                 finally:
                     # Clean up the temporary file
@@ -834,9 +840,9 @@ def get_community_plugin_dirs() -> list[str]:
 
 def _run(
     cmd: list[str],
-    timeout: float = 120,
-    retry_attempts: int = 1,
-    retry_delay: float = 1,
+    timeout: float = PLUGIN_DEFAULT_TIMEOUT,
+    retry_attempts: int = PLUGIN_DEFAULT_RETRY_ATTEMPTS,
+    retry_delay: float = PLUGIN_DEFAULT_RETRY_DELAY,
     **kwargs: Any,
 ) -> subprocess.CompletedProcess[str]:
     # Validate command to prevent shell injection
@@ -896,7 +902,7 @@ def _run(
 
 
 def _run_git(
-    cmd: list[str], timeout: float = 120, **kwargs: Any
+    cmd: list[str], timeout: float = PLUGIN_GIT_OPERATION_TIMEOUT, **kwargs: Any
 ) -> subprocess.CompletedProcess[str]:
     """
     Execute a git command with conservative retry defaults and a non-interactive environment.
@@ -909,8 +915,8 @@ def _run_git(
     Returns:
         subprocess.CompletedProcess[str]: Completed process containing `returncode`, `stdout`, and `stderr`.
     """
-    kwargs.setdefault("retry_attempts", 3)
-    kwargs.setdefault("retry_delay", 2)
+    kwargs.setdefault("retry_attempts", PLUGIN_DEFAULT_RETRY_ATTEMPTS)
+    kwargs.setdefault("retry_delay", PLUGIN_DEFAULT_RETRY_DELAY)
     # Ensure non-interactive git by default
     env = dict(os.environ)
     if "env" in kwargs:
@@ -968,7 +974,7 @@ def _fetch_commit_with_fallback(repo_path: str, ref_value: str, repo_name: str) 
     try:
         _run_git(
             ["git", "-C", repo_path, "fetch", "--depth=1", "origin", ref_value],
-            timeout=120,
+            timeout=PLUGIN_GIT_OPERATION_TIMEOUT,
         )
     except subprocess.CalledProcessError:
         logger.warning(
@@ -980,7 +986,7 @@ def _fetch_commit_with_fallback(repo_path: str, ref_value: str, repo_name: str) 
         try:
             _run_git(
                 ["git", "-C", repo_path, "fetch", "origin"],
-                timeout=120,
+                timeout=PLUGIN_GIT_OPERATION_TIMEOUT,
             )
         except subprocess.CalledProcessError as e:
             logger.warning("Fallback fetch also failed for %s: %s", repo_name, e)
@@ -1030,12 +1036,18 @@ def _update_existing_repo_to_commit(
 
         # Try a direct checkout first (commit may already be available locally)
         try:
-            _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
+            _run_git(
+                ["git", "-C", repo_path, "checkout", ref_value],
+                timeout=PLUGIN_GIT_OPERATION_TIMEOUT,
+            )
         except subprocess.CalledProcessError:
             logger.info("Commit %s not found locally, attempting to fetch", ref_value)
             if not _fetch_commit_with_fallback(repo_path, ref_value, repo_name):
                 return False
-            _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
+            _run_git(
+                ["git", "-C", repo_path, "checkout", ref_value],
+                timeout=PLUGIN_GIT_OPERATION_TIMEOUT,
+            )
         logger.info("Updated repository %s to commit %s", repo_name, ref_value)
         return True
     except subprocess.CalledProcessError:
@@ -1073,7 +1085,7 @@ def _clone_new_repo_to_commit(
         _run_git(
             ["git", "clone", "--filter=blob:none", repo_url, repo_name],
             cwd=plugins_dir,
-            timeout=120,
+            timeout=PLUGIN_GIT_OPERATION_TIMEOUT,
         )
         logger.info(f"Cloned repository {repo_name} from {_redact_url(repo_url)}")
 
@@ -1097,14 +1109,20 @@ def _clone_new_repo_to_commit(
         # Then checkout the specific commit
         try:
             # Try direct checkout first (commit might be available from clone)
-            _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
+            _run_git(
+                ["git", "-C", repo_path, "checkout", ref_value],
+                timeout=PLUGIN_GIT_OPERATION_TIMEOUT,
+            )
         except subprocess.CalledProcessError:
             # If direct checkout fails, try to fetch the specific commit
             logger.info(f"Commit {ref_value} not available, attempting to fetch")
             if not _fetch_commit_with_fallback(repo_path, ref_value, repo_name):
                 return False
             # Try checkout again after fetch
-            _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
+            _run_git(
+                ["git", "-C", repo_path, "checkout", ref_value],
+                timeout=PLUGIN_GIT_OPERATION_TIMEOUT,
+            )
         logger.info(f"Checked out repository {repo_name} to commit {ref_value}")
         return True
     except (subprocess.CalledProcessError, FileNotFoundError):
@@ -1129,8 +1147,14 @@ def _try_checkout_and_pull_ref(
         True if the checkout and pull succeeded, False otherwise.
     """
     try:
-        _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
-        _run_git(["git", "-C", repo_path, "pull", "origin", ref_value], timeout=120)
+        _run_git(
+            ["git", "-C", repo_path, "checkout", ref_value],
+            timeout=PLUGIN_GIT_OPERATION_TIMEOUT,
+        )
+        _run_git(
+            ["git", "-C", repo_path, "pull", "origin", ref_value],
+            timeout=PLUGIN_GIT_OPERATION_TIMEOUT,
+        )
         logger.info("Updated repository %s to %s %s", repo_name, ref_type, ref_value)
         return True
     except subprocess.CalledProcessError:
@@ -1163,11 +1187,14 @@ def _try_fetch_and_checkout_tag(repo_path: str, ref_value: str, repo_name: str) 
         try:
             _run_git(
                 ["git", "-C", repo_path, "fetch", "origin", f"refs/tags/{ref_value}"],
-                timeout=120,
+                timeout=PLUGIN_GIT_OPERATION_TIMEOUT,
             )
         except subprocess.CalledProcessError:
             try:
-                _run_git(["git", "-C", repo_path, "fetch", "--tags"], timeout=120)
+                _run_git(
+                    ["git", "-C", repo_path, "fetch", "--tags"],
+                    timeout=PLUGIN_GIT_OPERATION_TIMEOUT,
+                )
             except subprocess.CalledProcessError:
                 # If that fails, try fetching with an explicit refspec to force updating the local tag
                 _run_git(
@@ -1179,11 +1206,14 @@ def _try_fetch_and_checkout_tag(repo_path: str, ref_value: str, repo_name: str) 
                         "origin",
                         f"refs/tags/{ref_value}:refs/tags/{ref_value}",
                     ],
-                    timeout=120,
+                    timeout=PLUGIN_GIT_OPERATION_TIMEOUT,
                 )
 
         # Checkout the tag
-        _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
+        _run_git(
+            ["git", "-C", repo_path, "checkout", ref_value],
+            timeout=PLUGIN_GIT_OPERATION_TIMEOUT,
+        )
         logger.info(
             "Successfully fetched and checked out tag %s for %s", ref_value, repo_name
         )
@@ -1212,9 +1242,18 @@ def _try_checkout_as_branch(repo_path: str, ref_value: str, repo_name: str) -> b
         bool: `True` if the repository was successfully fetched, checked out, and pulled to the specified branch; `False` otherwise.
     """
     try:
-        _run_git(["git", "-C", repo_path, "fetch", "origin", ref_value], timeout=120)
-        _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
-        _run_git(["git", "-C", repo_path, "pull", "origin", ref_value], timeout=120)
+        _run_git(
+            ["git", "-C", repo_path, "fetch", "origin", ref_value],
+            timeout=PLUGIN_GIT_OPERATION_TIMEOUT,
+        )
+        _run_git(
+            ["git", "-C", repo_path, "checkout", ref_value],
+            timeout=PLUGIN_GIT_OPERATION_TIMEOUT,
+        )
+        _run_git(
+            ["git", "-C", repo_path, "pull", "origin", ref_value],
+            timeout=PLUGIN_GIT_OPERATION_TIMEOUT,
+        )
         logger.info(f"Updated repository {repo_name} to branch {ref_value}")
         return True
     except subprocess.CalledProcessError:
@@ -1241,9 +1280,13 @@ def _fallback_to_default_branches(
     """
     for default_branch in default_branches:
         try:
-            _run_git(["git", "-C", repo_path, "checkout", default_branch], timeout=120)
             _run_git(
-                ["git", "-C", repo_path, "pull", "origin", default_branch], timeout=120
+                ["git", "-C", repo_path, "checkout", default_branch],
+                timeout=PLUGIN_GIT_OPERATION_TIMEOUT,
+            )
+            _run_git(
+                ["git", "-C", repo_path, "pull", "origin", default_branch],
+                timeout=PLUGIN_GIT_OPERATION_TIMEOUT,
             )
             logger.info(
                 f"Using {default_branch} instead of {ref_value} for {repo_name}"
@@ -1281,7 +1324,10 @@ def _update_existing_repo_to_branch_or_tag(
         bool: `True` if the repository was updated to the requested ref (or an accepted fallback), `False` otherwise.
     """
     try:
-        _run_git(["git", "-C", repo_path, "fetch", "origin"], timeout=120)
+        _run_git(
+            ["git", "-C", repo_path, "fetch", "origin"],
+            timeout=PLUGIN_GIT_OPERATION_TIMEOUT,
+        )
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
         logger.warning(f"Error fetching from remote: {e}")
         if isinstance(e, FileNotFoundError):
@@ -1527,7 +1573,7 @@ def _clone_new_repo_to_branch_or_tag(
         try:
             if os.path.isdir(repo_path):
                 shutil.rmtree(repo_path, ignore_errors=True)
-            _run_git(command, cwd=plugins_dir, timeout=120)
+            _run_git(command, cwd=plugins_dir, timeout=PLUGIN_GIT_OPERATION_TIMEOUT)
             logger.info(
                 "Cloned repository %s from %s at %s %s",
                 repo_name,
@@ -1810,7 +1856,7 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
                                     )
                                 _run(
                                     [pipx_path, "inject", "mmrelay", missing_pkg],
-                                    timeout=300,
+                                    timeout=PLUGIN_PIP_INSTALL_TIMEOUT,
                                 )
                             else:
                                 in_venv = (
@@ -1831,7 +1877,7 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
                                 ]
                                 if not in_venv:
                                     cmd += ["--user"]
-                                _run(cmd, timeout=300)
+                                _run(cmd, timeout=PLUGIN_PIP_INSTALL_TIMEOUT)
 
                             logger.info(
                                 f"Successfully installed {missing_pkg}, retrying plugin load"

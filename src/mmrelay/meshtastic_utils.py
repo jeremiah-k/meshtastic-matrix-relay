@@ -23,7 +23,11 @@ import serial.tools.list_ports  # type: ignore[import-untyped]  # Import serial 
 from meshtastic.protobuf import mesh_pb2, portnums_pb2  # type: ignore[import-untyped]
 from pubsub import pub  # type: ignore[import-untyped]
 
-from mmrelay.config import get_meshtastic_config_value
+from mmrelay.config import (
+    get_meshtastic_config_value,
+    get_radio_backend_selection,
+    is_meshtastic_selected,
+)
 from mmrelay.constants.config import (
     CONFIG_KEY_MESHNET_NAME,
     CONFIG_SECTION_MESHTASTIC,
@@ -36,14 +40,25 @@ from mmrelay.constants.formats import (
 )
 from mmrelay.constants.messages import (
     DEFAULT_CHANNEL_VALUE,
+    METADATA_MAX_OUTPUT_LENGTH,
+    METADATA_RETRIEVAL_TIMEOUT,
     PORTNUM_DETECTION_SENSOR_APP,
     PORTNUM_TEXT_MESSAGE_APP,
 )
 from mmrelay.constants.network import (
+    BLE_CLIENT_DISCONNECT_TIMEOUT,
+    BLE_CONNECT_TIMEOUT,
+    BLE_DISCONNECT_TIMEOUT,
     BLE_FUTURE_WATCHDOG_SECS,
+    BLE_INTERFACE_CLOSE_TIMEOUT,
+    BLE_INTERFACE_CREATION_TIMEOUT,
+    BLE_MAX_CLIENT_DISCONNECT_RETRIES,
+    BLE_MAX_DISCONNECT_RETRIES,
+    BLE_SCAN_BUFFER_TIMEOUT,
     BLE_SCAN_TIMEOUT_SECS,
     BLE_TIMEOUT_RESET_THRESHOLD,
     BLE_TROUBLESHOOTING_GUIDANCE,
+    BLE_WORKER_CANCEL_TIMEOUT,
     CONFIG_KEY_BLE_ADDRESS,
     CONFIG_KEY_CONNECTION_TYPE,
     CONFIG_KEY_HOST,
@@ -57,9 +72,11 @@ from mmrelay.constants.network import (
     DEFAULT_MESHTASTIC_OPERATION_TIMEOUT,
     DEFAULT_MESHTASTIC_TIMEOUT,
     ERRNO_BAD_FILE_DESCRIPTOR,
+    EXECUTOR_MAX_WORKERS_SINGLE,
     INFINITE_RETRIES,
     MAX_TIMEOUT_RETRIES_INFINITE,
 )
+from mmrelay.constants.plugins import PLUGIN_DEFAULT_TIMEOUT
 from mmrelay.db_utils import (
     get_longname,
     get_message_map_by_meshtastic_id,
@@ -109,6 +126,7 @@ reconnecting = False
 shutting_down = False
 
 reconnect_task = None  # To keep track of the reconnect task
+check_conn_task = None  # To keep track of the connection check task
 meshtastic_iface_lock = (
     threading.Lock()
 )  # To prevent race conditions on BLE interface singleton creation
@@ -119,13 +137,13 @@ subscribed_to_connection_lost = False
 
 # Shared executor for getMetadata() to avoid leaking threads when metadata calls hang.
 # A single worker is enough because getMetadata() is serialized by design.
-_metadata_executor = ThreadPoolExecutor(max_workers=1)
+_metadata_executor = ThreadPoolExecutor(max_workers=EXECUTOR_MAX_WORKERS_SINGLE)
 _metadata_future: Future[Any] | None = None
 _metadata_future_lock = threading.Lock()
 
 # Shared executor for BLE init/connect to avoid leaking threads across retries.
 # BLE setup is inherently sequential, so a single worker keeps things predictable.
-_ble_executor = ThreadPoolExecutor(max_workers=1)
+_ble_executor = ThreadPoolExecutor(max_workers=EXECUTOR_MAX_WORKERS_SINGLE)
 _ble_executor_lock = threading.Lock()
 _ble_future: Future[Any] | None = None
 _ble_future_address: str | None = None
@@ -396,7 +414,7 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
         if _ble_future and not _ble_future.done():
             _ble_future.cancel()
             try:
-                _ble_future.result(timeout=0.2)
+                _ble_future.result(timeout=BLE_WORKER_CANCEL_TIMEOUT)
             except FuturesTimeoutError:
                 pass
             except Exception as exc:  # noqa: BLE001 - best-effort reset cleanup
@@ -417,10 +435,11 @@ def _scan_for_ble_address(ble_address: str, timeout: float) -> bool:
     """
     Performs a best-effort BLE scan to check whether a device with the given address is discoverable.
 
-    If the Bleak library is unavailable or an active asyncio event loop is running, the function does not perform a scan and returns `false`.
+    If the Bleak library is unavailable, the function does not perform a scan and returns `false`.
+    When an asyncio event loop is already running, the scan is executed in a background thread to avoid blocking.
 
     Returns:
-        `true` if the device address was observed in a scan within the given timeout; `false` if the device was not observed, the scan failed, Bleak is unavailable, or scanning was skipped due to an active event loop.
+        `true` if the device address was observed in a scan within the given timeout; `false` if the device was not observed, the scan failed, or Bleak is unavailable.
     """
     if not BLE_AVAILABLE:
         return False
@@ -471,10 +490,27 @@ def _scan_for_ble_address(ble_address: str, timeout: float) -> bool:
 
     if running_loop and running_loop.is_running():
         logger.debug(
-            "Skipping BLE scan for %s; running event loop is active",
+            "Running event loop detected; scanning in background thread for %s",
             ble_address,
         )
-        return False
+        try:
+            result = _run_async_in_thread(
+                _scan(),
+                timeout=timeout + BLE_SCAN_BUFFER_TIMEOUT,
+                label=f"ble-scan-{ble_address}",
+                timeout_log_level=logging.DEBUG,
+            )
+            return bool(result)
+        except (
+            BleakError,
+            BleakDBusError,
+            OSError,
+            RuntimeError,
+            asyncio.TimeoutError,
+            TimeoutError,
+        ) as exc:
+            logger.debug("BLE scan failed for %s: %s", ble_address, exc)
+            return False
 
     try:
         return asyncio.run(_scan())
@@ -491,18 +527,33 @@ def _scan_for_ble_address(ble_address: str, timeout: float) -> bool:
 
 def _is_ble_discovery_error(error: Exception) -> bool:
     """
-    Determine whether an exception represents a BLE discovery or connection completion failure.
+    Detects whether an exception corresponds to a BLE discovery or connection-completion failure.
+
+    Parameters:
+        error (Exception): The exception to inspect.
 
     Returns:
-        True if the exception indicates a BLE discovery or connection completion failure, False otherwise.
+        bool: `True` if the exception indicates a BLE discovery or connection completion failure, `False` otherwise.
     """
     message = str(error)
     if "No Meshtastic BLE peripheral" in message:
         return True
     if "Timed out waiting for connection completion" in message:
         return True
+    if "Notify acquired" in message:
+        return True
+    if "Async operation timed out" in message:
+        return True
 
     def _is_type_or_tuple(candidate: object) -> bool:
+        """
+        Determine if `candidate` is a type or a tuple containing only types.
+
+        An empty tuple is considered valid (returns `True`) because every element satisfies the condition vacuously.
+
+        Returns:
+            `True` if `candidate` is a type or a tuple whose elements are all types, `False` otherwise.
+        """
         if isinstance(candidate, type):
             return True
         if isinstance(candidate, tuple):
@@ -650,6 +701,50 @@ def _run_blocking_with_timeout(
         raise action_error
 
 
+def _run_async_in_thread(
+    coro: Coroutine[Any, Any, Any],
+    timeout: float,
+    label: str,
+    timeout_log_level: int | None = logging.WARNING,
+) -> Any:
+    """
+    Run an async coroutine in a background thread with a timeout and return its result.
+
+    Parameters:
+        coro (Coroutine[Any, Any, Any]): Coroutine to execute in a new event loop.
+        timeout (float): Maximum seconds to wait for completion.
+        label (str): Short label used for logging/exception messages.
+        timeout_log_level (int | None): Logging level for timeouts, or None to suppress.
+
+    Returns:
+        Any: The coroutine result.
+
+    Raises:
+        TimeoutError: If the coroutine does not finish before the timeout expires.
+        Exception: Any exception raised by the coroutine.
+    """
+    result_holder: dict[str, Any] = {"value": None, "error": None}
+
+    def _runner() -> None:
+        """
+        Execute the coroutine in a private event loop and capture its result or error.
+        """
+        try:
+            result_holder["value"] = asyncio.run(coro)
+        except Exception as exc:  # noqa: BLE001 - passthrough to caller
+            result_holder["error"] = exc
+
+    _run_blocking_with_timeout(
+        _runner,
+        timeout=timeout,
+        label=label,
+        timeout_log_level=timeout_log_level,
+    )
+    if result_holder["error"] is not None:
+        raise result_holder["error"]
+    return result_holder["value"]
+
+
 def _wait_for_result(
     result_future: Any,
     timeout: float,
@@ -741,7 +836,9 @@ def _wait_for_result(
         asyncio.set_event_loop(None)
 
 
-def _resolve_plugin_timeout(cfg: dict[str, Any] | None, default: float = 5.0) -> float:
+def _resolve_plugin_timeout(
+    cfg: dict[str, Any] | None, default: float = PLUGIN_DEFAULT_TIMEOUT
+) -> float:
     """
     Resolve the plugin timeout value from the configuration.
 
@@ -831,7 +928,7 @@ def _run_meshtastic_plugins(
     from mmrelay.plugin_loader import load_plugins
 
     plugins = load_plugins()
-    plugin_timeout = _resolve_plugin_timeout(cfg, default=5.0)
+    plugin_timeout = _resolve_plugin_timeout(cfg, default=PLUGIN_DEFAULT_TIMEOUT)
 
     found_matching_plugin = False
     for plugin in plugins:
@@ -988,10 +1085,12 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
         timed_out = False
         future_error: Exception | None = None
         try:
-            future.result(timeout=30.0)
+            future.result(timeout=METADATA_RETRIEVAL_TIMEOUT)
         except FuturesTimeoutError:
             timed_out = True
-            logger.debug("getMetadata() timed out after 30 seconds")
+            logger.debug(
+                "getMetadata() timed out after %s seconds", METADATA_RETRIEVAL_TIMEOUT
+            )
             # If the worker is still running, restore stdio immediately so the
             # main process does not keep writing to the captured buffer.
             if redirect_active.is_set():
@@ -1036,8 +1135,8 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
             raise future_error
 
         # Cap raw_output length to avoid memory bloat
-        if len(console_output) > 4096:
-            console_output = console_output[:4096] + "…"
+        if len(console_output) > METADATA_MAX_OUTPUT_LENGTH:
+            console_output = console_output[:METADATA_MAX_OUTPUT_LENGTH] + "…"
         result["raw_output"] = console_output
 
         # Parse firmware version from the output using robust regex
@@ -1230,18 +1329,20 @@ def _disconnect_ble_by_address(address: str) -> None:
                         f"Device {address} is already connected in BlueZ. Disconnecting..."
                     )
                     # Retry logic for disconnect with timeout
-                    max_retries = 3
+                    max_retries = BLE_MAX_DISCONNECT_RETRIES
                     for attempt in range(max_retries):
                         try:
                             # Some backends or test doubles return a sync result
                             # from disconnect(); only await when needed.
                             disconnect_result = client.disconnect()
                             if inspect.isawaitable(disconnect_result):
-                                await asyncio.wait_for(disconnect_result, timeout=3.0)
-                            await asyncio.sleep(2.0)
+                                await asyncio.wait_for(
+                                    disconnect_result, timeout=BLE_DISCONNECT_TIMEOUT
+                                )
+                            await asyncio.sleep(BLE_CLIENT_DISCONNECT_TIMEOUT)
                             logger.debug(
                                 f"Successfully disconnected stale connection to {address} on attempt {attempt + 1}, "
-                                f"waiting 2s for BlueZ to settle"
+                                f"waiting {BLE_CLIENT_DISCONNECT_TIMEOUT}s for BlueZ to settle"
                             )
                             break
                         except asyncio.TimeoutError:
@@ -1293,7 +1394,9 @@ def _disconnect_ble_by_address(address: str) -> None:
                         # from disconnect(); only await when needed.
                         disconnect_result = client.disconnect()
                         if inspect.isawaitable(disconnect_result):
-                            await asyncio.wait_for(disconnect_result, timeout=2.0)
+                            await asyncio.wait_for(
+                                disconnect_result, timeout=BLE_CLIENT_DISCONNECT_TIMEOUT
+                            )
                         await asyncio.sleep(0.5)
                 except asyncio.TimeoutError:
                     logger.debug(f"Final disconnect for {address} timed out (cleanup)")
@@ -1314,10 +1417,31 @@ def _disconnect_ble_by_address(address: str) -> None:
 
         if loop and loop.is_running():
             logger.debug(
-                "Found running event loop; scheduling disconnect task for %s",
+                "Found running event loop; running disconnect in background thread for %s",
                 address,
             )
-            _fire_and_forget(disconnect_stale_connection(), loop=loop)
+            try:
+                _run_async_in_thread(
+                    disconnect_stale_connection(),
+                    timeout=10.0,
+                    label=f"ble-stale-disconnect-{address}",
+                    timeout_log_level=logging.WARNING,
+                )
+                logger.debug(
+                    "Stale connection disconnect completed for %s",
+                    address,
+                )
+            except TimeoutError:
+                logger.warning(
+                    "Stale connection disconnect timed out after 10s for %s",
+                    address,
+                )
+            except Exception as e:  # noqa: BLE001 - best-effort cleanup
+                logger.debug(
+                    "Error during BLE disconnect cleanup for %s",
+                    address,
+                    exc_info=e,
+                )
             return
 
         if event_loop and getattr(event_loop, "is_running", lambda: False)():
@@ -1399,12 +1523,14 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
             logger.debug(f"Disconnecting BLE interface ({reason})")
 
             # Retry logic for disconnect operations
-            max_disconnect_retries = 3
+            max_disconnect_retries = BLE_MAX_DISCONNECT_RETRIES
             for attempt in range(max_disconnect_retries):
                 try:
                     disconnect_method = iface.disconnect
                     if inspect.iscoroutinefunction(disconnect_method):
-                        _wait_for_result(disconnect_method(), timeout=3.0)
+                        _wait_for_result(
+                            disconnect_method(), timeout=BLE_DISCONNECT_TIMEOUT
+                        )
                     else:
                         # Run sync disconnect in a daemon thread to avoid hangs.
                         def _disconnect_sync(
@@ -1416,15 +1542,15 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                             Parameters:
                                 method (Callable[[], Any]): A zero-argument callable that performs a disconnect. If omitted, a module-level
                                     default `disconnect_method` is used. If the callable returns an awaitable, this function will wait up to
-                                    3.0 seconds for completion.
+                                    BLE_DISCONNECT_TIMEOUT seconds for completion.
                             """
                             result = method()
                             if inspect.isawaitable(result):
-                                _wait_for_result(result, timeout=3.0)
+                                _wait_for_result(result, timeout=BLE_DISCONNECT_TIMEOUT)
 
                         _run_blocking_with_timeout(
                             _disconnect_sync,
-                            timeout=3.0,
+                            timeout=BLE_DISCONNECT_TIMEOUT,
                             label=f"ble-interface-disconnect-{reason}",
                             timeout_log_level=timeout_log_level,
                         )
@@ -1458,7 +1584,7 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
             logger.debug(f"Explicitly disconnecting BLE client ({reason})")
 
             # Retry logic for client disconnect
-            max_client_retries = 2
+            max_client_retries = BLE_MAX_CLIENT_DISCONNECT_RETRIES
             for attempt in range(max_client_retries):
                 try:
                     disconnect_method = iface.client.disconnect
@@ -1473,7 +1599,9 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                         atexit.unregister(disconnect_method)
 
                     if inspect.iscoroutinefunction(disconnect_method):
-                        _wait_for_result(disconnect_method(), timeout=2.0)
+                        _wait_for_result(
+                            disconnect_method(), timeout=BLE_CLIENT_DISCONNECT_TIMEOUT
+                        )
                     else:
                         # Run sync disconnect in a daemon thread so it cannot
                         # block shutdown if BlueZ/DBus is hung.
@@ -1481,18 +1609,20 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                             method: Callable[[], Any] = disconnect_method,
                         ) -> None:
                             """
-                            Call a disconnection callable and, if it returns an awaitable, wait up to 2 seconds for it to complete.
+                            Call a disconnection callable and, if it returns an awaitable, wait up to BLE_CLIENT_DISCONNECT_TIMEOUT seconds for it to complete.
 
                             Parameters:
-                                method (Callable[[], Any]): A synchronous or asynchronous disconnect callable to invoke. If it returns an awaitable, this function will wait up to 2.0 seconds for completion.
+                                method (Callable[[], Any]): A synchronous or asynchronous disconnect callable to invoke. If it returns an awaitable, this function will wait up to BLE_CLIENT_DISCONNECT_TIMEOUT seconds for completion.
                             """
                             result = method()
                             if inspect.isawaitable(result):
-                                _wait_for_result(result, timeout=2.0)
+                                _wait_for_result(
+                                    result, timeout=BLE_CLIENT_DISCONNECT_TIMEOUT
+                                )
 
                         _run_blocking_with_timeout(
                             _disconnect_sync,
-                            timeout=2.0,
+                            timeout=BLE_CLIENT_DISCONNECT_TIMEOUT,
                             label=f"ble-client-disconnect-{reason}",
                             timeout_log_level=timeout_log_level,
                         )
@@ -1517,24 +1647,24 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
         with contextlib.suppress(Exception):
             atexit.unregister(close_method)
         if inspect.iscoroutinefunction(close_method):
-            _wait_for_result(close_method(), timeout=5.0)
+            _wait_for_result(close_method(), timeout=BLE_INTERFACE_CLOSE_TIMEOUT)
         else:
             # Close can block indefinitely in the official library; run it in
             # a daemon thread with a timeout to allow clean shutdown.
             def _close_sync(method: Callable[[], Any] = close_method) -> None:
                 """
-                Invoke a close-like callable and, if it returns an awaitable, wait up to 5 seconds for it to complete.
+                Invoke a close-like callable and, if it returns an awaitable, wait up to BLE_INTERFACE_CLOSE_TIMEOUT seconds for it to complete.
 
                 Parameters:
-                    method (Callable[[], Any]): A zero-argument function that performs a close/teardown action. If the callable returns an awaitable, this function will wait up to 5.0 seconds for completion.
+                    method (Callable[[], Any]): A zero-argument function that performs a close/teardown action. If the callable returns an awaitable, this function will wait up to BLE_INTERFACE_CLOSE_TIMEOUT seconds for completion.
                 """
                 result = method()
                 if inspect.isawaitable(result):
-                    _wait_for_result(result, timeout=5.0)
+                    _wait_for_result(result, timeout=BLE_INTERFACE_CLOSE_TIMEOUT)
 
             _run_blocking_with_timeout(
                 _close_sync,
-                timeout=5.0,
+                timeout=BLE_INTERFACE_CLOSE_TIMEOUT,
                 label=f"ble-interface-close-{reason}",
                 timeout_log_level=timeout_log_level,
             )
@@ -1690,16 +1820,16 @@ def connect_meshtastic(
     force_connect: bool = False,
 ) -> Any:
     """
-    Establishes a Meshtastic client connection using the configured connection type (serial, BLE, or TCP).
+    Establishes and returns a Meshtastic client connection using the configured connection type (serial, BLE, or TCP).
 
-    On success updates the module-level client state (meshtastic_client), may update matrix_rooms when a config is provided, and subscribes to meshtastic receive and connection-lost events once for the process lifetime. Honors shutdown and reconnect state and will respect `force_connect` to replace an existing connection.
+    On success updates module-level client and interface state, may update module-level `matrix_rooms` when a config is provided, and subscribes to Meshtastic message and connection-lost events once for the process lifetime. Respects shutdown and reconnect state; when `force_connect` is True, replaces an existing connection.
 
     Parameters:
-        passed_config (dict[str, Any] | None): Optional configuration to use in place of the module-level config; if provided and contains "matrix_rooms", that value will be used to update module-level matrix_rooms.
-        force_connect (bool): If True, forces creating a new connection even if a client already exists.
+        passed_config (dict[str, Any] | None): Optional configuration to use instead of the module-level config; if present and contains "matrix_rooms", that mapping will replace the module-level `matrix_rooms`.
+        force_connect (bool): If True, force creation of a new connection even if a client already exists.
 
     Returns:
-        The connected Meshtastic client instance on success, or `None` if a connection could not be established or shutdown is in progress.
+        meshtastic_client (Any | None): The connected Meshtastic client instance on success, or `None` if a connection could not be established or shutdown is in progress.
     """
     global meshtastic_client, meshtastic_iface, shutting_down, reconnecting, config
     global matrix_rooms, _ble_future, _ble_future_address
@@ -1718,6 +1848,23 @@ def connect_meshtastic(
         # If config is valid, extract matrix_rooms
         if config and "matrix_rooms" in config:
             matrix_rooms = config["matrix_rooms"]
+
+    if config is not None and not is_meshtastic_selected(config):
+        backend_name, explicit_disable = get_radio_backend_selection(config)
+        if backend_name and backend_name.lower() != "meshtastic":
+            logger.info(
+                "Configured radio backend '%s' is not Meshtastic; skipping connection.",
+                backend_name,
+            )
+        elif explicit_disable:
+            logger.info(
+                "Radio backend disabled by configuration; skipping Meshtastic connection."
+            )
+        else:
+            logger.info(
+                "Meshtastic is not the selected radio backend or is disabled; skipping connection."
+            )
+        return None
 
     with meshtastic_lock:
         if meshtastic_client and not force_connect:
@@ -1912,7 +2059,7 @@ def connect_meshtastic(
                                 logger.debug(
                                     "Using official meshtastic library (auto_reconnect not available)"
                                 )
-                            if ble_scan_after_failure and not supports_auto_reconnect:
+                            if ble_scan_after_failure:
                                 logger.debug(
                                     "Scanning for BLE device before retrying %s (%s)",
                                     ble_address,
@@ -1944,7 +2091,7 @@ def connect_meshtastic(
                                         **kwargs
                                     )
 
-                                # Use 90-second timeout (3x 30s connection timeout + overhead)
+                                # Use BLE_INTERFACE_CREATION_TIMEOUT-second timeout (3x BLE_CONNECT_TIMEOUT + overhead)
                                 # This provides multiple retry cycles while ensuring eventual failure
                                 # if connection truly cannot be established.
                                 #
@@ -1989,7 +2136,9 @@ def connect_meshtastic(
                                     _ble_future_address = ble_address
                                 future.add_done_callback(_clear_ble_future)
                                 try:
-                                    meshtastic_iface = future.result(timeout=90.0)
+                                    meshtastic_iface = future.result(
+                                        timeout=BLE_INTERFACE_CREATION_TIMEOUT
+                                    )
                                     logger.debug(
                                         f"BLE interface created successfully for {ble_address}"
                                     )
@@ -2030,9 +2179,15 @@ def connect_meshtastic(
                                     raise TimeoutError(
                                         f"BLE connection attempt timed out for {ble_address}."
                                     ) from err
-                            except Exception:
+                            except Exception as exc:
                                 # BLEInterface constructor failed - this is a critical error
                                 logger.exception("BLE interface creation failed")
+                                if _is_ble_discovery_error(exc):
+                                    logger.warning(
+                                        BLE_TROUBLESHOOTING_GUIDANCE.format(
+                                            ble_address=ble_address
+                                        )
+                                    )
                                 raise
                         else:
                             logger.debug(
@@ -2112,7 +2267,7 @@ def connect_meshtastic(
                             _ble_future_address = ble_address
                         connect_future.add_done_callback(_clear_ble_future)
                         try:
-                            connect_future.result(timeout=30.0)
+                            connect_future.result(timeout=BLE_CONNECT_TIMEOUT)
                             logger.info(f"BLE connection established to {ble_address}")
                         except FuturesTimeoutError as err:
                             # Use logger.exception so timeouts include stack context (TRY400),
@@ -2294,11 +2449,11 @@ def connect_meshtastic(
             if (
                 connection_type == CONNECTION_TYPE_BLE
                 and ble_address
-                and not supports_auto_reconnect
                 and _is_ble_discovery_error(e)
             ):
                 ble_scan_after_failure = True
                 ble_scan_reason = type(e).__name__
+                _disconnect_ble_by_address(ble_address)
             if retry_limit == 0 or attempts <= retry_limit:
                 wait_time = min(2**attempts, 60)
                 logger.warning(
@@ -3003,5 +3158,5 @@ if __name__ == "__main__":
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     event_loop = loop  # Set the event loop for use in callbacks
-    _check_connection_task = loop.create_task(check_connection())
+    check_conn_task = loop.create_task(check_connection())
     loop.run_forever()

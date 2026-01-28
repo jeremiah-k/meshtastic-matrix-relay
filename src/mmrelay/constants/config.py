@@ -14,6 +14,7 @@ CONFIG_SECTION_DATABASE = "database"
 CONFIG_SECTION_PLUGINS = "plugins"
 CONFIG_SECTION_COMMUNITY_PLUGINS = "community-plugins"
 CONFIG_SECTION_CUSTOM_PLUGINS = "custom-plugins"
+CONFIG_KEY_RADIO_BACKEND = "radio_backend"
 
 # Matrix configuration keys
 CONFIG_KEY_HOMESERVER = "homeserver"

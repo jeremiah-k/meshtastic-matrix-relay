@@ -15,11 +15,85 @@ from mmrelay.constants.config import (
     CONFIG_KEY_ACCESS_TOKEN,
     CONFIG_KEY_BOT_USER_ID,
     CONFIG_KEY_HOMESERVER,
+    CONFIG_KEY_RADIO_BACKEND,
     CONFIG_SECTION_MATRIX,
 )
 
 # Global variable to store the custom data directory
 custom_data_dir: str | None = None
+
+
+_RADIO_BACKEND_DISABLED_VALUES = {"none", "disabled", "off", "false", "no"}
+
+
+def normalize_radio_backend(value: Any) -> str | None:
+    """
+    Normalize a configured radio backend name.
+
+    Parameters:
+        value (Any): The configured backend value to normalize.
+
+    Returns:
+        str | None: The backend name normalized to lowercase, or `None` if the input is not a string, is empty after trimming, or represents an explicit disabled value (for example: "none", "false", "no").
+    """
+    if not isinstance(value, str):
+        return None
+    candidate = value.strip()
+    if not candidate:
+        return None
+    lowered = candidate.lower()
+    if lowered in _RADIO_BACKEND_DISABLED_VALUES:
+        return None
+    return lowered
+
+
+def get_radio_backend_selection(config: dict[str, Any]) -> tuple[str | None, bool]:
+    """
+    Determine the requested radio backend and whether the configuration explicitly disables radio.
+
+    Reads the value at CONFIG_KEY_RADIO_BACKEND in `config` and returns the normalized backend name or `None`. The second returned value is `True` when the config provided an explicit disable value (for example `"none"` or `"disabled"`), `False` otherwise.
+
+    Parameters:
+        config (dict): Configuration mapping to read the radio backend selection from.
+
+    Returns:
+        (str | None, bool): A tuple where the first element is the normalized backend name or `None` if no backend is selected, and the second element is `True` if the configuration explicitly requests disabling the radio, `False` otherwise.
+    """
+    raw = config.get(CONFIG_KEY_RADIO_BACKEND)
+    normalized = normalize_radio_backend(raw)
+    explicit_disable = isinstance(raw, str) and normalized is None
+    return normalized, explicit_disable
+
+
+def is_meshtastic_enabled(config: dict[str, Any]) -> bool:
+    """
+    Determine whether Meshtastic is enabled in the given configuration.
+
+    Parameters:
+        config (dict): Top-level configuration mapping.
+
+    Returns:
+        `True` if the `meshtastic` section is a mapping and its `enabled` value is present and truthy or missing (defaults to `True`), `False` otherwise.
+    """
+    meshtastic_config = config.get("meshtastic")
+    if not isinstance(meshtastic_config, dict):
+        return False
+    return bool(meshtastic_config.get("enabled", True))
+
+
+def is_meshtastic_selected(config: dict[str, Any]) -> bool:
+    """
+    Determine whether Meshtastic is the configured radio backend for the given config.
+
+    Returns:
+        True if Meshtastic is selected as the radio backend, False otherwise.
+    """
+    backend_name, explicit_disable = get_radio_backend_selection(config)
+    if explicit_disable:
+        return False
+    if backend_name:
+        return backend_name.lower() == "meshtastic"
+    return is_meshtastic_enabled(config)
 
 
 def set_secure_file_permissions(file_path: str, mode: int = 0o600) -> None:

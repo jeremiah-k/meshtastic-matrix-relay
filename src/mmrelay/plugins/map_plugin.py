@@ -405,12 +405,12 @@ class Plugin(BasePlugin):
 
     def get_matrix_commands(self) -> list[str]:
         """
-        List the Matrix command names handled by this plugin.
+        List of Matrix command names handled by this plugin.
 
         Returns:
             list[str]: A list of command strings that the plugin responds to (typically containing the plugin's name).
         """
-        return [cast(str, self.plugin_name)]
+        return [self.plugin_name]
 
     def get_mesh_commands(self) -> list[str]:
         """

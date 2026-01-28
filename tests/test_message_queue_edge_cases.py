@@ -40,7 +40,11 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
 
     def setUp(self):
         """
-        Prepare the test environment by resetting global state variables and creating a new MessageQueue instance before each test.
+        Reset mmrelay.meshtastic_utils globals and create a MessageQueue for tests.
+
+        Sets mmrelay.meshtastic_utils state values (client, reconnecting, config, matrix_rooms,
+        shutting_down, event_loop, reconnect_task, and subscription flags) to their defaults,
+        instantiates a new MessageQueue, and overrides its _should_send_message to always return True.
         """
         # Reset global state
         import mmrelay.meshtastic_utils
@@ -57,8 +61,14 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
         mmrelay.meshtastic_utils.subscribed_to_connection_lost = False
 
         self.queue = MessageQueue()
+        self.queue._should_send_message = lambda: True
 
     def tearDown(self):
+        """
+        Tears down test state by stopping the MessageQueue and resetting mmrelay.meshtastic_utils globals.
+
+        Stops the queue if it is running and restores mmrelay.meshtastic_utils global variables (client, reconnecting flag, config, matrix_rooms, shutting_down, event loop and related tasks, and subscription flags) to their default values. Asynchronous cleanup is handled separately (comprehensive_cleanup).
+        """
         if self.queue.is_running():
             self.queue.stop()
 
@@ -221,38 +231,44 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
     @patch("mmrelay.message_queue.logger")
     def test_processor_import_error_handling(self, mock_logger):
         """
-        Verify MessageQueue handles an ImportError raised during message processing without crashing.
+        Ensure MessageQueue handles an ImportError during message processing without crashing.
 
-        Starts the queue, causes MessageQueue._should_send_message to raise ImportError while a message is processed, enqueues a message, waits for processing to occur, and asserts the queue remains in a stable running state and that an exception or error was logged.
+        Starts the queue, restores the queue's original _should_send_message, patches mmrelay.radio.registry.get_radio_registry to raise ImportError, triggers the error handling path, enqueues a message, and waits for processing. Asserts that the queue's running state is a boolean after processing and that a critical log entry was emitted.
+
+        Parameters:
+            mock_logger: A patched logger used to capture logging calls (expects to track critical-level logs).
         """
 
         async def async_test():
             """
-            Asynchronously tests that the message queue handles ImportError exceptions during message processing without crashing.
+            Verify that the MessageQueue handles an ImportError during message processing without crashing.
 
-            This test starts the queue, mocks the message sending check to raise ImportError, enqueues a message, and verifies that the queue remains stable and its running state is a boolean after processing.
+            Starts the queue, induces an ImportError from the radio registry, enqueues a message for processing, and asserts that the queue's running state remains a boolean after processing.
             """
             self.queue.start(message_delay=TEST_MESSAGE_DELAY_LOW)
             self.queue.ensure_processor_started()
 
-            # Mock the import to raise ImportError
+            # Restore original _should_send_message for this test
+            self.queue._should_send_message = MessageQueue._should_send_message.__get__(
+                self.queue, MessageQueue
+            )
+
             with patch(
-                "mmrelay.message_queue.MessageQueue._should_send_message"
-            ) as mock_should_send:
-                mock_should_send.side_effect = ImportError("Module not found")
+                "mmrelay.radio.registry.get_radio_registry",
+                side_effect=ImportError("Module not found"),
+            ):
+                # Trigger the ImportError handling path directly
+                self.queue._should_send_message()
 
                 # Queue a message
-                success = self.queue.enqueue(
-                    lambda: "result", description="Test message"
-                )
-                self.assertTrue(success)
+                self.queue.enqueue(lambda: "result", description="Test message")
 
                 # Wait for processing
                 await asyncio.sleep(0.2)
 
-                # The queue may or may not be stopped depending on implementation
-                # Just check that it handled the error gracefully
-                self.assertIsInstance(self.queue.is_running(), bool)
+            # The queue may or may not be stopped depending on implementation
+            # Just check that it handled the error gracefully
+            self.assertIsInstance(self.queue.is_running(), bool)
 
         # Run the async test with proper event loop handling
         try:
@@ -265,8 +281,8 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
             else:
                 raise
 
-        # Verify we logged the failure path
-        assert mock_logger.exception.called or mock_logger.error.called
+        # Verify we logged a failure path
+        assert mock_logger.critical.called
 
     def test_message_mapping_with_invalid_result(self):
         """

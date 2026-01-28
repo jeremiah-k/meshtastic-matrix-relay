@@ -159,6 +159,33 @@ class TestCLIEdgeCases(unittest.TestCase):
                                         result = check_config()
                                         self.assertFalse(result)
 
+    def test_check_config_allows_radio_backend_disabled(self):
+        """
+        Test that check_config returns True when radio_backend explicitly disables radio.
+        """
+        config = {
+            "matrix": {
+                "homeserver": "https://matrix.org",
+                "access_token": "test_token",
+                "bot_user_id": "@test:matrix.org",
+            },
+            "matrix_rooms": [{"id": "!test:matrix.org", "meshtastic_channel": 0}],
+            "radio_backend": "none",
+        }
+
+        with patch("mmrelay.cli.parse_arguments") as mock_parse_args:
+            args = MagicMock()
+            args.config = None
+            mock_parse_args.return_value = args
+            with patch("mmrelay.cli.get_config_paths") as mock_get_paths:
+                mock_get_paths.return_value = ["/test/config.yaml"]
+                with patch("os.path.isfile", return_value=True):
+                    with patch("builtins.open", mock_open()):
+                        with patch("yaml.load", return_value=config):
+                            with patch("builtins.print"):
+                                result = check_config()
+                                self.assertTrue(result)
+
     def test_check_config_invalid_connection_types(self):
         """
         Test that check_config returns False and prints an error when the Meshtastic connection type is invalid.

@@ -465,16 +465,16 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         ):
             on_meshtastic_message(packet, interface)
 
-            self.assertEqual(future.calls, [5.0])
+            self.assertEqual(future.calls, [120])
             mock_logger.warning.assert_any_call(
                 "Invalid meshtastic.plugin_timeout value %r; using %ss fallback.",
                 "invalid",
-                5.0,
+                120,
             )
             mock_logger.warning.assert_any_call(
                 "Plugin %s did not respond within %ss: %s",
                 "timeout_plugin",
-                5.0,
+                120,
                 timeout_exc,
             )
             self.assertEqual(mock_submit_coro.call_count, 1)
@@ -796,7 +796,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             mock_logger.warning.assert_any_call(
                 "Plugin %s did not respond within %ss: %s",
                 "test_plugin",
-                5.0,
+                120,
                 ANY,
             )
             # Verify Matrix relay was NOT called (message was handled by plugin even though it timed out)
@@ -853,7 +853,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             mock_logger.warning.assert_any_call(
                 "Plugin %s did not respond within %ss: %s",
                 "test_plugin",
-                5.0,
+                120,
                 ANY,
             )
             # Verify Matrix relay was NOT called (DM was handled by plugin even though it timed out)
@@ -908,7 +908,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             mock_logger.warning.assert_any_call(
                 "Plugin %s did not respond within %ss: %s",
                 "telemetry_plugin",
-                5.0,
+                120,
                 ANY,
             )
             # Verify debug log was called (confirming found_matching_plugin was True)

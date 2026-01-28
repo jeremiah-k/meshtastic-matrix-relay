@@ -34,6 +34,8 @@ from mmrelay.config import (
     apply_env_config_overrides,
     get_base_dir,
     get_config_paths,
+    get_radio_backend_selection,
+    is_meshtastic_enabled,
     set_secure_file_permissions,
     validate_yaml_syntax,
 )
@@ -57,6 +59,7 @@ from mmrelay.constants.network import (
 )
 from mmrelay.e2ee_utils import E2EEStatus
 from mmrelay.log_utils import get_logger
+from mmrelay.radio.registry import get_radio_registry
 from mmrelay.tools import get_sample_config_path
 
 logger = get_logger(__name__)
@@ -919,6 +922,48 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
         getattr(args, "allow_missing_matrix_auth", False) is True
     )
 
+    # Helper functions for config validation
+    def _warn_db_deprecated(target_config: dict[str, Any]) -> None:
+        """
+        Emit a deprecation warning when the legacy 'db' configuration section is present.
+
+        If the given configuration mapping contains a top-level "db" key, prints a two-line
+        warning to standard error advising that "db" is deprecated and that "database"
+        should be used instead.
+
+        Parameters:
+            target_config (dict[str, Any]): The configuration mapping to inspect.
+        """
+        if "db" in target_config:
+            print(
+                "\nWarning: 'db' section is deprecated. Please use 'database' instead.",
+                file=sys.stderr,
+            )
+            print(
+                "This option still works but may be removed in future versions.\n",
+                file=sys.stderr,
+            )
+
+    def _exit_as_valid_non_meshtastic(
+        target_config: dict[str, Any],
+        warning: str | None = None,
+    ) -> bool:
+        """
+        Print an informational message (optionally a warning), emit a deprecated-db notice, and indicate the configuration is valid for non-Meshtastic operation.
+
+        Parameters:
+            target_config (dict[str, Any]): The parsed configuration dictionary to inspect for deprecated database settings.
+            warning (str | None): Optional warning message to print to stderr before validation confirmation.
+
+        Returns:
+            bool: `True` to indicate the configuration should be treated as valid (non-Meshtastic).
+        """
+        if warning:
+            print(f"\n{warning}", file=sys.stderr)
+        _warn_db_deprecated(target_config)
+        print("\n✅ Configuration file is valid!")
+        return True
+
     # Try each config path in order until we find one that exists
     for path in config_paths:
         if os.path.isfile(path):
@@ -1112,6 +1157,27 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                         )
                         return False
 
+                backend_name, explicit_disable = get_radio_backend_selection(config)
+                if backend_name and backend_name.lower() != "meshtastic":
+                    registry = get_radio_registry()
+                    if registry.get_backend(backend_name) is None:
+                        available_backends = ", ".join(
+                            sorted(registry.get_backend_names())
+                        )
+                        print(
+                            f"Error: Unknown radio backend '{backend_name}'. "
+                            f"Available backends: {available_backends}"
+                        )
+                        return False
+                    # Skip Meshtastic validation when another backend is selected
+                    return _exit_as_valid_non_meshtastic(config)
+
+                if explicit_disable:
+                    return _exit_as_valid_non_meshtastic(
+                        config,
+                        "Warning: Radio backend disabled; running without radio.",
+                    )
+
                 # Check meshtastic section
                 if CONFIG_SECTION_MESHTASTIC not in config:
                     print("Error: Missing 'meshtastic' section in config")
@@ -1122,6 +1188,11 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                     print("       host: meshtastic.local")
                     print("       broadcast_enabled: true")
                     return False
+
+                if not is_meshtastic_enabled(config):
+                    return _exit_as_valid_non_meshtastic(
+                        config, "Warning: Meshtastic disabled; running without radio."
+                    )
 
                 meshtastic_section = config[CONFIG_SECTION_MESHTASTIC]
                 if "connection_type" not in meshtastic_section:
@@ -1295,15 +1366,7 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                         print(warning)
 
                 # Check for deprecated db section
-                if "db" in config:
-                    print(
-                        "\nWarning: 'db' section is deprecated. Please use 'database' instead.",
-                        file=sys.stderr,
-                    )
-                    print(
-                        "This option still works but may be removed in future versions.\n",
-                        file=sys.stderr,
-                    )
+                _warn_db_deprecated(config)
 
                 print("\n✅ Configuration file is valid!")
                 return True

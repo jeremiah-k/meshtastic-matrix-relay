@@ -112,6 +112,7 @@ class Plugin(BasePlugin):
             return []
 
         matrix_rooms = global_config.get("matrix_rooms", [])
+        iterable_rooms: Any
         if isinstance(matrix_rooms, dict):
             iterable_rooms = matrix_rooms.values()
         elif isinstance(matrix_rooms, list):

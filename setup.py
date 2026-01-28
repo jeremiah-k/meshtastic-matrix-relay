@@ -48,14 +48,14 @@ setup(
         "matrix-nio==0.25.2",
         "matplotlib==3.10.8",
         "requests==2.32.5",
-        "markdown==3.10.1",
+        "markdown==3.10",
         "bleach==6.3.0",
         "haversine==2.9.0",
         "schedule==1.2.2",
         "platformdirs==4.5.1",
         "py-staticmaps>=0.4.0",
         "psutil>=5.8.0",
-        "rich==14.3.1",
+        "rich==14.2.0",
         "setuptools>=80.9.0",  # Required for console script entry points and Windows compatibility
     ],
     extras_require={
