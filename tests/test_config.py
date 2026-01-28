@@ -957,10 +957,56 @@ class TestCredentials(unittest.TestCase):
     def test_save_credentials_file_open_failure(
         self, _mock_open, _mock_makedirs, _mock_get_base_dir
     ):
-        """Test credential saving when opening the file fails."""
+        """Test credential saving when opening file fails."""
         credentials = {"user_id": "test"}
         result = save_credentials(credentials)
         self.assertIsNone(result)
+
+    @patch("mmrelay.config.get_base_dir", return_value="/fake/dir")
+    @patch("mmrelay.config.os.makedirs")
+    @patch("mmrelay.config.os.path.join", side_effect=os.path.join)
+    @patch("mmrelay.config.os.path.dirname", side_effect=os.path.dirname)
+    @patch("mmrelay.config.os.path.isdir", return_value=False)
+    @patch("builtins.open", new_callable=mock_open)
+    def test_save_credentials_trailing_separator_treated_as_dir(
+        self,
+        _mock_open,
+        _mock_makedirs,
+        _mock_dirname,
+        _mock_join,
+        _mock_get_base_dir,
+        _mock_isdir,
+    ):
+        """Test credentials_path with trailing separator is treated as directory."""
+        credentials = {"user_id": "test", "access_token": "token"}
+
+        from mmrelay import config as config_module
+
+        original_relay_config = config_module.relay_config.copy()
+        original_env = os.environ.copy()
+        try:
+            config_module.relay_config = {}
+            os.environ["MMRELAY_CREDENTIALS_PATH"] = "/custom/dir/"
+
+            save_credentials(credentials)
+
+            _mock_makedirs.assert_called_once()
+            _mock_open.assert_called_once()
+            call_args = _mock_open.call_args
+            final_path = call_args[0][0]
+            self.assertTrue(
+                final_path.endswith("credentials.json"),
+                f"Should append credentials.json: {final_path}",
+            )
+            self.assertEqual(
+                final_path,
+                "/custom/dir/credentials.json",
+                "Should append credentials.json to directory path with trailing separator",
+            )
+        finally:
+            config_module.relay_config = original_relay_config
+            os.environ.clear()
+            os.environ.update(original_env)
 
 
 class TestYAMLValidation(unittest.TestCase):

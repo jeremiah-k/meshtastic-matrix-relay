@@ -1601,7 +1601,7 @@ async def connect_matrix(
 
     # Perform initial sync to populate rooms (needed for message delivery)
     logger.debug("Performing initial sync to initialize rooms...")
-    invite_safe_filter: dict[str, Any] | None = {"room": {"invite": {"limit": 0}}}
+    invite_safe_filter: dict[str, Any] = {"room": {"invite": {"limit": 0}}}
     sync_response: Any | None = None
     try:
         # A full_state=True sync is required to get room encryption state
