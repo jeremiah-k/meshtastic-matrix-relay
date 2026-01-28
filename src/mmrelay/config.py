@@ -600,7 +600,9 @@ def load_credentials() -> dict[str, Any] | None:
         return None
 
 
-def save_credentials(credentials: dict[str, Any]) -> None:
+def save_credentials(
+    credentials: dict[str, Any], credentials_path: str | None = None
+) -> None:
     """
     Persist a JSON-serializable credentials mapping to <base_dir>/credentials.json.
 
@@ -618,10 +620,22 @@ def save_credentials(credentials: dict[str, Any]) -> None:
     """
     config_dir = ""
     try:
-        config_dir = get_base_dir()
+        if not credentials_path:
+            credentials_path = os.getenv("MMRELAY_CREDENTIALS_PATH")
+        if not credentials_path:
+            explicit = relay_config.get("credentials_path")
+            if not explicit and isinstance(relay_config.get("matrix"), dict):
+                explicit = relay_config["matrix"].get("credentials_path")
+            credentials_path = explicit
+        if credentials_path:
+            credentials_path = os.path.expanduser(credentials_path)
+            config_dir = os.path.dirname(credentials_path)
+        else:
+            config_dir = get_base_dir()
+            credentials_path = os.path.join(config_dir, "credentials.json")
+
         # Ensure the directory exists and is writable
         os.makedirs(config_dir, exist_ok=True)
-        credentials_path = os.path.join(config_dir, "credentials.json")
 
         # Log the path for debugging, especially on Windows
         logger.info(f"Saving credentials to: {credentials_path}")

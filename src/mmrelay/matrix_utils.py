@@ -1227,16 +1227,34 @@ async def connect_matrix(
     e2ee_device_id: Optional[str] = None
     credentials_path = None
 
-    # Try to find credentials.json in the config directory
+    # Try to find credentials.json from explicit config, config directory, or base dir
     try:
+        from mmrelay.config import config_path as loaded_config_path
         from mmrelay.config import get_base_dir
 
-        config_dir = get_base_dir()
-        credentials_path = os.path.join(config_dir, "credentials.json")
+        explicit_path = None
+        if isinstance(config, dict):
+            explicit_path = config.get("credentials_path")
+            if not explicit_path and isinstance(matrix_section, dict):
+                explicit_path = matrix_section.get("credentials_path")
 
-        if os.path.exists(credentials_path):
-            with open(credentials_path, "r", encoding="utf-8") as f:
-                credentials = json.load(f)
+        candidate_paths: list[str] = []
+        if explicit_path:
+            candidate_paths.append(os.path.expanduser(explicit_path))
+
+        config_dir = None
+        if loaded_config_path:
+            config_dir = os.path.dirname(os.path.abspath(loaded_config_path))
+            candidate_paths.append(os.path.join(config_dir, "credentials.json"))
+
+        candidate_paths.append(os.path.join(get_base_dir(), "credentials.json"))
+
+        for candidate in candidate_paths:
+            if os.path.exists(candidate):
+                credentials_path = candidate
+                with open(candidate, "r", encoding="utf-8") as f:
+                    credentials = json.load(f)
+                break
     except Exception as e:
         logger.warning(f"Error loading credentials: {e}")
 
@@ -1533,7 +1551,9 @@ async def connect_matrix(
                     try:
                         if credentials is not None:
                             credentials["device_id"] = e2ee_device_id
-                            save_credentials(credentials)
+                            save_credentials(
+                                credentials, credentials_path=credentials_path
+                            )
                             logger.info(
                                 "Updated credentials.json with discovered device_id"
                             )
@@ -1578,126 +1598,14 @@ async def connect_matrix(
 
     # Perform initial sync to populate rooms (needed for message delivery)
     logger.debug("Performing initial sync to initialize rooms...")
+    invite_safe_filter: dict[str, Any] | None = {"room": {"invite": {"limit": 0}}}
+    sync_response: Any | None = None
     try:
         # A full_state=True sync is required to get room encryption state
         sync_response = await asyncio.wait_for(
             matrix_client.sync(timeout=MATRIX_EARLY_SYNC_TIMEOUT, full_state=True),
             timeout=MATRIX_SYNC_OPERATION_TIMEOUT,
         )
-        # Check if sync failed by looking for error class name
-        if (
-            hasattr(sync_response, "__class__")
-            and "Error" in sync_response.__class__.__name__
-        ):
-            # Provide more detailed error information
-            error_type = sync_response.__class__.__name__
-            error_details = _get_detailed_matrix_error_message(sync_response)
-            logger.error(f"Initial sync failed: {error_type}")
-            logger.error(f"Error details: {error_details}")
-
-            # Provide user-friendly troubleshooting guidance
-            if "SyncError" in error_type:
-                logger.error(
-                    "This usually indicates a network connectivity issue or server problem."
-                )
-                logger.error("Troubleshooting steps:")
-                logger.error("1. Check your internet connection")
-                logger.error(
-                    f"2. Verify the homeserver URL is correct: {matrix_homeserver}"
-                )
-                logger.error("3. Ensure the Matrix server is online and accessible")
-                logger.error("4. Check if your credentials are still valid")
-
-            try:
-                await matrix_client.close()
-            except Exception:
-                logger.debug("Ignoring error while closing client after sync failure")
-            finally:
-                matrix_client = None
-            raise ConnectionError(f"Matrix sync failed: {error_type} - {error_details}")
-        else:
-            logger.info(
-                f"Initial sync completed. Found {len(matrix_client.rooms)} rooms."
-            )
-
-            # List all rooms with unified E2EE status display
-            from mmrelay.config import config_path
-            from mmrelay.e2ee_utils import (
-                get_e2ee_status,
-                get_room_encryption_warnings,
-            )
-
-            # Get comprehensive E2EE status
-            e2ee_status = get_e2ee_status(config or {}, config_path)
-
-            # Resolve room aliases in config (supports list[str|dict] and dict[str->str|dict])
-            async def _resolve_alias(alias: str) -> str | None:
-                """
-                Resolve a Matrix room alias to its canonical room ID.
-
-                Attempts to resolve the given room alias via the module-level Matrix client. If the alias is resolved, the canonical room ID string is returned; if the client is unavailable, the alias cannot be resolved, or an error occurs, `None` is returned. Underlying client and network errors are caught internally.
-
-                Returns:
-                    str | None: The resolved room ID when available, `None` otherwise.
-                """
-                if not matrix_client:
-                    logger.warning(
-                        f"Cannot resolve alias {alias}: Matrix client is not available"
-                    )
-                    return None
-
-                logger.debug(f"Resolving alias from config: {alias}")
-                try:
-                    response = await matrix_client.room_resolve_alias(alias)
-                    room_id = getattr(response, "room_id", None)
-                    if room_id:
-                        logger.debug(f"Resolved alias {alias} to {room_id}")
-                        return cast(str, room_id)
-                    error_details = (
-                        getattr(response, "message", response)
-                        if response
-                        else "No response from server"
-                    )
-                    logger.warning(f"Could not resolve alias {alias}: {error_details}")
-                except NIO_COMM_EXCEPTIONS:
-                    logger.exception(f"Error resolving alias {alias}")
-                except (TypeError, ValueError, AttributeError):
-                    logger.exception(f"Error resolving alias {alias}")
-                except (
-                    Exception
-                ):  # noqa: BLE001 — keep bridge alive on unexpected alias errors
-                    # Intentionally broad: keep the bridge alive and satisfy tests that simulate custom network errors.
-                    logger.exception(f"Error resolving alias {alias}")
-                return None
-
-            await _resolve_aliases_in_mapping(matrix_rooms, _resolve_alias)
-
-            # Display rooms with channel mappings
-            _display_room_channel_mappings(
-                matrix_client.rooms, config, dict(e2ee_status)
-            )
-
-            # Show warnings for encrypted rooms when E2EE is not ready
-            warnings = get_room_encryption_warnings(
-                matrix_client.rooms, dict(e2ee_status)
-            )
-            for warning in warnings:
-                logger.warning(warning)
-
-            # Debug information
-            encrypted_count = sum(
-                1
-                for room in matrix_client.rooms.values()
-                if getattr(room, "encrypted", False)
-            )
-            logger.debug(
-                f"Found {encrypted_count} encrypted rooms out of {len(matrix_client.rooms)} total rooms"
-            )
-            logger.debug(f"E2EE status: {e2ee_status['overall_status']}")
-
-            # Additional debugging for E2EE enabled case
-            if e2ee_enabled and encrypted_count == 0 and len(matrix_client.rooms) > 0:
-                logger.debug("No encrypted rooms detected - all rooms are plaintext")
     except asyncio.TimeoutError:
         logger.exception(
             f"Initial sync timed out after {MATRIX_SYNC_OPERATION_TIMEOUT} seconds"
@@ -1724,6 +1632,148 @@ async def connect_matrix(
         raise ConnectionError(
             f"Matrix sync timed out after {MATRIX_SYNC_OPERATION_TIMEOUT} seconds - check network connectivity and server status"
         ) from None
+    except Exception as exc:  # noqa: BLE001 - surface sync failures clearly
+        try:
+            import jsonschema  # type: ignore[import-untyped]
+
+            if isinstance(exc, jsonschema.exceptions.ValidationError):
+                logger.error("Initial sync response failed schema validation.")
+                logger.error(
+                    "This usually indicates a non-compliant homeserver or proxy response."
+                )
+                logger.error(
+                    "Retrying initial sync without invites to tolerate invalid invite_state payloads."
+                )
+                try:
+                    sync_response = await asyncio.wait_for(
+                        matrix_client.sync(
+                            timeout=MATRIX_EARLY_SYNC_TIMEOUT,
+                            full_state=False,
+                            sync_filter=invite_safe_filter,
+                        ),
+                        timeout=MATRIX_SYNC_OPERATION_TIMEOUT,
+                    )
+                    matrix_client.mmrelay_sync_filter = invite_safe_filter
+                    matrix_client.mmrelay_first_sync_filter = invite_safe_filter
+                    logger.info(
+                        "Initial sync completed after invite-safe retry. "
+                        "Invite handling is disabled for subsequent syncs."
+                    )
+                except Exception:
+                    logger.exception("Invite-safe sync retry failed")
+        except Exception:
+            pass
+        if sync_response is None:
+            logger.exception("Matrix sync failed")
+            try:
+                if matrix_client:
+                    await matrix_client.close()
+            except Exception:
+                logger.debug("Ignoring error while closing client after sync failure")
+            finally:
+                matrix_client = None
+            raise ConnectionError("Matrix sync failed") from exc
+
+    # If the sync returned an explicit error response, treat it as a failure.
+    if (
+        hasattr(sync_response, "__class__")
+        and "Error" in sync_response.__class__.__name__
+    ):
+        error_type = sync_response.__class__.__name__
+        error_details = _get_detailed_matrix_error_message(sync_response)
+        logger.error(f"Initial sync failed: {error_type}")
+        logger.error(f"Error details: {error_details}")
+
+        if "SyncError" in error_type:
+            logger.error(
+                "This usually indicates a network connectivity issue or server problem."
+            )
+            logger.error("Troubleshooting steps:")
+            logger.error("1. Check your internet connection")
+            logger.error(
+                f"2. Verify the homeserver URL is correct: {matrix_homeserver}"
+            )
+            logger.error("3. Ensure the Matrix server is online and accessible")
+            logger.error("4. Check if your credentials are still valid")
+
+        try:
+            await matrix_client.close()
+        except Exception:
+            logger.debug("Ignoring error while closing client after sync failure")
+        finally:
+            matrix_client = None
+        raise ConnectionError(f"Matrix sync failed: {error_type} - {error_details}")
+
+    logger.info(f"Initial sync completed. Found {len(matrix_client.rooms)} rooms.")
+
+    # List all rooms with unified E2EE status display
+    from mmrelay.config import config_path
+    from mmrelay.e2ee_utils import (
+        get_e2ee_status,
+        get_room_encryption_warnings,
+    )
+
+    # Get comprehensive E2EE status
+    e2ee_status = get_e2ee_status(config or {}, config_path)
+
+    # Resolve room aliases in config (supports list[str|dict] and dict[str->str|dict])
+    async def _resolve_alias(alias: str) -> str | None:
+        """
+        Resolve a Matrix room alias to its canonical room ID.
+
+        Attempts to resolve the given room alias via the module-level Matrix client. If the alias is resolved, the canonical room ID string is returned; if the client is unavailable, the alias cannot be resolved, or an error occurs, `None` is returned. Underlying client and network errors are caught internally.
+
+        Returns:
+            str | None: The resolved room ID when available, `None` otherwise.
+        """
+        if not matrix_client:
+            logger.warning(
+                f"Cannot resolve alias {alias}: Matrix client is not available"
+            )
+            return None
+
+        logger.debug(f"Resolving alias from config: {alias}")
+        try:
+            response = await matrix_client.room_resolve_alias(alias)
+            room_id = getattr(response, "room_id", None)
+            if room_id:
+                logger.debug(f"Resolved alias {alias} to {room_id}")
+                return cast(str, room_id)
+            error_details = (
+                getattr(response, "message", response)
+                if response
+                else "No response from server"
+            )
+            logger.warning(f"Could not resolve alias {alias}: {error_details}")
+        except NIO_COMM_EXCEPTIONS:
+            logger.exception(f"Error resolving alias {alias}")
+        except (TypeError, ValueError, AttributeError):
+            logger.exception(f"Error resolving alias {alias}")
+        except Exception:  # noqa: BLE001 — keep bridge alive on unexpected alias errors
+            logger.exception(f"Error resolving alias {alias}")
+        return None
+
+    await _resolve_aliases_in_mapping(matrix_rooms, _resolve_alias)
+
+    # Display rooms with channel mappings
+    _display_room_channel_mappings(matrix_client.rooms, config, dict(e2ee_status))
+
+    # Show warnings for encrypted rooms when E2EE is not ready
+    warnings = get_room_encryption_warnings(matrix_client.rooms, dict(e2ee_status))
+    for warning in warnings:
+        logger.warning(warning)
+
+    # Debug information
+    encrypted_count = sum(
+        1 for room in matrix_client.rooms.values() if getattr(room, "encrypted", False)
+    )
+    logger.debug(
+        f"Found {encrypted_count} encrypted rooms out of {len(matrix_client.rooms)} total rooms"
+    )
+    logger.debug(f"E2EE status: {e2ee_status['overall_status']}")
+
+    if e2ee_enabled and encrypted_count == 0 and len(matrix_client.rooms) > 0:
+        logger.debug("No encrypted rooms detected - all rooms are plaintext")
 
     # Add a delay to allow for key sharing to complete
     # This addresses a race condition where the client attempts to send encrypted messages
