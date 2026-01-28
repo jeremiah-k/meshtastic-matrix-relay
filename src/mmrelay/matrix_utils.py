@@ -1250,11 +1250,16 @@ async def connect_matrix(
         candidate_paths.append(os.path.join(get_base_dir(), "credentials.json"))
 
         for candidate in candidate_paths:
-            if os.path.exists(candidate):
-                credentials_path = candidate
+            if not os.path.isfile(candidate):
+                continue
+            try:
                 with open(candidate, "r", encoding="utf-8") as f:
                     credentials = json.load(f)
-                break
+            except (OSError, json.JSONDecodeError):
+                logger.warning("Ignoring invalid credentials file: %s", candidate)
+                continue
+            credentials_path = candidate
+            break
     except Exception as e:
         logger.warning(f"Error loading credentials: {e}")
 
@@ -1632,16 +1637,16 @@ async def connect_matrix(
         raise ConnectionError(
             f"Matrix sync timed out after {MATRIX_SYNC_OPERATION_TIMEOUT} seconds - check network connectivity and server status"
         ) from None
-    except Exception as exc:  # noqa: BLE001 - surface sync failures clearly
+    except Exception as exc:
         try:
             import jsonschema  # type: ignore[import-untyped]
 
             if isinstance(exc, jsonschema.exceptions.ValidationError):
-                logger.error("Initial sync response failed schema validation.")
-                logger.error(
+                logger.exception("Initial sync response failed schema validation.")
+                logger.warning(
                     "This usually indicates a non-compliant homeserver or proxy response."
                 )
-                logger.error(
+                logger.warning(
                     "Retrying initial sync without invites to tolerate invalid invite_state payloads."
                 )
                 try:
@@ -1661,8 +1666,8 @@ async def connect_matrix(
                     )
                 except Exception:
                     logger.exception("Invite-safe sync retry failed")
-        except Exception:
-            pass
+        except ImportError:
+            logger.debug("Invite-safe sync retry handler failed", exc_info=True)
         if sync_response is None:
             logger.exception("Matrix sync failed")
             try:
@@ -1749,7 +1754,7 @@ async def connect_matrix(
             logger.exception(f"Error resolving alias {alias}")
         except (TypeError, ValueError, AttributeError):
             logger.exception(f"Error resolving alias {alias}")
-        except Exception:  # noqa: BLE001 — keep bridge alive on unexpected alias errors
+        except Exception:
             logger.exception(f"Error resolving alias {alias}")
         return None
 

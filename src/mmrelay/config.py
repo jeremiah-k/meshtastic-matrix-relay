@@ -623,13 +623,19 @@ def save_credentials(
         if not credentials_path:
             credentials_path = os.getenv("MMRELAY_CREDENTIALS_PATH")
         if not credentials_path:
-            explicit = relay_config.get("credentials_path")
-            if not explicit and isinstance(relay_config.get("matrix"), dict):
-                explicit = relay_config["matrix"].get("credentials_path")
-            credentials_path = explicit
+            credentials_path = relay_config.get("credentials_path")
+            if not credentials_path and isinstance(relay_config.get("matrix"), dict):
+                credentials_path = relay_config["matrix"].get("credentials_path")
         if credentials_path:
             credentials_path = os.path.expanduser(credentials_path)
+            if os.path.isdir(credentials_path):
+                credentials_path = os.path.join(credentials_path, "credentials.json")
             config_dir = os.path.dirname(credentials_path)
+            if not config_dir:
+                config_dir = get_base_dir()
+                credentials_path = os.path.join(
+                    config_dir, os.path.basename(credentials_path)
+                )
         else:
             config_dir = get_base_dir()
             credentials_path = os.path.join(config_dir, "credentials.json")

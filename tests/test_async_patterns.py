@@ -210,9 +210,9 @@ class TestAsyncPatterns(unittest.TestCase):
                         result = await connect_matrix(self.config)
                         # connect_matrix should handle errors and return client anyway
                         self.assertIsNotNone(result)
-                    except Exception as e:
+                    except ConnectionError as e:
                         # If exception is raised, it should be the expected one
-                        self.assertIn("Connection failed", str(e))
+                        self.assertIn("Matrix sync failed", str(e))
 
         # Run the error handling test
         asyncio.run(test_error_handling())

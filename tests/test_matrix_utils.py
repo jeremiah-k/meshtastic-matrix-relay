@@ -3162,6 +3162,7 @@ async def test_on_room_message_emote_reaction_uses_original_event_id(monkeypatch
 @patch("mmrelay.matrix_utils.os.makedirs")
 @patch("mmrelay.matrix_utils.os.listdir")
 @patch("mmrelay.matrix_utils.os.path.exists")
+@patch("mmrelay.matrix_utils.os.path.isfile")
 @patch("builtins.open")
 @patch("mmrelay.matrix_utils.json.load")
 @patch("mmrelay.matrix_utils.save_credentials")
@@ -3177,6 +3178,7 @@ async def test_connect_matrix_missing_device_id_uses_direct_assignment(
     mock_json_load,
     _mock_open,
     _mock_exists,
+    _mock_isfile,
     _mock_listdir,
     _mock_makedirs,
     monkeypatch,
@@ -3186,6 +3188,7 @@ async def test_connect_matrix_missing_device_id_uses_direct_assignment(
     and then restore the session using the discovered device_id.
     """
     _mock_exists.return_value = True
+    _mock_isfile.return_value = True
     mock_json_load.return_value = {
         "homeserver": "https://matrix.example.org",
         "user_id": "@bot:example.org",
@@ -3254,14 +3257,15 @@ async def test_connect_matrix_missing_device_id_uses_direct_assignment(
     assert mock_client_instance.access_token == "test_token"
     assert mock_client_instance.user_id == "@bot:example.org"
     assert mock_client_instance.device_id == discovered_device_id
-    mock_save_credentials.assert_called_once_with(
-        {
-            "homeserver": "https://matrix.example.org",
-            "user_id": "@bot:example.org",
-            "access_token": "test_token",
-            "device_id": discovered_device_id,
-        }
-    )
+    mock_save_credentials.assert_called_once()
+    call_args = mock_save_credentials.call_args
+    assert call_args[0][0] == {
+        "homeserver": "https://matrix.example.org",
+        "user_id": "@bot:example.org",
+        "access_token": "test_token",
+        "device_id": discovered_device_id,
+    }
+    assert call_args[1]["credentials_path"].endswith("credentials.json")
 
 
 @pytest.mark.asyncio
