@@ -3564,6 +3564,86 @@ async def test_connect_matrix_sync_error_closes_client(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_connect_matrix_sync_validation_error_retries_with_invite_safe_filter(
+    monkeypatch,
+):
+    """ValidationError from invite events triggers invite-safe sync retry."""
+    import jsonschema
+
+    mock_client = MagicMock()
+    mock_client.rooms = {}
+    mock_client.sync = AsyncMock()
+    mock_client.should_upload_keys = False
+    mock_client.get_displayname = AsyncMock(
+        return_value=SimpleNamespace(displayname="Bot")
+    )
+    mock_client.close = AsyncMock()
+
+    # Set up two sync calls: first fails with ValidationError, second succeeds
+    call_count = [0]
+
+    async def mock_sync(*args, **kwargs):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            # First sync raises ValidationError (caught, triggers invite-safe filter)
+            raise jsonschema.exceptions.ValidationError(
+                message="Invalid schema",
+                path=(),
+                schema_path=(),
+            )
+        # Second sync succeeds (with invite-safe filter)
+        return SimpleNamespace()
+
+    mock_client.sync = mock_sync
+
+    # Set up mocks for connect_matrix
+    def fake_async_client(*_args, **_kwargs):
+        return mock_client
+
+    # Patch jsonschema.exceptions to simulate ImportError for ValidationError only
+    with (
+        patch("mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock()),
+        patch(
+            "mmrelay.matrix_utils._resolve_aliases_in_mapping",
+            AsyncMock(return_value=None),
+        ),
+        patch(
+            "mmrelay.matrix_utils._display_room_channel_mappings",
+            lambda *_args, **_kwargs: None,
+        ),
+        patch("mmrelay.matrix_utils.AsyncClient", fake_async_client),
+        patch("mmrelay.matrix_utils.matrix_client", None),
+        patch(
+            "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
+        ),
+        patch("mmrelay.e2ee_utils.get_room_encryption_warnings", return_value=[]),
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+    ):
+        config = {
+            "matrix": {
+                "homeserver": "https://example.org",
+                "access_token": "token",
+                "bot_user_id": "@bot:example.org",
+            },
+            "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
+        }
+
+        await connect_matrix(config)
+
+    # Verify that sync was called twice (initial failed, retry with invite-safe filter)
+    assert call_count[0] == 2
+
+    # Verify logging of retry behavior
+    mock_logger.warning.assert_any_call(
+        "Retrying initial sync without invites to tolerate invalid invite_state payloads."
+    )
+
+    # Verify client attributes were set with invite-safe filter
+    assert hasattr(mock_client, "mmrelay_sync_filter")
+    assert hasattr(mock_client, "mmrelay_first_sync_filter")
+
+
+@pytest.mark.asyncio
 async def test_connect_matrix_uploads_keys_when_needed(monkeypatch):
     """When should_upload_keys is True, keys_upload should be called once."""
     mock_client = MagicMock()
