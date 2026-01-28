@@ -52,6 +52,7 @@ from mmrelay.cli_utils import (
     msg_require_auth_login,
     msg_retry_auth_login,
 )
+from mmrelay.config import config_path as loaded_config_path
 from mmrelay.config import (
     get_base_dir,
     get_e2ee_store_dir,
@@ -1229,9 +1230,6 @@ async def connect_matrix(
 
     # Try to find credentials.json from explicit config, config directory, or base dir
     try:
-        from mmrelay.config import config_path as loaded_config_path
-        from mmrelay.config import get_base_dir
-
         explicit_path = None
         if isinstance(config, dict):
             explicit_path = config.get("credentials_path")
