@@ -50,8 +50,8 @@ kubectl create secret generic mmrelay-config \
 kubectl apply -k ./mmrelay-k8s
 
 # Check status
-kubectl get pods -l app=mmrelay
-kubectl logs -f deployment/mmrelay
+kubectl get pods -n mmrelay -l app=mmrelay
+kubectl logs -n mmrelay -f deployment/mmrelay
 ```
 
 ## Optional: pin the image digest
@@ -88,10 +88,10 @@ No manifest changes required. Configure `meshtastic.connection_type: tcp` in `co
 
 ### Serial
 
-Serial requires host device access and node pinning. Update `deployment.yaml` to mount the device via `hostPath` and adjust securityContext accordingly.
+Serial requires host device access and node pinning. Start with the most restrictive settings and only escalate if needed.
 
 ```yaml
-# Example snippet for deployment.yaml
+# 1) Mount the device
 volumes:
   - name: serial-device
     hostPath:
@@ -99,9 +99,24 @@ volumes:
 volumeMounts:
   - name: serial-device
     mountPath: /dev/ttyUSB0
-securityContext:
-  privileged: true # or use specific capabilities
 ```
+
+```yaml
+# 2) Pin to the node with the device
+nodeSelector:
+  kubernetes.io/hostname: node-with-device
+```
+
+```yaml
+# 3) Security context (least privilege first)
+securityContext:
+  runAsUser: 0
+  runAsGroup: 0
+  supplementalGroups:
+    - 20 # device group (often dialout)
+```
+
+If you still get permission errors, try adding capabilities. Only use `privileged: true` as a last resort.
 
 ### BLE
 

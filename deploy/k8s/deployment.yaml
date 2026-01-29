@@ -5,6 +5,7 @@ metadata:
   namespace: mmrelay
   annotations:
     checkov.io/skip1: CKV_K8S_43=Template uses a tag for readability; pin a digest in production.
+    checkov.io/skip2: CKV_K8S_35=Matrix auth uses env vars to bootstrap credentials.json on the PVC.
   labels:
     app: mmrelay
 spec:
@@ -79,7 +80,7 @@ spec:
               command:
                 - /bin/sh
                 - -c
-                - test -f /app/config.yaml
+                - test -s /app/data/logs/mmrelay.log
             initialDelaySeconds: 10
             periodSeconds: 30
             timeoutSeconds: 5
@@ -90,7 +91,7 @@ spec:
               subPath: config.yaml
               readOnly: true
             - name: data
-              mountPath: /app/data
+              mountPath: /app
             - name: tmp
               mountPath: /tmp
       volumes:

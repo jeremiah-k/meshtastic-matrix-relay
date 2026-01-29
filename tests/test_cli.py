@@ -539,6 +539,38 @@ class TestMainFunction(unittest.TestCase):
         self.assertEqual(result, 0)
         mock_run_main.assert_called_once_with(args)
 
+    @patch("mmrelay.cli.os.makedirs")
+    @patch("mmrelay.cli.os.path.expanduser")
+    @patch("mmrelay.cli.parse_arguments")
+    @patch("mmrelay.main.run_main")
+    def test_main_sets_custom_base_dir(
+        self, mock_run_main, mock_parse, mock_expanduser, mock_makedirs
+    ):
+        """
+        Verify that --base-dir expands user paths and sets custom_data_dir.
+        """
+        args = MagicMock()
+        args.command = None
+        args.check_config = False
+        args.install_service = False
+        args.generate_config = False
+        args.version = False
+        args.auth = False
+        args.base_dir = "~/mmrelay"
+        args.data_dir = None
+        mock_parse.return_value = args
+        mock_run_main.return_value = 0
+        mock_expanduser.return_value = "/home/test/mmrelay"
+
+        result = main()
+
+        import mmrelay.config
+
+        self.assertEqual(result, 0)
+        mock_expanduser.assert_called_once_with("~/mmrelay")
+        mock_makedirs.assert_called_once_with("/home/test/mmrelay", exist_ok=True)
+        self.assertEqual(mmrelay.config.custom_data_dir, "/home/test/mmrelay")
+
 
 class TestCLIValidationFunctions(unittest.TestCase):
     """Test cases for CLI validation helper functions."""

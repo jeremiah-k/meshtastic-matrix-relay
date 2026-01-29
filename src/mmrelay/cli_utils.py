@@ -575,7 +575,7 @@ async def logout_matrix_bot(password: str) -> bool:
             ssl_context = _create_ssl_context()
 
             # Create a temporary client to fetch user_id
-            ssl_param = cast(Any, ssl_context) if ssl_context is not None else None
+            ssl_param = cast(Any, ssl_context)
             temp_client = AsyncClient(homeserver, ssl=ssl_param)
             temp_client.access_token = access_token
 
@@ -654,7 +654,7 @@ async def logout_matrix_bot(password: str) -> bool:
 
         # Create a temporary client to verify the password
         # We'll try to login with the password to verify it's correct
-        ssl_param = cast(Any, ssl_context) if ssl_context is not None else None
+        ssl_param = cast(Any, ssl_context)
         temp_client = AsyncClient(homeserver_str, user_id_str, ssl=ssl_param)
 
         try:
