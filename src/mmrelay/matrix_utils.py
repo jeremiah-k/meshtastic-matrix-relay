@@ -1743,10 +1743,8 @@ async def connect_matrix(
                     return []
 
                 try:
-                    setattr(
-                        nio_responses.SyncResponse,
-                        "_get_invite_state",
-                        staticmethod(_safe_get_invite_state),
+                    nio_responses.SyncResponse._get_invite_state = staticmethod(
+                        _safe_get_invite_state
                     )
                     return await asyncio.wait_for(
                         matrix_client.sync(
@@ -1758,10 +1756,8 @@ async def connect_matrix(
                     )
                 finally:
                     if original_descriptor is not None:
-                        setattr(
-                            nio_responses.SyncResponse,
-                            "_get_invite_state",
-                            original_descriptor,
+                        nio_responses.SyncResponse._get_invite_state = (
+                            original_descriptor
                         )
 
             try:
