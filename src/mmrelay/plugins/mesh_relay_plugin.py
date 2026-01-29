@@ -100,9 +100,9 @@ class Plugin(BasePlugin):
     def _iter_room_configs(self) -> list[dict[str, Any]]:
         """
         Normalize configured Matrix room entries and return them as a list of dictionaries.
-        
+
         Accepts either a mapping or a list from the global `matrix_rooms` configuration, filters out any non-dictionary entries, and returns an empty list if the global config or `matrix_rooms` is missing or malformed.
-        
+
         Returns:
             A list of room configuration dictionaries.
         """

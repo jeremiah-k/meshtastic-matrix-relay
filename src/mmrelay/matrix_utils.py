@@ -236,11 +236,11 @@ def _extract_localpart_from_mxid(mxid: str | None) -> str | None:
 def _is_room_mapped(mapping: Any, room_id_or_alias: str) -> bool:
     """
     Determine whether a room ID or alias exists in a matrix_rooms configuration.
-    
+
     Parameters:
         mapping (list|dict): The matrix_rooms configuration (accepted as a list or dict form).
         room_id_or_alias (str): Room ID (e.g., "!abc:server") or room alias (e.g., "#room:server").
-    
+
     Returns:
         bool: `True` if the room ID or alias is present in the mapping, `False` otherwise.
     """
@@ -1252,15 +1252,15 @@ async def connect_matrix(
 ) -> AsyncClient | None:
     """
     Initialize and configure a Matrix AsyncClient using available credentials and configuration.
-    
+
     Attempts to authenticate (via credentials.json, automatic login, or config), enable end-to-end encryption when configured, perform an initial sync to populate room state, and return a ready-to-use AsyncClient.
-    
+
     Parameters:
         passed_config (dict[str, Any] | None): Optional configuration override for this connection attempt; when provided it is used instead of the module-level config for this call.
-    
+
     Returns:
         AsyncClient | None: A configured and initialized Matrix AsyncClient on success, or `None` if connection or credential setup failed.
-    
+
     Raises:
         ValueError: If the required top-level "matrix_rooms" configuration is missing.
         ConnectionError: If the initial Matrix sync fails or times out.
@@ -1761,12 +1761,12 @@ async def connect_matrix(
             async def _sync_ignore_invalid_invites() -> Any:
                 """
                 Perform a Matrix sync using an invite-safe filter while ignoring invalid invite_state payloads.
-                
+
                 Temporarily patches nio.responses.SyncResponse._get_invite_state so that malformed or schema-invalid
                 invite_state payloads are treated as empty (no invite events), invokes matrix_client.sync with the
                 invite-safe filter and configured timeouts, and restores the original _get_invite_state descriptor
                 before returning.
-                
+
                 Returns:
                     The SyncResponse object returned by the matrix client's sync call.
                 """
@@ -1782,14 +1782,14 @@ async def connect_matrix(
                 def _safe_get_invite_state(invite_state_dict: Any) -> list[Any]:
                     """
                     Safely extract a list of invite-state events from a raw invite_state mapping.
-                    
+
                     Attempts to parse `invite_state_dict["events"]` via an internal callable and returns the resulting list.
                     If `invite_state_dict` is not a dict, lacks an "events" key, or the parsing raises a JSON schema validation error,
                     an empty list is returned.
-                    
+
                     Parameters:
                         invite_state_dict (Any): Raw invite state payload (typically from a Matrix invite event).
-                    
+
                     Returns:
                         list[Any]: Parsed list of invite-state events, or an empty list on invalid/missing input or validation failure.
                     """
@@ -4028,9 +4028,9 @@ async def on_room_member(room: MatrixRoom, event: RoomMemberEvent) -> None:
 async def on_invite(room: MatrixRoom, event: InviteMemberEvent) -> None:
     """
     Handle an invite targeted at the bot and join the room when it is configured in matrix_rooms.
-    
+
     Attempts to join the invited room via the global matrix_client when all of the following are true: the event's state_key matches the bot's user id, the membership is "invite", and the room is present in the matrix_rooms configuration. Logs outcomes and failures; performs no return value.
-    
+
     Parameters:
         room (MatrixRoom): The Matrix room associated with the invite.
         event (InviteMemberEvent): The invite event containing membership and state_key information.
