@@ -1,6 +1,6 @@
 import asyncio
 import re
-from typing import Any, cast
+from typing import Any
 
 from meshtastic.mesh_interface import BROADCAST_NUM  # type: ignore[import-untyped]
 
@@ -183,7 +183,9 @@ class Plugin(BasePlugin):
         Returns:
             list[str]: A list containing the plugin's Matrix command (the plugin_name).
         """
-        return [cast(str, self.plugin_name)]
+        if self.plugin_name is None:
+            return []
+        return [self.plugin_name]
 
     def get_mesh_commands(self) -> list[str]:
         """
@@ -192,7 +194,9 @@ class Plugin(BasePlugin):
         Returns:
             list[str]: Command names provided by the plugin (typically a single-element list containing the plugin's name).
         """
-        return [cast(str, self.plugin_name)]
+        if self.plugin_name is None:
+            return []
+        return [self.plugin_name]
 
     async def handle_room_message(
         self,

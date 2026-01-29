@@ -13,6 +13,7 @@ import sys
 import time
 from types import SimpleNamespace
 from typing import (
+    TYPE_CHECKING,
     Any,
     Awaitable,
     Callable,
@@ -20,15 +21,13 @@ from typing import (
     Generator,
     Optional,
     Tuple,
+    Type,
     cast,
 )
 from urllib.parse import urlparse
 
-# jsonschema is a matrix-nio dependency but keep import guarded for safety.
-try:
-    import jsonschema  # type: ignore[import-untyped]
-except ImportError:  # pragma: no cover - jsonschema is expected in runtime
-    jsonschema = None  # type: ignore[assignment]
+if TYPE_CHECKING:
+    from jsonschema.exceptions import ValidationError
 
 # matrix-nio is not marked py.typed in our environment, so mypy treats it as untyped.
 from nio import (  # type: ignore[import-untyped]
@@ -50,13 +49,18 @@ from nio import (  # type: ignore[import-untyped]
 )
 
 # matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
-from nio.events.room_events import RoomMemberEvent  # type: ignore[import-untyped]
+from nio.events.room_events import (  # type: ignore[import-untyped]
+    RoomMemberEvent,
+)
 
 # Import InviteMemberEvent separately to avoid submodule import issues
 try:
-    from nio import InviteMemberEvent  # type: ignore[import-untyped]
+    from nio import InviteMemberEvent  # pyright: ignore[reportMissingImports]
 except ImportError:
-    from nio.events.invite_events import InviteMemberEvent  # type: ignore[import-untyped]
+    from nio.events.invite_events import (  # type: ignore[import-untyped]
+        InviteMemberEvent,
+    )
+
 from PIL import Image
 
 import mmrelay.config as config_module
@@ -150,15 +154,25 @@ NIO_COMM_EXCEPTIONS: tuple[type[BaseException], ...] = (
     NioRemoteTransportError,
     asyncio.TimeoutError,
 )
+# jsonschema is a matrix-nio dependency but keep import guarded for safety.
+jsonschema: Any = None
+try:
+    import jsonschema as _jsonschema  # pyright: ignore[reportMissingImports]  # type: ignore[import-untyped]
+
+    jsonschema = _jsonschema
+except ImportError:  # pragma: no cover - jsonschema is expected in runtime
+    pass
 # Provide a concrete ValidationError type for explicit exception handling.
 if jsonschema is not None:
-    JSONSCHEMA_VALIDATION_ERROR = jsonschema.exceptions.ValidationError
+    from jsonschema.exceptions import ValidationError as _ValidationError
+
+    JSONSCHEMA_VALIDATION_ERROR: Type[ValidationError] | Type[Exception] = (
+        _ValidationError
+    )
 else:
 
     class _JsonSchemaValidationError(Exception):
         """Fallback when jsonschema is unavailable."""
-
-        pass
 
     JSONSCHEMA_VALIDATION_ERROR = _JsonSchemaValidationError
 # Exception handling strategy:
@@ -1286,8 +1300,13 @@ async def connect_matrix(
             expanded_path = os.path.abspath(os.path.expanduser(explicit_path))
             path_is_dir = os.path.isdir(expanded_path)
             if not path_is_dir:
-                path_is_dir = expanded_path.endswith(os.path.sep) or (
-                    os.path.altsep and expanded_path.endswith(os.path.altsep)
+                path_is_dir = bool(
+                    expanded_path.endswith(
+                        os.path.sep
+                    )  # pyright: ignore[reportArgumentType]
+                    or (
+                        os.path.altsep and expanded_path.endswith(os.path.altsep)
+                    )  # pyright: ignore[reportArgumentType]
                 )
             if path_is_dir:
                 normalized_dir = expanded_path.rstrip(os.path.sep).rstrip(
@@ -1724,8 +1743,12 @@ async def connect_matrix(
                 ),
                 timeout=MATRIX_SYNC_OPERATION_TIMEOUT,
             )
-            matrix_client.mmrelay_sync_filter = invite_safe_filter
-            matrix_client.mmrelay_first_sync_filter = invite_safe_filter
+            matrix_client.mmrelay_sync_filter = (
+                invite_safe_filter  # pyright: ignore[reportAttributeAccessIssue]
+            )
+            matrix_client.mmrelay_first_sync_filter = (
+                invite_safe_filter  # pyright: ignore[reportAttributeAccessIssue]
+            )
             logger.info(
                 "Initial sync completed after invite-safe retry. "
                 "Invite handling is disabled for subsequent syncs."
@@ -1769,11 +1792,13 @@ async def connect_matrix(
                     return []
 
                 try:
-                    nio_responses.SyncResponse._get_invite_state = staticmethod(
-                        _safe_get_invite_state
+                    nio_responses.SyncResponse._get_invite_state = (
+                        staticmethod(  # pyright: ignore[reportAttributeAccessIssue]
+                            _safe_get_invite_state
+                        )
                     )
                     return await asyncio.wait_for(
-                        matrix_client.sync(
+                        matrix_client.sync(  # pyright: ignore[reportOptionalMemberAccess]
                             timeout=MATRIX_EARLY_SYNC_TIMEOUT,
                             full_state=False,
                             sync_filter=invite_safe_filter,
@@ -1788,8 +1813,12 @@ async def connect_matrix(
 
             try:
                 sync_response = await _sync_ignore_invalid_invites()
-                matrix_client.mmrelay_sync_filter = invite_safe_filter
-                matrix_client.mmrelay_first_sync_filter = invite_safe_filter
+                matrix_client.mmrelay_sync_filter = (
+                    invite_safe_filter  # pyright: ignore[reportAttributeAccessIssue]
+                )
+                matrix_client.mmrelay_first_sync_filter = (
+                    invite_safe_filter  # pyright: ignore[reportAttributeAccessIssue]
+                )
                 logger.info(
                     "Initial sync completed after invite-safe retry "
                     "with invalid invite_state payloads ignored."
@@ -1800,7 +1829,7 @@ async def connect_matrix(
                 logger.exception("Invite-ignoring sync retry cancelled")
                 await _close_matrix_client_after_failure("sync cancellation")
                 raise
-            except (
+            except (  # type: ignore[misc]
                 asyncio.TimeoutError,
                 NIO_COMM_EXCEPTIONS,
                 JSONSCHEMA_VALIDATION_ERROR,

@@ -630,8 +630,13 @@ def save_credentials(
             credentials_path = os.path.expanduser(credentials_path)
             path_is_dir = os.path.isdir(credentials_path)
             if not path_is_dir:
-                path_is_dir = credentials_path.endswith(os.path.sep) or (
-                    os.path.altsep and credentials_path.endswith(os.path.altsep)
+                path_is_dir = bool(
+                    credentials_path.endswith(
+                        os.path.sep
+                    )  # pyright: ignore[reportArgumentType]
+                    or (
+                        os.path.altsep and credentials_path.endswith(os.path.altsep)
+                    )  # pyright: ignore[reportArgumentType]
                 )
             if path_is_dir:
                 credentials_path = os.path.join(

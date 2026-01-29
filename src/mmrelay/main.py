@@ -35,7 +35,7 @@ from mmrelay.db_utils import (
     wipe_message_map,
 )
 from mmrelay.log_utils import get_logger
-from mmrelay.matrix_utils import InviteMemberEvent  # type: ignore[import-untyped]
+from mmrelay.matrix_utils import InviteMemberEvent  # type: ignore[attr-defined]
 from mmrelay.matrix_utils import (
     connect_matrix,
     join_matrix_room,

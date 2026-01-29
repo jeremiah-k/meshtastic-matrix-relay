@@ -7,7 +7,7 @@ import json
 import os
 import re
 import shutil
-import subprocess
+import subprocess  # nosec B404 - subprocess used for optional kubectl queries
 import tempfile
 from typing import Any
 
@@ -34,7 +34,7 @@ def _get_storage_classes_from_kubectl() -> list[tuple[str, bool]] | None:
         logger.debug("kubectl not found; skipping storage class discovery")
         return None
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 - kubectl path resolved from system, fixed args
             [kubectl, "get", "storageclass", "-o", "json"],
             capture_output=True,
             text=True,
@@ -86,7 +86,7 @@ def _get_current_namespace_from_kubectl() -> str | None:
         logger.debug("kubectl not found; skipping namespace discovery")
         return None
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 - kubectl path resolved from system, fixed args
             [kubectl, "config", "view", "--minify", "-o", "json"],
             capture_output=True,
             text=True,

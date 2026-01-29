@@ -5,7 +5,7 @@ import base64
 import binascii
 import json
 import re
-from typing import Any, cast
+from typing import Any, Iterable, cast
 
 from meshtastic import mesh_pb2  # type: ignore[import-untyped]
 
@@ -112,6 +112,7 @@ class Plugin(BasePlugin):
             return []
 
         matrix_rooms = global_config.get("matrix_rooms", [])
+        iterable_rooms: Iterable[Any] | None = None
         if isinstance(matrix_rooms, dict):
             iterable_rooms = matrix_rooms.values()
         elif isinstance(matrix_rooms, list):

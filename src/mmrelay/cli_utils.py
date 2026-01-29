@@ -422,14 +422,22 @@ def _handle_matrix_error(
         exception, "status_code"
     ):
         if (
-            hasattr(exception, "errcode") and exception.errcode == "M_FORBIDDEN"  # type: ignore[attr-defined]
-        ) or exception.status_code == 401:  # type: ignore[attr-defined]
+            hasattr(exception, "errcode")
+            and exception.errcode
+            == "M_FORBIDDEN"  # pyright: ignore[reportAttributeAccessIssue]
+        ) or exception.status_code == 401:  # pyright: ignore[reportAttributeAccessIssue]
             error_category = "credentials"
-        elif exception.status_code in [500, 502, 503]:  # type: ignore[attr-defined]
+        elif exception.status_code in [
+            500,
+            502,
+            503,
+        ]:  # pyright: ignore[reportAttributeAccessIssue]
             error_category = "server"
         else:
             error_category = "other"
-            error_detail = str(exception.status_code)  # type: ignore[attr-defined]
+            error_detail = str(
+                exception.status_code
+            )  # pyright: ignore[reportAttributeAccessIssue]
     # Handle network/transport exceptions
     elif isinstance(
         exception,
@@ -573,7 +581,9 @@ async def logout_matrix_bot(password: str) -> bool:
             ssl_context = _create_ssl_context()
 
             # Create a temporary client to fetch user_id
-            temp_client = AsyncClient(homeserver, ssl=ssl_context)  # type: ignore[arg-type]
+            temp_client = AsyncClient(
+                homeserver, ssl=ssl_context
+            )  # pyright: ignore[reportArgumentType]
             temp_client.access_token = access_token
 
             # Fetch user_id using whoami
@@ -583,7 +593,9 @@ async def logout_matrix_bot(password: str) -> bool:
             )
 
             if hasattr(whoami_response, "user_id"):
-                user_id = whoami_response.user_id  # type: ignore[assignment]
+                user_id = (
+                    whoami_response.user_id
+                )  # pyright: ignore[reportAttributeAccessIssue]
                 logger.info(f"Successfully fetched user_id: {user_id}")
                 print(f"✅ Successfully fetched user_id: {user_id}")
 

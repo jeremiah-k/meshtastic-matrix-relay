@@ -3,7 +3,10 @@ import contextlib
 import logging
 import os
 from logging.handlers import RotatingFileHandler
-from typing import Any, Dict, Iterator, Set
+from typing import TYPE_CHECKING, Any, Dict, Iterator, Set
+
+if TYPE_CHECKING:
+    from rich.console import Console
 
 # Import Rich components only when not running as a service
 try:
@@ -11,7 +14,6 @@ try:
 
     if not is_running_as_service():
         from rich.console import Console
-        from rich.logging import RichHandler
 
         RICH_AVAILABLE = True
     else:
@@ -30,9 +32,11 @@ from mmrelay.constants.messages import (
 
 # Initialize Rich console only if available
 if RICH_AVAILABLE:
-    console = Console()  # type: ignore[name-defined]
+    console: Console | None = (
+        Console()
+    )  # pyright: ignore[reportPossiblyUnboundVariable]
 else:
-    console = None
+    console = None  # pyright: ignore[reportAssignmentType]
 
 # Define custom log level styles - not used directly but kept for reference
 # Rich 14.0.0+ supports level_styles parameter, but we're using an approach
@@ -254,15 +258,19 @@ def _configure_logger(
     if not _cli_mode:
         if color_enabled and RICH_AVAILABLE:
             # Use Rich handler with colors
-            console_handler: logging.Handler = RichHandler(  # type: ignore[name-defined]
-                rich_tracebacks=rich_tracebacks_enabled,
-                console=console,
-                show_time=True,
-                show_level=True,
-                show_path=False,
-                markup=True,
-                log_time_format="%Y-%m-%d %H:%M:%S",
-                omit_repeated_times=False,
+            from rich.logging import RichHandler as _RichHandler
+
+            console_handler: logging.Handler = (
+                _RichHandler(  # pyright: ignore[reportPossiblyUnboundVariable]
+                    rich_tracebacks=rich_tracebacks_enabled,
+                    console=console,  # pyright: ignore[reportArgumentType]
+                    show_time=True,
+                    show_level=True,
+                    show_path=False,
+                    markup=True,
+                    log_time_format="%Y-%m-%d %H:%M:%S",
+                    omit_repeated_times=False,
+                )
             )
             console_handler.setFormatter(logging.Formatter("%(name)s: %(message)s"))
         else:

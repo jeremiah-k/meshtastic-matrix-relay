@@ -10,7 +10,7 @@ import os
 import platform
 import re
 import shutil
-import subprocess
+import subprocess  # nosec B404 - subprocess used for kubectl/oc work in user-invoked CLI flows
 import sys
 import tempfile
 from collections.abc import Mapping
@@ -1818,7 +1818,7 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
                         "yaml",
                     ]
                     try:
-                        create_result = subprocess.run(
+                        create_result = subprocess.run(  # nosec B603 - command constructed from trusted CLI/config inputs
                             create_cmd,
                             capture_output=True,
                             text=True,
@@ -1834,7 +1834,7 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
                             print(create_result.stderr.strip())
                             create_secret_now = False
                         else:
-                            apply_result = subprocess.run(
+                            apply_result = subprocess.run(  # nosec B603 - command constructed from trusted CLI/config inputs
                                 [kubectl, "apply", "-f", "-"],
                                 input=create_result.stdout,
                                 capture_output=True,
@@ -1888,7 +1888,7 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
                                 "-o",
                                 "yaml",
                             ]
-                            create_result = subprocess.run(
+                            create_result = subprocess.run(  # nosec B603 - command constructed from trusted CLI/config inputs
                                 create_cmd,
                                 capture_output=True,
                                 text=True,
@@ -1900,7 +1900,7 @@ def handle_k8s_command(args: argparse.Namespace) -> int:
                                 print(create_result.stderr.strip())
                                 create_secret_now = False
                             else:
-                                apply_result = subprocess.run(
+                                apply_result = subprocess.run(  # nosec B603 - command constructed from trusted CLI/config inputs
                                     [kubectl, "apply", "-f", "-"],
                                     input=create_result.stdout,
                                     capture_output=True,
