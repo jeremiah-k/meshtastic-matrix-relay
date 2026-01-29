@@ -1495,7 +1495,7 @@ class TestConfigUncoveredLines(unittest.TestCase):
 
     @patch("mmrelay.config.os.path.exists")
     @patch("mmrelay.config.get_base_dir", return_value="/test/base")
-    def test_load_credentials_no_file_windows(self, mock_get_base_dir, mock_exists):
+    def test_load_credentials_no_file_windows(self, _mock_get_base_dir, mock_exists):
         """Test load_credentials on Windows (lines 610-618)."""
 
         def mock_exists_side_effect(path):
@@ -1521,7 +1521,7 @@ class TestConfigUncoveredLines(unittest.TestCase):
         ):
             log_debug = []
 
-            def mock_debug(*args, **kwargs):
+            def mock_debug(*args, **_kwargs):
                 """
                 Append the first positional argument to the global `log_debug` list.
 
@@ -1546,7 +1546,12 @@ class TestConfigUncoveredLines(unittest.TestCase):
         read_data=json.dumps({"access_token": "test"}),
     )
     def test_load_credentials_path_without_dirname(
-        self, mock_open, mock_exists, mock_base, mock_expand, mock_isdir
+        self,
+        _mock_open,
+        _mock_exists,
+        _mock_base,
+        _mock_expand,
+        _mock_isdir,
     ):
         """Test load_credentials with path without dirname (lines 594-595)."""
         with patch.dict(os.environ, {"MMRELAY_CREDENTIALS_PATH": "credentials.json"}):
@@ -1559,7 +1564,12 @@ class TestConfigUncoveredLines(unittest.TestCase):
     @patch("mmrelay.config.set_secure_file_permissions")
     @patch("mmrelay.config.os.path.exists", return_value=True)
     def test_save_credentials_verification(
-        self, mock_exists, mock_perm, mock_open, mock_mkdir, mock_base
+        self,
+        _mock_exists,
+        _mock_perm,
+        _mock_open,
+        _mock_mkdir,
+        _mock_base,
     ):
         """Test save_credentials verification (line 693)."""
         log_debug = []
@@ -1573,11 +1583,11 @@ class TestConfigUncoveredLines(unittest.TestCase):
 
     @patch("mmrelay.config.get_base_dir", return_value="/test/base")
     @patch("mmrelay.config.os.makedirs", side_effect=OSError("Permission denied"))
-    def test_save_credentials_windows_error_guidance(self, mock_mkdir, mock_base):
+    def test_save_credentials_windows_error_guidance(self, _mock_mkdir, _mock_base):
         """Test save_credentials Windows error guidance (lines 701-704)."""
         log_error = []
 
-        def mock_error(*args, **kwargs):
+        def mock_error(*args, **_kwargs):
             """
             Capture the first positional argument as an error message by appending it to the shared `log_error` list.
 
@@ -1602,7 +1612,7 @@ class TestConfigUncoveredLines(unittest.TestCase):
         """Test _get_mapping_section when section exists but is not dict (lines 493-497)."""
         log_warning = []
 
-        def mock_warning(*args, **kwargs):
+        def mock_warning(*args, **_kwargs):
             """
             Capture a warning message by appending the first positional argument to the `log_warning` list.
 
@@ -1630,7 +1640,7 @@ class TestConfigUncoveredLines(unittest.TestCase):
     @patch("mmrelay.config.os.path.isfile", return_value=True)
     @patch("builtins.open", new_callable=mock_open, read_data="")
     @patch("mmrelay.config.yaml.load", return_value=None)
-    def test_load_config_empty_file(self, mock_load, mock_open, mock_isfile):
+    def test_load_config_empty_file(self, _mock_load, _mock_open, _mock_isfile):
         """Test load_config with empty file (line 958)."""
         config = load_config("/test/empty.yaml")
         self.assertEqual(config, {})

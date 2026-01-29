@@ -9,6 +9,7 @@ import functools
 import os
 import signal
 import sys
+from pathlib import Path
 from typing import Any, cast
 
 from aiohttp import ClientError
@@ -107,10 +108,8 @@ def _touch_ready_file() -> None:
     if not _ready_file_path:
         return
     try:
-        if os.path.exists(_ready_file_path):
-            os.utime(_ready_file_path, None)
-        else:
-            _write_ready_file()
+        Path(_ready_file_path).touch(exist_ok=True)
+        logger.debug("Touched readiness file: %s", _ready_file_path)
     except OSError:
         logger.debug(
             "Failed to touch readiness file: %s", _ready_file_path, exc_info=True

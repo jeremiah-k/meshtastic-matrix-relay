@@ -92,31 +92,48 @@ No manifest changes required. Configure `meshtastic.connection_type: tcp` in `co
 
 Serial requires host device access and node pinning. Start with the most restrictive settings and only escalate if needed.
 
-```yaml
-# 1) Mount the device
-volumes:
-  - name: serial-device
-    hostPath:
-      path: /dev/ttyUSB0
-volumeMounts:
-  - name: serial-device
-    mountPath: /dev/ttyUSB0
-```
+1. Add the device mount to the container:
 
-```yaml
-# 2) Pin to the node with the device
-nodeSelector:
-  kubernetes.io/hostname: node-with-device
-```
+   In `deploy/k8s/deployment.yaml`, add this entry under
+   `spec.template.spec.containers[0].volumeMounts`:
 
-```yaml
-# 3) Security context (least privilege first)
-securityContext:
-  runAsUser: 0
-  runAsGroup: 0
-  supplementalGroups:
-    - 20 # device group (often dialout)
-```
+   ```yaml
+   - name: serial-device
+     mountPath: /dev/ttyUSB0
+   ```
+
+2. Add the hostPath volume:
+
+   In the same file, add this under `spec.template.spec.volumes`:
+
+   ```yaml
+   - name: serial-device
+     hostPath:
+       path: /dev/ttyUSB0
+       type: CharDevice
+   ```
+
+3. Pin the pod to the node with the device:
+
+   Add this under `spec.template.spec`:
+
+   ```yaml
+   nodeSelector:
+     kubernetes.io/hostname: node-with-device
+   ```
+
+4. Use a minimal security context (least privilege first):
+
+   Update `spec.template.spec.containers[0].securityContext`:
+
+   ```yaml
+   securityContext:
+     runAsUser: 0
+     runAsGroup: 0
+     supplementalGroups:
+       - 20 # device group (often dialout)
+     allowPrivilegeEscalation: false
+   ```
 
 If you still get permission errors, try adding capabilities. Only use `privileged: true` as a last resort.
 
