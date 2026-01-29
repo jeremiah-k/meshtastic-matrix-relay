@@ -1,6 +1,6 @@
 # Kubernetes Deployment Guide
 
-> **Note**: Kubernetes deployment is supported via static manifests. No generator is required.
+> **Note**: Kubernetes deployment is currently in testing and development. We welcome feedback to help improve the manifests and deployment experience.
 
 This guide uses the static manifests in `deploy/k8s/`. Copy them into your deployment repo, create a Secret with your `config.yaml`, then apply.
 
