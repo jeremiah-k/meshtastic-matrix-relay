@@ -51,6 +51,12 @@ from nio import (  # type: ignore[import-untyped]
 
 # matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
 from nio.events.room_events import RoomMemberEvent  # type: ignore[import-untyped]
+
+# Import InviteMemberEvent separately to avoid submodule import issues
+try:
+    from nio import InviteMemberEvent  # type: ignore[import-untyped]
+except ImportError:
+    from nio.events.invite_events import InviteMemberEvent  # type: ignore[import-untyped]
 from PIL import Image
 
 import mmrelay.config as config_module
@@ -213,6 +219,26 @@ def _extract_localpart_from_mxid(mxid: str | None) -> str | None:
     if mxid.startswith("@"):
         return mxid[1:].split(":", 1)[0]
     return mxid
+
+
+def _is_room_mapped(mapping: Any, room_id_or_alias: str) -> bool:
+    """
+    Check if a room ID or alias is present in the matrix_rooms configuration.
+
+    Parameters:
+        mapping (list|dict): The matrix_rooms configuration from config.yaml.
+        room_id_or_alias (str): Room ID (e.g., "!abc:server") or alias (e.g., "#room:server").
+
+    Returns:
+        bool: True if the room ID or alias is found in the mapping, False otherwise.
+    """
+    if not isinstance(mapping, (list, dict)):
+        return False
+
+    for alias_or_id, _setter in _iter_room_alias_entries(mapping):
+        if alias_or_id == room_id_or_alias:
+            return True
+    return False
 
 
 def _iter_room_alias_entries(
@@ -3952,3 +3978,69 @@ async def on_room_member(room: MatrixRoom, event: RoomMemberEvent) -> None:
     # but no explicit action is needed since room.user_name() automatically
     # handles room-specific display names after the room state is updated.
     pass
+
+
+async def on_invite(room: MatrixRoom, event: InviteMemberEvent) -> None:
+    """
+    Handle room invitation events and automatically join mapped rooms.
+
+    Checks if the invitation is for the bot (state_key matches bot_user_id),
+    verifies the room is configured in matrix_rooms, and joins the room
+    if both conditions are met. Logs the outcome for all scenarios.
+
+    Parameters:
+        room (MatrixRoom): The Matrix room for the invite.
+        event (InviteMemberEvent): The invite event containing membership details.
+    """
+    global bot_user_id, matrix_rooms, matrix_client
+
+    # Only process invites directed at the bot
+    if event.state_key != bot_user_id:
+        logger.debug(
+            f"Ignoring invite for {event.state_key} (not for bot {bot_user_id})"
+        )
+        return
+
+    # Only process "invite" membership events
+    if event.membership != "invite":
+        logger.debug(f"Ignoring non-invite membership event: {event.membership}")
+        return
+
+    room_id = room.room_id
+
+    # Check if room is in matrix_rooms configuration
+    if matrix_rooms and _is_room_mapped(matrix_rooms, room_id):
+        logger.info(
+            f"Room '{room_id}' is in matrix_rooms configuration, accepting invite"
+        )
+    else:
+        logger.info(
+            f"Room '{room_id}' is not in matrix_rooms configuration, ignoring invite"
+        )
+        return
+
+    if not matrix_client:
+        logger.error("matrix_client is None, cannot join room")
+        return
+
+    # Join the room if mapped and we're not already in it
+    try:
+        if room_id not in matrix_client.rooms:
+            logger.info(f"Joining mapped room '{room_id}'...")
+            response = await matrix_client.join(room_id)
+            joined_room_id = getattr(response, "room_id", None) if response else None
+            if joined_room_id:
+                logger.info(f"Successfully joined room '{joined_room_id}'")
+            else:
+                error_details = (
+                    getattr(response, "message", response)
+                    if response
+                    else "No response from server"
+                )
+                logger.error(f"Failed to join room '{room_id}': {error_details}")
+        else:
+            logger.debug(f"Bot is already in room '{room_id}', no action needed")
+    except NIO_COMM_EXCEPTIONS:
+        logger.exception(f"Error joining room '{room_id}'")
+    except Exception:
+        logger.exception(f"Unexpected error joining room '{room_id}'")

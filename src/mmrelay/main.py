@@ -22,6 +22,14 @@ from nio import (  # type: ignore[import-untyped]
 )
 from nio.events.room_events import RoomMemberEvent  # type: ignore[import-untyped]
 
+# Import InviteMemberEvent separately to avoid submodule import issues
+try:
+    from nio import InviteMemberEvent  # type: ignore[import-untyped]
+except ImportError:
+    from nio.events.invite_events import (
+        InviteMemberEvent,  # type: ignore[import-untyped]
+    )
+
 # Import version from package
 # Import meshtastic_utils as a module to set event_loop
 from mmrelay import __version__, meshtastic_utils
@@ -42,6 +50,7 @@ from mmrelay.matrix_utils import (
 from mmrelay.matrix_utils import logger as matrix_logger
 from mmrelay.matrix_utils import (
     on_decryption_failure,
+    on_invite,
     on_room_member,
     on_room_message,
 )
@@ -168,6 +177,10 @@ async def main(config: dict[str, Any]) -> None:
     # Add RoomMemberEvent callback to track room-specific display name changes
     matrix_client.add_event_callback(
         cast(Any, on_room_member), cast(Any, (RoomMemberEvent,))
+    )
+    # Add InviteMemberEvent callback to automatically join mapped rooms on invite
+    matrix_client.add_event_callback(
+        cast(Any, on_invite), cast(Any, (InviteMemberEvent,))
     )
 
     # Set up shutdown event

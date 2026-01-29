@@ -605,14 +605,14 @@ def save_credentials(
 ) -> None:
     """
     Persist a JSON-serializable credentials mapping to a credentials.json file.
-    
+
     If `credentials_path` is provided it is used as the target file or directory; if it refers to a directory (or ends with a path separator) "credentials.json" is appended. If `credentials_path` is not provided the path is resolved in order from: the `MMRELAY_CREDENTIALS_PATH` environment variable, `relay_config["credentials_path"]`, and `relay_config["matrix"]["credentials_path"]` (when `matrix` is a dict). The function creates the target directory if missing and, on Unix-like systems, attempts to set restrictive file permissions (0o600). I/O and permission errors are caught and logged; they are not raised.
-    
+
     Parameters:
         credentials (dict): JSON-serializable mapping of credentials to persist.
         credentials_path (str | None): Optional path or directory override for where to save credentials.json.
             If omitted, the path is resolved from environment/config defaults.
-    
+
     Returns:
         None
     """
