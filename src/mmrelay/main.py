@@ -22,14 +22,6 @@ from nio import (  # type: ignore[import-untyped]
 )
 from nio.events.room_events import RoomMemberEvent  # type: ignore[import-untyped]
 
-# Import InviteMemberEvent separately to avoid submodule import issues
-try:
-    from nio import InviteMemberEvent  # type: ignore[import-untyped]
-except ImportError:
-    from nio.events.invite_events import (
-        InviteMemberEvent,  # type: ignore[import-untyped]
-    )
-
 # Import version from package
 # Import meshtastic_utils as a module to set event_loop
 from mmrelay import __version__, meshtastic_utils
@@ -43,6 +35,7 @@ from mmrelay.db_utils import (
     wipe_message_map,
 )
 from mmrelay.log_utils import get_logger
+from mmrelay.matrix_utils import InviteMemberEvent  # type: ignore[import-untyped]
 from mmrelay.matrix_utils import (
     connect_matrix,
     join_matrix_room,
