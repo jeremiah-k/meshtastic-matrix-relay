@@ -6,6 +6,7 @@ It uses Meshtastic-python and Matrix nio client library to interface with the ra
 import asyncio
 import concurrent.futures
 import functools
+import os
 import signal
 import sys
 from typing import Any, cast
@@ -62,6 +63,44 @@ logger = get_logger(name=APP_DISPLAY_NAME)
 
 # Flag to track if banner has been printed
 _banner_printed = False
+_ready_file_path = os.environ.get("MMRELAY_READY_FILE", "/tmp/ready")
+
+
+def _write_ready_file() -> None:
+    """
+    Write a readiness marker file for Kubernetes probes.
+
+    The file path can be overridden via MMRELAY_READY_FILE; defaults to /tmp/ready.
+    """
+    if not _ready_file_path:
+        return
+    try:
+        ready_dir = os.path.dirname(_ready_file_path)
+        if ready_dir:
+            os.makedirs(ready_dir, exist_ok=True)
+        with open(_ready_file_path, "w", encoding="utf-8"):
+            pass
+        logger.debug("Wrote readiness file: %s", _ready_file_path)
+    except OSError:
+        logger.debug(
+            "Failed to write readiness file: %s", _ready_file_path, exc_info=True
+        )
+
+
+def _remove_ready_file() -> None:
+    """
+    Remove the readiness marker file on shutdown.
+    """
+    if not _ready_file_path:
+        return
+    try:
+        if os.path.exists(_ready_file_path):
+            os.remove(_ready_file_path)
+            logger.debug("Removed readiness file: %s", _ready_file_path)
+    except OSError:
+        logger.debug(
+            "Failed to remove readiness file: %s", _ready_file_path, exc_info=True
+        )
 
 
 def print_banner() -> None:
@@ -175,6 +214,9 @@ async def main(config: dict[str, Any]) -> None:
     matrix_client.add_event_callback(
         cast(Any, on_invite), cast(Any, (InviteMemberEvent,))
     )
+
+    # Signal readiness after core services and callbacks are initialized.
+    _write_ready_file()
 
     # Set up shutdown event
     shutdown_event = asyncio.Event()
@@ -302,6 +344,7 @@ async def main(config: dict[str, Any]) -> None:
     except KeyboardInterrupt:
         shutdown()
     finally:
+        _remove_ready_file()
         # Cleanup
         matrix_logger.info("Stopping plugins...")
         await loop.run_in_executor(None, shutdown_plugins)

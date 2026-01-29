@@ -26,7 +26,7 @@ spec:
       containers:
         - name: mmrelay
           image: ghcr.io/jeremiah-k/mmrelay:1.2.9
-          imagePullPolicy: Always
+          imagePullPolicy: IfNotPresent
           command:
             - mmrelay
           args:
@@ -80,7 +80,7 @@ spec:
               command:
                 - /bin/sh
                 - -c
-                - test -s /app/data/logs/mmrelay.log
+                - test -f /tmp/ready
             initialDelaySeconds: 10
             periodSeconds: 30
             timeoutSeconds: 5

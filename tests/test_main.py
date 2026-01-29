@@ -2125,5 +2125,19 @@ class TestMainAsyncFunction(unittest.TestCase):
         asyncio.set_event_loop(None)
 
 
+def test_ready_file_helpers(tmp_path, monkeypatch) -> None:
+    """Ready file helpers should create and remove the marker."""
+    import mmrelay.main as main_module
+
+    ready_path = tmp_path / "ready"
+    monkeypatch.setattr(main_module, "_ready_file_path", str(ready_path))
+
+    main_module._write_ready_file()
+    assert ready_path.exists()
+
+    main_module._remove_ready_file()
+    assert not ready_path.exists()
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -59,7 +59,7 @@ kubectl logs -n mmrelay -f deployment/mmrelay
 ## Optional: pin the image digest
 
 If you want immutable image references, use the digest overlay. Replace the
-placeholder digest in `deploy/k8s/overlays/digest/kustomization.yaml`, then:
+placeholder digest in `./mmrelay-k8s/overlays/digest/kustomization.yaml`, then:
 
 ```bash
 kubectl apply -k ./mmrelay-k8s/overlays/digest
@@ -122,8 +122,15 @@ If you still get permission errors, try adding capabilities. Only use `privilege
 
 ### BLE
 
-BLE is difficult to run in Kubernetes. Use TCP or serial whenever possible.
+BLE is difficult to run in Kubernetes. Use TCP or serial whenever possible. If you must use BLE, expect additional host access and security considerations:
+
+- Host networking and node pinning are typically required for stable BLE access.
+- You may need access to the host Bluetooth stack (BlueZ) via DBus and elevated permissions.
+- Start with the least privilege that works; only use privileged mode as a last resort.
+
+Because environments differ widely, treat BLE support in Kubernetes as experimental.
 
 ## Notes
 
 The default manifest sets `MMRELAY_CREDENTIALS_PATH=/app/data/credentials.json` so credentials created during first-run login persist on the PVC even when you authenticate via environment variables.
+The default NetworkPolicy allows all egress; restrict CIDRs as needed for production.
