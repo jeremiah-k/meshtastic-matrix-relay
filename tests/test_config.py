@@ -1520,5 +1520,121 @@ class TestGetMeshtasticConfigValueUncoveredLines(unittest.TestCase):
         self.assertEqual(result["matrix"]["bot_user_id"], "@bot:example.org")
 
 
+class TestConfigUncoveredLines(unittest.TestCase):
+    """Test uncovered lines in config.py."""
+
+    @patch("mmrelay.config.os.path.exists")
+    @patch("mmrelay.config.get_base_dir", return_value="/test/base")
+    def test_load_credentials_no_file_windows(self, mock_get_base_dir, mock_exists):
+        """Test load_credentials on Windows (lines 610-618)."""
+
+        def mock_exists_side_effect(path):
+            if path == "/test/base/credentials.json":
+                return False
+            elif path == "/test/base":
+                return True
+            return False
+
+        mock_exists.side_effect = mock_exists_side_effect
+
+        with patch("sys.platform", "win32"), patch(
+            "mmrelay.config.os.listdir", return_value=["config.yaml"]
+        ):
+            log_debug = []
+
+            def mock_debug(*args, **kwargs):
+                log_debug.append(args[0])
+
+            with patch.object(mmrelay.config.logger, "debug", side_effect=mock_debug):
+                result = load_credentials()
+                self.assertIsNone(result)
+                self.assertTrue(any("Directory contents" in msg for msg in log_debug))
+
+    @patch("mmrelay.config.os.path.isdir", return_value=False)
+    @patch("mmrelay.config.os.path.expanduser", return_value="credentials.json")
+    @patch("mmrelay.config.get_base_dir", return_value="/test/base")
+    @patch("mmrelay.config.os.path.exists", return_value=True)
+    @patch(
+        "builtins.open",
+        new_callable=mock_open,
+        read_data=json.dumps({"access_token": "test"}),
+    )
+    def test_load_credentials_path_without_dirname(
+        self, mock_open, mock_exists, mock_base, mock_expand, mock_isdir
+    ):
+        """Test load_credentials with path without dirname (lines 594-595)."""
+        with patch.dict(os.environ, {"MMRELAY_CREDENTIALS_PATH": "credentials.json"}):
+            result = load_credentials()
+            self.assertEqual(result, {"access_token": "test"})
+
+    @patch("mmrelay.config.get_base_dir", return_value="/test/base")
+    @patch("mmrelay.config.os.makedirs")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("mmrelay.config.set_secure_file_permissions")
+    @patch("mmrelay.config.os.path.exists", return_value=True)
+    def test_save_credentials_verification(
+        self, mock_exists, mock_perm, mock_open, mock_mkdir, mock_base
+    ):
+        """Test save_credentials verification (line 693)."""
+        log_debug = []
+        with patch.object(
+            mmrelay.config.logger, "debug", side_effect=lambda x: log_debug.append(x)
+        ):
+            save_credentials({"access_token": "test"})
+            self.assertTrue(
+                any("Verified credentials.json exists" in msg for msg in log_debug)
+            )
+
+    @patch("mmrelay.config.get_base_dir", return_value="/test/base")
+    @patch("mmrelay.config.os.makedirs", side_effect=OSError("Permission denied"))
+    def test_save_credentials_windows_error_guidance(self, mock_mkdir, mock_base):
+        """Test save_credentials Windows error guidance (lines 701-704)."""
+        log_error = []
+
+        def mock_error(*args, **kwargs):
+            log_error.append(args[0])
+
+        with patch("sys.platform", "win32"), patch.object(
+            mmrelay.config.logger, "error", side_effect=mock_error
+        ):
+            save_credentials({"access_token": "test"})
+            self.assertTrue(
+                any(
+                    "On Windows, ensure the application has write permissions" in msg
+                    for msg in log_error
+                )
+            )
+
+    def test_get_mapping_section_not_dict(self):
+        """Test _get_mapping_section when section exists but is not dict (lines 493-497)."""
+        log_warning = []
+
+        def mock_warning(*args, **kwargs):
+            log_warning.append(args[0])
+
+        with patch.object(mmrelay.config.logger, "warning", side_effect=mock_warning):
+            config = {"section": "not a dict"}
+            result = mmrelay.config._get_mapping_section(config, "section")
+            self.assertIsNone(result)
+            self.assertTrue(any("not a mapping" in msg for msg in log_warning))
+
+    @patch(
+        "mmrelay.config._load_config_from_env_mapping", return_value={"level": "debug"}
+    )
+    def test_load_logging_config_with_filename(self, mock_load):
+        """Test load_logging_config_from_env with filename (lines 349-350)."""
+        mock_load.return_value = {"filename": "/test/log.txt"}
+        config = load_logging_config_from_env()
+        self.assertTrue(config.get("log_to_file"))
+
+    @patch("mmrelay.config.os.path.isfile", return_value=True)
+    @patch("builtins.open", new_callable=mock_open, read_data="")
+    @patch("mmrelay.config.yaml.load", return_value=None)
+    def test_load_config_empty_file(self, mock_load, mock_open, mock_isfile):
+        """Test load_config with empty file (line 958)."""
+        config = load_config("/test/empty.yaml")
+        self.assertEqual(config, {})
+
+
 if __name__ == "__main__":
     unittest.main()
