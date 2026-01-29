@@ -2,13 +2,12 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: mmrelay-data
-  namespace: {{NAMESPACE}}
+  namespace: mmrelay
   labels:
     app: mmrelay
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: {{STORAGE_CLASS}}
   resources:
     requests:
-      storage: {{STORAGE_SIZE}}
+      storage: 1Gi

@@ -1,0 +1,105 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mmrelay
+  namespace: mmrelay
+  annotations:
+    checkov.io/skip1: CKV_K8S_43=Template uses a tag for readability; pin a digest in production.
+  labels:
+    app: mmrelay
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mmrelay
+  template:
+    metadata:
+      labels:
+        app: mmrelay
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mmrelay
+          image: ghcr.io/jeremiah-k/mmrelay:1.2.9
+          imagePullPolicy: Always
+          command:
+            - mmrelay
+          args:
+            - --config
+            - /app/config.yaml
+            - --data-dir
+            - /app/data
+            - --logfile
+            - /app/data/logs/mmrelay.log
+          env:
+            - name: TZ
+              value: UTC
+            - name: PYTHONUNBUFFERED
+              value: "1" # yamllint disable-line rule:quoted-strings
+            - name: MPLCONFIGDIR
+              value: /tmp/matplotlib
+          envFrom:
+            - secretRef:
+                name: mmrelay-matrix-auth
+                optional: true
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - kill -0 1
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - test -f /app/config.yaml && test -f /app/data/credentials.json
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+              readOnly: true
+            - name: data
+              mountPath: /app/data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          secret:
+            secretName: mmrelay-config
+            items:
+              - key: config.yaml
+                path: config.yaml
+        - name: data
+          persistentVolumeClaim:
+            claimName: mmrelay-data
+        - name: tmp
+          emptyDir: {}
