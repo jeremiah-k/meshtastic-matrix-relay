@@ -20,6 +20,8 @@ kubectl create namespace mmrelay --dry-run=client -o yaml | kubectl apply -f -
 
 # Edit namespace/image tag in kustomization.yaml if desired
 $EDITOR ./mmrelay-k8s/kustomization.yaml
+# If you change the namespace above, update the --namespace/-n flags below to match
+# for secret creation and kubectl apply/get/log commands.
 
 # Create config.yaml from the project sample
 curl -Lo ./config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample_config.yaml

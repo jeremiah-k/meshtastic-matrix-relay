@@ -562,14 +562,18 @@ class TestMainFunction(unittest.TestCase):
         mock_run_main.return_value = 0
         mock_expanduser.return_value = "/home/test/mmrelay"
 
-        result = main()
-
         import mmrelay.config
 
-        self.assertEqual(result, 0)
-        mock_expanduser.assert_called_once_with("~/mmrelay")
-        mock_makedirs.assert_called_once_with("/home/test/mmrelay", exist_ok=True)
-        self.assertEqual(mmrelay.config.custom_data_dir, "/home/test/mmrelay")
+        original_custom_data_dir = mmrelay.config.custom_data_dir
+        try:
+            result = main()
+
+            self.assertEqual(result, 0)
+            mock_expanduser.assert_called_once_with("~/mmrelay")
+            mock_makedirs.assert_called_once_with("/home/test/mmrelay", exist_ok=True)
+            self.assertEqual(mmrelay.config.custom_data_dir, "/home/test/mmrelay")
+        finally:
+            mmrelay.config.custom_data_dir = original_custom_data_dir
 
 
 class TestCLIValidationFunctions(unittest.TestCase):
