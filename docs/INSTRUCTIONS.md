@@ -124,10 +124,11 @@ mmrelay [OPTIONS]
 Options:
   -h, --help            Show this help message and exit
   --config PATH         Path to the configuration file
-  --data-dir PATH       Base directory for all data (logs, database, plugins)
+  --base-dir PATH       Base directory for all data (logs, database, plugins)
+  --data-dir PATH       Deprecated alias for --base-dir
   --log-level {error,warning,info,debug}
                         Set logging level
-  --logfile PATH        Path to log file (can be overridden by --data-dir)
+  --logfile PATH        Path to log file (can be overridden by --base-dir)
   --version             Show version and exit
 Commands:
   config                Configuration management

@@ -54,6 +54,7 @@ class TestCLI(unittest.TestCase):
         with patch("sys.argv", ["mmrelay"]):
             args = parse_arguments()
             self.assertIsNone(args.config)
+            self.assertIsNone(args.base_dir)
             self.assertIsNone(args.data_dir)
             self.assertIsNone(args.log_level)
             self.assertIsNone(args.logfile)
@@ -69,6 +70,8 @@ class TestCLI(unittest.TestCase):
                 "mmrelay",
                 "--config",
                 "myconfig.yaml",
+                "--base-dir",
+                "/my/base",
                 "--data-dir",
                 "/my/data",
                 "--log-level",
@@ -83,6 +86,7 @@ class TestCLI(unittest.TestCase):
         ):
             args = parse_arguments()
             self.assertEqual(args.config, "myconfig.yaml")
+            self.assertEqual(args.base_dir, "/my/base")
             self.assertEqual(args.data_dir, "/my/data")
             self.assertEqual(args.log_level, "debug")
             self.assertEqual(args.logfile, "/my/log.txt")

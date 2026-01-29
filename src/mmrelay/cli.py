@@ -67,7 +67,7 @@ def parse_arguments() -> argparse.Namespace:
     """
     Builds and parses the command-line interface for the Meshtastic Matrix Relay, including modern grouped subcommands and legacy hidden flags.
 
-    Supports global options (--config, --data-dir, --log-level, --logfile, --version), grouped subcommands (config, auth, service) and hidden backward-compatible flags (--generate-config, --install-service, --check-config, --auth). Unknown arguments are ignored when running outside of test environments; a warning is printed if unknown args are present and the process does not appear to be a test run.
+    Supports global options (--config, --base-dir, --data-dir, --log-level, --logfile, --version), grouped subcommands (config, auth, service) and hidden backward-compatible flags (--generate-config, --install-service, --check-config, --auth). Unknown arguments are ignored when running outside of test environments; a warning is printed if unknown args are present and the process does not appear to be a test run.
 
     Returns:
         Parsed argparse.Namespace containing the resolved command, subcommand, and option values.
@@ -77,8 +77,13 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument("--config", help="Path to config file", default=None)
     parser.add_argument(
-        "--data-dir",
+        "--base-dir",
         help="Base directory for all data (logs, database, plugins)",
+        default=None,
+    )
+    parser.add_argument(
+        "--data-dir",
+        help="Deprecated: use --base-dir instead",
         default=None,
     )
     parser.add_argument(
@@ -89,7 +94,7 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "--logfile",
-        help="Path to log file (can be overridden by --data-dir)",
+        help="Path to log file (can be overridden by --base-dir)",
         default=None,
     )
     parser.add_argument("--version", action="store_true", help="Show version and exit")
@@ -1323,14 +1328,27 @@ def main() -> int:
 
         args = parse_arguments()
 
-        # Handle the --data-dir option
-        if args and args.data_dir:
+        # Handle the --base-dir/--data-dir options
+        if args and (args.base_dir or args.data_dir):
             import mmrelay.config
 
-            # Set the global custom_data_dir variable
-            mmrelay.config.custom_data_dir = os.path.abspath(args.data_dir)
-            # Create the directory if it doesn't exist
-            os.makedirs(mmrelay.config.custom_data_dir, exist_ok=True)
+            if args.base_dir and args.data_dir:
+                print(
+                    "Warning: --data-dir is deprecated and ignored when --base-dir is provided.",
+                    file=sys.stderr,
+                )
+            elif args.data_dir:
+                print(
+                    "Warning: --data-dir is deprecated. Use --base-dir instead.",
+                    file=sys.stderr,
+                )
+
+            base_dir = args.base_dir or args.data_dir
+            if base_dir:
+                # Set the global custom_data_dir variable
+                mmrelay.config.custom_data_dir = os.path.abspath(base_dir)
+                # Create the directory if it doesn't exist
+                os.makedirs(mmrelay.config.custom_data_dir, exist_ok=True)
 
         args_dict = vars(args)
         has_modern_command = bool(getattr(args, "command", None))

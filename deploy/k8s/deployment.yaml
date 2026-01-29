@@ -31,8 +31,8 @@ spec:
           args:
             - --config
             - /app/config.yaml
-            - --data-dir
-            - /app/data
+            - --base-dir
+            - /app
             - --logfile
             - /app/data/logs/mmrelay.log
           env:
