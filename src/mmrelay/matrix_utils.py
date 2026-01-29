@@ -247,10 +247,10 @@ def _is_room_mapped(mapping: Any, room_id_or_alias: str) -> bool:
     if not isinstance(mapping, (list, dict)):
         return False
 
-    for alias_or_id, _setter in _iter_room_alias_entries(mapping):
-        if alias_or_id == room_id_or_alias:
-            return True
-    return False
+    return any(
+        alias_or_id == room_id_or_alias
+        for alias_or_id, _ in _iter_room_alias_entries(mapping)
+    )
 
 
 def _iter_room_alias_entries(
@@ -4028,15 +4028,12 @@ async def on_invite(room: MatrixRoom, event: InviteMemberEvent) -> None:
     room_id = room.room_id
 
     # Check if room is in matrix_rooms configuration
-    if matrix_rooms and _is_room_mapped(matrix_rooms, room_id):
-        logger.info(
-            f"Room '{room_id}' is in matrix_rooms configuration, accepting invite"
-        )
-    else:
+    if not _is_room_mapped(matrix_rooms, room_id):
         logger.info(
             f"Room '{room_id}' is not in matrix_rooms configuration, ignoring invite"
         )
         return
+    logger.info(f"Room '{room_id}' is in matrix_rooms configuration, accepting invite")
 
     if not matrix_client:
         logger.error("matrix_client is None, cannot join room")
