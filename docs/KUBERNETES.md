@@ -28,6 +28,9 @@ $EDITOR ./config.yaml
 #   e2ee:
 #     store_path: /app/data/store
 
+# The default manifest already sets MMRELAY_CREDENTIALS_PATH=/app/data/credentials.json
+# so credentials will persist on the PVC even if you leave this commented out.
+
 # Create a Matrix auth secret (environment-based auth)
 kubectl create secret generic mmrelay-matrix-auth \
   --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.example.org \

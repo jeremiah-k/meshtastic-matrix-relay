@@ -42,6 +42,8 @@ spec:
               value: "1" # yamllint disable-line rule:quoted-strings
             - name: MPLCONFIGDIR
               value: /tmp/matplotlib
+            - name: MMRELAY_CREDENTIALS_PATH
+              value: /app/data/credentials.json
           envFrom:
             - secretRef:
                 name: mmrelay-matrix-auth

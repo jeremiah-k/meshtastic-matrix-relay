@@ -938,6 +938,28 @@ class TestCredentials(unittest.TestCase):
         self.assertEqual(result, {"user_id": "test", "access_token": "token"})
 
     @patch("mmrelay.config.os.path.exists", return_value=True)
+    @patch("mmrelay.config.os.path.isdir", return_value=False)
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("mmrelay.config.json.load")
+    def test_load_credentials_from_env_var(
+        self,
+        mock_json_load,
+        _mock_open,
+        _mock_isdir,
+        _mock_exists,
+    ):
+        """Test credential loading using MMRELAY_CREDENTIALS_PATH."""
+        mock_json_load.return_value = {"user_id": "env", "access_token": "token"}
+        original_env = os.environ.copy()
+        try:
+            os.environ["MMRELAY_CREDENTIALS_PATH"] = "/custom/creds.json"
+            result = load_credentials()
+        finally:
+            os.environ.clear()
+            os.environ.update(original_env)
+        self.assertEqual(result, {"user_id": "env", "access_token": "token"})
+
+    @patch("mmrelay.config.os.path.exists", return_value=True)
     @patch("builtins.open", side_effect=OSError("Permission denied"))
     def test_load_credentials_os_error(self, _mock_open, _mock_exists):
         """Test credential loading with an OSError."""
