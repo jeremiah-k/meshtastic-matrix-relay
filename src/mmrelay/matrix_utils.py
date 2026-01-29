@@ -27,7 +27,7 @@ from typing import (
 from urllib.parse import urlparse
 
 if TYPE_CHECKING:
-    from jsonschema.exceptions import ValidationError
+    pass
 
 # matrix-nio is not marked py.typed in our environment, so mypy treats it as untyped.
 from nio import (  # type: ignore[import-untyped]
@@ -1741,12 +1741,8 @@ async def connect_matrix(
                 ),
                 timeout=MATRIX_SYNC_OPERATION_TIMEOUT,
             )
-            matrix_client.mmrelay_sync_filter = (
-                invite_safe_filter  # pyright: ignore[reportAttributeAccessIssue]
-            )
-            matrix_client.mmrelay_first_sync_filter = (
-                invite_safe_filter  # pyright: ignore[reportAttributeAccessIssue]
-            )
+            cast(Any, matrix_client).mmrelay_sync_filter = invite_safe_filter
+            cast(Any, matrix_client).mmrelay_first_sync_filter = invite_safe_filter
             logger.info(
                 "Initial sync completed after invite-safe retry. "
                 "Invite handling is disabled for subsequent syncs."
@@ -1811,12 +1807,8 @@ async def connect_matrix(
 
             try:
                 sync_response = await _sync_ignore_invalid_invites()
-                matrix_client.mmrelay_sync_filter = (
-                    invite_safe_filter  # pyright: ignore[reportAttributeAccessIssue]
-                )
-                matrix_client.mmrelay_first_sync_filter = (
-                    invite_safe_filter  # pyright: ignore[reportAttributeAccessIssue]
-                )
+                cast(Any, matrix_client).mmrelay_sync_filter = invite_safe_filter
+                cast(Any, matrix_client).mmrelay_first_sync_filter = invite_safe_filter
                 logger.info(
                     "Initial sync completed after invite-safe retry "
                     "with invalid invite_state payloads ignored."

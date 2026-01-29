@@ -14,12 +14,15 @@ try:
 
     if not is_running_as_service():
         from rich.console import Console
+        from rich.logging import RichHandler
 
         RICH_AVAILABLE = True
     else:
         RICH_AVAILABLE = False
+        RichHandler = None  # type: ignore[assignment]
 except ImportError:
     RICH_AVAILABLE = False
+    RichHandler = None  # type: ignore[assignment]
 
 # Import parse_arguments only when needed to avoid conflicts with pytest
 from mmrelay.config import get_log_dir
@@ -256,12 +259,10 @@ def _configure_logger(
 
     # Add handler for console logging (with or without colors), unless in CLI mode.
     if not _cli_mode:
-        if color_enabled and RICH_AVAILABLE:
+        if color_enabled and RICH_AVAILABLE and RichHandler is not None:
             # Use Rich handler with colors
-            from rich.logging import RichHandler as _RichHandler
-
             console_handler: logging.Handler = (
-                _RichHandler(  # pyright: ignore[reportPossiblyUnboundVariable]
+                RichHandler(  # pyright: ignore[reportPossiblyUnboundVariable]
                     rich_tracebacks=rich_tracebacks_enabled,
                     console=console,  # pyright: ignore[reportArgumentType]
                     show_time=True,

@@ -418,26 +418,20 @@ def _handle_matrix_error(
     error_detail = None
 
     # Handle specific Matrix-nio exceptions
-    if isinstance(exception, (NioLoginError, NioLogoutError)) and hasattr(
-        exception, "status_code"
-    ):
-        if (
-            hasattr(exception, "errcode")
-            and exception.errcode
-            == "M_FORBIDDEN"  # pyright: ignore[reportAttributeAccessIssue]
-        ) or exception.status_code == 401:  # pyright: ignore[reportAttributeAccessIssue]
+    if isinstance(exception, (NioLoginError, NioLogoutError)):
+        errcode = getattr(exception, "errcode", None)
+        status_code = getattr(exception, "status_code", None)
+        if errcode == "M_FORBIDDEN" or status_code == 401:
             error_category = "credentials"
-        elif exception.status_code in [
+        elif status_code in [
             500,
             502,
             503,
-        ]:  # pyright: ignore[reportAttributeAccessIssue]
+        ]:
             error_category = "server"
         else:
             error_category = "other"
-            error_detail = str(
-                exception.status_code
-            )  # pyright: ignore[reportAttributeAccessIssue]
+            error_detail = str(status_code)
     # Handle network/transport exceptions
     elif isinstance(
         exception,
@@ -581,9 +575,7 @@ async def logout_matrix_bot(password: str) -> bool:
             ssl_context = _create_ssl_context()
 
             # Create a temporary client to fetch user_id
-            temp_client = AsyncClient(
-                homeserver, ssl=ssl_context
-            )  # pyright: ignore[reportArgumentType]
+            temp_client = AsyncClient(homeserver, ssl=cast(Any, ssl_context))
             temp_client.access_token = access_token
 
             # Fetch user_id using whoami
@@ -592,10 +584,8 @@ async def logout_matrix_bot(password: str) -> bool:
                 timeout=MATRIX_LOGIN_TIMEOUT,
             )
 
-            if hasattr(whoami_response, "user_id"):
-                user_id = (
-                    whoami_response.user_id
-                )  # pyright: ignore[reportAttributeAccessIssue]
+            user_id = getattr(whoami_response, "user_id", None)
+            if user_id:
                 logger.info(f"Successfully fetched user_id: {user_id}")
                 print(f"✅ Successfully fetched user_id: {user_id}")
 
