@@ -6,6 +6,7 @@ metadata:
   annotations:
     checkov.io/skip1: CKV_K8S_43=Template uses a tag for readability; pin a digest in production.
     checkov.io/skip2: CKV_K8S_35=Matrix auth uses env vars to bootstrap credentials.json on the PVC.
+    checkov.io/skip3: CKV_K8S_15=Versioned tags are immutable; digest overlay is available for production pinning.
   labels:
     app: mmrelay
 spec:
@@ -70,7 +71,7 @@ spec:
               command:
                 - /bin/sh
                 - -c
-                - kill -0 1
+                - test -f /tmp/ready && find /tmp/ready -mmin -2 -print -quit | grep -q .
             initialDelaySeconds: 30
             periodSeconds: 30
             timeoutSeconds: 5

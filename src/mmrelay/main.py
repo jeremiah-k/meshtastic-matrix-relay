@@ -63,7 +63,10 @@ logger = get_logger(name=APP_DISPLAY_NAME)
 
 # Flag to track if banner has been printed
 _banner_printed = False
-_ready_file_path = os.environ.get("MMRELAY_READY_FILE", "/tmp/ready")
+_ready_file_path = os.environ.get(
+    "MMRELAY_READY_FILE", "/tmp/ready"
+)  # nosec B108 - k8s readiness marker with env override.
+_ready_heartbeat_seconds = int(os.environ.get("MMRELAY_READY_HEARTBEAT_SECONDS", "60"))
 
 
 def _write_ready_file() -> None:
@@ -85,6 +88,36 @@ def _write_ready_file() -> None:
         logger.debug(
             "Failed to write readiness file: %s", _ready_file_path, exc_info=True
         )
+
+
+def _touch_ready_file() -> None:
+    """
+    Update the readiness marker timestamp.
+
+    If the file doesn't exist yet, it is created.
+    """
+    if not _ready_file_path:
+        return
+    try:
+        if os.path.exists(_ready_file_path):
+            os.utime(_ready_file_path, None)
+        else:
+            _write_ready_file()
+    except OSError:
+        logger.debug(
+            "Failed to touch readiness file: %s", _ready_file_path, exc_info=True
+        )
+
+
+async def _ready_heartbeat(shutdown_event: asyncio.Event) -> None:
+    """
+    Periodically refresh the readiness marker while the app is running.
+    """
+    if _ready_heartbeat_seconds <= 0:
+        return
+    while not shutdown_event.is_set():
+        _touch_ready_file()
+        await asyncio.sleep(_ready_heartbeat_seconds)
 
 
 def _remove_ready_file() -> None:
@@ -215,11 +248,14 @@ async def main(config: dict[str, Any]) -> None:
         cast(Any, on_invite), cast(Any, (InviteMemberEvent,))
     )
 
-    # Signal readiness after core services and callbacks are initialized.
-    _write_ready_file()
-
     # Set up shutdown event
     shutdown_event = asyncio.Event()
+
+    # Signal readiness after core services and callbacks are initialized.
+    _write_ready_file()
+    ready_task: asyncio.Task[None] | None = None
+    if _ready_heartbeat_seconds > 0:
+        ready_task = asyncio.create_task(_ready_heartbeat(shutdown_event))
 
     def _set_shutdown_flag() -> None:
         """
@@ -344,6 +380,12 @@ async def main(config: dict[str, Any]) -> None:
     except KeyboardInterrupt:
         shutdown()
     finally:
+        if ready_task is not None:
+            ready_task.cancel()
+            try:
+                await ready_task
+            except asyncio.CancelledError:
+                pass
         _remove_ready_file()
         # Cleanup
         matrix_logger.info("Stopping plugins...")

@@ -2135,6 +2135,10 @@ def test_ready_file_helpers(tmp_path, monkeypatch) -> None:
     main_module._write_ready_file()
     assert ready_path.exists()
 
+    previous_mtime = ready_path.stat().st_mtime
+    main_module._touch_ready_file()
+    assert ready_path.stat().st_mtime >= previous_mtime
+
     main_module._remove_ready_file()
     assert not ready_path.exists()
 
