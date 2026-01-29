@@ -466,7 +466,6 @@ def cleanup_asyncmock_objects(request):
         "test_async_patterns",
         "test_matrix_utils",
         "test_matrix_utils_edge_cases",
-        "test_matrix_utils_invite",
         "test_mesh_relay_plugin",
         "test_map_plugin",
         "test_meshtastic_utils",

@@ -79,7 +79,7 @@ spec:
               command:
                 - /bin/sh
                 - -c
-                - test -f /app/config.yaml && test -f /app/data/credentials.json
+                - test -f /app/config.yaml
             initialDelaySeconds: 10
             periodSeconds: 30
             timeoutSeconds: 5

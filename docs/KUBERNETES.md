@@ -15,6 +15,9 @@ This guide uses the static manifests in `deploy/k8s/`. Copy them into your deplo
 # Copy the static manifests into your deployment repo
 cp -R deploy/k8s ./mmrelay-k8s
 
+# Ensure the namespace exists
+kubectl create namespace mmrelay --dry-run=client -o yaml | kubectl apply -f -
+
 # Edit namespace/image tag in kustomization.yaml if desired
 $EDITOR ./mmrelay-k8s/kustomization.yaml
 
@@ -87,6 +90,23 @@ No manifest changes required. Configure `meshtastic.connection_type: tcp` in `co
 
 Serial requires host device access and node pinning. Update `deployment.yaml` to mount the device via `hostPath` and adjust securityContext accordingly.
 
+```yaml
+# Example snippet for deployment.yaml
+volumes:
+  - name: serial-device
+    hostPath:
+      path: /dev/ttyUSB0
+volumeMounts:
+  - name: serial-device
+    mountPath: /dev/ttyUSB0
+securityContext:
+  privileged: true # or use specific capabilities
+```
+
 ### BLE
 
 BLE is difficult to run in Kubernetes. Use TCP or serial whenever possible.
+
+## Notes
+
+The default manifest sets `MMRELAY_CREDENTIALS_PATH=/app/data/credentials.json` so credentials created during first-run login persist on the PVC even when you authenticate via environment variables.

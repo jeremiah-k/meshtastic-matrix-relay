@@ -1346,7 +1346,8 @@ def main() -> int:
             base_dir = args.base_dir or args.data_dir
             if base_dir:
                 # Set the global custom_data_dir variable
-                mmrelay.config.custom_data_dir = os.path.abspath(base_dir)
+                expanded_base_dir = os.path.expanduser(base_dir)
+                mmrelay.config.custom_data_dir = os.path.abspath(expanded_base_dir)
                 # Create the directory if it doesn't exist
                 os.makedirs(mmrelay.config.custom_data_dir, exist_ok=True)
 
