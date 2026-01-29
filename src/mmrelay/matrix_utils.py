@@ -166,9 +166,7 @@ except ImportError:  # pragma: no cover - jsonschema is expected in runtime
 if jsonschema is not None:
     from jsonschema.exceptions import ValidationError as _ValidationError
 
-    JSONSCHEMA_VALIDATION_ERROR: Type[ValidationError] | Type[Exception] = (
-        _ValidationError
-    )
+    JSONSCHEMA_VALIDATION_ERROR: Type[BaseException] = _ValidationError
 else:
 
     class _JsonSchemaValidationError(Exception):
