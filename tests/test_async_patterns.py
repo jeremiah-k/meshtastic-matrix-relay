@@ -21,7 +21,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from mmrelay.matrix_utils import connect_matrix, matrix_relay
+from mmrelay.matrix_utils import (
+    NioLocalTransportError,
+    connect_matrix,
+    matrix_relay,
+)
 
 
 class TestAsyncPatterns(unittest.TestCase):
@@ -183,9 +187,9 @@ class TestAsyncPatterns(unittest.TestCase):
 
     def test_async_error_propagation(self):
         """
-        Test that exceptions in async operations are correctly propagated and can be handled by the caller.
+        Verify that exceptions raised by async operations during Matrix connection are either handled or propagated with the expected message.
 
-        This test verifies that when an async method raises an exception, the exception is either handled gracefully by the function under test or properly propagated to the caller for handling.
+        Patches the Matrix AsyncClient to raise during sync and asserts that connect_matrix either returns a non-None client (indicating graceful handling) or raises a ConnectionError whose message contains "Matrix sync failed".
         """
 
         async def test_error_handling():
@@ -202,7 +206,9 @@ class TestAsyncPatterns(unittest.TestCase):
                 with patch("mmrelay.matrix_utils.AsyncClient") as mock_client_class:
                     mock_client = AsyncMock()
                     mock_client.rooms = {}
-                    mock_client.sync.side_effect = Exception("Connection failed")
+                    mock_client.sync.side_effect = NioLocalTransportError(
+                        "Connection failed"
+                    )
                     mock_client_class.return_value = mock_client
 
                     # Should handle the exception gracefully
@@ -210,9 +216,9 @@ class TestAsyncPatterns(unittest.TestCase):
                         result = await connect_matrix(self.config)
                         # connect_matrix should handle errors and return client anyway
                         self.assertIsNotNone(result)
-                    except Exception as e:
+                    except ConnectionError as e:
                         # If exception is raised, it should be the expected one
-                        self.assertIn("Connection failed", str(e))
+                        self.assertIn("Matrix sync failed", str(e))
 
         # Run the error handling test
         asyncio.run(test_error_handling())

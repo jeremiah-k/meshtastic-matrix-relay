@@ -236,8 +236,16 @@ async def main(config: dict[str, Any]) -> None:
                     meshtastic_logger.warning("Meshtastic client is not connected.")
 
                 matrix_logger.info("Starting Matrix sync loop...")
+                sync_filter = getattr(matrix_client, "mmrelay_sync_filter", None)
+                first_sync_filter = getattr(
+                    matrix_client, "mmrelay_first_sync_filter", None
+                )
                 sync_task = asyncio.create_task(
-                    matrix_client.sync_forever(timeout=30000)
+                    matrix_client.sync_forever(
+                        timeout=30000,
+                        sync_filter=sync_filter,
+                        first_sync_filter=first_sync_filter,
+                    )
                 )
 
                 shutdown_task = asyncio.create_task(shutdown_event.wait())

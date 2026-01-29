@@ -957,10 +957,332 @@ class TestCredentials(unittest.TestCase):
     def test_save_credentials_file_open_failure(
         self, _mock_open, _mock_makedirs, _mock_get_base_dir
     ):
-        """Test credential saving when opening the file fails."""
+        """Test credential saving when opening file fails."""
         credentials = {"user_id": "test"}
         result = save_credentials(credentials)
         self.assertIsNone(result)
+
+    @patch("mmrelay.config.get_base_dir", return_value="/fake/dir")
+    @patch("mmrelay.config.os.makedirs")
+    @patch("mmrelay.config.os.path.join", side_effect=os.path.join)
+    @patch("mmrelay.config.os.path.dirname", side_effect=os.path.dirname)
+    @patch("mmrelay.config.os.path.isdir", return_value=False)
+    @patch("builtins.open", new_callable=mock_open)
+    def test_save_credentials_trailing_separator_treated_as_dir(
+        self,
+        _mock_open,
+        _mock_makedirs,
+        _mock_dirname,
+        _mock_join,
+        _mock_get_base_dir,
+        _mock_isdir,
+    ):
+        """Test credentials_path with trailing separator is treated as directory."""
+        credentials = {"user_id": "test", "access_token": "token"}
+
+        from mmrelay import config as config_module
+
+        original_relay_config = config_module.relay_config.copy()
+        original_env = os.environ.copy()
+        try:
+            config_module.relay_config = {}
+            os.environ["MMRELAY_CREDENTIALS_PATH"] = "/custom/dir/"
+
+            save_credentials(credentials)
+
+            _mock_makedirs.assert_called_once()
+            _mock_open.assert_called_once()
+            call_args = _mock_open.call_args
+            final_path = call_args[0][0]
+            self.assertTrue(
+                final_path.endswith("credentials.json"),
+                f"Should append credentials.json: {final_path}",
+            )
+            self.assertEqual(
+                final_path,
+                "/custom/dir/credentials.json",
+                "Should append credentials.json to directory path with trailing separator",
+            )
+        finally:
+            config_module.relay_config = original_relay_config
+            os.environ.clear()
+            os.environ.update(original_env)
+
+    @patch("mmrelay.config.get_base_dir", return_value="/fake/dir")
+    @patch("mmrelay.config.os.makedirs")
+    @patch("mmrelay.config.os.path.join", side_effect=os.path.join)
+    @patch("mmrelay.config.os.path.isdir", return_value=False)
+    @patch("builtins.open", new_callable=mock_open)
+    def test_save_credentials_from_env_var(
+        self,
+        _mock_open,
+        _mock_makedirs,
+        _mock_join,
+        _mock_get_base_dir,
+        _mock_isdir,
+    ):
+        """Test save_credentials uses MMRELAY_CREDENTIALS_PATH environment variable."""
+        credentials = {"user_id": "test", "access_token": "token"}
+
+        from mmrelay import config as config_module
+
+        original_relay_config = config_module.relay_config.copy()
+        original_env = os.environ.copy()
+        try:
+            config_module.relay_config = {}
+            os.environ["MMRELAY_CREDENTIALS_PATH"] = "/custom/creds.json"
+
+            save_credentials(credentials)
+
+            _mock_makedirs.assert_called_once()
+            _mock_open.assert_called_once()
+            call_args = _mock_open.call_args
+            final_path = call_args[0][0]
+            self.assertEqual(
+                final_path,
+                "/custom/creds.json",
+                "Should use path from MMRELAY_CREDENTIALS_PATH environment variable",
+            )
+        finally:
+            config_module.relay_config = original_relay_config
+            os.environ.clear()
+            os.environ.update(original_env)
+
+    @patch("mmrelay.config.get_base_dir", return_value="/fake/dir")
+    @patch("mmrelay.config.os.makedirs")
+    @patch("mmrelay.config.os.path.join", side_effect=os.path.join)
+    @patch("mmrelay.config.os.path.isdir", return_value=False)
+    @patch("builtins.open", new_callable=mock_open)
+    def test_save_credentials_from_relay_config(
+        self,
+        _mock_open,
+        _mock_makedirs,
+        _mock_join,
+        _mock_get_base_dir,
+        _mock_isdir,
+    ):
+        """Test save_credentials uses relay_config['credentials_path'] when env var not set."""
+        credentials = {"user_id": "test", "access_token": "token"}
+
+        from mmrelay import config as config_module
+
+        original_relay_config = config_module.relay_config.copy()
+        original_env = os.environ.copy()
+        try:
+            config_module.relay_config = {"credentials_path": "/config/creds.json"}
+
+            save_credentials(credentials)
+
+            _mock_makedirs.assert_called_once()
+            _mock_open.assert_called_once()
+            call_args = _mock_open.call_args
+            final_path = call_args[0][0]
+            self.assertEqual(
+                final_path,
+                "/config/creds.json",
+                "Should use path from relay_config['credentials_path']",
+            )
+        finally:
+            config_module.relay_config = original_relay_config
+            os.environ.clear()
+            os.environ.update(original_env)
+
+    @patch("mmrelay.config.get_base_dir", return_value="/fake/dir")
+    @patch("mmrelay.config.os.makedirs")
+    @patch("mmrelay.config.os.path.join", side_effect=os.path.join)
+    @patch("mmrelay.config.os.path.isdir", return_value=False)
+    @patch("builtins.open", new_callable=mock_open)
+    def test_save_credentials_from_matrix_config(
+        self,
+        _mock_open,
+        _mock_makedirs,
+        _mock_join,
+        _mock_get_base_dir,
+        _mock_isdir,
+    ):
+        """Test save_credentials uses relay_config['matrix']['credentials_path'] as fallback."""
+        credentials = {"user_id": "test", "access_token": "token"}
+
+        from mmrelay import config as config_module
+
+        original_relay_config = config_module.relay_config.copy()
+        original_env = os.environ.copy()
+        try:
+            config_module.relay_config = {
+                "matrix": {"credentials_path": "/matrix/creds.json"}
+            }
+
+            save_credentials(credentials)
+
+            _mock_makedirs.assert_called_once()
+            _mock_open.assert_called_once()
+            call_args = _mock_open.call_args
+            final_path = call_args[0][0]
+            self.assertEqual(
+                final_path,
+                "/matrix/creds.json",
+                "Should use path from relay_config['matrix']['credentials_path']",
+            )
+        finally:
+            config_module.relay_config = original_relay_config
+            os.environ.clear()
+            os.environ.update(original_env)
+
+    @patch("mmrelay.config.get_base_dir", return_value="/fake/dir")
+    @patch("mmrelay.config.os.makedirs")
+    @patch("mmrelay.config.os.path.join", side_effect=os.path.join)
+    @patch("builtins.open", new_callable=mock_open)
+    def test_save_credentials_from_matrix_config_not_dict(
+        self,
+        _mock_open,
+        _mock_makedirs,
+        _mock_join,
+        _mock_get_base_dir,
+    ):
+        """Test save_credentials when matrix config is not a dict."""
+        credentials = {"user_id": "test", "access_token": "token"}
+
+        from mmrelay import config as config_module
+
+        original_relay_config = config_module.relay_config.copy()
+        original_env = os.environ.copy()
+        try:
+            config_module.relay_config = {"matrix": "not_a_dict"}
+
+            save_credentials(credentials)
+
+            _mock_makedirs.assert_called_once()
+            _mock_open.assert_called_once()
+            call_args = _mock_open.call_args
+            final_path = call_args[0][0]
+            self.assertEqual(
+                final_path,
+                "/fake/dir/credentials.json",
+                "Should use get_base_dir() when matrix config is not a dict",
+            )
+        finally:
+            config_module.relay_config = original_relay_config
+            os.environ.clear()
+            os.environ.update(original_env)
+
+    @patch("mmrelay.config.get_base_dir", return_value="/actual/directory")
+    @patch("mmrelay.config.os.makedirs")
+    @patch("mmrelay.config.os.path.join", side_effect=os.path.join)
+    @patch("mmrelay.config.os.path.isdir", return_value=True)
+    @patch("builtins.open", new_callable=mock_open)
+    def test_save_credentials_actual_directory_path(
+        self,
+        _mock_open,
+        _mock_makedirs,
+        _mock_join,
+        _mock_get_base_dir,
+        _mock_isdir,
+    ):
+        """Test save_credentials when path is an actual directory (via os.path.isdir)."""
+        credentials = {"user_id": "test", "access_token": "token"}
+
+        from mmrelay import config as config_module
+
+        original_relay_config = config_module.relay_config.copy()
+        original_env = os.environ.copy()
+        try:
+            config_module.relay_config = {}
+            os.environ["MMRELAY_CREDENTIALS_PATH"] = "/actual/directory"
+
+            save_credentials(credentials)
+
+            _mock_makedirs.assert_called_once()
+            _mock_open.assert_called_once()
+            call_args = _mock_open.call_args
+            final_path = call_args[0][0]
+            self.assertEqual(
+                final_path,
+                "/actual/directory/credentials.json",
+                "Should append credentials.json to actual directory",
+            )
+        finally:
+            config_module.relay_config = original_relay_config
+            os.environ.clear()
+            os.environ.update(original_env)
+
+    @patch("mmrelay.config.get_base_dir", return_value="/custom/dir")
+    @patch("mmrelay.config.os.makedirs")
+    @patch.object(os.path, "altsep", "\\")
+    @patch("builtins.open", new_callable=mock_open)
+    def test_save_credentials_altsep_path_detection(
+        self, _mock_open, _mock_makedirs, _mock_get_base_dir
+    ):
+        """Test save_credentials detects path ending with altsep (Windows separator) as directory."""
+        credentials = {"user_id": "test", "access_token": "token"}
+
+        from mmrelay import config as config_module
+
+        original_relay_config = config_module.relay_config.copy()
+        original_env = os.environ.copy()
+        try:
+            config_module.relay_config = {}
+            os.environ["MMRELAY_CREDENTIALS_PATH"] = "/custom/dir/"
+
+            save_credentials(credentials)
+
+            _mock_open.assert_called_once()
+            call_args = _mock_open.call_args
+            final_path = call_args[0][0]
+            self.assertTrue(
+                final_path.endswith("credentials.json"),
+                f"Should append credentials.json: {final_path}",
+            )
+        finally:
+            config_module.relay_config = original_relay_config
+            os.environ.clear()
+            os.environ.update(original_env)
+
+    @patch("mmrelay.config.get_base_dir", return_value="/base/dir")
+    @patch("mmrelay.config.os.makedirs")
+    @patch("mmrelay.config.os.path.join", side_effect=os.path.join)
+    @patch("mmrelay.config.os.path.dirname", return_value="")
+    @patch("mmrelay.config.os.path.basename", return_value="creds.json")
+    @patch("mmrelay.config.os.path.isdir", return_value=False)
+    @patch("mmrelay.config.os.path.expanduser", side_effect=lambda x: x)
+    @patch("builtins.open", new_callable=mock_open)
+    def test_save_credentials_empty_config_dir_uses_base_dir(
+        self,
+        _mock_open,
+        _mock_expanduser,
+        _mock_isdir,
+        _mock_basename,
+        _mock_dirname,
+        _mock_join,
+        _mock_makedirs,
+        _mock_get_base_dir,
+    ):
+        """Test save_credentials uses get_base_dir when config_dir is empty."""
+        credentials = {"user_id": "test", "access_token": "token"}
+
+        from mmrelay import config as config_module
+
+        original_relay_config = config_module.relay_config.copy()
+        original_env = os.environ.copy()
+        try:
+            config_module.relay_config = {}
+            os.environ["MMRELAY_CREDENTIALS_PATH"] = "creds.json"
+
+            save_credentials(credentials)
+
+            _mock_makedirs.assert_called_once()
+            _mock_open.assert_called_once()
+            call_args = _mock_open.call_args
+            final_path = call_args[0][0]
+            self.assertEqual(
+                final_path,
+                "/base/dir/creds.json",
+                "Should use get_base_dir when config_dir is empty",
+            )
+            _mock_get_base_dir.assert_called()
+        finally:
+            config_module.relay_config = original_relay_config
+            os.environ.clear()
+            os.environ.update(original_env)
 
 
 class TestYAMLValidation(unittest.TestCase):

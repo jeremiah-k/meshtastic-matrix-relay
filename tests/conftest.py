@@ -178,18 +178,42 @@ class MockMegolmEvent:
 
 
 class MockWhoamiError(Exception):
-    def __init__(self, message="Whoami error"):
+    def __init__(self, message: str = "Whoami error") -> None:
         """
-        Initialize the Whoami error exception.
+        Create a Whoami error carrying a human-readable message.
 
         Parameters:
-            message (str): Human-readable error message. Defaults to "Whoami error".
+            message (str): Error message describing the condition. Defaults to "Whoami error".
 
         Attributes:
-            message (str): The provided message (also available as the exception's first arg).
+            message (str): The provided error message (also available as the exception's first argument).
+        """
+        super().__init__(message)
+        self.message: str = message
+
+
+class MockSyncError(Exception):
+    def __init__(
+        self,
+        message: str = "Sync error",
+        status_code: str | None = None,
+        retry_after_ms: int | None = None,
+        soft_logout: bool = False,
+    ):
+        """
+        Create a mock SyncError carrying the attributes used by matrix-nio for tests.
+
+        Parameters:
+            message (str): Human-readable error message.
+            status_code (str | None): Optional error status code returned by the server.
+            retry_after_ms (int | None): Optional suggested retry delay in milliseconds.
+            soft_logout (bool): Whether the error indicates a soft logout condition.
         """
         super().__init__(message)
         self.message = message
+        self.status_code = status_code
+        self.retry_after_ms = retry_after_ms
+        self.soft_logout = soft_logout
 
 
 nio_mock.AsyncClientConfig = MagicMock()
@@ -202,6 +226,7 @@ nio_mock.RoomEncryptionEvent = MockRoomEncryptionEvent
 nio_mock.MegolmEvent = MockMegolmEvent
 nio_mock.UploadResponse = MagicMock()
 nio_mock.WhoamiError = MockWhoamiError
+nio_mock.SyncError = MockSyncError
 sys.modules["nio.events.room_events"].RoomMemberEvent = MagicMock()
 
 
