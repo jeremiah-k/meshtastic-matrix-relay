@@ -178,18 +178,18 @@ class MockMegolmEvent:
 
 
 class MockWhoamiError(Exception):
-    def __init__(self, message="Whoami error"):
+    def __init__(self, message: str = "Whoami error") -> None:
         """
         Create a Whoami error carrying a human-readable message.
-        
+
         Parameters:
             message (str): Error message describing the condition. Defaults to "Whoami error".
-        
+
         Attributes:
             message (str): The provided error message (also available as the exception's first argument).
         """
         super().__init__(message)
-        self.message = message
+        self.message: str = message
 
 
 class MockSyncError(Exception):
@@ -202,7 +202,7 @@ class MockSyncError(Exception):
     ):
         """
         Create a mock SyncError carrying the attributes used by matrix-nio for tests.
-        
+
         Parameters:
             message (str): Human-readable error message.
             status_code (str | None): Optional error status code returned by the server.

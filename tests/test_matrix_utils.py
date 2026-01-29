@@ -3178,8 +3178,8 @@ async def test_connect_matrix_missing_device_id_uses_direct_assignment(
     mock_save_credentials,
     mock_json_load,
     _mock_open,
-    _mock_exists,
     _mock_isfile,
+    _mock_exists,
     _mock_listdir,
     _mock_makedirs,
     monkeypatch,
@@ -3571,7 +3571,7 @@ async def test_connect_matrix_sync_error_close_failure_logs():
     mock_client.rooms = {}
     error_response = SyncError("sync failed")
     mock_client.sync = AsyncMock(return_value=error_response)
-    mock_client.close = AsyncMock(side_effect=RuntimeError("close failed"))
+    mock_client.close = AsyncMock(side_effect=NioLocalTransportError("close failed"))
     mock_client.should_upload_keys = False
     mock_client.get_displayname = AsyncMock(
         return_value=SimpleNamespace(displayname="Bot")
@@ -3608,8 +3608,10 @@ async def test_connect_matrix_sync_error_close_failure_logs():
             await connect_matrix(config)
 
     assert mock_client.close.await_count == 1
-    mock_logger.debug.assert_any_call(
-        "Ignoring error while closing client after sync failure"
+    assert any(
+        call.args[:2]
+        == ("Ignoring error while closing client after %s", "sync failure")
+        for call in mock_logger.debug.call_args_list
     )
 
 
@@ -3725,7 +3727,7 @@ async def test_connect_matrix_sync_validation_error_retry_failure_closes_client(
     mock_client.get_displayname = AsyncMock(
         return_value=SimpleNamespace(displayname="Bot")
     )
-    mock_client.close = AsyncMock(side_effect=RuntimeError("close failed"))
+    mock_client.close = AsyncMock(side_effect=NioLocalTransportError("close failed"))
 
     call_count = {"count": 0}
 
@@ -3733,7 +3735,7 @@ async def test_connect_matrix_sync_validation_error_retry_failure_closes_client(
         """
         Simulate a sync operation that increments a shared call counter and fails with controlled exceptions.
 
-        Increments call_count["count"] each invocation. On the first invocation raises jsonschema.exceptions.ValidationError with message "Invalid schema"; on every subsequent invocation raises RuntimeError("retry failed"). Positional and keyword arguments are ignored.
+        Increments call_count["count"] each invocation. On the first invocation raises jsonschema.exceptions.ValidationError with message "Invalid schema"; on every subsequent invocation raises NioLocalTransportError("retry failed"). Positional and keyword arguments are ignored.
         """
         call_count["count"] += 1
         if call_count["count"] == 1:
@@ -3742,7 +3744,7 @@ async def test_connect_matrix_sync_validation_error_retry_failure_closes_client(
                 path=(),
                 schema_path=(),
             )
-        raise RuntimeError("retry failed")
+        raise NioLocalTransportError("retry failed")
 
     mock_client.sync = mock_sync
 
@@ -3943,7 +3945,7 @@ async def test_connect_matrix_credentials_load_exception_uses_config(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_connect_matrix_explicit_credentials_path_is_used():
+async def test_connect_matrix_explicit_credentials_path_is_used(tmp_path):
     """Explicit credentials_path should be expanded and used first."""
     mock_client = MagicMock()
     mock_client.rooms = {}
@@ -3955,25 +3957,27 @@ async def test_connect_matrix_explicit_credentials_path_is_used():
     mock_client.close = AsyncMock()
     mock_client.restore_login = MagicMock()
 
-    expanded_path = "/tmp/explicit_credentials.json"
+    access_value = "token"
+    expanded_path = tmp_path / "explicit_credentials.json"
+    expanded_path_str = str(expanded_path)
     credentials_json = (
         '{"homeserver": "https://matrix.example.org", '
-        '"access_token": "token", '
+        f'"access_token": "{access_value}", '
         '"user_id": "@bot:example.org", '
         '"device_id": "DEVICE123"}'
     )
 
     def fake_isfile(path):
         """
-        Check whether the provided path matches the predefined expanded_path from the enclosing scope.
+        Check whether the provided path matches the predefined expanded path from the enclosing scope.
 
         Parameters:
             path (str): File path to check.
 
         Returns:
-            bool: `true` if `path` is equal to the captured `expanded_path`, `false` otherwise.
+            bool: `true` if `path` is equal to the captured expanded path string, `false` otherwise.
         """
-        return path == expanded_path
+        return path == expanded_path_str
 
     config = {
         "credentials_path": "~/explicit_credentials.json",
@@ -3986,8 +3990,10 @@ async def test_connect_matrix_explicit_credentials_path_is_used():
     }
 
     with (
+        patch("mmrelay.matrix_utils.os.getenv", return_value=None),
         patch(
-            "mmrelay.matrix_utils.os.path.expanduser", return_value=expanded_path
+            "mmrelay.matrix_utils.os.path.expanduser",
+            return_value=expanded_path_str,
         ) as mock_expand,
         patch("mmrelay.matrix_utils.os.path.isfile", side_effect=fake_isfile),
         patch("builtins.open", mock_open(read_data=credentials_json)),
@@ -4015,7 +4021,7 @@ async def test_connect_matrix_explicit_credentials_path_is_used():
     mock_client.restore_login.assert_called_once_with(
         user_id="@bot:example.org",
         device_id="DEVICE123",
-        access_token="token",
+        access_token=access_value,
     )
 
 

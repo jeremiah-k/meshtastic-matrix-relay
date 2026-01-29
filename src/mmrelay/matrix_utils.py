@@ -24,6 +24,12 @@ from typing import (
 )
 from urllib.parse import urlparse
 
+# jsonschema is a matrix-nio dependency but keep import guarded for safety.
+try:
+    import jsonschema  # type: ignore[import-untyped]
+except ImportError:  # pragma: no cover - jsonschema is expected in runtime
+    jsonschema = None  # type: ignore[assignment]
+
 # matrix-nio is not marked py.typed in our environment, so mypy treats it as untyped.
 from nio import (  # type: ignore[import-untyped]
     AsyncClient,
@@ -47,13 +53,14 @@ from nio import (  # type: ignore[import-untyped]
 from nio.events.room_events import RoomMemberEvent  # type: ignore[import-untyped]
 from PIL import Image
 
+import mmrelay.config as config_module
+
 # Local imports
 from mmrelay.cli_utils import (
     _create_ssl_context,
     msg_require_auth_login,
     msg_retry_auth_login,
 )
-from mmrelay.config import config_path as loaded_config_path
 from mmrelay.config import (
     get_base_dir,
     get_e2ee_store_dir,
@@ -137,6 +144,17 @@ NIO_COMM_EXCEPTIONS: tuple[type[BaseException], ...] = (
     NioRemoteTransportError,
     asyncio.TimeoutError,
 )
+# Provide a concrete ValidationError type for explicit exception handling.
+if jsonschema is not None:
+    JSONSCHEMA_VALIDATION_ERROR = jsonschema.exceptions.ValidationError
+else:
+
+    class _JsonSchemaValidationError(Exception):
+        """Fallback when jsonschema is unavailable."""
+
+        pass
+
+    JSONSCHEMA_VALIDATION_ERROR = _JsonSchemaValidationError
 # Exception handling strategy:
 # Catch only expected nio/network/timeouts so programming errors surface during testing.
 
@@ -1231,19 +1249,32 @@ async def connect_matrix(
 
     # Try to find credentials.json from explicit config, config directory, or base dir
     try:
-        explicit_path = None
-        if isinstance(config, dict):
+        explicit_path = os.getenv("MMRELAY_CREDENTIALS_PATH")
+        if not explicit_path and isinstance(config, dict):
             explicit_path = config.get("credentials_path")
             if not explicit_path and isinstance(matrix_section, dict):
                 explicit_path = matrix_section.get("credentials_path")
 
         candidate_paths: list[str] = []
         if explicit_path:
-            candidate_paths.append(os.path.expanduser(explicit_path))
+            expanded_path = os.path.abspath(os.path.expanduser(explicit_path))
+            path_is_dir = os.path.isdir(expanded_path)
+            if not path_is_dir:
+                path_is_dir = expanded_path.endswith(os.path.sep) or (
+                    os.path.altsep and expanded_path.endswith(os.path.altsep)
+                )
+            if path_is_dir:
+                normalized_dir = expanded_path.rstrip(os.path.sep).rstrip(
+                    os.path.altsep or ""
+                )
+                candidate_paths.append(normalized_dir)
+                candidate_paths.append(os.path.join(normalized_dir, "credentials.json"))
+            else:
+                candidate_paths.append(expanded_path)
 
         config_dir = None
-        if loaded_config_path:
-            config_dir = os.path.dirname(os.path.abspath(loaded_config_path))
+        if config_module.config_path:
+            config_dir = os.path.dirname(os.path.abspath(config_module.config_path))
             candidate_paths.append(os.path.join(config_dir, "credentials.json"))
 
         candidate_paths.append(os.path.join(get_base_dir(), "credentials.json"))
@@ -1604,6 +1635,22 @@ async def connect_matrix(
     logger.debug("Performing initial sync to initialize rooms...")
     invite_safe_filter: dict[str, Any] = {"room": {"invite": {"limit": 0}}}
     sync_response: Any | None = None
+
+    async def _close_matrix_client_after_failure(context: str) -> None:
+        global matrix_client
+        if not matrix_client:
+            return
+        try:
+            await matrix_client.close()
+        except asyncio.CancelledError:
+            raise
+        except NIO_COMM_EXCEPTIONS:
+            logger.debug(
+                "Ignoring error while closing client after %s", context, exc_info=True
+            )
+        finally:
+            matrix_client = None
+
     try:
         # A full_state=True sync is required to get room encryption state
         sync_response = await asyncio.wait_for(
@@ -1626,30 +1673,82 @@ async def connect_matrix(
         logger.error(
             "4. Consider using a different Matrix homeserver if the problem persists"
         )
-        try:
-            if matrix_client:
-                await matrix_client.close()
-        except Exception:
-            logger.debug("Ignoring error while closing client after sync timeout")
-        finally:
-            matrix_client = None
+        await _close_matrix_client_after_failure("sync timeout")
         raise ConnectionError(
             f"Matrix sync timed out after {MATRIX_SYNC_OPERATION_TIMEOUT} seconds - check network connectivity and server status"
         ) from None
-    except Exception as exc:
+    except asyncio.CancelledError:
+        logger.exception("Initial sync cancelled")
+        await _close_matrix_client_after_failure("sync cancellation")
+        raise
+    except JSONSCHEMA_VALIDATION_ERROR as exc:
+        logger.exception("Initial sync response failed schema validation.")
+        logger.warning(
+            "This usually indicates a non-compliant homeserver or proxy response."
+        )
+        logger.warning(
+            "Retrying initial sync without invites to tolerate invalid invite_state payloads."
+        )
         try:
-            import jsonschema  # type: ignore[import-untyped]
+            sync_response = await asyncio.wait_for(
+                matrix_client.sync(
+                    timeout=MATRIX_EARLY_SYNC_TIMEOUT,
+                    full_state=False,
+                    sync_filter=invite_safe_filter,
+                ),
+                timeout=MATRIX_SYNC_OPERATION_TIMEOUT,
+            )
+            matrix_client.mmrelay_sync_filter = invite_safe_filter
+            matrix_client.mmrelay_first_sync_filter = invite_safe_filter
+            logger.info(
+                "Initial sync completed after invite-safe retry. "
+                "Invite handling is disabled for subsequent syncs."
+            )
+        except JSONSCHEMA_VALIDATION_ERROR:
+            logger.exception("Invite-safe sync retry failed")
+            # Some homeservers return invalid invite_state payloads even with invite filtering.
+            # Attempt a final retry that tolerates missing invite_state events.
+            logger.warning(
+                "Invite-safe sync retry failed schema validation; "
+                "attempting to ignore invalid invite_state payloads."
+            )
 
-            if isinstance(exc, jsonschema.exceptions.ValidationError):
-                logger.exception("Initial sync response failed schema validation.")
-                logger.warning(
-                    "This usually indicates a non-compliant homeserver or proxy response."
+            async def _sync_ignore_invalid_invites() -> Any:
+                import nio.responses as nio_responses  # type: ignore[import-untyped]
+
+                original_descriptor = vars(nio_responses.SyncResponse).get(
+                    "_get_invite_state"
                 )
-                logger.warning(
-                    "Retrying initial sync without invites to tolerate invalid invite_state payloads."
+                original_callable = getattr(
+                    nio_responses.SyncResponse, "_get_invite_state", None
                 )
+
+                def _safe_get_invite_state(invite_state_dict: Any) -> list[Any]:
+                    if (
+                        not isinstance(invite_state_dict, dict)
+                        or "events" not in invite_state_dict
+                    ):
+                        return []
+                    try:
+                        if callable(original_callable):
+                            return cast(
+                                list[Any],
+                                original_callable(invite_state_dict),
+                            )
+                    except JSONSCHEMA_VALIDATION_ERROR:
+                        logger.warning(
+                            "Invalid invite_state payload; ignoring invite_state events."
+                        )
+                        return []
+                    return []
+
                 try:
-                    sync_response = await asyncio.wait_for(
+                    setattr(
+                        nio_responses.SyncResponse,
+                        "_get_invite_state",
+                        staticmethod(_safe_get_invite_state),
+                    )
+                    return await asyncio.wait_for(
                         matrix_client.sync(
                             timeout=MATRIX_EARLY_SYNC_TIMEOUT,
                             full_state=False,
@@ -1657,100 +1756,54 @@ async def connect_matrix(
                         ),
                         timeout=MATRIX_SYNC_OPERATION_TIMEOUT,
                     )
-                    matrix_client.mmrelay_sync_filter = invite_safe_filter
-                    matrix_client.mmrelay_first_sync_filter = invite_safe_filter
-                    logger.info(
-                        "Initial sync completed after invite-safe retry. "
-                        "Invite handling is disabled for subsequent syncs."
-                    )
-                except Exception as retry_exc:
-                    logger.exception("Invite-safe sync retry failed")
-                    # Some homeservers return invalid invite_state payloads even with invite filtering.
-                    # Attempt a final retry that tolerates missing invite_state events.
-                    if isinstance(retry_exc, jsonschema.exceptions.ValidationError):
-                        logger.warning(
-                            "Invite-safe sync retry failed schema validation; "
-                            "attempting to ignore invalid invite_state payloads."
+                finally:
+                    if original_descriptor is not None:
+                        setattr(
+                            nio_responses.SyncResponse,
+                            "_get_invite_state",
+                            original_descriptor,
                         )
 
-                        async def _sync_ignore_invalid_invites() -> Any:
-                            try:
-                                import nio.responses as nio_responses  # type: ignore[import-untyped]
-                            except ImportError as import_exc:
-                                raise import_exc
+            try:
+                sync_response = await _sync_ignore_invalid_invites()
+                matrix_client.mmrelay_sync_filter = invite_safe_filter
+                matrix_client.mmrelay_first_sync_filter = invite_safe_filter
+                logger.info(
+                    "Initial sync completed after invite-safe retry "
+                    "with invalid invite_state payloads ignored."
+                )
+            except (ImportError, AttributeError):
+                logger.debug("Invite-safe sync retry handler failed", exc_info=True)
+            except asyncio.CancelledError:
+                logger.exception("Invite-ignoring sync retry cancelled")
+                await _close_matrix_client_after_failure("sync cancellation")
+                raise
+            except (
+                asyncio.TimeoutError,
+                NIO_COMM_EXCEPTIONS,
+                JSONSCHEMA_VALIDATION_ERROR,
+            ):
+                logger.exception("Invite-ignoring sync retry failed")
+        except asyncio.TimeoutError:
+            logger.exception(
+                "Invite-safe sync retry timed out after %s seconds",
+                MATRIX_SYNC_OPERATION_TIMEOUT,
+            )
+        except asyncio.CancelledError:
+            logger.exception("Invite-safe sync retry cancelled")
+            await _close_matrix_client_after_failure("sync cancellation")
+            raise
+        except NIO_COMM_EXCEPTIONS:
+            logger.exception("Invite-safe sync retry failed")
 
-                            original_descriptor = vars(nio_responses.SyncResponse).get(
-                                "_get_invite_state"
-                            )
-                            original_callable = getattr(
-                                nio_responses.SyncResponse, "_get_invite_state", None
-                            )
-
-                            def _safe_get_invite_state(
-                                invite_state_dict: Any,
-                            ) -> list[Any]:
-                                if (
-                                    not isinstance(invite_state_dict, dict)
-                                    or "events" not in invite_state_dict
-                                ):
-                                    return []
-                                try:
-                                    if callable(original_callable):
-                                        return cast(
-                                            list[Any],
-                                            original_callable(invite_state_dict),
-                                        )
-                                except jsonschema.exceptions.ValidationError:
-                                    logger.warning(
-                                        "Invalid invite_state payload; ignoring invite_state events."
-                                    )
-                                    return []
-                                return []
-
-                            try:
-                                setattr(
-                                    nio_responses.SyncResponse,
-                                    "_get_invite_state",
-                                    staticmethod(_safe_get_invite_state),
-                                )
-                                return await asyncio.wait_for(
-                                    matrix_client.sync(
-                                        timeout=MATRIX_EARLY_SYNC_TIMEOUT,
-                                        full_state=False,
-                                        sync_filter=invite_safe_filter,
-                                    ),
-                                    timeout=MATRIX_SYNC_OPERATION_TIMEOUT,
-                                )
-                            finally:
-                                if original_descriptor is not None:
-                                    setattr(
-                                        nio_responses.SyncResponse,
-                                        "_get_invite_state",
-                                        original_descriptor,
-                                    )
-
-                        try:
-                            sync_response = await _sync_ignore_invalid_invites()
-                            matrix_client.mmrelay_sync_filter = invite_safe_filter
-                            matrix_client.mmrelay_first_sync_filter = invite_safe_filter
-                            logger.info(
-                                "Initial sync completed after invite-safe retry "
-                                "with invalid invite_state payloads ignored."
-                            )
-                        except Exception:
-                            logger.exception("Invite-ignoring sync retry failed")
-        except ImportError:
-            logger.debug("Invite-safe sync retry handler failed", exc_info=True)
         if sync_response is None:
             logger.exception("Matrix sync failed")
-            try:
-                if matrix_client:
-                    await matrix_client.close()
-            except Exception:
-                logger.debug("Ignoring error while closing client after sync failure")
-            finally:
-                matrix_client = None
+            await _close_matrix_client_after_failure("sync failure")
             raise ConnectionError("Matrix sync failed") from exc
+    except NIO_COMM_EXCEPTIONS as exc:
+        logger.exception("Matrix sync failed")
+        await _close_matrix_client_after_failure("sync failure")
+        raise ConnectionError("Matrix sync failed") from exc
 
     # If the sync returned an explicit error response, treat it as a failure.
     if isinstance(sync_response, SyncError):
@@ -1768,25 +1821,19 @@ async def connect_matrix(
         logger.error("3. Ensure the Matrix server is online and accessible")
         logger.error("4. Check if your credentials are still valid")
 
-        try:
-            await matrix_client.close()
-        except Exception:
-            logger.debug("Ignoring error while closing client after sync failure")
-        finally:
-            matrix_client = None
+        await _close_matrix_client_after_failure("sync failure")
         raise ConnectionError(f"Matrix sync failed: {error_type} - {error_details}")
 
     logger.info(f"Initial sync completed. Found {len(matrix_client.rooms)} rooms.")
 
     # List all rooms with unified E2EE status display
-    from mmrelay.config import config_path
     from mmrelay.e2ee_utils import (
         get_e2ee_status,
         get_room_encryption_warnings,
     )
 
     # Get comprehensive E2EE status
-    e2ee_status = get_e2ee_status(config or {}, config_path)
+    e2ee_status = get_e2ee_status(config or {}, config_module.config_path)
 
     # Resolve room aliases in config (supports list[str|dict] and dict[str->str|dict])
     async def _resolve_alias(alias: str) -> str | None:
@@ -2482,11 +2529,10 @@ def _get_e2ee_error_message() -> str:
     Returns:
         str: A short explanation of the current E2EE problem, or an empty string if no specific issue is detected.
     """
-    from mmrelay.config import config_path
     from mmrelay.e2ee_utils import get_e2ee_error_message, get_e2ee_status
 
     # Get unified E2EE status
-    e2ee_status = get_e2ee_status(config or {}, config_path)
+    e2ee_status = get_e2ee_status(config or {}, config_module.config_path)
 
     # Return unified error message
     return get_e2ee_error_message(dict(e2ee_status))
