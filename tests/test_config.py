@@ -950,13 +950,8 @@ class TestCredentials(unittest.TestCase):
     ):
         """Test credential loading using MMRELAY_CREDENTIALS_PATH."""
         mock_json_load.return_value = {"user_id": "env", "access_token": "token"}
-        original_env = os.environ.copy()
-        try:
-            os.environ["MMRELAY_CREDENTIALS_PATH"] = "/custom/creds.json"
+        with patch.dict(os.environ, {"MMRELAY_CREDENTIALS_PATH": "/custom/creds.json"}):
             result = load_credentials()
-        finally:
-            os.environ.clear()
-            os.environ.update(original_env)
         self.assertEqual(result, {"user_id": "env", "access_token": "token"})
 
     @patch("mmrelay.config.os.path.exists", return_value=True)
@@ -1005,12 +1000,10 @@ class TestCredentials(unittest.TestCase):
         from mmrelay import config as config_module
 
         original_relay_config = config_module.relay_config.copy()
-        original_env = os.environ.copy()
         try:
             config_module.relay_config = {}
-            os.environ["MMRELAY_CREDENTIALS_PATH"] = "/custom/dir/"
-
-            save_credentials(credentials)
+            with patch.dict(os.environ, {"MMRELAY_CREDENTIALS_PATH": "/custom/dir/"}):
+                save_credentials(credentials)
 
             _mock_makedirs.assert_called_once()
             _mock_open.assert_called_once()
@@ -1027,8 +1020,6 @@ class TestCredentials(unittest.TestCase):
             )
         finally:
             config_module.relay_config = original_relay_config
-            os.environ.clear()
-            os.environ.update(original_env)
 
     @patch("mmrelay.config.get_base_dir", return_value="/fake/dir")
     @patch("mmrelay.config.os.makedirs")
@@ -1049,12 +1040,12 @@ class TestCredentials(unittest.TestCase):
         from mmrelay import config as config_module
 
         original_relay_config = config_module.relay_config.copy()
-        original_env = os.environ.copy()
         try:
             config_module.relay_config = {}
-            os.environ["MMRELAY_CREDENTIALS_PATH"] = "/custom/creds.json"
-
-            save_credentials(credentials)
+            with patch.dict(
+                os.environ, {"MMRELAY_CREDENTIALS_PATH": "/custom/creds.json"}
+            ):
+                save_credentials(credentials)
 
             _mock_makedirs.assert_called_once()
             _mock_open.assert_called_once()
@@ -1067,8 +1058,6 @@ class TestCredentials(unittest.TestCase):
             )
         finally:
             config_module.relay_config = original_relay_config
-            os.environ.clear()
-            os.environ.update(original_env)
 
     @patch("mmrelay.config.get_base_dir", return_value="/fake/dir")
     @patch("mmrelay.config.os.makedirs")
@@ -1089,7 +1078,6 @@ class TestCredentials(unittest.TestCase):
         from mmrelay import config as config_module
 
         original_relay_config = config_module.relay_config.copy()
-        original_env = os.environ.copy()
         try:
             config_module.relay_config = {"credentials_path": "/config/creds.json"}
 
@@ -1106,8 +1094,6 @@ class TestCredentials(unittest.TestCase):
             )
         finally:
             config_module.relay_config = original_relay_config
-            os.environ.clear()
-            os.environ.update(original_env)
 
     @patch("mmrelay.config.get_base_dir", return_value="/fake/dir")
     @patch("mmrelay.config.os.makedirs")
@@ -1128,7 +1114,6 @@ class TestCredentials(unittest.TestCase):
         from mmrelay import config as config_module
 
         original_relay_config = config_module.relay_config.copy()
-        original_env = os.environ.copy()
         try:
             config_module.relay_config = {
                 "matrix": {"credentials_path": "/matrix/creds.json"}
@@ -1147,8 +1132,6 @@ class TestCredentials(unittest.TestCase):
             )
         finally:
             config_module.relay_config = original_relay_config
-            os.environ.clear()
-            os.environ.update(original_env)
 
     @patch("mmrelay.config.get_base_dir", return_value="/fake/dir")
     @patch("mmrelay.config.os.makedirs")
@@ -1167,7 +1150,6 @@ class TestCredentials(unittest.TestCase):
         from mmrelay import config as config_module
 
         original_relay_config = config_module.relay_config.copy()
-        original_env = os.environ.copy()
         try:
             config_module.relay_config = {"matrix": "not_a_dict"}
 
@@ -1184,8 +1166,6 @@ class TestCredentials(unittest.TestCase):
             )
         finally:
             config_module.relay_config = original_relay_config
-            os.environ.clear()
-            os.environ.update(original_env)
 
     @patch("mmrelay.config.get_base_dir", return_value="/actual/directory")
     @patch("mmrelay.config.os.makedirs")
@@ -1206,12 +1186,12 @@ class TestCredentials(unittest.TestCase):
         from mmrelay import config as config_module
 
         original_relay_config = config_module.relay_config.copy()
-        original_env = os.environ.copy()
         try:
             config_module.relay_config = {}
-            os.environ["MMRELAY_CREDENTIALS_PATH"] = "/actual/directory"
-
-            save_credentials(credentials)
+            with patch.dict(
+                os.environ, {"MMRELAY_CREDENTIALS_PATH": "/actual/directory"}
+            ):
+                save_credentials(credentials)
 
             _mock_makedirs.assert_called_once()
             _mock_open.assert_called_once()
@@ -1224,8 +1204,6 @@ class TestCredentials(unittest.TestCase):
             )
         finally:
             config_module.relay_config = original_relay_config
-            os.environ.clear()
-            os.environ.update(original_env)
 
     @patch("mmrelay.config.get_base_dir", return_value="/custom/dir")
     @patch("mmrelay.config.os.makedirs")
@@ -1240,12 +1218,10 @@ class TestCredentials(unittest.TestCase):
         from mmrelay import config as config_module
 
         original_relay_config = config_module.relay_config.copy()
-        original_env = os.environ.copy()
         try:
             config_module.relay_config = {}
-            os.environ["MMRELAY_CREDENTIALS_PATH"] = "/custom/dir/"
-
-            save_credentials(credentials)
+            with patch.dict(os.environ, {"MMRELAY_CREDENTIALS_PATH": "/custom/dir/"}):
+                save_credentials(credentials)
 
             _mock_open.assert_called_once()
             call_args = _mock_open.call_args
@@ -1256,8 +1232,6 @@ class TestCredentials(unittest.TestCase):
             )
         finally:
             config_module.relay_config = original_relay_config
-            os.environ.clear()
-            os.environ.update(original_env)
 
     @patch("mmrelay.config.get_base_dir", return_value="/base/dir")
     @patch("mmrelay.config.os.makedirs")
@@ -1284,12 +1258,10 @@ class TestCredentials(unittest.TestCase):
         from mmrelay import config as config_module
 
         original_relay_config = config_module.relay_config.copy()
-        original_env = os.environ.copy()
         try:
             config_module.relay_config = {}
-            os.environ["MMRELAY_CREDENTIALS_PATH"] = "creds.json"
-
-            save_credentials(credentials)
+            with patch.dict(os.environ, {"MMRELAY_CREDENTIALS_PATH": "creds.json"}):
+                save_credentials(credentials)
 
             _mock_makedirs.assert_called_once()
             _mock_open.assert_called_once()
@@ -1303,8 +1275,6 @@ class TestCredentials(unittest.TestCase):
             _mock_get_base_dir.assert_called()
         finally:
             config_module.relay_config = original_relay_config
-            os.environ.clear()
-            os.environ.update(original_env)
 
 
 class TestYAMLValidation(unittest.TestCase):
@@ -1531,10 +1501,10 @@ class TestConfigUncoveredLines(unittest.TestCase):
         def mock_exists_side_effect(path):
             """
             Simulate os.path.exists for tests, treating the base directory as present and the credentials file as absent.
-            
+
             Parameters:
                 path (str): Filesystem path to check.
-            
+
             Returns:
                 bool: `True` if `path` is '/test/base', `False` otherwise.
             """
@@ -1554,10 +1524,10 @@ class TestConfigUncoveredLines(unittest.TestCase):
             def mock_debug(*args, **kwargs):
                 """
                 Append the first positional argument to the global `log_debug` list.
-                
+
                 Parameters:
-                	args (tuple): Positional arguments; if present, `args[0]` is appended to `log_debug`.
-                	kwargs (dict): Keyword arguments (ignored).
+                        args (tuple): Positional arguments; if present, `args[0]` is appended to `log_debug`.
+                        kwargs (dict): Keyword arguments (ignored).
                 """
                 log_debug.append(args[0])
 
@@ -1610,7 +1580,7 @@ class TestConfigUncoveredLines(unittest.TestCase):
         def mock_error(*args, **kwargs):
             """
             Capture the first positional argument as an error message by appending it to the shared `log_error` list.
-            
+
             Parameters:
                 *args: Positional arguments where the first element is the error message to capture.
                 **kwargs: Ignored.
@@ -1635,7 +1605,7 @@ class TestConfigUncoveredLines(unittest.TestCase):
         def mock_warning(*args, **kwargs):
             """
             Capture a warning message by appending the first positional argument to the `log_warning` list.
-            
+
             Parameters:
                 *args: The first positional argument is treated as the warning message to record; any additional positional arguments are ignored.
                 **kwargs: Ignored.

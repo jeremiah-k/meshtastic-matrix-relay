@@ -71,7 +71,7 @@ spec:
               command:
                 - /bin/sh
                 - -c
-                - test -f /tmp/ready && find /tmp/ready -mmin -2 -print -quit | grep -q .
+                - find /tmp/ready -mmin -2 | grep -q .
             initialDelaySeconds: 30
             periodSeconds: 30
             timeoutSeconds: 5

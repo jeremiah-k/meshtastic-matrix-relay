@@ -66,13 +66,21 @@ _banner_printed = False
 _ready_file_path = os.environ.get(
     "MMRELAY_READY_FILE", "/tmp/ready"
 )  # nosec B108 - k8s readiness marker with env override.
-_ready_heartbeat_seconds = int(os.environ.get("MMRELAY_READY_HEARTBEAT_SECONDS", "60"))
+_ready_heartbeat_seconds_raw = os.environ.get("MMRELAY_READY_HEARTBEAT_SECONDS", "60")
+try:
+    _ready_heartbeat_seconds = int(_ready_heartbeat_seconds_raw)
+except (TypeError, ValueError):
+    logger.warning(
+        "Invalid MMRELAY_READY_HEARTBEAT_SECONDS=%r; defaulting to 60",
+        _ready_heartbeat_seconds_raw,
+    )
+    _ready_heartbeat_seconds = 60
 
 
 def _write_ready_file() -> None:
     """
     Create or update the Kubernetes readiness marker file used by external probes.
-    
+
     The file path is taken from MMRELAY_READY_FILE (defaults to /tmp/ready). If no path is configured, the function does nothing. Filesystem errors are caught and suppressed.
     """
     if not _ready_file_path:
@@ -93,7 +101,7 @@ def _write_ready_file() -> None:
 def _touch_ready_file() -> None:
     """
     Update the readiness marker file's modification timestamp, creating the file if it does not exist.
-    
+
     If no readiness file path is configured, this function does nothing. Filesystem errors during the touch/create operation are suppressed.
     """
     if not _ready_file_path:
@@ -112,16 +120,16 @@ def _touch_ready_file() -> None:
 async def _ready_heartbeat(shutdown_event: asyncio.Event) -> None:
     """
     Keep the Kubernetes readiness marker file's timestamp updated until shutdown.
-    
+
     Periodically touches the readiness file at the interval configured by _ready_heartbeat_seconds while the provided shutdown_event remains unset.
-    
+
     Parameters:
         shutdown_event (asyncio.Event): Event that, when set, stops the heartbeat and allows the coroutine to exit.
     """
     if _ready_heartbeat_seconds <= 0:
         return
     while not shutdown_event.is_set():
-        _touch_ready_file()
+        await asyncio.to_thread(_touch_ready_file)
         await asyncio.sleep(_ready_heartbeat_seconds)
 
 

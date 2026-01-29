@@ -66,9 +66,9 @@ logger = get_logger(__name__)
 def parse_arguments() -> argparse.Namespace:
     """
     Builds and parses the command-line interface for MMRelay, providing modern grouped subcommands and hidden legacy flags.
-    
+
     Parses global options (e.g., --config, --base-dir/--data-dir, --log-level, --logfile, --version), grouped subcommands (config, auth, service) and several deprecated hidden flags kept for backward compatibility. Unknown arguments are ignored; a warning is printed unless the invocation appears to be a test run.
-    
+
     Returns:
         argparse.Namespace: Parsed namespace containing the selected command, subcommand, and option values.
     """
@@ -1304,9 +1304,9 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
 def main() -> int:
     """
     Entry point for the MMRelay CLI that parses arguments, dispatches subcommands or legacy actions, and runs the main runtime.
-    
+
     Parses command-line options (including base-dir/data-dir handling), dispatches modern grouped subcommands or deprecated legacy flags when present, or invokes the main runtime when no command is specified. Reports user-facing errors and maps failure conditions to non-zero exit codes.
-    
+
     Returns:
         int: Exit code — 0 on success, non-zero on failure.
     """
@@ -1712,12 +1712,12 @@ def handle_auth_logout(args: argparse.Namespace) -> int:
 def handle_service_command(args: argparse.Namespace) -> int:
     """
     Dispatch a service-related CLI subcommand.
-    
+
     Currently supports the "install" action, which attempts to install the application service.
-    
+
     Parameters:
         args (argparse.Namespace): Parsed CLI arguments with a `service_command` attribute indicating the requested action.
-    
+
     Returns:
         int: `0` on success, `1` on failure or for unknown subcommands.
     """
