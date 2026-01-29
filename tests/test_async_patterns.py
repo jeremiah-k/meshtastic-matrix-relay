@@ -21,7 +21,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from mmrelay.matrix_utils import connect_matrix, matrix_relay
+from mmrelay.matrix_utils import (
+    NioLocalTransportError,
+    connect_matrix,
+    matrix_relay,
+)
 
 
 class TestAsyncPatterns(unittest.TestCase):
@@ -184,7 +188,7 @@ class TestAsyncPatterns(unittest.TestCase):
     def test_async_error_propagation(self):
         """
         Verify that exceptions raised by async operations during Matrix connection are either handled or propagated with the expected message.
-        
+
         Patches the Matrix AsyncClient to raise during sync and asserts that connect_matrix either returns a non-None client (indicating graceful handling) or raises a ConnectionError whose message contains "Matrix sync failed".
         """
 
@@ -202,7 +206,9 @@ class TestAsyncPatterns(unittest.TestCase):
                 with patch("mmrelay.matrix_utils.AsyncClient") as mock_client_class:
                     mock_client = AsyncMock()
                     mock_client.rooms = {}
-                    mock_client.sync.side_effect = Exception("Connection failed")
+                    mock_client.sync.side_effect = NioLocalTransportError(
+                        "Connection failed"
+                    )
                     mock_client_class.return_value = mock_client
 
                     # Should handle the exception gracefully

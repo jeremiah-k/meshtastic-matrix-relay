@@ -986,7 +986,7 @@ class TestCredentials(unittest.TestCase):
         original_env = os.environ.copy()
         try:
             config_module.relay_config = {}
-            os.environ["MMRELAY_CREDENTIALS_PATH"] = "/custom/dir\\"
+            os.environ["MMRELAY_CREDENTIALS_PATH"] = "/custom/dir/"
 
             save_credentials(credentials)
 
