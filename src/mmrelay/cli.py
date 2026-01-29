@@ -65,12 +65,12 @@ logger = get_logger(__name__)
 
 def parse_arguments() -> argparse.Namespace:
     """
-    Builds and parses the command-line interface for the Meshtastic Matrix Relay, including modern grouped subcommands and legacy hidden flags.
-
-    Supports global options (--config, --base-dir, --data-dir, --log-level, --logfile, --version), grouped subcommands (config, auth, service) and hidden backward-compatible flags (--generate-config, --install-service, --check-config, --auth). Unknown arguments are ignored when running outside of test environments; a warning is printed if unknown args are present and the process does not appear to be a test run.
-
+    Builds and parses the command-line interface for MMRelay, providing modern grouped subcommands and hidden legacy flags.
+    
+    Parses global options (e.g., --config, --base-dir/--data-dir, --log-level, --logfile, --version), grouped subcommands (config, auth, service) and several deprecated hidden flags kept for backward compatibility. Unknown arguments are ignored; a warning is printed unless the invocation appears to be a test run.
+    
     Returns:
-        Parsed argparse.Namespace containing the resolved command, subcommand, and option values.
+        argparse.Namespace: Parsed namespace containing the selected command, subcommand, and option values.
     """
     parser = argparse.ArgumentParser(
         description="Meshtastic Matrix Relay - Bridge between Meshtastic and Matrix"
@@ -1303,17 +1303,12 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
 
 def main() -> int:
     """
-    Entry point for the MMRelay command-line interface; parses arguments, dispatches commands, and returns an appropriate process exit code.
-
-    This function:
-    - Parses CLI arguments (modern grouped subcommands and hidden legacy flags).
-    - If a modern subcommand is provided, dispatches to the grouped subcommand handlers.
-    - If legacy flags are present, emits deprecation warnings and executes the corresponding legacy behavior (config check/generate, service install, auth, version).
-    - If no command flags are present, attempts to run the main runtime.
-    - Catches and reports import or unexpected errors and maps success/failure to exit codes.
-
+    Entry point for the MMRelay CLI that parses arguments, dispatches subcommands or legacy actions, and runs the main runtime.
+    
+    Parses command-line options (including base-dir/data-dir handling), dispatches modern grouped subcommands or deprecated legacy flags when present, or invokes the main runtime when no command is specified. Reports user-facing errors and maps failure conditions to non-zero exit codes.
+    
     Returns:
-        int: Exit code (0 on success, non-zero on failure).
+        int: Exit code — 0 on success, non-zero on failure.
     """
     try:
         # Set up Windows console for better compatibility
@@ -1716,13 +1711,13 @@ def handle_auth_logout(args: argparse.Namespace) -> int:
 
 def handle_service_command(args: argparse.Namespace) -> int:
     """
-    Dispatch the requested service subcommand.
-
-    Supports the "install" action which attempts to install the application service and returns a status code indicating success or failure.
-
+    Dispatch a service-related CLI subcommand.
+    
+    Currently supports the "install" action, which attempts to install the application service.
+    
     Parameters:
-        args (argparse.Namespace): Parsed CLI arguments; must have a `service_command` attribute specifying the action.
-
+        args (argparse.Namespace): Parsed CLI arguments with a `service_command` attribute indicating the requested action.
+    
     Returns:
         int: `0` on success, `1` on failure or for unknown subcommands.
     """

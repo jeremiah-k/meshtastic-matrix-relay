@@ -1529,6 +1529,15 @@ class TestConfigUncoveredLines(unittest.TestCase):
         """Test load_credentials on Windows (lines 610-618)."""
 
         def mock_exists_side_effect(path):
+            """
+            Simulate os.path.exists for tests, treating the base directory as present and the credentials file as absent.
+            
+            Parameters:
+                path (str): Filesystem path to check.
+            
+            Returns:
+                bool: `True` if `path` is '/test/base', `False` otherwise.
+            """
             if path == "/test/base/credentials.json":
                 return False
             elif path == "/test/base":
@@ -1543,6 +1552,13 @@ class TestConfigUncoveredLines(unittest.TestCase):
             log_debug = []
 
             def mock_debug(*args, **kwargs):
+                """
+                Append the first positional argument to the global `log_debug` list.
+                
+                Parameters:
+                	args (tuple): Positional arguments; if present, `args[0]` is appended to `log_debug`.
+                	kwargs (dict): Keyword arguments (ignored).
+                """
                 log_debug.append(args[0])
 
             with patch.object(mmrelay.config.logger, "debug", side_effect=mock_debug):
@@ -1592,6 +1608,13 @@ class TestConfigUncoveredLines(unittest.TestCase):
         log_error = []
 
         def mock_error(*args, **kwargs):
+            """
+            Capture the first positional argument as an error message by appending it to the shared `log_error` list.
+            
+            Parameters:
+                *args: Positional arguments where the first element is the error message to capture.
+                **kwargs: Ignored.
+            """
             log_error.append(args[0])
 
         with patch("sys.platform", "win32"), patch.object(
@@ -1610,6 +1633,13 @@ class TestConfigUncoveredLines(unittest.TestCase):
         log_warning = []
 
         def mock_warning(*args, **kwargs):
+            """
+            Capture a warning message by appending the first positional argument to the `log_warning` list.
+            
+            Parameters:
+                *args: The first positional argument is treated as the warning message to record; any additional positional arguments are ignored.
+                **kwargs: Ignored.
+            """
             log_warning.append(args[0])
 
         with patch.object(mmrelay.config.logger, "warning", side_effect=mock_warning):

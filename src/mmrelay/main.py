@@ -71,9 +71,9 @@ _ready_heartbeat_seconds = int(os.environ.get("MMRELAY_READY_HEARTBEAT_SECONDS",
 
 def _write_ready_file() -> None:
     """
-    Write a readiness marker file for Kubernetes probes.
-
-    The file path can be overridden via MMRELAY_READY_FILE; defaults to /tmp/ready.
+    Create or update the Kubernetes readiness marker file used by external probes.
+    
+    The file path is taken from MMRELAY_READY_FILE (defaults to /tmp/ready). If no path is configured, the function does nothing. Filesystem errors are caught and suppressed.
     """
     if not _ready_file_path:
         return
@@ -92,9 +92,9 @@ def _write_ready_file() -> None:
 
 def _touch_ready_file() -> None:
     """
-    Update the readiness marker timestamp.
-
-    If the file doesn't exist yet, it is created.
+    Update the readiness marker file's modification timestamp, creating the file if it does not exist.
+    
+    If no readiness file path is configured, this function does nothing. Filesystem errors during the touch/create operation are suppressed.
     """
     if not _ready_file_path:
         return
@@ -111,7 +111,12 @@ def _touch_ready_file() -> None:
 
 async def _ready_heartbeat(shutdown_event: asyncio.Event) -> None:
     """
-    Periodically refresh the readiness marker while the app is running.
+    Keep the Kubernetes readiness marker file's timestamp updated until shutdown.
+    
+    Periodically touches the readiness file at the interval configured by _ready_heartbeat_seconds while the provided shutdown_event remains unset.
+    
+    Parameters:
+        shutdown_event (asyncio.Event): Event that, when set, stops the heartbeat and allows the coroutine to exit.
     """
     if _ready_heartbeat_seconds <= 0:
         return
@@ -259,9 +264,7 @@ async def main(config: dict[str, Any]) -> None:
 
     def _set_shutdown_flag() -> None:
         """
-        Mark the application as shutting down and notify waiters.
-
-        Sets the module-level shutdown flag and sets the shutdown_event so tasks waiting on shutdown can proceed.
+        Set the Meshtastic shutdown flag and signal the shutdown event so tasks waiting for shutdown can proceed.
         """
         meshtastic_utils.shutting_down = True
         shutdown_event.set()
