@@ -7,7 +7,7 @@ import json
 import os
 import re
 import shutil
-import subprocess
+import subprocess  # nosec B404 - subprocess used for optional kubectl queries
 import tempfile
 from typing import Any
 
@@ -28,13 +28,20 @@ _SERIAL_CONTAINER_DEVICE_PATH = "/dev/ttyUSB0"
 
 
 def _get_storage_classes_from_kubectl() -> list[tuple[str, bool]] | None:
-    """Return storage class names and default flags using kubectl, if available."""
+    """
+    Discover Kubernetes StorageClass names and whether each is marked as the default using the system's kubectl tool.
+
+    Returns:
+        classes (list[tuple[str, bool]] | None): A list of tuples (storage_class_name, is_default) where
+            `is_default` is `True` if the StorageClass is annotated as the default. Returns `None` if
+            `kubectl` is not available, execution fails, or the output cannot be parsed.
+    """
     kubectl = shutil.which("kubectl")
     if not kubectl:
         logger.debug("kubectl not found; skipping storage class discovery")
         return None
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 - kubectl path resolved from system, fixed args
             [kubectl, "get", "storageclass", "-o", "json"],
             capture_output=True,
             text=True,
@@ -80,13 +87,18 @@ def _get_storage_classes_from_kubectl() -> list[tuple[str, bool]] | None:
 
 
 def _get_current_namespace_from_kubectl() -> str | None:
-    """Return the current namespace from kubectl context, if available."""
+    """
+    Determine the current Kubernetes namespace from the user's kubectl context.
+
+    Returns:
+        The namespace string from the current kubectl context, or `None` if kubectl is not available, the command fails, the context has no namespace, or the output cannot be parsed.
+    """
     kubectl = shutil.which("kubectl")
     if not kubectl:
         logger.debug("kubectl not found; skipping namespace discovery")
         return None
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 - kubectl path resolved from system, fixed args
             [kubectl, "config", "view", "--minify", "-o", "json"],
             capture_output=True,
             text=True,

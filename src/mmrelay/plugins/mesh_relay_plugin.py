@@ -5,7 +5,7 @@ import base64
 import binascii
 import json
 import re
-from typing import Any, cast
+from typing import Any, Iterable, cast
 
 from meshtastic import mesh_pb2  # type: ignore[import-untyped]
 
@@ -99,12 +99,12 @@ class Plugin(BasePlugin):
 
     def _iter_room_configs(self) -> list[dict[str, Any]]:
         """
-        Return a normalized list of matrix room configuration dictionaries.
+        Normalize configured Matrix room entries and return them as a list of dictionaries.
 
-        This reads the global `matrix_rooms` entry from the relay config, accepts either a dict or a list for backward compatibility, filters out any non-dict entries, and returns an empty list if the global config or `matrix_rooms` is absent or malformed.
+        Accepts either a mapping or a list from the global `matrix_rooms` configuration, filters out any non-dictionary entries, and returns an empty list if the global config or `matrix_rooms` is missing or malformed.
 
         Returns:
-            list[dict[str, Any]]: A list of room configuration dictionaries suitable for iteration.
+            A list of room configuration dictionaries.
         """
         # matrix_rooms live in the global relay config, not per-plugin config.
         global_config = config
@@ -112,6 +112,7 @@ class Plugin(BasePlugin):
             return []
 
         matrix_rooms = global_config.get("matrix_rooms", [])
+        iterable_rooms: Iterable[Any] | None = None
         if isinstance(matrix_rooms, dict):
             iterable_rooms = matrix_rooms.values()
         elif isinstance(matrix_rooms, list):

@@ -13,6 +13,7 @@ import sys
 import time
 from types import SimpleNamespace
 from typing import (
+    TYPE_CHECKING,
     Any,
     Awaitable,
     Callable,
@@ -20,15 +21,13 @@ from typing import (
     Generator,
     Optional,
     Tuple,
+    Type,
     cast,
 )
 from urllib.parse import urlparse
 
-# jsonschema is a matrix-nio dependency but keep import guarded for safety.
-try:
-    import jsonschema  # type: ignore[import-untyped]
-except ImportError:  # pragma: no cover - jsonschema is expected in runtime
-    jsonschema = None  # type: ignore[assignment]
+if TYPE_CHECKING:
+    pass
 
 # matrix-nio is not marked py.typed in our environment, so mypy treats it as untyped.
 from nio import (  # type: ignore[import-untyped]
@@ -50,7 +49,18 @@ from nio import (  # type: ignore[import-untyped]
 )
 
 # matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
-from nio.events.room_events import RoomMemberEvent  # type: ignore[import-untyped]
+from nio.events.room_events import (  # type: ignore[import-untyped]
+    RoomMemberEvent,
+)
+
+# Import InviteMemberEvent separately to avoid submodule import issues
+try:
+    from nio import InviteMemberEvent  # pyright: ignore[reportMissingImports]
+except ImportError:
+    from nio.events.invite_events import (  # type: ignore[import-untyped]
+        InviteMemberEvent,
+    )
+
 from PIL import Image
 
 import mmrelay.config as config_module
@@ -144,15 +154,23 @@ NIO_COMM_EXCEPTIONS: tuple[type[BaseException], ...] = (
     NioRemoteTransportError,
     asyncio.TimeoutError,
 )
+# jsonschema is a matrix-nio dependency but keep import guarded for safety.
+jsonschema: Any = None
+try:
+    import jsonschema as _jsonschema  # pyright: ignore[reportMissingImports]  # type: ignore[import-untyped]
+
+    jsonschema = _jsonschema
+except ImportError:  # pragma: no cover - jsonschema is expected in runtime
+    pass
 # Provide a concrete ValidationError type for explicit exception handling.
 if jsonschema is not None:
-    JSONSCHEMA_VALIDATION_ERROR = jsonschema.exceptions.ValidationError
+    from jsonschema.exceptions import ValidationError as _ValidationError
+
+    JSONSCHEMA_VALIDATION_ERROR: Type[BaseException] = _ValidationError
 else:
 
     class _JsonSchemaValidationError(Exception):
         """Fallback when jsonschema is unavailable."""
-
-        pass
 
     JSONSCHEMA_VALIDATION_ERROR = _JsonSchemaValidationError
 # Exception handling strategy:
@@ -213,6 +231,26 @@ def _extract_localpart_from_mxid(mxid: str | None) -> str | None:
     if mxid.startswith("@"):
         return mxid[1:].split(":", 1)[0]
     return mxid
+
+
+def _is_room_mapped(mapping: Any, room_id_or_alias: str) -> bool:
+    """
+    Determine whether a room ID or alias exists in a matrix_rooms configuration.
+
+    Parameters:
+        mapping (list|dict): The matrix_rooms configuration (accepted as a list or dict form).
+        room_id_or_alias (str): Room ID (e.g., "!abc:server") or room alias (e.g., "#room:server").
+
+    Returns:
+        bool: `True` if the room ID or alias is present in the mapping, `False` otherwise.
+    """
+    if not isinstance(mapping, (list, dict)):
+        return False
+
+    return any(
+        alias_or_id == room_id_or_alias
+        for alias_or_id, _ in _iter_room_alias_entries(mapping)
+    )
 
 
 def _iter_room_alias_entries(
@@ -1213,13 +1251,15 @@ async def connect_matrix(
     passed_config: dict[str, Any] | None = None,
 ) -> AsyncClient | None:
     """
-    Initialize and return a configured Matrix AsyncClient using available credentials and configuration.
+    Initialize and configure a Matrix AsyncClient using available credentials and configuration.
+
+    Attempts to authenticate (via credentials.json, automatic login, or config), enable end-to-end encryption when configured, perform an initial sync to populate room state, and return a ready-to-use AsyncClient.
 
     Parameters:
         passed_config (dict[str, Any] | None): Optional configuration override for this connection attempt; when provided it is used instead of the module-level config for this call.
 
     Returns:
-        AsyncClient | None: A configured and initialized Matrix AsyncClient when connection and setup succeed, or `None` if connection or credential setup failed.
+        AsyncClient | None: A configured and initialized Matrix AsyncClient on success, or `None` if connection or credential setup failed.
 
     Raises:
         ValueError: If the required top-level "matrix_rooms" configuration is missing.
@@ -1260,8 +1300,13 @@ async def connect_matrix(
             expanded_path = os.path.abspath(os.path.expanduser(explicit_path))
             path_is_dir = os.path.isdir(expanded_path)
             if not path_is_dir:
-                path_is_dir = expanded_path.endswith(os.path.sep) or (
-                    os.path.altsep and expanded_path.endswith(os.path.altsep)
+                path_is_dir = bool(
+                    expanded_path.endswith(
+                        os.path.sep
+                    )  # pyright: ignore[reportArgumentType]
+                    or (
+                        os.path.altsep and expanded_path.endswith(os.path.altsep)
+                    )  # pyright: ignore[reportArgumentType]
                 )
             if path_is_dir:
                 normalized_dir = expanded_path.rstrip(os.path.sep).rstrip(
@@ -1698,8 +1743,8 @@ async def connect_matrix(
                 ),
                 timeout=MATRIX_SYNC_OPERATION_TIMEOUT,
             )
-            matrix_client.mmrelay_sync_filter = invite_safe_filter
-            matrix_client.mmrelay_first_sync_filter = invite_safe_filter
+            cast(Any, matrix_client).mmrelay_sync_filter = invite_safe_filter
+            cast(Any, matrix_client).mmrelay_first_sync_filter = invite_safe_filter
             logger.info(
                 "Initial sync completed after invite-safe retry. "
                 "Invite handling is disabled for subsequent syncs."
@@ -1714,6 +1759,17 @@ async def connect_matrix(
             )
 
             async def _sync_ignore_invalid_invites() -> Any:
+                """
+                Perform a Matrix sync using an invite-safe filter while ignoring invalid invite_state payloads.
+
+                Temporarily patches nio.responses.SyncResponse._get_invite_state so that malformed or schema-invalid
+                invite_state payloads are treated as empty (no invite events), invokes matrix_client.sync with the
+                invite-safe filter and configured timeouts, and restores the original _get_invite_state descriptor
+                before returning.
+
+                Returns:
+                    The SyncResponse object returned by the matrix client's sync call.
+                """
                 import nio.responses as nio_responses  # type: ignore[import-untyped]
 
                 original_descriptor = vars(nio_responses.SyncResponse).get(
@@ -1724,6 +1780,19 @@ async def connect_matrix(
                 )
 
                 def _safe_get_invite_state(invite_state_dict: Any) -> list[Any]:
+                    """
+                    Safely extract a list of invite-state events from a raw invite_state mapping.
+
+                    Attempts to parse `invite_state_dict["events"]` via an internal callable and returns the resulting list.
+                    If `invite_state_dict` is not a dict, lacks an "events" key, or the parsing raises a JSON schema validation error,
+                    an empty list is returned.
+
+                    Parameters:
+                        invite_state_dict (Any): Raw invite state payload (typically from a Matrix invite event).
+
+                    Returns:
+                        list[Any]: Parsed list of invite-state events, or an empty list on invalid/missing input or validation failure.
+                    """
                     if (
                         not isinstance(invite_state_dict, dict)
                         or "events" not in invite_state_dict
@@ -1743,11 +1812,13 @@ async def connect_matrix(
                     return []
 
                 try:
-                    nio_responses.SyncResponse._get_invite_state = staticmethod(
-                        _safe_get_invite_state
+                    nio_responses.SyncResponse._get_invite_state = (
+                        staticmethod(  # pyright: ignore[reportAttributeAccessIssue]
+                            _safe_get_invite_state
+                        )
                     )
                     return await asyncio.wait_for(
-                        matrix_client.sync(
+                        matrix_client.sync(  # pyright: ignore[reportOptionalMemberAccess]
                             timeout=MATRIX_EARLY_SYNC_TIMEOUT,
                             full_state=False,
                             sync_filter=invite_safe_filter,
@@ -1762,8 +1833,8 @@ async def connect_matrix(
 
             try:
                 sync_response = await _sync_ignore_invalid_invites()
-                matrix_client.mmrelay_sync_filter = invite_safe_filter
-                matrix_client.mmrelay_first_sync_filter = invite_safe_filter
+                cast(Any, matrix_client).mmrelay_sync_filter = invite_safe_filter
+                cast(Any, matrix_client).mmrelay_first_sync_filter = invite_safe_filter
                 logger.info(
                     "Initial sync completed after invite-safe retry "
                     "with invalid invite_state payloads ignored."
@@ -1774,7 +1845,7 @@ async def connect_matrix(
                 logger.exception("Invite-ignoring sync retry cancelled")
                 await _close_matrix_client_after_failure("sync cancellation")
                 raise
-            except (
+            except (  # type: ignore[misc]
                 asyncio.TimeoutError,
                 NIO_COMM_EXCEPTIONS,
                 JSONSCHEMA_VALIDATION_ERROR,
@@ -3952,3 +4023,64 @@ async def on_room_member(room: MatrixRoom, event: RoomMemberEvent) -> None:
     # but no explicit action is needed since room.user_name() automatically
     # handles room-specific display names after the room state is updated.
     pass
+
+
+async def on_invite(room: MatrixRoom, event: InviteMemberEvent) -> None:
+    """
+    Handle an invite targeted at the bot and join the room when it is configured in matrix_rooms.
+
+    Attempts to join the invited room via the global matrix_client when all of the following are true: the event's state_key matches the bot's user id, the membership is "invite", and the room is present in the matrix_rooms configuration. Logs outcomes and failures; performs no return value.
+
+    Parameters:
+        room (MatrixRoom): The Matrix room associated with the invite.
+        event (InviteMemberEvent): The invite event containing membership and state_key information.
+    """
+    global bot_user_id, matrix_rooms, matrix_client
+
+    if not bot_user_id:
+        logger.warning("bot_user_id is not set, cannot process invites.")
+        return
+
+    # Only process invites directed at the bot
+    if event.state_key != bot_user_id:
+        logger.debug(
+            f"Ignoring invite for {event.state_key} (not for bot {bot_user_id})"
+        )
+        return
+
+    # Only process "invite" membership events
+    if event.membership != "invite":
+        logger.debug(f"Ignoring non-invite membership event: {event.membership}")
+        return
+
+    room_id = room.room_id
+
+    # Check if room is in matrix_rooms configuration
+    if not _is_room_mapped(matrix_rooms, room_id):
+        logger.info(
+            f"Room '{room_id}' is not in matrix_rooms configuration, ignoring invite"
+        )
+        return
+    logger.info(f"Room '{room_id}' is in matrix_rooms configuration, accepting invite")
+
+    if not matrix_client:
+        logger.error("matrix_client is None, cannot join room")
+        return
+
+    # Join the room if mapped and we're not already in it
+    try:
+        if room_id not in matrix_client.rooms:
+            logger.info(f"Joining mapped room '{room_id}'...")
+            response = await matrix_client.join(room_id)
+            joined_room_id = getattr(response, "room_id", None) if response else None
+            if joined_room_id:
+                logger.info(f"Successfully joined room '{joined_room_id}'")
+            else:
+                error_details = _get_detailed_matrix_error_message(response)
+                logger.error(f"Failed to join room '{room_id}': {error_details}")
+        else:
+            logger.debug(f"Bot is already in room '{room_id}', no action needed")
+    except NIO_COMM_EXCEPTIONS:
+        logger.exception(f"Error joining room '{room_id}'")
+    except Exception:
+        logger.exception(f"Unexpected error joining room '{room_id}'")

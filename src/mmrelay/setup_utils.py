@@ -14,6 +14,10 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    pass
 
 from mmrelay.constants.database import PROGRESS_COMPLETE, PROGRESS_TOTAL_STEPS
 from mmrelay.constants.network import SYSTEMCTL_FALLBACK
@@ -130,7 +134,10 @@ def wait_for_service_start() -> None:
 
     from mmrelay.runtime_utils import is_running_as_service
 
-    Progress = SpinnerColumn = TextColumn = TimeElapsedColumn = None
+    Progress: type[Any] | None = None
+    SpinnerColumn: type[Any] | None = None
+    TextColumn: type[Any] | None = None
+    TimeElapsedColumn: type[Any] | None = None
     running_as_service = is_running_as_service()
     if not running_as_service:
         try:
@@ -141,11 +148,15 @@ def wait_for_service_start() -> None:
                 TimeElapsedColumn,
             )
         except ImportError:
-            Progress = SpinnerColumn = TextColumn = TimeElapsedColumn = None
             running_as_service = True
 
     # Create a Rich progress display with spinner and elapsed time
     if not running_as_service and Progress is not None:
+        assert (
+            SpinnerColumn is not None
+            and TextColumn is not None
+            and TimeElapsedColumn is not None
+        )
         with Progress(
             SpinnerColumn(),
             TextColumn("[bold green]Starting mmrelay service..."),

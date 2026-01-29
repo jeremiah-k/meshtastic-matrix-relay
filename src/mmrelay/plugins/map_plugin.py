@@ -405,19 +405,21 @@ class Plugin(BasePlugin):
 
     def get_matrix_commands(self) -> list[str]:
         """
-        List the Matrix command names handled by this plugin.
-
+        Return the Matrix command names registered by this plugin.
+        
         Returns:
-            list[str]: A list of command strings that the plugin responds to (typically containing the plugin's name).
+            list[str]: Command names the plugin handles; empty list if the plugin has no configured name.
         """
-        return [cast(str, self.plugin_name)]
+        if self.plugin_name is None:
+            return []
+        return [self.plugin_name]
 
     def get_mesh_commands(self) -> list[str]:
         """
-        Return the mesh-specific command names handled by this plugin.
-
+        List mesh-specific command names handled by this plugin.
+        
         Returns:
-            list[str]: Mesh command names handled by the plugin; an empty list if the plugin does not handle any mesh commands.
+            list[str]: Command name strings handled by the plugin; empty list if the plugin does not handle any mesh commands.
         """
         return []
 

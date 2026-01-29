@@ -449,12 +449,12 @@ def reset_plugin_loader_cache():
 @pytest.fixture(autouse=True)
 def cleanup_asyncmock_objects(request):
     """
-    Force garbage collection after tests that commonly create AsyncMock objects to avoid "never awaited" RuntimeWarning messages.
+    Force garbage collection for tests that commonly create AsyncMock objects to suppress "never awaited" RuntimeWarning messages.
 
-    This fixture yields to run the test, then inspects the requesting test filename; if it matches a known set of test-name patterns that use AsyncMock, it runs gc.collect() inside a warnings suppression context that ignores "never awaited" RuntimeWarning messages raised by lingering coroutine objects.
+    This pytest fixture yields to the test, then inspects the test filename and, for a predefined set of test-name patterns that regularly create AsyncMock objects, performs a garbage-collection pass while suppressing RuntimeWarnings about unawaited coroutines.
 
     Parameters:
-        request: The pytest `Request` object for the executing test (used to determine the test filename).
+        request (pytest.FixtureRequest): The pytest request object used to determine the executing test's filename.
     """
     yield
 
@@ -466,6 +466,7 @@ def cleanup_asyncmock_objects(request):
         "test_async_patterns",
         "test_matrix_utils",
         "test_matrix_utils_edge_cases",
+        "test_matrix_utils_invite",
         "test_mesh_relay_plugin",
         "test_map_plugin",
         "test_meshtastic_utils",
@@ -647,8 +648,8 @@ def reset_meshtastic_globals():
     Temporarily reset key module-level state in mmrelay.meshtastic_utils for a test and restore it on teardown.
 
     Saves the original values of attributes such as `config`, `meshtastic_client`, reconnect/shutdown flags and tasks,
-    subscription flags, and internal futures; sets those attributes to clean defaults for the duration of the test,
-    yields control to the test, and restores the saved values on teardown. The module's `logger` and `event_loop`
+    subscription flags, and internal futures; sets those attributes to clean defaults for duration of the test,
+    yields control to test, and restores the saved values on teardown. The module's `logger` and `event_loop`
     are intentionally left unchanged.
     """
     import mmrelay.meshtastic_utils as mu
@@ -687,18 +688,42 @@ def reset_meshtastic_globals():
 
 
 @pytest.fixture
+def reset_matrix_utils_globals():
+    """
+    Temporarily reset key module-level state in mmrelay.matrix_utils for a test and restore it on teardown.
+
+    Saves the original values of attributes such as `matrix_client`, `matrix_rooms`, and `bot_user_id`;
+    sets those attributes to clean defaults for duration of the test, yields control to test,
+    and restores the saved values on teardown. The module's `logger` and `config`
+    are intentionally left unchanged.
+    """
+    import mmrelay.matrix_utils
+
+    # Store original values (excluding logger and config to keep them functional)
+    original_values = {
+        "matrix_client": getattr(mmrelay.matrix_utils, "matrix_client", None),
+        "matrix_rooms": getattr(mmrelay.matrix_utils, "matrix_rooms", None),
+        "bot_user_id": getattr(mmrelay.matrix_utils, "bot_user_id", None),
+    }
+
+    # Reset mutable globals to a clean state; keep logger and config usable
+    mmrelay.matrix_utils.matrix_client = None
+    mmrelay.matrix_utils.matrix_rooms = None
+    mmrelay.matrix_utils.bot_user_id = None
+
+    yield
+
+    # Restore original values (including Nones) to avoid state leakage
+    for attr_name, original_value in original_values.items():
+        setattr(mmrelay.matrix_utils, attr_name, original_value)
+
+
+@pytest.fixture
 def comprehensive_cleanup():
     """
-    Pytest fixture that performs a thorough cleanup of async resources, event loops, executors, and non-daemon threads after a test.
+    Perform thorough cleanup of asyncio resources, executors, event loops, and non-daemon threads after a test.
 
-    When used as an autouse fixture, it yields to the test and on teardown:
-    - cancels pending asyncio tasks and waits for their completion,
-    - shuts down the loop's default executor (if any) and closes the event loop,
-    - clears the global event loop reference,
-    - runs garbage collection before and after thread cleanup,
-    - joins any remaining non-daemon threads for a short timeout.
-
-    This prevents resource warnings about unclosed sockets, executors, or event loops and reduces flaky CI failures related to lingering async resources.
+    When used as an autouse fixture, yields to the test and on teardown cancels pending asyncio tasks and waits for them to finish, shuts down the loop's default executor if present, closes and clears the event loop, runs garbage collection before and after thread cleanup, and joins remaining non-daemon threads to reduce resource leaks and test flakiness.
     """
     yield
 
