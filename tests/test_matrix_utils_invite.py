@@ -333,7 +333,12 @@ async def test_on_invite_handles_join_failure(mock_logger: MagicMock) -> None:
 @patch("mmrelay.matrix_utils.logger")
 async def test_on_invite_handles_no_client(mock_logger: MagicMock) -> None:
     """
-    Test that on_invite handles missing matrix_client gracefully.
+    Verifies that on_invite logs an error and takes no action when the Matrix client is not configured.
+    
+    Asserts that the function returns None and that an error message indicating the missing client is logged.
+    
+    Parameters:
+        mock_logger (MagicMock): Mocked logger used to assert that the expected error message was emitted.
     """
     mock_room = MagicMock()
     mock_room.room_id = "!abc123:matrix.org"
