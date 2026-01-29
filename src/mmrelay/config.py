@@ -600,28 +600,56 @@ def load_credentials() -> dict[str, Any] | None:
         return None
 
 
-def save_credentials(credentials: dict[str, Any]) -> None:
+def save_credentials(
+    credentials: dict[str, Any], credentials_path: str | None = None
+) -> None:
     """
-    Persist a JSON-serializable credentials mapping to <base_dir>/credentials.json.
-
-    Writes the provided credentials (a JSON-serializable mapping) to the application's
-    base configuration directory as credentials.json, creating the base directory if
-    necessary. On Unix-like systems the file permissions are adjusted to be
-    restrictive (0o600) when possible. I/O and permission errors are caught and
-    logged; the function does not raise them.
-
+    Persist a JSON-serializable credentials mapping to a credentials.json file.
+    
+    If `credentials_path` is provided it is used as the target file or directory; if it refers to a directory (or ends with a path separator) "credentials.json" is appended. If `credentials_path` is not provided the path is resolved in order from: the `MMRELAY_CREDENTIALS_PATH` environment variable, `relay_config["credentials_path"]`, and `relay_config["matrix"]["credentials_path"]` (when `matrix` is a dict). The function creates the target directory if missing and, on Unix-like systems, attempts to set restrictive file permissions (0o600). I/O and permission errors are caught and logged; they are not raised.
+    
     Parameters:
         credentials (dict): JSON-serializable mapping of credentials to persist.
-
+        credentials_path (str | None): Optional path or directory override for where to save credentials.json.
+            If omitted, the path is resolved from environment/config defaults.
+    
     Returns:
         None
     """
     config_dir = ""
     try:
-        config_dir = get_base_dir()
+        if not credentials_path:
+            credentials_path = os.getenv(
+                "MMRELAY_CREDENTIALS_PATH"
+            ) or relay_config.get("credentials_path")
+            if not credentials_path:
+                matrix_config = relay_config.get("matrix", {})
+                if isinstance(matrix_config, dict):
+                    credentials_path = matrix_config.get("credentials_path")
+        if credentials_path:
+            credentials_path = os.path.expanduser(credentials_path)
+            path_is_dir = os.path.isdir(credentials_path)
+            if not path_is_dir:
+                path_is_dir = credentials_path.endswith(os.path.sep) or (
+                    os.path.altsep and credentials_path.endswith(os.path.altsep)
+                )
+            if path_is_dir:
+                credentials_path = os.path.join(
+                    credentials_path.rstrip(os.path.sep).rstrip(os.path.altsep or ""),
+                    "credentials.json",
+                )
+            config_dir = os.path.dirname(credentials_path)
+            if not config_dir:
+                config_dir = get_base_dir()
+                credentials_path = os.path.join(
+                    config_dir, os.path.basename(credentials_path)
+                )
+        else:
+            config_dir = get_base_dir()
+            credentials_path = os.path.join(config_dir, "credentials.json")
+
         # Ensure the directory exists and is writable
         os.makedirs(config_dir, exist_ok=True)
-        credentials_path = os.path.join(config_dir, "credentials.json")
 
         # Log the path for debugging, especially on Windows
         logger.info(f"Saving credentials to: {credentials_path}")
