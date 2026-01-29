@@ -178,10 +178,10 @@ class Plugin(BasePlugin):
 
     def get_matrix_commands(self) -> list[str]:
         """
-        Provide the Matrix command names exposed by this plugin.
-
+        List the Matrix command names provided by this plugin.
+        
         Returns:
-            list[str]: A list containing the plugin's Matrix command (the plugin_name).
+            A list containing the plugin's command name, or an empty list if `plugin_name` is None.
         """
         if self.plugin_name is None:
             return []

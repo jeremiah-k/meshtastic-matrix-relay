@@ -80,18 +80,18 @@ def print_banner() -> None:
 
 async def main(config: dict[str, Any]) -> None:
     """
-    Coordinate startup, runtime, and orderly shutdown of the relay between Meshtastic and Matrix.
-
-    Initializes database and plugins, starts the message queue and Meshtastic connection, connects and joins configured Matrix rooms, registers Matrix event handlers, runs the Matrix sync loop with retry and health-monitoring logic, and performs a coordinated shutdown (optionally wiping the message map on start and stop).
-
+    Run the relay: initialize core services, connect to Meshtastic and Matrix, run the Matrix sync loop with health-monitoring and retry behavior, and perform an orderly shutdown.
+    
+    Initializes the database and plugins, starts the message queue and Meshtastic connection, connects and joins configured Matrix rooms, registers Matrix event handlers (including invite and member events), monitors connection health, and coordinates a graceful shutdown sequence (optionally wiping the message map on startup and shutdown).
+    
     Parameters:
         config (dict[str, Any]): Application configuration. Relevant keys:
-            - "matrix_rooms": list of room dictionaries, each containing at least an "id" key.
-            - "meshtastic": optional dict; may include "message_delay" to configure outbound pacing.
-            - "database" (preferred) or legacy "db": optional dict containing "msg_map" with a "wipe_on_restart" boolean to control wiping the message map at startup and shutdown.
-
+            - "matrix_rooms": list of room dicts containing at least an "id" key.
+            - "meshtastic": optional dict; may include "message_delay" to control outbound pacing.
+            - "database" (preferred) or legacy "db": optional dict containing "msg_map" with a boolean "wipe_on_restart" that, when true, causes the message map to be wiped at startup and shutdown. Using the legacy "db.msg_map" triggers a deprecation warning.
+    
     Raises:
-        ConnectionError: If a Matrix client cannot be obtained and operation cannot continue.
+        ConnectionError: If a Matrix client cannot be established and operation cannot continue.
     """
     # Extract Matrix configuration
     matrix_rooms: list[dict[str, Any]] = config["matrix_rooms"]

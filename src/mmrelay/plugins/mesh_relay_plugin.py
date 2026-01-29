@@ -99,12 +99,12 @@ class Plugin(BasePlugin):
 
     def _iter_room_configs(self) -> list[dict[str, Any]]:
         """
-        Return a normalized list of matrix room configuration dictionaries.
-
-        This reads the global `matrix_rooms` entry from the relay config, accepts either a dict or a list for backward compatibility, filters out any non-dict entries, and returns an empty list if the global config or `matrix_rooms` is absent or malformed.
-
+        Normalize configured Matrix room entries and return them as a list of dictionaries.
+        
+        Accepts either a mapping or a list from the global `matrix_rooms` configuration, filters out any non-dictionary entries, and returns an empty list if the global config or `matrix_rooms` is missing or malformed.
+        
         Returns:
-            list[dict[str, Any]]: A list of room configuration dictionaries suitable for iteration.
+            A list of room configuration dictionaries.
         """
         # matrix_rooms live in the global relay config, not per-plugin config.
         global_config = config

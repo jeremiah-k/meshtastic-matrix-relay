@@ -449,12 +449,12 @@ def reset_plugin_loader_cache():
 @pytest.fixture(autouse=True)
 def cleanup_asyncmock_objects(request):
     """
-    Force garbage collection after tests that commonly create AsyncMock objects to avoid "never awaited" RuntimeWarning messages.
-
-    This fixture yields to run the test, then inspects the requesting test filename; if it matches a known set of test-name patterns that use AsyncMock, it runs gc.collect() inside a warnings suppression context that ignores "never awaited" RuntimeWarning messages raised by lingering coroutine objects.
-
+    Force garbage collection for tests that commonly create AsyncMock objects to suppress "never awaited" RuntimeWarning messages.
+    
+    This pytest fixture yields to the test, then inspects the test filename and, for a predefined set of test-name patterns that regularly create AsyncMock objects, performs a garbage-collection pass while suppressing RuntimeWarnings about unawaited coroutines.
+    
     Parameters:
-        request: The pytest `Request` object for the executing test (used to determine the test filename).
+        request (pytest.FixtureRequest): The pytest request object used to determine the executing test's filename.
     """
     yield
 
@@ -721,16 +721,9 @@ def reset_matrix_utils_globals():
 @pytest.fixture
 def comprehensive_cleanup():
     """
-    Pytest fixture that performs a thorough cleanup of async resources, event loops, executors, and non-daemon threads after a test.
-
-    When used as an autouse fixture, it yields to the test and on teardown:
-    - cancels pending asyncio tasks and waits for their completion,
-    - shuts down the loop's default executor (if any) and closes the event loop,
-    - clears the global event loop reference,
-    - runs garbage collection before and after thread cleanup,
-    - joins any remaining non-daemon threads for a short timeout.
-
-    This prevents resource warnings about unclosed sockets, executors, or event loops and reduces flaky CI failures related to lingering async resources.
+    Perform thorough cleanup of asyncio resources, executors, event loops, and non-daemon threads after a test.
+    
+    When used as an autouse fixture, yields to the test and on teardown cancels pending asyncio tasks and waits for them to finish, shuts down the loop's default executor if present, closes and clears the event loop, runs garbage collection before and after thread cleanup, and joins remaining non-daemon threads to reduce resource leaks and test flakiness.
     """
     yield
 

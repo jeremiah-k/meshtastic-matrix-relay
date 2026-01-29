@@ -206,15 +206,15 @@ def _configure_logger(
     logger: logging.Logger, *, args: argparse.Namespace | None = None
 ) -> logging.Logger:
     """
-    Configure and attach console and optional rotating file handlers to a logger based on application configuration and optional CLI arguments.
-
-    Reapplies the current logging settings (level, formatters, handlers) when the configuration generation has changed, disables propagation on the logger, and updates the global `log_file_path` when the main application logger is configured for file logging.
-
+    Configure a logger's level and attach console and optional rotating file handlers based on the application's configuration and optional CLI arguments.
+    
+    Updates internal generation tracking for the logger and, when configuring the main application logger, updates the module-level log file path.
+    
     Parameters:
-        args: Optional CLI arguments that can override or force file logging and influence logfile path resolution.
-
+        args (argparse.Namespace | None): Optional CLI arguments that can force or override file logging and influence the resolved logfile path.
+    
     Returns:
-        The same `logging.Logger` instance after applying the configuration.
+        logging.Logger: The same logger instance after applying the configuration.
     """
     global log_file_path
 
