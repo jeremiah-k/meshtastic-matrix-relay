@@ -4037,6 +4037,10 @@ async def on_invite(room: MatrixRoom, event: InviteMemberEvent) -> None:
     """
     global bot_user_id, matrix_rooms, matrix_client
 
+    if not bot_user_id:
+        logger.warning("bot_user_id is not set, cannot process invites.")
+        return
+
     # Only process invites directed at the bot
     if event.state_key != bot_user_id:
         logger.debug(
@@ -4072,11 +4076,7 @@ async def on_invite(room: MatrixRoom, event: InviteMemberEvent) -> None:
             if joined_room_id:
                 logger.info(f"Successfully joined room '{joined_room_id}'")
             else:
-                error_details = (
-                    getattr(response, "message", response)
-                    if response
-                    else "No response from server"
-                )
+                error_details = _get_detailed_matrix_error_message(response)
                 logger.error(f"Failed to join room '{room_id}': {error_details}")
         else:
             logger.debug(f"Bot is already in room '{room_id}', no action needed")
