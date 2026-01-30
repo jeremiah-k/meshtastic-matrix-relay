@@ -73,7 +73,7 @@ spec:
               command:
                 - /bin/sh
                 - -c
-                - test -n "$(find /run/mmrelay/ready -mmin -2)"
+                - test $(( $(date +%s) - $(stat -c %Y /run/mmrelay/ready) )) -lt 120
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5

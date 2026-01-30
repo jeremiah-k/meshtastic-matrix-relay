@@ -23,8 +23,10 @@ $EDITOR ./mmrelay-k8s/kustomization.yaml
 # If you change the namespace above, update the --namespace/-n flags below to match
 # for secret creation and kubectl apply/get/log commands.
 
-# Create config.yaml from the project sample
-curl -Lo ./config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample_config.yaml
+# Create config.yaml from the project sample (pin to the same version as your manifests/image)
+# Set MMRELAY_VERSION to match the tag/commit in your kustomization.yaml or deploy/k8s/deployment.yaml
+export MMRELAY_VERSION=v1.2.9
+curl -Lo ./config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/${MMRELAY_VERSION}/src/mmrelay/tools/sample_config.yaml
 $EDITOR ./config.yaml
 
 # The default manifest sets MMRELAY_CREDENTIALS_PATH=/data/credentials.json,
@@ -160,5 +162,5 @@ Because environments differ widely, treat BLE support in Kubernetes as experimen
 - Ready file: The ready file feature is opt-in and enabled via `MMRELAY_READY_FILE=/run/mmrelay/ready`. When enabled:
   - Readiness/liveness probes check for the marker file at `/run/mmrelay/ready`
   - Heartbeat interval is configurable via `MMRELAY_READY_HEARTBEAT_SECONDS` (default: 60s)
-  - **Important**: If you increase `MMRELAY_READY_HEARTBEAT_SECONDS` above 120s, update the liveness probe `-mmin` window in the manifest to match
+  - **Important**: If you increase `MMRELAY_READY_HEARTBEAT_SECONDS` above 120s, update the liveness probe threshold (120s) in the manifest to match
 - NetworkPolicy: The default NetworkPolicy allows all egress; restrict CIDRs as needed for production. For dual-stack clusters, add an IPv6 `::/0` egress rule if required.
