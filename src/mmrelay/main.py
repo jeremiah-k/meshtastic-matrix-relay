@@ -79,12 +79,12 @@ except (TypeError, ValueError):
 def _write_ready_file() -> None:
     """
     Create or update the Kubernetes readiness marker file used by external probes.
-
-    The file path is taken from MMRELAY_READY_FILE (no default; must be set to enable).
-    The parent directory is created with restrictive permissions (0o700) when
-    possible and the file is written atomically with owner-only permissions
-    (0o600) to avoid insecure world-readable files. If no path is configured,
-    the function does nothing. Filesystem errors are caught and suppressed.
+    
+    If MMRELAY_READY_FILE is unset, this function is a no-op. When configured, it
+    ensures the parent directory exists (attempting to set owner-only mode 0o700),
+    writes the readiness file atomically from a temporary file, and attempts to
+    set owner-only file permissions (0o600) to avoid world-readable files. Filesystem
+    errors are caught and suppressed; failures are logged at debug level.
     """
     if not _ready_file_path:
         return
@@ -148,13 +148,10 @@ def _touch_ready_file() -> None:
 
 async def _ready_heartbeat(shutdown_event: asyncio.Event) -> None:
     """
-    Keep the Kubernetes readiness marker file's timestamp updated until shutdown.
-
-    Periodically touches the readiness file (at MMRELAY_READY_FILE when configured)
-    at the interval configured by _ready_heartbeat_seconds while the provided
-    shutdown_event remains unset. If no readiness file path is configured, this
-    function does nothing.
-
+    Keep the Kubernetes readiness marker file's modification time updated until shutdown.
+    
+    If a readiness file path is not configured or the heartbeat interval is less than or equal to zero, this coroutine returns immediately; otherwise it periodically updates the file's timestamp at the configured interval while `shutdown_event` is not set.
+    
     Parameters:
         shutdown_event (asyncio.Event): Event that, when set, stops the heartbeat and allows the coroutine to exit.
     """
@@ -187,10 +184,9 @@ def _remove_ready_file() -> None:
 
 def print_banner() -> None:
     """
-    Log the MMRelay startup banner with version information once.
-
-    This records an informational message "Starting MMRelay version <version>" via the module logger
-    the first time it is called and sets a module-level flag to prevent subsequent prints.
+    Log a single startup banner containing the application version.
+    
+    Subsequent calls have no effect.
     """
     global _banner_printed
     # Only print the banner once
