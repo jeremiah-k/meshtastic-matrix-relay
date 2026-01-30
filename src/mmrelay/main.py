@@ -79,7 +79,7 @@ except (TypeError, ValueError):
 def _write_ready_file() -> None:
     """
     Create or update the Kubernetes readiness marker file used by external probes.
-    
+
     If MMRELAY_READY_FILE is unset, this function is a no-op. When configured, it
     ensures the parent directory exists (attempting to set owner-only mode 0o700),
     writes the readiness file atomically from a temporary file, and attempts to
@@ -149,9 +149,9 @@ def _touch_ready_file() -> None:
 async def _ready_heartbeat(shutdown_event: asyncio.Event) -> None:
     """
     Keep the Kubernetes readiness marker file's modification time updated until shutdown.
-    
+
     If a readiness file path is not configured or the heartbeat interval is less than or equal to zero, this coroutine returns immediately; otherwise it periodically updates the file's timestamp at the configured interval while `shutdown_event` is not set.
-    
+
     Parameters:
         shutdown_event (asyncio.Event): Event that, when set, stops the heartbeat and allows the coroutine to exit.
     """
@@ -185,7 +185,7 @@ def _remove_ready_file() -> None:
 def print_banner() -> None:
     """
     Log a single startup banner containing the application version.
-    
+
     Subsequent calls have no effect.
     """
     global _banner_printed

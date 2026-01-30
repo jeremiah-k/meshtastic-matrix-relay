@@ -231,10 +231,10 @@ class _TimeoutCloseFuture(_CloseFutureBase):
     def result(self, timeout: float | None = None) -> None:  # noqa: ARG002
         """
         Always raises concurrent.futures.TimeoutError to simulate a timed-out close future.
-        
+
         Parameters:
             timeout (float | None): Ignored.
-        
+
         Raises:
             concurrent.futures.TimeoutError: Always raised when called.
         """
@@ -247,10 +247,10 @@ class _ErrorCloseFuture(_CloseFutureBase):
     def result(self, timeout: float | None = None) -> None:  # noqa: ARG002
         """
         Raise a ValueError with message "boom".
-        
+
         Parameters:
             timeout (float | None): Ignored; present for API compatibility.
-        
+
         Raises:
             ValueError: Always raised with message "boom".
         """
@@ -1888,9 +1888,9 @@ class TestMainAsyncFunction(unittest.TestCase):
         def _patched_get_running_loop():
             """
             Provide the current running event loop with its signal-handler registration patched so registered handlers are captured and invoked immediately.
-            
+
             The returned loop has its `add_signal_handler` attribute replaced with a function that appends the handler to an external capture list and then calls the handler synchronously. Subsequent calls are no-ops for the patching step.
-            
+
             Returns:
                 asyncio.AbstractEventLoop: The running event loop with `add_signal_handler` patched to capture and invoke handlers.
             """
@@ -1900,7 +1900,7 @@ class TestMainAsyncFunction(unittest.TestCase):
                 def _fake_add_signal_handler(_sig, handler):
                     """
                     Record and invoke a signal handler for tests.
-                    
+
                     Parameters:
                         _sig: The signal number or name (ignored by this test helper).
                         handler: The callable to register; it will be appended to `captured_handlers`
@@ -1965,9 +1965,9 @@ class TestMainAsyncFunction(unittest.TestCase):
         def _patched_get_running_loop():
             """
             Return the currently running asyncio event loop with its signal registration patched to capture signals.
-            
+
             The loop's `add_signal_handler` is replaced with a function that appends registered signal identifiers to the module-level `captured_signals` list, and a `_signal_capture_patched` attribute is set on the loop to prevent repeated patching.
-            
+
             Returns:
                 asyncio.AbstractEventLoop: The running event loop whose signal registration records signals to `captured_signals`.
             """
@@ -1977,7 +1977,7 @@ class TestMainAsyncFunction(unittest.TestCase):
                 def _fake_add_signal_handler(sig, _handler):
                     """
                     Record a signal identifier into the module-level `captured_signals` list for tests.
-                    
+
                     Parameters:
                         sig: The signal identifier (e.g., an int or `signal.Signals`) to record.
                         _handler: Ignored signal handler callable.

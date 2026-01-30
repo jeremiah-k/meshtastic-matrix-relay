@@ -1498,13 +1498,13 @@ class TestConfigUncoveredLines(unittest.TestCase):
     def test_load_credentials_no_file_windows(self, _mock_get_base_dir, mock_exists):
         """
         Verifies that on Windows, when the base credentials directory exists but credentials.json is missing, load_credentials returns None and directory contents are logged.
-        
+
         Patches:
         - os.path.exists to simulate base directory present and credentials file absent
         - sys.platform to "win32"
         - os.listdir to return a sample directory listing
         - mmrelay.config.logger.debug to capture debug messages
-        
+
         Asserts:
         - The function returns None
         - A debug message containing "Directory contents" was emitted
@@ -1513,7 +1513,7 @@ class TestConfigUncoveredLines(unittest.TestCase):
         def mock_exists_side_effect(path):
             """
             Emulate os.path.exists for tests by treating '/test/base' as present and '/test/base/credentials.json' as absent.
-            
+
             Returns:
                 `True` if `path` is '/test/base', `False` otherwise (including '/test/base/credentials.json').
             """
@@ -1533,7 +1533,7 @@ class TestConfigUncoveredLines(unittest.TestCase):
             def mock_debug(*args, **_kwargs):
                 """
                 Record the first positional argument into the module-level `log_debug` list.
-                
+
                 Parameters:
                     *args: Positional arguments; if provided, `args[0]` is appended to `log_debug`.
                     **_kwargs: Keyword arguments are accepted and ignored.
@@ -1599,7 +1599,7 @@ class TestConfigUncoveredLines(unittest.TestCase):
         def mock_error(*args, **_kwargs):
             """
             Record the first positional argument as an error message in the shared `log_error` list.
-            
+
             Parameters:
                 *args: Positional arguments where the first element is the error message to record.
                 **_kwargs: Ignored.

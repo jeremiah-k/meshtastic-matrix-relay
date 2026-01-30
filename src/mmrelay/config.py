@@ -567,35 +567,18 @@ def apply_env_config_overrides(config: dict[str, Any] | None) -> dict[str, Any]:
 def load_credentials() -> dict[str, Any] | None:
     """
     Locate and load Matrix credentials from the configured credentials path or the application's base configuration directory.
-    
+
     If the MMRELAY_CREDENTIALS_PATH environment variable is set, it is used as the credentials file path; if it refers to a directory, the file name "credentials.json" will be resolved within that directory. If the environment variable is not set, the function looks for "credentials.json" in the application's base configuration directory. The file is parsed as JSON and returned as a dictionary.
-    
+
     Returns:
         dict[str, Any]: Parsed credentials on success.
         None: If the credentials file is missing, unreadable, or contains invalid JSON.
     """
     config_dir = ""
     try:
-        credentials_path = os.getenv("MMRELAY_CREDENTIALS_PATH")
-        if credentials_path:
-            credentials_path = os.path.expanduser(credentials_path)
-            path_is_dir = os.path.isdir(credentials_path)
-            if not path_is_dir:
-                path_is_dir = bool(
-                    credentials_path.endswith(os.path.sep)
-                    or (os.path.altsep and credentials_path.endswith(os.path.altsep))
-                )
-            if path_is_dir:
-                credentials_path = os.path.join(credentials_path, "credentials.json")
-            config_dir = os.path.dirname(credentials_path)
-            if not config_dir:
-                config_dir = get_base_dir()
-                credentials_path = os.path.join(
-                    config_dir, os.path.basename(credentials_path)
-                )
-        else:
-            config_dir = get_base_dir()
-            credentials_path = os.path.join(config_dir, "credentials.json")
+        credentials_path, config_dir = _resolve_credentials_path(
+            os.getenv("MMRELAY_CREDENTIALS_PATH"), allow_relay_config_sources=False
+        )
 
         logger.debug(f"Looking for credentials at: {credentials_path}")
 
@@ -624,7 +607,7 @@ def save_credentials(
 ) -> None:
     """
     Persist a JSON-serializable credentials mapping to a credentials.json file.
-    
+
     If `credentials_path` is a directory (or ends with a path separator) the filename
     "credentials.json" is appended. If `credentials_path` is omitted the effective
     path is resolved from, in order: the `MMRELAY_CREDENTIALS_PATH` environment
@@ -632,48 +615,20 @@ def save_credentials(
     (when `matrix` is a mapping). The function creates the target directory if
     missing and, on Unix-like systems, attempts to set restrictive file permissions
     (0o600). I/O and permission errors are caught and logged; they are not raised.
-    
+
     Parameters:
         credentials (dict): JSON-serializable mapping of credentials to persist.
         credentials_path (str | None): Optional target file path or directory. If
             omitted, a default path under the application's base directory is used.
-    
+
     Returns:
         None
     """
     config_dir = ""
     try:
-        if not credentials_path:
-            credentials_path = os.getenv(
-                "MMRELAY_CREDENTIALS_PATH"
-            ) or relay_config.get("credentials_path")
-            if not credentials_path:
-                matrix_config = relay_config.get("matrix", {})
-                if isinstance(matrix_config, dict):
-                    credentials_path = matrix_config.get("credentials_path")
-        if credentials_path:
-            credentials_path = os.path.expanduser(credentials_path)
-            path_is_dir = os.path.isdir(credentials_path)
-            if not path_is_dir:
-                path_is_dir = bool(
-                    credentials_path.endswith(
-                        os.path.sep
-                    )  # pyright: ignore[reportArgumentType]
-                    or (
-                        os.path.altsep and credentials_path.endswith(os.path.altsep)
-                    )  # pyright: ignore[reportArgumentType]
-                )
-            if path_is_dir:
-                credentials_path = os.path.join(credentials_path, "credentials.json")
-            config_dir = os.path.dirname(credentials_path)
-            if not config_dir:
-                config_dir = get_base_dir()
-                credentials_path = os.path.join(
-                    config_dir, os.path.basename(credentials_path)
-                )
-        else:
-            config_dir = get_base_dir()
-            credentials_path = os.path.join(config_dir, "credentials.json")
+        credentials_path, config_dir = _resolve_credentials_path(
+            credentials_path, allow_relay_config_sources=True
+        )
 
         # Ensure the directory exists and is writable
         os.makedirs(config_dir, exist_ok=True)
@@ -1004,7 +959,52 @@ def load_config(config_file: str | None = None, args: Any = None) -> dict[str, A
             logger.debug("Could not import CLI suggestion helpers", exc_info=True)
         else:
             logger.error(msg_suggest_generate_config())
-        return {}
+    return {}
+
+
+def _resolve_credentials_path(
+    path_override: str | None, *, allow_relay_config_sources: bool
+) -> tuple[str, str]:
+    """
+    Resolve the credentials.json path and its directory.
+
+    Parameters:
+        path_override: Explicit path or directory provided by the caller.
+        allow_relay_config_sources: When True, consider environment variables and
+            relay_config overrides (`credentials_path` and `matrix.credentials_path`).
+
+    Returns:
+        Tuple of (credentials_path, directory containing credentials).
+    """
+    candidate = path_override
+
+    if not candidate and allow_relay_config_sources:
+        candidate = os.getenv("MMRELAY_CREDENTIALS_PATH")
+        if not candidate:
+            candidate = relay_config.get("credentials_path")
+        if not candidate:
+            matrix_config = relay_config.get("matrix", {})
+            if isinstance(matrix_config, dict):
+                candidate = matrix_config.get("credentials_path")
+
+    if candidate:
+        candidate = os.path.expanduser(candidate)
+        path_is_dir = os.path.isdir(candidate)
+        if not path_is_dir:
+            path_is_dir = bool(
+                candidate.endswith(os.path.sep)
+                or (os.path.altsep and candidate.endswith(os.path.altsep))
+            )
+        if path_is_dir:
+            candidate = os.path.join(candidate, "credentials.json")
+        config_dir = os.path.dirname(candidate)
+        if not config_dir:
+            config_dir = get_base_dir()
+            candidate = os.path.join(config_dir, os.path.basename(candidate))
+        return candidate, config_dir
+
+    base_dir = get_base_dir()
+    return os.path.join(base_dir, "credentials.json"), base_dir
 
 
 def validate_yaml_syntax(

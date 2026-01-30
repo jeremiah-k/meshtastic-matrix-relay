@@ -450,9 +450,9 @@ def reset_plugin_loader_cache():
 def cleanup_asyncmock_objects(request):
     """
     Yield to the test and, after it completes, run a targeted garbage-collection pass to suppress "never awaited" RuntimeWarning messages for tests that commonly create AsyncMock objects.
-    
+
     This fixture inspects the executing test's filename and, when it matches known AsyncMock-using patterns, performs garbage collection while suppressing RuntimeWarning messages about never-awaited coroutines.
-    
+
     Parameters:
         request (pytest.FixtureRequest): Pytest request object used to determine the executing test's filename.
     """

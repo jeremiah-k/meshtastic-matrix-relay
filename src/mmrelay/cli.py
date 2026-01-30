@@ -1304,9 +1304,9 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
 def main() -> int:
     """
     Run the MMRelay command-line interface, dispatching modern subcommands, deprecated legacy flags, or the main runtime.
-    
+
     Parses command-line arguments (including --base-dir / deprecated --data-dir), configures runtime directories, and invokes the appropriate handler for config, auth, service subcommands, legacy CLI actions, or the primary application entrypoint. Prints user-facing error messages and maps failures to non-zero exit codes.
-    
+
     Returns:
         int: Exit code — `0` on success, non-zero on failure.
     """
