@@ -3,7 +3,7 @@ import statistics
 from typing import TYPE_CHECKING, Any
 
 # matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
-from nio import (  # type: ignore[import-untyped]
+from nio import (
     MatrixRoom,
     ReactionEvent,
     RoomMessageEmote,
@@ -14,7 +14,7 @@ from nio import (  # type: ignore[import-untyped]
 from mmrelay.plugins.base_plugin import BasePlugin
 
 if TYPE_CHECKING:
-    from meshtastic.mesh_interface import MeshInterface  # type: ignore[import-untyped]
+    from meshtastic.mesh_interface import MeshInterface
 
 
 class Plugin(BasePlugin):

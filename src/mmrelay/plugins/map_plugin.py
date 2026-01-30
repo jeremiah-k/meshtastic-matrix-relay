@@ -4,11 +4,11 @@ import re
 from typing import Any, cast
 
 import PIL.ImageDraw
-import s2sphere  # type: ignore[import-untyped]
-import staticmaps  # type: ignore[import-untyped]
+import s2sphere
+import staticmaps
 
 # matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
-from nio import (  # type: ignore[import-untyped]
+from nio import (
     AsyncClient,
     MatrixRoom,
     ReactionEvent,
@@ -42,7 +42,7 @@ def precision_bits_to_meters(bits: int) -> float | None:
 
 
 try:
-    import cairo  # type: ignore[import-not-found]
+    import cairo
 except ImportError:  # pragma: no cover - optional dependency
     cairo = None
 
@@ -406,7 +406,7 @@ class Plugin(BasePlugin):
     def get_matrix_commands(self) -> list[str]:
         """
         Return the Matrix command names registered by this plugin.
-        
+
         Returns:
             list[str]: Command names the plugin handles; empty list if the plugin has no configured name.
         """
@@ -417,7 +417,7 @@ class Plugin(BasePlugin):
     def get_mesh_commands(self) -> list[str]:
         """
         List mesh-specific command names handled by this plugin.
-        
+
         Returns:
             list[str]: Command name strings handled by the plugin; empty list if the plugin does not handle any mesh commands.
         """

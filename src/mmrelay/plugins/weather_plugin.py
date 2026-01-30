@@ -4,11 +4,11 @@ import re
 from datetime import datetime
 from typing import Any
 
-import requests  # type: ignore[import-untyped]
-from meshtastic.mesh_interface import BROADCAST_NUM  # type: ignore[import-untyped]
+import requests
+from meshtastic.mesh_interface import BROADCAST_NUM
 
 # matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
-from nio import (  # type: ignore[import-untyped]
+from nio import (
     MatrixRoom,
     ReactionEvent,
     RoomMessageEmote,

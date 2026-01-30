@@ -37,14 +37,14 @@ except ImportError:
 # Import Matrix-related modules for logout functionality
 try:
     # matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
-    from nio import AsyncClient  # type: ignore[import-untyped]
-    from nio.exceptions import (  # type: ignore[import-untyped]
+    from nio import AsyncClient
+    from nio.exceptions import (
         LocalProtocolError,
         LocalTransportError,
         RemoteProtocolError,
         RemoteTransportError,
     )
-    from nio.responses import LoginError, LogoutError  # type: ignore[import-untyped]
+    from nio.responses import LoginError, LogoutError
 
     # Create aliases for backward compatibility
     NioLoginError = LoginError

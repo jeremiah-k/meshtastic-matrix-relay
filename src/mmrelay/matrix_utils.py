@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     pass
 
 # matrix-nio is not marked py.typed in our environment, so mypy treats it as untyped.
-from nio import (  # type: ignore[import-untyped]
+from nio import (
     AsyncClient,
     AsyncClientConfig,
     DiscoveryInfoError,
@@ -49,7 +49,7 @@ from nio import (  # type: ignore[import-untyped]
 )
 
 # matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
-from nio.events.room_events import (  # type: ignore[import-untyped]
+from nio.events.room_events import (
     RoomMemberEvent,
 )
 
@@ -57,7 +57,7 @@ from nio.events.room_events import (  # type: ignore[import-untyped]
 try:
     from nio import InviteMemberEvent  # pyright: ignore[reportMissingImports]
 except ImportError:
-    from nio.events.invite_events import (  # type: ignore[import-untyped]
+    from nio.events.invite_events import (
         InviteMemberEvent,
     )
 
@@ -1223,7 +1223,7 @@ async def _handle_detection_sensor_packet(
     if not meshtastic_interface:
         return
 
-    import meshtastic.protobuf.portnums_pb2  # type: ignore[import-untyped]
+    import meshtastic.protobuf.portnums_pb2
 
     success = queue_message(
         meshtastic_interface.sendData,
@@ -1770,7 +1770,7 @@ async def connect_matrix(
                 Returns:
                     The SyncResponse object returned by the matrix client's sync call.
                 """
-                import nio.responses as nio_responses  # type: ignore[import-untyped]
+                import nio.responses as nio_responses
 
                 original_descriptor = vars(nio_responses.SyncResponse).get(
                     "_get_invite_state"
@@ -2250,7 +2250,7 @@ async def login_matrix_bot(
 
             # Test the API call that matrix-nio will make
             try:
-                from nio.api import Api  # type: ignore[import-untyped]
+                from nio.api import Api
 
                 method, path, data = Api.login(
                     user=localpart,
