@@ -93,7 +93,7 @@ def _close_coro_if_possible(coro: Any) -> None:
         coro: An awaitable object (e.g., coroutine object or generator-based coroutine). If it has a `close()` method it will be called; otherwise the object is left untouched.
     """
     if inspect.isawaitable(coro) and hasattr(coro, "close"):
-        coro.close()
+        coro.close()  # type: ignore[attr-defined]
     return None
 
 
@@ -228,12 +228,12 @@ class _CloseFutureBase(concurrent.futures.Future):
 class _TimeoutCloseFuture(_CloseFutureBase):
     """Future that raises TimeoutError immediately on result()."""
 
-    def result(self, _timeout: float | None = None) -> None:
+    def result(self, timeout: float | None = None) -> None:  # noqa: ARG002
         """
         Always raises a concurrent.futures.TimeoutError to simulate a timed-out close future.
 
         Parameters:
-            _timeout (float | None): Ignored timeout value.
+            timeout (float | None): Ignored timeout value.
 
         Raises:
             concurrent.futures.TimeoutError: Always raised when called.
@@ -244,12 +244,12 @@ class _TimeoutCloseFuture(_CloseFutureBase):
 class _ErrorCloseFuture(_CloseFutureBase):
     """Future that raises an unexpected error on result()."""
 
-    def result(self, _timeout: float | None = None) -> None:
+    def result(self, timeout: float | None = None) -> None:  # noqa: ARG002
         """
         Always raises a ValueError with message "boom".
 
         Parameters:
-            _timeout (float | None): Ignored; present for API compatibility.
+            timeout (float | None): Ignored; present for API compatibility.
 
         Raises:
             ValueError: Always raised with message "boom".
@@ -787,7 +787,7 @@ class TestMain(unittest.TestCase):
         ):
             asyncio.run(main(self.mock_config))
 
-        self.assertTrue(executor.close_future.cancel_called)
+        self.assertTrue(executor.close_future.cancel_called)  # type: ignore[attr-defined]
         mock_meshtastic_logger.warning.assert_any_call(
             "Meshtastic client close timed out - may cause notification errors"
         )
@@ -1700,63 +1700,66 @@ class TestMainAsyncFunction(unittest.TestCase):
         # Reset meshtastic_utils globals
         if "mmrelay.meshtastic_utils" in sys.modules:
             module = sys.modules["mmrelay.meshtastic_utils"]
-            module.config = None
-            module.matrix_rooms = []
-            module.meshtastic_client = None
-            module.event_loop = None
-            module.reconnecting = False
-            module.shutting_down = False
-            module.reconnect_task = None
-            module.subscribed_to_messages = False
-            module.subscribed_to_connection_lost = False
+            module.config = None  # type: ignore[attr-defined]
+            module.matrix_rooms = []  # type: ignore[attr-defined]
+            module.meshtastic_client = None  # type: ignore[attr-defined]
+            module.event_loop = None  # type: ignore[attr-defined]
+            module.reconnecting = False  # type: ignore[attr-defined]
+            module.shutting_down = False  # type: ignore[attr-defined]
+            module.reconnect_task = None  # type: ignore[attr-defined]
+            module.subscribed_to_messages = False  # type: ignore[attr-defined]
+            module.subscribed_to_connection_lost = False  # type: ignore[attr-defined]
             if hasattr(module, "_metadata_future"):
-                module._metadata_future = None
+                module._metadata_future = None  # type: ignore[attr-defined]
             if hasattr(module, "_ble_future"):
-                module._ble_future = None
+                module._ble_future = None  # type: ignore[attr-defined]
             if hasattr(module, "_ble_future_address"):
-                module._ble_future_address = None
+                module._ble_future_address = None  # type: ignore[attr-defined]
             if hasattr(module, "_ble_timeout_counts"):
-                module._ble_timeout_counts = {}
+                module._ble_timeout_counts = {}  # type: ignore[attr-defined]
             if hasattr(module, "_metadata_executor"):
-                executor = module._metadata_executor
+                executor = module._metadata_executor  # type: ignore[attr-defined]
                 if executor is not None:
                     with contextlib.suppress(TypeError, RuntimeError):
                         executor.shutdown(wait=False, cancel_futures=True)
-                module._metadata_executor = None
+                module._metadata_executor = None  # type: ignore[attr-defined]
             if hasattr(module, "_ble_executor"):
-                executor = module._ble_executor
+                executor = module._ble_executor  # type: ignore[attr-defined]
                 if executor is not None:
                     with contextlib.suppress(TypeError, RuntimeError):
                         executor.shutdown(wait=False, cancel_futures=True)
-                module._ble_executor = None
+                module._ble_executor = None  # type: ignore[attr-defined]
 
         # Reset matrix_utils globals
         if "mmrelay.matrix_utils" in sys.modules:
             module = sys.modules["mmrelay.matrix_utils"]
-            module.config = None
-            module.matrix_homeserver = None
-            module.matrix_rooms = None
-            module.matrix_access_token = None
-            module.bot_user_id = None
-            module.bot_user_name = None
-            module.matrix_client = None
+            module.config = None  # type: ignore[attr-defined]
+            module.matrix_homeserver = None  # type: ignore[attr-defined]
+            module.matrix_rooms = None  # type: ignore[attr-defined]
+            module.matrix_access_token = None  # type: ignore[attr-defined]
+            module.bot_user_id = None  # type: ignore[attr-defined]
+            module.bot_user_name = None  # type: ignore[attr-defined]
+            module.matrix_client = None  # type: ignore[attr-defined]
             # Reset bot_start_time to current time to avoid stale timestamps
             import time
 
-            module.bot_start_time = int(time.time() * 1000)
+            module.bot_start_time = int(time.time() * 1000)  # type: ignore[attr-defined]
 
         # Reset config globals
         if "mmrelay.config" in sys.modules:
             module = sys.modules["mmrelay.config"]
             # Reset custom_data_dir if it was set
             if hasattr(module, "custom_data_dir"):
-                module.custom_data_dir = None
+                module.custom_data_dir = None  # type: ignore[attr-defined]
 
         # Reset main module globals if any
         if "mmrelay.main" in sys.modules:
             module = sys.modules["mmrelay.main"]
             # Reset banner printed state to ensure consistent test behavior
-            module._banner_printed = False
+            module._banner_printed = False  # type: ignore[attr-defined]
+            # Reset ready file globals
+            module._ready_file_path = None  # type: ignore[attr-defined]
+            module._ready_heartbeat_seconds = 60  # type: ignore[attr-defined]
 
         # Reset plugin_loader caches
         if "mmrelay.plugin_loader" in sys.modules:
@@ -1892,8 +1895,8 @@ class TestMainAsyncFunction(unittest.TestCase):
                     captured_handlers.append(handler)
                     handler()
 
-                loop.add_signal_handler = _fake_add_signal_handler
-                loop._signal_handler_patched = True
+                loop.add_signal_handler = _fake_add_signal_handler  # type: ignore[attr-defined]
+                loop._signal_handler_patched = True  # type: ignore[attr-defined]
             return loop
 
         with (
@@ -1967,8 +1970,8 @@ class TestMainAsyncFunction(unittest.TestCase):
                     """
                     captured_signals.append(sig)
 
-                loop.add_signal_handler = _fake_add_signal_handler
-                loop._signal_capture_patched = True
+                loop.add_signal_handler = _fake_add_signal_handler  # type: ignore[attr-defined]
+                loop._signal_capture_patched = True  # type: ignore[attr-defined]
             return loop
 
         import mmrelay.main as main_module

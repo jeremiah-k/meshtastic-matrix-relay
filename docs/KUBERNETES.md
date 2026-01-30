@@ -122,7 +122,26 @@ Serial requires host device access and node pinning. Start with the most restric
      kubernetes.io/hostname: node-with-device
    ```
 
-4. Use a minimal security context (least privilege first):
+4. Pin the pod to the node with the device:
+
+   Add this under `spec.template.spec`:
+
+   ```yaml
+   nodeSelector:
+     kubernetes.io/hostname: node-with-device
+   ```
+
+5. Add pod-level security context for supplemental groups:
+
+   Add this under `spec.template.spec`:
+
+   ```yaml
+   securityContext:
+     supplementalGroups:
+       - 20 # device group (often dialout)
+   ```
+
+6. Use a minimal security context (least privilege first):
 
    Update `spec.template.spec.containers[0].securityContext`:
 
@@ -130,8 +149,6 @@ Serial requires host device access and node pinning. Start with the most restric
    securityContext:
      runAsUser: 0
      runAsGroup: 0
-     supplementalGroups:
-       - 20 # device group (often dialout)
      allowPrivilegeEscalation: false
    ```
 
@@ -149,6 +166,6 @@ Because environments differ widely, treat BLE support in Kubernetes as experimen
 
 ## Notes
 
-The default manifest sets `MMRELAY_CREDENTIALS_PATH=/data/credentials.json` so credentials created during first-run login persist on the PVC even when you authenticate via environment variables.
-Readiness/liveness probes use a marker file at `/run/mmrelay/ready`. The ready file feature is opt-in and enabled in K8s by setting `MMRELAY_READY_FILE`. If the environment variable is not set, no ready file is created. You can adjust the heartbeat interval with `MMRELAY_READY_HEARTBEAT_SECONDS`. If you increase `MMRELAY_READY_HEARTBEAT_SECONDS` above 120s, update the liveness probe `-mmin` window to match.
-The default NetworkPolicy allows all egress; restrict CIDRs as needed for production. For dual-stack clusters, add an IPv6 `::/0` egress rule if required.
+- Credentials path: The default manifest sets `MMRELAY_CREDENTIALS_PATH=/data/credentials.json` so credentials created during first-run login persist on the PVC even when you authenticate via environment variables.
+- Ready file opt-in: The ready file feature is opt-in and enabled in K8s by setting `MMRELAY_READY_FILE`. If the environment variable is not set, no ready file is created. Readiness/liveness probes use a marker file at `/run/mmrelay/ready` when enabled. You can adjust the heartbeat interval with `MMRELAY_READY_HEARTBEAT_SECONDS`. If you increase `MMRELAY_READY_HEARTBEAT_SECONDS` above 120s, update the liveness probe `-mmin` window to match.
+- NetworkPolicy: The default NetworkPolicy allows all egress; restrict CIDRs as needed for production. For dual-stack clusters, add an IPv6 `::/0` egress rule if required.

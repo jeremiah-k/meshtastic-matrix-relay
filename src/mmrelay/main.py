@@ -137,7 +137,8 @@ def _touch_ready_file() -> None:
     if not _ready_file_path:
         return
     try:
-        Path(_ready_file_path).touch(exist_ok=True)
+        Path(_ready_file_path).touch(mode=0o600, exist_ok=True)
+        os.chmod(_ready_file_path, 0o600)
         logger.debug("Touched readiness file: %s", _ready_file_path)
     except OSError:
         logger.debug(

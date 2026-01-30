@@ -4,6 +4,6 @@ resources:
   - ../../
 images:
   - name: ghcr.io/jeremiah-k/mmrelay
-    newTag: 1.2.9
+    newTag: 1.2.9 # Corresponds to tag 1.2.9
     # Replace with actual digest from: skopeo inspect docker://ghcr.io/jeremiah-k/mmrelay:1.2.9
     digest: sha256:REPLACE_ME
