@@ -71,7 +71,7 @@ spec:
               command:
                 - /bin/sh
                 - -c
-                - find /tmp/ready -mmin -2 | grep -q .
+                - find /run/mmrelay/ready -mmin -2 | grep -q .
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
@@ -81,7 +81,7 @@ spec:
               command:
                 - /bin/sh
                 - -c
-                - test -f /tmp/ready
+                - test -f /run/mmrelay/ready
             initialDelaySeconds: 10
             periodSeconds: 30
             timeoutSeconds: 5
@@ -95,6 +95,8 @@ spec:
               mountPath: /data
             - name: tmp
               mountPath: /tmp
+            - name: run
+              mountPath: /run/mmrelay
       volumes:
         - name: config
           secret:
@@ -106,4 +108,6 @@ spec:
           persistentVolumeClaim:
             claimName: mmrelay-data
         - name: tmp
+          emptyDir: {}
+        - name: run
           emptyDir: {}

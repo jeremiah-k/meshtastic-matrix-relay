@@ -64,9 +64,7 @@ logger = get_logger(name=APP_DISPLAY_NAME)
 
 # Flag to track if banner has been printed
 _banner_printed = False
-_ready_file_path = os.environ.get(
-    "MMRELAY_READY_FILE", "/tmp/ready"
-)  # nosec B108 - k8s readiness marker with env override.
+_ready_file_path = os.environ.get("MMRELAY_READY_FILE", "/run/mmrelay/ready")
 _ready_heartbeat_seconds_raw = os.environ.get("MMRELAY_READY_HEARTBEAT_SECONDS", "60")
 try:
     _ready_heartbeat_seconds = int(_ready_heartbeat_seconds_raw)
@@ -82,16 +80,46 @@ def _write_ready_file() -> None:
     """
     Create or update the Kubernetes readiness marker file used by external probes.
 
-    The file path is taken from MMRELAY_READY_FILE (defaults to /tmp/ready). If no path is configured, the function does nothing. Filesystem errors are caught and suppressed.
+    The file path is taken from MMRELAY_READY_FILE (defaults to /run/mmrelay/ready).
+    The parent directory is created with restrictive permissions (0o700) when
+    possible and the file is written atomically with owner-only permissions
+    (0o600) to avoid insecure world-readable files. If no path is configured,
+    the function does nothing. Filesystem errors are caught and suppressed.
     """
     if not _ready_file_path:
         return
     try:
         ready_dir = os.path.dirname(_ready_file_path)
         if ready_dir:
-            os.makedirs(ready_dir, exist_ok=True)
-        with open(_ready_file_path, "w", encoding="utf-8"):
+            # Create parent directory with restrictive permissions (owner only)
+            os.makedirs(ready_dir, exist_ok=True, mode=0o700)
+            # Ensure directory has correct permissions when we own it.
+            try:
+                if (
+                    os.path.isdir(ready_dir)
+                    and os.stat(ready_dir).st_uid == os.geteuid()
+                ):
+                    os.chmod(ready_dir, 0o700)
+            except OSError:
+                logger.debug(
+                    "Failed to set readiness directory permissions: %s",
+                    ready_dir,
+                    exc_info=True,
+                )
+
+        # Write atomically using a temp file in the same directory
+        ready_path = Path(_ready_file_path)
+        temp_path = ready_path.with_suffix(".tmp")
+
+        # Create temp file with restrictive permissions (owner read/write only)
+        fd = os.open(temp_path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
+        try:
+            os.close(fd)
+        except OSError:
             pass
+
+        # Atomically rename temp file to target
+        temp_path.rename(ready_path)
         logger.debug("Wrote readiness file: %s", _ready_file_path)
     except OSError:
         logger.debug(
@@ -103,7 +131,9 @@ def _touch_ready_file() -> None:
     """
     Update the readiness marker file's modification timestamp, creating the file if it does not exist.
 
-    If no readiness file path is configured, this function does nothing. Filesystem errors during the touch/create operation are suppressed.
+    The file path is taken from MMRELAY_READY_FILE (defaults to /run/mmrelay/ready).
+    If no readiness file path is configured, this function does nothing. Filesystem errors
+    during the touch/create operation are suppressed.
     """
     if not _ready_file_path:
         return
@@ -120,7 +150,9 @@ async def _ready_heartbeat(shutdown_event: asyncio.Event) -> None:
     """
     Keep the Kubernetes readiness marker file's timestamp updated until shutdown.
 
-    Periodically touches the readiness file at the interval configured by _ready_heartbeat_seconds while the provided shutdown_event remains unset.
+    Periodically touches the readiness file (at MMRELAY_READY_FILE, defaulting to
+    /run/mmrelay/ready) at the interval configured by _ready_heartbeat_seconds while
+    the provided shutdown_event remains unset.
 
     Parameters:
         shutdown_event (asyncio.Event): Event that, when set, stops the heartbeat and allows the coroutine to exit.
@@ -135,6 +167,10 @@ async def _ready_heartbeat(shutdown_event: asyncio.Event) -> None:
 def _remove_ready_file() -> None:
     """
     Remove the readiness marker file on shutdown.
+
+    The file path is taken from MMRELAY_READY_FILE (defaults to /run/mmrelay/ready).
+    If no readiness file path is configured, this function does nothing. Filesystem
+    errors during the remove operation are suppressed.
     """
     if not _ready_file_path:
         return

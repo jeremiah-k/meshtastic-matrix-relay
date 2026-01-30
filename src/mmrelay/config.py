@@ -585,10 +585,7 @@ def load_credentials() -> dict[str, Any] | None:
                     or (os.path.altsep and credentials_path.endswith(os.path.altsep))
                 )
             if path_is_dir:
-                credentials_path = os.path.join(
-                    credentials_path.rstrip(os.path.sep).rstrip(os.path.altsep or ""),
-                    "credentials.json",
-                )
+                credentials_path = os.path.join(credentials_path, "credentials.json")
             config_dir = os.path.dirname(credentials_path)
             if not config_dir:
                 config_dir = get_base_dir()
@@ -660,10 +657,7 @@ def save_credentials(
                     )  # pyright: ignore[reportArgumentType]
                 )
             if path_is_dir:
-                credentials_path = os.path.join(
-                    credentials_path.rstrip(os.path.sep).rstrip(os.path.altsep or ""),
-                    "credentials.json",
-                )
+                credentials_path = os.path.join(credentials_path, "credentials.json")
             config_dir = os.path.dirname(credentials_path)
             if not config_dir:
                 config_dir = get_base_dir()

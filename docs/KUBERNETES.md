@@ -150,5 +150,5 @@ Because environments differ widely, treat BLE support in Kubernetes as experimen
 ## Notes
 
 The default manifest sets `MMRELAY_CREDENTIALS_PATH=/data/credentials.json` so credentials created during first-run login persist on the PVC even when you authenticate via environment variables.
-Readiness/liveness probes use a marker file at `/tmp/ready`. You can override the location with `MMRELAY_READY_FILE` and adjust the heartbeat interval with `MMRELAY_READY_HEARTBEAT_SECONDS`. If you increase `MMRELAY_READY_HEARTBEAT_SECONDS` above 120s, update the liveness probe `-mmin` window to match.
+Readiness/liveness probes use a marker file at `/run/mmrelay/ready`. You can override the location with `MMRELAY_READY_FILE` and adjust the heartbeat interval with `MMRELAY_READY_HEARTBEAT_SECONDS`. If you increase `MMRELAY_READY_HEARTBEAT_SECONDS` above 120s, update the liveness probe `-mmin` window to match.
 The default NetworkPolicy allows all egress; restrict CIDRs as needed for production. For dual-stack clusters, add an IPv6 `::/0` egress rule if required.

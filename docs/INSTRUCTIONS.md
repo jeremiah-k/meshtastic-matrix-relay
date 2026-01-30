@@ -128,7 +128,11 @@ Options:
   --data-dir PATH       Deprecated alias for --base-dir
   --log-level {error,warning,info,debug}
                         Set logging level
-  --logfile PATH        Path to log file (can be overridden by --base-dir)
+  --logfile PATH        Path to log file. When provided, this overrides any path
+                        derived from --base-dir. If omitted, the log file defaults
+                        to <base-dir>/logs/mmrelay.log. Note that --data-dir is a
+                        deprecated alias for --base-dir and does not override an
+                        explicit --logfile.
   --version             Show version and exit
 Commands:
   config                Configuration management
