@@ -2143,5 +2143,23 @@ def test_ready_file_helpers(tmp_path, monkeypatch) -> None:
     assert not ready_path.exists()
 
 
+def test_ready_file_noops_when_unset(tmp_path, monkeypatch) -> None:
+    """Ready file helpers should do nothing when MMRELAY_READY_FILE is not set."""
+    import mmrelay.main as main_module
+
+    monkeypatch.setattr(main_module, "_ready_file_path", None)
+
+    ready_path = tmp_path / "ready"
+
+    main_module._write_ready_file()
+    assert not ready_path.exists()
+
+    main_module._touch_ready_file()
+    assert not ready_path.exists()
+
+    main_module._remove_ready_file()
+    assert not ready_path.exists()
+
+
 if __name__ == "__main__":
     unittest.main()
