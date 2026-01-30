@@ -60,7 +60,10 @@ kubectl logs -n mmrelay -f deployment/mmrelay
 ## Optional: pin the image digest
 
 If you want immutable image references, use the digest overlay. Replace the
-placeholder digest in `./mmrelay-k8s/overlays/digest/kustomization.yaml`, then:
+placeholder digest in `./mmrelay-k8s/overlays/digest/kustomization.yaml`.
+Tags and digests are listed at:
+https://github.com/jeremiah-k/meshtastic-matrix-relay/pkgs/container/mmrelay
+Then:
 
 ```bash
 kubectl apply -k ./mmrelay-k8s/overlays/digest

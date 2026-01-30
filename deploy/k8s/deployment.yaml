@@ -85,9 +85,9 @@ spec:
                 - -c
                 - test -f /run/mmrelay/ready
             initialDelaySeconds: 10
-            periodSeconds: 30
+            periodSeconds: 10
             timeoutSeconds: 5
-            failureThreshold: 3
+            failureThreshold: 2
           volumeMounts:
             - name: config
               mountPath: /app/config.yaml
