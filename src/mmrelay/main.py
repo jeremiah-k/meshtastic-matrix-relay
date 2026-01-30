@@ -112,10 +112,9 @@ def _write_ready_file() -> None:
         temp_path = ready_path.with_suffix(".tmp")
 
         # Create temp file with restrictive permissions (owner read/write only)
-        fd = os.open(temp_path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
-        try:
-            os.close(fd)
-        except OSError:
+        with os.fdopen(
+            os.open(temp_path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600), "w"
+        ):
             pass
 
         # Atomically rename temp file to target

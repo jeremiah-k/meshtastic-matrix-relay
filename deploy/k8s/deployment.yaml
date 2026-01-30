@@ -73,7 +73,7 @@ spec:
               command:
                 - /bin/sh
                 - -c
-                - find /run/mmrelay/ready -mmin -2 | grep -q .
+                - test -n "$(find /run/mmrelay/ready -mmin -2)"
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
