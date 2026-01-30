@@ -15,9 +15,15 @@ The `MMRELAY_VERSION` variable controls which version of the manifests and confi
 
 - **Development/Testing**: Use `"main"` (default) for the latest changes. The k8s manifests are currently only available on the main branch and have not yet been included in a release.
 - **Production**: Use a specific release tag (e.g., `1.2.10`) once a release includes the k8s manifests. Pinning to a release ensures stability and reproducibility.
+- **Image tag**: Must be set to a specific tag (e.g., `1.2.9`, `latest`) in the kustomization.yaml. The `MMRELAY_VERSION` variable is only for downloading manifests and config, not for the container image tag.
 - **Digest overlay**: Requires a release tag with published image digests. The overlay is only available for production releases.
 
-Always ensure your manifests and container image use the same version for compatibility.
+**Important**: The `MMRELAY_VERSION` variable (used for downloading manifests) and the image `newTag` (used for the container image) are separate. For example:
+
+- Download manifests from `main` using `MMRELAY_VERSION=main`
+- Use image tag `1.2.9` or `latest` in kustomization.yaml
+
+The manifests from `main` will work with the `1.2.9` image tag, even though that release didn't include these manifests.
 
 ## Quick Start (static manifests)
 
@@ -38,12 +44,13 @@ curl -Lo ./mmrelay-k8s/overlays/digest/kustomization.yaml https://raw.githubuser
 # Ensure the namespace exists
 kubectl create namespace mmrelay --dry-run=client -o yaml | kubectl apply -f -
 
-# Edit namespace/image tag in kustomization.yaml if desired
+# Edit namespace/image tag in kustomization.yaml
 $EDITOR ./mmrelay-k8s/kustomization.yaml
+# IMPORTANT: Set the image newTag to a valid published tag (e.g., "1.2.9" or "latest").
+# Do NOT set newTag to "main" - that is only for downloading manifests.
+# The downloaded manifests from main will work with existing image tags like 1.2.9.
 # If you change the namespace above, update the --namespace/-n flags below to match
 # for secret creation and kubectl apply/get/log commands.
-# Note: If using "main" for MMRELAY_VERSION, update the newTag in kustomization.yaml
-# to match a specific image tag or use "latest" for development.
 
 # Create config.yaml from the project sample (downloaded from the same version as your manifests)
 curl -Lo ./config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/${MMRELAY_VERSION}/src/mmrelay/tools/sample_config.yaml
