@@ -529,15 +529,15 @@ def _handle_matrix_error(
 
 async def logout_matrix_bot(password: str) -> bool:
     """
-    Log out the configured Matrix account, verify credentials when possible, and remove local session data.
+    Log out the configured Matrix account, optionally verify credentials, and remove local session data.
 
-    If credentials are present the function will, when feasible, verify the provided password by performing a temporary login and request server-side logout to invalidate the stored access token. If the stored credentials are incomplete it performs a best-effort local cleanup of session artifacts (for example, credentials file and E2EE stores). All network and cleanup failures are reported; the function always attempts local cleanup regardless of server outcomes.
+    Performs a best-effort server-side logout if full credentials are available (verifying the provided password when possible) and always attempts to remove local session artifacts such as credentials and E2EE stores.
 
     Parameters:
         password (str): Matrix account password used to verify the session before attempting server logout.
 
     Returns:
-        bool: `True` when local cleanup (and server logout, if attempted) completed successfully; `False` on failure or when the matrix-nio dependency is unavailable.
+        bool: `True` when local cleanup (and server logout, if attempted) completed successfully; `False` otherwise.
     """
 
     # Import inside function to avoid circular imports
@@ -575,7 +575,8 @@ async def logout_matrix_bot(password: str) -> bool:
             ssl_context = _create_ssl_context()
 
             # Create a temporary client to fetch user_id
-            temp_client = AsyncClient(homeserver, ssl=cast(Any, ssl_context))
+            ssl_param = cast(Any, ssl_context)
+            temp_client = AsyncClient(homeserver, ssl=ssl_param)
             temp_client.access_token = access_token
 
             # Fetch user_id using whoami
@@ -653,7 +654,7 @@ async def logout_matrix_bot(password: str) -> bool:
 
         # Create a temporary client to verify the password
         # We'll try to login with the password to verify it's correct
-        ssl_param = cast(Any, ssl_context) if ssl_context is not None else None
+        ssl_param = cast(Any, ssl_context)
         temp_client = AsyncClient(homeserver_str, user_id_str, ssl=ssl_param)
 
         try:

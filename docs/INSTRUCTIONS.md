@@ -124,10 +124,15 @@ mmrelay [OPTIONS]
 Options:
   -h, --help            Show this help message and exit
   --config PATH         Path to the configuration file
-  --data-dir PATH       Base directory for all data (logs, database, plugins)
+  --base-dir PATH       Base directory for all data (logs, database, plugins)
+  --data-dir PATH       Deprecated alias for --base-dir
   --log-level {error,warning,info,debug}
                         Set logging level
-  --logfile PATH        Path to log file (can be overridden by --data-dir)
+  --logfile PATH        Path to log file. When provided, this overrides any path
+                        derived from --base-dir. If omitted, the log file defaults
+                        to <base-dir>/logs/mmrelay.log. Note that --data-dir is a
+                        deprecated alias for --base-dir and does not override an
+                        explicit --logfile.
   --version             Show version and exit
 Commands:
   config                Configuration management
@@ -224,32 +229,11 @@ For detailed Docker commands, configuration options, connection types, and troub
 
 ## Kubernetes
 
-> **Note**: Kubernetes deployment is currently in testing and development. This feature is subject to change while we refine it based on user feedback.
+MMRelay ships static Kubernetes manifests in `deploy/k8s/`. Copy them into your deployment repo, create a Secret that contains your `config.yaml`, then apply with `kubectl`.
 
-MMRelay officially supports Kubernetes deployment with a built-in manifest generator.
+Optional: use the digest overlay in `deploy/k8s/overlays/digest/` to pin a container image by SHA.
 
-### Quick Kubernetes Setup
-
-```bash
-# Generate Kubernetes manifests interactively
-mmrelay k8s generate-manifests
-
-# Review and customize the generated ConfigMap
-nano k8s/mmrelay-configmap.yaml
-
-# If you chose to generate a Secret manifest, review it:
-nano k8s/mmrelay-secret-credentials.yaml
-# Or create the Secret directly with kubectl create secret
-
-# Deploy to your cluster
-kubectl apply -f k8s/
-
-# Check status
-kubectl get pods -l app=mmrelay
-kubectl logs -f deployment/mmrelay
-```
-
-For detailed Kubernetes deployment instructions, authentication methods, storage configuration, and troubleshooting, see the [Kubernetes Guide](KUBERNETES.md).
+For detailed Kubernetes deployment instructions, see the [Kubernetes Guide](KUBERNETES.md).
 
 ## Development
 

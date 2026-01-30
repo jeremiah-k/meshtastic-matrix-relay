@@ -3,12 +3,22 @@ import contextlib
 import logging
 import os
 from logging.handlers import RotatingFileHandler
-from typing import TYPE_CHECKING, Any, Dict, Iterator, Set
+from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional, Set
 
 if TYPE_CHECKING:
     from rich.console import Console
 
+# Import logging configuration helpers and constants.
+from mmrelay.config import get_log_dir
+from mmrelay.constants.app import APP_DISPLAY_NAME
+from mmrelay.constants.messages import (
+    DEFAULT_LOG_BACKUP_COUNT,
+    DEFAULT_LOG_SIZE_MB,
+    LOG_SIZE_BYTES_MULTIPLIER,
+)
+
 # Import Rich components only when not running as a service
+RichHandler: Optional[Any] = None
 try:
     from mmrelay.runtime_utils import is_running_as_service
 
@@ -19,19 +29,8 @@ try:
         RICH_AVAILABLE = True
     else:
         RICH_AVAILABLE = False
-        RichHandler = None  # type: ignore[assignment]
 except ImportError:
     RICH_AVAILABLE = False
-    RichHandler = None  # type: ignore[assignment]
-
-# Import parse_arguments only when needed to avoid conflicts with pytest
-from mmrelay.config import get_log_dir
-from mmrelay.constants.app import APP_DISPLAY_NAME
-from mmrelay.constants.messages import (
-    DEFAULT_LOG_BACKUP_COUNT,
-    DEFAULT_LOG_SIZE_MB,
-    LOG_SIZE_BYTES_MULTIPLIER,
-)
 
 # Initialize Rich console only if available
 if RICH_AVAILABLE:

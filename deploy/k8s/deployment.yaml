@@ -1,0 +1,115 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mmrelay
+  namespace: mmrelay
+  annotations:
+    checkov.io/skip1: CKV_K8S_43=Template uses a tag for readability; pin a digest in production.
+    checkov.io/skip2: CKV_K8S_35=Matrix auth uses env vars to bootstrap credentials.json on the PVC.
+    checkov.io/skip3: CKV_K8S_15=Versioned tags are immutable; digest overlay is available for production pinning.
+  labels:
+    app: mmrelay
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mmrelay
+  template:
+    metadata:
+      labels:
+        app: mmrelay
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mmrelay
+          image: ghcr.io/jeremiah-k/mmrelay:1.2.9
+          imagePullPolicy: IfNotPresent
+          command:
+            - mmrelay
+          args:
+            - --config
+            - /app/config.yaml
+            - --base-dir
+            - /data
+            - --logfile
+            - /data/logs/mmrelay.log
+          env:
+            - name: TZ
+              value: UTC
+            - name: PYTHONUNBUFFERED
+              value: "1" # yamllint disable-line rule:quoted-strings
+            - name: MPLCONFIGDIR
+              value: /tmp/matplotlib
+            - name: MMRELAY_READY_FILE
+              value: /run/mmrelay/ready
+            - name: MMRELAY_CREDENTIALS_PATH
+              value: /data/credentials.json
+          envFrom:
+            - secretRef:
+                name: mmrelay-matrix-auth
+                optional: true
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - find /run/mmrelay/ready -mmin -2 | grep -q .
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - test -f /run/mmrelay/ready
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 2
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+              readOnly: true
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+            - name: run
+              mountPath: /run/mmrelay
+      volumes:
+        - name: config
+          secret:
+            secretName: mmrelay-config
+            items:
+              - key: config.yaml
+                path: config.yaml
+        - name: data
+          persistentVolumeClaim:
+            claimName: mmrelay-data
+        - name: tmp
+          emptyDir: {}
+        - name: run
+          emptyDir: {}

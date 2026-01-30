@@ -93,7 +93,7 @@ def _close_coro_if_possible(coro: Any) -> None:
         coro: An awaitable object (e.g., coroutine object or generator-based coroutine). If it has a `close()` method it will be called; otherwise the object is left untouched.
     """
     if inspect.isawaitable(coro) and hasattr(coro, "close"):
-        coro.close()
+        coro.close()  # type: ignore[attr-defined]
     return None
 
 
@@ -228,12 +228,12 @@ class _CloseFutureBase(concurrent.futures.Future):
 class _TimeoutCloseFuture(_CloseFutureBase):
     """Future that raises TimeoutError immediately on result()."""
 
-    def result(self, _timeout: float | None = None) -> None:
+    def result(self, timeout: float | None = None) -> None:  # noqa: ARG002
         """
-        Always raises a concurrent.futures.TimeoutError to simulate a timed-out close future.
+        Always raises concurrent.futures.TimeoutError to simulate a timed-out close future.
 
         Parameters:
-            _timeout (float | None): Ignored timeout value.
+            timeout (float | None): Ignored.
 
         Raises:
             concurrent.futures.TimeoutError: Always raised when called.
@@ -244,12 +244,12 @@ class _TimeoutCloseFuture(_CloseFutureBase):
 class _ErrorCloseFuture(_CloseFutureBase):
     """Future that raises an unexpected error on result()."""
 
-    def result(self, _timeout: float | None = None) -> None:
+    def result(self, timeout: float | None = None) -> None:  # noqa: ARG002
         """
-        Always raises a ValueError with message "boom".
+        Raise a ValueError with message "boom".
 
         Parameters:
-            _timeout (float | None): Ignored; present for API compatibility.
+            timeout (float | None): Ignored; present for API compatibility.
 
         Raises:
             ValueError: Always raised with message "boom".
@@ -787,7 +787,7 @@ class TestMain(unittest.TestCase):
         ):
             asyncio.run(main(self.mock_config))
 
-        self.assertTrue(executor.close_future.cancel_called)
+        self.assertTrue(executor.close_future.cancel_called)  # type: ignore[attr-defined]
         mock_meshtastic_logger.warning.assert_any_call(
             "Meshtastic client close timed out - may cause notification errors"
         )
@@ -1700,63 +1700,66 @@ class TestMainAsyncFunction(unittest.TestCase):
         # Reset meshtastic_utils globals
         if "mmrelay.meshtastic_utils" in sys.modules:
             module = sys.modules["mmrelay.meshtastic_utils"]
-            module.config = None
-            module.matrix_rooms = []
-            module.meshtastic_client = None
-            module.event_loop = None
-            module.reconnecting = False
-            module.shutting_down = False
-            module.reconnect_task = None
-            module.subscribed_to_messages = False
-            module.subscribed_to_connection_lost = False
+            module.config = None  # type: ignore[attr-defined]
+            module.matrix_rooms = []  # type: ignore[attr-defined]
+            module.meshtastic_client = None  # type: ignore[attr-defined]
+            module.event_loop = None  # type: ignore[attr-defined]
+            module.reconnecting = False  # type: ignore[attr-defined]
+            module.shutting_down = False  # type: ignore[attr-defined]
+            module.reconnect_task = None  # type: ignore[attr-defined]
+            module.subscribed_to_messages = False  # type: ignore[attr-defined]
+            module.subscribed_to_connection_lost = False  # type: ignore[attr-defined]
             if hasattr(module, "_metadata_future"):
-                module._metadata_future = None
+                module._metadata_future = None  # type: ignore[attr-defined]
             if hasattr(module, "_ble_future"):
-                module._ble_future = None
+                module._ble_future = None  # type: ignore[attr-defined]
             if hasattr(module, "_ble_future_address"):
-                module._ble_future_address = None
+                module._ble_future_address = None  # type: ignore[attr-defined]
             if hasattr(module, "_ble_timeout_counts"):
-                module._ble_timeout_counts = {}
+                module._ble_timeout_counts = {}  # type: ignore[attr-defined]
             if hasattr(module, "_metadata_executor"):
-                executor = module._metadata_executor
+                executor = module._metadata_executor  # type: ignore[attr-defined]
                 if executor is not None:
                     with contextlib.suppress(TypeError, RuntimeError):
                         executor.shutdown(wait=False, cancel_futures=True)
-                module._metadata_executor = None
+                module._metadata_executor = None  # type: ignore[attr-defined]
             if hasattr(module, "_ble_executor"):
-                executor = module._ble_executor
+                executor = module._ble_executor  # type: ignore[attr-defined]
                 if executor is not None:
                     with contextlib.suppress(TypeError, RuntimeError):
                         executor.shutdown(wait=False, cancel_futures=True)
-                module._ble_executor = None
+                module._ble_executor = None  # type: ignore[attr-defined]
 
         # Reset matrix_utils globals
         if "mmrelay.matrix_utils" in sys.modules:
             module = sys.modules["mmrelay.matrix_utils"]
-            module.config = None
-            module.matrix_homeserver = None
-            module.matrix_rooms = None
-            module.matrix_access_token = None
-            module.bot_user_id = None
-            module.bot_user_name = None
-            module.matrix_client = None
+            module.config = None  # type: ignore[attr-defined]
+            module.matrix_homeserver = None  # type: ignore[attr-defined]
+            module.matrix_rooms = None  # type: ignore[attr-defined]
+            module.matrix_access_token = None  # type: ignore[attr-defined]
+            module.bot_user_id = None  # type: ignore[attr-defined]
+            module.bot_user_name = None  # type: ignore[attr-defined]
+            module.matrix_client = None  # type: ignore[attr-defined]
             # Reset bot_start_time to current time to avoid stale timestamps
             import time
 
-            module.bot_start_time = int(time.time() * 1000)
+            module.bot_start_time = int(time.time() * 1000)  # type: ignore[attr-defined]
 
         # Reset config globals
         if "mmrelay.config" in sys.modules:
             module = sys.modules["mmrelay.config"]
             # Reset custom_data_dir if it was set
             if hasattr(module, "custom_data_dir"):
-                module.custom_data_dir = None
+                module.custom_data_dir = None  # type: ignore[attr-defined]
 
         # Reset main module globals if any
         if "mmrelay.main" in sys.modules:
             module = sys.modules["mmrelay.main"]
             # Reset banner printed state to ensure consistent test behavior
-            module._banner_printed = False
+            module._banner_printed = False  # type: ignore[attr-defined]
+            # Reset ready file globals
+            module._ready_file_path = None  # type: ignore[attr-defined]
+            module._ready_heartbeat_seconds = 60  # type: ignore[attr-defined]
 
         # Reset plugin_loader caches
         if "mmrelay.plugin_loader" in sys.modules:
@@ -1867,9 +1870,7 @@ class TestMainAsyncFunction(unittest.TestCase):
 
     def test_main_signal_handler_sets_shutdown_flag(self):
         """
-        Ensure signal handlers set the shutdown flag and register a shutdown handler.
-
-        Patches asyncio.get_running_loop so the event loop's add_signal_handler is replaced with a synchronous invoker that captures and immediately calls the registered handler; runs main(config) and asserts the meshtastic shutdown flag is set and a signal handler was registered.
+        Ensure mmrelay sets the meshtastic shutdown flag and registers a signal handler when the event loop installs signal handlers.
         """
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
@@ -1885,15 +1886,31 @@ class TestMainAsyncFunction(unittest.TestCase):
         real_get_running_loop = asyncio.get_running_loop
 
         def _patched_get_running_loop():
+            """
+            Provide the current running event loop with its signal-handler registration patched so registered handlers are captured and invoked immediately.
+
+            The returned loop has its `add_signal_handler` attribute replaced with a function that appends the handler to an external capture list and then calls the handler synchronously. Subsequent calls are no-ops for the patching step.
+
+            Returns:
+                asyncio.AbstractEventLoop: The running event loop with `add_signal_handler` patched to capture and invoke handlers.
+            """
             loop = real_get_running_loop()
             if not hasattr(loop, "_signal_handler_patched"):
 
                 def _fake_add_signal_handler(_sig, handler):
+                    """
+                    Record and invoke a signal handler for tests.
+
+                    Parameters:
+                        _sig: The signal number or name (ignored by this test helper).
+                        handler: The callable to register; it will be appended to `captured_handlers`
+                            and invoked immediately.
+                    """
                     captured_handlers.append(handler)
                     handler()
 
-                loop.add_signal_handler = _fake_add_signal_handler
-                loop._signal_handler_patched = True
+                loop.add_signal_handler = _fake_add_signal_handler  # type: ignore[attr-defined]
+                loop._signal_handler_patched = True  # type: ignore[attr-defined]
             return loop
 
         with (
@@ -1947,28 +1964,28 @@ class TestMainAsyncFunction(unittest.TestCase):
 
         def _patched_get_running_loop():
             """
-            Return the current running event loop with its signal-handler registration patched to capture signals.
+            Return the currently running asyncio event loop with its signal registration patched to capture signals.
 
-            The returned loop has its `add_signal_handler` replaced so that any registered signal is appended to the module-level `captured_signals` list, and a `_signal_capture_patched` attribute is set to avoid repeated patching.
+            The loop's `add_signal_handler` is replaced with a function that appends registered signal identifiers to the module-level `captured_signals` list, and a `_signal_capture_patched` attribute is set on the loop to prevent repeated patching.
 
             Returns:
-                asyncio.AbstractEventLoop: The running event loop with signal registration patched.
+                asyncio.AbstractEventLoop: The running event loop whose signal registration records signals to `captured_signals`.
             """
             loop = real_get_running_loop()
             if not hasattr(loop, "_signal_capture_patched"):
 
                 def _fake_add_signal_handler(sig, _handler):
                     """
-                    Record the given signal identifier by appending it to the module-level captured_signals list for testing.
+                    Record a signal identifier into the module-level `captured_signals` list for tests.
 
                     Parameters:
-                        sig: The signal identifier (e.g., an int or signal.Signals) to capture.
-                        _handler: The signal handler callable (ignored).
+                        sig: The signal identifier (e.g., an int or `signal.Signals`) to record.
+                        _handler: Ignored signal handler callable.
                     """
                     captured_signals.append(sig)
 
-                loop.add_signal_handler = _fake_add_signal_handler
-                loop._signal_capture_patched = True
+                loop.add_signal_handler = _fake_add_signal_handler  # type: ignore[attr-defined]
+                loop._signal_capture_patched = True  # type: ignore[attr-defined]
             return loop
 
         import mmrelay.main as main_module
@@ -2123,6 +2140,42 @@ class TestMainAsyncFunction(unittest.TestCase):
         loop.run_until_complete(run_with_pending_tasks())
         loop.run_until_complete(run_without_pending_tasks())
         asyncio.set_event_loop(None)
+
+
+def test_ready_file_helpers(tmp_path, monkeypatch) -> None:
+    """Ready file helpers should create and remove the marker."""
+    import mmrelay.main as main_module
+
+    ready_path = tmp_path / "ready"
+    monkeypatch.setattr(main_module, "_ready_file_path", str(ready_path))
+
+    main_module._write_ready_file()
+    assert ready_path.exists()
+
+    previous_mtime = ready_path.stat().st_mtime
+    main_module._touch_ready_file()
+    assert ready_path.stat().st_mtime >= previous_mtime
+
+    main_module._remove_ready_file()
+    assert not ready_path.exists()
+
+
+def test_ready_file_noops_when_unset(tmp_path, monkeypatch) -> None:
+    """Ready file helpers should do nothing when MMRELAY_READY_FILE is not set."""
+    import mmrelay.main as main_module
+
+    monkeypatch.setattr(main_module, "_ready_file_path", None)
+
+    ready_path = tmp_path / "ready"
+
+    main_module._write_ready_file()
+    assert not ready_path.exists()
+
+    main_module._touch_ready_file()
+    assert not ready_path.exists()
+
+    main_module._remove_ready_file()
+    assert not ready_path.exists()
 
 
 if __name__ == "__main__":

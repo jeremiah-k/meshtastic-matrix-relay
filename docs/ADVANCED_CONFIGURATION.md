@@ -193,7 +193,7 @@ These environment variables can override config.yaml settings:
 
 The `MMRELAY_MATRIX_*` variables (HOMESERVER, BOT_USER_ID, PASSWORD, ACCESS_TOKEN) are for containerized deployments where credentials are injected via Secrets or environment variables.
 
-- **Kubernetes**: Use Kubernetes Secrets with the manifest generator (recommended)
+- **Kubernetes**: Use Kubernetes Secrets with the static manifests (recommended)
 - **Docker**: Use `mmrelay auth login` or environment variables
 - **All other deployments**: Use `mmrelay auth login`
 

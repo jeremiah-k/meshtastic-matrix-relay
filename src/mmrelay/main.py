@@ -6,8 +6,10 @@ It uses Meshtastic-python and Matrix nio client library to interface with the ra
 import asyncio
 import concurrent.futures
 import functools
+import os
 import signal
 import sys
+from pathlib import Path
 from typing import Any, cast
 
 from aiohttp import ClientError
@@ -62,14 +64,129 @@ logger = get_logger(name=APP_DISPLAY_NAME)
 
 # Flag to track if banner has been printed
 _banner_printed = False
+_ready_file_path = os.environ.get("MMRELAY_READY_FILE")
+_ready_heartbeat_seconds_raw = os.environ.get("MMRELAY_READY_HEARTBEAT_SECONDS", "60")
+try:
+    _ready_heartbeat_seconds = int(_ready_heartbeat_seconds_raw)
+except (TypeError, ValueError):
+    logger.warning(
+        "Invalid MMRELAY_READY_HEARTBEAT_SECONDS=%r; defaulting to 60",
+        _ready_heartbeat_seconds_raw,
+    )
+    _ready_heartbeat_seconds = 60
+
+
+def _write_ready_file() -> None:
+    """
+    Create or update the Kubernetes readiness marker file used by external probes.
+
+    If MMRELAY_READY_FILE is unset, this function is a no-op. When configured, it
+    ensures the parent directory exists (attempting to set owner-only mode 0o700),
+    writes the readiness file atomically from a temporary file, and attempts to
+    set owner-only file permissions (0o600) to avoid world-readable files. Filesystem
+    errors are caught and suppressed; failures are logged at debug level.
+    """
+    if not _ready_file_path:
+        return
+    try:
+        ready_dir = os.path.dirname(_ready_file_path)
+        if ready_dir:
+            # Create parent directory with restrictive permissions (owner only)
+            os.makedirs(ready_dir, exist_ok=True, mode=0o700)
+            # Ensure directory has correct permissions when we own it.
+            try:
+                if (
+                    os.path.isdir(ready_dir)
+                    and os.stat(ready_dir).st_uid == os.geteuid()
+                ):
+                    os.chmod(ready_dir, 0o700)
+            except OSError:
+                logger.debug(
+                    "Failed to set readiness directory permissions: %s",
+                    ready_dir,
+                    exc_info=True,
+                )
+
+        # Write atomically using a temp file in the same directory
+        ready_path = Path(_ready_file_path)
+        temp_path = ready_path.with_suffix(".tmp")
+
+        # Create temp file with restrictive permissions (owner read/write only)
+        with os.fdopen(
+            os.open(temp_path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600), "w"
+        ):
+            pass
+
+        # Atomically rename temp file to target
+        temp_path.rename(ready_path)
+        logger.debug("Wrote readiness file: %s", _ready_file_path)
+    except OSError:
+        logger.debug(
+            "Failed to write readiness file: %s", _ready_file_path, exc_info=True
+        )
+
+
+def _touch_ready_file() -> None:
+    """
+    Update the readiness marker file's modification timestamp, creating the file if it does not exist.
+
+    The file path is taken from MMRELAY_READY_FILE (no default; must be set to enable).
+    If no readiness file path is configured, this function does nothing. Filesystem errors
+    during the touch/create operation are suppressed.
+    """
+    if not _ready_file_path:
+        return
+    try:
+        Path(_ready_file_path).touch(mode=0o600, exist_ok=True)
+        os.chmod(_ready_file_path, 0o600)
+        logger.debug("Touched readiness file: %s", _ready_file_path)
+    except OSError:
+        logger.debug(
+            "Failed to touch readiness file: %s", _ready_file_path, exc_info=True
+        )
+
+
+async def _ready_heartbeat(shutdown_event: asyncio.Event) -> None:
+    """
+    Keep the Kubernetes readiness marker file's modification time updated until shutdown.
+
+    If a readiness file path is not configured or the heartbeat interval is less than or equal to zero, this coroutine returns immediately; otherwise it periodically updates the file's timestamp at the configured interval while `shutdown_event` is not set.
+
+    Parameters:
+        shutdown_event (asyncio.Event): Event that, when set, stops the heartbeat and allows the coroutine to exit.
+    """
+    if _ready_heartbeat_seconds <= 0 or not _ready_file_path:
+        return
+    while not shutdown_event.is_set():
+        await asyncio.to_thread(_touch_ready_file)
+        await asyncio.sleep(_ready_heartbeat_seconds)
+
+
+def _remove_ready_file() -> None:
+    """
+    Remove the readiness marker file on shutdown.
+
+    The file path is taken from MMRELAY_READY_FILE (no default; must be set to enable).
+    If no readiness file path is configured, this function does nothing. Filesystem
+    errors during the remove operation are suppressed.
+    """
+    if not _ready_file_path:
+        return
+    try:
+        if os.path.exists(_ready_file_path):
+            os.remove(_ready_file_path)
+            logger.debug("Removed readiness file: %s", _ready_file_path)
+    except OSError:
+        logger.debug(
+            "Failed to remove readiness file: %s", _ready_file_path, exc_info=True
+        )
 
 
 def print_banner() -> None:
     """
-    Log the MMRelay startup banner with version information once.
+    Log a single startup banner containing the application version.
 
-    This records an informational message "Starting MMRelay version <version>" via the module logger
-    the first time it is called and sets a module-level flag to prevent subsequent prints.
+    Subsequent calls have no effect.
     """
     global _banner_printed
     # Only print the banner once
@@ -179,11 +296,15 @@ async def main(config: dict[str, Any]) -> None:
     # Set up shutdown event
     shutdown_event = asyncio.Event()
 
+    # Signal readiness after core services and callbacks are initialized.
+    _write_ready_file()
+    ready_task: asyncio.Task[None] | None = None
+    if _ready_heartbeat_seconds > 0:
+        ready_task = asyncio.create_task(_ready_heartbeat(shutdown_event))
+
     def _set_shutdown_flag() -> None:
         """
-        Mark the application as shutting down and notify waiters.
-
-        Sets the module-level shutdown flag and sets the shutdown_event so tasks waiting on shutdown can proceed.
+        Set the Meshtastic shutdown flag and signal the shutdown event so tasks waiting for shutdown can proceed.
         """
         meshtastic_utils.shutting_down = True
         shutdown_event.set()
@@ -302,6 +423,13 @@ async def main(config: dict[str, Any]) -> None:
     except KeyboardInterrupt:
         shutdown()
     finally:
+        if ready_task is not None:
+            ready_task.cancel()
+            try:
+                await ready_task
+            except asyncio.CancelledError:
+                pass
+        _remove_ready_file()
         # Cleanup
         matrix_logger.info("Stopping plugins...")
         await loop.run_in_executor(None, shutdown_plugins)
