@@ -2,18 +2,38 @@
 
 > **Note**: Kubernetes deployment is currently in testing and development. We welcome feedback to help improve the manifests and deployment experience.
 
-This guide uses the static manifests in `deploy/k8s/`. Copy them into your deployment repo, create a Secret with your `config.yaml`, then apply.
+This guide uses the static manifests in `deploy/k8s/`. Download them, create a Secret with your `config.yaml`, then apply.
 
 ## Prerequisites
 
 - Kubernetes cluster (v1.20+)
 - `kubectl` (includes kustomize support for `kubectl apply -k`)
 
+## Version Selection
+
+The `MMRELAY_VERSION` variable controls which version of the manifests and configuration you download.
+
+- **Development/Testing**: Use `"main"` (default) for the latest changes. The k8s manifests are currently only available on the main branch and have not yet been included in a release.
+- **Production**: Use a specific release tag (e.g., `1.2.10`) once a release includes the k8s manifests. Pinning to a release ensures stability and reproducibility.
+- **Digest overlay**: Requires a release tag with published image digests. The overlay is only available for production releases.
+
+Always ensure your manifests and container image use the same version for compatibility.
+
 ## Quick Start (static manifests)
 
 ```bash
-# Copy the static manifests into your deployment repo
-cp -R deploy/k8s ./mmrelay-k8s
+# Set the version to use (git tag for production, or "main" for development)
+export MMRELAY_VERSION=main
+
+# Create directory for manifests
+mkdir -p ./mmrelay-k8s/overlays/digest
+
+# Download the manifests
+curl -Lo ./mmrelay-k8s/pvc.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/${MMRELAY_VERSION}/deploy/k8s/pvc.yaml
+curl -Lo ./mmrelay-k8s/networkpolicy.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/${MMRELAY_VERSION}/deploy/k8s/networkpolicy.yaml
+curl -Lo ./mmrelay-k8s/deployment.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/${MMRELAY_VERSION}/deploy/k8s/deployment.yaml
+curl -Lo ./mmrelay-k8s/kustomization.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/${MMRELAY_VERSION}/deploy/k8s/kustomization.yaml
+curl -Lo ./mmrelay-k8s/overlays/digest/kustomization.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/${MMRELAY_VERSION}/deploy/k8s/overlays/digest/kustomization.yaml
 
 # Ensure the namespace exists
 kubectl create namespace mmrelay --dry-run=client -o yaml | kubectl apply -f -
@@ -22,10 +42,10 @@ kubectl create namespace mmrelay --dry-run=client -o yaml | kubectl apply -f -
 $EDITOR ./mmrelay-k8s/kustomization.yaml
 # If you change the namespace above, update the --namespace/-n flags below to match
 # for secret creation and kubectl apply/get/log commands.
+# Note: If using "main" for MMRELAY_VERSION, update the newTag in kustomization.yaml
+# to match a specific image tag or use "latest" for development.
 
-# Create config.yaml from the project sample (pin to the same version as your manifests/image)
-# Set MMRELAY_VERSION to a git tag or commit that matches your image tag.
-export MMRELAY_VERSION=1.2.9
+# Create config.yaml from the project sample (downloaded from the same version as your manifests)
 curl -Lo ./config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/${MMRELAY_VERSION}/src/mmrelay/tools/sample_config.yaml
 $EDITOR ./config.yaml
 
@@ -59,11 +79,17 @@ kubectl logs -n mmrelay -f deployment/mmrelay
 
 ## Optional: pin the image digest
 
-If you want immutable image references, use the digest overlay. Replace the
-placeholder digest in `./mmrelay-k8s/overlays/digest/kustomization.yaml`.
+If you want immutable image references for production, use the digest overlay.
+This requires:
+
+1. Using a release tag (not "main") that includes the k8s manifests
+2. A published image with a digest from GitHub Packages
+
+Replace the placeholder digest in `./mmrelay-k8s/overlays/digest/kustomization.yaml`.
 Tags and digests are listed on the GitHub Packages page:
 [https://github.com/jeremiah-k/meshtastic-matrix-relay/pkgs/container/mmrelay](https://github.com/jeremiah-k/meshtastic-matrix-relay/pkgs/container/mmrelay)
-Then:
+
+Note: The digest overlay is only available for release tags where the k8s manifests were included in that release.
 
 ```bash
 kubectl apply -k ./mmrelay-k8s/overlays/digest
@@ -84,7 +110,7 @@ This keeps sensitive data out of the manifests so you can publish the manifests 
 
 ## Storage
 
-`deploy/k8s/pvc.yaml` uses the cluster default StorageClass. If your cluster requires a specific StorageClass, add `storageClassName` there.
+`./mmrelay-k8s/pvc.yaml` uses the cluster default StorageClass. If your cluster requires a specific StorageClass, add `storageClassName` there.
 
 ## Connection types
 
@@ -96,56 +122,56 @@ No manifest changes required. Configure `meshtastic.connection_type: tcp` in `co
 
 Serial requires host device access and node pinning. Start with the most restrictive settings and only escalate if needed.
 
-1. Add the device mount to the container:
+1.  Add the device mount to the container:
 
-   In `deploy/k8s/deployment.yaml`, add this entry under
-   `spec.template.spec.containers[0].volumeMounts`:
+    In `./mmrelay-k8s/deployment.yaml`, add this entry under
+    `spec.template.spec.containers[0].volumeMounts`:
 
-   ```yaml
-   - name: serial-device
-     mountPath: /dev/ttyUSB0
-   ```
+    ```yaml
+    - name: serial-device
+      mountPath: /dev/ttyUSB0
+    ```
 
-2. Add the hostPath volume:
+2.  Add the hostPath volume:
 
-   In the same file, add this under `spec.template.spec.volumes`:
+    In the same file, add this under `spec.template.spec.volumes`:
 
-   ```yaml
-   - name: serial-device
-     hostPath:
-       path: /dev/ttyUSB0
-       type: CharDevice
-   ```
+    ```yaml
+    - name: serial-device
+      hostPath:
+        path: /dev/ttyUSB0
+        type: CharDevice
+    ```
 
-3. Pin the pod to the node with the device:
+3.  Pin the pod to the node with the device:
 
-   Add this under `spec.template.spec`:
+    Add this under `spec.template.spec`:
 
-   ```yaml
-   nodeSelector:
-     kubernetes.io/hostname: node-with-device
-   ```
+    ```yaml
+    nodeSelector:
+      kubernetes.io/hostname: node-with-device
+    ```
 
-4. Add pod-level security context for supplemental groups:
+4.  Add pod-level security context for supplemental groups:
 
-   Add this under `spec.template.spec`:
+    Add this under `spec.template.spec`:
 
-   ```yaml
-   securityContext:
-     supplementalGroups:
-       - 20 # device group (often dialout)
-   ```
+    ```yaml
+    securityContext:
+      supplementalGroups:
+        - 20 # device group (often dialout)
+    ```
 
-5. Use a minimal security context (least privilege first):
+5.  Use a minimal security context (least privilege first):
 
-   Update `spec.template.spec.containers[0].securityContext`:
+    Update `spec.template.spec.containers[0].securityContext`:
 
-   ```yaml
-   securityContext:
-     runAsUser: 0
-     runAsGroup: 0
-     allowPrivilegeEscalation: false
-   ```
+    ```yaml
+    securityContext:
+      runAsUser: 0
+      runAsGroup: 0
+      allowPrivilegeEscalation: false
+    ```
 
 If you still get permission errors, try adding capabilities. Only use `privileged: true` as a last resort.
 
