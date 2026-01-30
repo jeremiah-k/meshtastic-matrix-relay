@@ -73,7 +73,7 @@ spec:
                 - -c
                 - find /tmp/ready -mmin -2 | grep -q .
             initialDelaySeconds: 30
-            periodSeconds: 30
+            periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
           readinessProbe:
