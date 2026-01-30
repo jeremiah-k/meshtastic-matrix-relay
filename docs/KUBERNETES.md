@@ -27,14 +27,13 @@ $EDITOR ./mmrelay-k8s/kustomization.yaml
 curl -Lo ./config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample_config.yaml
 $EDITOR ./config.yaml
 
-# Recommended: set a writable credentials path in config.yaml for the container
+# The default manifest sets MMRELAY_CREDENTIALS_PATH=/data/credentials.json,
+# so credentials will persist on the PVC. You can override this by explicitly
+# setting it in config.yaml:
 # matrix:
 #   credentials_path: /data/credentials.json
 #   e2ee:
 #     store_path: /data/store
-
-# The default manifest already sets MMRELAY_CREDENTIALS_PATH=/data/credentials.json
-# so credentials will persist on the PVC even if you leave this commented out.
 
 # Create a Matrix auth secret (environment-based auth)
 kubectl create secret generic mmrelay-matrix-auth \
@@ -122,16 +121,7 @@ Serial requires host device access and node pinning. Start with the most restric
      kubernetes.io/hostname: node-with-device
    ```
 
-4. Pin the pod to the node with the device:
-
-   Add this under `spec.template.spec`:
-
-   ```yaml
-   nodeSelector:
-     kubernetes.io/hostname: node-with-device
-   ```
-
-5. Add pod-level security context for supplemental groups:
+4. Add pod-level security context for supplemental groups:
 
    Add this under `spec.template.spec`:
 
@@ -141,7 +131,7 @@ Serial requires host device access and node pinning. Start with the most restric
        - 20 # device group (often dialout)
    ```
 
-6. Use a minimal security context (least privilege first):
+5. Use a minimal security context (least privilege first):
 
    Update `spec.template.spec.containers[0].securityContext`:
 
@@ -167,5 +157,8 @@ Because environments differ widely, treat BLE support in Kubernetes as experimen
 ## Notes
 
 - Credentials path: The default manifest sets `MMRELAY_CREDENTIALS_PATH=/data/credentials.json` so credentials created during first-run login persist on the PVC even when you authenticate via environment variables.
-- Ready file opt-in: The ready file feature is opt-in and enabled in K8s by setting `MMRELAY_READY_FILE`. If the environment variable is not set, no ready file is created. Readiness/liveness probes use a marker file at `/run/mmrelay/ready` when enabled. You can adjust the heartbeat interval with `MMRELAY_READY_HEARTBEAT_SECONDS`. If you increase `MMRELAY_READY_HEARTBEAT_SECONDS` above 120s, update the liveness probe `-mmin` window to match.
+- Ready file: The ready file feature is opt-in and enabled via `MMRELAY_READY_FILE=/run/mmrelay/ready`. When enabled:
+  - Readiness/liveness probes check for the marker file at `/run/mmrelay/ready`
+  - Heartbeat interval is configurable via `MMRELAY_READY_HEARTBEAT_SECONDS` (default: 60s)
+  - **Important**: If you increase `MMRELAY_READY_HEARTBEAT_SECONDS` above 120s, update the liveness probe `-mmin` window in the manifest to match
 - NetworkPolicy: The default NetworkPolicy allows all egress; restrict CIDRs as needed for production. For dual-stack clusters, add an IPv6 `::/0` egress rule if required.
