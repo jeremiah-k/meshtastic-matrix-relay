@@ -34,9 +34,9 @@ spec:
             - --config
             - /app/config.yaml
             - --base-dir
-            - /app
+            - /data
             - --logfile
-            - /app/data/logs/mmrelay.log
+            - /data/logs/mmrelay.log
           env:
             - name: TZ
               value: UTC
@@ -45,7 +45,7 @@ spec:
             - name: MPLCONFIGDIR
               value: /tmp/matplotlib
             - name: MMRELAY_CREDENTIALS_PATH
-              value: /app/data/credentials.json
+              value: /data/credentials.json
           envFrom:
             - secretRef:
                 name: mmrelay-matrix-auth
@@ -92,7 +92,7 @@ spec:
               subPath: config.yaml
               readOnly: true
             - name: data
-              mountPath: /app
+              mountPath: /data
             - name: tmp
               mountPath: /tmp
       volumes:

@@ -29,11 +29,11 @@ $EDITOR ./config.yaml
 
 # Recommended: set a writable credentials path in config.yaml for the container
 # matrix:
-#   credentials_path: /app/data/credentials.json
+#   credentials_path: /data/credentials.json
 #   e2ee:
-#     store_path: /app/data/store
+#     store_path: /data/store
 
-# The default manifest already sets MMRELAY_CREDENTIALS_PATH=/app/data/credentials.json
+# The default manifest already sets MMRELAY_CREDENTIALS_PATH=/data/credentials.json
 # so credentials will persist on the PVC even if you leave this commented out.
 
 # Create a Matrix auth secret (environment-based auth)
@@ -74,7 +74,7 @@ The deployment mounts a Secret named `mmrelay-config` with one key:
 Authentication secrets are provided separately using environment variables
 via the optional `mmrelay-matrix-auth` Secret (see example above). On first
 startup, MMRelay will log in with the provided credentials and create
-`/app/data/credentials.json` on the persistent volume.
+`/data/credentials.json` on the persistent volume.
 
 This keeps sensitive data out of the manifests so you can publish the manifests without exposing secrets. If you use an external secrets manager (External Secrets, Sealed Secrets, Vault, etc.), create the same Secret name/keys.
 
@@ -149,6 +149,6 @@ Because environments differ widely, treat BLE support in Kubernetes as experimen
 
 ## Notes
 
-The default manifest sets `MMRELAY_CREDENTIALS_PATH=/app/data/credentials.json` so credentials created during first-run login persist on the PVC even when you authenticate via environment variables.
+The default manifest sets `MMRELAY_CREDENTIALS_PATH=/data/credentials.json` so credentials created during first-run login persist on the PVC even when you authenticate via environment variables.
 Readiness/liveness probes use a marker file at `/tmp/ready`. You can override the location with `MMRELAY_READY_FILE` and adjust the heartbeat interval with `MMRELAY_READY_HEARTBEAT_SECONDS`. If you increase `MMRELAY_READY_HEARTBEAT_SECONDS` above 120s, update the liveness probe `-mmin` window to match.
 The default NetworkPolicy allows all egress; restrict CIDRs as needed for production. For dual-stack clusters, add an IPv6 `::/0` egress rule if required.

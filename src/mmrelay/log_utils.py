@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional, Set
 if TYPE_CHECKING:
     from rich.console import Console
 
-# Import parse_arguments only when needed to avoid conflicts with pytest
+# Import logging configuration helpers and constants.
 from mmrelay.config import get_log_dir
 from mmrelay.constants.app import APP_DISPLAY_NAME
 from mmrelay.constants.messages import (
