@@ -48,14 +48,14 @@ curl -Lo ./mmrelay-k8s/overlays/digest/kustomization.yaml https://raw.githubuser
 kubectl create namespace mmrelay --dry-run=client -o yaml | kubectl apply -f -
 
 # Edit namespace/image tag in kustomization.yaml
-$EDITOR ./mmrelay-k8s/kustomization.yaml
+vi ./mmrelay-k8s/kustomization.yaml
 # Set the image newTag to match your MMRELAY_VERSION (${MMRELAY_VERSION})
 # If you change the namespace above, update the --namespace/-n flags below to match
 # for secret creation and kubectl apply/get/log commands.
 
 # Create config.yaml from the project sample (downloaded from the same version as your image)
 curl -Lo ./config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/${MMRELAY_VERSION}/src/mmrelay/tools/sample_config.yaml
-$EDITOR ./config.yaml
+vi ./config.yaml
 
 # The default manifest sets MMRELAY_CREDENTIALS_PATH=/data/credentials.json,
 # so credentials will persist on the PVC. You can override this by explicitly
@@ -66,10 +66,11 @@ $EDITOR ./config.yaml
 #     store_path: /data/store
 
 # Create a Matrix auth secret (environment-based auth)
+# The password is entered interactively and will not be shown or stored in shell history
 kubectl create secret generic mmrelay-matrix-auth \
-  --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.example.org \
-  --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@bot:example.org \
-  --from-literal=MMRELAY_MATRIX_PASSWORD=your_password \
+  --from-literal=MMRELAY_MATRIX_HOMESERVER=$(read -p "Matrix homeserver URL (e.g., https://matrix.example.org): "; echo "$REPLY") \
+  --from-literal=MMRELAY_MATRIX_BOT_USER_ID=$(read -p "Matrix bot user ID (e.g., @bot:example.org): "; echo "$REPLY") \
+  --from-literal=MMRELAY_MATRIX_PASSWORD=$(read -s -p "Matrix password: "; echo "$REPLY") \
   --namespace mmrelay
 
 # Store config.yaml in a Kubernetes Secret
