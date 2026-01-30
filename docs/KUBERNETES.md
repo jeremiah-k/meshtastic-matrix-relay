@@ -11,48 +11,49 @@ This guide uses the static manifests in `deploy/k8s/`. Download them, create a S
 
 ## Version Selection
 
-The `MMRELAY_VERSION` variable controls which version of the manifests and configuration you download.
+The `MMRELAY_VERSION` variable is the container image tag (e.g., `1.2.9`, `latest`). This is used for:
 
-- **Development/Testing**: Use `"main"` (default) for the latest changes. The k8s manifests are currently only available on the main branch and have not yet been included in a release.
-- **Production**: Use a specific release tag (e.g., `1.2.10`) once a release includes the k8s manifests. Pinning to a release ensures stability and reproducibility.
-- **Image tag**: Must be set to a specific tag (e.g., `1.2.9`, `latest`) in the kustomization.yaml. The `MMRELAY_VERSION` variable is only for downloading manifests and config, not for the container image tag.
+- Setting the image tag in kustomization.yaml
+- Downloading the sample config.yaml
+
+The Kubernetes manifests are always downloaded from the `main` branch since they have not yet been included in a release.
+
+- **Production**: Use a specific release tag (e.g., `1.2.9`) for stability and reproducibility.
+- **Development**: Use `latest` for the latest development changes.
 - **Digest overlay**: Requires a release tag with published image digests. The overlay is only available for production releases.
 
-**Important**: The `MMRELAY_VERSION` variable (used for downloading manifests) and the image `newTag` (used for the container image) are separate. For example:
-
-- Download manifests from `main` using `MMRELAY_VERSION=main`
-- Use image tag `1.2.9` or `latest` in kustomization.yaml
-
-The manifests from `main` will work with the `1.2.9` image tag, even though that release didn't include these manifests.
+**Important**: The manifests from `main` branch work with any existing image tag (`1.2.9`, `latest`, etc.), even though the release didn't include these manifests.
 
 ## Quick Start (static manifests)
 
 ```bash
-# Set the version to use (git tag for production, or "main" for development)
-export MMRELAY_VERSION=main
+# Create a project directory and change into it
+mkdir -p mmrelay
+cd mmrelay
+
+# Set the version for the container image tag
+export MMRELAY_VERSION=1.2.9
 
 # Create directory for manifests
 mkdir -p ./mmrelay-k8s/overlays/digest
 
-# Download the manifests
-curl -Lo ./mmrelay-k8s/pvc.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/${MMRELAY_VERSION}/deploy/k8s/pvc.yaml
-curl -Lo ./mmrelay-k8s/networkpolicy.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/${MMRELAY_VERSION}/deploy/k8s/networkpolicy.yaml
-curl -Lo ./mmrelay-k8s/deployment.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/${MMRELAY_VERSION}/deploy/k8s/deployment.yaml
-curl -Lo ./mmrelay-k8s/kustomization.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/${MMRELAY_VERSION}/deploy/k8s/kustomization.yaml
-curl -Lo ./mmrelay-k8s/overlays/digest/kustomization.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/${MMRELAY_VERSION}/deploy/k8s/overlays/digest/kustomization.yaml
+# Download the manifests (from main branch)
+curl -Lo ./mmrelay-k8s/pvc.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/deploy/k8s/pvc.yaml
+curl -Lo ./mmrelay-k8s/networkpolicy.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/deploy/k8s/networkpolicy.yaml
+curl -Lo ./mmrelay-k8s/deployment.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/deploy/k8s/deployment.yaml
+curl -Lo ./mmrelay-k8s/kustomization.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/deploy/k8s/kustomization.yaml
+curl -Lo ./mmrelay-k8s/overlays/digest/kustomization.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/deploy/k8s/overlays/digest/kustomization.yaml
 
 # Ensure the namespace exists
 kubectl create namespace mmrelay --dry-run=client -o yaml | kubectl apply -f -
 
 # Edit namespace/image tag in kustomization.yaml
 $EDITOR ./mmrelay-k8s/kustomization.yaml
-# IMPORTANT: Set the image newTag to a valid published tag (e.g., "1.2.9" or "latest").
-# Do NOT set newTag to "main" - that is only for downloading manifests.
-# The downloaded manifests from main will work with existing image tags like 1.2.9.
+# Set the image newTag to match your MMRELAY_VERSION (${MMRELAY_VERSION})
 # If you change the namespace above, update the --namespace/-n flags below to match
 # for secret creation and kubectl apply/get/log commands.
 
-# Create config.yaml from the project sample (downloaded from the same version as your manifests)
+# Create config.yaml from the project sample (downloaded from the same version as your image)
 curl -Lo ./config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/${MMRELAY_VERSION}/src/mmrelay/tools/sample_config.yaml
 $EDITOR ./config.yaml
 
@@ -87,16 +88,11 @@ kubectl logs -n mmrelay -f deployment/mmrelay
 ## Optional: pin the image digest
 
 If you want immutable image references for production, use the digest overlay.
-This requires:
-
-1. Using a release tag (not "main") that includes the k8s manifests
-2. A published image with a digest from GitHub Packages
+This requires a published image with a digest from GitHub Packages.
 
 Replace the placeholder digest in `./mmrelay-k8s/overlays/digest/kustomization.yaml`.
 Tags and digests are listed on the GitHub Packages page:
 [https://github.com/jeremiah-k/meshtastic-matrix-relay/pkgs/container/mmrelay](https://github.com/jeremiah-k/meshtastic-matrix-relay/pkgs/container/mmrelay)
-
-Note: The digest overlay is only available for release tags where the k8s manifests were included in that release.
 
 ```bash
 kubectl apply -k ./mmrelay-k8s/overlays/digest
