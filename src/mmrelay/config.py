@@ -566,12 +566,13 @@ def apply_env_config_overrides(config: dict[str, Any] | None) -> dict[str, Any]:
 
 def load_credentials() -> dict[str, Any] | None:
     """
-    Load Matrix credentials from the application's base configuration directory.
-
-    Searches for "credentials.json" in the application's base configuration directory and parses it as JSON.
-
+    Locate and load Matrix credentials from the configured credentials path or the application's base configuration directory.
+    
+    If the MMRELAY_CREDENTIALS_PATH environment variable is set, it is used as the credentials file path; if it refers to a directory, the file name "credentials.json" will be resolved within that directory. If the environment variable is not set, the function looks for "credentials.json" in the application's base configuration directory. The file is parsed as JSON and returned as a dictionary.
+    
     Returns:
-        dict[str, Any] | None: Parsed credentials dictionary when the file exists and contains valid JSON; `None` if the file is missing, unreadable, or contains invalid JSON.
+        dict[str, Any]: Parsed credentials on success.
+        None: If the credentials file is missing, unreadable, or contains invalid JSON.
     """
     config_dir = ""
     try:
@@ -623,14 +624,20 @@ def save_credentials(
 ) -> None:
     """
     Persist a JSON-serializable credentials mapping to a credentials.json file.
-
-    If `credentials_path` is provided it is used as the target file or directory; if it refers to a directory (or ends with a path separator) "credentials.json" is appended. If `credentials_path` is not provided the path is resolved in order from: the `MMRELAY_CREDENTIALS_PATH` environment variable, `relay_config["credentials_path"]`, and `relay_config["matrix"]["credentials_path"]` (when `matrix` is a dict). The function creates the target directory if missing and, on Unix-like systems, attempts to set restrictive file permissions (0o600). I/O and permission errors are caught and logged; they are not raised.
-
+    
+    If `credentials_path` is a directory (or ends with a path separator) the filename
+    "credentials.json" is appended. If `credentials_path` is omitted the effective
+    path is resolved from, in order: the `MMRELAY_CREDENTIALS_PATH` environment
+    variable, `relay_config["credentials_path"]`, and `relay_config["matrix"]["credentials_path"]`
+    (when `matrix` is a mapping). The function creates the target directory if
+    missing and, on Unix-like systems, attempts to set restrictive file permissions
+    (0o600). I/O and permission errors are caught and logged; they are not raised.
+    
     Parameters:
         credentials (dict): JSON-serializable mapping of credentials to persist.
-        credentials_path (str | None): Optional path or directory override for where to save credentials.json.
-            If omitted, the path is resolved from environment/config defaults.
-
+        credentials_path (str | None): Optional target file path or directory. If
+            omitted, a default path under the application's base directory is used.
+    
     Returns:
         None
     """

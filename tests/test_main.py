@@ -230,11 +230,11 @@ class _TimeoutCloseFuture(_CloseFutureBase):
 
     def result(self, timeout: float | None = None) -> None:  # noqa: ARG002
         """
-        Always raises a concurrent.futures.TimeoutError to simulate a timed-out close future.
-
+        Always raises concurrent.futures.TimeoutError to simulate a timed-out close future.
+        
         Parameters:
-            timeout (float | None): Ignored timeout value.
-
+            timeout (float | None): Ignored.
+        
         Raises:
             concurrent.futures.TimeoutError: Always raised when called.
         """
@@ -246,11 +246,11 @@ class _ErrorCloseFuture(_CloseFutureBase):
 
     def result(self, timeout: float | None = None) -> None:  # noqa: ARG002
         """
-        Always raises a ValueError with message "boom".
-
+        Raise a ValueError with message "boom".
+        
         Parameters:
             timeout (float | None): Ignored; present for API compatibility.
-
+        
         Raises:
             ValueError: Always raised with message "boom".
         """
@@ -1870,9 +1870,7 @@ class TestMainAsyncFunction(unittest.TestCase):
 
     def test_main_signal_handler_sets_shutdown_flag(self):
         """
-        Ensure signal handlers set the shutdown flag and register a shutdown handler.
-
-        Patches asyncio.get_running_loop so the event loop's add_signal_handler is replaced with a synchronous invoker that captures and immediately calls the registered handler; runs main(config) and asserts the meshtastic shutdown flag is set and a signal handler was registered.
+        Ensure mmrelay sets the meshtastic shutdown flag and registers a signal handler when the event loop installs signal handlers.
         """
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
@@ -1888,10 +1886,26 @@ class TestMainAsyncFunction(unittest.TestCase):
         real_get_running_loop = asyncio.get_running_loop
 
         def _patched_get_running_loop():
+            """
+            Provide the current running event loop with its signal-handler registration patched so registered handlers are captured and invoked immediately.
+            
+            The returned loop has its `add_signal_handler` attribute replaced with a function that appends the handler to an external capture list and then calls the handler synchronously. Subsequent calls are no-ops for the patching step.
+            
+            Returns:
+                asyncio.AbstractEventLoop: The running event loop with `add_signal_handler` patched to capture and invoke handlers.
+            """
             loop = real_get_running_loop()
             if not hasattr(loop, "_signal_handler_patched"):
 
                 def _fake_add_signal_handler(_sig, handler):
+                    """
+                    Record and invoke a signal handler for tests.
+                    
+                    Parameters:
+                        _sig: The signal number or name (ignored by this test helper).
+                        handler: The callable to register; it will be appended to `captured_handlers`
+                            and invoked immediately.
+                    """
                     captured_handlers.append(handler)
                     handler()
 
@@ -1950,23 +1964,23 @@ class TestMainAsyncFunction(unittest.TestCase):
 
         def _patched_get_running_loop():
             """
-            Return the current running event loop with its signal-handler registration patched to capture signals.
-
-            The returned loop has its `add_signal_handler` replaced so that any registered signal is appended to the module-level `captured_signals` list, and a `_signal_capture_patched` attribute is set to avoid repeated patching.
-
+            Return the currently running asyncio event loop with its signal registration patched to capture signals.
+            
+            The loop's `add_signal_handler` is replaced with a function that appends registered signal identifiers to the module-level `captured_signals` list, and a `_signal_capture_patched` attribute is set on the loop to prevent repeated patching.
+            
             Returns:
-                asyncio.AbstractEventLoop: The running event loop with signal registration patched.
+                asyncio.AbstractEventLoop: The running event loop whose signal registration records signals to `captured_signals`.
             """
             loop = real_get_running_loop()
             if not hasattr(loop, "_signal_capture_patched"):
 
                 def _fake_add_signal_handler(sig, _handler):
                     """
-                    Record the given signal identifier by appending it to the module-level captured_signals list for testing.
-
+                    Record a signal identifier into the module-level `captured_signals` list for tests.
+                    
                     Parameters:
-                        sig: The signal identifier (e.g., an int or signal.Signals) to capture.
-                        _handler: The signal handler callable (ignored).
+                        sig: The signal identifier (e.g., an int or `signal.Signals`) to record.
+                        _handler: Ignored signal handler callable.
                     """
                     captured_signals.append(sig)
 

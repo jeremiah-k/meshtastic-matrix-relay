@@ -1496,17 +1496,26 @@ class TestConfigUncoveredLines(unittest.TestCase):
     @patch("mmrelay.config.os.path.exists")
     @patch("mmrelay.config.get_base_dir", return_value="/test/base")
     def test_load_credentials_no_file_windows(self, _mock_get_base_dir, mock_exists):
-        """Test load_credentials on Windows (lines 610-618)."""
+        """
+        Verifies that on Windows, when the base credentials directory exists but credentials.json is missing, load_credentials returns None and directory contents are logged.
+        
+        Patches:
+        - os.path.exists to simulate base directory present and credentials file absent
+        - sys.platform to "win32"
+        - os.listdir to return a sample directory listing
+        - mmrelay.config.logger.debug to capture debug messages
+        
+        Asserts:
+        - The function returns None
+        - A debug message containing "Directory contents" was emitted
+        """
 
         def mock_exists_side_effect(path):
             """
-            Simulate os.path.exists for tests, treating the base directory as present and the credentials file as absent.
-
-            Parameters:
-                path (str): Filesystem path to check.
-
+            Emulate os.path.exists for tests by treating '/test/base' as present and '/test/base/credentials.json' as absent.
+            
             Returns:
-                bool: `True` if `path` is '/test/base', `False` otherwise.
+                `True` if `path` is '/test/base', `False` otherwise (including '/test/base/credentials.json').
             """
             if path == "/test/base/credentials.json":
                 return False
@@ -1523,11 +1532,11 @@ class TestConfigUncoveredLines(unittest.TestCase):
 
             def mock_debug(*args, **_kwargs):
                 """
-                Append the first positional argument to the global `log_debug` list.
-
+                Record the first positional argument into the module-level `log_debug` list.
+                
                 Parameters:
-                        args (tuple): Positional arguments; if present, `args[0]` is appended to `log_debug`.
-                        kwargs (dict): Keyword arguments (ignored).
+                    *args: Positional arguments; if provided, `args[0]` is appended to `log_debug`.
+                    **_kwargs: Keyword arguments are accepted and ignored.
                 """
                 log_debug.append(args[0])
 
@@ -1589,11 +1598,11 @@ class TestConfigUncoveredLines(unittest.TestCase):
 
         def mock_error(*args, **_kwargs):
             """
-            Capture the first positional argument as an error message by appending it to the shared `log_error` list.
-
+            Record the first positional argument as an error message in the shared `log_error` list.
+            
             Parameters:
-                *args: Positional arguments where the first element is the error message to capture.
-                **kwargs: Ignored.
+                *args: Positional arguments where the first element is the error message to record.
+                **_kwargs: Ignored.
             """
             log_error.append(args[0])
 
