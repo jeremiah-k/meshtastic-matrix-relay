@@ -85,6 +85,7 @@ def _get_logger() -> logging.Logger:
     global logger
     if logger is None:
         logger = get_logger(__name__)
+    assert logger is not None, "Logger must be initialized"
     return logger
 
 
@@ -618,9 +619,17 @@ async def logout_matrix_bot(password: str) -> bool:
         except asyncio.TimeoutError:
             _get_logger().error("Timeout while fetching user_id")
             print("❌ Timeout while fetching user_id")
+        except (
+            NioLocalTransportError,
+            NioRemoteTransportError,
+            NioLocalProtocolError,
+            NioRemoteProtocolError,
+        ) as e:
+            _get_logger().warning(f"Network error fetching user_id: {e}")
+            print(f"❌ Network error fetching user_id: {e}")
         except Exception as e:
-            _get_logger().exception("Error fetching user_id")
-            print(f"❌ Error fetching user_id: {e}")
+            _get_logger().exception("Unexpected error fetching user_id")
+            print(f"❌ Unexpected error fetching user_id: {e}")
         finally:
             if temp_client is not None:
                 try:

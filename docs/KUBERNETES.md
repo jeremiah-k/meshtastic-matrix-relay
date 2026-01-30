@@ -34,28 +34,26 @@ cd mmrelay
 # Set the version for the container image tag
 export MMRELAY_VERSION=1.2.9
 
-# Create directory for manifests
-mkdir -p ./mmrelay-k8s/overlays/digest
-
-# Download the manifests (from main branch)
-curl -Lo ./mmrelay-k8s/pvc.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/deploy/k8s/pvc.yaml
-curl -Lo ./mmrelay-k8s/networkpolicy.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/deploy/k8s/networkpolicy.yaml
-curl -Lo ./mmrelay-k8s/deployment.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/deploy/k8s/deployment.yaml
-curl -Lo ./mmrelay-k8s/kustomization.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/deploy/k8s/kustomization.yaml
-curl -Lo ./mmrelay-k8s/overlays/digest/kustomization.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/deploy/k8s/overlays/digest/kustomization.yaml
+# Download manifests from the main branch
+BASE_URL="https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/deploy/k8s"
+for manifest in pvc.yaml networkpolicy.yaml deployment.yaml kustomization.yaml overlays/digest/kustomization.yaml; do
+  DEST_PATH="./mmrelay-k8s/${manifest}"
+  mkdir -p "$(dirname "${DEST_PATH}")"
+  curl -Lo "${DEST_PATH}" "${BASE_URL}/${manifest}"
+done
 
 # Ensure the namespace exists
 kubectl create namespace mmrelay --dry-run=client -o yaml | kubectl apply -f -
 
 # Edit namespace/image tag in kustomization.yaml
-vi ./mmrelay-k8s/kustomization.yaml
+$EDITOR ./mmrelay-k8s/kustomization.yaml
 # Set the image newTag to match your MMRELAY_VERSION (${MMRELAY_VERSION})
 # If you change the namespace above, update the --namespace/-n flags below to match
 # for secret creation and kubectl apply/get/log commands.
 
 # Create config.yaml from the project sample (downloaded from the same version as your image)
 curl -Lo ./config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/${MMRELAY_VERSION}/src/mmrelay/tools/sample_config.yaml
-vi ./config.yaml
+$EDITOR ./config.yaml
 
 # The default manifest sets MMRELAY_CREDENTIALS_PATH=/data/credentials.json,
 # so credentials will persist on the PVC. You can override this by explicitly
@@ -70,7 +68,7 @@ vi ./config.yaml
 kubectl create secret generic mmrelay-matrix-auth \
   --from-literal=MMRELAY_MATRIX_HOMESERVER=$(read -p "Matrix homeserver URL (e.g., https://matrix.example.org): "; echo "$REPLY") \
   --from-literal=MMRELAY_MATRIX_BOT_USER_ID=$(read -p "Matrix bot user ID (e.g., @bot:example.org): "; echo "$REPLY") \
-  --from-literal=MMRELAY_MATRIX_PASSWORD=$(read -s -p "Matrix password: "; echo "$REPLY") \
+  --from-literal=MMRELAY_MATRIX_PASSWORD=$(read -s -p "Matrix password: "; echo >&2; echo "$REPLY") \
   --namespace mmrelay
 
 # Store config.yaml in a Kubernetes Secret
