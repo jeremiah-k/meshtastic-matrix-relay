@@ -2,10 +2,8 @@ import asyncio
 import re
 from typing import TYPE_CHECKING, Any
 
-from haversine import haversine  # type: ignore[import-untyped]
-
-# matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
-from nio import (  # type: ignore[import-untyped]
+from haversine import haversine
+from nio import (
     MatrixRoom,
     ReactionEvent,
     RoomMessageEmote,
@@ -20,7 +18,7 @@ from mmrelay.meshtastic_utils import connect_meshtastic
 from mmrelay.plugins.base_plugin import BasePlugin
 
 if TYPE_CHECKING:
-    from meshtastic.mesh_interface import MeshInterface  # type: ignore[import-untyped]
+    from meshtastic.mesh_interface import MeshInterface
 
 
 class Plugin(BasePlugin):

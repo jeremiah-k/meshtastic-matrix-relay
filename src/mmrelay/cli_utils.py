@@ -23,6 +23,7 @@ Usage:
 """
 
 import asyncio
+import logging
 import os
 import ssl
 from types import ModuleType
@@ -35,15 +36,14 @@ except ImportError:
 
 # Import Matrix-related modules for logout functionality
 try:
-    # matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
-    from nio import AsyncClient  # type: ignore[import-untyped]
-    from nio.exceptions import (  # type: ignore[import-untyped]
+    from nio import AsyncClient
+    from nio.exceptions import (
         LocalProtocolError,
         LocalTransportError,
         RemoteProtocolError,
         RemoteTransportError,
     )
-    from nio.responses import LoginError, LogoutError  # type: ignore[import-untyped]
+    from nio.responses import LoginError, LogoutError
 
     # Create aliases for backward compatibility
     NioLoginError = LoginError
@@ -77,7 +77,25 @@ from mmrelay.constants.cli import (
 )
 from mmrelay.log_utils import get_logger
 
-logger = get_logger(__name__)
+logger: logging.Logger | None = None
+
+
+def _get_logger() -> logging.Logger:
+    """
+    Lazily initializes and returns the module-level logger for this module.
+
+    Returns:
+        logging.Logger: The module-scoped logger instance.
+
+    Raises:
+        RuntimeError: If the logger cannot be initialized.
+    """
+    global logger
+    if logger is None:
+        logger = get_logger(__name__)
+    if logger is None:
+        raise RuntimeError("Logger must be initialized")
+    return logger
 
 
 def get_command(command_key: str) -> str:
@@ -302,14 +320,16 @@ def _create_ssl_context() -> ssl.SSLContext | None:
         else:
             return ssl.create_default_context()
     except (ssl.SSLError, OSError, ValueError):
-        logger.warning(
+        _get_logger().warning(
             "Failed to create certifi-backed SSL context, falling back to system default",
             exc_info=True,
         )
         try:
             return ssl.create_default_context()
         except (ssl.SSLError, OSError, ValueError):
-            logger.error("Failed to create system default SSL context", exc_info=True)
+            _get_logger().error(
+                "Failed to create system default SSL context", exc_info=True
+            )
             return None
 
 
@@ -331,7 +351,7 @@ def _cleanup_local_session_data() -> bool:
 
     from mmrelay.config import get_base_dir, get_e2ee_store_dir
 
-    logger.info("Clearing local session data...")
+    _get_logger().info("Clearing local session data...")
     success = True
 
     # Remove credentials.json
@@ -341,12 +361,12 @@ def _cleanup_local_session_data() -> bool:
     if os.path.exists(credentials_path):
         try:
             os.remove(credentials_path)
-            logger.info(f"Removed credentials file: {credentials_path}")
+            _get_logger().info(f"Removed credentials file: {credentials_path}")
         except (OSError, PermissionError) as e:
-            logger.error(f"Failed to remove credentials file: {e}")
+            _get_logger().error(f"Failed to remove credentials file: {e}")
             success = False
     else:
-        logger.info("No credentials file found to remove")
+        _get_logger().info("No credentials file found to remove")
 
     # Clear E2EE store directory (default and any configured override)
     candidate_store_paths = {get_e2ee_store_dir()}
@@ -362,7 +382,7 @@ def _cleanup_local_session_data() -> bool:
             if override:
                 candidate_store_paths.add(override)
     except Exception as e:
-        logger.debug(
+        _get_logger().debug(
             f"Could not resolve configured E2EE store path: {type(e).__name__}"
         )
 
@@ -372,22 +392,24 @@ def _cleanup_local_session_data() -> bool:
             any_store_found = True
             try:
                 shutil.rmtree(store_path)
-                logger.info(f"Removed E2EE store directory: {store_path}")
+                _get_logger().info(f"Removed E2EE store directory: {store_path}")
             except (OSError, PermissionError) as e:
-                logger.error(
+                _get_logger().error(
                     f"Failed to remove E2EE store directory '{store_path}': {e}"
                 )
                 success = False
     if not any_store_found:
-        logger.info("No E2EE store directory found to remove")
+        _get_logger().info("No E2EE store directory found to remove")
 
     if success:
-        logger.info("✅ Logout completed successfully!")
-        logger.info("All Matrix sessions and local data have been cleared.")
-        logger.info("Run 'mmrelay auth login' to authenticate again.")
+        _get_logger().info("✅ Logout completed successfully!")
+        _get_logger().info("All Matrix sessions and local data have been cleared.")
+        _get_logger().info("Run 'mmrelay auth login' to authenticate again.")
     else:
-        logger.warning("Logout completed with some errors.")
-        logger.warning("Some files may not have been removed due to permission issues.")
+        _get_logger().warning("Logout completed with some errors.")
+        _get_logger().warning(
+            "Some files may not have been removed due to permission issues."
+        )
 
     return success
 
@@ -409,6 +431,7 @@ def _handle_matrix_error(
     Returns:
         bool: `True` indicating the exception was handled and reported.
     """
+    logger = _get_logger()
     log_func = logger.error if log_level == "error" else logger.warning
     emoji = "❌" if log_level == "error" else "⚠️ "
     is_verification = "verification" in context.lower()
@@ -514,7 +537,7 @@ def _handle_matrix_error(
     else:  # error_category == "other"
         if is_verification:
             log_func(f"{context} failed: {error_detail or 'Unknown error'}")
-            logger.debug(f"Full error details: {exception}")
+            _get_logger().debug(f"Full error details: {exception}")
             print(f"{emoji} {context} failed: {error_detail or 'Unknown error'}")
         else:
             log_func(
@@ -548,14 +571,14 @@ async def logout_matrix_bot(password: str) -> bool:
 
     # Check if matrix-nio is available
     if AsyncClient is None:
-        logger.error("Matrix-nio library not available. Cannot perform logout.")
+        _get_logger().error("Matrix-nio library not available. Cannot perform logout.")
         print("❌ Matrix-nio library not available. Cannot perform logout.")
         return False
 
     # Load current credentials
     credentials = load_credentials()
     if not credentials:
-        logger.info("No active session found. Already logged out.")
+        _get_logger().info("No active session found. Already logged out.")
         print("ℹ️  No active session found. Already logged out.")
         return True
 
@@ -566,7 +589,9 @@ async def logout_matrix_bot(password: str) -> bool:
 
     # If user_id is missing, try to fetch it using the access token
     if not user_id and access_token and homeserver:
-        logger.info("user_id missing from credentials, attempting to fetch it...")
+        _get_logger().info(
+            "user_id missing from credentials, attempting to fetch it..."
+        )
         print("🔍 user_id missing from credentials, attempting to fetch it...")
 
         temp_client = None
@@ -587,7 +612,7 @@ async def logout_matrix_bot(password: str) -> bool:
 
             user_id = getattr(whoami_response, "user_id", None)
             if user_id:
-                logger.info(f"Successfully fetched user_id: {user_id}")
+                _get_logger().info(f"Successfully fetched user_id: {user_id}")
                 print(f"✅ Successfully fetched user_id: {user_id}")
 
                 # Update credentials with the fetched user_id
@@ -595,32 +620,49 @@ async def logout_matrix_bot(password: str) -> bool:
                 from mmrelay.config import save_credentials
 
                 save_credentials(credentials)
-                logger.info("Updated credentials.json with fetched user_id")
+                _get_logger().info("Updated credentials.json with fetched user_id")
                 print("✅ Updated credentials.json with fetched user_id")
             else:
-                logger.error("Failed to fetch user_id from whoami response")
+                _get_logger().error("Failed to fetch user_id from whoami response")
                 print("❌ Failed to fetch user_id from whoami response")
 
         except asyncio.TimeoutError:
-            logger.error("Timeout while fetching user_id")
+            _get_logger().error("Timeout while fetching user_id")
             print("❌ Timeout while fetching user_id")
         except Exception as e:
-            logger.exception("Error fetching user_id")
+            _get_logger().exception("Error fetching user_id")
             print(f"❌ Error fetching user_id: {e}")
+            # Handle both network exceptions (when matrix-nio is installed) and
+            # unexpected errors. When matrix-nio is not installed, the Nio types
+            # are aliased to Exception, so guard with AsyncClient presence.
+            if AsyncClient is not None and isinstance(
+                e,
+                (
+                    NioLocalTransportError,
+                    NioRemoteTransportError,
+                    NioLocalProtocolError,
+                    NioRemoteProtocolError,
+                ),
+            ):
+                _get_logger().warning(f"Network error fetching user_id: {e}")
+                print(f"❌ Network error fetching user_id: {e}")
+            else:
+                _get_logger().error("Unexpected error fetching user_id")
+                print(f"❌ Unexpected error fetching user_id: {e}")
         finally:
             if temp_client is not None:
                 try:
                     await temp_client.close()
                 except Exception:
                     # Ignore close failures but keep a trace for diagnostics.
-                    logger.debug(
+                    _get_logger().debug(
                         "Ignoring error while closing temporary Matrix client during logout",
                         exc_info=True,
                     )
 
     if not all([homeserver, user_id, access_token, device_id]):
-        logger.error("Invalid credentials found. Cannot verify logout.")
-        logger.info("Proceeding with local cleanup only...")
+        _get_logger().error("Invalid credentials found. Cannot verify logout.")
+        _get_logger().info("Proceeding with local cleanup only...")
         print("⚠️  Invalid credentials found. Cannot verify logout.")
         print("Proceeding with local cleanup only...")
 
@@ -640,7 +682,7 @@ async def logout_matrix_bot(password: str) -> bool:
     access_token_str = cast(str, access_token)
     device_id_str = cast(str, device_id)
 
-    logger.info(f"Verifying password for {user_id}...")
+    _get_logger().info(f"Verifying password for {user_id}...")
     print(f"🔐 Verifying password for {user_id}...")
 
     temp_client = None
@@ -648,7 +690,7 @@ async def logout_matrix_bot(password: str) -> bool:
         # Create SSL context using certifi's certificates
         ssl_context = _create_ssl_context()
         if ssl_context is None:
-            logger.warning(
+            _get_logger().warning(
                 "Failed to create SSL context for password verification; falling back to default system SSL"
             )
 
@@ -665,7 +707,7 @@ async def logout_matrix_bot(password: str) -> bool:
             )
 
             if hasattr(response, "access_token"):
-                logger.info("Password verified successfully.")
+                _get_logger().info("Password verified successfully.")
                 print("✅ Password verified successfully.")
 
                 # Immediately logout the temporary session
@@ -675,16 +717,16 @@ async def logout_matrix_bot(password: str) -> bool:
                         timeout=MATRIX_LOGIN_TIMEOUT,
                     )
                 except asyncio.TimeoutError:
-                    logger.warning(
+                    _get_logger().warning(
                         "Timeout during temporary session logout, continuing..."
                     )
             else:
-                logger.error("Password verification failed.")
+                _get_logger().error("Password verification failed.")
                 print("❌ Password verification failed.")
                 return False
 
         except asyncio.TimeoutError:
-            logger.error(
+            _get_logger().error(
                 "Password verification timed out. Please check your network connection."
             )
             print(
@@ -700,13 +742,13 @@ async def logout_matrix_bot(password: str) -> bool:
                     await temp_client.close()
                 except (OSError, asyncio.TimeoutError):
                     # Avoid masking the original error; log for diagnostics only.
-                    logger.debug(
+                    _get_logger().debug(
                         "Ignoring error while closing temporary Matrix client after password verification",
                         exc_info=True,
                     )
 
         # Now logout the main session
-        logger.info("Logging out from Matrix server...")
+        _get_logger().info("Logging out from Matrix server...")
         print("🚪 Logging out from Matrix server...")
         main_client = None
         try:
@@ -724,7 +766,7 @@ async def logout_matrix_bot(password: str) -> bool:
                     timeout=MATRIX_LOGIN_TIMEOUT,
                 )
             except asyncio.TimeoutError:
-                logger.warning(
+                _get_logger().warning(
                     "Timeout during Matrix server logout, proceeding with local cleanup."
                 )
                 print(
@@ -732,22 +774,22 @@ async def logout_matrix_bot(password: str) -> bool:
                 )
             else:
                 if hasattr(logout_response, "transport_response"):
-                    logger.info("Successfully logged out from Matrix server.")
+                    _get_logger().info("Successfully logged out from Matrix server.")
                     print("✅ Successfully logged out from Matrix server.")
                 else:
-                    logger.warning(
+                    _get_logger().warning(
                         "Logout response unclear, proceeding with local cleanup."
                     )
                     print("⚠️  Logout response unclear, proceeding with local cleanup.")
         except Exception as e:
             _handle_matrix_error(e, "Server logout", "warning")
-            logger.debug(f"Logout error details: {e}")
+            _get_logger().debug(f"Logout error details: {e}")
         finally:
             if main_client is not None:
                 try:
                     await main_client.close()
                 except (OSError, asyncio.TimeoutError):
-                    logger.debug(
+                    _get_logger().debug(
                         "Ignoring error while closing main Matrix client",
                         exc_info=True,
                     )
@@ -766,6 +808,6 @@ async def logout_matrix_bot(password: str) -> bool:
         return success
 
     except Exception as e:
-        logger.exception("Error during logout process")
+        _get_logger().exception("Error during logout process")
         print(f"❌ Error during logout process: {e}")
         return False

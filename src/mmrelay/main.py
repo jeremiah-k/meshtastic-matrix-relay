@@ -13,16 +13,14 @@ from pathlib import Path
 from typing import Any, cast
 
 from aiohttp import ClientError
-
-# matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
-from nio import (  # type: ignore[import-untyped]
+from nio import (
     MegolmEvent,
     ReactionEvent,
     RoomMessageEmote,
     RoomMessageNotice,
     RoomMessageText,
 )
-from nio.events.room_events import RoomMemberEvent  # type: ignore[import-untyped]
+from nio.events.room_events import RoomMemberEvent
 
 # Import version from package
 # Import meshtastic_utils as a module to set event_loop

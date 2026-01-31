@@ -17,6 +17,7 @@ runtimes:
 # This is the section where you manage your linters. (https://docs.trunk.io/check/configuration)
 lint:
   enabled:
+    - mypy@1.19.1
     - pyright@1.1.408
     - dotenv-linter@4.0.0
     - hadolint@2.14.0

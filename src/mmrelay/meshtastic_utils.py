@@ -14,14 +14,14 @@ from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Any, Awaitable, Callable, Coroutine, cast
 
 # meshtastic is not marked py.typed; keep import-untyped for strict mypy.
-import meshtastic  # type: ignore[import-untyped]
-import meshtastic.ble_interface  # type: ignore[import-untyped]
-import meshtastic.serial_interface  # type: ignore[import-untyped]
-import meshtastic.tcp_interface  # type: ignore[import-untyped]
-import serial  # type: ignore[import-untyped]  # For serial port exceptions
-import serial.tools.list_ports  # type: ignore[import-untyped]  # Import serial tools for port listing
-from meshtastic.protobuf import mesh_pb2, portnums_pb2  # type: ignore[import-untyped]
-from pubsub import pub  # type: ignore[import-untyped]
+import meshtastic
+import meshtastic.ble_interface
+import meshtastic.serial_interface
+import meshtastic.tcp_interface
+import serial  # For serial port exceptions
+import serial.tools.list_ports  # Import serial tools for port listing
+from meshtastic.protobuf import mesh_pb2, portnums_pb2
+from pubsub import pub
 
 from mmrelay.config import get_meshtastic_config_value
 from mmrelay.constants.config import (
@@ -2566,7 +2566,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     emoji_flag = "emoji" in decoded and decoded["emoji"] == EMOJI_FLAG_VALUE
 
     # Determine if this is a direct message to the relay node
-    from meshtastic.mesh_interface import BROADCAST_NUM  # type: ignore[import-untyped]
+    from meshtastic.mesh_interface import BROADCAST_NUM
 
     if not getattr(interface, "myInfo", None):
         logger.warning("Meshtastic interface missing myInfo; cannot determine node id")

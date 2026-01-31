@@ -6,6 +6,7 @@ import argparse
 import importlib
 import importlib.resources
 import ipaddress
+import logging
 import os
 import platform
 import re
@@ -56,7 +57,27 @@ from mmrelay.e2ee_utils import E2EEStatus
 from mmrelay.log_utils import get_logger
 from mmrelay.tools import get_sample_config_path
 
-logger = get_logger(__name__)
+# Lazy-initialized logger to avoid circular imports and filesystem access during import
+_logger: logging.Logger | None = None
+
+
+def _get_logger() -> logging.Logger:
+    """
+    Return the module-level logger, creating it on first access.
+
+    Returns:
+        logging.Logger: The module logger instance.
+
+    Raises:
+        RuntimeError: If the logger could not be initialized.
+    """
+    global _logger
+    if _logger is None:
+        _logger = get_logger(__name__)
+    if _logger is None:
+        raise RuntimeError("Logger must be initialized")
+    return _logger
+
 
 # =============================================================================
 # CLI Argument Parsing and Command Handling
@@ -341,7 +362,7 @@ def _validate_credentials_json(config_path: str) -> bool:
 
         return True
     except (OSError, json.JSONDecodeError) as e:
-        logger.exception("Could not validate credentials.json")
+        _get_logger().exception("Could not validate credentials.json")
         print(f"❌ Error: Could not validate credentials.json: {e}", file=sys.stderr)
         print(f"   {msg_run_auth_login()}", file=sys.stderr)
         return False
@@ -1542,10 +1563,7 @@ def handle_auth_login(args: argparse.Namespace) -> int:
                 print("=========================")
         except (OSError, PermissionError, ImportError, ValueError) as e:
             # Fallback if silent checking fails due to config file or import issues
-            from mmrelay.log_utils import get_logger
-
-            logger = get_logger("CLI")
-            logger.debug(f"Failed to silently check E2EE status: {e}")
+            _get_logger().debug(f"Failed to silently check E2EE status: {e}")
             print("\nMatrix Bot Authentication")
             print("=========================")
 
@@ -2009,13 +2027,13 @@ def handle_cli_commands(args: argparse.Namespace) -> int | None:
     if args_dict.get("install_service"):
         warning = get_deprecation_warning("--install-service")
         print(warning, file=sys.stderr)
-        logger.warning(warning)
+        _get_logger().warning(warning)
         try:
             from mmrelay.setup_utils import install_service
 
             return 0 if install_service() else 1
         except ImportError as e:
-            logger.exception("Error importing setup utilities")
+            _get_logger().exception("Error importing setup utilities")
             print(f"Error importing setup utilities: {e}", file=sys.stderr)
             return 1
 
@@ -2023,21 +2041,21 @@ def handle_cli_commands(args: argparse.Namespace) -> int | None:
     if args_dict.get("generate_config"):
         warning = get_deprecation_warning("--generate-config")
         print(warning, file=sys.stderr)
-        logger.warning(warning)
+        _get_logger().warning(warning)
         return 0 if generate_sample_config() else 1
 
     # Handle --check-config
     if args_dict.get("check_config"):
         warning = get_deprecation_warning("--check-config")
         print(warning, file=sys.stderr)
-        logger.warning(warning)
+        _get_logger().warning(warning)
         return 0 if check_config(args) else 1
 
     # Handle --auth
     if args_dict.get("auth"):
         warning = get_deprecation_warning("--auth")
         print(warning, file=sys.stderr)
-        logger.warning(warning)
+        _get_logger().warning(warning)
         return handle_auth_command(args)
 
     # No commands were handled

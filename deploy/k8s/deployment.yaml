@@ -48,6 +48,8 @@ spec:
               value: /run/mmrelay/ready
             - name: MMRELAY_CREDENTIALS_PATH
               value: /data/credentials.json
+            - name: MMRELAY_BASE_DIR
+              value: /data
           envFrom:
             - secretRef:
                 name: mmrelay-matrix-auth
@@ -73,7 +75,7 @@ spec:
               command:
                 - /bin/sh
                 - -c
-                - find /run/mmrelay/ready -mmin -2 | grep -q .
+                - python -c 'import os,time; p="/run/mmrelay/ready"; raise SystemExit(0 if os.path.exists(p) and time.time() - os.path.getmtime(p) < 120 else 1)'
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5

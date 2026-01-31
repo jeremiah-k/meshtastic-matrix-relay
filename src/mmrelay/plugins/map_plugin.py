@@ -1,14 +1,15 @@
 import asyncio
+import importlib
 import os
 import re
-from typing import Any, cast
+from typing import Any, TYPE_CHECKING, cast
 
 import PIL.ImageDraw
-import s2sphere  # type: ignore[import-untyped]
-import staticmaps  # type: ignore[import-untyped]
+import s2sphere
+import staticmaps
 
 # matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
-from nio import (  # type: ignore[import-untyped]
+from nio import (
     AsyncClient,
     MatrixRoom,
     ReactionEvent,
@@ -41,10 +42,16 @@ def precision_bits_to_meters(bits: int) -> float | None:
     return S2_PRECISION_BITS_TO_METERS_CONSTANT * 0.5**bits
 
 
+if TYPE_CHECKING:
+    import cairo as cairo  # type: ignore[import-not-found]
+
+_cairo: Any | None
 try:
-    import cairo  # type: ignore[import-not-found]
+    _cairo = importlib.import_module("cairo")
 except ImportError:  # pragma: no cover - optional dependency
-    cairo = None
+    _cairo = None
+
+cairo: Any | None = _cairo  # type: ignore[no-redef]
 
 
 logger = get_logger(__name__)
@@ -173,7 +180,11 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
         x, y = renderer.transformer().ll2pixel(self.latlng())
 
         ctx = renderer.context()
-        ctx.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+        ctx.select_font_face(
+            "Sans",
+            getattr(cairo, "FONT_SLANT_NORMAL", 0),
+            getattr(cairo, "FONT_WEIGHT_NORMAL", 0),
+        )
 
         ctx.set_font_size(self._font_size)
         x_bearing, y_bearing, tw, th, _, _ = ctx.text_extents(self._text)
@@ -405,7 +416,7 @@ class Plugin(BasePlugin):
 
     def get_matrix_commands(self) -> list[str]:
         """
-        Return the Matrix command names registered by this plugin.
+        List the Matrix command names registered by this plugin.
         
         Returns:
             list[str]: Command names the plugin handles; empty list if the plugin has no configured name.
@@ -417,7 +428,7 @@ class Plugin(BasePlugin):
     def get_mesh_commands(self) -> list[str]:
         """
         List mesh-specific command names handled by this plugin.
-        
+
         Returns:
             list[str]: Command name strings handled by the plugin; empty list if the plugin does not handle any mesh commands.
         """

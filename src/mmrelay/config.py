@@ -45,7 +45,11 @@ def get_base_dir() -> str:
     """
     Determine the filesystem base directory used to store the application's files.
 
-    If the module-level `custom_data_dir` is set, that path is returned. On Linux and macOS the directory is `~/.<APP_NAME>`; on Windows the platform-specific user data directory for the application is returned.
+    If the module-level `custom_data_dir` is set, that path is returned. If the
+    MMRELAY_BASE_DIR (or deprecated MMRELAY_DATA_DIR) environment variable is
+    set, that path is used. On Linux and macOS the directory is `~/.<APP_NAME>`;
+    on Windows the platform-specific user data directory for the application is
+    returned.
 
     Returns:
         The filesystem path to the application's base data directory.
@@ -53,6 +57,10 @@ def get_base_dir() -> str:
     # If a custom data directory has been set, use that
     if custom_data_dir:
         return custom_data_dir
+
+    env_base_dir = os.getenv("MMRELAY_BASE_DIR") or os.getenv("MMRELAY_DATA_DIR")
+    if env_base_dir:
+        return os.path.abspath(os.path.expanduser(env_base_dir))
 
     if sys.platform in ["linux", "darwin"]:
         # Use ~/.mmrelay for Linux and Mac

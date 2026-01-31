@@ -8,9 +8,7 @@ from typing import Any
 
 # markdown has stubs in our env; avoid import-untyped so mypy --strict stays clean.
 import markdown
-
-# matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
-from nio import (  # type: ignore[import-untyped]
+from nio import (
     MatrixRoom,
     ReactionEvent,
     RoomMessageEmote,
