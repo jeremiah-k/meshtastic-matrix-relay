@@ -319,6 +319,28 @@ To use a different location, edit the `.env` file:
 MMRELAY_HOME=/path/to/your/data
 ```
 
+## Health Checks
+
+The Docker image includes a built-in health check that verifies the application is ready to handle traffic. This is more reliable than simply checking if the process is running.
+
+**How it works:**
+
+- When MMRelay starts successfully, it creates a ready file at `/tmp/mmrelay/ready`
+- The health check (`test -f /tmp/mmrelay/ready`) verifies this file exists
+- The file is periodically updated (every 60 seconds by default) to show the application is still responsive
+- If the application crashes or fails to start, the ready file is not created/removed, and the container is marked as unhealthy
+
+**Benefits:**
+
+- Tools like Watchtower wait for the health check to pass before considering an update successful
+- Docker compose shows health status in `docker compose ps`
+- Monitoring tools can detect when the app is truly ready vs. just running
+
+**Configuration (optional):**
+
+- The ready file path is set via `MMRELAY_READY_FILE=/tmp/mmrelay/ready` in the Dockerfile
+- To customize the heartbeat interval, set `MMRELAY_READY_HEARTBEAT_SECONDS` (default: 60)
+
 ## Troubleshooting
 
 ### Common Portainer Issues
