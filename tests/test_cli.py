@@ -2223,12 +2223,16 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         )
 
     @patch("os.path.exists")
-    @patch("mmrelay.cli.logger")
-    def test_validate_credentials_json_file_read_error(self, mock_logger, mock_exists):
+    @patch("mmrelay.cli._get_logger")
+    def test_validate_credentials_json_file_read_error(
+        self, mock_get_logger, mock_exists
+    ):
         """Test validation when credentials.json cannot be read due to permissions or other IO error."""
         # Setup mocks
         config_path = "/home/user/.mmrelay/config.yaml"
         mock_exists.return_value = True
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
 
         # Mock file read error
         with patch("builtins.open", side_effect=IOError("Permission denied")):
@@ -2243,16 +2247,18 @@ class TestValidateE2EEDependencies(unittest.TestCase):
 
     @patch("os.path.exists")
     @patch("builtins.open", new_callable=mock_open)
-    @patch("mmrelay.cli.logger")
+    @patch("mmrelay.cli._get_logger")
     def test_validate_credentials_json_invalid_json(
-        self, mock_logger, mock_file, mock_exists
+        self, mock_get_logger, mock_file, mock_exists
     ):
         """Test validation when credentials.json contains invalid JSON."""
         # Setup mocks
         config_path = "/home/user/.mmrelay/config.yaml"
         mock_exists.return_value = True
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
         # Mock file with invalid JSON
-        mock_file.return_value.read.return_value = "{invalid json"
+        mock_file.return_value.read.return_value = "{invalid json}"
 
         # Import and call function
         from mmrelay.cli import _validate_credentials_json

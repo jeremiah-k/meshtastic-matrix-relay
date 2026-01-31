@@ -112,6 +112,15 @@ This keeps sensitive data out of the manifests so you can publish the manifests 
 
 ## Storage
 
+The deployment uses `/data` as the base directory for all persistent data:
+
+- **Credentials**: `/data/credentials.json` (auto-created on first login)
+- **Logs**: `/data/logs/mmrelay.log`
+- **Database**: `/data/mmrelay.db`
+- **E2EE store**: `/data/store/` (if encryption is enabled)
+
+This is configured in `deployment.yaml` via `--base-dir /data` and the PVC mount. All data persists across pod restarts.
+
 `./mmrelay-k8s/pvc.yaml` uses the cluster default StorageClass. If your cluster requires a specific StorageClass, add `storageClassName` there.
 
 ## Connection types
