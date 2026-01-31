@@ -1476,10 +1476,8 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                     if client_exit_handler:
                         with contextlib.suppress(Exception):
                             atexit.unregister(client_exit_handler)
-                        try:
+                        with contextlib.suppress(AttributeError, TypeError):
                             client_obj._exit_handler = None
-                        except Exception:
-                            pass
                     with contextlib.suppress(Exception):
                         atexit.unregister(disconnect_method)
 

@@ -3042,7 +3042,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         _disconnect_ble_interface(None)
 
     @patch("mmrelay.meshtastic_utils.logger")
-    def test_disconnect_ble_interface_client_none(self, mock_logger):
+    def test_disconnect_ble_interface_client_none(self, _mock_logger):
         """Test _disconnect_ble_interface handles client=None (forked lib race)."""
         from mmrelay.meshtastic_utils import _disconnect_ble_interface
 
@@ -3064,18 +3064,21 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         """Test _disconnect_ble_interface handles client becoming None during disconnect."""
         from mmrelay.meshtastic_utils import _disconnect_ble_interface
 
+        class _SimulatedDisconnectError(RuntimeError):
+            """Test-specific error for simulated disconnect failures."""
+
         # Mock interface where client becomes None during disconnect attempts
         mock_iface = Mock()
         mock_client = Mock()
-        mock_client.disconnect = Mock(side_effect=Exception("First attempt fails"))
+        mock_client.disconnect = Mock(side_effect=_SimulatedDisconnectError())
         mock_client._exit_handler = None
         mock_iface.client = mock_client
         mock_iface.close = Mock()
 
         # Simulate client becoming None after first disconnect attempt
-        def side_effect_make_none(*args, **kwargs):
+        def side_effect_make_none(*_args, **_kwargs):
             mock_iface.client = None
-            raise Exception("Simulated disconnect failure")
+            raise _SimulatedDisconnectError()
 
         mock_client.disconnect.side_effect = side_effect_make_none
 
