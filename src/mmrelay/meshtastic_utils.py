@@ -1473,11 +1473,11 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
                     # Check _exit_handler on the client object safely
                     client_exit_handler = getattr(client_obj, "_exit_handler", None)
                     if client_exit_handler:
-                        with contextlib.suppress(Exception):
+                        with contextlib.suppress(ValueError):
                             atexit.unregister(client_exit_handler)
                         with contextlib.suppress(AttributeError, TypeError):
                             client_obj._exit_handler = None
-                    with contextlib.suppress(Exception):
+                    with contextlib.suppress(ValueError):
                         atexit.unregister(disconnect_method)
 
                     if inspect.iscoroutinefunction(disconnect_method):
