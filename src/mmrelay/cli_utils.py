@@ -36,7 +36,6 @@ except ImportError:
 
 # Import Matrix-related modules for logout functionality
 try:
-    # matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
     from nio import AsyncClient
     from nio.exceptions import (
         LocalProtocolError,
@@ -422,7 +421,8 @@ def _handle_matrix_error(
     Returns:
         bool: `True` indicating the exception was handled and reported.
     """
-    log_func = _get_logger().error if log_level == "error" else _get_logger().warning
+    logger = _get_logger()
+    log_func = logger.error if log_level == "error" else logger.warning
     emoji = "❌" if log_level == "error" else "⚠️ "
     is_verification = "verification" in context.lower()
 
@@ -619,17 +619,24 @@ async def logout_matrix_bot(password: str) -> bool:
         except asyncio.TimeoutError:
             _get_logger().error("Timeout while fetching user_id")
             print("❌ Timeout while fetching user_id")
-        except (
-            NioLocalTransportError,
-            NioRemoteTransportError,
-            NioLocalProtocolError,
-            NioRemoteProtocolError,
-        ) as e:
-            _get_logger().warning(f"Network error fetching user_id: {e}")
-            print(f"❌ Network error fetching user_id: {e}")
         except Exception as e:
-            _get_logger().exception("Unexpected error fetching user_id")
-            print(f"❌ Unexpected error fetching user_id: {e}")
+            # Handle both network exceptions (when matrix-nio is installed) and
+            # unexpected errors. When matrix-nio is not installed, the Nio types
+            # are aliased to Exception, so we check isinstance to route correctly.
+            if isinstance(
+                e,
+                (
+                    NioLocalTransportError,
+                    NioRemoteTransportError,
+                    NioLocalProtocolError,
+                    NioRemoteProtocolError,
+                ),
+            ):
+                _get_logger().warning(f"Network error fetching user_id: {e}")
+                print(f"❌ Network error fetching user_id: {e}")
+            else:
+                _get_logger().exception("Unexpected error fetching user_id")
+                print(f"❌ Unexpected error fetching user_id: {e}")
         finally:
             if temp_client is not None:
                 try:

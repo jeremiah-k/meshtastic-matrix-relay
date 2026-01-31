@@ -13,8 +13,6 @@ from pathlib import Path
 from typing import Any, cast
 
 from aiohttp import ClientError
-
-# matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
 from nio import (
     MegolmEvent,
     ReactionEvent,

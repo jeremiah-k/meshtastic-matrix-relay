@@ -278,9 +278,6 @@ class TestIntegration:
         msg_regenerate_credentials()
 
 
-from unittest.mock import patch  # noqa: E402
-
-
 class TestCreateSslContext:
     """Test the _create_ssl_context function."""
 
@@ -356,38 +353,50 @@ class TestCleanupLocalSessionData:
 class TestHandleMatrixError:
     """Test the _handle_matrix_error function."""
 
-    @patch("mmrelay.cli_utils.logger")
-    def test_handle_matrix_error_credentials(self, mock_logger):
-        from mmrelay.cli_utils import _handle_matrix_error
+    @patch("mmrelay.cli_utils._get_logger")
+    def test_handle_matrix_error_credentials(self, mock_get_logger):
+        from mmrelay.cli_utils import NioLoginError, _handle_matrix_error
 
-        error = MagicMock()
-        error.status_code = "401"
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
+
+        error = MagicMock(spec=NioLoginError)
+        error.status_code = 401
         error.errcode = "M_FORBIDDEN"
         result = _handle_matrix_error(error, "Password verification")
         assert result is True
         mock_logger.error.assert_called()
 
-    @patch("mmrelay.cli_utils.logger")
-    def test_handle_matrix_error_network(self, mock_logger):
+    @patch("mmrelay.cli_utils._get_logger")
+    def test_handle_matrix_error_network(self, mock_get_logger):
         from mmrelay.cli_utils import NioLocalTransportError, _handle_matrix_error
+
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
 
         error = NioLocalTransportError("Connection failed")
         result = _handle_matrix_error(error, "Server logout", log_level="warning")
         assert result is True
         mock_logger.warning.assert_called()
 
-    @patch("mmrelay.cli_utils.logger")
-    def test_handle_matrix_error_server(self, mock_logger):
+    @patch("mmrelay.cli_utils._get_logger")
+    def test_handle_matrix_error_server(self, mock_get_logger):
         from mmrelay.cli_utils import _handle_matrix_error
+
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
 
         error = Exception("500 Internal Server Error")
         result = _handle_matrix_error(error, "Some context")
         assert result is True
         mock_logger.error.assert_called()
 
-    @patch("mmrelay.cli_utils.logger")
-    def test_handle_matrix_error_unknown(self, mock_logger):
+    @patch("mmrelay.cli_utils._get_logger")
+    def test_handle_matrix_error_unknown(self, mock_get_logger):
         from mmrelay.cli_utils import _handle_matrix_error
+
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
 
         error = ValueError("Some other error")
         result = _handle_matrix_error(error, "Another context")
@@ -446,7 +455,7 @@ class TestLogoutMatrixBot:
         ):
             mock_async_client.side_effect = [mock_temp_client, MagicMock()]
 
-            result = await logout_matrix_bot(password="test_password")
+            await logout_matrix_bot(password="test_password")
 
             # Should continue to password verification
             mock_temp_client.whoami.assert_called_once()
@@ -479,7 +488,7 @@ class TestLogoutMatrixBot:
             mock_get_logger.return_value = mock_logger
             mock_async_client.return_value = mock_temp_client
 
-            result = await logout_matrix_bot(password="test_password")
+            await logout_matrix_bot(password="test_password")
 
             mock_logger.error.assert_any_call("Timeout while fetching user_id")
             mock_temp_client.close.assert_called_once()
@@ -496,8 +505,21 @@ class TestLogoutMatrixBot:
         }
 
         mock_temp_client = AsyncMock()
-        mock_temp_client.whoami.side_effect = Exception("Network error")
+        mock_temp_client.whoami.side_effect = Exception("Unexpected database error")
         mock_temp_client.close = AsyncMock()
+
+        # Create distinct exception classes to avoid aliasing to Exception
+        class MockLocalTransportError(Exception):
+            pass
+
+        class MockRemoteTransportError(Exception):
+            pass
+
+        class MockLocalProtocolError(Exception):
+            pass
+
+        class MockRemoteProtocolError(Exception):
+            pass
 
         with (
             patch(
@@ -506,14 +528,20 @@ class TestLogoutMatrixBot:
             patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
             patch("mmrelay.cli_utils._get_logger") as mock_get_logger,
+            patch("mmrelay.cli_utils.NioLocalTransportError", MockLocalTransportError),
+            patch(
+                "mmrelay.cli_utils.NioRemoteTransportError", MockRemoteTransportError
+            ),
+            patch("mmrelay.cli_utils.NioLocalProtocolError", MockLocalProtocolError),
+            patch("mmrelay.cli_utils.NioRemoteProtocolError", MockRemoteProtocolError),
         ):
             mock_logger = MagicMock()
             mock_get_logger.return_value = mock_logger
             mock_async_client.return_value = mock_temp_client
 
-            result = await logout_matrix_bot(password="test_password")
+            await logout_matrix_bot(password="test_password")
 
-            mock_logger.warning.assert_called_once()
+            mock_logger.exception.assert_called_once()
             mock_temp_client.close.assert_called_once()
 
     @pytest.mark.asyncio
@@ -551,7 +579,7 @@ class TestLogoutMatrixBot:
             mock_get_logger.return_value = mock_logger
             mock_async_client.side_effect = [mock_temp_client, mock_main_client]
 
-            result = await logout_matrix_bot(password="test_password")
+            await logout_matrix_bot(password="test_password")
 
             mock_logger.warning.assert_called()
 

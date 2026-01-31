@@ -47,8 +47,6 @@ from nio import (
     UploadError,
     UploadResponse,
 )
-
-# matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
 from nio.events.room_events import (
     RoomMemberEvent,
 )

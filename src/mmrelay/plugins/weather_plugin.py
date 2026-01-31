@@ -6,8 +6,6 @@ from typing import Any
 
 import requests
 from meshtastic.mesh_interface import BROADCAST_NUM
-
-# matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
 from nio import (
     MatrixRoom,
     ReactionEvent,
