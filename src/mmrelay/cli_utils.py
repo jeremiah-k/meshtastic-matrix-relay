@@ -81,6 +81,15 @@ logger: logging.Logger | None = None
 
 
 def _get_logger() -> logging.Logger:
+    """
+    Lazily initializes and returns the module-level logger for this module.
+    
+    Returns:
+        logging.Logger: The module-scoped logger instance.
+    
+    Raises:
+        RuntimeError: If the logger cannot be initialized.
+    """
     global logger
     if logger is None:
         logger = get_logger(__name__)

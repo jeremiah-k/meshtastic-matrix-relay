@@ -62,7 +62,15 @@ _logger: logging.Logger | None = None
 
 
 def _get_logger() -> logging.Logger:
-    """Get or create the module logger."""
+    """
+    Return the module-level logger, creating it on first access.
+    
+    Returns:
+        logging.Logger: The module logger instance.
+    
+    Raises:
+        RuntimeError: If the logger could not be initialized.
+    """
     global _logger
     if _logger is None:
         _logger = get_logger(__name__)
