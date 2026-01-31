@@ -39,7 +39,7 @@ BASE_URL="https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/m
 for manifest in pvc.yaml networkpolicy.yaml deployment.yaml kustomization.yaml overlays/digest/kustomization.yaml; do
   DEST_PATH="./deploy/k8s/${manifest}"
   mkdir -p "$(dirname "${DEST_PATH}")"
-  curl -Lo "${DEST_PATH}" "${BASE_URL}/${manifest}"
+  curl -fLo "${DEST_PATH}" "${BASE_URL}/${manifest}" || { echo "Error: Failed to download ${manifest}" >&2; exit 1; }
 done
 
 # Ensure the namespace exists
