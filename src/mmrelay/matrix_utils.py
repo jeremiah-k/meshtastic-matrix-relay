@@ -2242,7 +2242,6 @@ async def login_matrix_bot(
             logger.debug(f"Attempting login to {homeserver} as {username}")
             logger.debug("Login parameters:")
             logger.debug(f"  device_name: {device_name}")
-            logger.debug(f"  password length: {len(password) if password else 0}")
             logger.debug(f"  client.user: {client.user}")
             logger.debug(f"  client.homeserver: {client.homeserver}")
 
@@ -2282,7 +2281,7 @@ async def login_matrix_bot(
             # Debug: Log the response type and safe attributes only
             logger.debug(f"Login response type: {type(response).__name__}")
 
-            # Check specific attributes that should be present, masking sensitive data
+            # Check specific attributes that should be present
             for attr in [
                 "user_id",
                 "device_id",
@@ -2292,15 +2291,10 @@ async def login_matrix_bot(
             ]:
                 if hasattr(response, attr):
                     value = getattr(response, attr)
-                    if attr == "access_token" and value:
-                        # Mask access token for security
-                        masked_value = (
-                            f"{value[:8]}...{value[-4:]}"
-                            if len(value) > 12
-                            else "***masked***"
-                        )
+                    if attr == "access_token":
+                        # Only log presence of access token, never the value
                         logger.debug(
-                            f"Response.{attr}: {masked_value} (type: {type(value).__name__})"
+                            f"Response.{attr}: {'present' if value else 'not present'} (type: {type(value).__name__})"
                         )
                     else:
                         logger.debug(

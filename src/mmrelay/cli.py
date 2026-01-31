@@ -64,10 +64,10 @@ _logger: logging.Logger | None = None
 def _get_logger() -> logging.Logger:
     """
     Return the module-level logger, creating it on first access.
-    
+
     Returns:
         logging.Logger: The module logger instance.
-    
+
     Raises:
         RuntimeError: If the logger could not be initialized.
     """

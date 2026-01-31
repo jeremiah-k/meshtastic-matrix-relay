@@ -625,7 +625,7 @@ class TestLogoutMatrixBot:
     async def test_logout_matrix_bot_temp_session_logout_timeout(self):
         """
         Verify logout_matrix_bot continues when a temporary session logout times out.
-        
+
         Asserts that a TimeoutError raised by the temporary client's logout is handled by logging a warning and that logout_matrix_bot completes successfully (returns True).
         """
         from mmrelay.cli_utils import logout_matrix_bot
@@ -754,7 +754,7 @@ class TestLogoutMatrixBot:
     async def test_logout_matrix_bot_server_logout_unclear_response(self):
         """
         Verify that logout_matrix_bot proceeds with local cleanup and returns True when the server's logout response is not clearly structured.
-        
+
         Asserts that a warning "Logout response unclear, proceeding with local cleanup." is logged and the function completes successfully.
         """
         from mmrelay.cli_utils import logout_matrix_bot
