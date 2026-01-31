@@ -1552,9 +1552,6 @@ def handle_auth_login(args: argparse.Namespace) -> int:
                 print("=========================")
         except (OSError, PermissionError, ImportError, ValueError) as e:
             # Fallback if silent checking fails due to config file or import issues
-            from mmrelay.log_utils import get_logger
-
-            logger = get_logger("CLI")
             _get_logger().debug(f"Failed to silently check E2EE status: {e}")
             print("\nMatrix Bot Authentication")
             print("=========================")

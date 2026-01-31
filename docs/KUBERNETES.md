@@ -37,7 +37,7 @@ export MMRELAY_VERSION=1.2.9
 # Download manifests from the main branch
 BASE_URL="https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/deploy/k8s"
 for manifest in pvc.yaml networkpolicy.yaml deployment.yaml kustomization.yaml overlays/digest/kustomization.yaml; do
-  DEST_PATH="./mmrelay-k8s/${manifest}"
+  DEST_PATH="./deploy/k8s/${manifest}"
   mkdir -p "$(dirname "${DEST_PATH}")"
   curl -Lo "${DEST_PATH}" "${BASE_URL}/${manifest}"
 done
@@ -46,7 +46,7 @@ done
 kubectl create namespace mmrelay --dry-run=client -o yaml | kubectl apply -f -
 
 # Edit namespace/image tag in kustomization.yaml
-$EDITOR ./mmrelay-k8s/kustomization.yaml
+$EDITOR ./deploy/k8s/kustomization.yaml
 # Set the image newTag to match your MMRELAY_VERSION (${MMRELAY_VERSION})
 # If you change the namespace above, update the --namespace/-n flags below to match
 # for secret creation and kubectl apply/get/log commands.
@@ -77,7 +77,7 @@ kubectl create secret generic mmrelay-config \
   --namespace mmrelay
 
 # Apply manifests
-kubectl apply -k ./mmrelay-k8s
+kubectl apply -k ./deploy/k8s
 
 # Check status
 kubectl get pods -n mmrelay -l app=mmrelay
@@ -89,12 +89,12 @@ kubectl logs -n mmrelay -f deployment/mmrelay
 If you want immutable image references for production, use the digest overlay.
 This requires a published image with a digest from GitHub Packages.
 
-Replace the placeholder digest in `./mmrelay-k8s/overlays/digest/kustomization.yaml`.
+Replace the placeholder digest in `./deploy/k8s/overlays/digest/kustomization.yaml`.
 Tags and digests are listed on the GitHub Packages page:
 [https://github.com/jeremiah-k/meshtastic-matrix-relay/pkgs/container/mmrelay](https://github.com/jeremiah-k/meshtastic-matrix-relay/pkgs/container/mmrelay)
 
 ```bash
-kubectl apply -k ./mmrelay-k8s/overlays/digest
+kubectl apply -k ./deploy/k8s/overlays/digest
 ```
 
 ## Secrets and configuration
@@ -121,7 +121,7 @@ The deployment uses `/data` as the base directory for all persistent data:
 
 This is configured in `deployment.yaml` via `--base-dir /data` and the PVC mount. All data persists across pod restarts.
 
-`./mmrelay-k8s/pvc.yaml` uses the cluster default StorageClass. If your cluster requires a specific StorageClass, add `storageClassName` there.
+`./deploy/k8s/pvc.yaml` uses the cluster default StorageClass. If your cluster requires a specific StorageClass, add `storageClassName` there.
 
 ## Connection types
 
@@ -135,7 +135,7 @@ Serial requires host device access and node pinning. Start with the most restric
 
 1.  Add the device mount to the container:
 
-    In `./mmrelay-k8s/deployment.yaml`, add this entry under
+    In `./deploy/k8s/deployment.yaml`, add this entry under
     `spec.template.spec.containers[0].volumeMounts`:
 
     ```yaml
