@@ -48,6 +48,8 @@ spec:
               value: /run/mmrelay/ready
             - name: MMRELAY_CREDENTIALS_PATH
               value: /data/credentials.json
+            - name: MMRELAY_BASE_DIR
+              value: /data
           envFrom:
             - secretRef:
                 name: mmrelay-matrix-auth

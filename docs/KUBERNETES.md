@@ -36,11 +36,12 @@ export MMRELAY_VERSION=1.2.10
 
 # Download manifests from the main branch
 BASE_URL="https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/deploy/k8s"
-for manifest in pvc.yaml networkpolicy.yaml deployment.yaml kustomization.yaml overlays/digest/kustomization.yaml; do
-  DEST_PATH="./deploy/k8s/${manifest}"
-  mkdir -p "$(dirname "${DEST_PATH}")"
-  curl -fLo "${DEST_PATH}" "${BASE_URL}/${manifest}" || { echo "Error: Failed to download ${manifest}" >&2; exit 1; }
-done
+mkdir -p ./deploy/k8s/overlays/digest
+curl -fLo ./deploy/k8s/pvc.yaml "${BASE_URL}/pvc.yaml"
+curl -fLo ./deploy/k8s/networkpolicy.yaml "${BASE_URL}/networkpolicy.yaml"
+curl -fLo ./deploy/k8s/deployment.yaml "${BASE_URL}/deployment.yaml"
+curl -fLo ./deploy/k8s/kustomization.yaml "${BASE_URL}/kustomization.yaml"
+curl -fLo ./deploy/k8s/overlays/digest/kustomization.yaml "${BASE_URL}/overlays/digest/kustomization.yaml"
 
 # Ensure the namespace exists
 kubectl create namespace mmrelay --dry-run=client -o yaml | kubectl apply -f -
@@ -52,13 +53,15 @@ ${EDITOR:-vi} ./deploy/k8s/kustomization.yaml
 # for secret creation and kubectl apply/get/log commands.
 
 # Create config.yaml from the project sample
-# Guard against MMRELAY_VERSION="latest" by defaulting to main for the sample config ref.
-MMRELAY_CONFIG_REF="${MMRELAY_VERSION}"
-if [ "${MMRELAY_VERSION}" = "latest" ]; then
-  MMRELAY_CONFIG_REF="main"
-fi
+MMRELAY_CONFIG_REF="${MMRELAY_VERSION/latest/main}"
 curl -Lo ./config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/${MMRELAY_CONFIG_REF}/src/mmrelay/tools/sample_config.yaml
 ${EDITOR:-vi} ./config.yaml
+
+# The files you just downloaded live in this `mmrelay/` workspace. Runtime
+# paths (logfile, credentials, etc.) are still defined inside `config.yaml` or
+# the env vars/CLI flags you set; the manifests already expect `/data` inside
+# the container, so update those values if you want the workspace to mirror the
+# mounted volume.
 
 # The default manifest sets MMRELAY_CREDENTIALS_PATH=/data/credentials.json,
 # so credentials will persist on the PVC. You can override this by explicitly
@@ -124,7 +127,7 @@ The deployment uses `/data` as the base directory for all persistent data:
 - **Database**: `/data/mmrelay.db`
 - **E2EE store**: `/data/store/` (if encryption is enabled)
 
-This is configured in `deployment.yaml` via `--base-dir /data` and the PVC mount. All data persists across pod restarts.
+This is configured in `deployment.yaml` via `--base-dir /data`, `MMRELAY_BASE_DIR=/data`, and the PVC mount. All data persists across pod restarts.
 
 `./deploy/k8s/pvc.yaml` uses the cluster default StorageClass. If your cluster requires a specific StorageClass, add `storageClassName` there.
 

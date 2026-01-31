@@ -6,6 +6,7 @@ import argparse
 import importlib
 import importlib.resources
 import ipaddress
+import logging
 import os
 import platform
 import re
@@ -57,14 +58,16 @@ from mmrelay.log_utils import get_logger
 from mmrelay.tools import get_sample_config_path
 
 # Lazy-initialized logger to avoid circular imports and filesystem access during import
-_logger: Any = None
+_logger: logging.Logger | None = None
 
 
-def _get_logger() -> Any:
+def _get_logger() -> logging.Logger:
     """Get or create the module logger."""
     global _logger
     if _logger is None:
         _logger = get_logger(__name__)
+    if _logger is None:
+        raise RuntimeError("Logger must be initialized")
     return _logger
 
 
