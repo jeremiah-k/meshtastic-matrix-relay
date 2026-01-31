@@ -3042,6 +3042,55 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         _disconnect_ble_interface(None)
 
     @patch("mmrelay.meshtastic_utils.logger")
+    def test_disconnect_ble_interface_client_none(self, mock_logger):
+        """Test _disconnect_ble_interface handles client=None (forked lib race)."""
+        from mmrelay.meshtastic_utils import _disconnect_ble_interface
+
+        # Mock interface with client=None (simulates forked lib close race)
+        mock_iface = Mock()
+        mock_iface.client = None
+        mock_iface.close = Mock()
+
+        # Should not raise any errors when client is None
+        _disconnect_ble_interface(mock_iface, reason="test")
+
+        # Verify close was still called on the interface
+        mock_iface.close.assert_called_once()
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_disconnect_ble_interface_client_becomes_none_during_disconnect(
+        self, mock_logger
+    ):
+        """Test _disconnect_ble_interface handles client becoming None during disconnect."""
+        from mmrelay.meshtastic_utils import _disconnect_ble_interface
+
+        # Mock interface where client becomes None during disconnect attempts
+        mock_iface = Mock()
+        mock_client = Mock()
+        mock_client.disconnect = Mock(side_effect=Exception("First attempt fails"))
+        mock_client._exit_handler = None
+        mock_iface.client = mock_client
+        mock_iface.close = Mock()
+
+        # Simulate client becoming None after first disconnect attempt
+        def side_effect_make_none(*args, **kwargs):
+            mock_iface.client = None
+            raise Exception("Simulated disconnect failure")
+
+        mock_client.disconnect.side_effect = side_effect_make_none
+
+        # Should handle the None client gracefully without raising
+        _disconnect_ble_interface(mock_iface, reason="test")
+
+        # Verify debug log was called about client becoming None
+        debug_calls = [str(call) for call in mock_logger.debug.call_args_list]
+        found_log = any("became None before attempt" in call for call in debug_calls)
+        self.assertTrue(found_log, "Expected log about client becoming None")
+
+        # Verify close was still called
+        mock_iface.close.assert_called_once()
+
+    @patch("mmrelay.meshtastic_utils.logger")
     @patch("mmrelay.meshtastic_utils.time")
     def test_connect_meshtastic_ble_interface_creation_timeout(
         self, _mock_time, mock_logger
