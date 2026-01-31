@@ -104,7 +104,7 @@ class TestGetMinimalConfigTemplate(unittest.TestCase):
         self.assertIn("logging:", template)
 
         # Verify it's valid YAML
-        import yaml
+        import yaml  # type: ignore[import-untyped]
 
         try:
             config_data = yaml.safe_load(template)

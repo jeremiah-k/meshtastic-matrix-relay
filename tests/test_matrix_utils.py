@@ -2182,7 +2182,7 @@ def test_markdown_import_error_fallback_coverage():
         # This simulates the exact try/except block from matrix_relay
         if has_markdown or has_html:
             try:
-                import markdown
+                import markdown  # type: ignore[import-untyped]
 
                 formatted_body = markdown.markdown(message)
                 plain_body = re.sub(r"</?[^>]*>", "", formatted_body)

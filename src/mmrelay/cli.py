@@ -15,7 +15,7 @@ import sys
 from collections.abc import Mapping
 from typing import Any
 
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 # Import version from package
 from mmrelay import __version__

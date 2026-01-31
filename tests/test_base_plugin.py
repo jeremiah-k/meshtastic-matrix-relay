@@ -45,14 +45,14 @@ class MockPlugin(BasePlugin):
         """
         return False
 
-    async def handle_room_message(self, room, event, full_message) -> bool:
+    async def handle_room_message(self, _room, _event, _full_message) -> bool:
         """
         Handle a Matrix room message event without processing it.
 
         Parameters:
-            room: The Matrix room where the event occurred.
-            event: The Matrix event object.
-            full_message: The full message content.
+            _room: The Matrix room where the event occurred.
+            _event: The Matrix event object.
+            _full_message: The full message content.
         """
         return False
 
@@ -150,14 +150,14 @@ class TestBasePlugin(unittest.TestCase):
                 """
                 return False
 
-            async def handle_room_message(self, room, event, full_message) -> bool:
+            async def handle_room_message(self, _room, _event, _full_message) -> bool:
                 """
                 Handle a Matrix room message event.
 
                 Parameters:
-                        room: The Matrix room where the event occurred.
-                        event: The Matrix event object.
-                        full_message: The full message content.
+                        _room: The Matrix room where the event occurred.
+                        _event: The Matrix event object.
+                        _full_message: The full message content.
 
                 Returns:
                         bool: Always returns False, indicating the message was not handled.
@@ -973,7 +973,7 @@ class TestBasePlugin(unittest.TestCase):
             ) -> bool:
                 return False
 
-            async def handle_room_message(self, room, event, full_message) -> bool:
+            async def handle_room_message(self, _room, _event, _full_message) -> bool:
                 return False
 
         plugin = TestClassLevelPlugin()
@@ -1076,7 +1076,7 @@ class TestBasePlugin(unittest.TestCase):
             ) -> bool:
                 return False
 
-            async def handle_room_message(self, room, event, full_message) -> bool:
+            async def handle_room_message(self, _room, _event, _full_message) -> bool:
                 return False
 
         with self.assertRaises(ValueError) as cm:
