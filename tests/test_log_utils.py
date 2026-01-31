@@ -948,7 +948,6 @@ class TestLogUtils(unittest.TestCase):
 
         with patch("mmrelay.runtime_utils.is_running_as_service", return_value=False):
             # Force reimport
-            import importlib
 
             import mmrelay.log_utils as lu_reloaded
 
@@ -985,7 +984,6 @@ class TestLogUtils(unittest.TestCase):
             del sys.modules["mmrelay.log_utils"]
 
         with patch("mmrelay.runtime_utils.is_running_as_service", return_value=True):
-            import importlib
 
             import mmrelay.log_utils as lu_reloaded
 

@@ -11,18 +11,18 @@ This guide uses the static manifests in `deploy/k8s/`. Download them, create a S
 
 ## Version Selection
 
-The `MMRELAY_VERSION` variable is the container image tag (e.g., `1.2.9`). This is used for:
+The `MMRELAY_VERSION` variable is the container image tag (e.g., `1.2.10`). This is used for:
 
 - Setting the image tag in kustomization.yaml
 - Downloading the sample config.yaml
 
-The Kubernetes manifests shipped starting with **1.2.9**. This guide downloads them
+The Kubernetes manifests shipped starting with **1.2.10**. This guide downloads them
 from the `main` branch for convenience.
 
-- **Production**: Use a specific release tag (e.g., `1.2.9`) for stability and reproducibility.
+- **Production**: Use a specific release tag (e.g., `1.2.10`) for stability and reproducibility.
 - **Digest overlay**: Requires a release tag with published image digests.
 
-**Important**: The manifests require MMRelay **1.2.9+**.
+**Important**: The manifests require MMRelay **1.2.10+**.
 
 ## Quick Start (static manifests)
 
@@ -31,8 +31,8 @@ from the `main` branch for convenience.
 mkdir -p mmrelay
 cd mmrelay
 
-# Set the version for the container image tag (manifests require MMRelay 1.2.9 or later)
-export MMRELAY_VERSION=1.2.9
+# Set the version for the container image tag (manifests require MMRelay 1.2.10 or later)
+export MMRELAY_VERSION=1.2.10
 
 # Download manifests from the main branch
 BASE_URL="https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/deploy/k8s"
@@ -48,7 +48,7 @@ kubectl create namespace mmrelay --dry-run=client -o yaml | kubectl apply -f -
 
 # Edit namespace/image tag in kustomization.yaml
 ${EDITOR:-vi} ./deploy/k8s/kustomization.yaml
-# Set the image newTag to match your MMRELAY_VERSION (${MMRELAY_VERSION}); manifests require 1.2.9+
+# Set the image newTag to match your MMRELAY_VERSION (${MMRELAY_VERSION}); manifests require 1.2.10+
 # If you change the namespace above, update the --namespace/-n flags below to match
 # for secret creation and kubectl apply/get/log commands.
 
