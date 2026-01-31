@@ -46,18 +46,19 @@ done
 kubectl create namespace mmrelay --dry-run=client -o yaml | kubectl apply -f -
 
 # Edit namespace/image tag in kustomization.yaml
-$EDITOR ./deploy/k8s/kustomization.yaml
+${EDITOR:-vi} ./deploy/k8s/kustomization.yaml
 # Set the image newTag to match your MMRELAY_VERSION (${MMRELAY_VERSION})
 # If you change the namespace above, update the --namespace/-n flags below to match
 # for secret creation and kubectl apply/get/log commands.
 
 # Create config.yaml from the project sample
+# Guard against MMRELAY_VERSION="latest" by defaulting to main for the sample config ref.
 MMRELAY_CONFIG_REF="${MMRELAY_VERSION}"
 if [ "${MMRELAY_VERSION}" = "latest" ]; then
   MMRELAY_CONFIG_REF="main"
 fi
 curl -Lo ./config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/${MMRELAY_CONFIG_REF}/src/mmrelay/tools/sample_config.yaml
-$EDITOR ./config.yaml
+${EDITOR:-vi} ./config.yaml
 
 # The default manifest sets MMRELAY_CREDENTIALS_PATH=/data/credentials.json,
 # so credentials will persist on the PVC. You can override this by explicitly
