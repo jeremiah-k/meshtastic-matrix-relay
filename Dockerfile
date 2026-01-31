@@ -75,7 +75,7 @@ USER mmrelay
 
 # Health check - verifies application is ready via ready file
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD test -f /tmp/mmrelay/ready || exit 1
+    CMD test -f "$MMRELAY_READY_FILE"
 
 # Default command - uses config.yaml from volume mount
 CMD ["mmrelay", "--config", "/app/config.yaml", "--data-dir", "/app/data", "--logfile", "/app/logs/mmrelay.log"]
