@@ -513,7 +513,7 @@ class TestLogoutMatrixBot:
 
             result = await logout_matrix_bot(password="test_password")
 
-            mock_logger.exception.assert_called_once()
+            mock_logger.warning.assert_called_once()
             mock_temp_client.close.assert_called_once()
 
     @pytest.mark.asyncio
