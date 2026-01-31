@@ -3070,7 +3070,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         # Mock interface where client becomes None during disconnect attempts
         mock_iface = Mock()
         mock_client = Mock()
-        mock_client.disconnect = Mock(side_effect=_SimulatedDisconnectError())
         mock_client._exit_handler = None
         mock_iface.client = mock_client
         mock_iface.close = Mock()

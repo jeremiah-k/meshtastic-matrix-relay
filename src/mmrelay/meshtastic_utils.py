@@ -1455,8 +1455,7 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
         # For BLE interfaces, explicitly disconnect the underlying BleakClient
         # to prevent stale connections in BlueZ (official library bug)
         # Check that client attribute exists AND is not None (handles forked lib close race)
-        client_obj = getattr(iface, "client", None)
-        if client_obj is not None:
+        if getattr(iface, "client", None) is not None:
             logger.debug(f"Explicitly disconnecting BLE client ({reason})")
 
             # Retry logic for client disconnect
