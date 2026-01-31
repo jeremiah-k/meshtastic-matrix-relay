@@ -11,18 +11,18 @@ This guide uses the static manifests in `deploy/k8s/`. Download them, create a S
 
 ## Version Selection
 
-The `MMRELAY_VERSION` variable is the container image tag (e.g., `1.2.9`, `latest`). This is used for:
+The `MMRELAY_VERSION` variable is the container image tag (e.g., `1.2.10`). This is used for:
 
 - Setting the image tag in kustomization.yaml
 - Downloading the sample config.yaml
 
-The Kubernetes manifests are always downloaded from the `main` branch since they have not yet been included in a release.
+The Kubernetes manifests shipped starting with **1.2.10**. This guide downloads them
+from the `main` branch for convenience.
 
-- **Production**: Use a specific release tag (e.g., `1.2.9`) for stability and reproducibility.
-- **Development**: Use `latest` for the latest development changes.
-- **Digest overlay**: Requires a release tag with published image digests. The overlay is only available for production releases.
+- **Production**: Use a specific release tag (e.g., `1.2.10`) for stability and reproducibility.
+- **Digest overlay**: Requires a release tag with published image digests.
 
-**Important**: The manifests from `main` branch work with any existing image tag (`1.2.9`, `latest`, etc.), even though the release didn't include these manifests.
+**Important**: The manifests require MMRelay **1.2.10+**.
 
 ## Quick Start (static manifests)
 

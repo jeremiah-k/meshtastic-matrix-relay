@@ -1,7 +1,8 @@
 import asyncio
+import importlib
 import os
 import re
-from typing import Any, cast
+from typing import Any, TYPE_CHECKING, cast
 
 import PIL.ImageDraw
 import s2sphere
@@ -41,13 +42,16 @@ def precision_bits_to_meters(bits: int) -> float | None:
     return S2_PRECISION_BITS_TO_METERS_CONSTANT * 0.5**bits
 
 
+if TYPE_CHECKING:
+    import cairo as cairo  # type: ignore[import-not-found]
+
 _cairo: Any | None
 try:
-    import cairo as _cairo
+    _cairo = importlib.import_module("cairo")
 except ImportError:  # pragma: no cover - optional dependency
     _cairo = None
 
-cairo: Any | None = _cairo
+cairo: Any | None = _cairo  # type: ignore[no-redef]
 
 
 logger = get_logger(__name__)
