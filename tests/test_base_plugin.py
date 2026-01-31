@@ -36,16 +36,16 @@ class MockPlugin(BasePlugin):
 
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name
-    ) -> None:
+    ) -> bool:
         """
         Handle an incoming Meshtastic message.
 
         Returns:
-            None: Always returns None, indicating the message was not handled.
+            bool: Always returns False, indicating the message was not handled.
         """
-        return None
+        return False
 
-    async def handle_room_message(self, room, event, full_message) -> None:
+    async def handle_room_message(self, room, event, full_message) -> bool:
         """
         Handle a Matrix room message event without processing it.
 
@@ -54,7 +54,7 @@ class MockPlugin(BasePlugin):
             event: The Matrix event object.
             full_message: The full message content.
         """
-        return None
+        return False
 
 
 class TestBasePlugin(unittest.TestCase):
@@ -141,16 +141,16 @@ class TestBasePlugin(unittest.TestCase):
         class NoNamePlugin(BasePlugin):
             async def handle_meshtastic_message(
                 self, packet, formatted_message, longname, meshnet_name
-            ) -> None:
+            ) -> bool:
                 """
                 Handle an incoming Meshtastic message.
 
                 Returns:
-                    None: Always returns None, indicating the message was not handled.
+                    bool: Always returns False, indicating the message was not handled.
                 """
-                return None
+                return False
 
-            async def handle_room_message(self, room, event, full_message) -> None:
+            async def handle_room_message(self, room, event, full_message) -> bool:
                 """
                 Handle a Matrix room message event.
 
@@ -160,9 +160,9 @@ class TestBasePlugin(unittest.TestCase):
                         full_message: The full message content.
 
                 Returns:
-                        None: Always returns None, indicating the message was not handled.
+                        bool: Always returns False, indicating the message was not handled.
                 """
-                return None
+                return False
 
         with self.assertRaises(ValueError) as context:
             NoNamePlugin()
@@ -950,7 +950,7 @@ class TestBasePlugin(unittest.TestCase):
                     "test_plugin", "!node123", expected_data
                 )
 
-    def test_store_node_data_circular_reference_handling(self):
+    def test_store_node_data_circular_reference_handling(self) -> None:
         """Test store_node_data handles circular references gracefully."""
         plugin = MockPlugin()
         circular_data: dict = {"key": "value"}
@@ -970,11 +970,11 @@ class TestBasePlugin(unittest.TestCase):
 
             async def handle_meshtastic_message(
                 self, packet, formatted_message, longname, meshnet_name
-            ):
-                return None
+            ) -> bool:
+                return False
 
-            async def handle_room_message(self, room, event, full_message):
-                return None
+            async def handle_room_message(self, room, event, full_message) -> bool:
+                return False
 
         plugin = TestClassLevelPlugin()
         self.assertEqual(plugin.plugin_name, "class_level_plugin")
@@ -1073,11 +1073,11 @@ class TestBasePlugin(unittest.TestCase):
 
             async def handle_meshtastic_message(
                 self, packet, formatted_message, longname, meshnet_name
-            ):
-                return None
+            ) -> bool:
+                return False
 
-            async def handle_room_message(self, room, event, full_message):
-                return None
+            async def handle_room_message(self, room, event, full_message) -> bool:
+                return False
 
         with self.assertRaises(ValueError) as cm:
             NoNamePlugin()

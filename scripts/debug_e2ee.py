@@ -36,7 +36,7 @@ class E2EEDebugger:
         self.config: dict[str, Any] | None = None
         self.client: Any | None = None
 
-    async def connect_and_diagnose(self):
+    async def connect_and_diagnose(self) -> None:
         """Connect to Matrix and perform comprehensive E2EE diagnosis"""
         print("🔧 E2EE Debug Utility")
         print("=" * 50)
@@ -79,7 +79,7 @@ class E2EEDebugger:
 
         return True
 
-    async def diagnose_client_state(self):
+    async def diagnose_client_state(self) -> None:
         """Diagnose Matrix client E2EE state"""
         if self.client is None:
             print("❌ No Matrix client available for diagnostics")
@@ -130,7 +130,7 @@ class E2EEDebugger:
                 store_files = list(Path(store_path).glob("*"))
                 print(f"   Store Files: {len(store_files)} files")
 
-    async def diagnose_room_encryption(self):
+    async def diagnose_room_encryption(self) -> None:
         """Diagnose room encryption state"""
         if self.client is None:
             print("❌ No Matrix client available for diagnostics")
@@ -191,7 +191,7 @@ class E2EEDebugger:
         else:
             print("\n⚠️  No encrypted rooms found - this may be the issue!")
 
-    async def test_message_parameters(self):
+    async def test_message_parameters(self) -> None:
         """Test message sending parameter logic"""
         if self.client is None:
             print("❌ No Matrix client available for diagnostics")
@@ -284,7 +284,7 @@ class E2EEDebugger:
         print("4. Check Element for actual message encryption status")
 
 
-async def main():
+async def main() -> None:
     """Main debug function"""
     if len(sys.argv) > 1 and sys.argv[1] == "--help":
         print("E2EE Debug Utility")

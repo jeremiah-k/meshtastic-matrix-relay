@@ -147,9 +147,7 @@ async def test_on_invite_ignores_non_bot_invites(mock_logger: MagicMock) -> None
         {"id": "!abc123:matrix.org", "meshtastic_channel": 0}
     ]
 
-    result = await on_invite(mock_room, mock_event)
-
-    assert result is None
+    await on_invite(mock_room, mock_event)
     mock_logger.debug.assert_any_call(
         "Ignoring invite for @other:matrix.org (not for bot @bot:matrix.org)"
     )
@@ -178,9 +176,7 @@ async def test_on_invite_ignores_non_invite_membership(
         {"id": "!abc123:matrix.org", "meshtastic_channel": 0}
     ]
 
-    result = await on_invite(mock_room, mock_event)
-
-    assert result is None
+    await on_invite(mock_room, mock_event)
     mock_logger.debug.assert_any_call("Ignoring non-invite membership event: join")
 
 
@@ -205,9 +201,7 @@ async def test_on_invite_ignores_unmapped_rooms(mock_logger: MagicMock) -> None:
         {"id": "!other:matrix.org", "meshtastic_channel": 0}
     ]
 
-    result = await on_invite(mock_room, mock_event)
-
-    assert result is None
+    await on_invite(mock_room, mock_event)
     mock_logger.info.assert_any_call(
         "Room '!abc123:matrix.org' is not in matrix_rooms configuration, ignoring invite"
     )
@@ -241,9 +235,7 @@ async def test_on_invite_joins_mapped_room(mock_logger: MagicMock) -> None:
         {"id": "!abc123:matrix.org", "meshtastic_channel": 0}
     ]
 
-    result = await on_invite(mock_room, mock_event)
-
-    assert result is None
+    await on_invite(mock_room, mock_event)
     mock_logger.info.assert_any_call(
         "Room '!abc123:matrix.org' is in matrix_rooms configuration, accepting invite"
     )
@@ -277,9 +269,7 @@ async def test_on_invite_already_in_room(mock_logger: MagicMock) -> None:
         {"id": "!abc123:matrix.org", "meshtastic_channel": 0}
     ]
 
-    result = await on_invite(mock_room, mock_event)
-
-    assert result is None
+    await on_invite(mock_room, mock_event)
     mock_logger.info.assert_any_call(
         "Room '!abc123:matrix.org' is in matrix_rooms configuration, accepting invite"
     )
@@ -318,9 +308,7 @@ async def test_on_invite_handles_join_failure(mock_logger: MagicMock) -> None:
         {"id": "!abc123:matrix.org", "meshtastic_channel": 0}
     ]
 
-    result = await on_invite(mock_room, mock_event)
-
-    assert result is None
+    await on_invite(mock_room, mock_event)
     mock_logger.info.assert_any_call(
         "Room '!abc123:matrix.org' is in matrix_rooms configuration, accepting invite"
     )
@@ -357,9 +345,7 @@ async def test_on_invite_handles_no_client(mock_logger: MagicMock) -> None:
         {"id": "!abc123:matrix.org", "meshtastic_channel": 0}
     ]
 
-    result = await on_invite(mock_room, mock_event)
-
-    assert result is None
+    await on_invite(mock_room, mock_event)
     mock_logger.error.assert_any_call("matrix_client is None, cannot join room")
 
 
@@ -391,9 +377,7 @@ async def test_on_invite_with_id_in_mapping(mock_logger: MagicMock) -> None:
         {"id": "!abc123:matrix.org", "meshtastic_channel": 0}
     ]
 
-    result = await on_invite(mock_room, mock_event)
-
-    assert result is None
+    await on_invite(mock_room, mock_event)
     mock_logger.info.assert_any_call(
         "Room '!abc123:matrix.org' is in matrix_rooms configuration, accepting invite"
     )

@@ -10,15 +10,18 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from typing import Any, Type
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+_ImportedE2EEDebugUtilities: Type[Any] | None = None
 
 try:
     from mmrelay.config import load_config
     from mmrelay.matrix_utils import connect_matrix
 
-    from .test_e2ee_encryption import E2EEDebugUtilities
+    from .test_e2ee_encryption import E2EEDebugUtilities as _ImportedE2EEDebugUtilities
 
     IMPORTS_AVAILABLE = True
 except ImportError as e:
@@ -27,8 +30,13 @@ except ImportError as e:
     IMPORTS_AVAILABLE = False
 
     # Create dummy classes to prevent further import errors
-    class E2EEDebugUtilities:  # type: ignore[no-redef]
+    class _FallbackE2EEDebugUtilities:
         pass
+
+
+E2EEDebugUtilities = (
+    _ImportedE2EEDebugUtilities if IMPORTS_AVAILABLE else _FallbackE2EEDebugUtilities
+)
 
 
 class E2EEIntegrationTester:
