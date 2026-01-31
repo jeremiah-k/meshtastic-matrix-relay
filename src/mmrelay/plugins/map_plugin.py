@@ -416,8 +416,8 @@ class Plugin(BasePlugin):
 
     def get_matrix_commands(self) -> list[str]:
         """
-        Return the Matrix command names registered by this plugin.
-
+        List the Matrix command names registered by this plugin.
+        
         Returns:
             list[str]: Command names the plugin handles; empty list if the plugin has no configured name.
         """
