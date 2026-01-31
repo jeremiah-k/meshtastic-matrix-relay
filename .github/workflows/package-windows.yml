@@ -56,7 +56,7 @@ jobs:
           pip install pyinstaller
 
       - name: Build executable
-        run: pyinstaller --name=mmrelay.exe --onefile --console src/mmrelay/main.py
+        run: pyinstaller --name=mmrelay.exe --onefile --console --hidden-import=rich._unicode_data src/mmrelay/main.py
 
       - name: Build installer
         uses: nadeemjazmawe/inno-setup-action-cli@v6.0.5
