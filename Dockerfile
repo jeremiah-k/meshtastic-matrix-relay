@@ -68,13 +68,14 @@ LABEL org.opencontainers.image.title="Meshtastic Matrix Relay" \
 ENV PYTHONUNBUFFERED=1
 ENV MPLCONFIGDIR=/tmp/matplotlib
 ENV PATH=/usr/local/bin:/usr/bin:/bin
+ENV MMRELAY_READY_FILE=/tmp/mmrelay/ready
 
 # Switch to non-root user
 USER mmrelay
 
-# Health check
+# Health check - verifies application is ready via ready file
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD pgrep -f mmrelay || exit 1
+    CMD test -f /tmp/mmrelay/ready || exit 1
 
 # Default command - uses config.yaml from volume mount
 CMD ["mmrelay", "--config", "/app/config.yaml", "--data-dir", "/app/data", "--logfile", "/app/logs/mmrelay.log"]
