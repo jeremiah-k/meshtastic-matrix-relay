@@ -1454,22 +1454,30 @@ def _disconnect_ble_interface(iface: Any, reason: str = "disconnect") -> None:
 
         # For BLE interfaces, explicitly disconnect the underlying BleakClient
         # to prevent stale connections in BlueZ (official library bug)
-        if hasattr(iface, "client"):
+        # Check that client attribute exists AND is not None (handles forked lib close race)
+        if getattr(iface, "client", None) is not None:
             logger.debug(f"Explicitly disconnecting BLE client ({reason})")
 
             # Retry logic for client disconnect
             max_client_retries = 2
             for attempt in range(max_client_retries):
+                # Re-check client before each attempt (may become None during close)
+                client_obj = getattr(iface, "client", None)
+                if client_obj is None:
+                    logger.debug(
+                        f"BLE client became None before attempt {attempt + 1} ({reason}), skipping"
+                    )
+                    break
                 try:
-                    disconnect_method = iface.client.disconnect
-                    if (
-                        hasattr(iface.client, "_exit_handler")
-                        and iface.client._exit_handler
-                    ):
-                        with contextlib.suppress(Exception):
-                            atexit.unregister(iface.client._exit_handler)
-                        iface.client._exit_handler = None
-                    with contextlib.suppress(Exception):
+                    disconnect_method = client_obj.disconnect
+                    # Check _exit_handler on the client object safely
+                    client_exit_handler = getattr(client_obj, "_exit_handler", None)
+                    if client_exit_handler:
+                        with contextlib.suppress(ValueError):
+                            atexit.unregister(client_exit_handler)
+                        with contextlib.suppress(AttributeError, TypeError):
+                            client_obj._exit_handler = None
+                    with contextlib.suppress(ValueError):
                         atexit.unregister(disconnect_method)
 
                     if inspect.iscoroutinefunction(disconnect_method):
