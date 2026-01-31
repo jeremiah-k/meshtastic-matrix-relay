@@ -31,8 +31,8 @@ The Kubernetes manifests are always downloaded from the `main` branch since they
 mkdir -p mmrelay
 cd mmrelay
 
-# Set the version for the container image tag
-export MMRELAY_VERSION=1.2.9
+# Set the version for the container image tag (manifests require MMRelay 1.2.10 or later)
+export MMRELAY_VERSION=1.2.10
 
 # Download manifests from the main branch
 BASE_URL="https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/deploy/k8s"
@@ -47,7 +47,7 @@ kubectl create namespace mmrelay --dry-run=client -o yaml | kubectl apply -f -
 
 # Edit namespace/image tag in kustomization.yaml
 ${EDITOR:-vi} ./deploy/k8s/kustomization.yaml
-# Set the image newTag to match your MMRELAY_VERSION (${MMRELAY_VERSION})
+# Set the image newTag to match your MMRELAY_VERSION (${MMRELAY_VERSION}); manifests require 1.2.10+
 # If you change the namespace above, update the --namespace/-n flags below to match
 # for secret creation and kubectl apply/get/log commands.
 
