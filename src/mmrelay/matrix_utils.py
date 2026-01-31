@@ -71,6 +71,7 @@ from mmrelay.cli_utils import (
 )
 from mmrelay.config import (
     get_base_dir,
+    get_data_dir,
     get_e2ee_store_dir,
     get_meshtastic_config_value,
     load_credentials,
@@ -1321,6 +1322,8 @@ async def connect_matrix(
             candidate_paths.append(os.path.join(config_dir, "credentials.json"))
 
         candidate_paths.append(os.path.join(get_base_dir(), "credentials.json"))
+        # Also check data directory (for Docker setups where ~/.mmrelay is mounted to /app/data)
+        candidate_paths.append(os.path.join(get_data_dir(), "credentials.json"))
 
         for candidate in candidate_paths:
             if not os.path.isfile(candidate):

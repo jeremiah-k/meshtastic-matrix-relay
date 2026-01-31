@@ -5,7 +5,7 @@ import sqlite3
 import threading
 from typing import Any, Dict, Tuple, cast
 
-from mmrelay.config import get_data_dir
+from mmrelay.config import get_base_dir, get_data_dir
 from mmrelay.constants.database import (
     DEFAULT_BUSY_TIMEOUT_MS,
     DEFAULT_ENABLE_WAL,
@@ -130,7 +130,31 @@ def get_db_path() -> str:
     except (OSError, PermissionError) as e:
         logger.warning("Could not create data directory %s: %s", data_dir, e)
         # Continue anyway - the database connection will fail later if needed
+
     default_path = os.path.join(data_dir, "meshtastic.sqlite")
+
+    # Migrate legacy database from pre-v1.2.10 location if needed
+    # In v1.2.10, --base-dir changed behavior: database moved from <base_dir>/
+    # to <base_dir>/data/. Check for legacy database and migrate if present.
+    legacy_path = os.path.join(get_base_dir(), "meshtastic.sqlite")
+    if os.path.exists(legacy_path) and not os.path.exists(default_path):
+        try:
+            import shutil
+
+            shutil.move(legacy_path, default_path)
+            logger.info(
+                "Migrated database from legacy location %s to %s",
+                legacy_path,
+                default_path,
+            )
+        except (OSError, PermissionError) as e:
+            logger.warning(
+                "Failed to migrate database from %s to %s: %s. "
+                "The old database remains at the legacy location.",
+                legacy_path,
+                default_path,
+                e,
+            )
     _cached_db_path = default_path
     return default_path
 
