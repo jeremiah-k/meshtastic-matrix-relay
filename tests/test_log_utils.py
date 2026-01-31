@@ -929,6 +929,79 @@ class TestLogUtils(unittest.TestCase):
             self.assertIn("bleak", captured_output)
             self.assertIn(test_message, captured_output)
 
+    @patch("mmrelay.runtime_utils.is_running_as_service")
+    def test_rich_import_when_not_running_as_service(self, mock_is_running_as_service):
+        """
+        Test that Rich components are imported when not running as service (lines 25-31).
+        """
+        mock_is_running_as_service.return_value = False
+
+        import mmrelay.log_utils as lu
+
+        original_rich_available = lu.RICH_AVAILABLE
+        original_rich_handler = getattr(lu, "RichHandler", None)
+        original_console = getattr(lu, "console", None)
+
+        # Reload module to trigger module-level code
+        if "mmrelay.log_utils" in sys.modules:
+            del sys.modules["mmrelay.log_utils"]
+
+        with patch("mmrelay.runtime_utils.is_running_as_service", return_value=False):
+            # Force reimport
+            import importlib
+
+            import mmrelay.log_utils as lu_reloaded
+
+            # Verify Rich components were imported
+            self.assertTrue(lu_reloaded.RICH_AVAILABLE)
+            self.assertIsNotNone(lu_reloaded.RichHandler)
+            self.assertIsNotNone(lu_reloaded.console)
+
+        # Restore - safely restore or delete attributes
+        lu.RICH_AVAILABLE = original_rich_available
+        if original_rich_handler is not None:
+            lu.RichHandler = original_rich_handler
+        elif hasattr(lu, "RichHandler"):
+            delattr(lu, "RichHandler")
+        lu.console = original_console
+
+    @patch("mmrelay.runtime_utils.is_running_as_service")
+    def test_rich_not_imported_when_running_as_service(
+        self, mock_is_running_as_service
+    ):
+        """
+        Test that Rich components are NOT imported when running as service (lines 25-33).
+        """
+        mock_is_running_as_service.return_value = True
+
+        import mmrelay.log_utils as lu
+
+        original_rich_available = lu.RICH_AVAILABLE
+        original_rich_handler = getattr(lu, "RichHandler", None)
+        original_console = getattr(lu, "console", None)
+
+        # Reload module to trigger module-level code
+        if "mmrelay.log_utils" in sys.modules:
+            del sys.modules["mmrelay.log_utils"]
+
+        with patch("mmrelay.runtime_utils.is_running_as_service", return_value=True):
+            import importlib
+
+            import mmrelay.log_utils as lu_reloaded
+
+            # Verify Rich components were NOT imported
+            self.assertFalse(lu_reloaded.RICH_AVAILABLE)
+            self.assertIsNone(lu_reloaded.RichHandler)
+            self.assertIsNone(lu_reloaded.console)
+
+        # Restore - safely restore or delete attributes
+        lu.RICH_AVAILABLE = original_rich_available
+        if original_rich_handler is not None:
+            lu.RichHandler = original_rich_handler
+        elif hasattr(lu, "RichHandler"):
+            delattr(lu, "RichHandler")
+        lu.console = original_console
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -23,8 +23,10 @@ try:
     from mmrelay.runtime_utils import is_running_as_service
 
     if not is_running_as_service():
+        import rich.logging as _rich_logging
         from rich.console import Console
-        from rich.logging import RichHandler
+
+        RichHandler = _rich_logging.RichHandler
 
         RICH_AVAILABLE = True
     else:

@@ -743,7 +743,7 @@ plugins:
         }
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            import yaml
+            import yaml  # type: ignore[import-untyped]
 
             yaml.dump(initial_config, f)
             config_path = f.name

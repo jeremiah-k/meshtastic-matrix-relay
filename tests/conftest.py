@@ -34,7 +34,7 @@ meshtastic_mock = MagicMock()
 sys.modules["meshtastic"] = meshtastic_mock
 sys.modules["meshtastic.protobuf"] = MagicMock()
 sys.modules["meshtastic.protobuf.portnums_pb2"] = MagicMock()
-sys.modules["meshtastic.protobuf.portnums_pb2"].PortNum = MagicMock()
+sys.modules["meshtastic.protobuf.portnums_pb2"].PortNum = MagicMock()  # type: ignore[attr-defined]
 sys.modules["meshtastic.protobuf.portnums_pb2"].PortNum.DETECTION_SENSOR_APP = 1
 sys.modules["meshtastic.protobuf.mesh_pb2"] = MagicMock()
 sys.modules["meshtastic.ble_interface"] = MagicMock()
@@ -43,8 +43,8 @@ sys.modules["meshtastic.tcp_interface"] = MagicMock()
 sys.modules["meshtastic.mesh_interface"] = MagicMock()
 meshtastic_mock.BROADCAST_ADDR = "^all"
 meshtastic_mock.BROADCAST_NUM = 4294967295
-sys.modules["meshtastic.mesh_interface"].BROADCAST_NUM = 4294967295
-sys.modules["meshtastic.mesh_interface"].BROADCAST_ADDR = "^all"
+sys.modules["meshtastic.mesh_interface"].BROADCAST_NUM = 4294967295  # type: ignore[attr-defined]
+sys.modules["meshtastic.mesh_interface"].BROADCAST_ADDR = "^all"  # type: ignore[attr-defined]
 
 nio_mock = MagicMock()
 sys.modules["nio"] = nio_mock
@@ -100,13 +100,13 @@ class MockRequestsExceptions:
     Timeout = Timeout
 
 
-sys.modules["requests"].exceptions = MockRequestsExceptions()
+sys.modules["requests"].exceptions = MockRequestsExceptions()  # type: ignore[attr-defined]
 
 # Add top-level aliases for code that uses requests.RequestException directly
-sys.modules["requests"].RequestException = RequestException
-sys.modules["requests"].HTTPError = HTTPError
-sys.modules["requests"].ConnectionError = ConnectionError
-sys.modules["requests"].Timeout = Timeout
+sys.modules["requests"].RequestException = RequestException  # type: ignore[attr-defined]
+sys.modules["requests"].HTTPError = HTTPError  # type: ignore[attr-defined]
+sys.modules["requests"].ConnectionError = ConnectionError  # type: ignore[attr-defined]
+sys.modules["requests"].Timeout = Timeout  # type: ignore[attr-defined]
 sys.modules["markdown"] = MagicMock()
 sys.modules["haversine"] = MagicMock()
 sys.modules["schedule"] = MagicMock()
@@ -227,7 +227,7 @@ nio_mock.MegolmEvent = MockMegolmEvent
 nio_mock.UploadResponse = MagicMock()
 nio_mock.WhoamiError = MockWhoamiError
 nio_mock.SyncError = MockSyncError
-sys.modules["nio.events.room_events"].RoomMemberEvent = MagicMock()
+sys.modules["nio.events.room_events"].RoomMemberEvent = MagicMock()  # type: ignore[attr-defined]
 
 
 class MockPILImage:
@@ -264,9 +264,9 @@ class BleakExcModule:
     BleakDBusError = BleakDBusError
 
 
-sys.modules["bleak.exc"] = BleakExcModule()
-sys.modules["bleak"].BleakError = BleakError
-sys.modules["bleak"].BleakDBusError = BleakDBusError
+sys.modules["bleak.exc"] = BleakExcModule()  # type: ignore[assignment]
+sys.modules["bleak"].BleakError = BleakError  # type: ignore[attr-defined]
+sys.modules["bleak"].BleakDBusError = BleakDBusError  # type: ignore[attr-defined]
 
 
 class MockLatLng:
@@ -309,7 +309,7 @@ class MockS2Module:
     LatLngRect = MockLatLngRect
 
 
-sys.modules["s2sphere"] = MockS2Module()
+sys.modules["s2sphere"] = MockS2Module()  # type: ignore[assignment]
 
 
 class MockStaticmapsObject:
@@ -401,7 +401,7 @@ class MockStaticmapsModule:
         return MockLatLng.from_degrees(lat, lon)
 
 
-sys.modules["staticmaps"] = MockStaticmapsModule()
+sys.modules["staticmaps"] = MockStaticmapsModule()  # type: ignore[assignment]
 
 
 @pytest.fixture(autouse=True)
@@ -748,9 +748,9 @@ def comprehensive_cleanup():
                     )
 
             # Shutdown any remaining executors
-            if hasattr(loop, "_default_executor") and loop._default_executor:
-                executor = loop._default_executor
-                loop._default_executor = None
+            if hasattr(loop, "_default_executor") and loop._default_executor:  # type: ignore[attr-defined]
+                executor = loop._default_executor  # type: ignore[attr-defined]
+                loop._default_executor = None  # type: ignore[attr-defined]
                 executor.shutdown(wait=True)
 
             # Close the event loop

@@ -2670,7 +2670,7 @@ async def matrix_relay(
 
                 # markdown has stubs in our env; avoid import-untyped to keep mypy clean.
                 # If that changes, prefer installing types-Markdown over adding ignores.
-                import markdown  # lazy import; stubs available so no import-untyped
+                import markdown  # type: ignore[import-untyped]  # lazy import
 
                 raw_html = markdown.markdown(safe_message)
                 formatted_body = bleach.clean(

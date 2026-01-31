@@ -290,7 +290,7 @@ class TestConfigEdgeCases(unittest.TestCase):
 
         Simulates a YAML parsing error and verifies that `load_config` does not raise uncaught exceptions and returns a dictionary as fallback.
         """
-        import yaml
+        import yaml  # type: ignore[import-untyped]
 
         mock_isfile.return_value = True
 

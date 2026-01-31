@@ -31,7 +31,9 @@ from mmrelay.log_utils import get_logger
 
 schedule: ModuleType | None
 try:
-    import schedule
+    import schedule as _schedule
+
+    schedule = _schedule
 except ImportError:
     schedule = None
 

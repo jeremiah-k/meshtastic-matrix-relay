@@ -1378,6 +1378,43 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
                 "Error restarting service (exit code %d)", 1
             )
 
+    @patch("mmrelay.setup_utils.is_service_active")
+    @patch("mmrelay.runtime_utils.is_running_as_service")
+    def test_wait_for_service_start_importerror_handling(
+        self, mock_is_running_as_service, mock_is_service_active
+    ):
+        """
+        Test wait_for_service_start handles ImportError when importing rich.progress (lines 142-144).
+        """
+        # Mock not running as service
+        mock_is_running_as_service.return_value = False
+
+        # Mock import to raise ImportError for rich.progress
+        import builtins
+
+        original_import = builtins.__import__
+
+        def import_side_effect(name, *args, **kwargs):
+            if "rich.progress" in name or name == "rich":
+                raise ImportError("No module named 'rich'")
+            return original_import(name, *args, **kwargs)
+
+        with patch.object(builtins, "__import__", side_effect=import_side_effect):
+            # Mock service becomes active after 6 seconds
+            call_counter = {"count": 0}
+
+            def mock_service_active_side_effect():
+                call_counter["count"] += 1
+                return call_counter["count"] >= 6
+
+            mock_is_service_active.side_effect = mock_service_active_side_effect
+
+            # Call function - should complete without error even if rich import fails
+            wait_for_service_start()
+
+            # Verify is_service_active was called
+            self.assertGreater(mock_is_service_active.call_count, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
