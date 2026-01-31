@@ -957,11 +957,11 @@ class TestLogUtils(unittest.TestCase):
             self.assertIsNotNone(lu_reloaded.RichHandler)
             self.assertIsNotNone(lu_reloaded.console)
 
-        # Restore
+        # Restore - safely restore or delete attributes
         lu.RICH_AVAILABLE = original_rich_available
         if original_rich_handler is not None:
             lu.RichHandler = original_rich_handler
-        else:
+        elif hasattr(lu, "RichHandler"):
             delattr(lu, "RichHandler")
         lu.console = original_console
 
@@ -994,11 +994,11 @@ class TestLogUtils(unittest.TestCase):
             self.assertIsNone(lu_reloaded.RichHandler)
             self.assertIsNone(lu_reloaded.console)
 
-        # Restore
+        # Restore - safely restore or delete attributes
         lu.RICH_AVAILABLE = original_rich_available
         if original_rich_handler is not None:
             lu.RichHandler = original_rich_handler
-        else:
+        elif hasattr(lu, "RichHandler"):
             delattr(lu, "RichHandler")
         lu.console = original_console
 
