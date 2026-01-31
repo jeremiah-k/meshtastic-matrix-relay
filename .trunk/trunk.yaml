@@ -48,6 +48,16 @@ lint:
         - src/mmrelay/setup_utils.py
         - src/mmrelay/cli_utils.py # Ignore B110 for client close error handling during logout
         - tests/** # Ignore all bandit security warnings in test files (hardcoded test passwords, asserts, etc.)
+    - linters: [mypy]
+      paths:
+        - src/mmrelay/cli.py # Ignore type stubs not installed for yaml (Trunk runs mypy with --ignore-missing-imports)
+        - src/mmrelay/config.py # Ignore type stubs not installed for yaml
+        - src/mmrelay/matrix_utils.py # Ignore type stubs not installed for markdown
+        - src/mmrelay/plugins/base_plugin.py # Ignore type stubs not installed for markdown
+        - tests/test_cli_diagnose.py # Ignore type stubs not installed for yaml
+        - tests/test_config.py # Ignore type stubs not installed for yaml
+        - tests/test_integration_scenarios.py # Ignore type stubs not installed for yaml
+        - tests/test_matrix_utils.py # Ignore type stubs not installed for markdown
 actions:
   disabled:
     - trunk-announce

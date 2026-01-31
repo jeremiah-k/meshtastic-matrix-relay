@@ -24,7 +24,7 @@ try:
 
     if not is_running_as_service():
         from rich.console import Console
-        from rich.logging import RichHandler
+        from rich.logging import RichHandler  # type: ignore[no-redef]
 
         RICH_AVAILABLE = True
     else:

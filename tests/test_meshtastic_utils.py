@@ -16,6 +16,7 @@ import sys
 import unittest
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
 from types import SimpleNamespace
+from typing import Any, Callable
 from unittest.mock import AsyncMock, MagicMock, Mock, mock_open, patch
 
 import pytest
@@ -1735,7 +1736,7 @@ class TestAsyncHelperUtilities(unittest.TestCase):
         ) -> None:
             self._return_exc = return_exc
             self._raise_exc = raise_exc
-            self._callbacks = []
+            self._callbacks: list[Callable[[Any], Any]] = []
 
         def add_done_callback(self, callback):
             self._callbacks.append(callback)

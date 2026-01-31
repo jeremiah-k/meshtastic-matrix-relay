@@ -11,6 +11,7 @@ Tests automatic room joining on invitation:
 
 import os
 import sys
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # Add src to path for imports
@@ -99,7 +100,7 @@ def test_is_room_mapped_with_empty_mapping() -> None:
     """
     Test that _is_room_mapped returns False for empty mapping.
     """
-    mapping = []
+    mapping: list[Any] = []
     result = _is_room_mapped(mapping, "!abc123:matrix.org")
     assert result is False
 

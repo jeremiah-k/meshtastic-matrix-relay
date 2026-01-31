@@ -631,7 +631,6 @@ async def logout_matrix_bot(password: str) -> bool:
             print("❌ Timeout while fetching user_id")
         except Exception as e:
             _get_logger().exception("Error fetching user_id")
-            print(f"❌ Error fetching user_id: {e}")
             # Handle both network exceptions (when matrix-nio is installed) and
             # unexpected errors. When matrix-nio is not installed, the Nio types
             # are aliased to Exception, so guard with AsyncClient presence.

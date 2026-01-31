@@ -31,25 +31,27 @@ from mmrelay.message_queue import (
 )
 
 
-def mock_send_function(text, **kwargs):
-    """
-    Simulates sending a message and records the call details for testing purposes.
+class MockSendFunction:
+    """Mock send function that records call details for testing purposes."""
 
-    Parameters:
-        text (str): The message text to send.
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
 
-    Returns:
-        dict: A dictionary containing a unique 'id' for the sent message.
-    """
-    # This will be called synchronously due to executor mocking
-    mock_send_function.calls.append(
-        {"text": text, "kwargs": kwargs, "timestamp": time.time()}
-    )
-    return {"id": len(mock_send_function.calls)}
+    def __call__(self, text: str, **kwargs) -> dict:
+        """
+        Simulates sending a message and records the call details.
+
+        Parameters:
+            text (str): The message text to send.
+
+        Returns:
+            dict: A dictionary containing a unique 'id' for the sent message.
+        """
+        self.calls.append({"text": text, "kwargs": kwargs, "timestamp": time.time()})
+        return {"id": len(self.calls)}
 
 
-# Initialize calls list
-mock_send_function.calls = []
+mock_send_function = MockSendFunction()
 
 
 class TestMessageQueue(unittest.TestCase):

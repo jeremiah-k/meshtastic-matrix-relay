@@ -284,7 +284,7 @@ class _ControlledExecutor:
         self.shutdown_typeerror = shutdown_typeerror
         self.future = None
         self.close_future = None
-        self.calls = []
+        self.calls: list[Any] = []
 
     def submit(self, func, *args, **kwargs):
         """

@@ -27,7 +27,7 @@ except ImportError as e:
     IMPORTS_AVAILABLE = False
 
     # Create dummy classes to prevent further import errors
-    class E2EEDebugUtilities:
+    class E2EEDebugUtilities:  # type: ignore[no-redef]
         pass
 
 
@@ -164,7 +164,7 @@ class E2EEIntegrationTester:
                 if i >= 3:  # Only show first 3
                     break
                 print(
-                    f"   Room {i+1}: {analysis['display_name']} - Encrypted: {analysis['encrypted']}"
+                    f"   Room {i + 1}: {analysis['display_name']} - Encrypted: {analysis['encrypted']}"
                 )
 
             self.test_results["room_detection"] = {
