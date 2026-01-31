@@ -341,7 +341,7 @@ The Docker image includes a built-in health check. By default it uses process de
 - Enable ready-file mode by setting `MMRELAY_READY_FILE` (example: `/tmp/mmrelay/ready`)
 - Ensure the path is writable; for read-only root filesystems, use a mounted path like `/app/data/mmrelay/ready`
 - To customize the heartbeat interval, set `MMRELAY_READY_HEARTBEAT_SECONDS` (default: 60)
-- The `docker-compose.yaml` includes commented examples under `environment` if you want to enable this in Compose
+- To enable this in Compose, add `MMRELAY_READY_FILE` to the `environment` section (e.g., `- MMRELAY_READY_FILE=/tmp/mmrelay/ready`)
 
 ## Troubleshooting
 
