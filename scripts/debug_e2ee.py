@@ -36,7 +36,7 @@ class E2EEDebugger:
         self.config: dict[str, Any] | None = None
         self.client: Any | None = None
 
-    async def connect_and_diagnose(self) -> None:
+    async def connect_and_diagnose(self) -> bool:
         """Connect to Matrix and perform comprehensive E2EE diagnosis"""
         print("🔧 E2EE Debug Utility")
         print("=" * 50)
