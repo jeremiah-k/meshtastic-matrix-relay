@@ -1322,7 +1322,7 @@ async def connect_matrix(
             candidate_paths.append(os.path.join(config_dir, "credentials.json"))
 
         candidate_paths.append(os.path.join(get_base_dir(), "credentials.json"))
-        # Also check data directory (for Docker setups where ~/.mmrelay is mounted to /app/data)
+        # Also check data directory (backward compatibility for setups mounted to /app/data)
         candidate_paths.append(os.path.join(get_data_dir(), "credentials.json"))
 
         for candidate in candidate_paths:
