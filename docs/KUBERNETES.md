@@ -51,8 +51,12 @@ $EDITOR ./deploy/k8s/kustomization.yaml
 # If you change the namespace above, update the --namespace/-n flags below to match
 # for secret creation and kubectl apply/get/log commands.
 
-# Create config.yaml from the project sample (downloaded from the same version as your image)
-curl -Lo ./config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/${MMRELAY_VERSION}/src/mmrelay/tools/sample_config.yaml
+# Create config.yaml from the project sample
+MMRELAY_CONFIG_REF="${MMRELAY_VERSION}"
+if [ "${MMRELAY_VERSION}" = "latest" ]; then
+  MMRELAY_CONFIG_REF="main"
+fi
+curl -Lo ./config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/${MMRELAY_CONFIG_REF}/src/mmrelay/tools/sample_config.yaml
 $EDITOR ./config.yaml
 
 # The default manifest sets MMRELAY_CREDENTIALS_PATH=/data/credentials.json,

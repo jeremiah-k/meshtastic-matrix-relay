@@ -41,10 +41,13 @@ def precision_bits_to_meters(bits: int) -> float | None:
     return S2_PRECISION_BITS_TO_METERS_CONSTANT * 0.5**bits
 
 
+_cairo: Any | None
 try:
-    import cairo
+    import cairo as _cairo
 except ImportError:  # pragma: no cover - optional dependency
-    cairo = None
+    _cairo = None
+
+cairo: Any | None = _cairo
 
 
 logger = get_logger(__name__)
@@ -173,7 +176,11 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
         x, y = renderer.transformer().ll2pixel(self.latlng())
 
         ctx = renderer.context()
-        ctx.select_font_face("Sans", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
+        ctx.select_font_face(
+            "Sans",
+            getattr(cairo, "FONT_SLANT_NORMAL", 0),
+            getattr(cairo, "FONT_WEIGHT_NORMAL", 0),
+        )
 
         ctx.set_font_size(self._font_size)
         x_bearing, y_bearing, tw, th, _, _ = ctx.text_extents(self._text)
