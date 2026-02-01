@@ -310,7 +310,10 @@ def get_data_dir(*, create: bool = True) -> str:
     """
     Determine the application's data directory according to overrides and platform conventions.
 
-    If a legacy data-dir override is set, the function will prefer the legacy layout when that override contains existing legacy data; otherwise it will use the override directly. On Windows, the platform user data directory is used unless the "new layout" is enabled, in which case the layout under the resolved base directory is used. On Unix-like systems the directory under the resolved base directory is used.
+    Resolution order:
+    1. If MMRELAY_DATA_DIR is explicitly set, use it directly (backward compatibility)
+    2. On Windows with default paths, use base_dir directly (backward compatibility)
+    3. Otherwise use <base_dir>/data
 
     Parameters:
         create (bool): If True, ensure the returned directory exists (attempt to create it).
@@ -318,26 +321,17 @@ def get_data_dir(*, create: bool = True) -> str:
     Returns:
         str: Absolute path to the data directory.
     """
+    # If explicit data dir override is set, use it for backward compatibility
     data_override = custom_data_dir or _get_env_data_dir()
     if data_override:
-        legacy_data_dir = os.path.join(data_override, "data")
-        legacy_db = os.path.join(legacy_data_dir, "meshtastic.sqlite")
-        legacy_plugins = os.path.join(legacy_data_dir, "plugins")
-        legacy_store = os.path.join(legacy_data_dir, "store")
-        if (
-            os.path.exists(legacy_db)
-            or os.path.isdir(legacy_plugins)
-            or os.path.isdir(legacy_store)
-        ):
-            data_dir = legacy_data_dir
-        else:
-            data_dir = data_override
+        data_dir = data_override
+    elif sys.platform == "win32" and not _has_any_dir_override():
+        # On Windows with default paths, use base_dir directly for backward compatibility
+        data_dir = get_base_dir()
     else:
-        if sys.platform == "win32" and not is_new_layout_enabled():
-            data_dir = platformdirs.user_data_dir(APP_NAME, APP_AUTHOR)
-        else:
-            base_dir = get_base_dir()
-            data_dir = os.path.join(base_dir, "data")
+        # Use <base_dir>/data layout
+        base_dir = get_base_dir()
+        data_dir = os.path.join(base_dir, "data")
 
     if create:
         try:
@@ -822,6 +816,8 @@ def save_credentials(
         credentials (dict): JSON-serializable mapping of credentials to persist.
         credentials_path (str | None): Optional target file path or directory. When omitted, the function resolves a path using environment/configuration fallbacks and base/data defaults.
     """
+    # Initialize config_dir before try block to ensure it's always available for error handling
+    config_dir: str = get_base_dir()
     try:
 
         def _normalize_explicit_path(path: str) -> str:
@@ -864,7 +860,6 @@ def save_credentials(
             candidate_paths.append(os.path.join(get_base_dir(), "credentials.json"))
 
         last_error: OSError | PermissionError | None = None
-        config_dir = ""
         data_dir_candidate: str | None = None
         base_dir_candidate: str | None = None
 
@@ -948,14 +943,16 @@ def save_credentials(
             raise last_error
         raise CredentialsPathError()
     except (OSError, PermissionError):
+        # Use base_dir for error message since config_dir may not have been set
+        error_location = get_base_dir()
         if sys.platform == "win32":
             logger.exception(
                 "Error saving credentials.json to %s. On Windows, ensure the application "
                 "has write permissions to the user data directory.",
-                config_dir,
+                error_location,
             )
         else:
-            logger.exception("Error saving credentials.json to %s", config_dir)
+            logger.exception("Error saving credentials.json to %s", error_location)
 
 
 # Use structured logging to align with the rest of the codebase.

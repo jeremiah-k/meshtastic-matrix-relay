@@ -21,8 +21,6 @@ from mmrelay.config import (
     get_app_path,
     get_base_dir,
     get_data_dir,
-    is_legacy_layout_enabled,
-    is_new_layout_enabled,
 )
 from mmrelay.constants.plugins import (
     COMMIT_HASH_PATTERN,
@@ -74,26 +72,30 @@ def _get_plugin_root_dirs() -> list[str]:
     """
     Compute an ordered list of candidate plugin root directories.
 
-    When a base directory exists, returns base_dir/plugins. If either the new or legacy layout is enabled and a distinct data directory exists, includes data_dir/plugins as well; the data directory is inserted at the front if it exists on disk while the base plugins path does not, otherwise it is appended. Duplicate paths are avoided.
+    Returns base_dir/plugins as primary location. Only includes additional
+    plugin directories when overrides are explicitly set to avoid unexpected behavior.
 
     Returns:
         list[str]: Ordered list of plugin root directory paths.
     """
     base_dir = get_base_dir()
     roots: list[str] = []
+
+    # Always include base_dir/plugins as primary location
     if base_dir:
         roots.append(os.path.join(base_dir, "plugins"))
-    if is_new_layout_enabled() or is_legacy_layout_enabled():
+
+    # Only include data_dir/plugins when data override is explicitly set
+    # (for legacy Docker compatibility)
+    from mmrelay.config import _get_env_data_dir, custom_data_dir
+
+    if custom_data_dir or _get_env_data_dir():
         data_dir = get_data_dir(create=False)
         if data_dir and data_dir != base_dir:
             data_root = os.path.join(data_dir, "plugins")
             if data_root not in roots:
-                if os.path.isdir(data_root) and (
-                    not roots or not os.path.isdir(roots[0])
-                ):
-                    roots.insert(0, data_root)
-                else:
-                    roots.append(data_root)
+                roots.append(data_root)
+
     return roots
 
 
