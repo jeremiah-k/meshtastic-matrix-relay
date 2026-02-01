@@ -73,9 +73,9 @@ _PLUGIN_DEPS_DIR: str | None = None
 def _get_plugin_root_dirs() -> list[str]:
     """
     Compute an ordered list of candidate plugin root directories.
-    
+
     When a base directory exists, returns base_dir/plugins. If either the new or legacy layout is enabled and a distinct data directory exists, includes data_dir/plugins as well; the data directory is inserted at the front if it exists on disk while the base plugins path does not, otherwise it is appended. Duplicate paths are avoided.
-    
+
     Returns:
         list[str]: Ordered list of plugin root directory paths.
     """
@@ -816,19 +816,22 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
 def _get_plugin_dirs(plugin_type: str) -> list[str]:
     """
     Compute ordered plugin directories for the given plugin type.
-    
+
     Prefers per-root user plugin directories (created if missing) for each discovered plugin root and includes the local application `plugins/<type>` directory for backward compatibility; any directory that cannot be created or accessed is omitted.
-    
+
     Parameters:
         plugin_type (str): Plugin category, e.g. "custom" or "community".
-    
+
     Returns:
         list[str]: Ordered list of filesystem paths to plugin directories (per-root user dirs first, then the local app directory).
     """
     dirs = []
 
     for root_dir in _get_plugin_root_dirs():
-        user_dir = os.path.join(root_dir, plugin_type)
+        if os.path.basename(root_dir) == "plugins":
+            user_dir = os.path.join(root_dir, plugin_type)
+        else:
+            user_dir = root_dir
         if user_dir in dirs:
             continue
         try:

@@ -1,4 +1,5 @@
 import json
+import ntpath
 import os
 import re
 import sys
@@ -389,7 +390,7 @@ def get_log_dir() -> str:
         log_dir = os.path.join(get_base_dir(), "logs")
     else:
         if _has_any_dir_override():
-            log_dir = os.path.join(get_base_dir(), "logs")
+            log_dir = ntpath.join(get_base_dir(), "logs")
         else:
             log_dir = platformdirs.user_log_dir(APP_NAME, APP_AUTHOR)
 
@@ -413,9 +414,9 @@ def get_e2ee_store_dir() -> str:
         store_dir = os.path.join(get_base_dir(), "store")
     else:
         if _has_any_dir_override():
-            store_dir = os.path.join(get_base_dir(), "store")
+            store_dir = ntpath.join(get_base_dir(), "store")
         else:
-            store_dir = os.path.join(
+            store_dir = ntpath.join(
                 platformdirs.user_data_dir(APP_NAME, APP_AUTHOR), "store"
             )
 
@@ -802,8 +803,6 @@ def load_credentials() -> dict[str, Any] | None:
                 if not debug_dir or debug_dir in seen:
                     continue
                 seen.add(debug_dir)
-                if not os.path.exists(debug_dir):
-                    continue
                 try:
                     files = os.listdir(debug_dir)
                     logger.debug("Directory contents of %s: %s", debug_dir, files)

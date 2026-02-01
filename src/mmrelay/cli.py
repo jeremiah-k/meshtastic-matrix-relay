@@ -59,6 +59,7 @@ from mmrelay.tools import get_sample_config_path
 
 # Lazy-initialized logger to avoid circular imports and filesystem access during import
 _logger: logging.Logger | None = None
+logger: logging.Logger | None = None
 
 
 def _get_logger() -> logging.Logger:
@@ -74,6 +75,9 @@ def _get_logger() -> logging.Logger:
     global _logger
     if _logger is None:
         _logger = get_logger(__name__)
+    global logger
+    if logger is None:
+        logger = _logger
     if _logger is None:
         raise RuntimeError("Logger must be initialized")
     return _logger
@@ -82,6 +86,38 @@ def _get_logger() -> logging.Logger:
 # =============================================================================
 # CLI Argument Parsing and Command Handling
 # =============================================================================
+
+
+def _apply_dir_overrides(args: argparse.Namespace) -> None:
+    """
+    Apply --base-dir/--data-dir overrides to global config and ensure directories exist.
+
+    Parameters:
+        args (argparse.Namespace): Parsed CLI arguments.
+    """
+    if not args or not (args.base_dir or args.data_dir):
+        return
+    import mmrelay.config
+
+    if args.base_dir and args.data_dir:
+        print(
+            "Warning: --data-dir is deprecated and ignored when --base-dir is provided.",
+            file=sys.stderr,
+        )
+    elif args.data_dir:
+        print(
+            "Warning: --data-dir is deprecated. Use --base-dir instead.",
+            file=sys.stderr,
+        )
+
+    if args.base_dir:
+        expanded_base_dir = os.path.expanduser(args.base_dir)
+        mmrelay.config.custom_base_dir = os.path.abspath(expanded_base_dir)
+        os.makedirs(mmrelay.config.custom_base_dir, exist_ok=True)
+    elif args.data_dir:
+        expanded_data_dir = os.path.expanduser(args.data_dir)
+        mmrelay.config.custom_data_dir = os.path.abspath(expanded_data_dir)
+        os.makedirs(mmrelay.config.custom_data_dir, exist_ok=True)
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -1345,28 +1381,7 @@ def main() -> int:
         args = parse_arguments()
 
         # Handle the --base-dir/--data-dir options
-        if args and (args.base_dir or args.data_dir):
-            import mmrelay.config
-
-            if args.base_dir and args.data_dir:
-                print(
-                    "Warning: --data-dir is deprecated and ignored when --base-dir is provided.",
-                    file=sys.stderr,
-                )
-            elif args.data_dir:
-                print(
-                    "Warning: --data-dir is deprecated. Use --base-dir instead.",
-                    file=sys.stderr,
-                )
-
-            if args.base_dir:
-                expanded_base_dir = os.path.expanduser(args.base_dir)
-                mmrelay.config.custom_base_dir = os.path.abspath(expanded_base_dir)
-                os.makedirs(mmrelay.config.custom_base_dir, exist_ok=True)
-            elif args.data_dir:
-                expanded_data_dir = os.path.expanduser(args.data_dir)
-                mmrelay.config.custom_data_dir = os.path.abspath(expanded_data_dir)
-                os.makedirs(mmrelay.config.custom_data_dir, exist_ok=True)
+        _apply_dir_overrides(args)
 
         args_dict = vars(args)
         has_modern_command = bool(getattr(args, "command", None))
@@ -2013,6 +2028,7 @@ def handle_cli_commands(args: argparse.Namespace) -> int | None:
     Returns:
         int | None: Exit code (`0` on success, `1` on failure) if a legacy command was handled; `None` if no legacy flag was present.
     """
+    _apply_dir_overrides(args)
     args_dict = vars(args)
 
     # Handle --version
