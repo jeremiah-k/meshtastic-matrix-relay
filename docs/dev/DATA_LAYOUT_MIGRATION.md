@@ -50,6 +50,16 @@ The current release prioritizes backward compatibility and safe upgrades.
 
 This matches runtime lookup and the `mmrelay auth status` CLI.
 
+### Credential saving
+
+- Saving is intentionally conservative for safety:
+  - If an explicit path is provided, it is always used.
+  - Otherwise, we prefer the config directory (if known) and then `base_dir`.
+  - We only fall back to the `data_dir` path if earlier candidates are not writable.
+
+This keeps legacy installs stable and avoids unexpectedly writing credentials into a
+new location without explicit opt-in.
+
 ### Docker defaults
 
 - Docker uses the legacy layout by default to avoid breaking existing installs.
@@ -90,6 +100,16 @@ If we want to fully unify the layout in a future major release, the safest path 
 6. Update all docs and samples to match the unified layout.
 
 This would be a breaking change, so it should be staged with clear warnings and a release note migration guide.
+
+## Known Rough Edges (Still Needs Work)
+
+These areas are still evolving and should not be considered final:
+
+- The layout is not fully uniform yet (credentials vs data/store/logs).
+- Save vs. load paths are intentionally conservative but still need a unified long-term policy.
+- Migration currently lives in `get_db_path()` for safety; an explicit migration step is preferable.
+- Docker defaults remain legacy-first; a fully new-layout container defaults plan is pending.
+- Windows layout behavior differs between legacy/new modes and needs consolidation.
 
 ## Optional Opt-In Today
 
