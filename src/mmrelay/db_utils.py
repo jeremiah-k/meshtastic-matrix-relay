@@ -5,7 +5,7 @@ import sqlite3
 import threading
 from typing import Any, Dict, Tuple, cast
 
-from mmrelay.config import get_base_dir, get_data_dir
+from mmrelay.config import get_base_dir, get_data_dir, is_new_layout_enabled
 from mmrelay.constants.database import (
     DEFAULT_BUSY_TIMEOUT_MS,
     DEFAULT_ENABLE_WAL,
@@ -132,29 +132,73 @@ def get_db_path() -> str:
         # Continue anyway - the database connection will fail later if needed
 
     default_path = os.path.join(data_dir, "meshtastic.sqlite")
+    legacy_base_path = os.path.join(get_base_dir(), "meshtastic.sqlite")
+    legacy_data_path = os.path.join(get_base_dir(), "data", "meshtastic.sqlite")
+    legacy_nested_data_path = os.path.join(
+        get_base_dir(), "data", "data", "meshtastic.sqlite"
+    )
 
-    # Migrate legacy database from pre-v1.2.10 location if needed
-    # In v1.2.10, --base-dir changed behavior: database moved from <base_dir>/
-    # to <base_dir>/data/. Check for legacy database and migrate if present.
-    legacy_path = os.path.join(get_base_dir(), "meshtastic.sqlite")
-    if os.path.exists(legacy_path) and not os.path.exists(default_path):
-        try:
-            import shutil
+    # Migrate legacy database when the new layout is explicitly enabled.
+    def _active_mtime(path: str) -> float:
+        mtimes = []
+        for candidate in (path, f"{path}-wal", f"{path}-shm"):
+            if os.path.exists(candidate):
+                mtimes.append(os.path.getmtime(candidate))
+        return max(mtimes) if mtimes else 0.0
 
-            shutil.move(legacy_path, default_path)
+    if is_new_layout_enabled() and not os.path.exists(default_path):
+        legacy_candidates = [
+            path
+            for path in (legacy_base_path, legacy_nested_data_path)
+            if path and os.path.exists(path)
+        ]
+        if legacy_candidates:
+            legacy_path = max(legacy_candidates, key=_active_mtime)
+            try:
+                import shutil
+
+                shutil.move(legacy_path, default_path)
+                for suffix in ("-wal", "-shm"):
+                    legacy_sidecar = f"{legacy_path}{suffix}"
+                    new_sidecar = f"{default_path}{suffix}"
+                    if os.path.exists(legacy_sidecar) and not os.path.exists(
+                        new_sidecar
+                    ):
+                        shutil.move(legacy_sidecar, new_sidecar)
+                logger.info(
+                    "Migrated database from legacy location %s to %s",
+                    legacy_path,
+                    default_path,
+                )
+            except (OSError, PermissionError) as e:
+                logger.warning(
+                    "Failed to migrate database from %s to %s: %s. "
+                    "The old database remains at the legacy location.",
+                    legacy_path,
+                    default_path,
+                    e,
+                )
+
+    if not is_new_layout_enabled():
+        existing_paths = [
+            path
+            for path in (default_path, legacy_base_path, legacy_data_path)
+            if path and os.path.exists(path)
+        ]
+        if len(existing_paths) > 1:
+            active_path = max(existing_paths, key=_active_mtime)
+            if active_path != default_path:
+                logger.warning(
+                    "Multiple database files found. Using the most recently updated: %s",
+                    active_path,
+                )
+                default_path = active_path
+        elif len(existing_paths) == 1 and existing_paths[0] != default_path:
             logger.info(
-                "Migrated database from legacy location %s to %s",
-                legacy_path,
-                default_path,
+                "Using legacy database location: %s",
+                existing_paths[0],
             )
-        except (OSError, PermissionError) as e:
-            logger.warning(
-                "Failed to migrate database from %s to %s: %s. "
-                "The old database remains at the legacy location.",
-                legacy_path,
-                default_path,
-                e,
-            )
+            default_path = existing_paths[0]
     _cached_db_path = default_path
     return default_path
 

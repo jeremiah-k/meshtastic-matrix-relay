@@ -1359,12 +1359,13 @@ def main() -> int:
                     file=sys.stderr,
                 )
 
-            base_dir = args.base_dir or args.data_dir
-            if base_dir:
-                # Set the global custom_data_dir variable
-                expanded_base_dir = os.path.expanduser(base_dir)
-                mmrelay.config.custom_data_dir = os.path.abspath(expanded_base_dir)
-                # Create the directory if it doesn't exist
+            if args.base_dir:
+                expanded_base_dir = os.path.expanduser(args.base_dir)
+                mmrelay.config.custom_base_dir = os.path.abspath(expanded_base_dir)
+                os.makedirs(mmrelay.config.custom_base_dir, exist_ok=True)
+            elif args.data_dir:
+                expanded_data_dir = os.path.expanduser(args.data_dir)
+                mmrelay.config.custom_data_dir = os.path.abspath(expanded_data_dir)
                 os.makedirs(mmrelay.config.custom_data_dir, exist_ok=True)
 
         args_dict = vars(args)
@@ -1604,27 +1605,23 @@ def handle_auth_status(args: argparse.Namespace) -> int:
     """
     import json
 
-    from mmrelay.config import get_base_dir, get_config_paths
+    from mmrelay.config import (
+        get_config_paths,
+        get_credentials_search_paths,
+        get_explicit_credentials_path,
+        load_config,
+    )
 
     print("Matrix Authentication Status")
     print("============================")
 
     config_paths = get_config_paths(args)
-
-    # Developer note: Build a de-duplicated sequence of candidate locations,
-    # preserving preference order: each config-adjacent credentials.json first,
-    # then the standard base-dir fallback.
-    seen = set()
-    candidate_paths = []
-    for p in (
-        os.path.join(os.path.dirname(cp), "credentials.json") for cp in config_paths
-    ):
-        if p not in seen:
-            candidate_paths.append(p)
-            seen.add(p)
-    base_candidate = os.path.join(get_base_dir(), "credentials.json")
-    if base_candidate not in seen:
-        candidate_paths.append(base_candidate)
+    config_data = load_config(args=args)
+    explicit_path = get_explicit_credentials_path(config_data)
+    candidate_paths = get_credentials_search_paths(
+        explicit_path=explicit_path,
+        config_paths=config_paths,
+    )
 
     for credentials_path in candidate_paths:
         if os.path.exists(credentials_path):

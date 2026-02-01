@@ -3,7 +3,7 @@ import logging
 import os
 import re
 import sys
-from typing import Any, cast
+from typing import Any, Iterable, cast
 
 import platformdirs
 import yaml  # type: ignore[import-untyped]
@@ -18,8 +18,40 @@ from mmrelay.constants.config import (
     CONFIG_SECTION_MATRIX,
 )
 
-# Global variable to store the custom data directory
+# Global variables to store directory overrides
+custom_base_dir: str | None = None
 custom_data_dir: str | None = None
+
+
+def _expand_path(path: str) -> str:
+    return os.path.abspath(os.path.expanduser(path))
+
+
+def _get_env_base_dir() -> str | None:
+    env_base_dir = os.getenv("MMRELAY_BASE_DIR")
+    if env_base_dir:
+        return _expand_path(env_base_dir)
+    return None
+
+
+def _get_env_data_dir() -> str | None:
+    env_data_dir = os.getenv("MMRELAY_DATA_DIR")
+    if env_data_dir:
+        return _expand_path(env_data_dir)
+    return None
+
+
+def _has_any_dir_override() -> bool:
+    return bool(
+        custom_base_dir
+        or custom_data_dir
+        or os.getenv("MMRELAY_BASE_DIR")
+        or os.getenv("MMRELAY_DATA_DIR")
+    )
+
+
+def is_new_layout_enabled() -> bool:
+    return bool(custom_base_dir) or bool(os.getenv("MMRELAY_BASE_DIR"))
 
 
 def set_secure_file_permissions(file_path: str, mode: int = 0o600) -> None:
@@ -40,27 +72,31 @@ def set_secure_file_permissions(file_path: str, mode: int = 0o600) -> None:
             logger.warning(f"Could not set secure permissions on {file_path}: {e}")
 
 
-# Custom base directory for Unix systems
 def get_base_dir() -> str:
     """
     Determine the filesystem base directory used to store the application's files.
 
-    If the module-level `custom_data_dir` is set, that path is returned. If the
-    MMRELAY_BASE_DIR (or deprecated MMRELAY_DATA_DIR) environment variable is
-    set, that path is used. On Linux and macOS the directory is `~/.<APP_NAME>`;
-    on Windows the platform-specific user data directory for the application is
-    returned.
+    If the module-level `custom_base_dir` is set, that path is returned. When
+    only the legacy `custom_data_dir` is set, its path is reused to preserve the
+    v1.2.9 layout. If MMRELAY_BASE_DIR is set, it is used. If only the legacy
+    MMRELAY_DATA_DIR is set, it is used to preserve legacy behavior. On Linux and
+    macOS the default directory is `~/.<APP_NAME>`; on Windows the platform-
+    specific user data directory is returned.
 
     Returns:
         The filesystem path to the application's base data directory.
     """
-    # If a custom data directory has been set, use that
+    if custom_base_dir:
+        return custom_base_dir
     if custom_data_dir:
         return custom_data_dir
 
-    env_base_dir = os.getenv("MMRELAY_BASE_DIR") or os.getenv("MMRELAY_DATA_DIR")
+    env_base_dir = _get_env_base_dir()
     if env_base_dir:
-        return os.path.abspath(os.path.expanduser(env_base_dir))
+        return env_base_dir
+    env_data_dir = _get_env_data_dir()
+    if env_data_dir:
+        return env_data_dir
 
     if sys.platform in ["linux", "darwin"]:
         # Use ~/.mmrelay for Linux and Mac
@@ -130,26 +166,119 @@ def get_config_paths(args: Any = None) -> list[str]:
     return paths
 
 
+def get_credentials_search_paths(
+    *, explicit_path: str | None = None, config_paths: Iterable[str] | None = None
+) -> list[str]:
+    """
+    Build an ordered, de-duplicated list of candidate credentials.json paths.
+
+    Parameters:
+        explicit_path (str | None): Optional explicit file or directory path.
+        config_paths (Iterable[str] | None): Optional iterable of config file paths.
+
+    Returns:
+        list[str]: Ordered candidate credential file paths.
+    """
+    candidate_paths: list[str] = []
+    seen: set[str] = set()
+
+    def _add(path: str | None) -> None:
+        if not path or path in seen:
+            return
+        candidate_paths.append(path)
+        seen.add(path)
+
+    if explicit_path:
+        expanded_path = _expand_path(explicit_path)
+        path_is_dir = os.path.isdir(expanded_path)
+        if not path_is_dir:
+            path_is_dir = bool(
+                expanded_path.endswith(os.path.sep)
+                or (os.path.altsep and expanded_path.endswith(os.path.altsep))
+            )
+        if path_is_dir:
+            normalized_dir = expanded_path.rstrip(os.path.sep).rstrip(
+                os.path.altsep or ""
+            )
+            _add(os.path.join(normalized_dir, "credentials.json"))
+        else:
+            _add(expanded_path)
+
+    if config_paths:
+        for config_path in config_paths:
+            if not config_path:
+                continue
+            config_dir = os.path.dirname(os.path.abspath(config_path))
+            _add(os.path.join(config_dir, "credentials.json"))
+
+    _add(os.path.join(get_base_dir(), "credentials.json"))
+    _add(os.path.join(get_data_dir(), "credentials.json"))
+
+    return candidate_paths
+
+
+def get_explicit_credentials_path(config: dict[str, Any] | None) -> str | None:
+    """
+    Resolve the explicit credentials path from environment or config mapping.
+
+    Parameters:
+        config (dict[str, Any] | None): Optional loaded config mapping.
+
+    Returns:
+        str | None: Explicit credentials path if configured.
+    """
+    env_path = os.getenv("MMRELAY_CREDENTIALS_PATH")
+    if env_path:
+        return env_path
+    if not isinstance(config, dict):
+        return None
+    explicit_path = config.get("credentials_path")
+    if explicit_path:
+        return explicit_path
+    matrix_section = config.get("matrix")
+    if isinstance(matrix_section, dict):
+        return matrix_section.get("credentials_path")
+    return None
+
+
 def get_data_dir() -> str:
     """
     Get the application's data directory, creating it if necessary.
 
-    On Linux and macOS this is "<base_dir>/data" (where base_dir is returned by get_base_dir()).
-    On Windows this is "<custom_data_dir>/data" if a global override is set, otherwise the platform default user data directory for the application.
+    If the legacy data-dir override is set (MMRELAY_DATA_DIR/--data-dir), that path
+    is used directly unless a legacy "<override>/data" directory already contains
+    data (database/plugins/store), in which case that legacy directory is used to
+    preserve existing layouts. Otherwise, on Linux and macOS the data directory is
+    "<base_dir>/data". On Windows, the data directory is "<base_dir>/data" only
+    when an override is set; otherwise it uses the platform default user data
+    directory for the application.
 
     Returns:
         Absolute path to the data directory.
     """
-    if sys.platform in ["linux", "darwin"]:
-        # Use ~/.mmrelay/data/ for Linux and Mac
-        data_dir = os.path.join(get_base_dir(), "data")
-    else:
-        # Honor --data-dir on Windows too
-        if custom_data_dir:
-            data_dir = os.path.join(custom_data_dir, "data")
+    data_override = custom_data_dir or _get_env_data_dir()
+    if data_override:
+        legacy_data_dir = os.path.join(data_override, "data")
+        legacy_db = os.path.join(legacy_data_dir, "meshtastic.sqlite")
+        legacy_plugins = os.path.join(legacy_data_dir, "plugins")
+        legacy_store = os.path.join(legacy_data_dir, "store")
+        if (
+            os.path.exists(legacy_db)
+            or os.path.isdir(legacy_plugins)
+            or os.path.isdir(legacy_store)
+        ):
+            data_dir = legacy_data_dir
         else:
-            # Use platformdirs default for Windows
-            data_dir = platformdirs.user_data_dir(APP_NAME, APP_AUTHOR)
+            data_dir = data_override
+    else:
+        base_dir = get_base_dir()
+        if sys.platform in ["linux", "darwin"]:
+            data_dir = os.path.join(base_dir, "data")
+        else:
+            if is_new_layout_enabled():
+                data_dir = os.path.join(base_dir, "data")
+            else:
+                data_dir = platformdirs.user_data_dir(APP_NAME, APP_AUTHOR)
 
     os.makedirs(data_dir, exist_ok=True)
     return data_dir
@@ -187,20 +316,19 @@ def get_log_dir() -> str:
     """
     Get the application's log directory, creating it if missing.
 
-    On Linux/macOS this is "<base_dir>/logs". On Windows this is "<custom_data_dir>/logs" when a global custom data directory is set, otherwise the platform-specific user log directory is used.
+    On Linux/macOS this is "<base_dir>/logs". On Windows this is "<base_dir>/logs"
+    when a base/data override is set; otherwise the platform-specific user log
+    directory is used.
 
     Returns:
         str: Absolute path to the log directory; the directory is guaranteed to exist.
     """
     if sys.platform in ["linux", "darwin"]:
-        # Use ~/.mmrelay/logs/ for Linux and Mac
         log_dir = os.path.join(get_base_dir(), "logs")
     else:
-        # Honor --data-dir on Windows too
-        if custom_data_dir:
-            log_dir = os.path.join(custom_data_dir, "logs")
+        if _has_any_dir_override():
+            log_dir = os.path.join(get_base_dir(), "logs")
         else:
-            # Use platformdirs default for Windows
             log_dir = platformdirs.user_log_dir(APP_NAME, APP_AUTHOR)
 
     os.makedirs(log_dir, exist_ok=True)
@@ -211,20 +339,20 @@ def get_e2ee_store_dir() -> str:
     """
     Get the absolute path to the application's end-to-end encryption (E2EE) data store directory, creating it if necessary.
 
-    On Linux and macOS the directory is located under the application base directory; on Windows it uses the configured custom data directory when set, otherwise the platform-specific user data directory. The directory will be created if it does not exist.
+    On Linux and macOS the directory is located under the application base directory.
+    On Windows it uses the configured base/data override when set, otherwise the
+    platform-specific user data directory. The directory will be created if it
+    does not exist.
 
     Returns:
         store_dir (str): Absolute path to the ensured E2EE store directory.
     """
     if sys.platform in ["linux", "darwin"]:
-        # Use ~/.mmrelay/store/ for Linux and Mac
         store_dir = os.path.join(get_base_dir(), "store")
     else:
-        # Honor --data-dir on Windows too
-        if custom_data_dir:
-            store_dir = os.path.join(custom_data_dir, "store")
+        if _has_any_dir_override():
+            store_dir = os.path.join(get_base_dir(), "store")
         else:
-            # Use platformdirs default for Windows
             store_dir = os.path.join(
                 platformdirs.user_data_dir(APP_NAME, APP_AUTHOR), "store"
             )

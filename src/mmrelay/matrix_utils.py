@@ -71,8 +71,9 @@ from mmrelay.cli_utils import (
 )
 from mmrelay.config import (
     get_base_dir,
-    get_data_dir,
+    get_credentials_search_paths,
     get_e2ee_store_dir,
+    get_explicit_credentials_path,
     get_meshtastic_config_value,
     load_credentials,
     save_credentials,
@@ -1288,42 +1289,17 @@ async def connect_matrix(
 
     # Try to find credentials.json from explicit config, config directory, or base dir
     try:
-        explicit_path = os.getenv("MMRELAY_CREDENTIALS_PATH")
-        if not explicit_path and isinstance(config, dict):
-            explicit_path = config.get("credentials_path")
-            if not explicit_path and isinstance(matrix_section, dict):
-                explicit_path = matrix_section.get("credentials_path")
+        explicit_path = get_explicit_credentials_path(
+            config if isinstance(config, dict) else None
+        )
 
-        candidate_paths: list[str] = []
-        if explicit_path:
-            expanded_path = os.path.abspath(os.path.expanduser(explicit_path))
-            path_is_dir = os.path.isdir(expanded_path)
-            if not path_is_dir:
-                path_is_dir = bool(
-                    expanded_path.endswith(
-                        os.path.sep
-                    )  # pyright: ignore[reportArgumentType]
-                    or (
-                        os.path.altsep and expanded_path.endswith(os.path.altsep)
-                    )  # pyright: ignore[reportArgumentType]
-                )
-            if path_is_dir:
-                normalized_dir = expanded_path.rstrip(os.path.sep).rstrip(
-                    os.path.altsep or ""
-                )
-                candidate_paths.append(normalized_dir)
-                candidate_paths.append(os.path.join(normalized_dir, "credentials.json"))
-            else:
-                candidate_paths.append(expanded_path)
-
-        config_dir = None
-        if config_module.config_path:
-            config_dir = os.path.dirname(os.path.abspath(config_module.config_path))
-            candidate_paths.append(os.path.join(config_dir, "credentials.json"))
-
-        candidate_paths.append(os.path.join(get_base_dir(), "credentials.json"))
-        # Also check data directory (backward compatibility for setups mounted to /app/data)
-        candidate_paths.append(os.path.join(get_data_dir(), "credentials.json"))
+        config_paths = (
+            [config_module.config_path] if config_module.config_path else None
+        )
+        candidate_paths = get_credentials_search_paths(
+            explicit_path=explicit_path,
+            config_paths=config_paths,
+        )
 
         for candidate in candidate_paths:
             if not os.path.isfile(candidate):
