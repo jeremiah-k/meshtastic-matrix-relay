@@ -499,7 +499,7 @@ If you want to opt in to the new layout (`base_dir` with data under
 `<base_dir>/data`), follow these steps:
 
 1. Update your volume mount to map your host directory to `/app` (not
-   `/app/data`), or add an additional `/app` mount so logs/store are persisted.
+   `/app/data`), or add a `/app` mount so logs/store are persisted.
 2. Set `MMRELAY_BASE_DIR=/app` (or add `--base-dir /app` to the command).
 3. If you want credentials in the new default location, move
    `credentials.json` to `/app/credentials.json` (or keep the old location and

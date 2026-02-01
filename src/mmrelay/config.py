@@ -1,5 +1,4 @@
 import json
-import logging
 import os
 import re
 import sys
@@ -744,15 +743,18 @@ def load_credentials() -> dict[str, Any] | None:
             if config_path:
                 debug_candidates.append(os.path.dirname(config_path))
             debug_candidates.append(get_base_dir())
+            seen: set[str] = set()
             for debug_dir in debug_candidates:
-                if not debug_dir or not os.path.exists(debug_dir):
+                if not debug_dir or debug_dir in seen:
+                    continue
+                seen.add(debug_dir)
+                if not os.path.exists(debug_dir):
                     continue
                 try:
                     files = os.listdir(debug_dir)
                     logger.debug("Directory contents of %s: %s", debug_dir, files)
                 except OSError:
                     pass
-                break
         return None
     except (OSError, PermissionError, json.JSONDecodeError):
         logger.exception("Error loading credentials.json")
@@ -817,19 +819,15 @@ def save_credentials(
             logger.error(f"Attempted path: {config_dir}")
 
 
-# Set up a basic logger for config
-logger = logging.getLogger("Config")
-logger.setLevel(logging.INFO)
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    handler.setFormatter(
-        logging.Formatter(
-            fmt="%(asctime)s %(levelname)s:%(name)s:%(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S %z",
-        )
-    )
-    logger.addHandler(handler)
-logger.propagate = False
+# Use structured logging to align with the rest of the codebase.
+def _get_config_logger():
+    # Late import avoids circular dependency (log_utils -> config).
+    from mmrelay.log_utils import get_logger
+
+    return get_logger("Config")
+
+
+logger = _get_config_logger()
 
 # Initialize empty config
 relay_config: dict[str, Any] = {}
