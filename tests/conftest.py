@@ -610,22 +610,28 @@ ensure_builtins_not_mocked()
 @pytest.fixture(autouse=True)
 def reset_custom_data_dir():
     """
-    Autouse pytest fixture that resets mmrelay.config.custom_data_dir to None for each test and restores its original value afterwards.
+    Autouse pytest fixture that resets mmrelay.config custom dir overrides to None for each test and restores their original values afterwards.
 
-    Before the test runs, stores the current value of mmrelay.config.custom_data_dir (if any) and sets it to None to ensure tests do not share or depend on a persistent custom data directory. After the test yields, the original value is restored.
+    Before the test runs, stores the current values of mmrelay.config.custom_data_dir
+    and mmrelay.config.custom_base_dir (if any) and sets them to None to ensure tests
+    do not share or depend on persistent overrides. After the test yields, the original
+    values are restored.
     """
     import mmrelay.config
 
     # Store original value
     original_custom_data_dir = getattr(mmrelay.config, "custom_data_dir", None)
+    original_custom_base_dir = getattr(mmrelay.config, "custom_base_dir", None)
 
     # Reset to None before test
     mmrelay.config.custom_data_dir = None
+    mmrelay.config.custom_base_dir = None
 
     yield
 
     # Restore original value after test
     mmrelay.config.custom_data_dir = original_custom_data_dir
+    mmrelay.config.custom_base_dir = original_custom_base_dir
 
 
 @pytest.fixture(autouse=True)
