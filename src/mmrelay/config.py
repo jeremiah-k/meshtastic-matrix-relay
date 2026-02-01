@@ -769,11 +769,14 @@ def save_credentials(
 
     If `credentials_path` is a directory (or ends with a path separator) the filename
     "credentials.json" is appended. If `credentials_path` is omitted the effective
-    path is resolved from, in order: the `MMRELAY_CREDENTIALS_PATH` environment
-    variable, `relay_config["credentials_path"]`, and `relay_config["matrix"]["credentials_path"]`
-    (when `matrix` is a mapping). The function creates the target directory if
-    missing and, on Unix-like systems, attempts to set restrictive file permissions
-    (0o600). I/O and permission errors are caught and logged; they are not raised.
+    path follows the same priority as credential loading: the
+    `MMRELAY_CREDENTIALS_PATH` environment variable, `relay_config["credentials_path"]`,
+    and `relay_config["matrix"]["credentials_path"]` (when `matrix` is a mapping).
+    When no explicit path is provided, the config directory (if known) is preferred
+    before falling back to base/data defaults. The function creates the target
+    directory if missing and, on Unix-like systems, attempts to set restrictive
+    file permissions (0o600). I/O and permission errors are caught and logged; they
+    are not raised.
 
     Parameters:
         credentials (dict): JSON-serializable mapping of credentials to persist.
@@ -783,34 +786,104 @@ def save_credentials(
     Returns:
         None
     """
-    config_dir = ""
     try:
-        credentials_path, config_dir = _resolve_credentials_path(
-            credentials_path, allow_relay_config_sources=True
-        )
 
-        # Ensure the directory exists and is writable
-        os.makedirs(config_dir, exist_ok=True)
+        def _normalize_explicit_path(path: str) -> str:
+            expanded = os.path.expanduser(path)
+            path_is_dir = os.path.isdir(expanded)
+            if not path_is_dir:
+                path_is_dir = bool(
+                    expanded.endswith(os.path.sep)
+                    or (os.path.altsep and expanded.endswith(os.path.altsep))
+                )
+            if path_is_dir:
+                normalized_dir = expanded.rstrip(os.path.sep).rstrip(
+                    os.path.altsep or ""
+                )
+                expanded = os.path.join(normalized_dir, "credentials.json")
+            if not os.path.dirname(expanded):
+                base_dir = get_base_dir()
+                expanded = os.path.join(base_dir, os.path.basename(expanded))
+            return expanded
 
-        # Log the path for debugging, especially on Windows
-        logger.info(f"Saving credentials to: {credentials_path}")
-
-        with open(credentials_path, "w", encoding="utf-8") as f:
-            json.dump(credentials, f, indent=2)
-
-        # Set secure permissions on Unix systems (600 - owner read/write only)
-        set_secure_file_permissions(credentials_path)
-
-        logger.info(f"Successfully saved credentials to {credentials_path}")
-
-        # Verify the file was actually created
-        if os.path.exists(credentials_path):
-            logger.debug(f"Verified credentials.json exists at {credentials_path}")
+        explicit_path = credentials_path or get_explicit_credentials_path(relay_config)
+        if explicit_path:
+            candidate_paths = [_normalize_explicit_path(explicit_path)]
+            allow_fallback = False
         else:
-            logger.error(f"Failed to create credentials.json at {credentials_path}")
+            candidate_paths = []
+            allow_fallback = True
+            if config_path:
+                config_dir_candidate = os.path.dirname(os.path.abspath(config_path))
+                candidate_paths.append(
+                    os.path.join(config_dir_candidate, "credentials.json")
+                )
+            candidate_paths.append(os.path.join(get_base_dir(), "credentials.json"))
 
+        last_error: OSError | PermissionError | None = None
+        config_dir = ""
+        data_dir_candidate: str | None = None
+        idx = 0
+        while idx < len(candidate_paths):
+            candidate = candidate_paths[idx]
+            config_dir = os.path.dirname(candidate)
+            if not config_dir:
+                config_dir = get_base_dir()
+                candidate = os.path.join(config_dir, os.path.basename(candidate))
+            try:
+                os.makedirs(config_dir, exist_ok=True)
+            except (OSError, PermissionError) as e:
+                last_error = e
+                logger.warning(
+                    "Could not create credentials directory %s: %s", config_dir, e
+                )
+                if not allow_fallback:
+                    break
+                if data_dir_candidate is None:
+                    data_dir_candidate = os.path.join(
+                        get_data_dir(create=False), "credentials.json"
+                    )
+                    if data_dir_candidate not in candidate_paths:
+                        candidate_paths.append(data_dir_candidate)
+                idx += 1
+                continue
+
+            try:
+                # Log the path for debugging, especially on Windows
+                logger.info("Saving credentials to: %s", candidate)
+                with open(candidate, "w", encoding="utf-8") as f:
+                    json.dump(credentials, f, indent=2)
+            except (OSError, PermissionError) as e:
+                last_error = e
+                logger.warning("Error writing credentials.json to %s: %s", candidate, e)
+                if not allow_fallback:
+                    break
+                if data_dir_candidate is None:
+                    data_dir_candidate = os.path.join(
+                        get_data_dir(create=False), "credentials.json"
+                    )
+                    if data_dir_candidate not in candidate_paths:
+                        candidate_paths.append(data_dir_candidate)
+                idx += 1
+                continue
+
+            # Set secure permissions on Unix systems (600 - owner read/write only)
+            set_secure_file_permissions(candidate)
+
+            logger.info("Successfully saved credentials to %s", candidate)
+
+            # Verify the file was actually created
+            if os.path.exists(candidate):
+                logger.debug(f"Verified credentials.json exists at {candidate}")
+            else:
+                logger.error(f"Failed to create credentials.json at {candidate}")
+            return None
+
+        if last_error:
+            raise last_error
+        raise OSError("No candidate credentials paths available")
     except (OSError, PermissionError):
-        logger.exception(f"Error saving credentials.json to {config_dir}")
+        logger.exception("Error saving credentials.json to %s", config_dir)
         # Try to provide helpful Windows-specific guidance
         if sys.platform == "win32":
             logger.error(
