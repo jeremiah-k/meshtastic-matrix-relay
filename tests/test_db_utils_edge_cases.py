@@ -523,19 +523,20 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                 f.write("wal content")
 
             # Track calls to shutil.move to simulate sidecar failure
+            real_shutil_move = shutil.move
             call_count = [0]
 
             def mock_move(src, dst):
                 call_count[0] += 1
                 if call_count[0] == 1:
                     # First call - move main db successfully
-                    shutil.move(src, dst)
+                    return real_shutil_move(src, dst)
                 elif call_count[0] == 2:
                     # Second call - sidecar move fails
                     raise OSError("Sidecar move failed")
                 else:
                     # Rollback calls
-                    shutil.move(src, dst)
+                    return real_shutil_move(src, dst)
 
             with patch("shutil.move", side_effect=mock_move):
                 with patch("mmrelay.db_utils.logger") as mock_logger:
@@ -572,19 +573,20 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                 f.write("wal content")
 
             # Simulate: main db moves ok, sidecar fails, rollback succeeds
+            real_shutil_move = shutil.move
             call_count = [0]
 
             def mock_move(src, dst):
                 call_count[0] += 1
                 if call_count[0] == 1:
                     # Move main db successfully using real shutil
-                    shutil.move(src, dst)
+                    return real_shutil_move(src, dst)
                 elif call_count[0] == 2:
                     # Sidecar move fails
                     raise OSError("Sidecar move failed")
                 elif call_count[0] == 3:
                     # Rollback main db successfully
-                    shutil.move(src, dst)
+                    return real_shutil_move(src, dst)
                 else:
                     raise RuntimeError(
                         f"Unexpected call {call_count[0]}: {src} -> {dst}"
@@ -656,8 +658,8 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                         default_path=default_path, legacy_candidates=[legacy_path]
                     )
 
-                    # Should return legacy_path
-                    self.assertEqual(result, legacy_path)
+                    # Should return default_path (main db still moved)
+                    self.assertEqual(result, default_path)
 
                     # Debug: print all method calls to understand what's happening
                     # Check for "partial state" warning (lines 137-141)
@@ -925,9 +927,8 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
             base_dir = temp_dir
             default_path = os.path.join(data_dir, "meshtastic.sqlite")
             legacy_base_path = os.path.join(base_dir, "meshtastic.sqlite")
-            legacy_data_path = os.path.join(base_dir, "data", "meshtastic.sqlite")
-
-            # Note: default_path and legacy_data_path are the same when data_dir = base_dir/data
+            # Note: default_path and base_dir/data/meshtastic.sqlite are the same when
+            # data_dir = base_dir/data
             # So we need to create files at 2 locations but they appear as 3 candidates
             os.makedirs(data_dir, exist_ok=True)
 

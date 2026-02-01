@@ -951,8 +951,7 @@ def save_credentials(
         if sys.platform == "win32":
             logger.exception(
                 "Error saving credentials.json to %s. On Windows, ensure the application "
-                "has write permissions to the user data directory. Attempted path: %s",
-                config_dir,
+                "has write permissions to the user data directory.",
                 config_dir,
             )
         else:

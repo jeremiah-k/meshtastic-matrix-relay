@@ -213,7 +213,7 @@ begin
   // Create setup-auth.bat for easy authentication setup
   batch_file := '@echo off' + #13#10 +
                 'echo Setting up Matrix authentication...' + #13#10 +
-                '"' + sAppDir + '\mmrelay.exe" auth login --base-dir "' + sAppDir + '"' + #13#10 +
+                '"' + sAppDir + '\mmrelay.exe" --base-dir "' + sAppDir + '" auth login' + #13#10 +
                 'pause';
 
   if Not SaveStringToFile(sAppDir + '\setup-auth.bat', batch_file, false) then
@@ -224,7 +224,7 @@ begin
   // Create logout.bat for easy authentication cleanup
   batch_file := '@echo off' + #13#10 +
                 'echo Logging out from Matrix authentication...' + #13#10 +
-                '"' + sAppDir + '\mmrelay.exe" auth logout --base-dir "' + sAppDir + '"' + #13#10 +
+                '"' + sAppDir + '\mmrelay.exe" --base-dir "' + sAppDir + '" auth logout' + #13#10 +
                 'pause';
 
   if Not SaveStringToFile(sAppDir + '\logout.bat', batch_file, false) then

@@ -139,13 +139,23 @@ def _migrate_legacy_db_if_needed(
                     legacy_path,
                     default_path,
                 )
+                existing = [
+                    path for path in (default_path, legacy_path) if os.path.exists(path)
+                ]
+                if existing:
+                    chosen = max(existing, key=_active_mtime)
+                    logger.warning(
+                        "Using database at %s after partial rollback.", chosen
+                    )
+                    return chosen
+                return legacy_path
             else:
                 logger.warning(
                     "Database migration rolled back due to sidecar failures. "
                     "Database remains at %s.",
                     legacy_path,
                 )
-            return legacy_path
+                return legacy_path
         logger.info(
             "Migrated database from legacy location %s to %s",
             legacy_path,
