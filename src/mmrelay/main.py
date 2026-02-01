@@ -625,7 +625,7 @@ def run_main(args: Any) -> int:
             data_dir,
         )
         config_rich_logger.warning(
-            "To migrate to the new layout, see docs/DOCKER.md: Migrating to the new layout."
+            "To migrate to the new layout, see docs/DOCKER.md: Migrating to the New Layout."
         )
 
     # Check if config exists and has the required keys

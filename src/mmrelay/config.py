@@ -278,11 +278,12 @@ def get_data_dir() -> str:
         else:
             data_dir = data_override
     else:
-        base_dir = get_base_dir()
         if sys.platform in ["linux", "darwin"]:
+            base_dir = get_base_dir()
             data_dir = os.path.join(base_dir, "data")
         else:
             if is_new_layout_enabled():
+                base_dir = get_base_dir()
                 data_dir = os.path.join(base_dir, "data")
             else:
                 data_dir = platformdirs.user_data_dir(APP_NAME, APP_AUTHOR)
