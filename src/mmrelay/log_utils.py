@@ -9,7 +9,6 @@ if TYPE_CHECKING:
     from rich.console import Console
 
 # Import logging configuration helpers and constants.
-from mmrelay.config import get_log_dir
 from mmrelay.constants.app import APP_DISPLAY_NAME
 from mmrelay.constants.messages import (
     DEFAULT_LOG_BACKUP_COUNT,
@@ -171,7 +170,11 @@ def _should_log_to_file(args: argparse.Namespace | None) -> bool:
     logging_config: dict[str, Any] = config.get("logging", {}) if config else {}
 
     # Default off in CLI mode so we only log to file when explicitly enabled.
-    default_enabled = False if _cli_mode else True
+    # Also default off when config is not yet available to avoid early cycles.
+    if config is None:
+        default_enabled = False
+    else:
+        default_enabled = False if _cli_mode else True
     enabled = logging_config.get("log_to_file", default_enabled)
 
     # Command-line argument always wins and forces file logging on
@@ -201,6 +204,17 @@ def _resolve_log_file(args: argparse.Namespace | None) -> str:
         return config_log_file
 
     return os.path.join(get_log_dir(), "mmrelay.log")
+
+
+def get_log_dir() -> str:
+    """
+    Lazily resolve the log directory to avoid circular imports during startup.
+    """
+    try:
+        from mmrelay.config import get_log_dir as _get_log_dir
+    except ImportError:
+        return os.getcwd()
+    return _get_log_dir()
 
 
 def _configure_logger(
