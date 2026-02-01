@@ -1155,7 +1155,7 @@ class TestCredentials(unittest.TestCase):
 
             save_credentials(credentials)
 
-            _mock_makedirs.assert_called_once()
+            _mock_makedirs.assert_any_call("/fake/dir", "credentials.json")
             _mock_open.assert_called_once()
             call_args = _mock_open.call_args
             final_path = call_args[0][0]

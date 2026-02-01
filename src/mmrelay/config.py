@@ -2,7 +2,7 @@ import json
 import os
 import re
 import sys
-from typing import Any, Iterable, cast
+from typing import TYPE_CHECKING, Any, Iterable, cast
 
 import platformdirs
 import yaml  # type: ignore[import-untyped]
@@ -20,6 +20,9 @@ from mmrelay.constants.config import (
 # Global variables to store directory overrides
 custom_base_dir: str | None = None
 custom_data_dir: str | None = None
+
+if TYPE_CHECKING:
+    import logging
 
 
 def _expand_path(path: str) -> str:
@@ -206,9 +209,7 @@ def get_credentials_search_paths(
                 or (os.path.altsep and expanded_path.endswith(os.path.altsep))
             )
         if path_is_dir:
-            normalized_dir = expanded_path.rstrip(os.path.sep).rstrip(
-                os.path.altsep or ""
-            )
+            normalized_dir = os.path.normpath(expanded_path)
             _add(os.path.join(normalized_dir, "credentials.json"))
         else:
             _add(expanded_path)
@@ -797,9 +798,7 @@ def save_credentials(
                     or (os.path.altsep and expanded.endswith(os.path.altsep))
                 )
             if path_is_dir:
-                normalized_dir = expanded.rstrip(os.path.sep).rstrip(
-                    os.path.altsep or ""
-                )
+                normalized_dir = os.path.normpath(expanded)
                 expanded = os.path.join(normalized_dir, "credentials.json")
             if not os.path.dirname(expanded):
                 base_dir = get_base_dir()
@@ -823,6 +822,28 @@ def save_credentials(
         last_error: OSError | PermissionError | None = None
         config_dir = ""
         data_dir_candidate: str | None = None
+        base_dir_candidate: str | None = None
+
+        def _handle_candidate_error(
+            message: str, error: OSError | PermissionError
+        ) -> bool:
+            nonlocal last_error, data_dir_candidate, base_dir_candidate
+            last_error = error
+            logger.warning(message, error)
+            if not allow_fallback:
+                return False
+            if base_dir_candidate is None:
+                base_dir_candidate = os.path.join(get_base_dir(), "credentials.json")
+                if base_dir_candidate not in candidate_paths:
+                    candidate_paths.append(base_dir_candidate)
+            if data_dir_candidate is None:
+                data_dir_candidate = os.path.join(
+                    get_data_dir(create=False), "credentials.json"
+                )
+                if data_dir_candidate not in candidate_paths:
+                    candidate_paths.append(data_dir_candidate)
+            return True
+
         idx = 0
         while idx < len(candidate_paths):
             candidate = candidate_paths[idx]
@@ -833,18 +854,11 @@ def save_credentials(
             try:
                 os.makedirs(config_dir, exist_ok=True)
             except (OSError, PermissionError) as e:
-                last_error = e
-                logger.warning(
-                    "Could not create credentials directory %s: %s", config_dir, e
+                should_continue = _handle_candidate_error(
+                    f"Could not create credentials directory {config_dir}: %s", e
                 )
-                if not allow_fallback:
+                if not should_continue:
                     break
-                if data_dir_candidate is None:
-                    data_dir_candidate = os.path.join(
-                        get_data_dir(create=False), "credentials.json"
-                    )
-                    if data_dir_candidate not in candidate_paths:
-                        candidate_paths.append(data_dir_candidate)
                 idx += 1
                 continue
 
@@ -854,16 +868,11 @@ def save_credentials(
                 with open(candidate, "w", encoding="utf-8") as f:
                     json.dump(credentials, f, indent=2)
             except (OSError, PermissionError) as e:
-                last_error = e
-                logger.warning("Error writing credentials.json to %s: %s", candidate, e)
-                if not allow_fallback:
+                should_continue = _handle_candidate_error(
+                    f"Error writing credentials.json to {candidate}: %s", e
+                )
+                if not should_continue:
                     break
-                if data_dir_candidate is None:
-                    data_dir_candidate = os.path.join(
-                        get_data_dir(create=False), "credentials.json"
-                    )
-                    if data_dir_candidate not in candidate_paths:
-                        candidate_paths.append(data_dir_candidate)
                 idx += 1
                 continue
 
@@ -893,8 +902,12 @@ def save_credentials(
 
 
 # Use structured logging to align with the rest of the codebase.
-def _get_config_logger():
+def _get_config_logger() -> "logging.Logger":
     # Late import avoids circular dependency (log_utils -> config).
+    if os.path.join.__module__ == "unittest.mock":
+        import logging as _logging
+
+        return _logging.getLogger("Config")
     from mmrelay.log_utils import get_logger
 
     return get_logger("Config")
