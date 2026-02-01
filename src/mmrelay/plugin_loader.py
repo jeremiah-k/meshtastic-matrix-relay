@@ -17,7 +17,7 @@ from types import ModuleType
 from typing import Any, Iterator, NamedTuple, NoReturn
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
-from mmrelay.config import get_app_path, get_base_dir
+from mmrelay.config import get_app_path, get_base_dir, get_data_dir
 from mmrelay.constants.plugins import (
     COMMIT_HASH_PATTERN,
     DEFAULT_ALLOWED_COMMUNITY_HOSTS,
@@ -63,23 +63,45 @@ _global_scheduler_stop_event: threading.Event | None = None
 # Plugin dependency directory (may not be set if base dir can't be resolved)
 _PLUGIN_DEPS_DIR: str | None = None
 
+
+def _get_plugin_root_dirs() -> list[str]:
+    base_dir = get_base_dir()
+    data_dir = get_data_dir()
+    roots: list[str] = []
+    if base_dir:
+        roots.append(os.path.join(base_dir, "plugins"))
+    if data_dir and data_dir != base_dir:
+        data_root = os.path.join(data_dir, "plugins")
+        if data_root not in roots:
+            if os.path.isdir(data_root) and not os.path.isdir(roots[0]):
+                roots.insert(0, data_root)
+            else:
+                roots.append(data_root)
+    return roots
+
+
 try:
-    _PLUGIN_DEPS_DIR = os.path.join(get_base_dir(), "plugins", "deps")
+    deps_roots = _get_plugin_root_dirs()
 except (OSError, RuntimeError, ValueError) as exc:  # pragma: no cover
     logger.debug("Unable to resolve base dir for plugin deps at import time: %s", exc)
     _PLUGIN_DEPS_DIR = None
 else:
-    try:
-        os.makedirs(_PLUGIN_DEPS_DIR, exist_ok=True)
-    except OSError as exc:  # pragma: no cover - logging only in unusual environments
-        logger.debug(
-            f"Unable to create plugin dependency directory '{_PLUGIN_DEPS_DIR}': {exc}"
-        )
-        _PLUGIN_DEPS_DIR = None
-    else:
+    for deps_root in deps_roots:
+        deps_dir = os.path.join(deps_root, "deps")
+        try:
+            os.makedirs(deps_dir, exist_ok=True)
+        except (
+            OSError
+        ) as exc:  # pragma: no cover - logging only in unusual environments
+            logger.debug(
+                "Unable to create plugin dependency directory '%s': %s", deps_dir, exc
+            )
+            continue
+        _PLUGIN_DEPS_DIR = deps_dir
         deps_path = os.fspath(_PLUGIN_DEPS_DIR)
         if deps_path not in sys.path:
             sys.path.append(deps_path)
+        break
 
 
 def _collect_requirements(
@@ -793,13 +815,15 @@ def _get_plugin_dirs(plugin_type: str) -> list[str]:
     """
     dirs = []
 
-    # Check user directory first (preferred location)
-    user_dir = os.path.join(get_base_dir(), "plugins", plugin_type)
-    try:
-        os.makedirs(user_dir, exist_ok=True)
-        dirs.append(user_dir)
-    except (OSError, PermissionError) as e:
-        logger.warning(f"Cannot create user plugin directory {user_dir}: {e}")
+    for root_dir in _get_plugin_root_dirs():
+        user_dir = os.path.join(root_dir, plugin_type)
+        if user_dir in dirs:
+            continue
+        try:
+            os.makedirs(user_dir, exist_ok=True)
+            dirs.append(user_dir)
+        except (OSError, PermissionError) as e:
+            logger.warning(f"Cannot create user plugin directory {user_dir}: {e}")
 
     # Check local directory (backward compatibility)
     local_dir = os.path.join(get_app_path(), "plugins", plugin_type)

@@ -599,7 +599,12 @@ def run_main(args: Any) -> int:
     log_utils.configure_component_debug_logging()
 
     # Get config path and log file path for logging
-    from mmrelay.config import config_path
+    from mmrelay.config import (
+        config_path,
+        get_base_dir,
+        get_data_dir,
+        is_legacy_layout_enabled,
+    )
     from mmrelay.log_utils import log_file_path
 
     # Create a logger with a different name to avoid conflicts with the one in config.py
@@ -610,6 +615,18 @@ def run_main(args: Any) -> int:
         config_rich_logger.info(f"Config file location: {config_path}")
     if log_file_path:
         config_rich_logger.info(f"Log file location: {log_file_path}")
+
+    if is_legacy_layout_enabled():
+        base_dir = get_base_dir()
+        data_dir = get_data_dir()
+        config_rich_logger.warning(
+            "Legacy data layout detected (base_dir=%s, data_dir=%s). This layout is deprecated and will be removed in a future release.",
+            base_dir,
+            data_dir,
+        )
+        config_rich_logger.warning(
+            "To migrate to the new layout, see docs/DOCKER.md: Migrating to the new layout."
+        )
 
     # Check if config exists and has the required keys
     # Note: matrix section is optional if credentials.json exists

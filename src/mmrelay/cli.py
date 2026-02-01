@@ -1590,8 +1590,8 @@ def handle_auth_status(args: argparse.Namespace) -> int:
     """
     Display Matrix authentication status by locating and validating a credentials.json file.
 
-    Searches for credentials.json adjacent to each discovered config file (in preference order),
-    then falls back to the application's base directory. If a readable credentials.json is found,
+    Searches for credentials.json in the same locations as the main runtime (explicit path,
+    config-adjacent files, then base/data directory fallbacks). If a readable credentials.json is found,
     prints its path and the `homeserver`, `user_id`, and `device_id` values and reports validity.
 
     Parameters:

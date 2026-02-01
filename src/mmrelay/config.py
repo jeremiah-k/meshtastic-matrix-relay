@@ -54,6 +54,12 @@ def is_new_layout_enabled() -> bool:
     return bool(custom_base_dir) or bool(os.getenv("MMRELAY_BASE_DIR"))
 
 
+def is_legacy_layout_enabled() -> bool:
+    return not is_new_layout_enabled() and bool(
+        custom_data_dir or os.getenv("MMRELAY_DATA_DIR")
+    )
+
+
 def set_secure_file_permissions(file_path: str, mode: int = 0o600) -> None:
     """
     Set restrictive Unix permission bits on a file to limit access.
@@ -200,6 +206,7 @@ def get_credentials_search_paths(
             normalized_dir = expanded_path.rstrip(os.path.sep).rstrip(
                 os.path.altsep or ""
             )
+            _add(normalized_dir)
             _add(os.path.join(normalized_dir, "credentials.json"))
         else:
             _add(expanded_path)
@@ -710,31 +717,34 @@ def load_credentials() -> dict[str, Any] | None:
         dict[str, Any]: Parsed credentials on success.
         None: If the credentials file is missing, unreadable, or contains invalid JSON.
     """
-    config_dir = ""
     try:
-        credentials_path, config_dir = _resolve_credentials_path(
-            os.getenv("MMRELAY_CREDENTIALS_PATH"), allow_relay_config_sources=False
+        explicit_path = get_explicit_credentials_path(relay_config)
+        config_paths = [config_path] if config_path else None
+        candidate_paths = get_credentials_search_paths(
+            explicit_path=explicit_path,
+            config_paths=config_paths,
         )
-
-        logger.debug(f"Looking for credentials at: {credentials_path}")
-
-        if os.path.exists(credentials_path):
+        logger.debug("Looking for credentials at: %s", candidate_paths)
+        for credentials_path in candidate_paths:
+            if not os.path.exists(credentials_path):
+                continue
             with open(credentials_path, "r", encoding="utf-8") as f:
                 credentials = cast(dict[str, Any], json.load(f))
-            logger.debug(f"Successfully loaded credentials from {credentials_path}")
+            logger.debug("Successfully loaded credentials from %s", credentials_path)
             return credentials
-        else:
-            logger.debug(f"No credentials file found at {credentials_path}")
-            # On Windows, also log the directory contents for debugging
-            if sys.platform == "win32" and os.path.exists(config_dir):
+
+        # On Windows, also log the directory contents for debugging
+        if sys.platform == "win32" and config_path:
+            config_dir = os.path.dirname(config_path)
+            if os.path.exists(config_dir):
                 try:
                     files = os.listdir(config_dir)
-                    logger.debug(f"Directory contents of {config_dir}: {files}")
+                    logger.debug("Directory contents of %s: %s", config_dir, files)
                 except OSError:
                     pass
-            return None
+        return None
     except (OSError, PermissionError, json.JSONDecodeError):
-        logger.exception(f"Error loading credentials.json from {config_dir}")
+        logger.exception("Error loading credentials.json")
         return None
 
 
