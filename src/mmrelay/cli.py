@@ -1621,6 +1621,7 @@ def handle_auth_status(args: argparse.Namespace) -> int:
     candidate_paths = get_credentials_search_paths(
         explicit_path=explicit_path,
         config_paths=config_paths,
+        include_base_data=False,
     )
 
     for credentials_path in candidate_paths:

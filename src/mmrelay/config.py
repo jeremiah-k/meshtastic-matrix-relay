@@ -173,7 +173,10 @@ def get_config_paths(args: Any = None) -> list[str]:
 
 
 def get_credentials_search_paths(
-    *, explicit_path: str | None = None, config_paths: Iterable[str] | None = None
+    *,
+    explicit_path: str | None = None,
+    config_paths: Iterable[str] | None = None,
+    include_base_data: bool = True,
 ) -> list[str]:
     """
     Build an ordered, de-duplicated list of candidate credentials.json paths.
@@ -217,8 +220,9 @@ def get_credentials_search_paths(
             config_dir = os.path.dirname(os.path.abspath(config_path))
             _add(os.path.join(config_dir, "credentials.json"))
 
-    _add(os.path.join(get_base_dir(), "credentials.json"))
-    _add(os.path.join(get_data_dir(create=False), "credentials.json"))
+    if include_base_data:
+        _add(os.path.join(get_base_dir(), "credentials.json"))
+        _add(os.path.join(get_data_dir(create=False), "credentials.json"))
 
     return candidate_paths
 
@@ -277,10 +281,7 @@ def get_data_dir(*, create: bool = True) -> str:
             data_dir = data_override
     else:
         base_dir = get_base_dir()
-        if is_new_layout_enabled():
-            data_dir = os.path.join(base_dir, "data")
-        else:
-            data_dir = base_dir
+        data_dir = os.path.join(base_dir, "data")
 
     if create:
         try:
@@ -734,17 +735,19 @@ def load_credentials() -> dict[str, Any] | None:
 
         # On Windows, also log the directory contents for debugging
         if sys.platform == "win32":
-            debug_dir = None
+            debug_candidates: list[str] = []
             if config_path:
-                debug_dir = os.path.dirname(config_path)
-            else:
-                debug_dir = get_base_dir()
-            if debug_dir and os.path.exists(debug_dir):
+                debug_candidates.append(os.path.dirname(config_path))
+            debug_candidates.append(get_base_dir())
+            for debug_dir in debug_candidates:
+                if not debug_dir or not os.path.exists(debug_dir):
+                    continue
                 try:
                     files = os.listdir(debug_dir)
                     logger.debug("Directory contents of %s: %s", debug_dir, files)
                 except OSError:
                     pass
+                break
         return None
     except (OSError, PermissionError, json.JSONDecodeError):
         logger.exception("Error loading credentials.json")
