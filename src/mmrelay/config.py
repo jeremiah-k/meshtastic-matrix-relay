@@ -184,6 +184,7 @@ def get_credentials_search_paths(
     Parameters:
         explicit_path (str | None): Optional explicit file or directory path.
         config_paths (Iterable[str] | None): Optional iterable of config file paths.
+        include_base_data (bool): When True, include base/data directory fallbacks.
 
     Returns:
         list[str]: Ordered candidate credential file paths.
@@ -258,9 +259,10 @@ def get_data_dir(*, create: bool = True) -> str:
     If the legacy data-dir override is set (MMRELAY_DATA_DIR/--data-dir), that path
     is used directly unless a legacy "<override>/data" directory already contains
     data (database/plugins/store), in which case that legacy directory is used to
-    preserve existing layouts. Without an override, the legacy layout is used
-    (data_dir == base_dir) unless the new layout is explicitly enabled via
-    MMRELAY_BASE_DIR/--base-dir, in which case "<base_dir>/data" is used.
+    preserve existing layouts. Without an override, Linux/macOS use
+    "<base_dir>/data". On Windows, the platform-specific user data directory is
+    used unless the new layout is explicitly enabled via MMRELAY_BASE_DIR/--base-dir,
+    in which case "<base_dir>/data" is used.
 
     Returns:
         Absolute path to the data directory.
