@@ -1,11 +1,12 @@
 import contextlib
 import json
 import os
+import shutil
 import sqlite3
 import threading
 from typing import Any, Dict, Tuple, cast
 
-from mmrelay.config import get_data_dir
+from mmrelay.config import get_base_dir, get_data_dir, is_new_layout_enabled
 from mmrelay.constants.database import (
     DEFAULT_BUSY_TIMEOUT_MS,
     DEFAULT_ENABLE_WAL,
@@ -42,12 +43,142 @@ def clear_db_path_cache() -> None:
     _cached_config_hash = None
 
 
+def _active_mtime(path: str) -> float:
+    """
+    Return the most recent modification time among a file and its SQLite WAL/SHM sidecars.
+
+    Parameters:
+        path (str): Filesystem path to the SQLite database file.
+
+    Returns:
+        float: Newest modification time (seconds since the epoch) among `path`, `path-wal`, and `path-shm`, or `0.0` if none exist.
+    """
+    mtimes = []
+    for candidate in (path, f"{path}-wal", f"{path}-shm"):
+        try:
+            mtimes.append(os.path.getmtime(candidate))
+        except OSError:
+            continue
+    return max(mtimes) if mtimes else 0.0
+
+
+def _migrate_legacy_db_if_needed(
+    *, default_path: str, legacy_candidates: list[str]
+) -> str:
+    """
+    If any legacy database paths are provided, selects the most recently active one and attempts to move it (and its -wal/-shm sidecars) to the specified default path.
+
+    Parameters:
+        default_path (str): Destination path for the migrated database.
+        legacy_candidates (list[str]): Candidate legacy database file paths; the function picks the most recently active by modification time.
+
+    Returns:
+        str: The path that should be used for the database. On full migration
+        success this is `default_path`; on any migration failure it is the
+        selected legacy path.
+
+    Notes:
+        - If `legacy_candidates` is empty, the function returns `default_path`.
+        - On success, an informational log entry is written.
+        - On failure (OSError or PermissionError), the function logs a warning and
+          leaves the legacy files in place; it does not raise.
+    """
+    if not legacy_candidates:
+        return default_path
+    legacy_path = max(legacy_candidates, key=_active_mtime)
+    moved_main = False
+    moved_sidecars: list[tuple[str, str]] = []
+    sidecar_failures: list[tuple[str, str, OSError | PermissionError]] = []
+    try:
+        shutil.move(legacy_path, default_path)
+        moved_main = True
+        for suffix in ("-wal", "-shm"):
+            legacy_sidecar = f"{legacy_path}{suffix}"
+            new_sidecar = f"{default_path}{suffix}"
+            if os.path.exists(legacy_sidecar) and not os.path.exists(new_sidecar):
+                try:
+                    shutil.move(legacy_sidecar, new_sidecar)
+                    moved_sidecars.append((new_sidecar, legacy_sidecar))
+                except (OSError, PermissionError) as sidecar_err:
+                    sidecar_failures.append((legacy_sidecar, new_sidecar, sidecar_err))
+        if sidecar_failures:
+            rollback_errors: list[tuple[str, str, str, OSError | PermissionError]] = []
+            if moved_main:
+                try:
+                    shutil.move(default_path, legacy_path)
+                    moved_main = False
+                except (OSError, PermissionError) as rollback_err:
+                    rollback_errors.append(
+                        ("database", default_path, legacy_path, rollback_err)
+                    )
+            for new_sidecar, legacy_sidecar in moved_sidecars:
+                try:
+                    shutil.move(new_sidecar, legacy_sidecar)
+                except (OSError, PermissionError) as rollback_err:
+                    rollback_errors.append(
+                        ("sidecar", new_sidecar, legacy_sidecar, rollback_err)
+                    )
+            for legacy_sidecar, new_sidecar, sidecar_err in sidecar_failures:
+                logger.warning(
+                    "Failed to migrate sidecar %s to %s: %s",
+                    legacy_sidecar,
+                    new_sidecar,
+                    sidecar_err,
+                )
+            if rollback_errors:
+                for kind, src, dest, rollback_err in rollback_errors:
+                    logger.warning(
+                        "Failed to roll back %s move from %s to %s: %s",
+                        kind,
+                        src,
+                        dest,
+                        rollback_err,
+                    )
+                logger.warning(
+                    "Database migration left a partial state. Verify %s and %s manually.",
+                    legacy_path,
+                    default_path,
+                )
+                existing = [
+                    path for path in (default_path, legacy_path) if os.path.exists(path)
+                ]
+                if existing:
+                    chosen = max(existing, key=_active_mtime)
+                    logger.warning(
+                        "Using database at %s after partial rollback.", chosen
+                    )
+                    return chosen
+                return legacy_path
+            else:
+                logger.warning(
+                    "Database migration rolled back due to sidecar failures. "
+                    "Database remains at %s.",
+                    legacy_path,
+                )
+                return legacy_path
+        logger.info(
+            "Migrated database from legacy location %s to %s",
+            legacy_path,
+            default_path,
+        )
+        return default_path
+    except (OSError, PermissionError) as e:
+        logger.warning(
+            "Failed to migrate database from %s to %s: %s. "
+            "The old database remains at the legacy location.",
+            legacy_path,
+            default_path,
+            e,
+        )
+        return legacy_path
+
+
 # Get the database path
 def get_db_path() -> str:
     """
-    Resolve the absolute filesystem path to the SQLite database, preferring configured values and falling back to the application data directory.
+    Resolve the absolute filesystem path to the application's SQLite database, using configured paths when present and falling back to the application data directory.
 
-    Selects the path in this precedence: `config["database"]["path"]` (preferred), `config["db"]["path"]` (legacy), then `<data_dir>/meshtastic.sqlite`. The chosen path is cached and the cache is invalidated when relevant database configuration changes. Attempts to create parent or data directories and logs warnings on failure but does not raise.
+    Selects the path in this precedence: configuration key `database.path` (preferred), legacy `db.path`, then `<data_dir>/meshtastic.sqlite`. The resolved path is cached and the cache is invalidated when relevant database configuration changes. The function will attempt to create required directories and may migrate legacy database locations to the current layout when applicable; directory-creation or migration failures are logged but do not raise.
 
     Returns:
         str: Filesystem path to the SQLite database.
@@ -130,7 +261,45 @@ def get_db_path() -> str:
     except (OSError, PermissionError) as e:
         logger.warning("Could not create data directory %s: %s", data_dir, e)
         # Continue anyway - the database connection will fail later if needed
+
     default_path = os.path.join(data_dir, "meshtastic.sqlite")
+    legacy_base_path = os.path.join(get_base_dir(), "meshtastic.sqlite")
+    legacy_data_path = os.path.join(get_base_dir(), "data", "meshtastic.sqlite")
+    legacy_nested_data_path = os.path.join(
+        get_base_dir(), "data", "data", "meshtastic.sqlite"
+    )
+
+    if is_new_layout_enabled() and not os.path.exists(default_path):
+        legacy_candidates = [
+            path
+            for path in (legacy_base_path, legacy_nested_data_path)
+            if path and os.path.exists(path)
+        ]
+        default_path = _migrate_legacy_db_if_needed(
+            default_path=default_path,
+            legacy_candidates=legacy_candidates,
+        )
+
+    if not is_new_layout_enabled():
+        existing_paths = [
+            path
+            for path in (default_path, legacy_base_path, legacy_data_path)
+            if path and os.path.exists(path)
+        ]
+        if len(existing_paths) > 1:
+            active_path = max(existing_paths, key=_active_mtime)
+            if active_path != default_path:
+                logger.warning(
+                    "Multiple database files found. Using the most recently updated: %s",
+                    active_path,
+                )
+                default_path = active_path
+        elif len(existing_paths) == 1 and existing_paths[0] != default_path:
+            logger.info(
+                "Using legacy database location: %s",
+                existing_paths[0],
+            )
+            default_path = existing_paths[0]
     _cached_db_path = default_path
     return default_path
 

@@ -543,15 +543,13 @@ async def main(config: dict[str, Any]) -> None:
 
 def run_main(args: Any) -> int:
     """
-    Start the application: load configuration, validate required keys, and run the main async runner.
-
-    Loads and applies configuration (optionally overriding logging level from args), initializes module configuration, verifies required configuration sections (required keys are ["meshtastic", "matrix_rooms"] when credentials.json is present, otherwise ["matrix", "meshtastic", "matrix_rooms"]), and executes the main async entrypoint. Returns process exit codes: 0 for successful completion or user interrupt, 1 for configuration errors or unhandled exceptions.
-
+    Load configuration, validate required keys, configure logging and modules, and run the main async application loop.
+    
     Parameters:
-        args: Parsed command-line arguments (may be None). Recognized option used here: `log_level` to override the configured logging level.
-
+        args (Any): Parsed command-line arguments (may be None). Recognized option: `log_level` to override the configured logging level.
+    
     Returns:
-        int: Exit code (0 on success or user-initiated interrupt, 1 on failure such as invalid config or runtime error).
+        int: Exit code — `0` on successful completion or user-initiated interrupt, `1` for configuration errors or unhandled runtime exceptions.
     """
     # Load configuration
     from mmrelay.config import load_config
@@ -599,7 +597,12 @@ def run_main(args: Any) -> int:
     log_utils.configure_component_debug_logging()
 
     # Get config path and log file path for logging
-    from mmrelay.config import config_path
+    from mmrelay.config import (
+        config_path,
+        get_base_dir,
+        get_data_dir,
+        is_legacy_layout_enabled,
+    )
     from mmrelay.log_utils import log_file_path
 
     # Create a logger with a different name to avoid conflicts with the one in config.py
@@ -610,6 +613,18 @@ def run_main(args: Any) -> int:
         config_rich_logger.info(f"Config file location: {config_path}")
     if log_file_path:
         config_rich_logger.info(f"Log file location: {log_file_path}")
+
+    if is_legacy_layout_enabled():
+        base_dir = get_base_dir()
+        data_dir = get_data_dir()
+        config_rich_logger.warning(
+            "Legacy data layout detected (base_dir=%s, data_dir=%s). This layout is deprecated and will be removed in a future release.",
+            base_dir,
+            data_dir,
+        )
+        config_rich_logger.warning(
+            "To migrate to the new layout, see docs/DOCKER.md: Migrating to the New Layout."
+        )
 
     # Check if config exists and has the required keys
     # Note: matrix section is optional if credentials.json exists

@@ -11,19 +11,28 @@ Tests edge cases and error handling including:
 - Configuration file search priority
 """
 
+import json
 import os
 import sys
 import tempfile
 import unittest
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import MagicMock, call, mock_open, patch
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.config import (
+    _get_env_data_dir,
     get_app_path,
     get_config_paths,
+    get_credentials_search_paths,
+    get_data_dir,
+    get_e2ee_store_dir,
+    get_explicit_credentials_path,
+    get_log_dir,
     load_config,
+    load_credentials,
+    save_credentials,
     set_config,
 )
 
@@ -313,6 +322,239 @@ class TestConfigEdgeCases(unittest.TestCase):
 
                     # Should log error messages
                     mock_logger.error.assert_called()
+
+    def test_get_env_data_dir_not_set(self):
+        """Test _get_env_data_dir returns None when MMRELAY_DATA_DIR is not set."""
+        with patch.dict(os.environ, {}, clear=True):
+            result = _get_env_data_dir()
+            self.assertIsNone(result)
+
+    def test_get_env_data_dir_set(self):
+        """Test _get_env_data_dir returns expanded path when MMRELAY_DATA_DIR is set."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch.dict(os.environ, {"MMRELAY_DATA_DIR": temp_dir}):
+                result = _get_env_data_dir()
+                self.assertEqual(result, temp_dir)
+
+    def test_get_env_data_dir_with_tilde(self):
+        """Test _get_env_data_dir expands user home directory."""
+        with patch.dict(os.environ, {"MMRELAY_DATA_DIR": "~/test_data"}):
+            result = _get_env_data_dir()
+            self.assertTrue(result.endswith("test_data"))
+            self.assertFalse(result.startswith("~"))
+
+    def test_get_credentials_search_paths_with_explicit_path(self):
+        """Test get_credentials_search_paths with explicit path."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            explicit_path = os.path.join(temp_dir, "creds.json")
+
+            result = get_credentials_search_paths(explicit_path=explicit_path)
+
+            # Explicit path should be first
+            self.assertEqual(result[0], explicit_path)
+
+    def test_get_credentials_search_paths_with_directory(self):
+        """Test get_credentials_search_paths treats directory paths correctly."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result = get_credentials_search_paths(
+                explicit_path=temp_dir + os.sep, include_base_data=False
+            )
+
+            # Should append credentials.json to directory
+            self.assertTrue(any("credentials.json" in path for path in result))
+
+    def test_get_credentials_search_paths_with_config_paths(self):
+        """Test get_credentials_search_paths with config file paths."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_path = os.path.join(temp_dir, "config.yaml")
+
+            result = get_credentials_search_paths(
+                config_paths=[config_path], include_base_data=False
+            )
+
+            # Should include credentials.json in same dir as config
+            expected_creds = os.path.join(temp_dir, "credentials.json")
+            self.assertIn(expected_creds, result)
+
+    def test_get_explicit_credentials_path_from_env(self):
+        """Test get_explicit_credentials_path reads from environment variable."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            creds_path = os.path.join(temp_dir, "env_creds.json")
+
+            with patch.dict(os.environ, {"MMRELAY_CREDENTIALS_PATH": creds_path}):
+                result = get_explicit_credentials_path(None)
+                self.assertEqual(result, creds_path)
+
+    def test_get_explicit_credentials_path_from_config(self):
+        """Test get_explicit_credentials_path reads from config."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            creds_path = os.path.join(temp_dir, "config_creds.json")
+            config = {"credentials_path": creds_path}
+
+            result = get_explicit_credentials_path(config)
+            self.assertEqual(result, creds_path)
+
+    def test_get_explicit_credentials_path_from_matrix_config(self):
+        """Test get_explicit_credentials_path reads from matrix section."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            creds_path = os.path.join(temp_dir, "matrix_creds.json")
+            config = {"matrix": {"credentials_path": creds_path}}
+
+            result = get_explicit_credentials_path(config)
+            self.assertEqual(result, creds_path)
+
+    def test_get_explicit_credentials_path_no_config(self):
+        """Test get_explicit_credentials_path returns None when no config provided."""
+        with patch.dict(os.environ, {}, clear=True):
+            result = get_explicit_credentials_path(None)
+            self.assertIsNone(result)
+
+    def test_get_data_dir_with_legacy_data(self):
+        """Test get_data_dir detects and uses legacy data directory."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Create legacy structure with data subdirectory
+            legacy_data_dir = os.path.join(temp_dir, "data")
+            legacy_db = os.path.join(legacy_data_dir, "meshtastic.sqlite")
+
+            os.makedirs(legacy_data_dir, exist_ok=True)
+
+            # Create a legacy database file to trigger legacy detection
+            with open(legacy_db, "w") as f:
+                f.write("legacy db")
+
+            with patch("mmrelay.config.custom_data_dir", temp_dir):
+                with patch("mmrelay.config._get_env_data_dir", return_value=None):
+                    result = get_data_dir(create=False)
+
+                    # Should use legacy data dir when legacy db exists
+                    self.assertEqual(result, legacy_data_dir)
+
+    def test_get_data_dir_without_legacy_data(self):
+        """Test get_data_dir uses override directly when no legacy data exists."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # No legacy data files
+
+            with patch("mmrelay.config.custom_data_dir", temp_dir):
+                with patch("mmrelay.config._get_env_data_dir", return_value=None):
+                    with patch("mmrelay.config.os.makedirs"):
+                        result = get_data_dir()
+
+                        # Should use the override directly
+                        self.assertEqual(result, temp_dir)
+
+    def test_get_log_dir_windows_with_override(self):
+        """Test get_log_dir on Windows with directory override."""
+        with patch("mmrelay.config.sys.platform", "win32"):
+            with patch("mmrelay.config._has_any_dir_override", return_value=True):
+                with patch("mmrelay.config.get_base_dir", return_value="C:\\mmrelay"):
+                    with patch("mmrelay.config.os.makedirs"):
+                        result = get_log_dir()
+
+                        # Should use base_dir/logs with override
+                        self.assertEqual(result, "C:\\mmrelay\\logs")
+
+    def test_get_e2ee_store_dir_windows_without_override(self):
+        """Test get_e2ee_store_dir on Windows without directory override."""
+        with patch("mmrelay.config.sys.platform", "win32"):
+            with patch("mmrelay.config._has_any_dir_override", return_value=False):
+                with patch(
+                    "mmrelay.config.platformdirs.user_data_dir",
+                    return_value="C:\\Users\\test\\AppData\\Local\\mmrelay",
+                ):
+                    with patch("mmrelay.config.os.makedirs"):
+                        result = get_e2ee_store_dir()
+
+                        # Should use platformdirs with store subdirectory
+                        self.assertEqual(
+                            result, "C:\\Users\\test\\AppData\\Local\\mmrelay\\store"
+                        )
+
+    def test_get_e2ee_store_dir_windows_with_override(self):
+        """Test get_e2ee_store_dir on Windows with directory override."""
+        with patch("mmrelay.config.sys.platform", "win32"):
+            with patch("mmrelay.config._has_any_dir_override", return_value=True):
+                with patch("mmrelay.config.get_base_dir", return_value="C:\\mmrelay"):
+                    with patch("mmrelay.config.os.makedirs"):
+                        result = get_e2ee_store_dir()
+
+                        # Should use base_dir/store with override
+                        self.assertEqual(result, "C:\\mmrelay\\store")
+
+    def test_load_credentials_windows_debug(self):
+        """Test load_credentials on Windows logs directory contents."""
+        with patch("mmrelay.config.sys.platform", "win32"):
+            with patch("mmrelay.config.os.path.exists", return_value=False):
+                with patch("mmrelay.config.get_base_dir", return_value="C:\\mmrelay"):
+                    with patch(
+                        "mmrelay.config.os.listdir",
+                        return_value=["file1.txt", "file2.json"],
+                    ):
+                        with patch("mmrelay.config.logger") as mock_logger:
+                            # Reset credentials state
+                            import mmrelay.config
+
+                            original_config = mmrelay.config.relay_config
+                            original_config_path = mmrelay.config.config_path
+                            mmrelay.config.relay_config = {}
+                            mmrelay.config.config_path = None
+
+                            try:
+                                load_credentials()
+
+                                # Should log directory contents on Windows
+                                debug_calls = [
+                                    call
+                                    for call in mock_logger.debug.call_args_list
+                                    if "Directory contents" in str(call)
+                                ]
+                                self.assertGreaterEqual(len(debug_calls), 1)
+                            finally:
+                                mmrelay.config.relay_config = original_config
+                                mmrelay.config.config_path = original_config_path
+
+    def test_save_credentials_writes_to_file(self):
+        """Test save_credentials actually writes JSON to file."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            creds_path = os.path.join(temp_dir, "credentials.json")
+            credentials = {
+                "user_id": "@test:matrix.org",
+                "access_token": "secret_token",
+            }
+
+            from mmrelay import config as config_module
+
+            original_relay_config = config_module.relay_config.copy()
+            original_config_path = config_module.config_path
+
+            try:
+                config_module.relay_config = {}
+                config_module.config_path = None
+
+                with patch.dict(os.environ, {"MMRELAY_CREDENTIALS_PATH": creds_path}):
+                    save_credentials(credentials)
+
+                # Verify file was written
+                self.assertTrue(os.path.exists(creds_path))
+
+                with open(creds_path, "r") as f:
+                    saved_creds = json.load(f)
+
+                self.assertEqual(saved_creds["user_id"], "@test:matrix.org")
+                self.assertEqual(saved_creds["access_token"], "secret_token")
+            finally:
+                config_module.relay_config = original_relay_config
+                config_module.config_path = original_config_path
+
+    def test_save_credentials_exception_handling(self):
+        """Test save_credentials handles exceptions gracefully."""
+        credentials = {"user_id": "test"}
+
+        with patch("mmrelay.config.os.makedirs", side_effect=OSError("Disk full")):
+            with patch("mmrelay.config.logger") as mock_logger:
+                save_credentials(credentials)
+
+                # Should log exception and not raise
+                mock_logger.exception.assert_called()
 
 
 if __name__ == "__main__":

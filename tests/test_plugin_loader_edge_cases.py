@@ -23,6 +23,8 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.plugin_loader import (
+    _get_plugin_dirs,
+    _get_plugin_root_dirs,
     get_community_plugin_dirs,
     get_custom_plugin_dirs,
     load_plugins,
@@ -506,6 +508,140 @@ class Plugin:
                     plugins = load_plugins(config)
                     # Should handle duplicates (may keep both or prefer one) + core plugins
                     self.assertGreaterEqual(len(plugins), 1)
+
+    def test_get_plugin_root_dirs_with_new_layout(self):
+        """Test _get_plugin_root_dirs when new layout is enabled."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_dir = os.path.join(temp_dir, "base")
+            data_dir = os.path.join(base_dir, "data")
+
+            os.makedirs(data_dir, exist_ok=True)
+
+            with patch("mmrelay.plugin_loader.get_base_dir", return_value=base_dir):
+                with patch(
+                    "mmrelay.plugin_loader.is_new_layout_enabled", return_value=True
+                ):
+                    with patch(
+                        "mmrelay.plugin_loader.is_legacy_layout_enabled",
+                        return_value=False,
+                    ):
+                        with patch(
+                            "mmrelay.plugin_loader.get_data_dir", return_value=data_dir
+                        ):
+                            result = _get_plugin_root_dirs()
+
+                            # Should include base_dir/plugins and data_dir/plugins
+                            self.assertIn(os.path.join(base_dir, "plugins"), result)
+                            self.assertIn(os.path.join(data_dir, "plugins"), result)
+
+    def test_get_plugin_root_dirs_with_legacy_layout(self):
+        """Test _get_plugin_root_dirs when legacy layout is enabled."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_dir = os.path.join(temp_dir, "base")
+            data_dir = os.path.join(base_dir, "data")
+
+            os.makedirs(data_dir, exist_ok=True)
+
+            with patch("mmrelay.plugin_loader.get_base_dir", return_value=base_dir):
+                with patch(
+                    "mmrelay.plugin_loader.is_new_layout_enabled", return_value=False
+                ):
+                    with patch(
+                        "mmrelay.plugin_loader.is_legacy_layout_enabled",
+                        return_value=True,
+                    ):
+                        with patch(
+                            "mmrelay.plugin_loader.get_data_dir", return_value=data_dir
+                        ):
+                            result = _get_plugin_root_dirs()
+
+                            # Should include base_dir/plugins and data_dir/plugins
+                            self.assertIn(os.path.join(base_dir, "plugins"), result)
+                            self.assertIn(os.path.join(data_dir, "plugins"), result)
+
+    def test_get_plugin_root_dirs_data_root_preferred(self):
+        """Test _get_plugin_root_dirs puts data_root at front when it exists and base doesn't."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_dir = os.path.join(temp_dir, "base")
+            data_dir = os.path.join(base_dir, "data")
+            data_root = os.path.join(data_dir, "plugins")
+
+            # Only create data plugins directory
+            os.makedirs(data_root, exist_ok=True)
+
+            with patch("mmrelay.plugin_loader.get_base_dir", return_value=base_dir):
+                with patch(
+                    "mmrelay.plugin_loader.is_new_layout_enabled", return_value=True
+                ):
+                    with patch(
+                        "mmrelay.plugin_loader.is_legacy_layout_enabled",
+                        return_value=False,
+                    ):
+                        with patch(
+                            "mmrelay.plugin_loader.get_data_dir", return_value=data_dir
+                        ):
+                            result = _get_plugin_root_dirs()
+
+                            # Data root should be first since it exists and base doesn't
+                            self.assertEqual(result[0], data_root)
+
+    def test_get_plugin_dirs_local_directory_error(self):
+        """Test _get_plugin_dirs handles errors when creating local directory."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plugin_type = "custom"
+
+            with patch(
+                "mmrelay.plugin_loader._get_plugin_root_dirs", return_value=[temp_dir]
+            ):
+                with patch("os.makedirs") as mock_makedirs:
+                    # Make local directory creation fail
+                    def side_effect(_path, **_kwargs):
+                        if "app" in _path:  # Local app directory
+                            raise OSError()
+                        return None
+
+                    mock_makedirs.side_effect = side_effect
+
+                    with patch(
+                        "mmrelay.plugin_loader.get_app_path", return_value="/fake/app"
+                    ):
+                        with patch("mmrelay.plugin_loader.logger") as mock_logger:
+                            result = _get_plugin_dirs(plugin_type)
+
+                            # Should still return the root directory
+                            self.assertEqual(len(result), 1)
+                            self.assertIn(temp_dir, result)
+                            # Should log debug about local directory creation failure
+                            mock_logger.debug.assert_called()
+
+    def test_get_plugin_dirs_local_permission_error(self):
+        """Test _get_plugin_dirs handles PermissionError when creating local directory."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plugin_type = "community"
+
+            with patch(
+                "mmrelay.plugin_loader._get_plugin_root_dirs", return_value=[temp_dir]
+            ):
+                with patch("os.makedirs") as mock_makedirs:
+                    # Make local directory creation fail with PermissionError
+                    def side_effect(_path, **_kwargs):
+                        if "app" in _path:  # Local app directory
+                            raise PermissionError()
+                        return None
+
+                    mock_makedirs.side_effect = side_effect
+
+                    with patch(
+                        "mmrelay.plugin_loader.get_app_path", return_value="/fake/app"
+                    ):
+                        with patch("mmrelay.plugin_loader.logger") as mock_logger:
+                            result = _get_plugin_dirs(plugin_type)
+
+                            # Should still return the root directory
+                            self.assertEqual(len(result), 1)
+                            self.assertIn(temp_dir, result)
+                            # Should log debug about local directory creation failure
+                            mock_logger.debug.assert_called()
 
 
 if __name__ == "__main__":

@@ -547,7 +547,7 @@ class TestMainFunction(unittest.TestCase):
         self, mock_run_main, mock_parse, mock_expanduser, mock_makedirs
     ):
         """
-        Verify that --base-dir expands user paths and sets custom_data_dir.
+        Verify that --base-dir expands user paths and sets custom_base_dir.
         """
         args = MagicMock()
         args.command = None
@@ -564,16 +564,16 @@ class TestMainFunction(unittest.TestCase):
 
         import mmrelay.config
 
-        original_custom_data_dir = mmrelay.config.custom_data_dir
+        original_custom_base_dir = mmrelay.config.custom_base_dir
         try:
             result = main()
 
             self.assertEqual(result, 0)
             mock_expanduser.assert_called_once_with("~/mmrelay")
             mock_makedirs.assert_called_once_with("/home/test/mmrelay", exist_ok=True)
-            self.assertEqual(mmrelay.config.custom_data_dir, "/home/test/mmrelay")
+            self.assertEqual(mmrelay.config.custom_base_dir, "/home/test/mmrelay")
         finally:
-            mmrelay.config.custom_data_dir = original_custom_data_dir
+            mmrelay.config.custom_base_dir = original_custom_base_dir
 
 
 class TestCLIValidationFunctions(unittest.TestCase):
@@ -1842,7 +1842,7 @@ class TestAuthStatus(unittest.TestCase):
         # Verify results
         self.assertEqual(result, 1)
         mock_get_paths.assert_called_once_with(self.mock_args)
-        mock_exists.assert_called_once_with("/home/user/.mmrelay/credentials.json")
+        mock_exists.assert_any_call("/home/user/.mmrelay/credentials.json")
 
         # Check error output
         mock_print.assert_any_call("Matrix Authentication Status")

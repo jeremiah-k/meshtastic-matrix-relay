@@ -1074,8 +1074,16 @@ def test_load_credentials_file_not_exists(mock_exists, mock_get_base_dir):
 def test_save_credentials(
     _mock_exists, _mock_makedirs, mock_json_dump, _mock_open, mock_get_base_dir
 ):
-    """Test credentials saving."""
+    """
+    Verify that save_credentials writes the provided credentials JSON to the resolved config directory.
+    
+    This test sets the module-level config_path to None to force resolution via the base directory fixture, then calls save_credentials with a credentials dict and asserts that the target directory is created, the credentials file is opened, and json.dump is called with the credentials and an indent of 2.
+    """
     mock_get_base_dir.return_value = "/test/config"
+    import mmrelay.config as config_module
+
+    original_config_path = config_module.config_path
+    config_module.config_path = None
 
     test_credentials = {
         "homeserver": "https://matrix.example.org",
@@ -1084,7 +1092,10 @@ def test_save_credentials(
         "device_id": "TEST_DEVICE",
     }
 
-    save_credentials(test_credentials)
+    try:
+        save_credentials(test_credentials)
+    finally:
+        config_module.config_path = original_config_path
 
     _mock_makedirs.assert_called_once_with("/test/config", exist_ok=True)
     _mock_open.assert_called_once()

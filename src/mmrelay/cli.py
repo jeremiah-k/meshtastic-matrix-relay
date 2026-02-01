@@ -59,6 +59,7 @@ from mmrelay.tools import get_sample_config_path
 
 # Lazy-initialized logger to avoid circular imports and filesystem access during import
 _logger: logging.Logger | None = None
+logger: logging.Logger | None = None
 
 
 def _get_logger() -> logging.Logger:
@@ -74,6 +75,9 @@ def _get_logger() -> logging.Logger:
     global _logger
     if _logger is None:
         _logger = get_logger(__name__)
+    global logger
+    if logger is None:
+        logger = _logger
     if _logger is None:
         raise RuntimeError("Logger must be initialized")
     return _logger
@@ -82,6 +86,38 @@ def _get_logger() -> logging.Logger:
 # =============================================================================
 # CLI Argument Parsing and Command Handling
 # =============================================================================
+
+
+def _apply_dir_overrides(args: argparse.Namespace) -> None:
+    """
+    Apply --base-dir/--data-dir overrides to global config and ensure directories exist.
+
+    Parameters:
+        args (argparse.Namespace): Parsed CLI arguments.
+    """
+    if not args or not (args.base_dir or args.data_dir):
+        return
+    import mmrelay.config
+
+    if args.base_dir and args.data_dir:
+        print(
+            "Warning: --data-dir is deprecated and ignored when --base-dir is provided.",
+            file=sys.stderr,
+        )
+    elif args.data_dir:
+        print(
+            "Warning: --data-dir is deprecated. Use --base-dir instead.",
+            file=sys.stderr,
+        )
+
+    if args.base_dir:
+        expanded_base_dir = os.path.expanduser(args.base_dir)
+        mmrelay.config.custom_base_dir = os.path.abspath(expanded_base_dir)
+        os.makedirs(mmrelay.config.custom_base_dir, exist_ok=True)
+    elif args.data_dir:
+        expanded_data_dir = os.path.expanduser(args.data_dir)
+        mmrelay.config.custom_data_dir = os.path.abspath(expanded_data_dir)
+        os.makedirs(mmrelay.config.custom_data_dir, exist_ok=True)
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -1345,27 +1381,7 @@ def main() -> int:
         args = parse_arguments()
 
         # Handle the --base-dir/--data-dir options
-        if args and (args.base_dir or args.data_dir):
-            import mmrelay.config
-
-            if args.base_dir and args.data_dir:
-                print(
-                    "Warning: --data-dir is deprecated and ignored when --base-dir is provided.",
-                    file=sys.stderr,
-                )
-            elif args.data_dir:
-                print(
-                    "Warning: --data-dir is deprecated. Use --base-dir instead.",
-                    file=sys.stderr,
-                )
-
-            base_dir = args.base_dir or args.data_dir
-            if base_dir:
-                # Set the global custom_data_dir variable
-                expanded_base_dir = os.path.expanduser(base_dir)
-                mmrelay.config.custom_data_dir = os.path.abspath(expanded_base_dir)
-                # Create the directory if it doesn't exist
-                os.makedirs(mmrelay.config.custom_data_dir, exist_ok=True)
+        _apply_dir_overrides(args)
 
         args_dict = vars(args)
         has_modern_command = bool(getattr(args, "command", None))
@@ -1589,8 +1605,8 @@ def handle_auth_status(args: argparse.Namespace) -> int:
     """
     Display Matrix authentication status by locating and validating a credentials.json file.
 
-    Searches for credentials.json adjacent to each discovered config file (in preference order),
-    then falls back to the application's base directory. If a readable credentials.json is found,
+    Searches for credentials.json in the same locations as the main runtime (explicit path,
+    config-adjacent files, then base/data directory fallbacks). If a readable credentials.json is found,
     prints its path and the `homeserver`, `user_id`, and `device_id` values and reports validity.
 
     Parameters:
@@ -1604,27 +1620,23 @@ def handle_auth_status(args: argparse.Namespace) -> int:
     """
     import json
 
-    from mmrelay.config import get_base_dir, get_config_paths
+    from mmrelay.config import (
+        get_config_paths,
+        get_credentials_search_paths,
+        get_explicit_credentials_path,
+        load_config,
+    )
 
     print("Matrix Authentication Status")
     print("============================")
 
     config_paths = get_config_paths(args)
-
-    # Developer note: Build a de-duplicated sequence of candidate locations,
-    # preserving preference order: each config-adjacent credentials.json first,
-    # then the standard base-dir fallback.
-    seen = set()
-    candidate_paths = []
-    for p in (
-        os.path.join(os.path.dirname(cp), "credentials.json") for cp in config_paths
-    ):
-        if p not in seen:
-            candidate_paths.append(p)
-            seen.add(p)
-    base_candidate = os.path.join(get_base_dir(), "credentials.json")
-    if base_candidate not in seen:
-        candidate_paths.append(base_candidate)
+    config_data = load_config(args=args, config_paths=config_paths)
+    explicit_path = get_explicit_credentials_path(config_data)
+    candidate_paths = get_credentials_search_paths(
+        explicit_path=explicit_path,
+        config_paths=config_paths,
+    )
 
     for credentials_path in candidate_paths:
         if os.path.exists(credentials_path):
@@ -2016,6 +2028,7 @@ def handle_cli_commands(args: argparse.Namespace) -> int | None:
     Returns:
         int | None: Exit code (`0` on success, `1` on failure) if a legacy command was handled; `None` if no legacy flag was present.
     """
+    _apply_dir_overrides(args)
     args_dict = vars(args)
 
     # Handle --version

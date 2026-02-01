@@ -489,6 +489,26 @@ Look for messages like:
 - "Using credentials from ~/.mmrelay/credentials.json"
 - "Found X encrypted rooms out of Y total rooms"
 
+## Migrating to the New Layout (Optional)
+
+By default, the Docker image uses the legacy layout so existing setups keep
+working. That means `base_dir == data_dir` and everything lives under
+`/app/data`.
+
+If you want to opt in to the new layout (`base_dir` with data under
+`<base_dir>/data`), follow these steps:
+
+1. Update your volume mount to map your host directory to `/app` (not
+   `/app/data`), or add a `/app` mount so logs/store are persisted.
+2. Set `MMRELAY_BASE_DIR=/app` (or add `--base-dir /app` to the command).
+3. If you want credentials in the new default location, move
+   `credentials.json` to `/app/credentials.json` (or keep the old location and
+   set `MMRELAY_CREDENTIALS_PATH=/app/data/credentials.json`).
+4. On first startup, MMRelay will attempt to migrate legacy database files (including `-wal`/`-shm` sidecars) to the new location at `/app/data/meshtastic.sqlite`. This handles common legacy paths like `/app/data/data/meshtastic.sqlite` (from older Docker setups) and `/app/meshtastic.sqlite`.
+5. Logs and E2EE store files will default to `/app/logs` and `/app/store`.
+   To keep them under `/app/data`, set `logging.filename` and
+   `matrix.e2ee.store_path` accordingly.
+
 ## Updates
 
 **Prebuilt images:**

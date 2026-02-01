@@ -1140,8 +1140,8 @@ class TestCredentials(unittest.TestCase):
     def test_save_credentials_from_matrix_config_not_dict(
         self,
         _mock_open,
-        _mock_makedirs,
         _mock_join,
+        _mock_makedirs,
         _mock_get_base_dir,
     ):
         """Test save_credentials when matrix config is not a dict."""
@@ -1150,12 +1150,14 @@ class TestCredentials(unittest.TestCase):
         from mmrelay import config as config_module
 
         original_relay_config = config_module.relay_config.copy()
+        original_config_path = config_module.config_path
         try:
             config_module.relay_config = {"matrix": "not_a_dict"}
+            config_module.config_path = None
 
             save_credentials(credentials)
 
-            _mock_makedirs.assert_called_once()
+            _mock_makedirs.assert_any_call("/fake/dir", exist_ok=True)
             _mock_open.assert_called_once()
             call_args = _mock_open.call_args
             final_path = call_args[0][0]
@@ -1166,6 +1168,7 @@ class TestCredentials(unittest.TestCase):
             )
         finally:
             config_module.relay_config = original_relay_config
+            config_module.config_path = original_config_path
 
     @patch("mmrelay.config.get_base_dir", return_value="/actual/directory")
     @patch("mmrelay.config.os.makedirs")
@@ -1583,7 +1586,11 @@ class TestConfigUncoveredLines(unittest.TestCase):
         """Test save_credentials verification (line 693)."""
         log_debug = []
         with patch.object(
-            mmrelay.config.logger, "debug", side_effect=lambda x: log_debug.append(x)
+            mmrelay.config.logger,
+            "debug",
+            side_effect=lambda msg, *args, **_kwargs: log_debug.append(
+                msg % args if args else msg
+            ),
         ):
             save_credentials({"access_token": "test"})
             self.assertTrue(

@@ -17,7 +17,13 @@ from types import ModuleType
 from typing import Any, Iterator, NamedTuple, NoReturn
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
-from mmrelay.config import get_app_path, get_base_dir
+from mmrelay.config import (
+    get_app_path,
+    get_base_dir,
+    get_data_dir,
+    is_legacy_layout_enabled,
+    is_new_layout_enabled,
+)
 from mmrelay.constants.plugins import (
     COMMIT_HASH_PATTERN,
     DEFAULT_ALLOWED_COMMUNITY_HOSTS,
@@ -63,23 +69,56 @@ _global_scheduler_stop_event: threading.Event | None = None
 # Plugin dependency directory (may not be set if base dir can't be resolved)
 _PLUGIN_DEPS_DIR: str | None = None
 
+
+def _get_plugin_root_dirs() -> list[str]:
+    """
+    Compute an ordered list of candidate plugin root directories.
+
+    When a base directory exists, returns base_dir/plugins. If either the new or legacy layout is enabled and a distinct data directory exists, includes data_dir/plugins as well; the data directory is inserted at the front if it exists on disk while the base plugins path does not, otherwise it is appended. Duplicate paths are avoided.
+
+    Returns:
+        list[str]: Ordered list of plugin root directory paths.
+    """
+    base_dir = get_base_dir()
+    roots: list[str] = []
+    if base_dir:
+        roots.append(os.path.join(base_dir, "plugins"))
+    if is_new_layout_enabled() or is_legacy_layout_enabled():
+        data_dir = get_data_dir(create=False)
+        if data_dir and data_dir != base_dir:
+            data_root = os.path.join(data_dir, "plugins")
+            if data_root not in roots:
+                if os.path.isdir(data_root) and (
+                    not roots or not os.path.isdir(roots[0])
+                ):
+                    roots.insert(0, data_root)
+                else:
+                    roots.append(data_root)
+    return roots
+
+
 try:
-    _PLUGIN_DEPS_DIR = os.path.join(get_base_dir(), "plugins", "deps")
+    deps_roots = _get_plugin_root_dirs()
 except (OSError, RuntimeError, ValueError) as exc:  # pragma: no cover
     logger.debug("Unable to resolve base dir for plugin deps at import time: %s", exc)
     _PLUGIN_DEPS_DIR = None
 else:
-    try:
-        os.makedirs(_PLUGIN_DEPS_DIR, exist_ok=True)
-    except OSError as exc:  # pragma: no cover - logging only in unusual environments
-        logger.debug(
-            f"Unable to create plugin dependency directory '{_PLUGIN_DEPS_DIR}': {exc}"
-        )
-        _PLUGIN_DEPS_DIR = None
-    else:
+    for deps_root in deps_roots:
+        deps_dir = os.path.join(deps_root, "deps")
+        try:
+            os.makedirs(deps_dir, exist_ok=True)
+        except (
+            OSError
+        ) as exc:  # pragma: no cover - logging only in unusual environments
+            logger.debug(
+                "Unable to create plugin dependency directory '%s': %s", deps_dir, exc
+            )
+            continue
+        _PLUGIN_DEPS_DIR = deps_dir
         deps_path = os.fspath(_PLUGIN_DEPS_DIR)
         if deps_path not in sys.path:
             sys.path.append(deps_path)
+        break
 
 
 def _collect_requirements(
@@ -778,28 +817,30 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
 
 def _get_plugin_dirs(plugin_type: str) -> list[str]:
     """
-    Get an ordered list of existing plugin directories for the given plugin type.
+    Compute ordered plugin directories for the given plugin type.
 
-    Prefers the per-user directory (base_dir/plugins/<type>) and also includes the local
-    application directory (app_path/plugins/<type>) for backward compatibility. The function
-    attempts to create each directory if missing and omits any paths that cannot be created
-    or accessed.
+    Prefers per-root user plugin directories (created if missing) for each discovered plugin root and includes the local application `plugins/<type>` directory for backward compatibility; any directory that cannot be created or accessed is omitted.
 
     Parameters:
         plugin_type (str): Plugin category, e.g. "custom" or "community".
 
     Returns:
-        list[str]: Ordered list of plugin directories to search (user directory first when available, then local directory).
+        list[str]: Ordered list of filesystem paths to plugin directories (per-root user dirs first, then the local app directory).
     """
     dirs = []
 
-    # Check user directory first (preferred location)
-    user_dir = os.path.join(get_base_dir(), "plugins", plugin_type)
-    try:
-        os.makedirs(user_dir, exist_ok=True)
-        dirs.append(user_dir)
-    except (OSError, PermissionError) as e:
-        logger.warning(f"Cannot create user plugin directory {user_dir}: {e}")
+    for root_dir in _get_plugin_root_dirs():
+        if os.path.basename(root_dir) == "plugins":
+            user_dir = os.path.join(root_dir, plugin_type)
+        else:
+            user_dir = root_dir
+        if user_dir in dirs:
+            continue
+        try:
+            os.makedirs(user_dir, exist_ok=True)
+            dirs.append(user_dir)
+        except (OSError, PermissionError) as e:
+            logger.warning("Cannot create user plugin directory %s: %s", user_dir, e)
 
     # Check local directory (backward compatibility)
     local_dir = os.path.join(get_app_path(), "plugins", plugin_type)

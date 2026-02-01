@@ -1575,6 +1575,60 @@ class TestRunMainFunction(unittest.TestCase):
     @patch("mmrelay.main.print_banner")
     @patch("mmrelay.config.load_config")
     @patch("mmrelay.config.load_credentials")
+    @patch("mmrelay.config.is_legacy_layout_enabled")
+    @patch("mmrelay.config.get_base_dir")
+    @patch("mmrelay.config.get_data_dir")
+    @patch("mmrelay.config.get_log_dir")
+    @patch("mmrelay.config.os.makedirs")
+    def test_run_main_legacy_layout_warning(
+        self,
+        _mock_makedirs,
+        mock_get_log_dir,
+        mock_get_data_dir,
+        mock_get_base_dir,
+        mock_is_legacy_layout_enabled,
+        mock_load_credentials,
+        mock_load_config,
+        _mock_print_banner,
+    ):
+        """Test that warning messages are logged when legacy layout is enabled."""
+        mock_config = {
+            "matrix": {"homeserver": "https://matrix.org"},
+            "meshtastic": {"connection_type": "serial"},
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+        }
+        mock_load_config.return_value = mock_config
+        mock_load_credentials.return_value = None
+        mock_is_legacy_layout_enabled.return_value = True
+        mock_get_base_dir.return_value = "/test/base/dir"
+        mock_get_data_dir.return_value = "/test/data/dir"
+        mock_get_log_dir.return_value = "/test/log/dir"
+
+        mock_args = MagicMock()
+        mock_args.data_dir = None
+        mock_args.log_level = None
+
+        with patch("mmrelay.main.asyncio.run") as mock_asyncio_run:
+            mock_asyncio_run.side_effect = _close_coro_if_possible
+            with patch("mmrelay.main.get_logger") as mock_get_logger:
+                mock_config_logger = MagicMock()
+                mock_get_logger.return_value = mock_config_logger
+                result = run_main(mock_args)
+
+        self.assertEqual(result, 0)
+        # Verify warning was called with legacy layout message
+        mock_config_logger.warning.assert_any_call(
+            "Legacy data layout detected (base_dir=%s, data_dir=%s). This layout is deprecated and will be removed in a future release.",
+            "/test/base/dir",
+            "/test/data/dir",
+        )
+        mock_config_logger.warning.assert_any_call(
+            "To migrate to the new layout, see docs/DOCKER.md: Migrating to the New Layout."
+        )
+
+    @patch("mmrelay.main.print_banner")
+    @patch("mmrelay.config.load_config")
+    @patch("mmrelay.config.load_credentials")
     @patch("mmrelay.main.asyncio.run")
     def test_run_main_keyboard_interrupt(
         self,

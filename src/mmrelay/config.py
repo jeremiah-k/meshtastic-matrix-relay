@@ -1,9 +1,9 @@
 import json
-import logging
+import ntpath
 import os
 import re
 import sys
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, Iterable, cast
 
 import platformdirs
 import yaml  # type: ignore[import-untyped]
@@ -18,8 +18,101 @@ from mmrelay.constants.config import (
     CONFIG_SECTION_MATRIX,
 )
 
-# Global variable to store the custom data directory
+# Global variables to store directory overrides
+custom_base_dir: str | None = None
 custom_data_dir: str | None = None
+
+if TYPE_CHECKING:
+    import logging
+
+
+class CredentialsPathError(OSError):
+    def __init__(self) -> None:
+        super().__init__("No candidate credentials paths available")
+
+
+def _expand_path(path: str) -> str:
+    """
+    Resolve and normalize a filesystem path by expanding user home references and converting to an absolute path.
+
+    Parameters:
+        path (str): A filesystem path, which may include a user home shorthand (`~`) or be relative.
+
+    Returns:
+        str: The absolute path with any leading `~` expanded to the user's home directory.
+    """
+    return os.path.abspath(os.path.expanduser(path))
+
+
+def _get_env_base_dir() -> str | None:
+    """
+    Read the MMRELAY_BASE_DIR environment variable and return its expanded absolute path.
+
+    Returns:
+        Expanded absolute path (`str`) if MMRELAY_BASE_DIR is set, `None` otherwise.
+    """
+    env_base_dir = os.getenv("MMRELAY_BASE_DIR")
+    if env_base_dir:
+        return _expand_path(env_base_dir)
+    return None
+
+
+def _get_env_data_dir() -> str | None:
+    """
+    Return the expanded absolute path specified by the MMRELAY_DATA_DIR environment variable, if present.
+
+    Returns:
+        str | None: Expanded absolute path from MMRELAY_DATA_DIR if the variable is set, `None` otherwise.
+    """
+    env_data_dir = os.getenv("MMRELAY_DATA_DIR")
+    if env_data_dir:
+        return _expand_path(env_data_dir)
+    return None
+
+
+def _has_any_dir_override() -> bool:
+    """
+    Check whether any override for the application's base or data directory is set.
+
+    Returns:
+        `true` if a custom_base_dir, custom_data_dir, `MMRELAY_BASE_DIR`, or `MMRELAY_DATA_DIR` is present, `false` otherwise.
+    """
+    return bool(
+        custom_base_dir
+        or custom_data_dir
+        or os.getenv("MMRELAY_BASE_DIR")
+        or os.getenv("MMRELAY_DATA_DIR")
+    )
+
+
+def is_new_layout_enabled() -> bool:
+    """
+    Report whether the new directory layout is enabled.
+
+    Checks for a programmatic override via `custom_base_dir` or the presence of the
+    `MMRELAY_BASE_DIR` environment variable.
+
+    Returns:
+        `true` if a custom base directory is configured via `custom_base_dir` or
+        `MMRELAY_BASE_DIR`, `false` otherwise.
+    """
+    return bool(custom_base_dir) or bool(os.getenv("MMRELAY_BASE_DIR"))
+
+
+def is_legacy_layout_enabled() -> bool:
+    """
+    Determine whether the legacy (data-dir-based) directory layout is active.
+
+    The legacy layout is considered active when a data-directory override is present via the
+    custom_data_dir module override or the MMRELAY_DATA_DIR environment variable, and the
+    new-layout mode is not enabled.
+
+    Returns:
+        `true` if the legacy layout is enabled, `false` otherwise.
+    """
+    return not is_new_layout_enabled() and bool(
+        custom_data_dir or os.getenv("MMRELAY_DATA_DIR")
+    )
 
 
 def set_secure_file_permissions(file_path: str, mode: int = 0o600) -> None:
@@ -40,27 +133,26 @@ def set_secure_file_permissions(file_path: str, mode: int = 0o600) -> None:
             logger.warning(f"Could not set secure permissions on {file_path}: {e}")
 
 
-# Custom base directory for Unix systems
 def get_base_dir() -> str:
     """
-    Determine the filesystem base directory used to store the application's files.
+    Return the filesystem base directory used to store the application's files.
 
-    If the module-level `custom_data_dir` is set, that path is returned. If the
-    MMRELAY_BASE_DIR (or deprecated MMRELAY_DATA_DIR) environment variable is
-    set, that path is used. On Linux and macOS the directory is `~/.<APP_NAME>`;
-    on Windows the platform-specific user data directory for the application is
-    returned.
+    Determines the directory using the following precedence: module-level `custom_base_dir`, legacy `custom_data_dir`, environment variable `MMRELAY_BASE_DIR`, legacy environment variable `MMRELAY_DATA_DIR`, then a platform default (`~/.<APP_NAME>` on Linux/macOS, platform-specific user data dir on Windows).
 
     Returns:
         The filesystem path to the application's base data directory.
     """
-    # If a custom data directory has been set, use that
+    if custom_base_dir:
+        return custom_base_dir
     if custom_data_dir:
         return custom_data_dir
 
-    env_base_dir = os.getenv("MMRELAY_BASE_DIR") or os.getenv("MMRELAY_DATA_DIR")
+    env_base_dir = _get_env_base_dir()
     if env_base_dir:
-        return os.path.abspath(os.path.expanduser(env_base_dir))
+        return env_base_dir
+    env_data_dir = _get_env_data_dir()
+    if env_data_dir:
+        return env_data_dir
 
     if sys.platform in ["linux", "darwin"]:
         # Use ~/.mmrelay for Linux and Mac
@@ -130,28 +222,128 @@ def get_config_paths(args: Any = None) -> list[str]:
     return paths
 
 
-def get_data_dir() -> str:
+def get_credentials_search_paths(
+    *,
+    explicit_path: str | None = None,
+    config_paths: Iterable[str] | None = None,
+    include_base_data: bool = True,
+) -> list[str]:
     """
-    Get the application's data directory, creating it if necessary.
+    Build an ordered, de-duplicated list of candidate credentials.json paths.
 
-    On Linux and macOS this is "<base_dir>/data" (where base_dir is returned by get_base_dir()).
-    On Windows this is "<custom_data_dir>/data" if a global override is set, otherwise the platform default user data directory for the application.
+    Parameters:
+        explicit_path (str | None): Optional explicit file or directory path.
+        config_paths (Iterable[str] | None): Optional iterable of config file paths.
+        include_base_data (bool): When True, include base/data directory fallbacks.
 
     Returns:
-        Absolute path to the data directory.
+        list[str]: Ordered candidate credential file paths.
     """
-    if sys.platform in ["linux", "darwin"]:
-        # Use ~/.mmrelay/data/ for Linux and Mac
-        data_dir = os.path.join(get_base_dir(), "data")
-    else:
-        # Honor --data-dir on Windows too
-        if custom_data_dir:
-            data_dir = os.path.join(custom_data_dir, "data")
-        else:
-            # Use platformdirs default for Windows
-            data_dir = platformdirs.user_data_dir(APP_NAME, APP_AUTHOR)
+    candidate_paths: list[str] = []
+    seen: set[str] = set()
 
-    os.makedirs(data_dir, exist_ok=True)
+    def _add(path: str | None) -> None:
+        """
+        Add a path to the candidate_paths list if it is non-empty and not already present.
+
+        Parameters:
+            path (str | None): Path to add; ignored if None or already seen. Side effect: appends to `candidate_paths` and records the path in `seen`.
+        """
+        if not path or path in seen:
+            return
+        candidate_paths.append(path)
+        seen.add(path)
+
+    if explicit_path:
+        expanded_path = _expand_path(explicit_path)
+        path_is_dir = os.path.isdir(expanded_path)
+        if not path_is_dir:
+            path_is_dir = bool(
+                expanded_path.endswith(os.path.sep)
+                or (os.path.altsep and expanded_path.endswith(os.path.altsep))
+            )
+        if path_is_dir:
+            normalized_dir = os.path.normpath(expanded_path)
+            _add(os.path.join(normalized_dir, "credentials.json"))
+        else:
+            _add(expanded_path)
+
+    if config_paths:
+        for config_path in config_paths:
+            if not config_path:
+                continue
+            config_dir = os.path.dirname(os.path.abspath(config_path))
+            _add(os.path.join(config_dir, "credentials.json"))
+
+    if include_base_data:
+        _add(os.path.join(get_base_dir(), "credentials.json"))
+        _add(os.path.join(get_data_dir(create=False), "credentials.json"))
+
+    return candidate_paths
+
+
+def get_explicit_credentials_path(config: dict[str, Any] | None) -> str | None:
+    """
+    Determine an explicit credentials path from the environment or a provided configuration mapping.
+
+    Parameters:
+        config (dict[str, Any] | None): Optional loaded config mapping; checks top-level "credentials_path" and "matrix.credentials_path" for an explicit path.
+
+    Returns:
+        str | None: The explicit credentials path if configured, otherwise `None`.
+    """
+    env_path = os.getenv("MMRELAY_CREDENTIALS_PATH")
+    if env_path:
+        return env_path
+    if not isinstance(config, dict):
+        return None
+    explicit_path = config.get("credentials_path")
+    if explicit_path:
+        return explicit_path
+    matrix_section = config.get("matrix")
+    if isinstance(matrix_section, dict):
+        return matrix_section.get("credentials_path")
+    return None
+
+
+def get_data_dir(*, create: bool = True) -> str:
+    """
+    Determine the application's data directory according to overrides and platform conventions.
+
+    If a legacy data-dir override is set, the function will prefer the legacy layout when that override contains existing legacy data; otherwise it will use the override directly. On Windows, the platform user data directory is used unless the "new layout" is enabled, in which case the layout under the resolved base directory is used. On Unix-like systems the directory under the resolved base directory is used.
+
+    Parameters:
+        create (bool): If True, ensure the returned directory exists (attempt to create it).
+
+    Returns:
+        str: Absolute path to the data directory.
+    """
+    data_override = custom_data_dir or _get_env_data_dir()
+    if data_override:
+        legacy_data_dir = os.path.join(data_override, "data")
+        legacy_db = os.path.join(legacy_data_dir, "meshtastic.sqlite")
+        legacy_plugins = os.path.join(legacy_data_dir, "plugins")
+        legacy_store = os.path.join(legacy_data_dir, "store")
+        if (
+            os.path.exists(legacy_db)
+            or os.path.isdir(legacy_plugins)
+            or os.path.isdir(legacy_store)
+        ):
+            data_dir = legacy_data_dir
+        else:
+            data_dir = data_override
+    else:
+        if sys.platform == "win32" and not is_new_layout_enabled():
+            data_dir = platformdirs.user_data_dir(APP_NAME, APP_AUTHOR)
+        else:
+            base_dir = get_base_dir()
+            data_dir = os.path.join(base_dir, "data")
+
+    if create:
+        try:
+            os.makedirs(data_dir, exist_ok=True)
+        except (OSError, PermissionError) as e:
+            logger.warning("Could not create data directory %s: %s", data_dir, e)
     return data_dir
 
 
@@ -187,20 +379,19 @@ def get_log_dir() -> str:
     """
     Get the application's log directory, creating it if missing.
 
-    On Linux/macOS this is "<base_dir>/logs". On Windows this is "<custom_data_dir>/logs" when a global custom data directory is set, otherwise the platform-specific user log directory is used.
+    On Linux/macOS this is "<base_dir>/logs". On Windows this is "<base_dir>/logs"
+    when a base/data override is set; otherwise the platform-specific user log
+    directory is used.
 
     Returns:
         str: Absolute path to the log directory; the directory is guaranteed to exist.
     """
     if sys.platform in ["linux", "darwin"]:
-        # Use ~/.mmrelay/logs/ for Linux and Mac
         log_dir = os.path.join(get_base_dir(), "logs")
     else:
-        # Honor --data-dir on Windows too
-        if custom_data_dir:
-            log_dir = os.path.join(custom_data_dir, "logs")
+        if _has_any_dir_override():
+            log_dir = ntpath.join(get_base_dir(), "logs")
         else:
-            # Use platformdirs default for Windows
             log_dir = platformdirs.user_log_dir(APP_NAME, APP_AUTHOR)
 
     os.makedirs(log_dir, exist_ok=True)
@@ -211,21 +402,21 @@ def get_e2ee_store_dir() -> str:
     """
     Get the absolute path to the application's end-to-end encryption (E2EE) data store directory, creating it if necessary.
 
-    On Linux and macOS the directory is located under the application base directory; on Windows it uses the configured custom data directory when set, otherwise the platform-specific user data directory. The directory will be created if it does not exist.
+    On Linux and macOS the directory is located under the application base directory.
+    On Windows it uses the configured base/data override when set, otherwise the
+    platform-specific user data directory. The directory will be created if it
+    does not exist.
 
     Returns:
         store_dir (str): Absolute path to the ensured E2EE store directory.
     """
     if sys.platform in ["linux", "darwin"]:
-        # Use ~/.mmrelay/store/ for Linux and Mac
         store_dir = os.path.join(get_base_dir(), "store")
     else:
-        # Honor --data-dir on Windows too
-        if custom_data_dir:
-            store_dir = os.path.join(custom_data_dir, "store")
+        if _has_any_dir_override():
+            store_dir = ntpath.join(get_base_dir(), "store")
         else:
-            # Use platformdirs default for Windows
-            store_dir = os.path.join(
+            store_dir = ntpath.join(
                 platformdirs.user_data_dir(APP_NAME, APP_AUTHOR), "store"
             )
 
@@ -574,39 +765,49 @@ def apply_env_config_overrides(config: dict[str, Any] | None) -> dict[str, Any]:
 
 def load_credentials() -> dict[str, Any] | None:
     """
-    Locate and load Matrix credentials from the configured credentials path or the application's base configuration directory.
+    Finds and loads Matrix credentials from candidate credentials.json locations.
 
-    If the MMRELAY_CREDENTIALS_PATH environment variable is set, it is used as the credentials file path; if it refers to a directory, the file name "credentials.json" will be resolved within that directory. If the environment variable is not set, the function looks for "credentials.json" in the application's base configuration directory. The file is parsed as JSON and returned as a dictionary.
+    Searches an explicit credentials path (from environment or configuration) and other candidate locations in order, parses the first existing credentials file as JSON, and returns its contents.
 
     Returns:
-        dict[str, Any]: Parsed credentials on success.
-        None: If the credentials file is missing, unreadable, or contains invalid JSON.
+        dict[str, Any]: Parsed credentials if a valid credentials file is found.
+        None: If no credentials file is found, is unreadable, or contains invalid JSON.
     """
-    config_dir = ""
     try:
-        credentials_path, config_dir = _resolve_credentials_path(
-            os.getenv("MMRELAY_CREDENTIALS_PATH"), allow_relay_config_sources=False
+        explicit_path = get_explicit_credentials_path(relay_config)
+        config_paths = [config_path] if config_path else None
+        candidate_paths = get_credentials_search_paths(
+            explicit_path=explicit_path,
+            config_paths=config_paths,
         )
-
-        logger.debug(f"Looking for credentials at: {credentials_path}")
-
-        if os.path.exists(credentials_path):
+        logger.debug("Looking for credentials at: %s", candidate_paths)
+        for credentials_path in candidate_paths:
+            if not os.path.exists(credentials_path):
+                continue
             with open(credentials_path, "r", encoding="utf-8") as f:
                 credentials = cast(dict[str, Any], json.load(f))
-            logger.debug(f"Successfully loaded credentials from {credentials_path}")
+            logger.debug("Successfully loaded credentials from %s", credentials_path)
             return credentials
-        else:
-            logger.debug(f"No credentials file found at {credentials_path}")
-            # On Windows, also log the directory contents for debugging
-            if sys.platform == "win32" and os.path.exists(config_dir):
+    except (OSError, PermissionError, json.JSONDecodeError):
+        logger.exception("Error loading credentials.json")
+        return None
+    else:
+        # On Windows, also log the directory contents for debugging
+        if sys.platform == "win32":
+            debug_candidates: list[str] = []
+            if config_path:
+                debug_candidates.append(os.path.dirname(config_path))
+            debug_candidates.append(get_base_dir())
+            seen: set[str] = set()
+            for debug_dir in debug_candidates:
+                if not debug_dir or debug_dir in seen:
+                    continue
+                seen.add(debug_dir)
                 try:
-                    files = os.listdir(config_dir)
-                    logger.debug(f"Directory contents of {config_dir}: {files}")
+                    files = os.listdir(debug_dir)
+                    logger.debug("Directory contents of %s: %s", debug_dir, files)
                 except OSError:
                     pass
-            return None
-    except (OSError, PermissionError, json.JSONDecodeError):
-        logger.exception(f"Error loading credentials.json from {config_dir}")
         return None
 
 
@@ -614,73 +815,170 @@ def save_credentials(
     credentials: dict[str, Any], credentials_path: str | None = None
 ) -> None:
     """
-    Persist a JSON-serializable credentials mapping to a credentials.json file.
+    Persist the given credentials mapping to a credentials.json file using an explicit path or well-defined fallbacks.
 
-    If `credentials_path` is a directory (or ends with a path separator) the filename
-    "credentials.json" is appended. If `credentials_path` is omitted the effective
-    path is resolved from, in order: the `MMRELAY_CREDENTIALS_PATH` environment
-    variable, `relay_config["credentials_path"]`, and `relay_config["matrix"]["credentials_path"]`
-    (when `matrix` is a mapping). The function creates the target directory if
-    missing and, on Unix-like systems, attempts to set restrictive file permissions
-    (0o600). I/O and permission errors are caught and logged; they are not raised.
-
+    If `credentials_path` is a directory (or ends with a path separator) the filename "credentials.json" is appended. If `credentials_path` is omitted the function uses an explicit path from the environment or configuration if available (for example, MMRELAY_CREDENTIALS_PATH, relay_config["credentials_path"], or relay_config["matrix"]["credentials_path"]); if none is found it attempts to write under the config directory (when known) and then the application's base/data locations. The function will create the target directory when missing and, on Unix-like systems, attempt to set file permissions to 0o600. I/O and permission errors are logged and the function will try fallback locations; it does not raise on write failures (errors are logged).
     Parameters:
         credentials (dict): JSON-serializable mapping of credentials to persist.
-        credentials_path (str | None): Optional target file path or directory. If
-            omitted, a default path under the application's base directory is used.
+        credentials_path (str | None): Optional target file path or directory. When omitted, the function resolves a path using environment/configuration fallbacks and base/data defaults.
+    """
+    try:
+
+        def _normalize_explicit_path(path: str) -> str:
+            """
+            Normalize an explicit credentials path, expanding user home and ensuring it points to a credentials.json file.
+
+            Parameters:
+                path (str): A user-supplied file or directory path. If the path is a directory (existing or ending with a path separator), "credentials.json" is appended; if the path lacks a directory component, the application's base data directory is prepended.
+
+            Returns:
+                normalized_path (str): The expanded and normalized path pointing to a credentials.json file.
+            """
+            expanded = os.path.expanduser(path)
+            path_is_dir = os.path.isdir(expanded)
+            if not path_is_dir:
+                path_is_dir = bool(
+                    expanded.endswith(os.path.sep)
+                    or (os.path.altsep and expanded.endswith(os.path.altsep))
+                )
+            if path_is_dir:
+                normalized_dir = os.path.normpath(expanded)
+                expanded = os.path.join(normalized_dir, "credentials.json")
+            if not os.path.dirname(expanded):
+                base_dir = get_base_dir()
+                expanded = os.path.join(base_dir, os.path.basename(expanded))
+            return expanded
+
+        explicit_path = credentials_path or get_explicit_credentials_path(relay_config)
+        if explicit_path:
+            candidate_paths = [_normalize_explicit_path(explicit_path)]
+            allow_fallback = False
+        else:
+            candidate_paths = []
+            allow_fallback = True
+            if config_path:
+                config_dir_candidate = os.path.dirname(os.path.abspath(config_path))
+                candidate_paths.append(
+                    os.path.join(config_dir_candidate, "credentials.json")
+                )
+            candidate_paths.append(os.path.join(get_base_dir(), "credentials.json"))
+
+        last_error: OSError | PermissionError | None = None
+        config_dir = ""
+        data_dir_candidate: str | None = None
+        base_dir_candidate: str | None = None
+
+        def _handle_candidate_error(
+            message: str, error: OSError | PermissionError
+        ) -> bool:
+            """
+            Handle an I/O or permission error for a candidate credentials path and optionally prepare fallback candidates.
+
+            Records the provided error to the enclosing scope, logs a warning using the provided message and error, and—if falling back is allowed—ensures that base- and data-directory fallback credential paths are appended to the shared candidate_paths list (avoiding duplicates) and sets base_dir_candidate and data_dir_candidate in the enclosing scope.
+
+            Parameters:
+                message (str): Human-readable message to include in the warning log.
+                error (OSError | PermissionError): The error that occurred while handling a candidate path.
+
+            Returns:
+                bool: `False` if fallback is not allowed (no changes to candidate lists), `True` if fallback candidates were ensured/added.
+            """
+            nonlocal last_error, data_dir_candidate, base_dir_candidate
+            last_error = error
+            logger.warning(message, error)
+            if not allow_fallback:
+                return False
+            if base_dir_candidate is None:
+                base_dir_candidate = os.path.join(get_base_dir(), "credentials.json")
+                if base_dir_candidate not in candidate_paths:
+                    candidate_paths.append(base_dir_candidate)
+            if data_dir_candidate is None:
+                data_dir_candidate = os.path.join(
+                    get_data_dir(create=False), "credentials.json"
+                )
+                if data_dir_candidate not in candidate_paths:
+                    candidate_paths.append(data_dir_candidate)
+            return True
+
+        idx = 0
+        while idx < len(candidate_paths):
+            candidate = candidate_paths[idx]
+            config_dir = os.path.dirname(candidate)
+            if not config_dir:
+                config_dir = get_base_dir()
+                candidate = os.path.join(config_dir, os.path.basename(candidate))
+            try:
+                os.makedirs(config_dir, exist_ok=True)
+            except (OSError, PermissionError) as e:
+                should_continue = _handle_candidate_error(
+                    f"Could not create credentials directory {config_dir}: %s", e
+                )
+                if not should_continue:
+                    break
+                idx += 1
+                continue
+
+            try:
+                # Log the path for debugging, especially on Windows
+                logger.info("Saving credentials to: %s", candidate)
+                with open(candidate, "w", encoding="utf-8") as f:
+                    json.dump(credentials, f, indent=2)
+            except (OSError, PermissionError) as e:
+                should_continue = _handle_candidate_error(
+                    f"Error writing credentials.json to {candidate}: %s", e
+                )
+                if not should_continue:
+                    break
+                idx += 1
+                continue
+
+            # Set secure permissions on Unix systems (600 - owner read/write only)
+            set_secure_file_permissions(candidate)
+
+            logger.info("Successfully saved credentials to %s", candidate)
+
+            # Verify the file was actually created
+            if os.path.exists(candidate):
+                logger.debug("Verified credentials.json exists at %s", candidate)
+            else:
+                logger.error("Failed to create credentials.json at %s", candidate)
+            return None
+
+        if last_error:
+            raise last_error
+        raise CredentialsPathError()
+    except (OSError, PermissionError):
+        if sys.platform == "win32":
+            logger.exception(
+                "Error saving credentials.json to %s. On Windows, ensure the application "
+                "has write permissions to the user data directory.",
+                config_dir,
+            )
+        else:
+            logger.exception("Error saving credentials.json to %s", config_dir)
+
+
+# Use structured logging to align with the rest of the codebase.
+def _get_config_logger() -> "logging.Logger":
+    # Late import avoids circular dependency (log_utils -> config).
+    """
+    Obtain a logger for configuration-related messages.
+
+    Selects a logger named "Config". When running under a unittest.mock patched environment, returns the standard library logger to avoid import cycles during tests.
 
     Returns:
-        None
+        logging.Logger: Logger instance named "Config".
     """
-    config_dir = ""
-    try:
-        credentials_path, config_dir = _resolve_credentials_path(
-            credentials_path, allow_relay_config_sources=True
-        )
+    if os.path.join.__module__ == "unittest.mock":
+        import logging as _logging
 
-        # Ensure the directory exists and is writable
-        os.makedirs(config_dir, exist_ok=True)
+        return _logging.getLogger("Config")
+    from mmrelay.log_utils import get_logger
 
-        # Log the path for debugging, especially on Windows
-        logger.info(f"Saving credentials to: {credentials_path}")
-
-        with open(credentials_path, "w", encoding="utf-8") as f:
-            json.dump(credentials, f, indent=2)
-
-        # Set secure permissions on Unix systems (600 - owner read/write only)
-        set_secure_file_permissions(credentials_path)
-
-        logger.info(f"Successfully saved credentials to {credentials_path}")
-
-        # Verify the file was actually created
-        if os.path.exists(credentials_path):
-            logger.debug(f"Verified credentials.json exists at {credentials_path}")
-        else:
-            logger.error(f"Failed to create credentials.json at {credentials_path}")
-
-    except (OSError, PermissionError):
-        logger.exception(f"Error saving credentials.json to {config_dir}")
-        # Try to provide helpful Windows-specific guidance
-        if sys.platform == "win32":
-            logger.error(
-                "On Windows, ensure the application has write permissions to the user data directory"
-            )
-            logger.error(f"Attempted path: {config_dir}")
+    return get_logger("Config")
 
 
-# Set up a basic logger for config
-logger = logging.getLogger("Config")
-logger.setLevel(logging.INFO)
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    handler.setFormatter(
-        logging.Formatter(
-            fmt="%(asctime)s %(levelname)s:%(name)s:%(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S %z",
-        )
-    )
-    logger.addHandler(handler)
-logger.propagate = False
+logger = _get_config_logger()
 
 # Initialize empty config
 relay_config: dict[str, Any] = {}
@@ -847,16 +1145,16 @@ def _load_config_from_env_mapping(
 
 def set_config(module: Any, passed_config: dict[str, Any]) -> dict[str, Any]:
     """
-    Assign the given configuration to a module and apply known module-specific settings.
+    Assign the provided configuration mapping to a module and apply known module-specific settings.
 
-    If the target module's name is "matrix_utils", this may assign `matrix_rooms` and, when present, `matrix.homeserver`, `matrix.access_token`, and `matrix.bot_user_id` into module attributes. If the module's name is "meshtastic_utils", this may assign `matrix_rooms`. If the module exposes a callable `setup_config()`, it will be invoked.
+    When the module appears to be the Matrix helper, propagate `matrix_rooms` and, when a `matrix` section contains `homeserver`, `access_token`, and `bot_user_id`, assign those values to the module's corresponding attributes. When the module appears to be the Meshtastic helper, propagate `matrix_rooms`. If the module exposes a callable `setup_config()`, it will be invoked after assignments.
 
     Parameters:
-        module (Any): The module object to receive the configuration.
-        passed_config (dict[str, Any]): Configuration mapping to attach to the module.
+        module (Any): Module object to receive configuration attributes.
+        passed_config (dict[str, Any]): Configuration mapping to assign to the module.
 
     Returns:
-        dict[str, Any]: The same `passed_config` object that was assigned to the module.
+        dict[str, Any]: The same `passed_config` object that was attached to the module.
     """
     # Set the module's config variable
     module.config = passed_config
@@ -895,15 +1193,20 @@ def set_config(module: Any, passed_config: dict[str, Any]) -> dict[str, Any]:
     return passed_config
 
 
-def load_config(config_file: str | None = None, args: Any = None) -> dict[str, Any]:
+def load_config(
+    config_file: str | None = None,
+    args: Any = None,
+    config_paths: list[str] | None = None,
+) -> dict[str, Any]:
     """
     Load the application configuration from a YAML file or from environment variables.
 
-    If `config_file` is provided and readable, that file is used; otherwise candidate locations from `get_config_paths(args)` are searched in order and the first readable YAML file is loaded. Empty or null YAML content is treated as an empty dictionary. Environment-derived overrides are merged into the loaded configuration. The function updates the module-level `relay_config` and `config_path` to reflect the resulting configuration source.
+    If `config_file` is provided and readable, that file is used; otherwise candidate locations from `config_paths` or `get_config_paths(args)` are searched in order and the first readable YAML file is loaded. Empty or null YAML content is treated as an empty dictionary. Environment-derived overrides are merged into the loaded configuration. The function updates the module-level `relay_config` and `config_path` to reflect the resulting configuration source.
 
     Parameters:
-        config_file (str | None): Path to a specific YAML configuration file to load. If `None`, candidate paths from `get_config_paths(args)` are used.
-        args: Parsed command-line arguments forwarded to `get_config_paths()` to influence search order.
+        config_file (str | None): Path to a specific YAML configuration file to load. If `None`, candidate paths from `config_paths` or `get_config_paths(args)` are used.
+        args: Parsed command-line arguments forwarded to `get_config_paths()` to influence search order when `config_paths` is not provided.
+        config_paths: Optional list of config paths to search instead of calling `get_config_paths(args)`.
 
     Returns:
         dict: The resulting configuration dictionary. Returns an empty dict if no configuration is found or a file read/parse error occurs.
@@ -928,7 +1231,8 @@ def load_config(config_file: str | None = None, args: Any = None) -> dict[str, A
             return {}
 
     # Otherwise, search for a config file
-    config_paths = get_config_paths(args)
+    if config_paths is None:
+        config_paths = get_config_paths(args)
 
     # Try each config path in order until we find one that exists
     for path in config_paths:
