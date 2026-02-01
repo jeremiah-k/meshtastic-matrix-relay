@@ -13,6 +13,7 @@ Tests edge cases and error handling including:
 """
 
 import os
+import shutil
 import sqlite3
 import sys
 import tempfile
@@ -324,10 +325,10 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
         Test that update_longnames handles None and empty list inputs without error.
         """
         # Should handle None gracefully
-        update_longnames(None)
+        update_longnames(None)  # type: ignore[arg-type]
 
         # Should handle empty list gracefully
-        update_longnames([])
+        update_longnames([])  # type: ignore[arg-type]
 
     def test_update_shortnames_malformed_node_data(self):
         """
@@ -504,6 +505,112 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                     warning_call = mock_logger.warning.call_args[0]
                     self.assertIn("Failed to migrate", warning_call[0])
 
+    def test_migrate_legacy_db_sidecar_failure_with_rollback(self):
+        """Test _migrate_legacy_db_if_needed handles sidecar migration failure and rollback."""
+        from mmrelay.db_utils import _migrate_legacy_db_if_needed
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            legacy_path = os.path.join(temp_dir, "legacy.sqlite")
+            default_path = os.path.join(temp_dir, "default.sqlite")
+
+            # Create a legacy database file
+            with open(legacy_path, "w") as f:
+                f.write("legacy db content")
+
+            # Create wal sidecar
+            wal_path = f"{legacy_path}-wal"
+            with open(wal_path, "w") as f:
+                f.write("wal content")
+
+            # Track calls to shutil.move to simulate sidecar failure
+            call_count = [0]
+
+            def mock_move(src, dst):
+                call_count[0] += 1
+                if call_count[0] == 1:
+                    # First call - move main db successfully
+                    shutil.move(src, dst)
+                elif call_count[0] == 2:
+                    # Second call - sidecar move fails
+                    raise OSError("Sidecar move failed")
+                else:
+                    # Rollback calls
+                    shutil.move(src, dst)
+
+            with patch("shutil.move", side_effect=mock_move):
+                with patch("mmrelay.db_utils.logger") as mock_logger:
+                    result = _migrate_legacy_db_if_needed(
+                        default_path=default_path, legacy_candidates=[legacy_path]
+                    )
+
+                    # Should return legacy_path due to sidecar failure
+                    self.assertEqual(result, legacy_path)
+
+                    # Should log sidecar failure warnings
+                    warning_calls = [
+                        call
+                        for call in mock_logger.method_calls
+                        if call[0] == "warning"
+                    ]
+                    self.assertTrue(len(warning_calls) > 0)
+
+    def test_migrate_legacy_db_partial_rollback_failure(self):
+        """Test _migrate_legacy_db_if_needed handles sidecar failure with rollback."""
+        from mmrelay.db_utils import _migrate_legacy_db_if_needed
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            legacy_path = os.path.join(temp_dir, "legacy.sqlite")
+            default_path = os.path.join(temp_dir, "default.sqlite")
+
+            # Create a legacy database file
+            with open(legacy_path, "w") as f:
+                f.write("legacy db content")
+
+            # Create wal sidecar (shm will be skipped since it doesn't exist)
+            wal_path = f"{legacy_path}-wal"
+            with open(wal_path, "w") as f:
+                f.write("wal content")
+
+            # Simulate: main db moves ok, sidecar fails, rollback succeeds
+            call_count = [0]
+
+            def mock_move(src, dst):
+                call_count[0] += 1
+                if call_count[0] == 1:
+                    # Move main db successfully using real shutil
+                    shutil.move(src, dst)
+                elif call_count[0] == 2:
+                    # Sidecar move fails
+                    raise OSError("Sidecar move failed")
+                elif call_count[0] == 3:
+                    # Rollback main db successfully
+                    shutil.move(src, dst)
+                else:
+                    raise RuntimeError(
+                        f"Unexpected call {call_count[0]}: {src} -> {dst}"
+                    )
+
+            with patch("shutil.move", side_effect=mock_move):
+                with patch("mmrelay.db_utils.logger") as mock_logger:
+                    result = _migrate_legacy_db_if_needed(
+                        default_path=default_path, legacy_candidates=[legacy_path]
+                    )
+
+                    # Should return legacy_path after rollback
+                    self.assertEqual(result, legacy_path)
+
+                    # Should log warning about sidecar failure and successful rollback
+                    warning_calls = [
+                        call
+                        for call in mock_logger.method_calls
+                        if call[0] == "warning"
+                    ]
+                    # We expect at least the sidecar failure warning
+                    self.assertTrue(
+                        len(warning_calls) >= 1,
+                        f"Expected at least 1 warning call, got {len(warning_calls)}: {warning_calls}",
+                    )
+
     def test_get_db_path_new_layout_migration(self):
         """Test get_db_path with new layout enabled and legacy migration."""
         import mmrelay.db_utils
@@ -539,34 +646,90 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             data_dir = os.path.join(temp_dir, "data")
             base_dir = temp_dir
+            default_path = os.path.join(data_dir, "meshtastic.sqlite")
             legacy_base_path = os.path.join(base_dir, "meshtastic.sqlite")
             legacy_data_path = os.path.join(base_dir, "data", "meshtastic.sqlite")
 
+            # Note: default_path and legacy_data_path are the same when data_dir = base_dir/data
+            # So we need to create files at 2 locations but they appear as 3 candidates
             os.makedirs(data_dir, exist_ok=True)
-            os.makedirs(os.path.dirname(legacy_data_path), exist_ok=True)
 
-            # Create multiple legacy databases
-            for path in [legacy_base_path, legacy_data_path]:
+            # Create files at unique paths
+            # default_path == legacy_data_path, so we get 2 unique physical files
+            for path in [default_path, legacy_base_path]:
                 with open(path, "w") as f:
                     f.write("legacy db")
-                # Touch files to have different mtimes
-                import time
 
-                time.sleep(0.01)
+            # Make default_path newer
+            import time
 
-            # Make one newer than the other
-            os.utime(legacy_data_path, None)
+            time.sleep(0.01)
+            os.utime(default_path, None)
 
             mmrelay.db_utils.config = {"database": {}}
 
             with patch("mmrelay.db_utils.is_new_layout_enabled", return_value=False):
                 with patch("mmrelay.db_utils.get_data_dir", return_value=data_dir):
                     with patch("mmrelay.db_utils.get_base_dir", return_value=base_dir):
-                        clear_db_path_cache()
-                        result = get_db_path()
+                        with patch("mmrelay.db_utils.logger") as mock_logger:
+                            clear_db_path_cache()
+                            result = get_db_path()
 
-            # Should use most recently updated database
-            self.assertEqual(result, legacy_data_path)
+                            # Should use most recently updated database (default_path)
+                            self.assertEqual(result, default_path)
+
+                            # Should log warning about multiple databases
+                            # Only if active_path != default_path (i.e., if we pick a non-default path)
+                            # In this case we pick default_path, so no warning expected
+                            warning_calls = [
+                                call
+                                for call in mock_logger.method_calls
+                                if call[0] == "warning"
+                            ]
+                            # No warning since we picked the default path
+                            self.assertEqual(len(warning_calls), 0)
+
+    def test_get_db_path_legacy_multiple_databases_warning(self):
+        """Test get_db_path logs warning when using non-default legacy database."""
+        import mmrelay.db_utils
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_dir = os.path.join(temp_dir, "data")
+            base_dir = temp_dir
+            default_path = os.path.join(data_dir, "meshtastic.sqlite")
+            legacy_base_path = os.path.join(base_dir, "meshtastic.sqlite")
+
+            os.makedirs(data_dir, exist_ok=True)
+
+            # Create database at default path first
+            with open(default_path, "w") as f:
+                f.write("default db")
+
+            # Wait and create database at legacy path
+            import time
+
+            time.sleep(0.01)
+            with open(legacy_base_path, "w") as f:
+                f.write("legacy db")
+            # Make legacy path newer
+            os.utime(legacy_base_path, None)
+
+            mmrelay.db_utils.config = {"database": {}}
+
+            with patch("mmrelay.db_utils.is_new_layout_enabled", return_value=False):
+                with patch("mmrelay.db_utils.get_data_dir", return_value=data_dir):
+                    with patch("mmrelay.db_utils.get_base_dir", return_value=base_dir):
+                        with patch("mmrelay.db_utils.logger") as mock_logger:
+                            clear_db_path_cache()
+                            result = get_db_path()
+
+                            # Should use the newer legacy database (not default)
+                            self.assertEqual(result, legacy_base_path)
+
+                            # Should log warning about multiple databases
+                            mock_logger.warning.assert_called_once()
+                            warning_msg = mock_logger.warning.call_args[0][0]
+                            self.assertIn("Multiple database files found", warning_msg)
 
     def test_get_db_path_legacy_single_database_not_default(self):
         """Test get_db_path when single legacy database exists but not at default path."""
