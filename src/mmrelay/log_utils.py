@@ -187,13 +187,13 @@ def _should_log_to_file(args: argparse.Namespace | None) -> bool:
 
 def _resolve_log_file(args: argparse.Namespace | None) -> str:
     """
-    Determine the log file path, preferring a CLI-provided value, then the configuration, and falling back to the default log directory.
-
+    Choose the log file path using the following precedence: CLI `args.logfile`, configuration `logging.filename`, or the default "<log_dir>/mmrelay.log".
+    
     Parameters:
-        args: An argparse-like namespace or object; may be None. If present and has a truthy `logfile` attribute, that value is used.
-
+        args (argparse.Namespace | None): Optional argparse-like namespace; if present and has a truthy `logfile` attribute, that value is selected.
+    
     Returns:
-        str: Filesystem path to the log file chosen according to the precedence: `args.logfile`, `config["logging"]["filename"]`, or the default "<log_dir>/mmrelay.log".
+        str: Filesystem path selected for logging.
     """
     logfile = getattr(args, "logfile", None) if args is not None else None
     if isinstance(logfile, str) and logfile:
@@ -208,8 +208,12 @@ def _resolve_log_file(args: argparse.Namespace | None) -> str:
 
 def get_log_dir() -> str:
     """
-    Lazily resolve the log directory to avoid circular imports during startup.
-    """
+    Return the filesystem directory to use for application logs, resolved lazily.
+    
+    This function obtains the log directory from the application's configuration helper if available; if the configuration helper cannot be imported, it falls back to the current working directory.
+    
+    Returns:
+        log_dir (str): Path to the directory where logs should be written."""
     try:
         from mmrelay.config import get_log_dir as _get_log_dir
     except ImportError:
@@ -222,14 +226,12 @@ def _configure_logger(
 ) -> logging.Logger:
     """
     Configure a logger's level and attach console and optional rotating file handlers based on the application's configuration and optional CLI arguments.
-
-    Updates internal generation tracking for the logger and, when configuring the main application logger, updates the module-level log file path.
-
+    
     Parameters:
         args (argparse.Namespace | None): Optional CLI arguments that can force or override file logging and influence the resolved logfile path.
-
+    
     Returns:
-        logging.Logger: The same logger instance after applying the configuration.
+        logging.Logger: The configured logger instance.
     """
     global log_file_path
 
