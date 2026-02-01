@@ -88,7 +88,9 @@ def _get_plugin_root_dirs() -> list[str]:
         if data_dir and data_dir != base_dir:
             data_root = os.path.join(data_dir, "plugins")
             if data_root not in roots:
-                if os.path.isdir(data_root) and not os.path.isdir(roots[0]):
+                if os.path.isdir(data_root) and (
+                    not roots or not os.path.isdir(roots[0])
+                ):
                     roots.insert(0, data_root)
                 else:
                     roots.append(data_root)

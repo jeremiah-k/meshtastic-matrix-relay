@@ -1582,14 +1582,14 @@ class TestRunMainFunction(unittest.TestCase):
     @patch("mmrelay.config.os.makedirs")
     def test_run_main_legacy_layout_warning(
         self,
-        mock_makedirs,
+        _mock_makedirs,
         mock_get_log_dir,
         mock_get_data_dir,
         mock_get_base_dir,
         mock_is_legacy_layout_enabled,
         mock_load_credentials,
         mock_load_config,
-        mock_print_banner,
+        _mock_print_banner,
     ):
         """Test that warning messages are logged when legacy layout is enabled."""
         mock_config = {

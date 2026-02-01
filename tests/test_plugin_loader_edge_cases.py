@@ -565,7 +565,6 @@ class Plugin:
             base_dir = os.path.join(temp_dir, "base")
             data_dir = os.path.join(base_dir, "data")
             data_root = os.path.join(data_dir, "plugins")
-            base_root = os.path.join(base_dir, "plugins")
 
             # Only create data plugins directory
             os.makedirs(data_root, exist_ok=True)
@@ -596,9 +595,9 @@ class Plugin:
             ):
                 with patch("os.makedirs") as mock_makedirs:
                     # Make local directory creation fail
-                    def side_effect(path, exist_ok=False):
-                        if "app" in path:  # Local app directory
-                            raise OSError("Cannot create directory")
+                    def side_effect(_path, **_kwargs):
+                        if "app" in _path:  # Local app directory
+                            raise OSError()
                         return None
 
                     mock_makedirs.side_effect = side_effect
@@ -625,9 +624,9 @@ class Plugin:
             ):
                 with patch("os.makedirs") as mock_makedirs:
                     # Make local directory creation fail with PermissionError
-                    def side_effect(path, exist_ok=False):
-                        if "app" in path:  # Local app directory
-                            raise PermissionError("Permission denied")
+                    def side_effect(_path, **_kwargs):
+                        if "app" in _path:  # Local app directory
+                            raise PermissionError()
                         return None
 
                     mock_makedirs.side_effect = side_effect

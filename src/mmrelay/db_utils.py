@@ -64,7 +64,7 @@ def _active_mtime(path: str) -> float:
 
 def _migrate_legacy_db_if_needed(
     *, default_path: str, legacy_candidates: list[str]
-) -> None:
+) -> str:
     """
     If any legacy database paths are provided, selects the most recently active one and attempts to move it (and its -wal/-shm sidecars) to the specified default path.
 
@@ -72,13 +72,19 @@ def _migrate_legacy_db_if_needed(
         default_path (str): Destination path for the migrated database.
         legacy_candidates (list[str]): Candidate legacy database file paths; the function picks the most recently active by modification time.
 
+    Returns:
+        str: The path that should be used for the database. On full migration
+        success this is `default_path`; on any migration failure it is the
+        selected legacy path.
+
     Notes:
-        - If `legacy_candidates` is empty, the function returns without action.
+        - If `legacy_candidates` is empty, the function returns `default_path`.
         - On success, an informational log entry is written.
-        - On failure (OSError or PermissionError), the function logs a warning and leaves the legacy files in place; it does not raise.
+        - On failure (OSError or PermissionError), the function logs a warning and
+          leaves the legacy files in place; it does not raise.
     """
     if not legacy_candidates:
-        return
+        return default_path
     legacy_path = max(legacy_candidates, key=_active_mtime)
     moved_main = False
     moved_sidecars: list[tuple[str, str]] = []
@@ -139,12 +145,13 @@ def _migrate_legacy_db_if_needed(
                     "Database remains at %s.",
                     legacy_path,
                 )
-            return
+            return legacy_path
         logger.info(
             "Migrated database from legacy location %s to %s",
             legacy_path,
             default_path,
         )
+        return default_path
     except (OSError, PermissionError) as e:
         logger.warning(
             "Failed to migrate database from %s to %s: %s. "
@@ -153,6 +160,7 @@ def _migrate_legacy_db_if_needed(
             default_path,
             e,
         )
+        return legacy_path
 
 
 # Get the database path
@@ -257,7 +265,7 @@ def get_db_path() -> str:
             for path in (legacy_base_path, legacy_nested_data_path)
             if path and os.path.exists(path)
         ]
-        _migrate_legacy_db_if_needed(
+        default_path = _migrate_legacy_db_if_needed(
             default_path=default_path,
             legacy_candidates=legacy_candidates,
         )

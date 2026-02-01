@@ -539,7 +539,6 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             data_dir = os.path.join(temp_dir, "data")
             base_dir = temp_dir
-            default_path = os.path.join(data_dir, "meshtastic.sqlite")
             legacy_base_path = os.path.join(base_dir, "meshtastic.sqlite")
             legacy_data_path = os.path.join(base_dir, "data", "meshtastic.sqlite")
 
@@ -576,7 +575,6 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             data_dir = os.path.join(temp_dir, "data")
             base_dir = temp_dir
-            default_path = os.path.join(data_dir, "meshtastic.sqlite")
             # Use legacy_base_path which is at base_dir, not inside data/ subdirectory
             legacy_base_path = os.path.join(base_dir, "meshtastic.sqlite")
 

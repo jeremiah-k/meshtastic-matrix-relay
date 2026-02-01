@@ -488,7 +488,7 @@ class TestConfigEdgeCases(unittest.TestCase):
                     with patch(
                         "mmrelay.config.os.listdir",
                         return_value=["file1.txt", "file2.json"],
-                    ) as mock_listdir:
+                    ):
                         with patch("mmrelay.config.logger") as mock_logger:
                             # Reset credentials state
                             import mmrelay.config
@@ -551,7 +551,7 @@ class TestConfigEdgeCases(unittest.TestCase):
 
         with patch("mmrelay.config.os.makedirs", side_effect=OSError("Disk full")):
             with patch("mmrelay.config.logger") as mock_logger:
-                result = save_credentials(credentials)
+                save_credentials(credentials)
 
                 # Should log exception and not raise
                 mock_logger.exception.assert_called()

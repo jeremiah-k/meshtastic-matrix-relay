@@ -376,6 +376,7 @@ class TestCLIEdgeCases(unittest.TestCase):
                     result = handle_cli_commands(args)
 
                 # Verify the base directory was set and created
+                self.assertIsNone(result)
                 self.assertEqual(
                     mmrelay.config.custom_base_dir, os.path.abspath(base_dir)
                 )
@@ -413,6 +414,7 @@ class TestCLIEdgeCases(unittest.TestCase):
                         result = handle_cli_commands(args)
 
                 # Verify the data directory was set and created
+                self.assertIsNone(result)
                 self.assertEqual(
                     mmrelay.config.custom_data_dir, os.path.abspath(data_dir)
                 )
