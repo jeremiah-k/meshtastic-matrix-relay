@@ -504,9 +504,7 @@ If you want to opt in to the new layout (`base_dir` with data under
 3. If you want credentials in the new default location, move
    `credentials.json` to `/app/credentials.json` (or keep the old location and
    set `MMRELAY_CREDENTIALS_PATH=/app/data/credentials.json`).
-4. On first startup, MMRelay will attempt to migrate `meshtastic.sqlite`
-   (plus `-wal`/`-shm`) from `/app/meshtastic.sqlite` to
-   `/app/data/meshtastic.sqlite` if the new path is empty.
+4. On first startup, MMRelay will attempt to migrate legacy database files (including `-wal`/`-shm` sidecars) to the new location at `/app/data/meshtastic.sqlite`. This handles common legacy paths like `/app/data/data/meshtastic.sqlite` (from older Docker setups) and `/app/meshtastic.sqlite`.
 5. Logs and E2EE store files will default to `/app/logs` and `/app/store`.
    To keep them under `/app/data`, set `logging.filename` and
    `matrix.e2ee.store_path` accordingly.
