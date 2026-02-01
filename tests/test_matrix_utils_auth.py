@@ -1076,6 +1076,10 @@ def test_save_credentials(
 ):
     """Test credentials saving."""
     mock_get_base_dir.return_value = "/test/config"
+    import mmrelay.config as config_module
+
+    original_config_path = config_module.config_path
+    config_module.config_path = None
 
     test_credentials = {
         "homeserver": "https://matrix.example.org",
@@ -1084,7 +1088,10 @@ def test_save_credentials(
         "device_id": "TEST_DEVICE",
     }
 
-    save_credentials(test_credentials)
+    try:
+        save_credentials(test_credentials)
+    finally:
+        config_module.config_path = original_config_path
 
     _mock_makedirs.assert_called_once_with("/test/config", exist_ok=True)
     _mock_open.assert_called_once()

@@ -883,9 +883,9 @@ def save_credentials(
 
             # Verify the file was actually created
             if os.path.exists(candidate):
-                logger.debug(f"Verified credentials.json exists at {candidate}")
+                logger.debug("Verified credentials.json exists at %s", candidate)
             else:
-                logger.error(f"Failed to create credentials.json at {candidate}")
+                logger.error("Failed to create credentials.json at %s", candidate)
             return None
 
         if last_error:
@@ -898,7 +898,7 @@ def save_credentials(
             logger.error(
                 "On Windows, ensure the application has write permissions to the user data directory"
             )
-            logger.error(f"Attempted path: {config_dir}")
+            logger.error("Attempted path: %s", config_dir)
 
 
 # Use structured logging to align with the rest of the codebase.

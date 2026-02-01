@@ -830,7 +830,7 @@ def _get_plugin_dirs(plugin_type: str) -> list[str]:
             os.makedirs(user_dir, exist_ok=True)
             dirs.append(user_dir)
         except (OSError, PermissionError) as e:
-            logger.warning(f"Cannot create user plugin directory {user_dir}: {e}")
+            logger.warning("Cannot create user plugin directory %s: %s", user_dir, e)
 
     # Check local directory (backward compatibility)
     local_dir = os.path.join(get_app_path(), "plugins", plugin_type)
