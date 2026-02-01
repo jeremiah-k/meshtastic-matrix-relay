@@ -611,6 +611,283 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                         f"Expected at least 1 warning call, got {len(warning_calls)}: {warning_calls}",
                     )
 
+    def test_migrate_legacy_db_rollback_errors_logged(self):
+        """Test _migrate_legacy_db_if_needed logs rollback errors when rollback fails (lines 128-141)."""
+        from mmrelay.db_utils import _migrate_legacy_db_if_needed
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            legacy_path = os.path.join(temp_dir, "legacy.sqlite")
+            default_path = os.path.join(temp_dir, "default.sqlite")
+
+            # Create a legacy database file
+            with open(legacy_path, "w") as f:
+                f.write("legacy db content")
+
+            # Create wal sidecar
+            wal_path = f"{legacy_path}-wal"
+            with open(wal_path, "w") as f:
+                f.write("wal content")
+
+            # Save reference to real shutil.move BEFORE patching
+            real_shutil_move = shutil.move
+
+            # Simulate: main db moves ok, sidecar fails, rollback also fails
+            call_count = [0]
+
+            def mock_move(src, dst):
+                call_count[0] += 1
+                if call_count[0] == 1:
+                    # Move main db successfully using REAL shutil.move
+                    return real_shutil_move(src, dst)
+                elif call_count[0] == 2:
+                    # Sidecar move fails
+                    raise OSError("Sidecar move failed")
+                elif call_count[0] == 3:
+                    # Rollback main db also fails
+                    raise PermissionError("Rollback failed - access denied")
+                else:
+                    raise RuntimeError(
+                        f"Unexpected call {call_count[0]}: {src} -> {dst}"
+                    )
+
+            with patch("shutil.move", side_effect=mock_move):
+                with patch("mmrelay.db_utils.logger") as mock_logger:
+                    result = _migrate_legacy_db_if_needed(
+                        default_path=default_path, legacy_candidates=[legacy_path]
+                    )
+
+                    # Should return legacy_path
+                    self.assertEqual(result, legacy_path)
+
+                    # Debug: print all method calls to understand what's happening
+                    # Check for "partial state" warning (lines 137-141)
+                    warning_calls = [
+                        call
+                        for call in mock_logger.method_calls
+                        if call[0] == "warning"
+                    ]
+
+                    # Should have at least sidecar failure + rollback error + partial state warnings
+                    self.assertTrue(
+                        len(warning_calls) >= 2,
+                        f"Expected at least 2 warning calls, got {len(warning_calls)}",
+                    )
+
+                    # Verify "partial state" warning was logged (lines 137-141)
+                    partial_state_logged = False
+                    for call in warning_calls:
+                        args = call[1]  # positional arguments
+                        if args and "partial state" in str(args[0]):
+                            partial_state_logged = True
+                            break
+
+                    self.assertTrue(
+                        partial_state_logged,
+                        "Expected 'partial state' warning to be logged when rollback fails",
+                    )
+
+                    # Verify rollback error was logged (lines 128-136)
+                    rollback_error_logged = False
+                    for call in warning_calls:
+                        args = call[1]
+                        if args and "Failed to roll back" in str(args[0]):
+                            rollback_error_logged = True
+                            break
+
+                    self.assertTrue(
+                        rollback_error_logged,
+                        "Expected 'Failed to roll back' warning to be logged",
+                    )
+
+    def test_migrate_legacy_db_sidecar_rollback_loop(self):
+        """Test _migrate_legacy_db_if_needed rolls back sidecars that were moved before a later failure (lines 114-120)."""
+        from mmrelay.db_utils import _migrate_legacy_db_if_needed
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            legacy_path = os.path.join(temp_dir, "legacy.sqlite")
+            default_path = os.path.join(temp_dir, "default.sqlite")
+
+            # Create a legacy database file
+            with open(legacy_path, "w") as f:
+                f.write("legacy db content")
+
+            # Create BOTH wal and shm sidecars
+            wal_path = f"{legacy_path}-wal"
+            shm_path = f"{legacy_path}-shm"
+            with open(wal_path, "w") as f:
+                f.write("wal content")
+            with open(shm_path, "w") as f:
+                f.write("shm content")
+
+            # Save reference to real shutil.move BEFORE patching
+            real_shutil_move = shutil.move
+
+            # Simulate: main db moves ok, first sidecar moves ok, second sidecar fails
+            call_count = [0]
+
+            def mock_move(src, dst):
+                call_count[0] += 1
+                if call_count[0] == 1:
+                    # Move main db successfully
+                    return real_shutil_move(src, dst)
+                elif call_count[0] == 2:
+                    # First sidecar (-wal) moves successfully
+                    return real_shutil_move(src, dst)
+                elif call_count[0] == 3:
+                    # Second sidecar (-shm) fails
+                    raise OSError("SHM sidecar move failed")
+                elif call_count[0] == 4:
+                    # Rollback main db successfully
+                    return real_shutil_move(src, dst)
+                elif call_count[0] == 5:
+                    # Rollback first sidecar (-wal) successfully
+                    return real_shutil_move(src, dst)
+                else:
+                    raise RuntimeError(
+                        f"Unexpected call {call_count[0]}: {src} -> {dst}"
+                    )
+
+            with patch("shutil.move", side_effect=mock_move):
+                with patch("mmrelay.db_utils.logger") as mock_logger:
+                    result = _migrate_legacy_db_if_needed(
+                        default_path=default_path, legacy_candidates=[legacy_path]
+                    )
+
+                    # Should return legacy_path after rollback
+                    self.assertEqual(result, legacy_path)
+
+                    # Verify files are back at legacy location
+                    self.assertTrue(os.path.exists(legacy_path))
+                    self.assertTrue(os.path.exists(wal_path))
+                    self.assertTrue(os.path.exists(shm_path))
+                    self.assertFalse(os.path.exists(default_path))
+
+                    # Check warning calls
+                    warning_calls = [
+                        call
+                        for call in mock_logger.method_calls
+                        if call[0] == "warning"
+                    ]
+
+                    # Should have sidecar failure + successful rollback warning
+                    self.assertTrue(
+                        len(warning_calls) >= 1,
+                        f"Expected at least 1 warning call, got {len(warning_calls)}",
+                    )
+
+                    # Verify successful rollback message (lines 142-147)
+                    rollback_success_logged = False
+                    for call in warning_calls:
+                        args = call[1]
+                        if args and "rolled back due to sidecar failures" in str(
+                            args[0]
+                        ):
+                            rollback_success_logged = True
+                            break
+
+                    self.assertTrue(
+                        rollback_success_logged,
+                        "Expected successful rollback warning to be logged",
+                    )
+
+    def test_migrate_legacy_db_sidecar_rollback_failure(self):
+        """Test _migrate_legacy_db_if_needed when sidecar rollback fails (lines 117-118, 128-141)."""
+        from mmrelay.db_utils import _migrate_legacy_db_if_needed
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            legacy_path = os.path.join(temp_dir, "legacy.sqlite")
+            default_path = os.path.join(temp_dir, "default.sqlite")
+
+            # Create a legacy database file
+            with open(legacy_path, "w") as f:
+                f.write("legacy db content")
+
+            # Create BOTH wal and shm sidecars
+            wal_path = f"{legacy_path}-wal"
+            shm_path = f"{legacy_path}-shm"
+            with open(wal_path, "w") as f:
+                f.write("wal content")
+            with open(shm_path, "w") as f:
+                f.write("shm content")
+
+            # Save reference to real shutil.move BEFORE patching
+            real_shutil_move = shutil.move
+
+            # Simulate: main db moves ok, first sidecar moves ok, second sidecar fails, rollback of first sidecar also fails
+            call_count = [0]
+
+            def mock_move(src, dst):
+                call_count[0] += 1
+                if call_count[0] == 1:
+                    # Move main db successfully
+                    return real_shutil_move(src, dst)
+                elif call_count[0] == 2:
+                    # First sidecar (-wal) moves successfully
+                    return real_shutil_move(src, dst)
+                elif call_count[0] == 3:
+                    # Second sidecar (-shm) fails
+                    raise OSError("SHM sidecar move failed")
+                elif call_count[0] == 4:
+                    # Rollback main db successfully
+                    return real_shutil_move(src, dst)
+                elif call_count[0] == 5:
+                    # Rollback first sidecar (-wal) fails - this is lines 117-118
+                    raise PermissionError("Cannot rollback WAL sidecar")
+                else:
+                    raise RuntimeError(
+                        f"Unexpected call {call_count[0]}: {src} -> {dst}"
+                    )
+
+            with patch("shutil.move", side_effect=mock_move):
+                with patch("mmrelay.db_utils.logger") as mock_logger:
+                    result = _migrate_legacy_db_if_needed(
+                        default_path=default_path, legacy_candidates=[legacy_path]
+                    )
+
+                    # Should return legacy_path
+                    self.assertEqual(result, legacy_path)
+
+                    # Check warning calls
+                    warning_calls = [
+                        call
+                        for call in mock_logger.method_calls
+                        if call[0] == "warning"
+                    ]
+
+                    # Should have sidecar failure + sidecar rollback error + partial state warnings
+                    self.assertTrue(
+                        len(warning_calls) >= 2,
+                        f"Expected at least 2 warning calls, got {len(warning_calls)}",
+                    )
+
+                    # Verify "partial state" warning was logged (lines 137-141)
+                    partial_state_logged = False
+                    for call in warning_calls:
+                        args = call[1]
+                        if args and "partial state" in str(args[0]):
+                            partial_state_logged = True
+                            break
+
+                    self.assertTrue(
+                        partial_state_logged,
+                        "Expected 'partial state' warning when sidecar rollback fails",
+                    )
+
+                    # Verify sidecar rollback error was logged (lines 117-118, 128-136)
+                    sidecar_rollback_error_logged = False
+                    for call in warning_calls:
+                        args = call[1]
+                        # Check if any argument contains "sidecar" and "Failed to roll back"
+                        args_str = " ".join(str(arg) for arg in args)
+                        if "sidecar" in args_str and "Failed to roll back" in args_str:
+                            sidecar_rollback_error_logged = True
+                            break
+
+                    self.assertTrue(
+                        sidecar_rollback_error_logged,
+                        "Expected sidecar rollback error to be logged",
+                    )
+
     def test_get_db_path_new_layout_migration(self):
         """Test get_db_path with new layout enabled and legacy migration."""
         import mmrelay.db_utils
