@@ -43,6 +43,44 @@ def clear_db_path_cache() -> None:
     _cached_config_hash = None
 
 
+def _active_mtime(path: str) -> float:
+    mtimes = []
+    for candidate in (path, f"{path}-wal", f"{path}-shm"):
+        try:
+            mtimes.append(os.path.getmtime(candidate))
+        except OSError:
+            continue
+    return max(mtimes) if mtimes else 0.0
+
+
+def _migrate_legacy_db_if_needed(
+    *, default_path: str, legacy_candidates: list[str]
+) -> None:
+    if not legacy_candidates:
+        return
+    legacy_path = max(legacy_candidates, key=_active_mtime)
+    try:
+        shutil.move(legacy_path, default_path)
+        for suffix in ("-wal", "-shm"):
+            legacy_sidecar = f"{legacy_path}{suffix}"
+            new_sidecar = f"{default_path}{suffix}"
+            if os.path.exists(legacy_sidecar) and not os.path.exists(new_sidecar):
+                shutil.move(legacy_sidecar, new_sidecar)
+        logger.info(
+            "Migrated database from legacy location %s to %s",
+            legacy_path,
+            default_path,
+        )
+    except (OSError, PermissionError) as e:
+        logger.warning(
+            "Failed to migrate database from %s to %s: %s. "
+            "The old database remains at the legacy location.",
+            legacy_path,
+            default_path,
+            e,
+        )
+
+
 # Get the database path
 def get_db_path() -> str:
     """
@@ -139,46 +177,16 @@ def get_db_path() -> str:
         get_base_dir(), "data", "data", "meshtastic.sqlite"
     )
 
-    # Migrate legacy database when the new layout is explicitly enabled.
-    def _active_mtime(path: str) -> float:
-        mtimes = []
-        for candidate in (path, f"{path}-wal", f"{path}-shm"):
-            try:
-                mtimes.append(os.path.getmtime(candidate))
-            except OSError:
-                continue
-        return max(mtimes) if mtimes else 0.0
-
     if is_new_layout_enabled() and not os.path.exists(default_path):
         legacy_candidates = [
             path
             for path in (legacy_base_path, legacy_nested_data_path)
             if path and os.path.exists(path)
         ]
-        if legacy_candidates:
-            legacy_path = max(legacy_candidates, key=_active_mtime)
-            try:
-                shutil.move(legacy_path, default_path)
-                for suffix in ("-wal", "-shm"):
-                    legacy_sidecar = f"{legacy_path}{suffix}"
-                    new_sidecar = f"{default_path}{suffix}"
-                    if os.path.exists(legacy_sidecar) and not os.path.exists(
-                        new_sidecar
-                    ):
-                        shutil.move(legacy_sidecar, new_sidecar)
-                logger.info(
-                    "Migrated database from legacy location %s to %s",
-                    legacy_path,
-                    default_path,
-                )
-            except (OSError, PermissionError) as e:
-                logger.warning(
-                    "Failed to migrate database from %s to %s: %s. "
-                    "The old database remains at the legacy location.",
-                    legacy_path,
-                    default_path,
-                    e,
-                )
+        _migrate_legacy_db_if_needed(
+            default_path=default_path,
+            legacy_candidates=legacy_candidates,
+        )
 
     if not is_new_layout_enabled():
         existing_paths = [
