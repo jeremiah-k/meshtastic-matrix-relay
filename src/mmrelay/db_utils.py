@@ -44,6 +44,15 @@ def clear_db_path_cache() -> None:
 
 
 def _active_mtime(path: str) -> float:
+    """
+    Return the most recent modification time among a file and its SQLite WAL/SHM sidecars.
+    
+    Parameters:
+        path (str): Filesystem path to the SQLite database file.
+    
+    Returns:
+        float: Newest modification time (seconds since the epoch) among `path`, `path-wal`, and `path-shm`, or `0.0` if none exist.
+    """
     mtimes = []
     for candidate in (path, f"{path}-wal", f"{path}-shm"):
         try:
@@ -56,6 +65,18 @@ def _active_mtime(path: str) -> float:
 def _migrate_legacy_db_if_needed(
     *, default_path: str, legacy_candidates: list[str]
 ) -> None:
+    """
+    If any legacy database paths are provided, selects the most recently active one and attempts to move it (and its -wal/-shm sidecars) to the specified default path.
+    
+    Parameters:
+        default_path (str): Destination path for the migrated database.
+        legacy_candidates (list[str]): Candidate legacy database file paths; the function picks the most recently active by modification time.
+    
+    Notes:
+        - If `legacy_candidates` is empty, the function returns without action.
+        - On success, an informational log entry is written.
+        - On failure (OSError or PermissionError), the function logs a warning and leaves the legacy files in place; it does not raise.
+    """
     if not legacy_candidates:
         return
     legacy_path = max(legacy_candidates, key=_active_mtime)
@@ -84,10 +105,10 @@ def _migrate_legacy_db_if_needed(
 # Get the database path
 def get_db_path() -> str:
     """
-    Resolve the absolute filesystem path to the SQLite database, preferring configured values and falling back to the application data directory.
-
-    Selects the path in this precedence: `config["database"]["path"]` (preferred), `config["db"]["path"]` (legacy), then `<data_dir>/meshtastic.sqlite`. The chosen path is cached and the cache is invalidated when relevant database configuration changes. Attempts to create parent or data directories and logs warnings on failure but does not raise.
-
+    Resolve the absolute filesystem path to the application's SQLite database, using configured paths when present and falling back to the application data directory.
+    
+    Selects the path in this precedence: configuration key `database.path` (preferred), legacy `db.path`, then `<data_dir>/meshtastic.sqlite`. The resolved path is cached and the cache is invalidated when relevant database configuration changes. The function will attempt to create required directories and may migrate legacy database locations to the current layout when applicable; directory-creation or migration failures are logged but do not raise.
+    
     Returns:
         str: Filesystem path to the SQLite database.
     """

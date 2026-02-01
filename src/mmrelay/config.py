@@ -26,10 +26,25 @@ if TYPE_CHECKING:
 
 
 def _expand_path(path: str) -> str:
+    """
+    Resolve and normalize a filesystem path by expanding user home references and converting to an absolute path.
+    
+    Parameters:
+        path (str): A filesystem path, which may include a user home shorthand (`~`) or be relative.
+    
+    Returns:
+        str: The absolute path with any leading `~` expanded to the user's home directory.
+    """
     return os.path.abspath(os.path.expanduser(path))
 
 
 def _get_env_base_dir() -> str | None:
+    """
+    Read the MMRELAY_BASE_DIR environment variable and return its expanded absolute path.
+    
+    Returns:
+        Expanded absolute path (`str`) if MMRELAY_BASE_DIR is set, `None` otherwise.
+    """
     env_base_dir = os.getenv("MMRELAY_BASE_DIR")
     if env_base_dir:
         return _expand_path(env_base_dir)
@@ -37,6 +52,12 @@ def _get_env_base_dir() -> str | None:
 
 
 def _get_env_data_dir() -> str | None:
+    """
+    Return the expanded absolute path specified by the MMRELAY_DATA_DIR environment variable, if present.
+    
+    Returns:
+        str | None: Expanded absolute path from MMRELAY_DATA_DIR if the variable is set, `None` otherwise.
+    """
     env_data_dir = os.getenv("MMRELAY_DATA_DIR")
     if env_data_dir:
         return _expand_path(env_data_dir)
@@ -44,6 +65,12 @@ def _get_env_data_dir() -> str | None:
 
 
 def _has_any_dir_override() -> bool:
+    """
+    Check whether any override for the application's base or data directory is set.
+    
+    Returns:
+        `true` if a custom_base_dir, custom_data_dir, `MMRELAY_BASE_DIR`, or `MMRELAY_DATA_DIR` is present, `false` otherwise.
+    """
     return bool(
         custom_base_dir
         or custom_data_dir
@@ -53,10 +80,30 @@ def _has_any_dir_override() -> bool:
 
 
 def is_new_layout_enabled() -> bool:
+    """
+    Report whether the new directory layout is enabled.
+    
+    Checks for a programmatic override via `custom_base_dir` or the presence of the
+    `MMRELAY_BASE_DIR` environment variable.
+    
+    Returns:
+        `true` if a custom base directory is configured via `custom_base_dir` or
+        `MMRELAY_BASE_DIR`, `false` otherwise.
+    """
     return bool(custom_base_dir) or bool(os.getenv("MMRELAY_BASE_DIR"))
 
 
 def is_legacy_layout_enabled() -> bool:
+    """
+    Determine whether the legacy (data-dir-based) directory layout is active.
+    
+    The legacy layout is considered active when a data-directory override is present via the
+    custom_data_dir module override or the MMRELAY_DATA_DIR environment variable, and the
+    new-layout mode is not enabled.
+    
+    Returns:
+        `true` if the legacy layout is enabled, `false` otherwise.
+    """
     return not is_new_layout_enabled() and bool(
         custom_data_dir or os.getenv("MMRELAY_DATA_DIR")
     )
@@ -82,15 +129,10 @@ def set_secure_file_permissions(file_path: str, mode: int = 0o600) -> None:
 
 def get_base_dir() -> str:
     """
-    Determine the filesystem base directory used to store the application's files.
-
-    If the module-level `custom_base_dir` is set, that path is returned. When
-    only the legacy `custom_data_dir` is set, its path is reused to preserve the
-    v1.2.9 layout. If MMRELAY_BASE_DIR is set, it is used. If only the legacy
-    MMRELAY_DATA_DIR is set, it is used to preserve legacy behavior. On Linux and
-    macOS the default directory is `~/.<APP_NAME>`; on Windows the platform-
-    specific user data directory is returned.
-
+    Return the filesystem base directory used to store the application's files.
+    
+    Determines the directory using the following precedence: module-level `custom_base_dir`, legacy `custom_data_dir`, environment variable `MMRELAY_BASE_DIR`, legacy environment variable `MMRELAY_DATA_DIR`, then a platform default (`~/.<APP_NAME>` on Linux/macOS, platform-specific user data dir on Windows).
+    
     Returns:
         The filesystem path to the application's base data directory.
     """
@@ -195,6 +237,12 @@ def get_credentials_search_paths(
     seen: set[str] = set()
 
     def _add(path: str | None) -> None:
+        """
+        Add a path to the candidate_paths list if it is non-empty and not already present.
+        
+        Parameters:
+            path (str | None): Path to add; ignored if None or already seen. Side effect: appends to `candidate_paths` and records the path in `seen`.
+        """
         if not path or path in seen:
             return
         candidate_paths.append(path)
@@ -230,13 +278,13 @@ def get_credentials_search_paths(
 
 def get_explicit_credentials_path(config: dict[str, Any] | None) -> str | None:
     """
-    Resolve the explicit credentials path from environment or config mapping.
-
+    Determine an explicit credentials path from the environment or a provided configuration mapping.
+    
     Parameters:
-        config (dict[str, Any] | None): Optional loaded config mapping.
-
+        config (dict[str, Any] | None): Optional loaded config mapping; checks top-level "credentials_path" and "matrix.credentials_path" for an explicit path.
+    
     Returns:
-        str | None: Explicit credentials path if configured.
+        str | None: The explicit credentials path if configured, otherwise `None`.
     """
     env_path = os.getenv("MMRELAY_CREDENTIALS_PATH")
     if env_path:
@@ -254,18 +302,15 @@ def get_explicit_credentials_path(config: dict[str, Any] | None) -> str | None:
 
 def get_data_dir(*, create: bool = True) -> str:
     """
-    Get the application's data directory, creating it if necessary.
-
-    If the legacy data-dir override is set (MMRELAY_DATA_DIR/--data-dir), that path
-    is used directly unless a legacy "<override>/data" directory already contains
-    data (database/plugins/store), in which case that legacy directory is used to
-    preserve existing layouts. Without an override, Linux/macOS use
-    "<base_dir>/data". On Windows, the platform-specific user data directory is
-    used unless the new layout is explicitly enabled via MMRELAY_BASE_DIR/--base-dir,
-    in which case "<base_dir>/data" is used.
-
+    Determine the application's data directory according to overrides and platform conventions.
+    
+    If a legacy data-dir override is set, the function will prefer the legacy layout when that override contains existing legacy data; otherwise it will use the override directly. On Windows, the platform user data directory is used unless the "new layout" is enabled, in which case the layout under the resolved base directory is used. On Unix-like systems the directory under the resolved base directory is used.
+    
+    Parameters:
+        create (bool): If True, ensure the returned directory exists (attempt to create it).
+    
     Returns:
-        Absolute path to the data directory.
+        str: Absolute path to the data directory.
     """
     data_override = custom_data_dir or _get_env_data_dir()
     if data_override:
@@ -714,13 +759,13 @@ def apply_env_config_overrides(config: dict[str, Any] | None) -> dict[str, Any]:
 
 def load_credentials() -> dict[str, Any] | None:
     """
-    Locate and load Matrix credentials from the configured credentials path or the application's base configuration directory.
-
-    If the MMRELAY_CREDENTIALS_PATH environment variable is set, it is used as the credentials file path; if it refers to a directory, the file name "credentials.json" will be resolved within that directory. If the environment variable is not set, the function looks for "credentials.json" in the application's base configuration directory. The file is parsed as JSON and returned as a dictionary.
-
+    Finds and loads Matrix credentials from candidate credentials.json locations.
+    
+    Searches an explicit credentials path (from environment or configuration) and other candidate locations in order, parses the first existing credentials file as JSON, and returns its contents.
+    
     Returns:
-        dict[str, Any]: Parsed credentials on success.
-        None: If the credentials file is missing, unreadable, or contains invalid JSON.
+        dict[str, Any]: Parsed credentials if a valid credentials file is found.
+        None: If no credentials file is found, is unreadable, or contains invalid JSON.
     """
     try:
         explicit_path = get_explicit_credentials_path(relay_config)
@@ -766,30 +811,25 @@ def save_credentials(
     credentials: dict[str, Any], credentials_path: str | None = None
 ) -> None:
     """
-    Persist a JSON-serializable credentials mapping to a credentials.json file.
-
-    If `credentials_path` is a directory (or ends with a path separator) the filename
-    "credentials.json" is appended. If `credentials_path` is omitted the effective
-    path follows the same priority as credential loading: the
-    `MMRELAY_CREDENTIALS_PATH` environment variable, `relay_config["credentials_path"]`,
-    and `relay_config["matrix"]["credentials_path"]` (when `matrix` is a mapping).
-    When no explicit path is provided, the config directory (if known) is preferred
-    before falling back to base/data defaults. The function creates the target
-    directory if missing and, on Unix-like systems, attempts to set restrictive
-    file permissions (0o600). I/O and permission errors are caught and logged; they
-    are not raised.
-
+    Persist the given credentials mapping to a credentials.json file using an explicit path or well-defined fallbacks.
+    
+    If `credentials_path` is a directory (or ends with a path separator) the filename "credentials.json" is appended. If `credentials_path` is omitted the function uses an explicit path from the environment or configuration if available (for example, MMRELAY_CREDENTIALS_PATH, relay_config["credentials_path"], or relay_config["matrix"]["credentials_path"]); if none is found it attempts to write under the config directory (when known) and then the application's base/data locations. The function will create the target directory when missing and, on Unix-like systems, attempt to set file permissions to 0o600. I/O and permission errors are logged and the function will try fallback locations; it does not raise on write failures (errors are logged).
     Parameters:
         credentials (dict): JSON-serializable mapping of credentials to persist.
-        credentials_path (str | None): Optional target file path or directory. If
-            omitted, a default path under the application's base directory is used.
-
-    Returns:
-        None
+        credentials_path (str | None): Optional target file path or directory. When omitted, the function resolves a path using environment/configuration fallbacks and base/data defaults.
     """
     try:
 
         def _normalize_explicit_path(path: str) -> str:
+            """
+            Normalize an explicit credentials path, expanding user home and ensuring it points to a credentials.json file.
+            
+            Parameters:
+                path (str): A user-supplied file or directory path. If the path is a directory (existing or ending with a path separator), "credentials.json" is appended; if the path lacks a directory component, the application's base data directory is prepended.
+            
+            Returns:
+                normalized_path (str): The expanded and normalized path pointing to a credentials.json file.
+            """
             expanded = os.path.expanduser(path)
             path_is_dir = os.path.isdir(expanded)
             if not path_is_dir:
@@ -827,6 +867,18 @@ def save_credentials(
         def _handle_candidate_error(
             message: str, error: OSError | PermissionError
         ) -> bool:
+            """
+            Handle an I/O or permission error for a candidate credentials path and optionally prepare fallback candidates.
+            
+            Records the provided error to the enclosing scope, logs a warning using the provided message and error, and—if falling back is allowed—ensures that base- and data-directory fallback credential paths are appended to the shared candidate_paths list (avoiding duplicates) and sets base_dir_candidate and data_dir_candidate in the enclosing scope.
+            
+            Parameters:
+                message (str): Human-readable message to include in the warning log.
+                error (OSError | PermissionError): The error that occurred while handling a candidate path.
+            
+            Returns:
+                bool: `False` if fallback is not allowed (no changes to candidate lists), `True` if fallback candidates were ensured/added.
+            """
             nonlocal last_error, data_dir_candidate, base_dir_candidate
             last_error = error
             logger.warning(message, error)
@@ -904,6 +956,14 @@ def save_credentials(
 # Use structured logging to align with the rest of the codebase.
 def _get_config_logger() -> "logging.Logger":
     # Late import avoids circular dependency (log_utils -> config).
+    """
+    Obtain a logger for configuration-related messages.
+    
+    Selects a logger named "Config". When running under a unittest.mock patched environment, returns the standard library logger to avoid import cycles during tests.
+    
+    Returns:
+        logging.Logger: Logger instance named "Config".
+    """
     if os.path.join.__module__ == "unittest.mock":
         import logging as _logging
 
@@ -1080,16 +1140,16 @@ def _load_config_from_env_mapping(
 
 def set_config(module: Any, passed_config: dict[str, Any]) -> dict[str, Any]:
     """
-    Assign the given configuration to a module and apply known module-specific settings.
-
-    If the target module's name is "matrix_utils", this may assign `matrix_rooms` and, when present, `matrix.homeserver`, `matrix.access_token`, and `matrix.bot_user_id` into module attributes. If the module's name is "meshtastic_utils", this may assign `matrix_rooms`. If the module exposes a callable `setup_config()`, it will be invoked.
-
+    Assign the provided configuration mapping to a module and apply known module-specific settings.
+    
+    When the module appears to be the Matrix helper, propagate `matrix_rooms` and, when a `matrix` section contains `homeserver`, `access_token`, and `bot_user_id`, assign those values to the module's corresponding attributes. When the module appears to be the Meshtastic helper, propagate `matrix_rooms`. If the module exposes a callable `setup_config()`, it will be invoked after assignments.
+    
     Parameters:
-        module (Any): The module object to receive the configuration.
-        passed_config (dict[str, Any]): Configuration mapping to attach to the module.
-
+        module (Any): Module object to receive configuration attributes.
+        passed_config (dict[str, Any]): Configuration mapping to assign to the module.
+    
     Returns:
-        dict[str, Any]: The same `passed_config` object that was assigned to the module.
+        dict[str, Any]: The same `passed_config` object that was attached to the module.
     """
     # Set the module's config variable
     module.config = passed_config

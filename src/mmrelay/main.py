@@ -543,15 +543,13 @@ async def main(config: dict[str, Any]) -> None:
 
 def run_main(args: Any) -> int:
     """
-    Start the application: load configuration, validate required keys, and run the main async runner.
-
-    Loads and applies configuration (optionally overriding logging level from args), initializes module configuration, verifies required configuration sections (required keys are ["meshtastic", "matrix_rooms"] when credentials.json is present, otherwise ["matrix", "meshtastic", "matrix_rooms"]), and executes the main async entrypoint. Returns process exit codes: 0 for successful completion or user interrupt, 1 for configuration errors or unhandled exceptions.
-
+    Load configuration, validate required keys, configure logging and modules, and run the main async application loop.
+    
     Parameters:
-        args: Parsed command-line arguments (may be None). Recognized option used here: `log_level` to override the configured logging level.
-
+        args (Any): Parsed command-line arguments (may be None). Recognized option: `log_level` to override the configured logging level.
+    
     Returns:
-        int: Exit code (0 on success or user-initiated interrupt, 1 on failure such as invalid config or runtime error).
+        int: Exit code — `0` on successful completion or user-initiated interrupt, `1` for configuration errors or unhandled runtime exceptions.
     """
     # Load configuration
     from mmrelay.config import load_config
