@@ -206,7 +206,6 @@ def get_credentials_search_paths(
             normalized_dir = expanded_path.rstrip(os.path.sep).rstrip(
                 os.path.altsep or ""
             )
-            _add(normalized_dir)
             _add(os.path.join(normalized_dir, "credentials.json"))
         else:
             _add(expanded_path)
@@ -219,7 +218,7 @@ def get_credentials_search_paths(
             _add(os.path.join(config_dir, "credentials.json"))
 
     _add(os.path.join(get_base_dir(), "credentials.json"))
-    _add(os.path.join(get_data_dir(), "credentials.json"))
+    _add(os.path.join(get_data_dir(create=False), "credentials.json"))
 
     return candidate_paths
 
@@ -248,17 +247,16 @@ def get_explicit_credentials_path(config: dict[str, Any] | None) -> str | None:
     return None
 
 
-def get_data_dir() -> str:
+def get_data_dir(*, create: bool = True) -> str:
     """
     Get the application's data directory, creating it if necessary.
 
     If the legacy data-dir override is set (MMRELAY_DATA_DIR/--data-dir), that path
     is used directly unless a legacy "<override>/data" directory already contains
     data (database/plugins/store), in which case that legacy directory is used to
-    preserve existing layouts. Otherwise, on Linux and macOS the data directory is
-    "<base_dir>/data". On Windows, the data directory is "<base_dir>/data" only
-    when an override is set; otherwise it uses the platform default user data
-    directory for the application.
+    preserve existing layouts. Without an override, the legacy layout is used
+    (data_dir == base_dir) unless the new layout is explicitly enabled via
+    MMRELAY_BASE_DIR/--base-dir, in which case "<base_dir>/data" is used.
 
     Returns:
         Absolute path to the data directory.
@@ -278,17 +276,17 @@ def get_data_dir() -> str:
         else:
             data_dir = data_override
     else:
-        if sys.platform in ["linux", "darwin"]:
-            base_dir = get_base_dir()
+        base_dir = get_base_dir()
+        if is_new_layout_enabled():
             data_dir = os.path.join(base_dir, "data")
         else:
-            if is_new_layout_enabled():
-                base_dir = get_base_dir()
-                data_dir = os.path.join(base_dir, "data")
-            else:
-                data_dir = platformdirs.user_data_dir(APP_NAME, APP_AUTHOR)
+            data_dir = base_dir
 
-    os.makedirs(data_dir, exist_ok=True)
+    if create:
+        try:
+            os.makedirs(data_dir, exist_ok=True)
+        except (OSError, PermissionError) as e:
+            logger.warning("Could not create data directory %s: %s", data_dir, e)
     return data_dir
 
 
@@ -735,12 +733,16 @@ def load_credentials() -> dict[str, Any] | None:
             return credentials
 
         # On Windows, also log the directory contents for debugging
-        if sys.platform == "win32" and config_path:
-            config_dir = os.path.dirname(config_path)
-            if os.path.exists(config_dir):
+        if sys.platform == "win32":
+            debug_dir = None
+            if config_path:
+                debug_dir = os.path.dirname(config_path)
+            else:
+                debug_dir = get_base_dir()
+            if debug_dir and os.path.exists(debug_dir):
                 try:
-                    files = os.listdir(config_dir)
-                    logger.debug("Directory contents of %s: %s", config_dir, files)
+                    files = os.listdir(debug_dir)
+                    logger.debug("Directory contents of %s: %s", debug_dir, files)
                 except OSError:
                     pass
         return None

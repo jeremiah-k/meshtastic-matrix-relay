@@ -17,7 +17,13 @@ from types import ModuleType
 from typing import Any, Iterator, NamedTuple, NoReturn
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
-from mmrelay.config import get_app_path, get_base_dir, get_data_dir
+from mmrelay.config import (
+    get_app_path,
+    get_base_dir,
+    get_data_dir,
+    is_legacy_layout_enabled,
+    is_new_layout_enabled,
+)
 from mmrelay.constants.plugins import (
     COMMIT_HASH_PATTERN,
     DEFAULT_ALLOWED_COMMUNITY_HOSTS,
@@ -66,17 +72,18 @@ _PLUGIN_DEPS_DIR: str | None = None
 
 def _get_plugin_root_dirs() -> list[str]:
     base_dir = get_base_dir()
-    data_dir = get_data_dir()
     roots: list[str] = []
     if base_dir:
         roots.append(os.path.join(base_dir, "plugins"))
-    if data_dir and data_dir != base_dir:
-        data_root = os.path.join(data_dir, "plugins")
-        if data_root not in roots:
-            if os.path.isdir(data_root) and not os.path.isdir(roots[0]):
-                roots.insert(0, data_root)
-            else:
-                roots.append(data_root)
+    if is_new_layout_enabled() or is_legacy_layout_enabled():
+        data_dir = get_data_dir(create=False)
+        if data_dir and data_dir != base_dir:
+            data_root = os.path.join(data_dir, "plugins")
+            if data_root not in roots:
+                if os.path.isdir(data_root) and not os.path.isdir(roots[0]):
+                    roots.insert(0, data_root)
+                else:
+                    roots.append(data_root)
     return roots
 
 
