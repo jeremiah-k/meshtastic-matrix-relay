@@ -46,10 +46,10 @@ def clear_db_path_cache() -> None:
 def _active_mtime(path: str) -> float:
     """
     Return the most recent modification time among a file and its SQLite WAL/SHM sidecars.
-    
+
     Parameters:
         path (str): Filesystem path to the SQLite database file.
-    
+
     Returns:
         float: Newest modification time (seconds since the epoch) among `path`, `path-wal`, and `path-shm`, or `0.0` if none exist.
     """
@@ -67,11 +67,11 @@ def _migrate_legacy_db_if_needed(
 ) -> None:
     """
     If any legacy database paths are provided, selects the most recently active one and attempts to move it (and its -wal/-shm sidecars) to the specified default path.
-    
+
     Parameters:
         default_path (str): Destination path for the migrated database.
         legacy_candidates (list[str]): Candidate legacy database file paths; the function picks the most recently active by modification time.
-    
+
     Notes:
         - If `legacy_candidates` is empty, the function returns without action.
         - On success, an informational log entry is written.
@@ -80,13 +80,66 @@ def _migrate_legacy_db_if_needed(
     if not legacy_candidates:
         return
     legacy_path = max(legacy_candidates, key=_active_mtime)
+    moved_main = False
+    moved_sidecars: list[tuple[str, str]] = []
+    sidecar_failures: list[tuple[str, str, OSError | PermissionError]] = []
     try:
         shutil.move(legacy_path, default_path)
+        moved_main = True
         for suffix in ("-wal", "-shm"):
             legacy_sidecar = f"{legacy_path}{suffix}"
             new_sidecar = f"{default_path}{suffix}"
             if os.path.exists(legacy_sidecar) and not os.path.exists(new_sidecar):
-                shutil.move(legacy_sidecar, new_sidecar)
+                try:
+                    shutil.move(legacy_sidecar, new_sidecar)
+                    moved_sidecars.append((new_sidecar, legacy_sidecar))
+                except (OSError, PermissionError) as sidecar_err:
+                    sidecar_failures.append((legacy_sidecar, new_sidecar, sidecar_err))
+        if sidecar_failures:
+            rollback_errors: list[tuple[str, str, str, OSError | PermissionError]] = []
+            if moved_main:
+                try:
+                    shutil.move(default_path, legacy_path)
+                    moved_main = False
+                except (OSError, PermissionError) as rollback_err:
+                    rollback_errors.append(
+                        ("database", default_path, legacy_path, rollback_err)
+                    )
+            for new_sidecar, legacy_sidecar in moved_sidecars:
+                try:
+                    shutil.move(new_sidecar, legacy_sidecar)
+                except (OSError, PermissionError) as rollback_err:
+                    rollback_errors.append(
+                        ("sidecar", new_sidecar, legacy_sidecar, rollback_err)
+                    )
+            for legacy_sidecar, new_sidecar, sidecar_err in sidecar_failures:
+                logger.warning(
+                    "Failed to migrate sidecar %s to %s: %s",
+                    legacy_sidecar,
+                    new_sidecar,
+                    sidecar_err,
+                )
+            if rollback_errors:
+                for kind, src, dest, rollback_err in rollback_errors:
+                    logger.warning(
+                        "Failed to roll back %s move from %s to %s: %s",
+                        kind,
+                        src,
+                        dest,
+                        rollback_err,
+                    )
+                logger.warning(
+                    "Database migration left a partial state. Verify %s and %s manually.",
+                    legacy_path,
+                    default_path,
+                )
+            else:
+                logger.warning(
+                    "Database migration rolled back due to sidecar failures. "
+                    "Database remains at %s.",
+                    legacy_path,
+                )
+            return
         logger.info(
             "Migrated database from legacy location %s to %s",
             legacy_path,
@@ -106,9 +159,9 @@ def _migrate_legacy_db_if_needed(
 def get_db_path() -> str:
     """
     Resolve the absolute filesystem path to the application's SQLite database, using configured paths when present and falling back to the application data directory.
-    
+
     Selects the path in this precedence: configuration key `database.path` (preferred), legacy `db.path`, then `<data_dir>/meshtastic.sqlite`. The resolved path is cached and the cache is invalidated when relevant database configuration changes. The function will attempt to create required directories and may migrate legacy database locations to the current layout when applicable; directory-creation or migration failures are logged but do not raise.
-    
+
     Returns:
         str: Filesystem path to the SQLite database.
     """
