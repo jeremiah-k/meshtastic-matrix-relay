@@ -1586,7 +1586,11 @@ class TestConfigUncoveredLines(unittest.TestCase):
         """Test save_credentials verification (line 693)."""
         log_debug = []
         with patch.object(
-            mmrelay.config.logger, "debug", side_effect=lambda x: log_debug.append(x)
+            mmrelay.config.logger,
+            "debug",
+            side_effect=lambda msg, *args, **_kwargs: log_debug.append(
+                msg % args if args else msg
+            ),
         ):
             save_credentials({"access_token": "test"})
             self.assertTrue(
