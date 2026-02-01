@@ -280,8 +280,11 @@ def get_data_dir(*, create: bool = True) -> str:
         else:
             data_dir = data_override
     else:
-        base_dir = get_base_dir()
-        data_dir = os.path.join(base_dir, "data")
+        if sys.platform == "win32" and not is_new_layout_enabled():
+            data_dir = platformdirs.user_data_dir(APP_NAME, APP_AUTHOR)
+        else:
+            base_dir = get_base_dir()
+            data_dir = os.path.join(base_dir, "data")
 
     if create:
         try:
