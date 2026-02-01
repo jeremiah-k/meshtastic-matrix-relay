@@ -1,6 +1,7 @@
 import contextlib
 import json
 import os
+import shutil
 import sqlite3
 import threading
 from typing import Any, Dict, Tuple, cast
@@ -142,8 +143,10 @@ def get_db_path() -> str:
     def _active_mtime(path: str) -> float:
         mtimes = []
         for candidate in (path, f"{path}-wal", f"{path}-shm"):
-            if os.path.exists(candidate):
+            try:
                 mtimes.append(os.path.getmtime(candidate))
+            except OSError:
+                continue
         return max(mtimes) if mtimes else 0.0
 
     if is_new_layout_enabled() and not os.path.exists(default_path):
@@ -155,8 +158,6 @@ def get_db_path() -> str:
         if legacy_candidates:
             legacy_path = max(legacy_candidates, key=_active_mtime)
             try:
-                import shutil
-
                 shutil.move(legacy_path, default_path)
                 for suffix in ("-wal", "-shm"):
                     legacy_sidecar = f"{legacy_path}{suffix}"

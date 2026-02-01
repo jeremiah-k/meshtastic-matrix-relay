@@ -1033,15 +1033,20 @@ def set_config(module: Any, passed_config: dict[str, Any]) -> dict[str, Any]:
     return passed_config
 
 
-def load_config(config_file: str | None = None, args: Any = None) -> dict[str, Any]:
+def load_config(
+    config_file: str | None = None,
+    args: Any = None,
+    config_paths: list[str] | None = None,
+) -> dict[str, Any]:
     """
     Load the application configuration from a YAML file or from environment variables.
 
-    If `config_file` is provided and readable, that file is used; otherwise candidate locations from `get_config_paths(args)` are searched in order and the first readable YAML file is loaded. Empty or null YAML content is treated as an empty dictionary. Environment-derived overrides are merged into the loaded configuration. The function updates the module-level `relay_config` and `config_path` to reflect the resulting configuration source.
+    If `config_file` is provided and readable, that file is used; otherwise candidate locations from `config_paths` or `get_config_paths(args)` are searched in order and the first readable YAML file is loaded. Empty or null YAML content is treated as an empty dictionary. Environment-derived overrides are merged into the loaded configuration. The function updates the module-level `relay_config` and `config_path` to reflect the resulting configuration source.
 
     Parameters:
-        config_file (str | None): Path to a specific YAML configuration file to load. If `None`, candidate paths from `get_config_paths(args)` are used.
-        args: Parsed command-line arguments forwarded to `get_config_paths()` to influence search order.
+        config_file (str | None): Path to a specific YAML configuration file to load. If `None`, candidate paths from `config_paths` or `get_config_paths(args)` are used.
+        args: Parsed command-line arguments forwarded to `get_config_paths()` to influence search order when `config_paths` is not provided.
+        config_paths: Optional list of config paths to search instead of calling `get_config_paths(args)`.
 
     Returns:
         dict: The resulting configuration dictionary. Returns an empty dict if no configuration is found or a file read/parse error occurs.
@@ -1066,7 +1071,8 @@ def load_config(config_file: str | None = None, args: Any = None) -> dict[str, A
             return {}
 
     # Otherwise, search for a config file
-    config_paths = get_config_paths(args)
+    if config_paths is None:
+        config_paths = get_config_paths(args)
 
     # Try each config path in order until we find one that exists
     for path in config_paths:

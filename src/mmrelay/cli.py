@@ -1616,7 +1616,7 @@ def handle_auth_status(args: argparse.Namespace) -> int:
     print("============================")
 
     config_paths = get_config_paths(args)
-    config_data = load_config(args=args)
+    config_data = load_config(args=args, config_paths=config_paths)
     explicit_path = get_explicit_credentials_path(config_data)
     candidate_paths = get_credentials_search_paths(
         explicit_path=explicit_path,
