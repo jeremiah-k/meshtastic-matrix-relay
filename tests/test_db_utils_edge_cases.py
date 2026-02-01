@@ -388,6 +388,217 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
             with self.assertRaises(sqlite3.Error):
                 initialize_database()
 
+    def test_active_mtime_file_not_found(self):
+        """Test _active_mtime handles files that don't exist."""
+        from mmrelay.db_utils import _active_mtime
+
+        # Test with a path that doesn't exist
+        result = _active_mtime("/nonexistent/path/to/file.sqlite")
+        self.assertEqual(result, 0.0)
+
+    def test_active_mtime_partial_files_exist(self):
+        """Test _active_mtime when only some files (main, wal, shm) exist."""
+        from mmrelay.db_utils import _active_mtime
+
+        with tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False) as temp_db:
+            temp_db_path = temp_db.name
+
+        try:
+            # Only main file exists (no wal or shm)
+            result = _active_mtime(temp_db_path)
+            self.assertGreater(result, 0.0)
+
+            # Create a wal file
+            wal_path = f"{temp_db_path}-wal"
+            with open(wal_path, "w") as f:
+                f.write("wal content")
+
+            # Now both main and wal exist
+            result_with_wal = _active_mtime(temp_db_path)
+            self.assertGreater(result_with_wal, 0.0)
+
+            os.unlink(wal_path)
+        finally:
+            if os.path.exists(temp_db_path):
+                os.unlink(temp_db_path)
+
+    def test_migrate_legacy_db_empty_candidates(self):
+        """Test _migrate_legacy_db_if_needed with empty legacy_candidates."""
+        from mmrelay.db_utils import _migrate_legacy_db_if_needed
+
+        # Should return early without error when no candidates
+        _migrate_legacy_db_if_needed(
+            default_path="/some/path/db.sqlite", legacy_candidates=[]
+        )
+
+    def test_migrate_legacy_db_success(self):
+        """Test successful migration of legacy database."""
+        from mmrelay.db_utils import _migrate_legacy_db_if_needed
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            legacy_path = os.path.join(temp_dir, "legacy.sqlite")
+            default_path = os.path.join(temp_dir, "default.sqlite")
+
+            # Create a legacy database file
+            with open(legacy_path, "w") as f:
+                f.write("legacy db content")
+
+            # Create wal and shm sidecars
+            for suffix in ("-wal", "-shm"):
+                with open(f"{legacy_path}{suffix}", "w") as f:
+                    f.write(f"{suffix} content")
+
+            _migrate_legacy_db_if_needed(
+                default_path=default_path, legacy_candidates=[legacy_path]
+            )
+
+            # Verify migration happened
+            self.assertTrue(os.path.exists(default_path))
+            self.assertFalse(os.path.exists(legacy_path))
+            self.assertTrue(os.path.exists(f"{default_path}-wal"))
+            self.assertTrue(os.path.exists(f"{default_path}-shm"))
+
+    def test_migrate_legacy_db_os_error(self):
+        """Test _migrate_legacy_db_if_needed handles OSError gracefully."""
+        from mmrelay.db_utils import _migrate_legacy_db_if_needed
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            legacy_path = os.path.join(temp_dir, "legacy.sqlite")
+            default_path = os.path.join(temp_dir, "default.sqlite")
+
+            # Create a legacy database file
+            with open(legacy_path, "w") as f:
+                f.write("legacy db content")
+
+            with patch("shutil.move", side_effect=OSError("Permission denied")):
+                with patch("mmrelay.db_utils.logger") as mock_logger:
+                    _migrate_legacy_db_if_needed(
+                        default_path=default_path, legacy_candidates=[legacy_path]
+                    )
+
+                    # Should log warning about failed migration
+                    mock_logger.warning.assert_called_once()
+                    warning_call = mock_logger.warning.call_args[0]
+                    self.assertIn("Failed to migrate", warning_call[0])
+
+    def test_migrate_legacy_db_permission_error(self):
+        """Test _migrate_legacy_db_if_needed handles PermissionError gracefully."""
+        from mmrelay.db_utils import _migrate_legacy_db_if_needed
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            legacy_path = os.path.join(temp_dir, "legacy.sqlite")
+            default_path = os.path.join(temp_dir, "default.sqlite")
+
+            # Create a legacy database file
+            with open(legacy_path, "w") as f:
+                f.write("legacy db content")
+
+            with patch("shutil.move", side_effect=PermissionError("Access denied")):
+                with patch("mmrelay.db_utils.logger") as mock_logger:
+                    _migrate_legacy_db_if_needed(
+                        default_path=default_path, legacy_candidates=[legacy_path]
+                    )
+
+                    # Should log warning about failed migration
+                    mock_logger.warning.assert_called_once()
+                    warning_call = mock_logger.warning.call_args[0]
+                    self.assertIn("Failed to migrate", warning_call[0])
+
+    def test_get_db_path_new_layout_migration(self):
+        """Test get_db_path with new layout enabled and legacy migration."""
+        import mmrelay.db_utils
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base_dir = os.path.join(temp_dir, "base")
+            data_dir = os.path.join(base_dir, "data")
+            default_path = os.path.join(data_dir, "meshtastic.sqlite")
+            legacy_path = os.path.join(base_dir, "meshtastic.sqlite")
+
+            os.makedirs(data_dir, exist_ok=True)
+
+            # Create legacy database
+            with open(legacy_path, "w") as f:
+                f.write("legacy db")
+
+            # Mock config and directories
+            mmrelay.db_utils.config = {"database": {}}
+
+            with patch("mmrelay.db_utils.is_new_layout_enabled", return_value=True):
+                with patch("mmrelay.db_utils.get_data_dir", return_value=data_dir):
+                    with patch("mmrelay.db_utils.get_base_dir", return_value=base_dir):
+                        clear_db_path_cache()
+                        result = get_db_path()
+
+            # Should return default path and trigger migration
+            self.assertEqual(result, default_path)
+
+    def test_get_db_path_legacy_multiple_databases(self):
+        """Test get_db_path when multiple legacy databases exist."""
+        import mmrelay.db_utils
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_dir = os.path.join(temp_dir, "data")
+            base_dir = temp_dir
+            default_path = os.path.join(data_dir, "meshtastic.sqlite")
+            legacy_base_path = os.path.join(base_dir, "meshtastic.sqlite")
+            legacy_data_path = os.path.join(base_dir, "data", "meshtastic.sqlite")
+
+            os.makedirs(data_dir, exist_ok=True)
+            os.makedirs(os.path.dirname(legacy_data_path), exist_ok=True)
+
+            # Create multiple legacy databases
+            for path in [legacy_base_path, legacy_data_path]:
+                with open(path, "w") as f:
+                    f.write("legacy db")
+                # Touch files to have different mtimes
+                import time
+
+                time.sleep(0.01)
+
+            # Make one newer than the other
+            os.utime(legacy_data_path, None)
+
+            mmrelay.db_utils.config = {"database": {}}
+
+            with patch("mmrelay.db_utils.is_new_layout_enabled", return_value=False):
+                with patch("mmrelay.db_utils.get_data_dir", return_value=data_dir):
+                    with patch("mmrelay.db_utils.get_base_dir", return_value=base_dir):
+                        clear_db_path_cache()
+                        result = get_db_path()
+
+            # Should use most recently updated database
+            self.assertEqual(result, legacy_data_path)
+
+    def test_get_db_path_legacy_single_database_not_default(self):
+        """Test get_db_path when single legacy database exists but not at default path."""
+        import mmrelay.db_utils
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data_dir = os.path.join(temp_dir, "data")
+            base_dir = temp_dir
+            default_path = os.path.join(data_dir, "meshtastic.sqlite")
+            # Use legacy_base_path which is at base_dir, not inside data/ subdirectory
+            legacy_base_path = os.path.join(base_dir, "meshtastic.sqlite")
+
+            # Create single legacy database at base_dir (not at default data_dir path)
+            with open(legacy_base_path, "w") as f:
+                f.write("legacy db")
+
+            mmrelay.db_utils.config = {"database": {}}
+
+            with patch("mmrelay.db_utils.is_new_layout_enabled", return_value=False):
+                with patch("mmrelay.db_utils.get_data_dir", return_value=data_dir):
+                    with patch("mmrelay.db_utils.get_base_dir", return_value=base_dir):
+                        with patch("mmrelay.db_utils.logger") as mock_logger:
+                            clear_db_path_cache()
+                            result = get_db_path()
+
+                            # Should use legacy path and log info message
+                            self.assertEqual(result, legacy_base_path)
+                            mock_logger.info.assert_any_call(
+                                "Using legacy database location: %s", legacy_base_path
+                            )
+
 
 if __name__ == "__main__":
     unittest.main()
