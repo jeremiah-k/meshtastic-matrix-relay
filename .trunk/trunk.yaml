@@ -52,6 +52,12 @@ lint:
         - src/mmrelay/setup_utils.py
         - src/mmrelay/cli_utils.py # Ignore B110 for client close error handling during logout
         - tests/** # Ignore all bandit security warnings in test files (hardcoded test passwords, asserts, etc.)
+    - linters: [mypy]
+      paths:
+        - tests/** # Type checking is scoped to src/; tests are out of scope
+    - linters: [markdownlint, prettier]
+      paths:
+        - session-*.md # Session logs are raw artifacts, not project docs
 actions:
   disabled:
     - trunk-announce
