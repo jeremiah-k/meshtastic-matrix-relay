@@ -370,13 +370,10 @@ def ensure_directories(*, create_missing: bool = True) -> None:
                 dir_path.mkdir(parents=True, exist_ok=True)
                 logger.debug("Created directory: %s", dir_path)
             except OSError as e:
-                if create_missing:
-                    logger.error("Failed to create directory %s: %s", dir_path, e)
-                else:
-                    logger.warning("Directory missing: %s", dir_path)
-
-
-# First (simpler) version removed - duplicate function defined below
+                logger.error("Failed to create directory %s: %s", dir_path, e)
+        else:
+            if not dir_path.exists():
+                logger.warning("Directory missing: %s", dir_path)
 
 
 def get_legacy_env_vars() -> list[str]:
@@ -623,14 +620,14 @@ def get_diagnostics() -> dict[str, Any]:
         - legacy_active: Whether deprecation window is active
     """
     _logger = get_logger("paths")
-    get_home_dir()
+    # Note: resolve_all_paths() already resolves home and triggers any deprecation warnings
 
     resolved = resolve_all_paths()
     compat_diagnostics = {
         "home_dir": resolved["home"],
         "credentials_path": resolved["credentials_path"],
         "database_dir": resolved["database_dir"],
-        "database_path": resolved["database_dir"] + "/meshtastic.sqlite",
+        "database_path": str(Path(resolved["database_dir"]) / "meshtastic.sqlite"),
         "logs_dir": resolved["logs_dir"],
         "log_file": resolved["log_file"],
         "plugins_dir": resolved["plugins_dir"],

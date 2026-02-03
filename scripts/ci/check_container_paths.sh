@@ -163,8 +163,10 @@ check_doc_files() {
                     # Convert pipe-delimited ranges to array
                     IFS='|' read -ra RANGE_ARRAY <<< "$ALLOWED_RANGES"
                     for RANGE in "${RANGE_ARRAY[@]}"; do
-                        local RANGE_START=$(echo "$RANGE" | cut -d',' -f1)
-                        local RANGE_END=$(echo "$RANGE" | cut -d',' -f2)
+                        local RANGE_START
+                        local RANGE_END
+                        RANGE_START=$(echo "$RANGE" | cut -d',' -f1)
+                        RANGE_END=$(echo "$RANGE" | cut -d',' -f2)
 
                         if [ "$MATCH_LINE" -ge "$RANGE_START" ] && [ "$MATCH_LINE" -le "$RANGE_END" ]; then
                             ALLOWED=true

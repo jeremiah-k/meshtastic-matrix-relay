@@ -333,7 +333,7 @@ def _is_migration_completed() -> bool:
         return False
 
     try:
-        with open(state_path, "r") as f:
+        with open(state_path, "r", encoding="utf-8") as f:
             content = f.read().strip()
             return content == MIGRATION_VERSION
     except (OSError, IOError):
@@ -977,7 +977,11 @@ def migrate_gpxtracker(
         if legacy_config.exists():
             try:
                 import yaml
+            except ImportError as e:
+                logger.warning("Failed to import yaml: %s", e)
+                break
 
+            try:
                 with open(legacy_config, "r") as f:
                     config_data = yaml.safe_load(f)
                     if isinstance(config_data, dict):
@@ -994,8 +998,6 @@ def migrate_gpxtracker(
                                             old_gpx_dir,
                                         )
                                         break
-            except ImportError as e:
-                logger.warning("Failed to read legacy config %s: %s", legacy_config, e)
             except (OSError, yaml.YAMLError) as e:
                 logger.warning("Failed to read legacy config %s: %s", legacy_config, e)
 
@@ -1189,7 +1191,11 @@ def perform_migration(
         if legacy_config.exists():
             try:
                 import yaml
+            except ImportError as e:
+                logger.warning("Failed to import yaml: %s", e)
+                continue
 
+            try:
                 with open(legacy_config, "r") as f:
                     config_data = yaml.safe_load(f)
                     if isinstance(config_data, dict):
@@ -1201,8 +1207,6 @@ def perform_migration(
                             ):
                                 gpx_configured = True
                                 break
-            except ImportError as e:
-                logger.warning("Failed to read legacy config %s: %s", legacy_config, e)
             except (OSError, yaml.YAMLError) as e:
                 logger.warning("Failed to read legacy config %s: %s", legacy_config, e)
 
@@ -1259,8 +1263,8 @@ def rollback_migration() -> dict[str, Any]:
             shutil.copy2(str(backup), str(new_home / "credentials.json"))
             logger.info("Restored credentials from: %s", backup)
             restored_count += 1
-        except (OSError, IOError):
-            logger.warning("Failed to restore credentials backup: %s", backup)
+        except (OSError, IOError) as e:
+            logger.warning("Failed to restore credentials backup %s: %s", backup, e)
 
     # Restore database
     for backup in sorted((new_home / "database").glob("meshtastic.sqlite.bak.*")):
@@ -1268,8 +1272,8 @@ def rollback_migration() -> dict[str, Any]:
             shutil.copy2(str(backup), str(new_home / "database" / "meshtastic.sqlite"))
             logger.info("Restored database from: %s", backup)
             restored_count += 1
-        except (OSError, IOError):
-            logger.warning("Failed to restore database backup: %s", backup)
+        except (OSError, IOError) as e:
+            logger.warning("Failed to restore database backup %s: %s", backup, e)
 
     # Remove migration state file
     state_path = _get_migration_state_path()

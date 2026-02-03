@@ -1554,7 +1554,9 @@ async def connect_matrix(
 
                         # Create store directory if it doesn't exist
                         try:
-                            os.makedirs(e2ee_store_path, exist_ok=True)
+                            await asyncio.to_thread(
+                                os.makedirs, e2ee_store_path, exist_ok=True
+                            )
                         except OSError as e:
                             logger.warning(
                                 "Could not create E2EE store directory %s: %s",
@@ -2223,7 +2225,7 @@ async def login_matrix_bot(
         store_path = None
         if e2ee_enabled:
             store_path = str(get_e2ee_store_dir())
-            os.makedirs(store_path, exist_ok=True)
+            await asyncio.to_thread(os.makedirs, store_path, exist_ok=True)
             logger.debug(f"Using E2EE store path: {store_path}")
         else:
             logger.debug("E2EE disabled in configuration, not using store path")

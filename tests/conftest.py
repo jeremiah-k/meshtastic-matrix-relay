@@ -24,6 +24,8 @@ import queue
 import threading
 import time
 from concurrent.futures import Future
+from pathlib import Path
+from typing import Generator
 from unittest.mock import MagicMock
 
 import pytest
@@ -885,7 +887,7 @@ def test_config():
 
 
 @pytest.fixture
-def clean_migration_home(tmp_path):
+def clean_migration_home(tmp_path: Path) -> Generator[Path, None, None]:
     """
     Fixture providing a clean home directory for migration tests.
 
@@ -900,7 +902,6 @@ def clean_migration_home(tmp_path):
 
     # Ensure no migration state file exists
     state_file = home / "migration_completed.flag"
-    if state_file.exists():
-        state_file.unlink()
+    state_file.unlink(missing_ok=True)
 
     yield home

@@ -330,17 +330,13 @@ def get_explicit_credentials_path(config: dict[str, Any] | None) -> str | None:
     explicit_path = config.get("credentials_path")
     if explicit_path:
         if not isinstance(explicit_path, str):
-            raise TypeError(
-                f"Expected explicit_path to be str, got {type(explicit_path).__name__}"
-            )
+            raise TypeError("credentials_path must be a string")
         return explicit_path
     matrix_section = config.get("matrix")
     if isinstance(matrix_section, dict):
         credentials_path = matrix_section.get("credentials_path")
         if credentials_path is not None and not isinstance(credentials_path, str):
-            raise TypeError(
-                f"Expected credentials_path to be str, got {type(credentials_path).__name__}"
-            )
+            raise TypeError("credentials_path must be a string")
         return credentials_path
     return None
 
@@ -936,10 +932,10 @@ def save_credentials(
     target_dir = os.path.dirname(target_path) or "."
     try:
         os.makedirs(target_dir, exist_ok=True)
-    except (OSError, PermissionError) as e:
-        logger.exception("Could not create credentials directory %s: %s", target_dir, e)
+    except (OSError, PermissionError):
+        logger.exception("Could not create credentials directory %s", target_dir)
         if sys.platform == "win32":
-            logger.error(
+            logger.warning(
                 "On Windows, ensure the application has write permissions to the credentials path."
             )
         return None
@@ -949,8 +945,8 @@ def save_credentials(
         logger.info("Saving credentials to: %s", target_path)
         with open(target_path, "w", encoding="utf-8") as f:
             json.dump(credentials, f, indent=2)
-    except (OSError, PermissionError) as e:
-        logger.error("Error writing credentials.json to %s: %s", target_path, e)
+    except (OSError, PermissionError):
+        logger.exception("Error writing credentials.json to %s", target_path)
         raise
 
     # Set secure permissions on Unix systems (600 - owner read/write only)

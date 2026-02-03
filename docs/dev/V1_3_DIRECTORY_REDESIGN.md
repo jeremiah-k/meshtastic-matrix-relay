@@ -285,7 +285,6 @@ import os
 import sys
 import platformdirs
 from pathlib import Path
-from typing import override
 
 from mmrelay.constants.app import APP_NAME, APP_AUTHOR
 
@@ -1334,56 +1333,6 @@ $MMRELAY_HOME/
 - Plugin code location: `$MMRELAY_HOME/plugins/{name}/`
 - **No interference** with existing functionality (plugins don't write files)
 - **Backward compatible**: Old plugins still work, new plugins can use file I/O if needed
-
-### v1.2.x Layout (legacy)
-
-```
-Legacy (v1.2.9):
-~/.mmrelay/
-├── config.yaml
-├── credentials.json
-├── meshtastic.sqlite
-├── logs/
-│   └── mmrelay.log
-├── plugins/
-│   ├── custom/
-│   └── community/
-└── store/
-
-Partial New (v1.2.10-1.2.11):
-~/.mmrelay/
-├── config.yaml
-├── credentials.json
-├── data/
-│   └── meshtastic.sqlite
-├── logs/
-│   └── mmrelay.log
-├── plugins/
-│   ├── custom/
-│   └── community/
-└── store/
-```
-
-### v1.3 Layout (current)
-
-```
-Unified:
-$MMRELAY_HOME/
-├── config.yaml              # (optional, can be elsewhere)
-├── credentials.json
-├── database/
-│   ├── meshtastic.sqlite
-│   ├── meshtastic.sqlite-wal    # (auto-created)
-│   └── meshtastic.sqlite-shm    # (auto-created)
-├── logs/
-│   └── mmrelay.log
-├── store/                  # Unix/macOS only
-└── plugins/
-    ├── custom/
-    │   └── <plugin-name>/
-    └── community/
-        └── <plugin-name>/
-```
 
 ---
 

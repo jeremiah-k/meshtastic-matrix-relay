@@ -1,5 +1,6 @@
 """Comprehensive tests for migrate.py module covering all migration functions."""
 
+import os
 import sqlite3
 import sys
 from pathlib import Path
@@ -466,9 +467,12 @@ class TestGetMostRecentDatabase:
         db1.write_text("old")
         import time
 
-        time.sleep(0.01)
+        old_ts = time.time() - 10
+        new_ts = time.time()
+        os.utime(db1, (old_ts, old_ts))
         db2 = tmp_path / "new.sqlite"
         db2.write_text("new")
+        os.utime(db2, (new_ts, new_ts))
 
         result = _get_most_recent_database([db1, db2])
 

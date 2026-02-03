@@ -220,7 +220,7 @@ def get_log_dir() -> str:
 
     result = resolve_all_paths()["logs_dir"]
     if not isinstance(result, str):
-        raise TypeError(f"Expected logs_dir to be str, got {type(result).__name__}")
+        raise TypeError("logs_dir must be a string")
     return result
 
 
