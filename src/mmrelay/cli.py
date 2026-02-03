@@ -1647,7 +1647,7 @@ def handle_config_paths(args: argparse.Namespace) -> int:
     print(f"     credentials.json: {paths_info['credentials_path']}")
     creds_source = "HOME"
     if paths_info.get("legacy_sources"):
-        home_path = Path(paths_info["home"])
+        Path(paths_info["home"])
         for legacy_dir in [Path(ld) for ld in paths_info["legacy_sources"]]:
             legacy_creds = legacy_dir / "credentials.json"
             if legacy_creds.exists():
@@ -1658,7 +1658,7 @@ def handle_config_paths(args: argparse.Namespace) -> int:
     print(f"     database/: {paths_info['database_dir']}")
     db_source = "HOME"
     if paths_info.get("legacy_sources"):
-        home_path = Path(paths_info["home"])
+        Path(paths_info["home"])
         for legacy_dir in [Path(ld) for ld in paths_info["legacy_sources"]]:
             legacy_db_files = [
                 legacy_dir / "meshtastic.sqlite",
@@ -1675,7 +1675,7 @@ def handle_config_paths(args: argparse.Namespace) -> int:
     print(f"     store/: {paths_info['store_dir']}")
     store_source = "HOME"
     if paths_info.get("legacy_sources") and sys.platform != "win32":
-        home_path = Path(paths_info["home"])
+        Path(paths_info["home"])
         for legacy_dir in [Path(ld) for ld in paths_info["legacy_sources"]]:
             legacy_store = legacy_dir / "store"
             if legacy_store.exists():

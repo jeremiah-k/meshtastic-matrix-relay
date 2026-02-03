@@ -32,7 +32,7 @@ except ImportError as e:
 class E2EEDebugger:
     """E2EE debugging utility"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.config: dict[str, Any] | None = None
         self.client: Any | None = None
 

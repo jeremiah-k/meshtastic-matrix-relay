@@ -7,6 +7,8 @@ metadata:
     checkov.io/skip1: CKV_K8S_43=Base manifest has no tag; tag is set via kustomization.yaml or digest overlay.
     checkov.io/skip2: CKV_K8S_35=Matrix auth uses env vars to bootstrap credentials.json on the PVC.
     checkov.io/skip3: CKV_K8S_15=Default uses latest tag; use digest overlay for production pinning.
+    checkov.io/skip4: CKV_K8S_14=Base manifest intentionally omits tag; pin via kustomization overlay.
+    checkov.io/skip5: CKV_K8S_40=Init container runs as root to chown PVC for non-root runtime container.
   labels:
     app: mmrelay
 spec:
@@ -35,6 +37,19 @@ spec:
             - /data
           securityContext:
             runAsUser: 0
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 50m
+              memory: 128Mi
           volumeMounts:
             - name: data
               mountPath: /data
@@ -113,7 +128,7 @@ spec:
                 command:
                   - sh
                   - -c
-                  - "mmrelay shutdown --config /app/config.yaml || true; sleep 5"
+                  - mmrelay shutdown --config /app/config.yaml || true; sleep 5
           volumeMounts:
             # Pattern A (default): Secret-based config injection
             - name: config

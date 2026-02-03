@@ -19,7 +19,10 @@ services:
       - ./config.yaml:/app/config.yaml:ro
 
     # Command uses only --config; MMRELAY_HOME drives all other paths
-    command: ["mmrelay", "--config", "/app/config.yaml"]
+    command:
+      - mmrelay
+      - --config
+      - /app/config.yaml
 
     # Optional: Resource limits
     # deploy:

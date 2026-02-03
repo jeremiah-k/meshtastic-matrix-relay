@@ -1597,6 +1597,20 @@ async def connect_matrix(
         # E2EE not configured
         pass
 
+    if not isinstance(matrix_homeserver, str) or not matrix_homeserver:
+        logger.error("Matrix homeserver is missing or invalid.")
+        return None
+    if not isinstance(matrix_access_token, str) or not matrix_access_token:
+        logger.error("Matrix access token is missing or invalid.")
+        return None
+    if not isinstance(bot_user_id, str) or not bot_user_id:
+        logger.error("Matrix user ID is missing or invalid.")
+        return None
+
+    homeserver = matrix_homeserver
+    access_token = matrix_access_token
+    user_id = bot_user_id
+
     # Initialize the Matrix client with custom SSL context
     # Use the same AsyncClientConfig pattern as working E2EE examples
     client_config = AsyncClientConfig(
@@ -1611,8 +1625,8 @@ async def connect_matrix(
         logger.debug(f"Device ID from credentials: {e2ee_device_id}")
 
     matrix_client = AsyncClient(
-        homeserver=matrix_homeserver,
-        user=bot_user_id or "",  # Provide empty string fallback if None
+        homeserver=homeserver,
+        user=user_id,
         device_id=e2ee_device_id,  # Will be None if not specified in config or credentials
         store_path=e2ee_store_path if e2ee_enabled else None,
         config=client_config,
@@ -1623,22 +1637,22 @@ async def connect_matrix(
     if credentials:
         # Use restore_login when a device_id is available so nio can load the store.
         # When the device_id is unknown, discover it first via whoami and then restore.
-        if e2ee_device_id and bot_user_id:
+        if e2ee_device_id and user_id:
             matrix_client.restore_login(
-                user_id=bot_user_id,
+                user_id=user_id,
                 device_id=e2ee_device_id,
-                access_token=matrix_access_token,
+                access_token=access_token,
             )
             logger.info(
-                f"Restored login session for {bot_user_id} with device {e2ee_device_id}"
+                f"Restored login session for {user_id} with device {e2ee_device_id}"
             )
         else:
             # First-run E2EE setup: discover device_id via whoami before loading the store
             logger.info("First-run E2EE setup: discovering device_id via whoami")
 
             # Set credentials directly to allow whoami to succeed without a device_id
-            matrix_client.access_token = matrix_access_token
-            matrix_client.user_id = bot_user_id or ""
+            matrix_client.access_token = access_token
+            matrix_client.user_id = user_id
 
             # Call whoami to discover device_id from server
             try:
@@ -1664,14 +1678,14 @@ async def connect_matrix(
 
                     # Reload login and E2EE store now that we have a device_id.
                     # matrix-nio requires a concrete device_id for restore_login; None is not supported.
-                    if e2ee_device_id and bot_user_id:
+                    if e2ee_device_id and user_id:
                         matrix_client.restore_login(
-                            user_id=bot_user_id,
+                            user_id=user_id,
                             device_id=e2ee_device_id,
-                            access_token=matrix_access_token,
+                            access_token=access_token,
                         )
                     logger.info(
-                        f"Restored login session for {bot_user_id} with device {e2ee_device_id}"
+                        f"Restored login session for {user_id} with device {e2ee_device_id}"
                     )
                 else:
                     logger.warning("whoami response did not contain device_id")
@@ -1680,8 +1694,8 @@ async def connect_matrix(
                 logger.warning("E2EE may not work properly without a device_id")
     else:
         # Fallback to direct assignment for legacy token-based auth
-        matrix_client.access_token = matrix_access_token
-        matrix_client.user_id = bot_user_id or ""
+        matrix_client.access_token = access_token
+        matrix_client.user_id = user_id
 
     # If E2EE is enabled, upload keys if necessary.
     # nio will have loaded the store automatically if store_path was provided.
