@@ -1272,7 +1272,7 @@ args:
 
 ### v1.2.x Layout
 
-```
+```text
 Legacy (v1.2.9):
 ~/.mmrelay/
 ├── config.yaml
