@@ -599,7 +599,7 @@ def migrate_database(
                 logger.info("Copying database file: %s", db_path)
                 shutil.copy2(str(db_path), str(dest))
         except (OSError, IOError) as e:
-            logger.error("Failed to migrate database file %s: %s", db_path, e)
+            logger.exception("Failed to migrate database file %s", db_path)
             return {
                 "success": False,
                 "error": str(e),
@@ -1275,7 +1275,9 @@ def rollback_migration() -> dict[str, Any]:
     restored_count = 0
 
     # Restore credentials
-    for backup in sorted(new_home.glob("credentials.json.bak.*")):
+    credential_backups = sorted(new_home.glob("credentials.json.bak.*"), reverse=True)
+    if credential_backups:
+        backup = credential_backups[0]
         try:
             shutil.copy2(str(backup), str(new_home / "credentials.json"))
             logger.info("Restored credentials from: %s", backup)
@@ -1284,7 +1286,11 @@ def rollback_migration() -> dict[str, Any]:
             logger.warning("Failed to restore credentials backup %s: %s", backup, e)
 
     # Restore database
-    for backup in sorted((new_home / "database").glob("meshtastic.sqlite.bak.*")):
+    database_backups = sorted(
+        (new_home / "database").glob("meshtastic.sqlite.bak.*"), reverse=True
+    )
+    if database_backups:
+        backup = database_backups[0]
         try:
             shutil.copy2(str(backup), str(new_home / "database" / "meshtastic.sqlite"))
             logger.info("Restored database from: %s", backup)

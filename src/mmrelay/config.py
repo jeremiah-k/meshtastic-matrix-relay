@@ -306,8 +306,9 @@ def get_credentials_search_paths(
 
         _add(str(get_credentials_path()))
 
-        for legacy_dir in get_legacy_dirs():
-            _add(os.path.join(legacy_dir, "credentials.json"))
+        if is_deprecation_window_active():
+            for legacy_dir in get_legacy_dirs():
+                _add(os.path.join(legacy_dir, "credentials.json"))
 
     return candidate_paths
 
@@ -816,7 +817,11 @@ def load_credentials() -> dict[str, Any] | None:
         logger.debug("Looking for credentials at: %s", candidate_paths)
         from mmrelay.paths import get_legacy_dirs
 
-        legacy_dirs = {os.path.abspath(str(p)) for p in get_legacy_dirs()}
+        legacy_dirs = (
+            {os.path.abspath(str(p)) for p in get_legacy_dirs()}
+            if is_deprecation_window_active()
+            else set()
+        )
         for credentials_path in candidate_paths:
             if not os.path.exists(credentials_path):
                 continue

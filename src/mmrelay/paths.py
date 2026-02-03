@@ -126,7 +126,7 @@ def get_config_paths(*, explicit: str | None = None) -> list[Path]:
 
     Search order (highest to lowest):
         1. Explicit path from --config argument (always included, even if doesn't exist)
-        2. MMRELAY_HOME/config.yaml
+        2. MMRELAY_HOME/config.yaml (when explicit is not provided)
         3. Current directory (fallback)
         4. Legacy locations (for deprecation window)
 
@@ -635,7 +635,7 @@ def get_diagnostics() -> dict[str, Any]:
         "community_plugins_dir": resolved["community_plugins_dir"],
         "env_vars": resolved.get("env_vars_detected", {}),
         "cli_override": resolved.get("cli_override"),
-        "sources_used": resolved.get("sources_used", []),
+        "sources_used": resolved.get("home_source"),
         "legacy_active": is_deprecation_window_active(),
     }
 

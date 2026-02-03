@@ -108,7 +108,7 @@ check_doc_files() {
 							local CLOSING_CONTENT
 							CLOSING_CONTENT=$(sed -n "${CLOSING_LINE}p" "${FILE}")
 
-							if echo "${CLOSING_CONTENT}" | grep -qF "${DELIMITER}"; then
+							if echo "${CLOSING_CONTENT}" | grep -qE "^[[:space:]]*${DELIMITER}[[:space:]]*$"; then
 								if [[ ${BLOCK_DEPTH} -eq 1 ]]; then
 									# Allowed range is from (opening fence + 1) to (closing fence - 1)
 									local BLOCK_START=$((FENCE_LINE + 1))

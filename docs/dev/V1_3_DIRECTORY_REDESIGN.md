@@ -184,9 +184,9 @@ database: delete_plugin_data(plugin_name, meshtastic_id)       # Delete from SQL
 
 ## Migration Strategy (v1.2.x → v1.3)
 
-### Phase 1: Detection (First Run)
+### Phase 1: Detection (Explicit Command)
 
-On first run after upgrade:
+Run the migration command after upgrade (use `mmrelay migrate --dry-run` to preview):
 
 1. Detect old installation locations
 2. Check for existing data in legacy layout
@@ -447,9 +447,9 @@ def get_plugin_data_dir(plugin_name: str) -> Path:
     Returns:
         Path: Plugin data directory
     """
-    # Plugins store their data under <home>/plugins/<category>/<name>/
-    # This unifies discovery and storage
-    return get_plugins_dir() / "data" / plugin_name
+    # Plugins store their data under <home>/plugins/<name>/data/
+    # This keeps plugin code and data together
+    return get_plugins_dir() / plugin_name / "data"
 
 
 def ensure_directories() -> None:
@@ -468,7 +468,7 @@ def ensure_directories() -> None:
         get_community_plugins_dir(),
     ]
 
-    for dir_path in dirs_to_create:
+    for dir_path in filter(None, dirs_to_create):
         dir_path.mkdir(parents=True, exist_ok=True)
 ```
 
@@ -486,10 +486,12 @@ Handles migration from legacy and new layouts to unified structure.
 import os
 import shutil
 import sqlite3
+import sys
 from pathlib import Path
 from typing import Any
 from datetime import datetime
 
+from mmrelay.constants.app import APP_NAME
 from mmrelay.log_utils import get_logger
 
 logger = get_logger("Migration")
@@ -707,7 +709,8 @@ def migrate_plugins(legacy_info: dict[str, Any], new_home: Path) -> bool:
             if item.is_dir():
                 target = new_custom_dir / item.name
                 if target.exists():
-                    target = target.with_suffix(f".bak.{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+                    backup_suffix = f".bak.{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                    target = target.with_name(target.name + backup_suffix)
                 shutil.copytree(str(item), str(target))
                 migrated_any = True
         logger.info("Migrated custom plugins")
@@ -719,7 +722,8 @@ def migrate_plugins(legacy_info: dict[str, Any], new_home: Path) -> bool:
             if item.is_dir():
                 target = new_community_dir / item.name
                 if target.exists():
-                    target = target.with_suffix(f".bak.{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+                    backup_suffix = f".bak.{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                    target = target.with_name(target.name + backup_suffix)
                 shutil.copytree(str(item), str(target))
                 migrated_any = True
         logger.info("Migrated community plugins")
@@ -1185,7 +1189,7 @@ args:
 
 ### Questions for User
 
-1. **Migration timing**: Should migration run on first startup or require explicit command?
+1. **Migration timing**: Migration is explicit; users run `mmrelay migrate` (optionally `--dry-run`).
 2. **Legacy config**: Keep `config.yaml` at old location or move to new?
 3. **Partial new layout**: Should we support migration from v1.2.10's partial layout?
 4. **Backups**: Should we keep backups of migrated files by default?
