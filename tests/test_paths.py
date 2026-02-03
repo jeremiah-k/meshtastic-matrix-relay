@@ -23,8 +23,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 try:
     from mmrelay.paths import (
         get_config_paths,
-        get_credentials_path,
-        get_database_dir,
         get_database_path,
         get_diagnostics,
         get_home_dir,
@@ -32,11 +30,7 @@ try:
         get_plugin_code_dir,
         get_plugin_data_dir,
         get_plugin_database_path,
-        get_plugins_dir,
-        is_deprecation_window_active,
         reset_home_override,
-        resolve_all_paths,
-        set_home_override,
     )
 
     IMPORTS_AVAILABLE = True
