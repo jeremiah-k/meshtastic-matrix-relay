@@ -935,7 +935,7 @@ def save_credentials(
     except (OSError, PermissionError):
         logger.exception("Could not create credentials directory %s", target_dir)
         if sys.platform == "win32":
-            logger.warning(
+            logger.error(
                 "On Windows, ensure the application has write permissions to the credentials path."
             )
         return None
