@@ -434,7 +434,7 @@ class TestConfigEdgeCases(unittest.TestCase):
         with patch("mmrelay.config.sys.platform", "win32"):
             with patch("mmrelay.config._has_any_dir_override", return_value=False):
                 with patch(
-                    "mmrelay.config.platformdirs.user_data_dir",
+                    "mmrelay.paths.platformdirs.user_data_dir",
                     return_value="C:\\Users\\test\\AppData\\Local\\mmrelay",
                 ):
                     with patch("mmrelay.config.os.makedirs"):

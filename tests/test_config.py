@@ -57,7 +57,7 @@ class TestConfig(unittest.TestCase):
             base_dir = get_base_dir()
             self.assertEqual(base_dir, os.path.expanduser("~/.mmrelay"))
 
-    @patch("mmrelay.config.platformdirs.user_data_dir")
+    @patch("mmrelay.paths.platformdirs.user_data_dir")
     def test_get_base_dir_windows(self, mock_user_data_dir):
         # Test default base dir on Windows
         """
@@ -408,7 +408,7 @@ class TestConfigEdgeCases(unittest.TestCase):
                 "/absolute/path/config.yaml", [os.path.normpath(p) for p in paths]
             )
 
-    @patch("mmrelay.config.platformdirs.user_data_dir")
+    @patch("mmrelay.paths.platformdirs.user_data_dir")
     @patch("mmrelay.config.os.makedirs")
     @patch("mmrelay.config.sys.platform", "win32")
     def test_get_data_dir_windows(self, mock_makedirs, mock_user_data_dir):
