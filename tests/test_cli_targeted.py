@@ -14,7 +14,6 @@ Tests covering:
 import os
 import sys
 import unittest
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -28,6 +27,7 @@ from mmrelay.cli import (
     handle_paths_command,
     handle_subcommand,
 )
+from mmrelay.constants.app import APP_DISPLAY_NAME
 
 
 class TestApplyDirOverridesEarlyReturn(unittest.TestCase):
@@ -470,7 +470,7 @@ class TestHandlePathsCommand(unittest.TestCase):
         header_calls = [
             c
             for c in mock_print.call_args_list
-            if "MMRelay Path Configuration" in str(c)
+            if f"{APP_DISPLAY_NAME} Path Configuration" in str(c)
         ]
         self.assertTrue(len(header_calls) > 0)
 

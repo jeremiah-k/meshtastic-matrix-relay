@@ -8,10 +8,8 @@ follow pytest conventions and document the purpose of each test case.
 Inline comments explain test assertions and expected behavior for clarity.
 """
 
-import os
 import shutil
 import sqlite3
-import sys
 from pathlib import Path
 from unittest import mock
 

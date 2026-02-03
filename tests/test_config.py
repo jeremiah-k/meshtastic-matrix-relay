@@ -156,7 +156,9 @@ class TestConfig(unittest.TestCase):
             patch("sys.platform", "linux"),
         ):
             paths = get_config_paths()
-            self.assertIn("/custom/home/config.yaml", [os.path.normpath(p) for p in paths])
+            self.assertIn(
+                "/custom/home/config.yaml", [os.path.normpath(p) for p in paths]
+            )
             # Should call makedirs on the home dir
             mock_makedirs.assert_any_call("/custom/home", exist_ok=True)
 
@@ -402,7 +404,9 @@ class TestConfigEdgeCases(unittest.TestCase):
             paths = get_config_paths(args=mock_args)
 
             # Should include the absolute path
-            self.assertIn("/absolute/path/config.yaml", [os.path.normpath(p) for p in paths])
+            self.assertIn(
+                "/absolute/path/config.yaml", [os.path.normpath(p) for p in paths]
+            )
 
     @patch("mmrelay.config.platformdirs.user_data_dir")
     @patch("mmrelay.config.os.makedirs")
@@ -1179,7 +1183,9 @@ class TestYAMLValidation(unittest.TestCase):
 class TestE2EEStoreDir(unittest.TestCase):
     """Test E2EE store directory creation."""
 
-    @patch("mmrelay.config.get_unified_store_dir", return_value="/home/user/.mmrelay/store")
+    @patch(
+        "mmrelay.config.get_unified_store_dir", return_value="/home/user/.mmrelay/store"
+    )
     @patch("mmrelay.config.os.makedirs")
     def test_get_e2ee_store_dir_creates_directory(
         self, mock_makedirs, _mock_get_unified_store_dir

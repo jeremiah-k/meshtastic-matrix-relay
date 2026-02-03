@@ -13,7 +13,6 @@ import re
 import shutil
 import sys
 from collections.abc import Mapping
-from pathlib import Path
 from typing import Any
 
 import yaml  # mypy: ignore[import-untyped]
@@ -1615,8 +1614,6 @@ def handle_subcommand(args: argparse.Namespace) -> int:
     else:
         print(f"Unknown command: {args.command}")
         return 1
-
-
 
 
 def handle_config_command(args: argparse.Namespace) -> int:

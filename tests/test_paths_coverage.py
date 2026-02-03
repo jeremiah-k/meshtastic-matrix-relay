@@ -7,31 +7,12 @@ of each test case. Inline comments explain test assertions and expected behavior
 
 import os
 import sys
-from pathlib import Path
-from unittest import mock
 from unittest.mock import patch
-
-import pytest
 
 from mmrelay.paths import (
     ensure_directories,
-    get_community_plugins_dir,
-    get_config_paths,
-    get_credentials_path,
-    get_custom_plugins_dir,
-    get_database_dir,
-    get_database_path,
-    get_diagnostics,
-    get_e2ee_store_dir,
     get_home_dir,
-    get_legacy_dirs,
-    get_legacy_env_vars,
-    get_log_file,
-    get_logs_dir,
-    get_plugin_code_dir,
     get_plugin_data_dir,
-    get_plugin_database_path,
-    get_plugins_dir,
     is_deprecation_window_active,
     resolve_all_paths,
     set_home_override,

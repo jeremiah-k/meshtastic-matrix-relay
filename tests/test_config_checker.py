@@ -133,7 +133,9 @@ class TestConfigChecker(unittest.TestCase):
         paths = get_config_paths()
 
         self.assertIsInstance(paths, list)
-        self.assertGreaterEqual(len(paths), 2)  # v1.3: Should return at least home and cwd paths
+        self.assertGreaterEqual(
+            len(paths), 2
+        )  # v1.3: Should return at least home and cwd paths
 
         # Verify all paths end with config.yaml
         for path in paths:

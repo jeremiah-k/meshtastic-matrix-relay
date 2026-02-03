@@ -112,7 +112,9 @@ class TestConfigEdgeCases(unittest.TestCase):
             patch("mmrelay.config.os.makedirs"),
         ):
             paths = get_config_paths()
-            self.assertIn("/home/test/.mmrelay/config.yaml", [os.path.normpath(p) for p in paths])
+            self.assertIn(
+                "/home/test/.mmrelay/config.yaml", [os.path.normpath(p) for p in paths]
+            )
 
     def test_load_config_yaml_parse_error(self):
         """
@@ -417,7 +419,9 @@ class TestConfigEdgeCases(unittest.TestCase):
     def test_get_log_dir_windows_with_override(self):
         """Test get_log_dir on Windows with directory override."""
         with (
-            patch("mmrelay.config.get_unified_logs_dir", return_value="C:\\mmrelay\\logs"),
+            patch(
+                "mmrelay.config.get_unified_logs_dir", return_value="C:\\mmrelay\\logs"
+            ),
             patch("mmrelay.config.os.makedirs"),
         ):
             result = get_log_dir()

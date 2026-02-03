@@ -5,12 +5,10 @@ import re
 import sys
 from typing import TYPE_CHECKING, Any, Iterable, cast
 
-import platformdirs
 import yaml  # mypy: ignore[import-untyped]
 from yaml.loader import SafeLoader  # mypy: ignore[import-untyped]
 
 # Import application constants
-from mmrelay.constants.app import APP_AUTHOR, APP_NAME
 from mmrelay.constants.config import (
     CONFIG_KEY_ACCESS_TOKEN,
     CONFIG_KEY_BOT_USER_ID,
@@ -19,11 +17,13 @@ from mmrelay.constants.config import (
 )
 
 # Import new path resolution system
+from mmrelay.paths import get_config_paths as get_unified_config_paths
+from mmrelay.paths import get_e2ee_store_dir as get_unified_store_dir
 from mmrelay.paths import (
-    get_config_paths as get_unified_config_paths,
-    get_e2ee_store_dir as get_unified_store_dir,
     get_home_dir,
-    get_logs_dir as get_unified_logs_dir,
+)
+from mmrelay.paths import get_logs_dir as get_unified_logs_dir
+from mmrelay.paths import (
     is_deprecation_window_active,
 )
 
