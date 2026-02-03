@@ -4,9 +4,9 @@ metadata:
   name: mmrelay
   namespace: mmrelay
   annotations:
-    checkov.io/skip1: CKV_K8S_43=Template uses a tag for readability; pin a digest in production.
+    checkov.io/skip1: CKV_K8S_43=Base manifest has no tag; tag is set via kustomization.yaml or digest overlay.
     checkov.io/skip2: CKV_K8S_35=Matrix auth uses env vars to bootstrap credentials.json on the PVC.
-    checkov.io/skip3: CKV_K8S_15=Versioned tags are immutable; digest overlay is available for production pinning.
+    checkov.io/skip3: CKV_K8S_15=Default uses latest tag; use digest overlay for production pinning.
   labels:
     app: mmrelay
 spec:
@@ -19,24 +19,34 @@ spec:
       labels:
         app: mmrelay
     spec:
+      terminationGracePeriodSeconds: 30
       automountServiceAccountToken: false
       securityContext:
-        fsGroup: 10001
+        fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+        - name: fix-data-perms
+          image: busybox:1.36
+          command:
+            - chown
+            - -R
+            - 1000:1000
+            - /data
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: data
+              mountPath: /data
       containers:
         - name: mmrelay
-          image: ghcr.io/jeremiah-k/mmrelay:1.2.9
+          image: ghcr.io/jeremiah-k/mmrelay
           imagePullPolicy: IfNotPresent
           command:
             - mmrelay
           args:
             - --config
             - /app/config.yaml
-            - --base-dir
-            - /data
-            - --logfile
-            - /data/logs/mmrelay.log
           env:
             - name: TZ
               value: UTC
@@ -46,9 +56,7 @@ spec:
               value: /tmp/matplotlib
             - name: MMRELAY_READY_FILE
               value: /run/mmrelay/ready
-            - name: MMRELAY_CREDENTIALS_PATH
-              value: /data/credentials.json
-            - name: MMRELAY_BASE_DIR
+            - name: MMRELAY_HOME
               value: /data
           envFrom:
             - secretRef:
@@ -56,8 +64,8 @@ spec:
                 optional: true
           securityContext:
             runAsNonRoot: true
-            runAsUser: 10001
-            runAsGroup: 10001
+            runAsUser: 1000
+            runAsGroup: 1000
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
@@ -73,28 +81,56 @@ spec:
           livenessProbe:
             exec:
               command:
-                - /bin/sh
+                - sh
                 - -c
-                - python -c 'import os,time; p="/run/mmrelay/ready"; raise SystemExit(0 if os.path.exists(p) and time.time() - os.path.getmtime(p) < 120 else 1)'
-            initialDelaySeconds: 30
-            periodSeconds: 10
-            timeoutSeconds: 5
+                - mmrelay doctor --config /app/config.yaml
+            initialDelaySeconds: 0
+            periodSeconds: 60
+            timeoutSeconds: 20
             failureThreshold: 3
           readinessProbe:
             exec:
               command:
-                - /bin/sh
+                - sh
                 - -c
                 - test -f /run/mmrelay/ready
-            initialDelaySeconds: 10
+            initialDelaySeconds: 0
             periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 2
+            timeoutSeconds: 2
+            failureThreshold: 3
+          startupProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - test -f /run/mmrelay/ready
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 60
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - "mmrelay shutdown --config /app/config.yaml || true; sleep 5"
           volumeMounts:
+            # Pattern A (default): Secret-based config injection
             - name: config
               mountPath: /app/config.yaml
               subPath: config.yaml
               readOnly: true
+            # Pattern B (alternative): ConfigMap-based config injection
+            # Uncomment following volumeMount and corresponding volume
+            # - name: config
+            #   mountPath: /app/config.yaml
+            #   readOnly: true
+            # Optional: Mount credentials.json from Secret (recommended)
+            # Uncomment following volumeMount and corresponding volume
+            # - name: credentials
+            #   mountPath: /data/credentials.json
+            #   subPath: credentials.json
+            #   readOnly: true
             - name: data
               mountPath: /data
             - name: tmp
@@ -102,15 +138,29 @@ spec:
             - name: run
               mountPath: /run/mmrelay
       volumes:
+        # Pattern A (default): Secret-based config injection
         - name: config
           secret:
             secretName: mmrelay-config
             items:
               - key: config.yaml
                 path: config.yaml
+        # Pattern B (alternative): ConfigMap-based config injection
+        # Uncomment the following volume and the corresponding volumeMount
+        # - name: config
+        #   configMap:
+        #     name: mmrelay-config
         - name: data
           persistentVolumeClaim:
             claimName: mmrelay-data
+        # Optional: Mount credentials.json from Secret (recommended)
+        # Uncomment following volume and corresponding volumeMount
+        # - name: credentials
+        #   secret:
+        #     secretName: mmrelay-credentials
+        #     items:
+        #       - key: credentials.json
+        #         path: credentials.json
         - name: tmp
           emptyDir: {}
         - name: run

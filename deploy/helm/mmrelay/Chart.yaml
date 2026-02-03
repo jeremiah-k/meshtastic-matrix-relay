@@ -1,0 +1,25 @@
+apiVersion: v2
+name: mmrelay
+description: A Helm chart for MMRelay - Meshtastic to Matrix relay
+type: application
+version: 1.3.0
+appVersion: 1.3.0
+keywords:
+  - meshtastic
+  - matrix
+  - relay
+  - messaging
+home: https://github.com/jeremiah-k/meshtastic-matrix-relay
+sources:
+  - https://github.com/jeremiah-k/meshtastic-matrix-relay
+maintainers:
+  - name: jeremiah-k
+    url: https://github.com/jeremiah-k
+annotations:
+  artifacthub.io/category: networking
+  artifacthub.io/license: MIT
+  artifacthub.io/links: |
+    - name: Documentation
+      url: https://github.com/jeremiah-k/meshtastic-matrix-relay/blob/main/docs/KUBERNETES.md
+    - name: Chart Source
+      url: https://github.com/jeremiah-k/meshtastic-matrix-relay/tree/main/deploy/helm/mmrelay

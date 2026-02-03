@@ -6,8 +6,8 @@ import sys
 from typing import TYPE_CHECKING, Any, Iterable, cast
 
 import platformdirs
-import yaml  # type: ignore[import-untyped]
-from yaml.loader import SafeLoader  # type: ignore[import-untyped]
+import yaml  # mypy: ignore[import-untyped]
+from yaml.loader import SafeLoader  # mypy: ignore[import-untyped]
 
 # Import application constants
 from mmrelay.constants.app import APP_AUTHOR, APP_NAME
@@ -17,6 +17,9 @@ from mmrelay.constants.config import (
     CONFIG_KEY_HOMESERVER,
     CONFIG_SECTION_MATRIX,
 )
+
+# Import new path resolution system
+from mmrelay.paths import get_home_dir, is_deprecation_window_active, resolve_all_paths
 
 # Global variables to store directory overrides
 custom_base_dir: str | None = None
@@ -137,29 +140,52 @@ def get_base_dir() -> str:
     """
     Return the filesystem base directory used to store the application's files.
 
-    Determines the directory using the following precedence: module-level `custom_base_dir`, legacy `custom_data_dir`, environment variable `MMRELAY_BASE_DIR`, legacy environment variable `MMRELAY_DATA_DIR`, then a platform default (`~/.<APP_NAME>` on Linux/macOS, platform-specific user data dir on Windows).
+    DEPRECATED: Use get_home_dir() from mmrelay.paths instead.
+    This function now wraps get_home_dir() for backward compatibility.
+
+    Resolution order:
+        1. Module-level custom_base_dir (legacy override)
+        2. Module-level custom_data_dir (legacy override)
+        3. Environment variable MMRELAY_BASE_DIR (legacy, deprecation warning)
+        4. Environment variable MMRELAY_DATA_DIR (legacy, deprecation warning)
+        5. Unified MMRELAY_HOME environment variable (new system)
+        6. Platform defaults (~/.mmrelay on Linux/macOS, platformdirs on Windows)
 
     Returns:
         The filesystem path to the application's base data directory.
     """
     if custom_base_dir:
+        _get_config_logger().warning(
+            "custom_base_dir module override is deprecated. "
+            "Use paths.get_home_dir() or set_home_override() instead."
+        )
         return custom_base_dir
     if custom_data_dir:
+        _get_config_logger().warning(
+            "custom_data_dir module override is deprecated. "
+            "Use paths.get_home_dir() or set_home_override() instead."
+        )
         return custom_data_dir
 
     env_base_dir = _get_env_base_dir()
     if env_base_dir:
+        _get_config_logger().warning(
+            "MMRELAY_BASE_DIR is deprecated. Use MMRELAY_HOME instead. "
+            "Support will be removed in v1.4."
+        )
         return env_base_dir
     env_data_dir = _get_env_data_dir()
     if env_data_dir:
+        _get_config_logger().warning(
+            "MMRELAY_DATA_DIR is deprecated. Use MMRELAY_HOME instead. "
+            "Support will be removed in v1.4."
+        )
         return env_data_dir
 
-    if sys.platform in ["linux", "darwin"]:
-        # Use ~/.mmrelay for Linux and Mac
-        return os.path.expanduser(os.path.join("~", "." + APP_NAME))
-    else:
-        # Use platformdirs default for Windows
-        return platformdirs.user_data_dir(APP_NAME, APP_AUTHOR)
+    # Always return unified HOME (no /data subdirectory)
+    # This ensures there's exactly one root across all modules
+    home_path = str(get_home_dir())
+    return home_path
 
 
 def get_app_path() -> str:
@@ -276,8 +302,12 @@ def get_credentials_search_paths(
             _add(os.path.join(config_dir, "credentials.json"))
 
     if include_base_data:
-        _add(os.path.join(get_base_dir(), "credentials.json"))
-        _add(os.path.join(get_data_dir(create=False), "credentials.json"))
+        from mmrelay.paths import get_credentials_path, get_legacy_dirs
+
+        _add(str(get_credentials_path()))
+
+        for legacy_dir in get_legacy_dirs():
+            _add(os.path.join(legacy_dir, "credentials.json"))
 
     return candidate_paths
 
@@ -299,52 +329,64 @@ def get_explicit_credentials_path(config: dict[str, Any] | None) -> str | None:
         return None
     explicit_path = config.get("credentials_path")
     if explicit_path:
+        if not isinstance(explicit_path, str):
+            raise TypeError(
+                f"Expected explicit_path to be str, got {type(explicit_path).__name__}"
+            )
         return explicit_path
     matrix_section = config.get("matrix")
     if isinstance(matrix_section, dict):
-        return matrix_section.get("credentials_path")
+        credentials_path = matrix_section.get("credentials_path")
+        if credentials_path is not None and not isinstance(credentials_path, str):
+            raise TypeError(
+                f"Expected credentials_path to be str, got {type(credentials_path).__name__}"
+            )
+        return credentials_path
     return None
 
 
 def get_data_dir(*, create: bool = True) -> str:
     """
-    Determine the application's data directory according to overrides and platform conventions.
+    Determine application's data directory according to overrides and platform conventions.
 
-    If a legacy data-dir override is set, the function will prefer the legacy layout when that override contains existing legacy data; otherwise it will use the override directly. On Windows, the platform user data directory is used unless the "new layout" is enabled, in which case the layout under the resolved base directory is used. On Unix-like systems the directory under the resolved base directory is used.
+    DEPRECATED: Use get_home_dir() from mmrelay.paths instead.
+    This function now wraps get_home_dir() for backward compatibility.
+
+    Resolution order:
+        1. Module-level custom_data_dir (legacy override)
+        2. Environment variable MMRELAY_DATA_DIR (legacy, deprecation warning)
+        3. Unified MMRELAY_HOME environment variable (new system)
+        4. Platform defaults (~/.mmrelay on Linux/macOS, platformdirs on Windows)
 
     Parameters:
         create (bool): If True, ensure the returned directory exists (attempt to create it).
 
     Returns:
-        str: Absolute path to the data directory.
+        str: Absolute path to data directory.
     """
-    data_override = custom_data_dir or _get_env_data_dir()
-    if data_override:
-        legacy_data_dir = os.path.join(data_override, "data")
-        legacy_db = os.path.join(legacy_data_dir, "meshtastic.sqlite")
-        legacy_plugins = os.path.join(legacy_data_dir, "plugins")
-        legacy_store = os.path.join(legacy_data_dir, "store")
-        if (
-            os.path.exists(legacy_db)
-            or os.path.isdir(legacy_plugins)
-            or os.path.isdir(legacy_store)
-        ):
-            data_dir = legacy_data_dir
-        else:
-            data_dir = data_override
-    else:
-        if sys.platform == "win32" and not is_new_layout_enabled():
-            data_dir = platformdirs.user_data_dir(APP_NAME, APP_AUTHOR)
-        else:
-            base_dir = get_base_dir()
-            data_dir = os.path.join(base_dir, "data")
+    if custom_data_dir:
+        _get_config_logger().warning(
+            "custom_data_dir module override is deprecated. "
+            "Use paths.get_home_dir() or set_home_override() instead."
+        )
+        if create:
+            os.makedirs(custom_data_dir, exist_ok=True)
+        return custom_data_dir
 
+    env_data_dir = _get_env_data_dir()
+    if env_data_dir:
+        _get_config_logger().warning(
+            "MMRELAY_DATA_DIR is deprecated. Use MMRELAY_HOME instead. "
+            "Support will be removed in v1.4."
+        )
+        if create:
+            os.makedirs(env_data_dir, exist_ok=True)
+        return env_data_dir
+
+    home = get_base_dir()
     if create:
-        try:
-            os.makedirs(data_dir, exist_ok=True)
-        except (OSError, PermissionError) as e:
-            logger.warning("Could not create data directory %s: %s", data_dir, e)
-    return data_dir
+        os.makedirs(home, exist_ok=True)
+    return str(home)
 
 
 def get_plugin_data_dir(plugin_name: str | None = None) -> str:
@@ -379,18 +421,16 @@ def get_log_dir() -> str:
     """
     Get the application's log directory, creating it if missing.
 
-    On Linux/macOS this is "<base_dir>/logs". On Windows this is "<base_dir>/logs"
-    when a base/data override is set; otherwise the platform-specific user log
-    directory is used.
+    Uses unified path resolution for logs directory.
 
     Returns:
-        str: Absolute path to the log directory; the directory is guaranteed to exist.
+        str: Absolute path to log directory; directory is guaranteed to exist.
     """
     if sys.platform in ["linux", "darwin"]:
         log_dir = os.path.join(get_base_dir(), "logs")
     else:
         if _has_any_dir_override():
-            log_dir = ntpath.join(get_base_dir(), "logs")
+            log_dir = ntpath.join(str(get_base_dir()), "logs")
         else:
             log_dir = platformdirs.user_log_dir(APP_NAME, APP_AUTHOR)
 
@@ -402,10 +442,7 @@ def get_e2ee_store_dir() -> str:
     """
     Get the absolute path to the application's end-to-end encryption (E2EE) data store directory, creating it if necessary.
 
-    On Linux and macOS the directory is located under the application base directory.
-    On Windows it uses the configured base/data override when set, otherwise the
-    platform-specific user data directory. The directory will be created if it
-    does not exist.
+    Uses unified path resolution for store directory.
 
     Returns:
         store_dir (str): Absolute path to the ensured E2EE store directory.
@@ -414,13 +451,16 @@ def get_e2ee_store_dir() -> str:
         store_dir = os.path.join(get_base_dir(), "store")
     else:
         if _has_any_dir_override():
-            store_dir = ntpath.join(get_base_dir(), "store")
+            store_dir = ntpath.join(str(get_base_dir()), "store")
         else:
             store_dir = ntpath.join(
                 platformdirs.user_data_dir(APP_NAME, APP_AUTHOR), "store"
             )
 
-    os.makedirs(store_dir, exist_ok=True)
+    try:
+        os.makedirs(store_dir, exist_ok=True)
+    except (OSError, PermissionError) as e:
+        logger.warning("Could not create E2EE store directory %s: %s", store_dir, e)
     return store_dir
 
 
@@ -769,6 +809,9 @@ def load_credentials() -> dict[str, Any] | None:
 
     Searches an explicit credentials path (from environment or configuration) and other candidate locations in order, parses the first existing credentials file as JSON, and returns its contents.
 
+    During the deprecation window (v1.3), searches legacy locations if
+    primary credentials file is missing and warns user to run migration.
+
     Returns:
         dict[str, Any]: Parsed credentials if a valid credentials file is found.
         None: If no credentials file is found, is unreadable, or contains invalid JSON.
@@ -788,6 +831,42 @@ def load_credentials() -> dict[str, Any] | None:
                 credentials = cast(dict[str, Any], json.load(f))
             logger.debug("Successfully loaded credentials from %s", credentials_path)
             return credentials
+
+        # During deprecation window, search legacy locations if primary not found
+        if is_deprecation_window_active():
+            _get_config_logger().info(
+                "Primary credentials file not found. Checking legacy locations..."
+            )
+
+            legacy_base_dir = _get_env_base_dir()
+            legacy_data_dir = _get_env_data_dir()
+
+            if legacy_base_dir:
+                legacy_creds = os.path.join(legacy_base_dir, "credentials.json")
+                if os.path.exists(legacy_creds):
+                    with open(legacy_creds, "r", encoding="utf-8") as f:
+                        credentials = cast(dict[str, Any], json.load(f))
+                    _get_config_logger().warning(
+                        "Credentials found in legacy location: %s. "
+                        "Please run 'mmrelay migrate' to move to new unified structure. "
+                        "Support for legacy credentials will be removed in v1.4.",
+                        legacy_creds,
+                    )
+                    return credentials
+
+            if legacy_data_dir:
+                legacy_creds = os.path.join(legacy_data_dir, "credentials.json")
+                if os.path.exists(legacy_creds):
+                    with open(legacy_creds, "r", encoding="utf-8") as f:
+                        credentials = cast(dict[str, Any], json.load(f))
+                    _get_config_logger().warning(
+                        "Credentials found in legacy location: %s. "
+                        "Please run 'mmrelay migrate' to move to new unified structure. "
+                        "Support for legacy credentials will be removed in v1.4.",
+                        legacy_creds,
+                    )
+                    return credentials
+
     except (OSError, PermissionError, json.JSONDecodeError):
         logger.exception("Error loading credentials.json")
         return None
@@ -815,147 +894,60 @@ def save_credentials(
     credentials: dict[str, Any], credentials_path: str | None = None
 ) -> None:
     """
-    Persist the given credentials mapping to a credentials.json file using an explicit path or well-defined fallbacks.
+    Persist the given credentials mapping to a credentials.json file using the unified path resolution.
 
-    If `credentials_path` is a directory (or ends with a path separator) the filename "credentials.json" is appended. If `credentials_path` is omitted the function uses an explicit path from the environment or configuration if available (for example, MMRELAY_CREDENTIALS_PATH, relay_config["credentials_path"], or relay_config["matrix"]["credentials_path"]); if none is found it attempts to write under the config directory (when known) and then the application's base/data locations. The function will create the target directory when missing and, on Unix-like systems, attempt to set file permissions to 0o600. I/O and permission errors are logged and the function will try fallback locations; it does not raise on write failures (errors are logged).
+    The primary credentials location is resolve_all_paths()["credentials_path"].
+    If credentials_path is provided, it is used directly; otherwise, credentials are saved to the HOME location.
+    The function will create the target directory when missing and, on Unix-like systems,
+    attempt to set file permissions to 0o600. I/O and permission errors are logged.
+
     Parameters:
         credentials (dict): JSON-serializable mapping of credentials to persist.
-        credentials_path (str | None): Optional target file path or directory. When omitted, the function resolves a path using environment/configuration fallbacks and base/data defaults.
+        credentials_path (str | None): Optional target file path or directory. When omitted, credentials are saved to HOME.
+
+    Returns:
+        None
     """
-    try:
 
-        def _normalize_explicit_path(path: str) -> str:
-            """
-            Normalize an explicit credentials path, expanding user home and ensuring it points to a credentials.json file.
-
-            Parameters:
-                path (str): A user-supplied file or directory path. If the path is a directory (existing or ending with a path separator), "credentials.json" is appended; if the path lacks a directory component, the application's base data directory is prepended.
-
-            Returns:
-                normalized_path (str): The expanded and normalized path pointing to a credentials.json file.
-            """
-            expanded = os.path.expanduser(path)
-            path_is_dir = os.path.isdir(expanded)
-            if not path_is_dir:
-                path_is_dir = bool(
-                    expanded.endswith(os.path.sep)
-                    or (os.path.altsep and expanded.endswith(os.path.altsep))
-                )
-            if path_is_dir:
-                normalized_dir = os.path.normpath(expanded)
-                expanded = os.path.join(normalized_dir, "credentials.json")
-            if not os.path.dirname(expanded):
-                base_dir = get_base_dir()
-                expanded = os.path.join(base_dir, os.path.basename(expanded))
-            return expanded
-
-        explicit_path = credentials_path or get_explicit_credentials_path(relay_config)
+    # Determine target path
+    if credentials_path:
+        # Explicit path provided - use it directly
+        target_path = credentials_path
+    else:
+        explicit_path = get_explicit_credentials_path(relay_config)
         if explicit_path:
-            candidate_paths = [_normalize_explicit_path(explicit_path)]
-            allow_fallback = False
+            target_path = explicit_path
         else:
-            candidate_paths = []
-            allow_fallback = True
-            if config_path:
-                config_dir_candidate = os.path.dirname(os.path.abspath(config_path))
-                candidate_paths.append(
-                    os.path.join(config_dir_candidate, "credentials.json")
-                )
-            candidate_paths.append(os.path.join(get_base_dir(), "credentials.json"))
+            target_path = os.path.join(get_base_dir(), "credentials.json")
 
-        last_error: OSError | PermissionError | None = None
-        config_dir = ""
-        data_dir_candidate: str | None = None
-        base_dir_candidate: str | None = None
-
-        def _handle_candidate_error(
-            message: str, error: OSError | PermissionError
-        ) -> bool:
-            """
-            Handle an I/O or permission error for a candidate credentials path and optionally prepare fallback candidates.
-
-            Records the provided error to the enclosing scope, logs a warning using the provided message and error, and—if falling back is allowed—ensures that base- and data-directory fallback credential paths are appended to the shared candidate_paths list (avoiding duplicates) and sets base_dir_candidate and data_dir_candidate in the enclosing scope.
-
-            Parameters:
-                message (str): Human-readable message to include in the warning log.
-                error (OSError | PermissionError): The error that occurred while handling a candidate path.
-
-            Returns:
-                bool: `False` if fallback is not allowed (no changes to candidate lists), `True` if fallback candidates were ensured/added.
-            """
-            nonlocal last_error, data_dir_candidate, base_dir_candidate
-            last_error = error
-            logger.warning(message, error)
-            if not allow_fallback:
-                return False
-            if base_dir_candidate is None:
-                base_dir_candidate = os.path.join(get_base_dir(), "credentials.json")
-                if base_dir_candidate not in candidate_paths:
-                    candidate_paths.append(base_dir_candidate)
-            if data_dir_candidate is None:
-                data_dir_candidate = os.path.join(
-                    get_data_dir(create=False), "credentials.json"
-                )
-                if data_dir_candidate not in candidate_paths:
-                    candidate_paths.append(data_dir_candidate)
-            return True
-
-        idx = 0
-        while idx < len(candidate_paths):
-            candidate = candidate_paths[idx]
-            config_dir = os.path.dirname(candidate)
-            if not config_dir:
-                config_dir = get_base_dir()
-                candidate = os.path.join(config_dir, os.path.basename(candidate))
-            try:
-                os.makedirs(config_dir, exist_ok=True)
-            except (OSError, PermissionError) as e:
-                should_continue = _handle_candidate_error(
-                    f"Could not create credentials directory {config_dir}: %s", e
-                )
-                if not should_continue:
-                    break
-                idx += 1
-                continue
-
-            try:
-                # Log the path for debugging, especially on Windows
-                logger.info("Saving credentials to: %s", candidate)
-                with open(candidate, "w", encoding="utf-8") as f:
-                    json.dump(credentials, f, indent=2)
-            except (OSError, PermissionError) as e:
-                should_continue = _handle_candidate_error(
-                    f"Error writing credentials.json to {candidate}: %s", e
-                )
-                if not should_continue:
-                    break
-                idx += 1
-                continue
-
-            # Set secure permissions on Unix systems (600 - owner read/write only)
-            set_secure_file_permissions(candidate)
-
-            logger.info("Successfully saved credentials to %s", candidate)
-
-            # Verify the file was actually created
-            if os.path.exists(candidate):
-                logger.debug("Verified credentials.json exists at %s", candidate)
-            else:
-                logger.error("Failed to create credentials.json at %s", candidate)
-            return None
-
-        if last_error:
-            raise last_error
-        raise CredentialsPathError()
-    except (OSError, PermissionError):
+    # Ensure target directory exists
+    target_dir = os.path.dirname(target_path) or "."
+    try:
+        os.makedirs(target_dir, exist_ok=True)
+    except (OSError, PermissionError) as e:
+        logger.exception("Could not create credentials directory %s: %s", target_dir, e)
         if sys.platform == "win32":
-            logger.exception(
-                "Error saving credentials.json to %s. On Windows, ensure the application "
-                "has write permissions to the user data directory.",
-                config_dir,
+            logger.error(
+                "On Windows, ensure the application has write permissions to the credentials path."
             )
-        else:
-            logger.exception("Error saving credentials.json to %s", config_dir)
+        return None
+
+    # Write credentials
+    try:
+        logger.info("Saving credentials to: %s", target_path)
+        with open(target_path, "w", encoding="utf-8") as f:
+            json.dump(credentials, f, indent=2)
+    except (OSError, PermissionError) as e:
+        logger.error("Error writing credentials.json to %s: %s", target_path, e)
+        raise
+
+    # Set secure permissions on Unix systems (600 - owner read/write only)
+    set_secure_file_permissions(target_path)
+
+    if os.path.exists(target_path):
+        logger.debug("Verified credentials.json exists at %s", target_path)
+
+    logger.info("Successfully saved credentials to %s", target_path)
 
 
 # Use structured logging to align with the rest of the codebase.

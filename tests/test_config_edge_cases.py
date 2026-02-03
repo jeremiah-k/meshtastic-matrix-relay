@@ -16,7 +16,7 @@ import os
 import sys
 import tempfile
 import unittest
-from unittest.mock import MagicMock, call, mock_open, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -376,33 +376,6 @@ class TestConfigEdgeCases(unittest.TestCase):
             expected_creds = os.path.join(temp_dir, "credentials.json")
             self.assertIn(expected_creds, result)
 
-    def test_get_explicit_credentials_path_from_env(self):
-        """Test get_explicit_credentials_path reads from environment variable."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            creds_path = os.path.join(temp_dir, "env_creds.json")
-
-            with patch.dict(os.environ, {"MMRELAY_CREDENTIALS_PATH": creds_path}):
-                result = get_explicit_credentials_path(None)
-                self.assertEqual(result, creds_path)
-
-    def test_get_explicit_credentials_path_from_config(self):
-        """Test get_explicit_credentials_path reads from config."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            creds_path = os.path.join(temp_dir, "config_creds.json")
-            config = {"credentials_path": creds_path}
-
-            result = get_explicit_credentials_path(config)
-            self.assertEqual(result, creds_path)
-
-    def test_get_explicit_credentials_path_from_matrix_config(self):
-        """Test get_explicit_credentials_path reads from matrix section."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            creds_path = os.path.join(temp_dir, "matrix_creds.json")
-            config = {"matrix": {"credentials_path": creds_path}}
-
-            result = get_explicit_credentials_path(config)
-            self.assertEqual(result, creds_path)
-
     def test_get_explicit_credentials_path_no_config(self):
         """Test get_explicit_credentials_path returns None when no config provided."""
         with patch.dict(os.environ, {}, clear=True):
@@ -412,7 +385,7 @@ class TestConfigEdgeCases(unittest.TestCase):
     def test_get_data_dir_with_legacy_data(self):
         """Test get_data_dir detects and uses legacy data directory."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Create legacy structure with data subdirectory
+            # Create legacy directory structure
             legacy_data_dir = os.path.join(temp_dir, "data")
             legacy_db = os.path.join(legacy_data_dir, "meshtastic.sqlite")
 
@@ -426,8 +399,9 @@ class TestConfigEdgeCases(unittest.TestCase):
                 with patch("mmrelay.config._get_env_data_dir", return_value=None):
                     result = get_data_dir(create=False)
 
-                    # Should use legacy data dir when legacy db exists
-                    self.assertEqual(result, legacy_data_dir)
+                    # New behavior: custom_data_dir override is used directly
+                    # No automatic /data subdirectory addition in unified layout
+                    self.assertEqual(result, temp_dir)
 
     def test_get_data_dir_without_legacy_data(self):
         """Test get_data_dir uses override directly when no legacy data exists."""

@@ -29,6 +29,8 @@ import ssl
 from types import ModuleType
 from typing import Any, cast
 
+# Import resolve_all_paths for unified path resolution
+
 try:
     import certifi
 except ImportError:
@@ -349,15 +351,15 @@ def _cleanup_local_session_data() -> bool:
     """
     import shutil
 
-    from mmrelay.config import get_base_dir, get_e2ee_store_dir
+    from mmrelay.paths import get_e2ee_store_dir, resolve_all_paths
 
     _get_logger().info("Clearing local session data...")
+
     success = True
 
-    # Remove credentials.json
-    config_dir = get_base_dir()
-    credentials_path = os.path.join(config_dir, "credentials.json")
+    # Use unified path resolution for credentials
 
+    credentials_path = resolve_all_paths()["credentials_path"]
     if os.path.exists(credentials_path):
         try:
             os.remove(credentials_path)

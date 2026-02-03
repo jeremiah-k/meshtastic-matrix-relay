@@ -7,6 +7,7 @@ that provide consistent command references across the application.
 
 import asyncio
 import ssl
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -316,10 +317,13 @@ class TestCleanupLocalSessionData:
     @patch("os.path.exists")
     @patch("os.remove")
     @patch("shutil.rmtree")
-    @patch("mmrelay.config.get_base_dir", return_value="/test/config")
-    @patch("mmrelay.config.get_e2ee_store_dir", return_value="/test/store")
+    @patch(
+        "mmrelay.paths.resolve_all_paths",
+        return_value={"credentials_path": "/test/config/credentials.json"},
+    )
+    @patch("mmrelay.paths.get_e2ee_store_dir", return_value=Path("/test/store"))
     def test_cleanup_success(
-        self, mock_get_e2ee, mock_get_base, mock_rmtree, mock_remove, mock_exists
+        self, mock_get_e2ee, mock_resolve, mock_rmtree, mock_remove, mock_exists
     ):
         from mmrelay.cli_utils import _cleanup_local_session_data
 
@@ -327,7 +331,7 @@ class TestCleanupLocalSessionData:
         result = _cleanup_local_session_data()
         assert result is True
         mock_remove.assert_called_once_with("/test/config/credentials.json")
-        mock_rmtree.assert_called_once_with("/test/store")
+        mock_rmtree.assert_called_once_with(Path("/test/store"))
 
     @patch("os.path.exists", return_value=False)
     def test_cleanup_no_files(self, mock_exists):
@@ -339,10 +343,13 @@ class TestCleanupLocalSessionData:
     @patch("os.path.exists", return_value=True)
     @patch("os.remove", side_effect=PermissionError)
     @patch("shutil.rmtree", side_effect=PermissionError)
-    @patch("mmrelay.config.get_base_dir", return_value="/test/config")
-    @patch("mmrelay.config.get_e2ee_store_dir", return_value="/test/store")
+    @patch(
+        "mmrelay.paths.resolve_all_paths",
+        return_value={"credentials_path": "/test/config/credentials.json"},
+    )
+    @patch("mmrelay.paths.get_e2ee_store_dir", return_value=Path("/test/store"))
     def test_cleanup_permission_error(
-        self, mock_get_e2ee, mock_get_base, mock_rmtree, mock_remove, mock_exists
+        self, mock_get_e2ee, mock_resolve, mock_rmtree, mock_remove, mock_exists
     ):
         from mmrelay.cli_utils import _cleanup_local_session_data
 

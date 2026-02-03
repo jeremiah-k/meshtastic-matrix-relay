@@ -19,10 +19,6 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 from mmrelay.config import (
     get_app_path,
-    get_base_dir,
-    get_data_dir,
-    is_legacy_layout_enabled,
-    is_new_layout_enabled,
 )
 from mmrelay.constants.plugins import (
     COMMIT_HASH_PATTERN,
@@ -35,7 +31,7 @@ from mmrelay.constants.plugins import (
 )
 from mmrelay.log_utils import get_logger
 
-schedule: ModuleType | None
+schedule: ModuleType | None = None
 try:
     import schedule as _schedule
 
@@ -47,6 +43,7 @@ except ImportError:
 config = None
 
 logger = get_logger(name="Plugins")
+
 sorted_active_plugins: list[Any] = []
 plugins_loaded = False
 
@@ -70,30 +67,107 @@ _global_scheduler_stop_event: threading.Event | None = None
 _PLUGIN_DEPS_DIR: str | None = None
 
 
-def _get_plugin_root_dirs() -> list[str]:
-    """
-    Compute an ordered list of candidate plugin root directories.
+def _is_safe_plugin_name(name: str) -> bool:
+    r"""
+    Validate a plugin name/identifier to prevent directory traversal attacks.
 
-    When a base directory exists, returns base_dir/plugins. If either the new or legacy layout is enabled and a distinct data directory exists, includes data_dir/plugins as well; the data directory is inserted at the front if it exists on disk while the base plugins path does not, otherwise it is appended. Duplicate paths are avoided.
+    Checks for:
+    - Path traversal sequences (..)
+    - Path separators (/, \, os.sep, os.altsep)
+    - Absolute paths
+
+    This is ONLY for validating plugin names/identifiers (e.g., "my-plugin").
+    Do NOT use this for validating full filesystem paths.
+
+    Args:
+        name: User-provided plugin name or identifier.
+
+    Returns:
+        bool: True if name is safe, False otherwise.
+    """
+    if not name or name.strip() == "":
+        return False
+
+    # Reject path separators
+    for sep in ["/", "\\", os.sep] + ([os.altsep] if os.altsep is not None else []):
+        if sep in name:
+            return False
+
+    # Reject parent directory references
+    if ".." in name:
+        return False
+
+    # Reject absolute paths
+    if os.path.isabs(name):
+        return False
+
+    return True
+
+
+def _is_path_contained(root: str, child: str) -> bool:
+    r"""
+    Validate that child path is contained within root directory.
+
+    Uses normcase/realpath for cross-platform correctness, especially on Windows.
+
+    Args:
+        root: Root directory path (absolute).
+        child: Child path to validate (absolute).
+
+    Returns:
+        bool: True if child is contained within root, False otherwise.
+    """
+    # Normalize both paths for comparison
+    root_normalized = os.path.normcase(os.path.realpath(root))
+    child_normalized = os.path.normcase(os.path.realpath(child))
+
+    # Check if child starts with root path
+    return child_normalized.startswith(root_normalized + os.sep)
+
+
+def _get_plugin_root_dirs() -> list[str]:
+    r"""
+    Compute ordered list of candidate plugin root directories with security validation.
+
+    Uses HOME/plugins as primary location with legacy fallback during deprecation window.
+    Only includes additional plugin directories when overrides are explicitly set
+    to avoid unexpected behavior.
 
     Returns:
         list[str]: Ordered list of plugin root directory paths.
     """
-    base_dir = get_base_dir()
+    from mmrelay.paths import get_home_dir, get_legacy_dirs
+
     roots: list[str] = []
-    if base_dir:
-        roots.append(os.path.join(base_dir, "plugins"))
-    if is_new_layout_enabled() or is_legacy_layout_enabled():
-        data_dir = get_data_dir(create=False)
-        if data_dir and data_dir != base_dir:
-            data_root = os.path.join(data_dir, "plugins")
-            if data_root not in roots:
-                if os.path.isdir(data_root) and (
-                    not roots or not os.path.isdir(roots[0])
-                ):
-                    roots.insert(0, data_root)
-                else:
-                    roots.append(data_root)
+    seen: set[str] = set()
+
+    try:
+        home_dir = str(get_home_dir())
+        if home_dir:
+            home_plugins = os.path.join(home_dir, "plugins")
+            if home_plugins not in seen:
+                roots.append(home_plugins)
+                seen.add(home_plugins)
+                logger.info("Using primary plugin root: %s", home_plugins)
+    except (OSError, RuntimeError, ValueError):
+        pass
+
+    legacy_dirs_list = get_legacy_dirs()
+    for legacy_root in legacy_dirs_list:
+        legacy_plugins = os.path.join(str(legacy_root), "plugins")
+        if legacy_plugins not in seen and os.path.exists(legacy_plugins):
+            roots.append(legacy_plugins)
+            seen.add(legacy_plugins)
+            logger.warning("Using legacy plugin root: %s", legacy_plugins)
+
+    primary_root = roots[0] if roots else None
+    legacy_roots = roots[1:] if len(roots) > 1 else []
+    logger.info(
+        "Plugin roots: primary=%s, legacy=%s",
+        str(primary_root) if primary_root else "none",
+        legacy_roots,
+    )
+
     return roots
 
 
@@ -1604,7 +1678,7 @@ def _clone_new_repo_to_branch_or_tag(
                         if current == tag_commit:
                             return True
                     except subprocess.CalledProcessError:
-                        pass
+                        pass  # Continue to fetch and checkout
                     success = _try_fetch_and_checkout_tag(
                         repo_path, ref_value, repo_name
                     )
@@ -2108,9 +2182,27 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
     for plugin_name in active_custom_plugins:
         plugin_found = False
 
+        # Validate plugin name to prevent path traversal attacks
+        if not _is_safe_plugin_name(plugin_name):
+            logger.info(
+                "Custom plugin name '%s' rejected: contains invalid characters or path traversal",
+                plugin_name,
+            )
+            continue
+
         # Try each directory in order
         for custom_dir in custom_plugin_dirs:
             plugin_path = os.path.join(custom_dir, plugin_name)
+
+            # Validate path containment to prevent symlink escapes
+            if not _is_path_contained(custom_dir, plugin_path):
+                logger.info(
+                    "Custom plugin path '%s' is not contained within allowed root '%s'",
+                    plugin_path,
+                    custom_dir,
+                )
+                continue
+
             if os.path.exists(plugin_path):
                 logger.debug(f"Loading custom plugin from: {plugin_path}")
                 try:
@@ -2227,6 +2319,13 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                     )
                     continue
                 repo_path = os.path.join(community_plugins_dir, repo_name)
+                if not _is_path_contained(community_plugins_dir, repo_path):
+                    logger.error(
+                        "Plugin repo path '%s' is not contained within allowed root '%s'",
+                        repo_path,
+                        community_plugins_dir,
+                    )
+                    continue
                 _install_requirements_for_repo(repo_path, repo_name)
             else:
                 logger.error("Repository URL not specified for a community plugin")
@@ -2250,6 +2349,13 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
             # Try each directory in order
             plugin_found = False
             for dir_path in community_plugin_dirs:
+                if not _is_safe_plugin_name(repo_name_candidate):
+                    logger.error(
+                        "Plugin name '%s' rejected: contains invalid characters or path traversal",
+                        repo_name_candidate,
+                    )
+                    continue
+
                 plugin_path = os.path.join(dir_path, repo_name_candidate)
                 if os.path.exists(plugin_path):
                     logger.info(f"Loading community plugin from: {plugin_path}")

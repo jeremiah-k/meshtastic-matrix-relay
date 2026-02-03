@@ -76,11 +76,9 @@ class TestDatabaseManagerIntegration(unittest.TestCase):
         except OSError:
             pass
 
-    @patch("mmrelay.db_utils.get_data_dir")
     @patch("os.makedirs")
-    def test_get_db_manager_with_config(self, mock_makedirs, mock_get_data_dir):
+    def test_get_db_manager_with_config(self, mock_makedirs):
         """Test _get_db_manager with custom configuration."""
-        mock_get_data_dir.return_value = "/mock/data/dir"
 
         # Mock config with proper structure
         test_config = {
@@ -110,11 +108,9 @@ class TestDatabaseManagerIntegration(unittest.TestCase):
             # Verify directory creation was attempted
             mock_makedirs.assert_called_with("/test/custom", exist_ok=True)
 
-    @patch("mmrelay.db_utils.get_data_dir")
     @patch("os.makedirs")
-    def test_get_db_manager_legacy_config(self, _mock_makedirs, mock_get_data_dir):
+    def test_get_db_manager_legacy_config(self, _mock_makedirs):
         """Test _get_db_manager with legacy configuration format."""
-        mock_get_data_dir.return_value = "/mock/data/dir"
 
         # Mock config with legacy format
         test_config = {
@@ -141,19 +137,20 @@ class TestDatabaseManagerIntegration(unittest.TestCase):
                 {"temp_store": "MEMORY", "synchronous": "NORMAL"},
             )
 
-    @patch("mmrelay.db_utils.get_data_dir")
-    def test_get_db_manager_default_config(self, mock_get_data_dir):
+    def test_get_db_manager_default_config(self):
         """Test _get_db_manager with default configuration."""
         temp_dir = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, temp_dir)
-        mock_get_data_dir.return_value = temp_dir
 
         # Mock config as empty dict
         with patch.object(mmrelay.db_utils, "config", {}):
             # Reset manager to ensure fresh creation
-            _reset_db_manager()
-
-            manager = _get_db_manager()
+            with patch(
+                "mmrelay.db_utils.resolve_all_paths",
+                return_value={"database_dir": temp_dir, "legacy_sources": []},
+            ):
+                _reset_db_manager()
+                manager = _get_db_manager()
 
             self.assertIsNotNone(manager)
             self.assertEqual(manager._path, os.path.join(temp_dir, "meshtastic.sqlite"))
@@ -522,12 +519,9 @@ class TestDatabasePathCaching(unittest.TestCase):
         """
         clear_db_path_cache()
 
-    @patch("mmrelay.db_utils.get_data_dir")
     @patch("os.makedirs")
-    def test_get_db_path_custom_path(self, mock_makedirs, mock_get_data_dir):
+    def test_get_db_path_custom_path(self, mock_makedirs):
         """Test get_db_path with custom path from config."""
-        mock_get_data_dir.return_value = "/default/data/dir"
-
         # Mock config with custom path
         test_config = {"database": {"path": "/custom/path.db"}}
 
@@ -544,15 +538,10 @@ class TestDatabasePathCaching(unittest.TestCase):
         # Verify directory creation was attempted
         mock_makedirs.assert_called_with("/custom", exist_ok=True)
 
-    @patch("mmrelay.db_utils.get_data_dir")
     @patch("os.makedirs")
     @patch("mmrelay.db_utils.logger")
-    def test_get_db_path_legacy_format(
-        self, mock_logger, mock_makedirs, mock_get_data_dir
-    ):
+    def test_get_db_path_legacy_format(self, mock_logger, mock_makedirs):
         """Test get_db_path with legacy config format."""
-        mock_get_data_dir.return_value = "/default/data/dir"
-
         # Mock config with legacy format
         test_config = {"db": {"path": "/legacy/path.db"}}  # Legacy format
 
@@ -564,19 +553,23 @@ class TestDatabasePathCaching(unittest.TestCase):
             mock_logger.warning.assert_called_once()
             self.assertIn("legacy", mock_logger.warning.call_args[0][0])
 
-    @patch("mmrelay.db_utils.get_data_dir")
     @patch("os.makedirs")
-    def test_get_db_path_default(self, mock_makedirs, mock_get_data_dir):
+    def test_get_db_path_default(self, mock_makedirs):
         """Test get_db_path with default configuration."""
-        mock_get_data_dir.return_value = "/default/data/dir"
-
         # Mock config as empty
         with patch.object(mmrelay.db_utils, "config", {}):
-            path = get_db_path()
-            self.assertEqual(path, "/default/data/dir/meshtastic.sqlite")
+            with patch(
+                "mmrelay.db_utils.resolve_all_paths",
+                return_value={
+                    "database_dir": "/default/data/dir",
+                    "legacy_sources": [],
+                },
+            ):
+                path = get_db_path()
+                self.assertEqual(path, "/default/data/dir/meshtastic.sqlite")
 
-            # Verify data directory creation was attempted
-            mock_makedirs.assert_called_with("/default/data/dir", exist_ok=True)
+                # Verify data directory creation was attempted
+                mock_makedirs.assert_called_with("/default/data/dir", exist_ok=True)
 
     def test_clear_db_path_cache(self):
         """Test clear_db_path_cache function."""

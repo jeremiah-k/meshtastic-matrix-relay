@@ -13,9 +13,10 @@ import re
 import shutil
 import sys
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
-import yaml  # type: ignore[import-untyped]
+import yaml  # mypy: ignore[import-untyped]
 
 # Import version from package
 from mmrelay import __version__
@@ -90,34 +91,100 @@ def _get_logger() -> logging.Logger:
 
 def _apply_dir_overrides(args: argparse.Namespace) -> None:
     """
-    Apply --base-dir/--data-dir overrides to global config and ensure directories exist.
+    Apply --home/--base-dir/--data-dir overrides to global config.
+
+    Legacy flags (--base-dir, --data-dir) now feed the HOME resolver
+    to ensure a single unified root across all subsystems (plugins, config, etc.).
 
     Parameters:
         args (argparse.Namespace): Parsed CLI arguments.
     """
-    if not args or not (args.base_dir or args.data_dir):
+    if not args:
         return
+
+    def _is_valid_path(value: object) -> bool:
+        return isinstance(value, str) and value.strip() != ""
+
+    # Track which flags are being ignored for warning messages
+    ignored_flags = []
+
+    # Determine which path to use for HOME override
+    home_override = None
+    home_source = None
+
+    # Priority 1: --home (recommended flag)
+    home_value = getattr(args, "home", None)
+    base_value = getattr(args, "base_dir", None)
+    data_value = getattr(args, "data_dir", None)
+
+    if _is_valid_path(home_value):
+        if _is_valid_path(base_value) or _is_valid_path(data_value):
+            ignored_flags.extend(["--base-dir", "--data-dir"])
+            print(
+                "Warning: --home overrides --base-dir/--data-dir; ignoring legacy flags.",
+                file=sys.stderr,
+            )
+        home_override = home_value
+        home_source = "--home"
+
+    # Priority 2: --base-dir (legacy flag)
+    elif _is_valid_path(base_value):
+        if _is_valid_path(data_value):
+            ignored_flags.append("--data-dir")
+            print(
+                "Warning: --base-dir overrides --data-dir; ignoring --data-dir.",
+                file=sys.stderr,
+            )
+        home_override = base_value
+        home_source = "--base-dir"
+        print(
+            "Warning: --base-dir is deprecated; use --home instead.",
+            file=sys.stderr,
+        )
+
+    # Priority 3: --data-dir (most deprecated flag)
+    elif _is_valid_path(data_value):
+        home_override = data_value
+        home_source = "--data-dir"
+        print(
+            "Warning: --data-dir is deprecated. Use --home instead.",
+            file=sys.stderr,
+        )
+
+    # If no home override is specified, nothing to do
+    if not home_override:
+        return
+
+    # Apply the HOME override to the paths module
+    import mmrelay.paths
+
+    expanded_home = os.path.expanduser(home_override)
+    absolute_home = os.path.abspath(expanded_home)
+    mmrelay.paths.set_home_override(absolute_home, source=home_source)
+    os.makedirs(absolute_home, exist_ok=True)
+
+    # For backward compatibility, also set the legacy custom_* variables
+    # This ensures any code that still reads these variables gets the correct value
     import mmrelay.config
 
-    if args.base_dir and args.data_dir:
-        print(
-            "Warning: --data-dir is deprecated and ignored when --base-dir is provided.",
-            file=sys.stderr,
-        )
+    if args.home:
+        # --home: Set both for consistency, but HOME resolver is authoritative
+        if mmrelay.config.custom_base_dir != absolute_home:
+            mmrelay.config.custom_base_dir = absolute_home
+        if mmrelay.config.custom_data_dir != absolute_home:
+            mmrelay.config.custom_data_dir = absolute_home
+    elif args.base_dir:
+        # --base-dir: Set both for consistency
+        if mmrelay.config.custom_base_dir != absolute_home:
+            mmrelay.config.custom_base_dir = absolute_home
+        if mmrelay.config.custom_data_dir != absolute_home:
+            mmrelay.config.custom_data_dir = absolute_home
     elif args.data_dir:
-        print(
-            "Warning: --data-dir is deprecated. Use --base-dir instead.",
-            file=sys.stderr,
-        )
-
-    if args.base_dir:
-        expanded_base_dir = os.path.expanduser(args.base_dir)
-        mmrelay.config.custom_base_dir = os.path.abspath(expanded_base_dir)
-        os.makedirs(mmrelay.config.custom_base_dir, exist_ok=True)
-    elif args.data_dir:
-        expanded_data_dir = os.path.expanduser(args.data_dir)
-        mmrelay.config.custom_data_dir = os.path.abspath(expanded_data_dir)
-        os.makedirs(mmrelay.config.custom_data_dir, exist_ok=True)
+        # --data-dir: Set both for consistency
+        if mmrelay.config.custom_base_dir != absolute_home:
+            mmrelay.config.custom_base_dir = absolute_home
+        if mmrelay.config.custom_data_dir != absolute_home:
+            mmrelay.config.custom_data_dir = absolute_home
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -134,8 +201,13 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument("--config", help="Path to config file", default=None)
     parser.add_argument(
+        "--home",
+        help="Home directory for all data (logs, database, plugins, credentials)",
+        default=None,
+    )
+    parser.add_argument(
         "--base-dir",
-        help="Base directory for all data (logs, database, plugins)",
+        help="Deprecated: use --home instead",
         default=None,
     )
     parser.add_argument(
@@ -180,6 +252,52 @@ def parse_arguments() -> argparse.Namespace:
     # Add grouped subcommands for modern CLI interface
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
+    # PATHS command (top-level)
+    paths_parser = subparsers.add_parser(
+        "paths",
+        help="Show path configuration and diagnostics",
+        description="Display all path information for debugging and verification",
+    )
+
+    # DOCTOR command (top-level)
+    doctor_parser = subparsers.add_parser(
+        "doctor",
+        help="Diagnose path configuration and migration status",
+        description="Display comprehensive diagnostic information about HOME, legacy paths, and migration recommendations",
+    )
+    doctor_parser.add_argument(
+        "--migration",
+        action="store_true",
+        help="Run migration verification checks (read-only)",
+    )
+
+    verify_parser = subparsers.add_parser(
+        "verify-migration",
+        help="Verify migration state and detect legacy data",
+        description="Check that MMRELAY_HOME is the single source of runtime data",
+    )
+
+    migrate_parser = subparsers.add_parser(
+        "migrate",
+        help="Migrate data from legacy directory structure",
+        description="Migrate data from v1.2.x to v1.3 unified layout with safe defaults",
+    )
+    migrate_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview migration without making changes",
+    )
+    migrate_parser.add_argument(
+        "--move",
+        action="store_true",
+        help="Use MOVE operation instead of COPY (requires --force or manual confirmation)",
+    )
+    migrate_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Allow overwriting existing files without backup",
+    )
+
     # CONFIG group
     config_parser = subparsers.add_parser(
         "config",
@@ -198,11 +316,6 @@ def parse_arguments() -> argparse.Namespace:
         "check",
         help="Validate configuration file",
         description="Check configuration file syntax and completeness",
-    )
-    config_subparsers.add_parser(
-        "diagnose",
-        help="Diagnose configuration system issues",
-        description="Test config generation capabilities and troubleshoot platform-specific issues",
     )
 
     # AUTH group
@@ -270,7 +383,27 @@ def parse_arguments() -> argparse.Namespace:
     service_subparsers.add_parser(
         "install",
         help="Install systemd user service",
-        description="Install or update the systemd user service for MMRelay",
+        description="Install or update systemd user service for MMRelay",
+    )
+    migrate_parser = service_subparsers.add_parser(
+        "migrate",
+        help="Migrate data from legacy directory structure",
+        description="Migrate data from v1.2.x to v1.3 unified layout with safe defaults",
+    )
+    migrate_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview migration without making changes",
+    )
+    migrate_parser.add_argument(
+        "--move",
+        action="store_true",
+        help="Use MOVE operation instead of COPY (requires --force or manual confirmation)",
+    )
+    migrate_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Allow overwriting existing files without backup",
     )
 
     # Use parse_known_args to handle unknown arguments gracefully (e.g., pytest args)
@@ -646,11 +779,14 @@ def _analyze_e2ee_setup(config: dict[str, Any], config_path: str) -> dict[str, A
 
 def _find_credentials_json_path(config_path: str | None) -> str | None:
     """
-    Locate a credentials.json file adjacent to the given configuration or in the application's base directory.
+    Locate a credentials.json file using the unified HOME/legacy model.
 
     Search order:
     1. credentials.json in the same directory as `config_path` (if provided).
-    2. credentials.json in the application's base directory (get_base_dir()).
+    2. credentials.json in MMRELAY_HOME (primary location).
+    3. For each legacy root directory: legacy_root/credentials.json.
+
+    When credentials are found in a legacy location, prints a migration suggestion.
 
     Parameters:
         config_path (str | None): Path to the configuration file used to derive the adjacent credentials.json location.
@@ -658,20 +794,31 @@ def _find_credentials_json_path(config_path: str | None) -> str | None:
     Returns:
         str | None: Absolute path to the discovered credentials.json, or `None` if no file is found.
     """
-    if not config_path:
-        from mmrelay.config import get_base_dir
+    from mmrelay.paths import resolve_all_paths
 
-        standard = os.path.join(get_base_dir(), "credentials.json")
-        return standard if os.path.exists(standard) else None
+    if config_path:
+        config_dir = os.path.dirname(config_path)
+        candidate = os.path.join(config_dir, "credentials.json")
+        if os.path.exists(candidate):
+            return candidate
 
-    config_dir = os.path.dirname(config_path)
-    candidate = os.path.join(config_dir, "credentials.json")
-    if os.path.exists(candidate):
-        return candidate
-    from mmrelay.config import get_base_dir
+    p = resolve_all_paths()
+    home_cred = p["credentials_path"]
+    if isinstance(home_cred, str) and os.path.exists(home_cred):
+        return home_cred
 
-    standard = os.path.join(get_base_dir(), "credentials.json")
-    return standard if os.path.exists(standard) else None
+    for legacy_root in p["legacy_sources"]:
+        if not isinstance(legacy_root, str):
+            continue
+        legacy_cred = os.path.join(legacy_root, "credentials.json")
+        if os.path.exists(legacy_cred):
+            print(
+                f"ℹ️  Found legacy credentials at: {legacy_cred}\n"
+                f"   Run 'mmrelay migrate --dry-run' (or 'mmrelay service migrate --dry-run') to preview migration to HOME."
+            )
+            return legacy_cred
+
+    return None
 
 
 def _print_unified_e2ee_analysis(e2ee_status: E2EEStatus) -> None:
@@ -1438,12 +1585,12 @@ def main() -> int:
 
 def handle_subcommand(args: argparse.Namespace) -> int:
     """
-    Dispatch the selected CLI subcommand to its handler.
+    Dispatches selected CLI subcommand to its handler.
 
-    Supports the "config", "auth", and "service" grouped subcommands and delegates execution to the corresponding handler.
+    Supports "config", "auth", "service", "paths", and "migrate" grouped subcommands and delegates execution to corresponding handler.
 
     Returns:
-        Exit code returned by the invoked handler; `1` if the command is unknown.
+        Exit code returned by invoked handler; `1` if command is unknown.
     """
     if args.command == "config":
         return handle_config_command(args)
@@ -1451,19 +1598,151 @@ def handle_subcommand(args: argparse.Namespace) -> int:
         return handle_auth_command(args)
     elif args.command == "service":
         return handle_service_command(args)
+    elif args.command == "paths":
+        return handle_paths_command(args)
+    elif args.command == "doctor":
+        return handle_doctor_command(args)
+    elif args.command == "verify-migration":
+        return handle_verify_migration_command(args)
+    elif args.command == "migrate":
+        return handle_migrate_command(args)
     else:
         print(f"Unknown command: {args.command}")
         return 1
 
 
+def handle_config_paths(args: argparse.Namespace) -> int:
+    """
+    Display unified path configuration and diagnostics.
+
+    Shows the resolved HOME directory, all subdirectory paths,
+    legacy directories, environment variables detected, and CLI overrides.
+
+    Parameters:
+        args (argparse.Namespace): Parsed CLI arguments.
+
+    Returns:
+        int: Exit code (0 on success).
+    """
+    from mmrelay.paths import get_legacy_dirs, resolve_all_paths
+
+    paths_info = resolve_all_paths()
+
+    print("\n📍 MMRelay Path Configuration:")
+    print(f"   HOME: {paths_info['home']}")
+
+    # Show source
+    print(f"   Source: {paths_info['home_source']}")
+    if paths_info.get("cli_override"):
+        print(f"   CLI Override: {paths_info['cli_override']}")
+
+    # Show legacy roots (authoritative list from get_legacy_dirs)
+    if paths_info.get("legacy_sources"):
+        print("\n   Legacy Roots (authoritative):")
+        for legacy_dir in paths_info["legacy_sources"]:
+            print(f"     - {legacy_dir}")
+
+    # Show paths with read sources
+    print("\n   Paths (read sources):")
+    print(f"     credentials.json: {paths_info['credentials_path']}")
+    creds_source = "HOME"
+    if paths_info.get("legacy_sources"):
+        home_path = Path(paths_info["home"])
+        for legacy_dir in [Path(ld) for ld in paths_info["legacy_sources"]]:
+            legacy_creds = legacy_dir / "credentials.json"
+            if legacy_creds.exists():
+                creds_source = f"Legacy ({legacy_dir})"
+                break
+    print(f"       → Will read from: {creds_source}")
+
+    print(f"     database/: {paths_info['database_dir']}")
+    db_source = "HOME"
+    if paths_info.get("legacy_sources"):
+        home_path = Path(paths_info["home"])
+        for legacy_dir in [Path(ld) for ld in paths_info["legacy_sources"]]:
+            legacy_db_files = [
+                legacy_dir / "meshtastic.sqlite",
+                legacy_dir / "data" / "meshtastic.sqlite",
+            ]
+            for legacy_db in legacy_db_files:
+                if legacy_db.exists():
+                    db_source = f"Legacy ({legacy_dir})"
+                    break
+            if db_source != "HOME":
+                break
+    print(f"       → Will read from: {db_source}")
+
+    print(f"     store/: {paths_info['store_dir']}")
+    store_source = "HOME"
+    if paths_info.get("legacy_sources") and sys.platform != "win32":
+        home_path = Path(paths_info["home"])
+        for legacy_dir in [Path(ld) for ld in paths_info["legacy_sources"]]:
+            legacy_store = legacy_dir / "store"
+            if legacy_store.exists():
+                store_source = f"Legacy ({legacy_dir})"
+                break
+            if store_source != "HOME":
+                break
+    print(f"       → Will read from: {store_source}")
+
+    print(f"     logs/: {paths_info['logs_dir']}")
+    logs_source = "HOME"
+    if paths_info.get("legacy_sources"):
+        home_path = Path(paths_info["home"])
+        for legacy_dir in [Path(ld) for ld in paths_info["legacy_sources"]]:
+            legacy_logs = legacy_dir / "logs"
+            if legacy_logs.exists():
+                logs_source = f"Legacy ({legacy_dir})"
+                break
+            if logs_source != "HOME":
+                break
+    print(f"       → Will read from: {logs_source}")
+
+    print(f"     log file: {paths_info['log_file']}")
+    print(f"     plugins/ (primary): {paths_info['plugins_dir']}")
+    print(f"       custom/: {paths_info['custom_plugins_dir']}")
+    print(f"       community/: {paths_info['community_plugins_dir']}")
+
+    # Show plugin roots searched
+    print("\n   Plugin Roots Searched:")
+    print(f"     Primary: {paths_info['plugins_dir']}")
+    if paths_info.get("legacy_sources"):
+        print("     Legacy (existing only):")
+        for legacy_dir in paths_info["legacy_sources"]:
+            legacy_plugins = str(legacy_dir) + "/plugins"
+            if os.path.exists(legacy_plugins):
+                print(f"       - {legacy_plugins}")
+
+    # Show environment variables
+    if paths_info.get("env_vars_detected"):
+        print("\n   Environment Variables:")
+        for var_name, var_value in paths_info["env_vars_detected"].items():
+            print(f"     {var_name}={var_value}")
+
+    # Check for legacy data
+    home = paths_info["home"]
+    if paths_info.get("legacy_sources"):
+        print("\n   ⚠️  Legacy data detected!")
+        print(
+            f"   Legacy directories found: {', '.join(str(d) for d in paths_info['legacy_sources'])}"
+        )
+        print("   Migration will scan all legacy roots for data to migrate")
+        print(
+            "\n   💡 Run 'mmrelay service migrate --dry-run' to see what would be moved"
+        )
+        print("   💡 Run 'mmrelay service migrate' to migrate data to new structure")
+
+    return 0
+
+
 def handle_config_command(args: argparse.Namespace) -> int:
     """
-    Dispatch the "config" command group to the selected subcommand handler.
+    Dispatches "config" command group to the selected subcommand handler.
 
     Supported subcommands:
-    - "generate": create or update the sample configuration file at the preferred location.
-    - "check": validate the resolved configuration file (delegates to check_config).
-    - "diagnose": run a sequence of non-destructive diagnostics and print a report (delegates to handle_config_diagnose).
+        - "generate": create or update of sample configuration file at preferred location.
+        - "check": validate of resolved configuration file (delegates to check_config).
+        - "diagnose": run a sequence of non-destructive diagnostics and print a report (delegates to handle_config_diagnose).
 
     Parameters:
         args (argparse.Namespace): CLI namespace containing `config_command` (one of "generate", "check", "diagnose") and any subcommand-specific options.
@@ -1504,6 +1783,189 @@ def handle_auth_command(args: argparse.Namespace) -> int:
     else:
         # Default to login for legacy --auth
         return handle_auth_login(args)
+
+
+def handle_paths_command(args: argparse.Namespace) -> int:
+    """
+    Display all path configuration and diagnostics.
+
+    Parameters:
+        args (argparse.Namespace): CLI namespace.
+
+    Returns:
+        int: Exit code (0 on success, non-zero on failure).
+    """
+    from mmrelay.paths import resolve_all_paths
+
+    # Get path information
+    paths_info = resolve_all_paths()
+
+    # Print header
+    print("\n" + "=" * 60)
+    print("MMRelay Path Configuration (mmrelay paths)")
+    print("=" * 60)
+
+    # Print HOME information
+    print(f"\n📍 HOME Directory:")
+    print(f"   Location: {paths_info['home']}")
+    print(f"   Source: {paths_info['home_source']}")
+
+    # Print runtime artifact paths
+    print(f"\n📁 Runtime Artifacts (all in HOME):")
+    print(f"   Credentials: {paths_info['credentials_path']}")
+    print(f"   Database: {paths_info['database_dir']}")
+    print(f"   Store (E2EE): {paths_info['store_dir']}")
+    print(f"   Logs: {paths_info['logs_dir']}")
+    print(f"   Log File: {paths_info['log_file']}")
+
+    # Print plugin paths
+    print(f"\n📦 Plugins:")
+    print(f"   Plugins: {paths_info['plugins_dir']}")
+    print(f"   Custom: {paths_info['custom_plugins_dir']}")
+    print(f"   Community: {paths_info['community_plugins_dir']}")
+
+    # Print legacy sources
+    print(f"\n📋 Legacy Sources (read-only):")
+    if paths_info.get("legacy_sources"):
+        for legacy_dir in paths_info["legacy_sources"]:
+            print(f"   - {legacy_dir}")
+    else:
+        print("   (none detected)")
+
+    # Print environment variables
+    print(f"\n🔧 Environment Variables:")
+    if paths_info.get("env_vars_detected"):
+        for var_name, var_value in paths_info["env_vars_detected"].items():
+            print(f"   {var_name}={var_value}")
+    else:
+        print("   (none detected)")
+
+    # Print CLI override
+    print(f"\n⚙️  CLI Override: {paths_info.get('cli_override', 'None')}")
+
+    # Print plugin roots searched
+    print(f"\n   Plugin Roots Searched:")
+    print(f"   Primary: {paths_info['plugins_dir']}")
+
+    # Check for legacy data
+    home = paths_info["home"]
+    if paths_info.get("legacy_sources"):
+        print("\n   ⚠️  Legacy data detected!")
+        print(
+            f"   Legacy directories found: {', '.join(str(d) for d in paths_info['legacy_sources'])}"
+        )
+        print("   Migration will scan all legacy roots for data to migrate")
+        print(
+            "   💡 Run 'mmrelay service migrate --dry-run' to see what would be moved"
+        )
+        print("   💡 Run 'mmrelay migrate' to migrate data to new structure")
+
+    return 0
+
+
+def handle_verify_migration_command(args: argparse.Namespace) -> int:
+    """
+    Verify migration state and detect legacy data (read-only).
+
+    Parameters:
+        args (argparse.Namespace): CLI namespace.
+
+    Returns:
+        int: Exit code (0 on success, non-zero on failure).
+    """
+    from mmrelay.migrate import print_migration_verification, verify_migration
+
+    report = verify_migration()
+    print_migration_verification(report)
+    return 0 if report["ok"] else 1
+
+
+def handle_doctor_command(args: argparse.Namespace) -> int:
+    """
+    Diagnose path configuration and migration status.
+
+    Displays comprehensive diagnostic information about:
+    - HOME directory and source
+    - Legacy directories detected
+    - Runtime artifact locations (credentials, DB, store, logs, plugins)
+    - Migration recommendations
+
+    Parameters:
+        args (argparse.Namespace): CLI namespace.
+
+    Returns:
+        int: Exit code (0 on success, non-zero on failure).
+    """
+    from mmrelay.migrate import is_migration_needed, verify_migration
+    from mmrelay.paths import resolve_all_paths
+
+    # Get path information
+    paths_info = resolve_all_paths()
+
+    # Print header
+    print("\n" + "=" * 60)
+    print("MMRelay Path Diagnostics (mmrelay doctor)")
+    print("=" * 60)
+
+    # Print HOME information
+    print(f"\n📍 HOME Directory:")
+    print(f"   Location: {paths_info['home']}")
+    print(f"   Source: {paths_info['home_source']}")
+
+    # Print runtime artifact paths
+    print(f"\n📁 Runtime Artifacts (all in HOME):")
+    print(f"   Credentials: {paths_info['credentials_path']}")
+    print(f"   Database: {paths_info['database_dir']}")
+    print(f"   Store (E2EE): {paths_info['store_dir']}")
+    print(f"   Logs: {paths_info['logs_dir']}")
+    print(f"   Plugins: {paths_info['plugins_dir']}")
+
+    # Print legacy sources
+    print(f"\n📋 Legacy Sources (read-only):")
+    if paths_info.get("legacy_sources"):
+        for legacy_dir in paths_info["legacy_sources"]:
+            print(f"   - {legacy_dir}")
+    else:
+        print("   (none detected)")
+
+    # Print environment variables
+    print(f"\n🔧 Environment Variables:")
+    if paths_info.get("env_vars_detected"):
+        for var_name, var_value in paths_info["env_vars_detected"].items():
+            print(f"   {var_name}={var_value}")
+    else:
+        print("   (none detected)")
+
+    # Print CLI override
+    print(f"\n⚙️  CLI Override: {paths_info.get('cli_override', 'None')}")
+
+    # Check migration status and print recommendations
+    print(f"\n🔄 Migration Status:")
+    if is_migration_needed():
+        print("   ⚠️  Migration RECOMMENDED:")
+        print("       Legacy data detected in one or more locations.")
+        print("       Run 'mmrelay migrate --dry-run' to preview migration.")
+        print("       Run 'mmrelay migrate' to perform migration (default: copy).")
+        print("       Use '--move' flag to move instead of copy.")
+        print("       Use '--force' flag to skip backup prompts.")
+    else:
+        print("   ✅ No migration needed (clean install or already migrated)")
+
+    if getattr(args, "migration", False):
+        report = verify_migration()
+        print("\n🧭 Migration Verification:")
+        if report["warnings"]:
+            for warning in report["warnings"]:
+                print(f"   ⚠️  {warning}")
+        else:
+            print("   ✅ No legacy data found")
+        if report["errors"]:
+            for error in report["errors"]:
+                print(f"   ❌ {error}")
+            return 1
+
+    # Return success
+    return 0
 
 
 def handle_auth_login(args: argparse.Namespace) -> int:
@@ -1739,6 +2201,55 @@ def handle_auth_logout(args: argparse.Namespace) -> int:
         return 1
 
 
+def handle_migrate_command(args: argparse.Namespace) -> int:
+    """
+    Execute migration from legacy directory structure to unified layout.
+
+    Supports --dry-run, --move, and --force flags for controlling migration behavior.
+
+    Parameters:
+        args (argparse.Namespace): Parsed CLI arguments with migration flags.
+
+    Returns:
+        int: `0` on success, `1` on failure.
+    """
+    try:
+        from mmrelay.migrate import perform_migration
+
+        dry_run = getattr(args, "dry_run", False)
+        force = getattr(args, "force", False)
+        move = getattr(args, "move", False)
+
+        result = perform_migration(dry_run=dry_run, force=force, move=move)
+
+        if result.get("success"):
+            print("✅ Migration completed successfully")
+            for migration in result.get("migrations", []):
+                mtype = migration.get("result", {}).get("type", "unknown")
+                status_icon = (
+                    "✅" if migration.get("result", {}).get("success") else "❌"
+                )
+                print(
+                    f"  {status_icon} {mtype}: {migration.get('result', {}).get('message', 'No details')}"
+                )
+
+                if migration.get("result", {}).get("dry_run"):
+                    print("   [DRY RUN] No changes were made")
+                if migration.get("result", {}).get("action") == "move":
+                    print("   Action: MOVE")
+                elif migration.get("result", {}).get("action") == "copy":
+                    print("   Action: COPY")
+                elif migration.get("result", {}).get("action") == "skip":
+                    print("   Action: SKIP")
+            return 0
+        else:
+            print(f"❌ Migration failed: {result.get('error', 'Unknown error')}")
+            return 1
+    except ImportError as e:
+        print(f"Error importing migration module: {e}")
+        return 1
+
+
 def handle_service_command(args: argparse.Namespace) -> int:
     """
     Dispatch a service-related CLI subcommand.
@@ -1759,6 +2270,8 @@ def handle_service_command(args: argparse.Namespace) -> int:
         except ImportError as e:
             print(f"Error importing setup utilities: {e}")
             return 1
+    elif args.service_command == "migrate":
+        return handle_migrate_command(args)
     else:
         print(f"Unknown service command: {args.service_command}")
         return 1

@@ -83,6 +83,15 @@ The project has standardized async testing patterns and no longer requires test 
 3. **Consistent Mocking**: Use the patterns described above for all async function testing
 4. **Global State Isolation**: Use `reset_meshtastic_globals` fixture for tests that modify global state
 
+### Threading and Executor Patterns
+
+Some code paths use `asyncio.to_thread()` or `loop.run_in_executor()`. In tests, real thread pools can hang or introduce nondeterminism. Prefer inline execution patterns:
+
+1. **Inline executors**: Patch `asyncio.get_running_loop` with `_make_patched_get_running_loop()` (see `tests/test_main.py`) so `run_in_executor` executes synchronously via `InlineExecutorLoop`.
+2. **Immediate shutdown events**: Use `_ImmediateEvent()` (from `tests/test_main.py`) to skip long-running loops that wait on shutdown events.
+3. **Avoid KeyboardInterrupt control flow**: Do not raise `KeyboardInterrupt` inside async tasks; prefer explicit shutdown events for deterministic cleanup.
+4. **Cleanup isolation**: When a test reaches `main()` cleanup, patch `shutdown_plugins` and `stop_message_queue` to no-ops unless the test is explicitly validating cleanup behavior.
+
 ### Migration from Old Patterns
 
 If you encounter code using old test environment detection patterns:

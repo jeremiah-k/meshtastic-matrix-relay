@@ -188,10 +188,10 @@ def _should_log_to_file(args: argparse.Namespace | None) -> bool:
 def _resolve_log_file(args: argparse.Namespace | None) -> str:
     """
     Choose the log file path using the following precedence: CLI `args.logfile`, configuration `logging.filename`, or the default "<log_dir>/mmrelay.log".
-    
+
     Parameters:
         args (argparse.Namespace | None): Optional argparse-like namespace; if present and has a truthy `logfile` attribute, that value is selected.
-    
+
     Returns:
         str: Filesystem path selected for logging.
     """
@@ -209,16 +209,15 @@ def _resolve_log_file(args: argparse.Namespace | None) -> str:
 def get_log_dir() -> str:
     """
     Return the filesystem directory to use for application logs, resolved lazily.
-    
-    This function obtains the log directory from the application's configuration helper if available; if the configuration helper cannot be imported, it falls back to the current working directory.
-    
-    Returns:
-        log_dir (str): Path to the directory where logs should be written."""
-    try:
-        from mmrelay.config import get_log_dir as _get_log_dir
-    except ImportError:
-        return os.getcwd()
-    return _get_log_dir()
+
+    Uses unified path resolution from mmrelay.paths.
+    """
+    from mmrelay.paths import resolve_all_paths
+
+    result = resolve_all_paths()["logs_dir"]
+    if not isinstance(result, str):
+        raise TypeError(f"Expected logs_dir to be str, got {type(result).__name__}")
+    return result
 
 
 def _configure_logger(
@@ -226,10 +225,10 @@ def _configure_logger(
 ) -> logging.Logger:
     """
     Configure a logger's level and attach console and optional rotating file handlers based on the application's configuration and optional CLI arguments.
-    
+
     Parameters:
         args (argparse.Namespace | None): Optional CLI arguments that can force or override file logging and influence the resolved logfile path.
-    
+
     Returns:
         logging.Logger: The configured logger instance.
     """

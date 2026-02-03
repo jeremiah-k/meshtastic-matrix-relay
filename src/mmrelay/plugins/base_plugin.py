@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from typing import Any
 
 # markdown has stubs in our env; avoid import-untyped so mypy --strict stays clean.
-import markdown  # type: ignore[import-untyped]
+import markdown  # mypy: ignore[import-untyped]
 from nio import (
     MatrixRoom,
     ReactionEvent,

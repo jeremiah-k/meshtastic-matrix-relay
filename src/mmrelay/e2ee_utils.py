@@ -103,11 +103,23 @@ def get_e2ee_status(
     if config_path:
         status["credentials_available"] = _check_credentials_available(config_path)
     else:
-        # Fallback to base directory check only
-        from mmrelay.config import get_base_dir
+        # Check HOME location and legacy sources
+        from mmrelay.paths import resolve_all_paths
 
-        base_credentials_path = os.path.join(get_base_dir(), CREDENTIALS_FILENAME)
-        status["credentials_available"] = os.path.exists(base_credentials_path)
+        # Check primary credentials location (HOME)
+        paths_info = resolve_all_paths()
+        primary_credentials_path = paths_info["credentials_path"]
+        status["credentials_available"] = os.path.exists(primary_credentials_path)
+
+        # If not found in HOME, search legacy locations
+        if not status["credentials_available"]:
+            for legacy_root in paths_info.get("legacy_sources", []):
+                legacy_credentials_path = os.path.join(
+                    legacy_root, CREDENTIALS_FILENAME
+                )
+                if os.path.exists(legacy_credentials_path):
+                    status["credentials_available"] = True
+                    break
 
     if not status["credentials_available"]:
         status["issues"].append("Matrix authentication not configured")
@@ -133,15 +145,16 @@ def get_e2ee_status(
 
 def _check_credentials_available(config_path: str) -> bool:
     """
-    Check whether the Matrix credentials file exists in standard locations.
+    Check whether Matrix credentials file exists in standard locations.
 
-    Searches for CREDENTIALS_FILENAME in the directory containing the provided configuration file first, then falls back to the application's base directory (via mmrelay.config.get_base_dir()). If the base directory cannot be resolved (ImportError or OSError), the function returns False.
+    Searches for CREDENTIALS_FILENAME in HOME directory and config directory.
+    Checks legacy_sources for compatibility during deprecation window.
 
     Parameters:
-        config_path (str): Filesystem path to the configuration file whose directory should be checked.
+        config_path (str): Filesystem path to configuration file whose directory should be checked.
 
     Returns:
-        bool: True if the credentials file exists in either the config directory or the base directory; otherwise False.
+        bool: True if credentials file exists in HOME or config directory; otherwise False.
     """
     # Check config directory first
     config_dir = os.path.dirname(config_path)
@@ -150,15 +163,26 @@ def _check_credentials_available(config_path: str) -> bool:
     if os.path.exists(config_credentials_path):
         return True
 
-    # Fallback to base directory
-    try:
-        from mmrelay.config import get_base_dir
+    # Check HOME location (primary)
+    from mmrelay.paths import resolve_all_paths
 
-        base_credentials_path = os.path.join(get_base_dir(), CREDENTIALS_FILENAME)
-        return os.path.exists(base_credentials_path)
-    except (ImportError, OSError):
-        # If we can't determine base directory, assume no credentials
-        return False
+    paths_info = resolve_all_paths()
+    primary_credentials_path = paths_info["credentials_path"]
+
+    if os.path.exists(primary_credentials_path):
+        return True
+
+    # Check legacy sources during deprecation window
+    from mmrelay.paths import is_deprecation_window_active
+
+    if is_deprecation_window_active():
+        for legacy_root in paths_info.get("legacy_sources", []):
+            legacy_credentials_path = os.path.join(legacy_root, CREDENTIALS_FILENAME)
+            if os.path.exists(legacy_credentials_path):
+                return True
+
+    # No credentials found
+    return False
 
 
 def get_room_encryption_warnings(

@@ -71,7 +71,6 @@ from mmrelay.cli_utils import (
 )
 from mmrelay.config import (
     get_base_dir,
-    get_credentials_search_paths,
     get_e2ee_store_dir,
     get_explicit_credentials_path,
     get_meshtastic_config_value,
@@ -120,6 +119,7 @@ from mmrelay.meshtastic_utils import connect_meshtastic, send_text_reply
 
 # Import meshtastic protobuf for port numbers when needed
 from mmrelay.message_queue import get_message_queue, queue_message
+from mmrelay.paths import resolve_all_paths
 
 # Import nio exception types with error handling for test environments.
 # matrix-nio is not marked py.typed in our env; keep import-untyped for mypy --strict.
@@ -1287,55 +1287,80 @@ async def connect_matrix(
     e2ee_device_id: Optional[str] = None
     credentials_path = None
 
-    # Try to find credentials.json from explicit config, config directory, or base dir
-    try:
-        explicit_path = get_explicit_credentials_path(
-            config if isinstance(config, dict) else None
-        )
+    def _resolve_credentials_save_path() -> str | None:
+        try:
+            explicit_path = get_explicit_credentials_path(
+                config if isinstance(config, dict) else None
+            )
+            if explicit_path:
+                return os.path.expanduser(explicit_path)
+            return os.path.join(get_base_dir(), "credentials.json")
+        except Exception:
+            return None
 
-        config_paths = (
-            [config_module.config_path] if config_module.config_path else None
-        )
-        candidate_paths = get_credentials_search_paths(
-            explicit_path=explicit_path,
-            config_paths=config_paths,
-        )
+    explicit_credentials_path = get_explicit_credentials_path(
+        config if isinstance(config, dict) else None
+    )
 
-        for candidate in candidate_paths:
-            if not os.path.isfile(candidate):
-                continue
-            try:
-                with open(candidate, "r", encoding="utf-8") as f:
+    # Prefer an explicit credentials path when provided (env/config)
+    if isinstance(explicit_credentials_path, str) and explicit_credentials_path:
+        expanded_path = os.path.expanduser(explicit_credentials_path)
+        try:
+            if os.path.isfile(expanded_path):
+                with open(expanded_path, "r", encoding="utf-8") as f:
                     credentials = json.load(f)
-            except (OSError, json.JSONDecodeError):
-                logger.warning("Ignoring invalid credentials file: %s", candidate)
-                continue
-            credentials_path = candidate
-            break
-    except Exception as e:
-        logger.warning(f"Error loading credentials: {e}")
+                credentials_path = expanded_path
+        except (OSError, json.JSONDecodeError):
+            logger.warning("Ignoring invalid credentials file: %s", expanded_path)
+            credentials = None
+
+    # Load credentials using the shared helper (supports legacy search + env overrides)
+    if credentials is None:
+        try:
+            credentials = load_credentials()
+        except Exception as e:
+            logger.warning("Error loading credentials: %s", e)
+            credentials = None
+
+    if credentials is None:
+        candidate_path = _resolve_credentials_save_path()
+        if candidate_path and os.path.isfile(candidate_path):
+            logger.warning("Ignoring invalid credentials file: %s", candidate_path)
 
     # If credentials.json exists, use it
     if credentials:
-        matrix_homeserver = credentials["homeserver"]
-        matrix_access_token = credentials["access_token"]
-        bot_user_id = credentials["user_id"]
-        e2ee_device_id = _get_valid_device_id(credentials.get("device_id"))
-
-        # Log consolidated credentials info
-        logger.debug(f"Using Matrix credentials (device: {e2ee_device_id})")
-
-        # If device_id is missing, warn but proceed; we'll learn and persist it after restore_login().
-        if e2ee_device_id is None:
+        missing_keys = [
+            key
+            for key in ("homeserver", "access_token", "user_id")
+            if key not in credentials
+        ]
+        if missing_keys:
             logger.warning(
-                "credentials.json has no valid device_id; proceeding to restore session and discover device_id."
+                "Ignoring credentials.json missing required keys: %s",
+                ", ".join(missing_keys),
             )
+            credentials = None
+        else:
+            credentials_path = _resolve_credentials_save_path()
+            matrix_homeserver = credentials["homeserver"]
+            matrix_access_token = credentials["access_token"]
+            bot_user_id = credentials["user_id"]
+            e2ee_device_id = _get_valid_device_id(credentials.get("device_id"))
 
-        # If config also has Matrix login info, let the user know we're ignoring it
-        if isinstance(matrix_section, dict) and "access_token" in matrix_section:
-            logger.info(
-                "NOTE: Ignoring Matrix login details in config.yaml in favor of credentials.json"
-            )
+            # Log consolidated credentials info
+            logger.debug(f"Using Matrix credentials (device: {e2ee_device_id})")
+
+            # If device_id is missing, warn but proceed; we'll learn and persist it after restore_login().
+            if e2ee_device_id is None:
+                logger.warning(
+                    "credentials.json has no valid device_id; proceeding to restore session and discover device_id."
+                )
+
+            # If config also has Matrix login info, let the user know we're ignoring it
+            if isinstance(matrix_section, dict) and "access_token" in matrix_section:
+                logger.info(
+                    "NOTE: Ignoring Matrix login details in config.yaml in favor of credentials.json"
+                )
     # Check if we can automatically create credentials from config.yaml
     elif _can_auto_create_credentials(matrix_section):
         matrix_section = cast(dict[str, Any], matrix_section)
@@ -1368,6 +1393,20 @@ async def connect_matrix(
                 if not credentials:
                     logger.error("Failed to load newly created credentials")
                     return None
+
+                missing_keys = [
+                    key
+                    for key in ("homeserver", "access_token", "user_id")
+                    if key not in credentials
+                ]
+                if missing_keys:
+                    logger.error(
+                        "Newly created credentials.json missing required keys: %s",
+                        ", ".join(missing_keys),
+                    )
+                    return None
+
+                credentials_path = _resolve_credentials_save_path()
 
                 # Set up variables for credentials-based connection
                 matrix_homeserver = credentials["homeserver"]
@@ -1498,26 +1537,30 @@ async def connect_matrix(
 
                     if e2ee_enabled:
                         # Ensure nio receives a store path for the client to load encryption state.
-                        # Get store path from config or use default
-                        if (
-                            "encryption" in config["matrix"]
-                            and "store_path" in config["matrix"]["encryption"]
-                        ):
-                            e2ee_store_path = os.path.expanduser(
-                                config["matrix"]["encryption"]["store_path"]
-                            )
-                        elif (
-                            "e2ee" in config["matrix"]
-                            and "store_path" in config["matrix"]["e2ee"]
-                        ):
-                            e2ee_store_path = os.path.expanduser(
-                                config["matrix"]["e2ee"]["store_path"]
-                            )
+                        # Prefer explicit config overrides, then fall back to the default store dir.
+                        store_override = None
+                        if isinstance(matrix_section, dict):
+                            encryption_section = matrix_section.get("encryption")
+                            e2ee_section = matrix_section.get("e2ee")
+                            if isinstance(encryption_section, dict):
+                                store_override = encryption_section.get("store_path")
+                            if not store_override and isinstance(e2ee_section, dict):
+                                store_override = e2ee_section.get("store_path")
+
+                        if isinstance(store_override, str) and store_override:
+                            e2ee_store_path = os.path.expanduser(store_override)
                         else:
-                            e2ee_store_path = get_e2ee_store_dir()
+                            e2ee_store_path = str(get_e2ee_store_dir())
 
                         # Create store directory if it doesn't exist
-                        os.makedirs(e2ee_store_path, exist_ok=True)
+                        try:
+                            os.makedirs(e2ee_store_path, exist_ok=True)
+                        except OSError as e:
+                            logger.warning(
+                                "Could not create E2EE store directory %s: %s",
+                                e2ee_store_path,
+                                e,
+                            )
 
                         # Check if store directory contains database files
                         store_files = (
@@ -2139,11 +2182,14 @@ async def login_matrix_bot(
 
         # Check for existing credentials to reuse device_id
         existing_device_id = None
+        credentials_path = None
         try:
             import json
 
-            config_dir = get_base_dir()
-            credentials_path = os.path.join(config_dir, "credentials.json")
+            from mmrelay.paths import resolve_all_paths
+
+            paths_info = resolve_all_paths()
+            credentials_path = paths_info["credentials_path"]
 
             if os.path.exists(credentials_path):
                 with open(credentials_path, "r", encoding="utf-8") as f:
@@ -2172,7 +2218,7 @@ async def login_matrix_bot(
         # Get the E2EE store path only if E2EE is enabled
         store_path = None
         if e2ee_enabled:
-            store_path = get_e2ee_store_dir()
+            store_path = str(get_e2ee_store_dir())
             os.makedirs(store_path, exist_ok=True)
             logger.debug(f"Using E2EE store path: {store_path}")
         else:
@@ -2381,10 +2427,12 @@ async def login_matrix_bot(
                 "device_id": getattr(response, "device_id", existing_device_id),
             }
 
-            config_dir = get_base_dir()
-            credentials_path = os.path.join(config_dir, "credentials.json")
+            # save_credentials() now uses unified HOME location
             save_credentials(credentials)
-            logger.info(f"Credentials saved to {credentials_path}")
+            if credentials_path:
+                logger.info(f"Credentials saved to {credentials_path}")
+            else:
+                logger.info("Credentials saved")
 
             # Logout other sessions if requested
             if logout_others:
@@ -2649,7 +2697,7 @@ async def matrix_relay(
 
                 # markdown has stubs in our env; avoid import-untyped to keep mypy clean.
                 # If that changes, prefer installing types-Markdown over adding ignores.
-                import markdown  # type: ignore[import-untyped]  # lazy import
+                import markdown  # lazy import
 
                 raw_html = markdown.markdown(safe_message)
                 formatted_body = bleach.clean(

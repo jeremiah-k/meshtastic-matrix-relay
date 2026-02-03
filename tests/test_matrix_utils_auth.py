@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -1076,7 +1077,7 @@ def test_save_credentials(
 ):
     """
     Verify that save_credentials writes the provided credentials JSON to the resolved config directory.
-    
+
     This test sets the module-level config_path to None to force resolution via the base directory fixture, then calls save_credentials with a credentials dict and asserts that the target directory is created, the credentials file is opened, and json.dump is called with the credentials and an indent of 2.
     """
     mock_get_base_dir.return_value = "/test/config"
@@ -1110,8 +1111,9 @@ def test_save_credentials(
 def test_cleanup_local_session_data_success():
     """Test successful cleanup of local session data."""
     with (
-        patch("mmrelay.config.get_base_dir", return_value="/test/config"),
-        patch("mmrelay.config.get_e2ee_store_dir", return_value="/test/store"),
+        patch("mmrelay.paths.get_home_dir", return_value=Path("/test/config")),
+        patch("mmrelay.paths.get_e2ee_store_dir", return_value=Path("/test/store")),
+        patch("mmrelay.config.load_config", return_value={}),
         patch("os.path.exists") as mock_exists,
         patch("os.remove") as mock_remove,
         patch("shutil.rmtree") as mock_rmtree,
@@ -1122,14 +1124,15 @@ def test_cleanup_local_session_data_success():
 
         assert result is True
         mock_remove.assert_called_once_with("/test/config/credentials.json")
-        mock_rmtree.assert_called_once_with("/test/store")
+        mock_rmtree.assert_called_once_with(Path("/test/store"))
 
 
 def test_cleanup_local_session_data_files_not_exist():
     """Test cleanup when files don't exist."""
     with (
-        patch("mmrelay.config.get_base_dir", return_value="/test/config"),
-        patch("mmrelay.config.get_e2ee_store_dir", return_value="/test/store"),
+        patch("mmrelay.paths.get_home_dir", return_value=Path("/test/config")),
+        patch("mmrelay.paths.get_e2ee_store_dir", return_value=Path("/test/store")),
+        patch("mmrelay.config.load_config", return_value={}),
         patch("os.path.exists", return_value=False),
     ):
         result = _cleanup_local_session_data()
@@ -1140,8 +1143,9 @@ def test_cleanup_local_session_data_files_not_exist():
 def test_cleanup_local_session_data_permission_error():
     """Test cleanup with permission errors."""
     with (
-        patch("mmrelay.config.get_base_dir", return_value="/test/config"),
-        patch("mmrelay.config.get_e2ee_store_dir", return_value="/test/store"),
+        patch("mmrelay.paths.get_home_dir", return_value=Path("/test/config")),
+        patch("mmrelay.paths.get_e2ee_store_dir", return_value=Path("/test/store")),
+        patch("mmrelay.config.load_config", return_value={}),
         patch("os.path.exists", return_value=True),
         patch("os.remove", side_effect=PermissionError("Access denied")),
         patch("shutil.rmtree", side_effect=PermissionError("Access denied")),

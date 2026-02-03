@@ -5210,7 +5210,7 @@ async def test_connect_matrix_legacy_config(
 
 @patch("mmrelay.matrix_utils.save_credentials")
 @patch("mmrelay.matrix_utils.AsyncClient")
-@patch("mmrelay.cli_utils._create_ssl_context", return_value=None)
+@patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
 async def test_login_matrix_bot_reuses_existing_device_id(
     _mock_ssl_context, mock_async_client, _mock_save_credentials
 ):
@@ -5230,7 +5230,13 @@ async def test_login_matrix_bot_reuses_existing_device_id(
     mock_main_client.close = AsyncMock()
 
     with (
-        patch("mmrelay.matrix_utils.get_base_dir", return_value="/tmp"),
+        patch(
+            "mmrelay.paths.resolve_all_paths",
+            return_value={
+                "credentials_path": "/tmp/credentials.json",
+                "legacy_sources": [],
+            },
+        ),
         patch("mmrelay.matrix_utils.os.path.exists", return_value=True),
         patch("builtins.open", new_callable=MagicMock),
         patch(
@@ -5896,7 +5902,13 @@ async def test_login_matrix_bot_credentials_load_failure_logs_debug(
     mock_main_client.close = AsyncMock()
 
     with (
-        patch("mmrelay.matrix_utils.get_base_dir", return_value="/tmp"),
+        patch(
+            "mmrelay.paths.resolve_all_paths",
+            return_value={
+                "credentials_path": "/tmp/credentials.json",
+                "legacy_sources": [],
+            },
+        ),
         patch("mmrelay.matrix_utils.os.path.exists", return_value=True),
         patch("builtins.open", side_effect=OSError("boom")),
         patch("mmrelay.config.load_config", return_value={}),

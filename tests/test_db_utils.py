@@ -25,6 +25,7 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.db_utils import (
+    _get_db_manager,
     _parse_bool,
     _parse_int,
     _reset_db_manager,
@@ -103,8 +104,7 @@ class TestDbUtils(unittest.TestCase):
         self.assertEqual(path1, path2)
         self.assertEqual(path1, self.test_db_path)
 
-    @patch("mmrelay.db_utils.get_data_dir")
-    def test_get_db_path_default(self, mock_get_data_dir):
+    def test_get_db_path_default(self):
         """
         Test that `get_db_path()` returns the default database path in the absence of configuration.
 
@@ -120,10 +120,13 @@ class TestDbUtils(unittest.TestCase):
         import tempfile
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            mock_get_data_dir.return_value = temp_dir
-            path = get_db_path()
-            expected_path = os.path.join(temp_dir, "meshtastic.sqlite")
-            self.assertEqual(path, expected_path)
+            with patch(
+                "mmrelay.db_utils.resolve_all_paths",
+                return_value={"database_dir": temp_dir, "legacy_sources": []},
+            ):
+                path = get_db_path()
+                expected_path = os.path.join(temp_dir, "meshtastic.sqlite")
+                self.assertEqual(path, expected_path)
 
     def test_get_db_path_legacy_config(self):
         """
@@ -415,6 +418,13 @@ class TestDbUtils(unittest.TestCase):
         """
         initialize_database()
 
+        manager = _get_db_manager()
+
+        async def run_async(func, write=False, loop=None):
+            return manager.run_sync(func, write=write)
+
+        manager.run_async = run_async  # type: ignore[assignment]
+
         async def exercise():
             """
             Exercise message-map helpers by storing two entries then pruning to keep the most recent one.
@@ -429,7 +439,8 @@ class TestDbUtils(unittest.TestCase):
             )
             await async_prune_message_map(1)
 
-        asyncio.run(exercise())
+        with patch("mmrelay.db_utils._get_db_manager", return_value=manager):
+            asyncio.run(exercise())
 
         # Oldest entry should have been pruned
         self.assertIsNone(get_message_map_by_meshtastic_id("mesh1"))
@@ -555,8 +566,11 @@ class TestDbUtils(unittest.TestCase):
 
         mmrelay.db_utils.config = mock_config
 
-        # Mock get_data_dir and os.makedirs to raise PermissionError
-        with patch("mmrelay.db_utils.get_data_dir", return_value="/nonexistent/data"):
+        # Mock resolve_all_paths and os.makedirs to raise PermissionError
+        with patch(
+            "mmrelay.db_utils.resolve_all_paths",
+            return_value={"database_dir": "/nonexistent/data", "legacy_sources": []},
+        ):
             with patch("os.makedirs", side_effect=PermissionError("Permission denied")):
                 with patch("mmrelay.db_utils.logger") as mock_logger:
                     path = get_db_path()

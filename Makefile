@@ -3,7 +3,7 @@
 # Detect docker compose command (prefer newer 'docker compose' over 'docker-compose')
 DOCKER_COMPOSE := $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
 
-.PHONY: help build build-nocache rebuild run stop logs shell clean config edit setup setup-prebuilt update-compose
+.PHONY: help build build-nocache rebuild run stop logs shell clean config edit setup setup-prebuilt update-compose doctor paths
 
 # Default target
 help:
@@ -20,11 +20,13 @@ help:
 	@echo "  stop    - Stop the container (keeps container for restart)"
 	@echo "  logs    - Show container logs"
 	@echo "  shell   - Access container shell"
+	@echo "  doctor  - Run diagnostics inside the container"
+	@echo "  paths   - Show runtime paths inside the container"
 	@echo "  clean   - Remove containers and networks"
 
 # Internal target for common setup tasks
 _setup_common:
-	@mkdir -p ~/.mmrelay ~/.mmrelay/data ~/.mmrelay/logs
+	@mkdir -p ~/.mmrelay
 	@if [ ! -f ~/.mmrelay/config.yaml ]; then \
 		cp src/mmrelay/tools/sample_config.yaml ~/.mmrelay/config.yaml; \
 		echo "Sample config copied to ~/.mmrelay/config.yaml - please edit it before running"; \
@@ -37,7 +39,7 @@ _setup_common:
 	else \
 		echo ".env file already exists"; \
 	fi
-	@echo "Created directories: ~/.mmrelay/data and ~/.mmrelay/logs with proper ownership"
+	@echo "Host directory ~/.mmrelay created - will be mounted to /data in the container"
 
 # Copy sample config to ~/.mmrelay/config.yaml and create Docker files
 config: _setup_common
@@ -154,3 +156,13 @@ shell:
 # Remove containers and networks (data in ~/.mmrelay/ is preserved)
 clean:
 	$(DOCKER_COMPOSE) down
+
+# Run diagnostics inside the container
+doctor:
+	@echo "Running diagnostics inside container..."
+	$(DOCKER_COMPOSE) exec -T mmrelay mmrelay doctor --config /app/config.yaml
+
+# Show runtime paths inside the container
+paths:
+	@echo "Showing runtime paths inside container..."
+	$(DOCKER_COMPOSE) exec -T mmrelay mmrelay paths --config /app/config.yaml

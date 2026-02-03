@@ -1360,7 +1360,7 @@ def test_main_database_wipe_config(
     Detailed behavior:
     - Builds a minimal config with one Matrix room and a database section under the provided `db_key` where `msg_map.wipe_on_restart` is True.
     - Mocks Matrix and Meshtastic connections and the message queue to avoid external I/O.
-    - Runs main(config) until a short KeyboardInterrupt stops the startup sequence.
+    - Runs main(config) with an immediate shutdown event to stop after startup.
     - Asserts that wipe_message_map() was invoked and that the message queue's processor was started.
     """
     # Mock config with database wipe settings
@@ -1378,28 +1378,25 @@ def test_main_database_wipe_config(
 
     # Mock the message queue to avoid hanging and combine contexts for clarity
     with (
+        patch(
+            "mmrelay.main.asyncio.get_running_loop",
+            side_effect=_make_patched_get_running_loop(),
+        ),
+        patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
         patch("mmrelay.main.get_message_queue") as mock_get_queue,
         patch(
             "mmrelay.main.meshtastic_utils.check_connection", new_callable=AsyncMock
         ) as mock_check_conn,
+        patch("mmrelay.main.shutdown_plugins") as mock_shutdown_plugins,
+        patch("mmrelay.main.stop_message_queue") as mock_stop_queue,
         patch("mmrelay.main.wipe_message_map") as mock_wipe,
     ):
         mock_queue = MagicMock()
         mock_queue.ensure_processor_started = MagicMock()
         mock_get_queue.return_value = mock_queue
         mock_check_conn.return_value = True
-
-        # Set up sync_forever to raise KeyboardInterrupt after a short delay
-        async def mock_sync_forever(*args, **kwargs):
-            """
-            Coroutine used in tests to simulate an async run loop that immediately interrupts execution.
-
-            Awaits a very short sleep (0.01s) to yield control, then raises KeyboardInterrupt to terminate callers (e.g., to stop startup loops cleanly during tests).
-            """
-            await asyncio.sleep(0.01)  # Very short delay
-            raise KeyboardInterrupt()
-
-        mock_matrix_client.sync_forever = mock_sync_forever
+        mock_shutdown_plugins.return_value = None
+        mock_stop_queue.return_value = None
 
         # Run the test with proper exception handling
         with contextlib.suppress(KeyboardInterrupt):

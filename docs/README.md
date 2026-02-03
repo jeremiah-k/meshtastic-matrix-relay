@@ -5,12 +5,49 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 ## Getting Started
 
 - **[Installation Guide](INSTRUCTIONS.md)** - Complete setup instructions for MMRelay
+- **[Migration Guide for v1.3](MIGRATION_1.3.md)** - Upgrading from older versions to unified HOME model
 - **[E2EE Guide](E2EE.md)** - Matrix End-to-End Encryption setup and usage
 - **[Docker Guide](DOCKER.md)** - Docker deployment and configuration
+- **[Docker Compose Example](docker-compose.yml)** - Quick Docker Compose setup with MMRELAY_HOME
+- **[Helm Guide](HELM.md)** - Kubernetes Helm chart deployment guide
 
 ## Advanced Configuration
 
 - **[Advanced Configuration](ADVANCED_CONFIGURATION.md)** - Advanced features like message prefixes, debug logging, environment variables, and plugins
+
+## Docker Compose Quick Start
+
+A minimal Docker Compose example is available at `docs/docker-compose.yml`. This provides the fastest way to run MMRelay with persistent data using the unified MMRELAY_HOME model.
+
+**Quick Start:**
+
+```bash
+# 1. Copy the example to your project directory
+cp docs/docker-compose.yml .
+
+# 2. Replace image tag in docker-compose.yml
+#    Change: ghcr.io/jeremiah-k/mmrelay:REPLACE_ME
+#    To: ghcr.io/jeremiah-k/mmrelay:<tag>
+
+# 3. Create your config.yaml (or use sample)
+cp src/mmrelay/tools/sample_config.yaml config.yaml
+# Edit config.yaml with your settings
+
+# 4. Start the service
+docker compose up -d
+
+# 5. View logs
+docker compose logs -f
+
+# 6. Verify configuration
+docker compose exec mmrelay python -m mmrelay doctor
+```
+
+**Data Location:** All persistent data (credentials, database, logs, plugins, E2EE store) lives in the `./mmrelay-data` directory that Docker Compose creates automatically.
+
+**Migration:** If upgrading from an old layout, run `docker compose exec mmrelay python -m mmrelay migrate --dry-run` first, then `docker compose exec mmrelay python -m mmrelay migrate` to migrate.
+
+For full Docker documentation, see [DOCKER.md](DOCKER.md).
 
 ## File Locations
 
@@ -32,6 +69,7 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 docs/
 ├── README.md              # This file - documentation index
 ├── INSTRUCTIONS.md        # Main installation and setup guide
+├── MIGRATION_1.3.md     # Migration guide for upgrading from older versions
 ├── E2EE.md               # End-to-End Encryption guide
 ├── DOCKER.md             # Docker deployment guide
 ├── ADVANCED_CONFIGURATION.md # Advanced configuration options

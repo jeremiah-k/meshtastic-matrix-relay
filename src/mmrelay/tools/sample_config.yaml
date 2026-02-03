@@ -137,7 +137,7 @@ plugins:
 #  advanced_plugin:
 #    active: false
 #    repository: https://github.com/username/advanced_plugin.git
-#    tag: v1.2.0
+#    tag: v1.3.0
 
 #custom-plugins:
 #  my_custom_plugin:

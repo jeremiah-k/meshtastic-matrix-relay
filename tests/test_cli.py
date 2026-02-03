@@ -556,6 +556,7 @@ class TestMainFunction(unittest.TestCase):
         args.generate_config = False
         args.version = False
         args.auth = False
+        args.home = None
         args.base_dir = "~/mmrelay"
         args.data_dir = None
         mock_parse.return_value = args
@@ -563,8 +564,11 @@ class TestMainFunction(unittest.TestCase):
         mock_expanduser.return_value = "/home/test/mmrelay"
 
         import mmrelay.config
+        import mmrelay.paths
 
         original_custom_base_dir = mmrelay.config.custom_base_dir
+        original_home_override = mmrelay.paths._home_override
+        original_home_override_source = mmrelay.paths._home_override_source
         try:
             result = main()
 
@@ -574,6 +578,8 @@ class TestMainFunction(unittest.TestCase):
             self.assertEqual(mmrelay.config.custom_base_dir, "/home/test/mmrelay")
         finally:
             mmrelay.config.custom_base_dir = original_custom_base_dir
+            mmrelay.paths._home_override = original_home_override
+            mmrelay.paths._home_override_source = original_home_override_source
 
 
 class TestCLIValidationFunctions(unittest.TestCase):
