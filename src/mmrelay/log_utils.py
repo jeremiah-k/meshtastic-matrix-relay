@@ -88,6 +88,10 @@ _COMPONENT_LOGGERS = {
     ],
 }
 
+# Avoid file logging for loggers that are used during path resolution to
+# prevent recursive logging configuration (paths -> log_utils -> paths).
+_FILE_LOGGING_EXEMPT_LOGGERS = {"paths"}
+
 
 def configure_component_debug_logging() -> None:
     """
@@ -302,7 +306,11 @@ def _configure_logger(
         logger.addHandler(console_handler)
 
     # Determine whether to attach a file handler
-    if _should_log_to_file(effective_args):
+    file_logging_enabled = _should_log_to_file(effective_args)
+    if logger.name in _FILE_LOGGING_EXEMPT_LOGGERS:
+        file_logging_enabled = False
+
+    if file_logging_enabled:
         log_file = _resolve_log_file(effective_args)
 
         # Create log directory if it doesn't exist
