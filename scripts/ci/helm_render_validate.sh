@@ -150,8 +150,10 @@ validate_pre_rendered_samples() {
 
 	for file in "${files[@]}"; do
 		echo -e "${YELLOW}Validating sample ${file}...${NC}"
+		set +e
 		validate_manifest "${file}" >/dev/null 2>&1
 		local validate_status=$?
+		set -e
 		if [[ ${validate_status} -ne 0 ]]; then
 			echo -e "${RED}✗ Failed to validate ${file}${NC}"
 			cat "${file}"
@@ -168,10 +170,12 @@ render_and_validate() {
 	local output_file="${RENDER_DIR}/${name}.yaml"
 
 	echo -e "${YELLOW}Rendering ${name}...${NC}"
+	set +e
 	helm_in_container template mmrelay "${CHART_PATH}" \
 		--namespace mmrelay \
 		"$@" >"${output_file}" 2>&1
 	local render_status=$?
+	set -e
 	if [[ ${render_status} -ne 0 ]]; then
 		echo -e "${RED}✗ Failed to render ${name}${NC}"
 		echo "Error output:"
@@ -182,8 +186,10 @@ render_and_validate() {
 	echo -e "${GREEN}✓ Rendered ${name}${NC}"
 
 	echo -e "${YELLOW}Validating ${name}...${NC}"
+	set +e
 	validate_manifest "${output_file}" >/dev/null 2>&1
 	local validate_status=$?
+	set -e
 	if [[ ${validate_status} -ne 0 ]]; then
 		echo -e "${RED}✗ Failed to validate ${name}${NC}"
 		echo "Rendered output:"
@@ -200,10 +206,12 @@ test_expected_failure() {
 	echo -e "${YELLOW}Testing expected failure for ${name}...${NC}"
 	local output_file="${RENDER_DIR}/${name}-expected-fail.yaml"
 
+	set +e
 	helm_in_container template mmrelay "${CHART_PATH}" \
 		--namespace mmrelay \
 		"$@" >"${output_file}" 2>&1
 	local render_status=$?
+	set -e
 	if [[ ${render_status} -eq 0 ]]; then
 		echo -e "${RED}✗ Expected failure for ${name} did not occur${NC}"
 		echo "Error output:"
@@ -229,8 +237,10 @@ fi
 echo "=================================="
 echo "Step 1: Helm Lint"
 echo "=================================="
+set +e
 helm_in_container lint "${CHART_PATH}" >/dev/null 2>&1
 lint_status=$?
+set -e
 if [[ ${lint_status} -ne 0 ]]; then
 	echo -e "${RED}✗ Helm lint failed${NC}"
 	helm_in_container lint "${CHART_PATH}"
