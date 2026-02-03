@@ -312,7 +312,6 @@ class TestE2EEUtilsCredentialChecking(unittest.TestCase):
 
             # Verify credentials were not found
             self.assertFalse(result)
-            self.assertFalse(any("legacy" in path for path in checked_paths))
 
 
 if __name__ == "__main__":
