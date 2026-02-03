@@ -882,3 +882,25 @@ def test_config():
         ],
         "matrix": {"bot_user_id": "@bot:matrix.org"},
     }
+
+
+@pytest.fixture
+def clean_migration_home(tmp_path):
+    """
+    Fixture providing a clean home directory for migration tests.
+
+    Ensures that the home directory exists and has no migration state file
+    from previous tests, providing proper isolation.
+
+    Yields:
+        Path: Clean home directory path.
+    """
+    home = tmp_path / "clean_migration_home"
+    home.mkdir()
+
+    # Ensure no migration state file exists
+    state_file = home / "migration_completed.flag"
+    if state_file.exists():
+        state_file.unlink()
+
+    yield home

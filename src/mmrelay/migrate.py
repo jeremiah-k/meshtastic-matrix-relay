@@ -362,7 +362,8 @@ def _backup_file(src_path: Path, suffix: str = ".bak") -> Path:
         Path: Backup file path.
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return src_path.with_suffix(f"{suffix}.{timestamp}")
+    backup_name = f"{src_path.name}{suffix}.{timestamp}"
+    return src_path.with_name(backup_name)
 
 
 def _get_most_recent_database(candidates: list[Path]) -> Path | None:
@@ -751,7 +752,7 @@ def migrate_store(
             "dry_run": True,
         }
 
-    new_store_dir.mkdir(parents=True, exist_ok=True)
+    new_home.mkdir(parents=True, exist_ok=True)
 
     if new_store_dir.exists() and not force:
         logger.info("Backing up existing store directory: %s", new_store_dir)
@@ -763,7 +764,7 @@ def migrate_store(
 
     try:
         if move:
-            if old_store_dir.exists():
+            if new_store_dir.exists():
                 shutil.rmtree(str(new_store_dir))
                 logger.info(
                     "Removing existing store directory for move: %s", new_store_dir
@@ -771,9 +772,13 @@ def migrate_store(
             shutil.move(str(old_store_dir), str(new_store_dir))
             logger.info("Moving store from %s to %s", old_store_dir, new_store_dir)
         else:
-            if old_store_dir.exists():
-                shutil.copytree(str(old_store_dir), str(new_store_dir))
-                logger.info("Copying store from %s to %s", old_store_dir, new_store_dir)
+            if new_store_dir.exists():
+                shutil.rmtree(str(new_store_dir))
+                logger.info(
+                    "Removing existing store directory for copy: %s", new_store_dir
+                )
+            shutil.copytree(str(old_store_dir), str(new_store_dir))
+            logger.info("Copying store from %s to %s", old_store_dir, new_store_dir)
         return {
             "success": True,
             "old_path": str(old_store_dir),
@@ -904,6 +909,30 @@ def migrate_plugins(
             migrated_types.append("community")
         except (OSError, IOError) as e:
             logger.warning("Failed to migrate community plugins: %s", e)
+
+    if move:
+        for plugin_dir in (old_custom_dir, old_community_dir):
+            if plugin_dir.exists():
+                try:
+                    if not any(plugin_dir.iterdir()):
+                        plugin_dir.rmdir()
+                except (OSError, IOError) as e:
+                    logger.debug(
+                        "Failed to remove empty plugin directory %s: %s",
+                        plugin_dir,
+                        e,
+                    )
+
+        if old_plugins_dir.exists():
+            try:
+                if not any(old_plugins_dir.iterdir()):
+                    old_plugins_dir.rmdir()
+            except (OSError, IOError) as e:
+                logger.debug(
+                    "Failed to remove empty plugins directory %s: %s",
+                    old_plugins_dir,
+                    e,
+                )
 
     return {
         "success": True,
