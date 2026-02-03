@@ -305,7 +305,7 @@ MMRelay supports E2EE in Docker environments using environment variables for eas
 ### Prerequisites
 
 - **Linux/macOS host**: E2EE is not supported on Windows due to library limitations
-- **E2EE-enabled image**: Use `official image `ghcr.io/jeremiah-k/mmrelay:latest`
+- **E2EE-enabled image**: Use the official image `ghcr.io/jeremiah-k/mmrelay:latest`
 
 > **Production deployment**: The `:latest` tag is mutable and may change. For production deployments, pin a specific version tag or digest to ensure reproducible deployments.
 

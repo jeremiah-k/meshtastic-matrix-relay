@@ -287,7 +287,7 @@ def print_migration_verification(report: dict[str, Any]) -> None:
     print("MMRelay Migration Verification (mmrelay verify-migration)")
     print("=" * 60)
 
-    print(f"\n📍 MMRELAY_HOME:")
+    print("\n📍 MMRELAY_HOME:")
     print(f"   {report['home']}")
 
     print("\n📁 Runtime Artifacts:")
@@ -990,8 +990,10 @@ def migrate_gpxtracker(
                                             old_gpx_dir,
                                         )
                                         break
-            except Exception:
-                pass
+            except ImportError as e:
+                logger.warning("Failed to read legacy config %s: %s", legacy_config, e)
+            except (OSError, yaml.YAMLError) as e:
+                logger.warning("Failed to read legacy config %s: %s", legacy_config, e)
 
     if not old_gpx_dir or not old_gpx_dir.exists():
         return {
@@ -1195,8 +1197,10 @@ def perform_migration(
                             ):
                                 gpx_configured = True
                                 break
-            except Exception:
-                pass
+            except ImportError as e:
+                logger.warning("Failed to read legacy config %s: %s", legacy_config, e)
+            except (OSError, yaml.YAMLError) as e:
+                logger.warning("Failed to read legacy config %s: %s", legacy_config, e)
 
     if gpx_configured or any(
         (legacy_root / "plugins").exists() for legacy_root in legacy_roots

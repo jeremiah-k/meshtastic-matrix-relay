@@ -139,7 +139,7 @@ database: delete_plugin_data(plugin_name, meshtastic_id)       # Delete from SQL
 
 **Single directory for everything** - All persistent application data lives under one directory:
 
-```
+```text
 <MMRELAY_HOME>/
 ├── config.yaml              # User configuration (optional, can be elsewhere)
 ├── credentials.json          # Matrix authentication credentials
@@ -199,7 +199,7 @@ On first run after upgrade:
 
 **From Legacy Layout** (v1.2.9 and earlier):
 
-```
+```text
 Old                          →  New (v1.3)
 ---------------------------------------------------------
 ~/.mmrelay/credentials.json  →  $MMRELAY_HOME/credentials.json
@@ -214,10 +214,10 @@ Old                          →  New (v1.3)
 
 **Plugin Data Migration (Three-Tier System)**:
 
-```
+```text
 Plugin Data Tiers (v1.3):
 
-Tier 1 (Code):     $MMRELAY_HOME/plugins/{name>/         # Plugin .py file
+Tier 1 (Code):     $MMRELAY_HOME/plugins/{name}/         # Plugin .py file
 Tier 2 (Filesystem): $MMRELAY_HOME/plugins/{name}/data/      # Disk storage (GPX, JSON, etc.)
 Tier 3 (Database):   $MMRELAY_HOME/database/plugin_data/         # SQLite (default)
 
@@ -235,7 +235,7 @@ Migration Rules:
 
 **From Partial New Layout** (v1.2.10-1.2.11):
 
-```
+```text
 Old                          →  New (v1.3)
 ---------------------------------------------------------
 ~/.mmrelay/config.yaml        →  $MMRELAY_HOME/config.yaml (or keep)
@@ -1309,7 +1309,7 @@ Partial New (v1.2.10-1.2.11):
 
 ### v1.3 Layout
 
-```
+```text
 Unified:
 $MMRELAY_HOME/
 ├── config.yaml              # (optional, can be elsewhere)
@@ -1335,7 +1335,7 @@ $MMRELAY_HOME/
 - **No interference** with existing functionality (plugins don't write files)
 - **Backward compatible**: Old plugins still work, new plugins can use file I/O if needed
 
-### v1.2.x Layout
+### v1.2.x Layout (legacy)
 
 ```
 Legacy (v1.2.9):
@@ -1364,7 +1364,7 @@ Partial New (v1.2.10-1.2.11):
 └── store/
 ```
 
-### v1.3 Layout
+### v1.3 Layout (current)
 
 ```
 Unified:

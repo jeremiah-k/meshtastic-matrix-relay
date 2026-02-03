@@ -63,7 +63,7 @@ def get_home_dir() -> Path:
     Returns:
         Path: Application home directory.
     """
-    _logger = logging.getLogger("paths")
+    _logger = get_logger("paths")
 
     # Check CLI override first
     if _home_override:
@@ -93,7 +93,7 @@ def get_home_dir() -> Path:
     if env_base_dir and env_data_dir:
         _logger.warning(
             "Both MMRELAY_BASE_DIR and MMRELAY_DATA_DIR are set. "
-            "Prefering MMRELAY_BASE_DIR and ignoring MMRELAY_DATA_DIR. "
+            "Preferring MMRELAY_BASE_DIR and ignoring MMRELAY_DATA_DIR. "
             "Support will be removed in v1.4."
         )
         return Path(env_base_dir).expanduser().absolute()

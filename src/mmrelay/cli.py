@@ -813,7 +813,7 @@ def _find_credentials_json_path(config_path: str | None) -> str | None:
         legacy_cred = os.path.join(legacy_root, "credentials.json")
         if os.path.exists(legacy_cred):
             print(
-                f"ℹ️  Found legacy credentials at: {legacy_cred}\n"
+                f"INFO: Found legacy credentials at: {legacy_cred}\n"
                 f"   Run 'mmrelay migrate --dry-run' (or 'mmrelay service migrate --dry-run') to preview migration to HOME."
             )
             return legacy_cred
@@ -1908,12 +1908,12 @@ def handle_doctor_command(args: argparse.Namespace) -> int:
     print("=" * 60)
 
     # Print HOME information
-    print(f"\n📍 HOME Directory:")
+    print("\n📍 HOME Directory:")
     print(f"   Location: {paths_info['home']}")
     print(f"   Source: {paths_info['home_source']}")
 
     # Print runtime artifact paths
-    print(f"\n📁 Runtime Artifacts (all in HOME):")
+    print("\n📁 Runtime Artifacts (all in HOME):")
     print(f"   Credentials: {paths_info['credentials_path']}")
     print(f"   Database: {paths_info['database_dir']}")
     print(f"   Store (E2EE): {paths_info['store_dir']}")
@@ -1921,7 +1921,7 @@ def handle_doctor_command(args: argparse.Namespace) -> int:
     print(f"   Plugins: {paths_info['plugins_dir']}")
 
     # Print legacy sources
-    print(f"\n📋 Legacy Sources (read-only):")
+    print("\n📋 Legacy Sources (read-only):")
     if paths_info.get("legacy_sources"):
         for legacy_dir in paths_info["legacy_sources"]:
             print(f"   - {legacy_dir}")

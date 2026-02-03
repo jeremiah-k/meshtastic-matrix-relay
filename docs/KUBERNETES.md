@@ -273,7 +273,7 @@ This is configured in `deployment.yaml` via `MMRELAY_HOME=/data` and the PVC mou
 
 All MMRelay runtime state lives under `/data` inside the container:
 
-```
+```text
 /data/
 ├── credentials.json      # Matrix authentication credentials
 ├── mmrelay.db           # SQLite database (nodes, messages, state)

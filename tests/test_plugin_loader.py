@@ -222,7 +222,7 @@ class TestPluginLoader(BaseGitTest):
     @patch("mmrelay.plugin_loader.get_app_path")
     @patch("os.makedirs")
     def test_get_custom_plugin_dirs(
-        self, mock_makedirs, mock_get_app_path, mock_get_legacy_dirs, mock_get_home_dir
+        self, _mock_makedirs, mock_get_app_path, mock_get_legacy_dirs, mock_get_home_dir
     ):
         """
         Test that custom plugin directories are discovered and created as expected.
@@ -246,14 +246,14 @@ class TestPluginLoader(BaseGitTest):
             ]
             self.assertEqual(dirs, expected_dirs)
         # Should be called twice: once for user dir, once for local dir
-        self.assertEqual(mock_makedirs.call_count, 2)
+        self.assertEqual(_mock_makedirs.call_count, 2)
 
     @patch("mmrelay.paths.get_home_dir")
     @patch("mmrelay.paths.get_legacy_dirs")
     @patch("mmrelay.plugin_loader.get_app_path")
     @patch("os.makedirs")
     def test_get_community_plugin_dirs(
-        self, mock_makedirs, mock_get_app_path, mock_get_legacy_dirs, mock_get_home_dir
+        self, _mock_makedirs, mock_get_app_path, mock_get_legacy_dirs, mock_get_home_dir
     ):
         """
         Test that community plugin directory discovery returns correct directories and creates them if they do not exist.
@@ -275,7 +275,7 @@ class TestPluginLoader(BaseGitTest):
             ]
             self.assertEqual(dirs, expected_dirs)
         # Should be called twice: once for user dir, once for local dir
-        self.assertEqual(mock_makedirs.call_count, 2)
+        self.assertEqual(_mock_makedirs.call_count, 2)
 
     def test_load_plugins_from_directory_empty(self):
         """
@@ -1508,12 +1508,12 @@ class Plugin:
     @patch("os.path.isdir")
     @patch("os.makedirs")
     def test_clone_or_update_repo_logger_exception_on_error(
-        self, mock_makedirs, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
+        self, _mock_makedirs, mock_isdir, mock_logger, mock_is_allowed, mock_run_git
     ):
         """Test that logger.exception is called for repository update errors."""
         mock_is_allowed.return_value = True
         mock_isdir.return_value = False  # Repo doesn't exist, will try to clone
-        mock_makedirs.return_value = None
+        _mock_makedirs.return_value = None
         ref = {"type": "commit", "value": "1234abcd"}
 
         # Configure mock to fail on git clone
@@ -2738,7 +2738,7 @@ class TestPluginDirectories(unittest.TestCase):
         mock_get_app_path,
         mock_get_legacy_dirs,
         mock_get_home_dir,
-        mock_makedirs,
+        _mock_makedirs,
     ):
         """Test successful user directory creation."""
         from mmrelay.plugin_loader import _get_plugin_dirs
@@ -2759,7 +2759,7 @@ class TestPluginDirectories(unittest.TestCase):
     @patch("os.makedirs")
     def test_get_plugin_dirs_user_dir_permission_error(
         self,
-        mock_makedirs,
+        _mock_makedirs,
         mock_logger,
         mock_get_app_path,
         mock_get_legacy_dirs,
@@ -2771,7 +2771,7 @@ class TestPluginDirectories(unittest.TestCase):
         mock_get_home_dir.return_value = "/user/base"
         mock_get_legacy_dirs.return_value = []
         mock_get_app_path.return_value = "/app/path"
-        mock_makedirs.side_effect = [
+        _mock_makedirs.side_effect = [
             PermissionError("Permission denied"),
             None,  # Second call succeeds
         ]
@@ -2790,7 +2790,7 @@ class TestPluginDirectories(unittest.TestCase):
     @patch("os.makedirs")
     def test_get_plugin_dirs_local_dir_os_error(
         self,
-        mock_makedirs,
+        _mock_makedirs,
         mock_logger,
         mock_get_app_path,
         mock_get_legacy_dirs,
@@ -2802,7 +2802,7 @@ class TestPluginDirectories(unittest.TestCase):
         mock_get_home_dir.return_value = "/user/base"
         mock_get_legacy_dirs.return_value = []
         mock_get_app_path.return_value = "/app/path"
-        mock_makedirs.side_effect = [
+        _mock_makedirs.side_effect = [
             None,  # User dir succeeds
             OSError("Disk full"),
         ]

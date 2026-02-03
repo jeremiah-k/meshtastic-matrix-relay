@@ -357,7 +357,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             # Simulate race condition by clearing cache between calls
-            def side_effect_clear_cache(*args, **kwargs):
+            def side_effect_clear_cache(*_args, **_kwargs):
                 """
                 Clears the cached database path and returns a test database path.
 

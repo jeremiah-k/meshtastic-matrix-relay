@@ -2,6 +2,7 @@ version: "3.8"
 
 services:
   mmrelay:
+    # Replace REPLACE_ME with a published image tag before running
     image: ghcr.io/jeremiah-k/mmrelay:REPLACE_ME
     container_name: mmrelay
     restart: unless-stopped

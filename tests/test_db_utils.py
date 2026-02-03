@@ -420,7 +420,7 @@ class TestDbUtils(unittest.TestCase):
 
         manager = _get_db_manager()
 
-        async def run_async(func, write=False, loop=None):
+        async def run_async(func, write=False, _loop=None):
             return manager.run_sync(func, write=write)
 
         manager.run_async = run_async  # type: ignore[assignment]

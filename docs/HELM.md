@@ -33,7 +33,13 @@ curl -Lo config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-mat
 ${EDITOR:-vi} config.yaml
 ```
 
-### 3. Create config Secret
+### 3. Create the namespace
+
+```bash
+kubectl create namespace mmrelay
+```
+
+### 4. Create config Secret
 
 ```bash
 kubectl create secret generic mmrelay-config \
@@ -41,7 +47,7 @@ kubectl create secret generic mmrelay-config \
   --namespace mmrelay
 ```
 
-### 4. Install Chart
+### 5. Install Chart
 
 ```bash
 helm install mmrelay ./deploy/helm/mmrelay \
@@ -49,7 +55,7 @@ helm install mmrelay ./deploy/helm/mmrelay \
   --create-namespace
 ```
 
-### 5. Verify Deployment
+### 6. Verify Deployment
 
 ```bash
 kubectl get pods -n mmrelay -l app.kubernetes.io/name=mmrelay
