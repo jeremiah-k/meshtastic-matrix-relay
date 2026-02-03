@@ -43,6 +43,13 @@ def set_home_override(path: str, *, source: str | None = None) -> None:
     _home_override_source = source
 
 
+def reset_home_override() -> None:
+    """Reset home directory override (primarily for tests)."""
+    global _home_override, _home_override_source
+    _home_override = None
+    _home_override_source = None
+
+
 def get_home_dir() -> Path:
     """
     Get application home directory (single source of truth).

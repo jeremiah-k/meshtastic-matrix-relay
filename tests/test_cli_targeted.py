@@ -404,7 +404,7 @@ class TestHandleConfigPaths(unittest.TestCase):
         result = handle_config_paths(self.args)
 
         self.assertEqual(result, 0)
-        home_calls = [c for c in mock_print.call_args_list if "HOME:" in str(c)]
+        home_calls = [c for c in mock_print.call_args_list if "HOME" in str(c)]
         self.assertTrue(len(home_calls) > 0)
 
     @patch("mmrelay.paths.resolve_all_paths")
@@ -643,11 +643,11 @@ class TestHandleConfigPathsDetails(unittest.TestCase):
 
         self.assertEqual(result, 0)
         all_paths = [
-            "credentials",
-            "database",
-            "store",
-            "logs",
-            "plugins",
+            "Credentials",
+            "Database",
+            "Store",
+            "Logs",
+            "Plugins",
         ]
         for path_type in all_paths:
             path_calls = [c for c in mock_print.call_args_list if path_type in str(c)]

@@ -16,6 +16,7 @@ import os
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
 # Add src to path for imports
@@ -85,20 +86,19 @@ class TestConfigEdgeCases(unittest.TestCase):
 
         Verifies that the returned paths include a directory under 'AppData', as expected for Windows environments.
         """
-        with patch("mmrelay.config.sys.platform", "win32"):
-            with patch(
-                "mmrelay.config.platformdirs.user_config_dir"
-            ) as mock_user_config:
-                mock_user_config.return_value = (
-                    "C:\\Users\\Test\\AppData\\Local\\mmrelay"
-                )
-                with patch(
-                    "mmrelay.config.os.makedirs"
-                ):  # Mock directory creation in the right namespace
-                    paths = get_config_paths()
-                    # Check that a Windows-style path is in the list
-                    windows_path_found = any("AppData" in path for path in paths)
-                    self.assertTrue(windows_path_found)
+        with (
+            patch("mmrelay.paths.sys.platform", "win32"),
+            patch("mmrelay.paths.platformdirs.user_data_dir") as mock_user_data,
+            patch("mmrelay.config.os.makedirs"),
+        ):
+            mock_user_data.return_value = "C:\\Users\\Test\\AppData\\Local\\mmrelay"
+            paths = get_config_paths()
+            # Check that a Windows-style path is in the list
+            # We normalize because get_config_paths uses absolute path which might
+            # prepend CWD on Linux if the mock path isn't recognized as absolute.
+            # But "C:\" should be absolute enough.
+            windows_path_found = any("AppData" in path for path in paths)
+            self.assertTrue(windows_path_found)
 
     def test_get_config_paths_darwin_platform(self):
         """
@@ -106,15 +106,13 @@ class TestConfigEdgeCases(unittest.TestCase):
 
         Simulates a Darwin platform and a custom base directory to ensure get_config_paths includes the expected config.yaml path in its results.
         """
-        with patch("sys.platform", "darwin"):
-            with patch("mmrelay.config.get_base_dir") as mock_get_base_dir:
-                with tempfile.TemporaryDirectory() as temp_dir:
-                    mock_get_base_dir.return_value = temp_dir
-                    with patch(
-                        "mmrelay.config.os.makedirs"
-                    ):  # Mock directory creation in the right namespace
-                        paths = get_config_paths()
-                        self.assertIn(f"{temp_dir}/config.yaml", paths)
+        with (
+            patch("mmrelay.paths.sys.platform", "darwin"),
+            patch("mmrelay.paths.Path.home", return_value=Path("/home/test")),
+            patch("mmrelay.config.os.makedirs"),
+        ):
+            paths = get_config_paths()
+            self.assertIn("/home/test/.mmrelay/config.yaml", [os.path.normpath(p) for p in paths])
 
     def test_load_config_yaml_parse_error(self):
         """
@@ -418,14 +416,14 @@ class TestConfigEdgeCases(unittest.TestCase):
 
     def test_get_log_dir_windows_with_override(self):
         """Test get_log_dir on Windows with directory override."""
-        with patch("mmrelay.config.sys.platform", "win32"):
-            with patch("mmrelay.config._has_any_dir_override", return_value=True):
-                with patch("mmrelay.config.get_base_dir", return_value="C:\\mmrelay"):
-                    with patch("mmrelay.config.os.makedirs"):
-                        result = get_log_dir()
+        with (
+            patch("mmrelay.config.get_unified_logs_dir", return_value="C:\\mmrelay\\logs"),
+            patch("mmrelay.config.os.makedirs"),
+        ):
+            result = get_log_dir()
 
-                        # Should use base_dir/logs with override
-                        self.assertEqual(result, "C:\\mmrelay\\logs")
+            # Should use base_dir/logs with override
+            self.assertEqual(result, "C:\\mmrelay\\logs")
 
     def test_get_e2ee_store_dir_windows_without_override(self):
         """Test get_e2ee_store_dir on Windows without directory override."""

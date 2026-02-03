@@ -317,6 +317,11 @@ def parse_arguments() -> argparse.Namespace:
         help="Validate configuration file",
         description="Check configuration file syntax and completeness",
     )
+    config_subparsers.add_parser(
+        "paths",
+        help="Show path configuration and diagnostics",
+        description="Display all path information for debugging and verification",
+    )
 
     # AUTH group
     auth_parser = subparsers.add_parser(
@@ -1612,128 +1617,6 @@ def handle_subcommand(args: argparse.Namespace) -> int:
         return 1
 
 
-def handle_config_paths(args: argparse.Namespace) -> int:
-    """
-    Display unified path configuration and diagnostics.
-
-    Shows the resolved HOME directory, all subdirectory paths,
-    legacy directories, environment variables detected, and CLI overrides.
-
-    Parameters:
-        args (argparse.Namespace): Parsed CLI arguments.
-
-    Returns:
-        int: Exit code (0 on success).
-    """
-    from mmrelay.paths import resolve_all_paths
-
-    paths_info = resolve_all_paths()
-
-    print("\n📍 MMRelay Path Configuration:")
-    print(f"   HOME: {paths_info['home']}")
-
-    # Show source
-    print(f"   Source: {paths_info['home_source']}")
-    if paths_info.get("cli_override"):
-        print(f"   CLI Override: {paths_info['cli_override']}")
-
-    # Show legacy roots (authoritative list from get_legacy_dirs)
-    if paths_info.get("legacy_sources"):
-        print("\n   Legacy Roots (authoritative):")
-        for legacy_dir in paths_info["legacy_sources"]:
-            print(f"     - {legacy_dir}")
-
-    # Show paths with read sources
-    print("\n   Paths (read sources):")
-    print(f"     credentials.json: {paths_info['credentials_path']}")
-    creds_source = "HOME"
-    if paths_info.get("legacy_sources"):
-        Path(paths_info["home"])
-        for legacy_dir in [Path(ld) for ld in paths_info["legacy_sources"]]:
-            legacy_creds = legacy_dir / "credentials.json"
-            if legacy_creds.exists():
-                creds_source = f"Legacy ({legacy_dir})"
-                break
-    print(f"       → Will read from: {creds_source}")
-
-    print(f"     database/: {paths_info['database_dir']}")
-    db_source = "HOME"
-    if paths_info.get("legacy_sources"):
-        Path(paths_info["home"])
-        for legacy_dir in [Path(ld) for ld in paths_info["legacy_sources"]]:
-            legacy_db_files = [
-                legacy_dir / "meshtastic.sqlite",
-                legacy_dir / "data" / "meshtastic.sqlite",
-            ]
-            for legacy_db in legacy_db_files:
-                if legacy_db.exists():
-                    db_source = f"Legacy ({legacy_dir})"
-                    break
-            if db_source != "HOME":
-                break
-    print(f"       → Will read from: {db_source}")
-
-    print(f"     store/: {paths_info['store_dir']}")
-    store_source = "HOME"
-    if paths_info.get("legacy_sources") and sys.platform != "win32":
-        Path(paths_info["home"])
-        for legacy_dir in [Path(ld) for ld in paths_info["legacy_sources"]]:
-            legacy_store = legacy_dir / "store"
-            if legacy_store.exists():
-                store_source = f"Legacy ({legacy_dir})"
-                break
-            if store_source != "HOME":
-                break
-    print(f"       → Will read from: {store_source}")
-
-    print(f"     logs/: {paths_info['logs_dir']}")
-    logs_source = "HOME"
-    if paths_info.get("legacy_sources"):
-        Path(paths_info["home"])
-        for legacy_dir in [Path(ld) for ld in paths_info["legacy_sources"]]:
-            legacy_logs = legacy_dir / "logs"
-            if legacy_logs.exists():
-                logs_source = f"Legacy ({legacy_dir})"
-                break
-            if logs_source != "HOME":
-                break
-    print(f"       → Will read from: {logs_source}")
-
-    print(f"     log file: {paths_info['log_file']}")
-    print(f"     plugins/ (primary): {paths_info['plugins_dir']}")
-    print(f"       custom/: {paths_info['custom_plugins_dir']}")
-    print(f"       community/: {paths_info['community_plugins_dir']}")
-
-    # Show plugin roots searched
-    print("\n   Plugin Roots Searched:")
-    print(f"     Primary: {paths_info['plugins_dir']}")
-    if paths_info.get("legacy_sources"):
-        print("     Legacy (existing only):")
-        for legacy_dir in paths_info["legacy_sources"]:
-            legacy_plugins = str(legacy_dir) + "/plugins"
-            if os.path.exists(legacy_plugins):
-                print(f"       - {legacy_plugins}")
-
-    # Show environment variables
-    if paths_info.get("env_vars_detected"):
-        print("\n   Environment Variables:")
-        for var_name, var_value in paths_info["env_vars_detected"].items():
-            print(f"     {var_name}={var_value}")
-
-    # Check for legacy data
-    paths_info["home"]
-    if paths_info.get("legacy_sources"):
-        print("\n   ⚠️  Legacy data detected!")
-        print(
-            f"   Legacy directories found: {', '.join(str(d) for d in paths_info['legacy_sources'])}"
-        )
-        print("   Migration will scan all legacy roots for data to migrate")
-        print(
-            "\n   💡 Run 'mmrelay service migrate --dry-run' to see what would be moved"
-        )
-        print("   💡 Run 'mmrelay service migrate' to migrate data to new structure")
-
-    return 0
 
 
 def handle_config_command(args: argparse.Namespace) -> int:
@@ -1743,10 +1626,11 @@ def handle_config_command(args: argparse.Namespace) -> int:
     Supported subcommands:
         - "generate": create or update of sample configuration file at preferred location.
         - "check": validate of resolved configuration file (delegates to check_config).
+        - "paths": show path configuration (delegates to handle_paths_command).
         - "diagnose": run a sequence of non-destructive diagnostics and print a report (delegates to handle_config_diagnose).
 
     Parameters:
-        args (argparse.Namespace): CLI namespace containing `config_command` (one of "generate", "check", "diagnose") and any subcommand-specific options.
+        args (argparse.Namespace): CLI namespace containing `config_command` (one of "generate", "check", "paths", "diagnose") and any subcommand-specific options.
 
     Returns:
         int: Exit code (0 on success, 1 on failure or for unknown subcommands).
@@ -1755,6 +1639,8 @@ def handle_config_command(args: argparse.Namespace) -> int:
         return 0 if generate_sample_config() else 1
     elif args.config_command == "check":
         return 0 if check_config(args) else 1
+    elif args.config_command == "paths":
+        return handle_paths_command(args)
     elif args.config_command == "diagnose":
         return handle_config_diagnose(args)
     else:
@@ -1862,6 +1748,10 @@ def handle_paths_command(args: argparse.Namespace) -> int:
         print("   💡 Run 'mmrelay migrate' to migrate data to new structure")
 
     return 0
+
+
+# Alias for backward compatibility with existing tests
+handle_config_paths = handle_paths_command
 
 
 def handle_verify_migration_command(_args: argparse.Namespace) -> int:

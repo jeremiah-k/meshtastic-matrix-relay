@@ -610,30 +610,35 @@ ensure_builtins_not_mocked()
 
 
 @pytest.fixture(autouse=True)
-def reset_custom_data_dir():
+def reset_path_overrides():
     """
-    Autouse pytest fixture that resets mmrelay.config custom dir overrides to None for each test and restores their original values afterwards.
+    Autouse pytest fixture that resets all directory and path overrides for each test.
 
-    Before the test runs, stores the current values of mmrelay.config.custom_data_dir
-    and mmrelay.config.custom_base_dir (if any) and sets them to None to ensure tests
-    do not share or depend on persistent overrides. After the test yields, the original
-    values are restored.
+    This ensures that CLI overrides (--home, --base-dir, --data-dir) and programmatic
+    overrides in mmrelay.config do not leak between tests.
     """
     import mmrelay.config
+    import mmrelay.paths
 
-    # Store original value
+    # Store original mmrelay.config values
     original_custom_data_dir = getattr(mmrelay.config, "custom_data_dir", None)
     original_custom_base_dir = getattr(mmrelay.config, "custom_base_dir", None)
 
-    # Reset to None before test
+    # Reset mmrelay.config to None before test
     mmrelay.config.custom_data_dir = None
     mmrelay.config.custom_base_dir = None
 
+    # Reset mmrelay.paths override
+    mmrelay.paths.reset_home_override()
+
     yield
 
-    # Restore original value after test
+    # Restore original mmrelay.config values after test
     mmrelay.config.custom_data_dir = original_custom_data_dir
     mmrelay.config.custom_base_dir = original_custom_base_dir
+
+    # Reset mmrelay.paths override again for safety
+    mmrelay.paths.reset_home_override()
 
 
 @pytest.fixture(autouse=True)

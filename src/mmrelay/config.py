@@ -19,7 +19,13 @@ from mmrelay.constants.config import (
 )
 
 # Import new path resolution system
-from mmrelay.paths import get_home_dir, is_deprecation_window_active
+from mmrelay.paths import (
+    get_config_paths as get_unified_config_paths,
+    get_e2ee_store_dir as get_unified_store_dir,
+    get_home_dir,
+    get_logs_dir as get_unified_logs_dir,
+    is_deprecation_window_active,
+)
 
 # Global variables to store directory overrides
 custom_base_dir: str | None = None
@@ -207,45 +213,25 @@ def get_config_paths(args: Any = None) -> list[str]:
     """
     Produce a prioritized list of candidate configuration file paths for the application.
 
-    Order of priority: a path provided via command-line args (args.config), the user config directory (created when possible), the current working directory, and the application directory. The user config directory entry is omitted if the directory cannot be created.
+    Wraps the unified path resolution from mmrelay.paths.
 
     Parameters:
-        args (Any): Parsed command-line arguments, expected to have an optional `config` attribute specifying a config file path.
+        args (Any): Parsed command-line arguments.
 
     Returns:
         list[str]: Absolute paths to candidate configuration files, ordered by priority.
     """
-    paths = []
+    explicit = getattr(args, "config", None) if args else None
+    paths = get_unified_config_paths(explicit=explicit)
 
-    # Check command line arguments for config path
-    if args and args.config:
-        paths.append(os.path.abspath(args.config))
-
-    # Check user config directory (preferred location)
-    if sys.platform in ["linux", "darwin"]:
-        # Use ~/.mmrelay/ for Linux and Mac
-        user_config_dir = get_base_dir()
-    else:
-        # Use platformdirs default for Windows
-        user_config_dir = platformdirs.user_config_dir(APP_NAME, APP_AUTHOR)
-
+    # Match legacy behavior: ensure home directory (user config dir) exists
     try:
-        os.makedirs(user_config_dir, exist_ok=True)
-        user_config_path = os.path.join(user_config_dir, "config.yaml")
-        paths.append(user_config_path)
+        os.makedirs(str(get_home_dir()), exist_ok=True)
     except (OSError, PermissionError):
-        # If we can't create the user config directory, skip it
         pass
 
-    # Check current directory (for backward compatibility)
-    current_dir_config = os.path.join(os.getcwd(), "config.yaml")
-    paths.append(current_dir_config)
-
-    # Check application directory (for backward compatibility)
-    app_dir_config = os.path.join(get_app_path(), "config.yaml")
-    paths.append(app_dir_config)
-
-    return paths
+    # Convert Path objects to absolute strings
+    return [str(p.absolute()) for p in paths]
 
 
 def get_credentials_search_paths(
@@ -423,12 +409,7 @@ def get_log_dir() -> str:
     Returns:
         str: Absolute path to log directory; directory is guaranteed to exist.
     """
-    if sys.platform in ["linux", "darwin"]:
-        log_dir = os.path.join(get_base_dir(), "logs")
-    else:
-        # Keep logs under HOME to preserve the unified layout on Windows too
-        log_dir = ntpath.join(str(get_base_dir()), "logs")
-
+    log_dir = str(get_unified_logs_dir())
     os.makedirs(log_dir, exist_ok=True)
     return log_dir
 
@@ -442,17 +423,29 @@ def get_e2ee_store_dir() -> str:
     Returns:
         store_dir (str): Absolute path to the ensured E2EE store directory.
     """
-    if sys.platform in ["linux", "darwin"]:
-        store_dir = os.path.join(get_base_dir(), "store")
-    else:
-        # Keep E2EE store under HOME to preserve the unified layout on Windows too
-        store_dir = ntpath.join(str(get_base_dir()), "store")
-
     try:
+        store_dir = str(get_unified_store_dir())
         os.makedirs(store_dir, exist_ok=True)
+        return store_dir
+    except RuntimeError as e:
+        # Re-raise if it's not the "Windows not supported" error
+        if "Windows" not in str(e):
+            raise
+        # Match legacy behavior on Windows: logs warning and returns a path anyway
+        # (even if it won't be used for E2EE)
+        base = get_base_dir()
+        if sys.platform == "win32":
+            store_dir = ntpath.join(base, "store")
+        else:
+            store_dir = os.path.join(base, "store")
+        logger.warning("E2EE store not officially supported on this platform: %s", e)
+        return store_dir
     except (OSError, PermissionError) as e:
-        logger.warning("Could not create E2EE store directory %s: %s", store_dir, e)
-    return store_dir
+        # Fallback for permission errors
+        base = get_base_dir()
+        store_dir = os.path.join(base, "store")
+        logger.warning("Could not create E2EE store directory: %s", e)
+        return store_dir
 
 
 def _convert_env_bool(value: str, var_name: str) -> bool:

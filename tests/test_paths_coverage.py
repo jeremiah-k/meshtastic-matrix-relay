@@ -9,6 +9,7 @@ import os
 import sys
 from pathlib import Path
 from unittest import mock
+from unittest.mock import patch
 
 import pytest
 
@@ -40,20 +41,35 @@ from mmrelay.paths import (
 class TestGetHomeDir:
     """Test get_home_dir function coverage."""
 
-    @pytest.mark.skip("Path normalization issues - skipping all")
     def test_get_home_dir_with_override(self, monkeypatch):
         """Test CLI override takes precedence."""
-        pass
+        set_home_override("/cli_path", source="--home")
+        result = get_home_dir()
+        assert os.path.normpath(str(result)) == os.path.normpath("/cli_path")
 
-    @pytest.mark.skip("Path normalization issues - skipping all")
     def test_get_home_dir_with_env_var(self, monkeypatch):
         """Test MMRELAY_HOME environment variable."""
-        pass
+        monkeypatch.setenv("MMRELAY_HOME", "/env_home")
+        result = get_home_dir()
+        assert os.path.normpath(str(result)) == os.path.normpath("/env_home")
 
-    @pytest.mark.skip("Path normalization issues - skipping all")
     def test_get_home_dir_with_legacy_base_dir_and_home(self, monkeypatch):
         """Test MMRELAY_BASE_DIR with MMRELAY_HOME - should warn and prefer HOME."""
-        pass
+        monkeypatch.setenv("MMRELAY_HOME", "/new_home")
+        monkeypatch.setenv("MMRELAY_BASE_DIR", "/old_base")
+
+        with patch("mmrelay.paths.get_logger") as mock_get_logger:
+            mock_logger = mock_get_logger.return_value
+            result = get_home_dir()
+            assert os.path.normpath(str(result)) == os.path.normpath("/new_home")
+
+            # Verify warning was logged
+            warning_called = False
+            for call in mock_logger.warning.call_args_list:
+                if "MMRELAY_HOME is set" in call[0][0]:
+                    warning_called = True
+                    break
+            assert warning_called
 
     """Test get_plugin_data_dir function coverage."""
 

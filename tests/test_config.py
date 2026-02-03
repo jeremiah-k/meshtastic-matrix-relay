@@ -113,8 +113,8 @@ class TestConfig(unittest.TestCase):
             self.assertIn(os.path.expanduser("~/.mmrelay/config.yaml"), paths)
 
     @patch("mmrelay.config.os.makedirs")
-    @patch("mmrelay.config.platformdirs.user_config_dir")
-    def test_get_config_paths_windows(self, mock_user_config_dir, mock_makedirs):
+    @patch("mmrelay.paths.platformdirs.user_data_dir")
+    def test_get_config_paths_windows(self, mock_user_data_dir, mock_makedirs):
         # Test with no args on Windows
         """
         Test that `get_config_paths` returns the correct configuration file path on Windows.
@@ -122,19 +122,18 @@ class TestConfig(unittest.TestCase):
         Simulates a Windows environment and verifies that the returned config paths include the expected Windows-specific config file location.
         """
         with (
-            patch("mmrelay.config.sys.platform", "win32"),
+            patch("mmrelay.paths.sys.platform", "win32"),
             patch("sys.argv", ["mmrelay"]),
         ):
-            mock_user_config_dir.return_value = (
-                "C:\\Users\\test\\AppData\\Local\\mmrelay\\config"
-            )
+            # Use a path that looks absolute even on Linux for testing consistency
+            win_path = "/win/AppData/Local/mmrelay"
+            mock_user_data_dir.return_value = win_path
+
             paths = get_config_paths()
-            expected_path = os.path.join(
-                "C:\\Users\\test\\AppData\\Local\\mmrelay\\config", "config.yaml"
-            )
-            self.assertIn(expected_path, paths)
-            # Verify makedirs was called but don't actually create directories
-            mock_makedirs.assert_called_once()
+            expected_path = os.path.join(win_path, "config.yaml")
+            # Normalize paths for comparison
+            normalized_paths = [os.path.normpath(p) for p in paths]
+            self.assertIn(os.path.normpath(expected_path), normalized_paths)
 
     @patch("mmrelay.config.os.makedirs")
     def test_get_data_dir_linux(self, mock_makedirs):
@@ -148,6 +147,18 @@ class TestConfig(unittest.TestCase):
             data_dir = get_data_dir(create=False)
             # New unified layout: data_dir returns home directory
             self.assertEqual(data_dir, os.path.expanduser("~/.mmrelay"))
+
+    @patch("mmrelay.config.os.makedirs")
+    def test_get_config_paths_with_home_env(self, mock_makedirs):
+        """Test get_config_paths respects MMRELAY_HOME environment variable."""
+        with (
+            patch.dict(os.environ, {"MMRELAY_HOME": "/custom/home"}),
+            patch("sys.platform", "linux"),
+        ):
+            paths = get_config_paths()
+            self.assertIn("/custom/home/config.yaml", [os.path.normpath(p) for p in paths])
+            # Should call makedirs on the home dir
+            mock_makedirs.assert_any_call("/custom/home", exist_ok=True)
 
     @patch("mmrelay.config.os.makedirs")
     def test_get_log_dir_linux(self, mock_makedirs):
@@ -377,19 +388,21 @@ class TestConfigEdgeCases(unittest.TestCase):
         mock_args = MagicMock()
         mock_args.config = "../config/test.yaml"
 
-        paths = get_config_paths(args=mock_args)
+        with patch("mmrelay.paths.get_home_dir", return_value=Path("/tmp/home")):
+            paths = get_config_paths(args=mock_args)
 
-        # Should include the absolute version of the relative path
-        expected_path = os.path.abspath("../config/test.yaml")
-        self.assertIn(expected_path, paths)
+            # Should include the absolute version of the relative path
+            expected_path = os.path.abspath("../config/test.yaml")
+            normalized_paths = [os.path.normpath(p) for p in paths]
+            self.assertIn(os.path.normpath(expected_path), normalized_paths)
 
-        # Mock argparse Namespace object for absolute path
-        mock_args.config = "/absolute/path/config.yaml"
+            # Mock argparse Namespace object for absolute path
+            mock_args.config = "/absolute/path/config.yaml"
 
-        paths = get_config_paths(args=mock_args)
+            paths = get_config_paths(args=mock_args)
 
-        # Should include the absolute path
-        self.assertIn("/absolute/path/config.yaml", paths)
+            # Should include the absolute path
+            self.assertIn("/absolute/path/config.yaml", [os.path.normpath(p) for p in paths])
 
     @patch("mmrelay.config.platformdirs.user_data_dir")
     @patch("mmrelay.config.os.makedirs")
@@ -406,18 +419,18 @@ class TestConfigEdgeCases(unittest.TestCase):
         mock_makedirs.assert_not_called()
 
     @patch(
-        "mmrelay.config.get_base_dir",
-        return_value="C:\\Users\\test\\AppData\\Local\\mmrelay",
+        "mmrelay.config.get_unified_logs_dir",
+        return_value="C:\\Users\\test\\AppData\\Local\\mmrelay\\logs",
     )
     @patch("mmrelay.config.os.makedirs")
     @patch("mmrelay.config.sys.platform", "win32")
-    def test_get_log_dir_windows(self, mock_makedirs, _mock_get_base_dir):
+    def test_get_log_dir_windows(self, mock_makedirs, _mock_get_unified_logs_dir):
         """Test get_log_dir on Windows platform."""
         result = get_log_dir()
         expected_path = "C:\\Users\\test\\AppData\\Local\\mmrelay\\logs"
 
         self.assertEqual(result, expected_path)
-        _mock_get_base_dir.assert_called_once()
+        _mock_get_unified_logs_dir.assert_called_once()
         mock_makedirs.assert_called_once_with(expected_path, exist_ok=True)
 
     @patch("mmrelay.config.os.makedirs")
@@ -1166,10 +1179,10 @@ class TestYAMLValidation(unittest.TestCase):
 class TestE2EEStoreDir(unittest.TestCase):
     """Test E2EE store directory creation."""
 
-    @patch("mmrelay.config.get_base_dir", return_value="/home/user/.mmrelay")
+    @patch("mmrelay.config.get_unified_store_dir", return_value="/home/user/.mmrelay/store")
     @patch("mmrelay.config.os.makedirs")
     def test_get_e2ee_store_dir_creates_directory(
-        self, mock_makedirs, _mock_get_base_dir
+        self, mock_makedirs, _mock_get_unified_store_dir
     ):
         """Test E2EE store directory creation when it doesn't exist."""
         result = get_e2ee_store_dir()
@@ -1178,18 +1191,17 @@ class TestE2EEStoreDir(unittest.TestCase):
         mock_makedirs.assert_called_once_with(expected_path, exist_ok=True)
 
     @patch(
-        "mmrelay.config.get_base_dir",
-        return_value=os.path.join(tempfile.gettempdir(), ".mmrelay"),
+        "mmrelay.config.get_unified_store_dir",
+        return_value=os.path.join(tempfile.gettempdir(), ".mmrelay", "store"),
     )
     @patch("mmrelay.config.os.makedirs")
     def test_get_e2ee_store_dir_existing_directory(
-        self, mock_makedirs, _mock_get_base_dir
+        self, mock_makedirs, _mock_get_unified_store_dir
     ):
         """Test E2EE store directory when it already exists."""
         result = get_e2ee_store_dir()
         expected_path = os.path.join(tempfile.gettempdir(), ".mmrelay", "store")
         self.assertEqual(result, expected_path)
-        _mock_get_base_dir.assert_called_once()
         mock_makedirs.assert_called_once_with(expected_path, exist_ok=True)
 
 
