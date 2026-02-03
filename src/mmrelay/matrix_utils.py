@@ -1295,7 +1295,8 @@ async def connect_matrix(
             if explicit_path:
                 return os.path.expanduser(explicit_path)
             return os.path.join(get_base_dir(), "credentials.json")
-        except Exception:
+        except (TypeError, OSError, ValueError) as exc:
+            logger.debug("Failed to resolve credentials path: %s", exc)
             return None
 
     explicit_credentials_path = get_explicit_credentials_path(
@@ -1316,11 +1317,7 @@ async def connect_matrix(
 
     # Load credentials using the shared helper (supports legacy search + env overrides)
     if credentials is None:
-        try:
-            credentials = load_credentials()
-        except Exception as e:
-            logger.warning("Error loading credentials: %s", e)
-            credentials = None
+        credentials = load_credentials()
 
     if credentials is None:
         candidate_path = _resolve_credentials_save_path()

@@ -20,8 +20,14 @@ jobs:
 
       - name: Install kubeconform
         run: |
+          set -euo pipefail
           curl -L -o /tmp/kubeconform.tar.gz \
             "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          curl -L -o /tmp/kubeconform_checksums.txt \
+            "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/CHECKSUMS"
+          grep "kubeconform-linux-amd64.tar.gz" /tmp/kubeconform_checksums.txt \
+            | awk '{print $1 "  /tmp/kubeconform.tar.gz"}' \
+            | sha256sum -c -
           tar -xzf /tmp/kubeconform.tar.gz -C /tmp
           sudo mv /tmp/kubeconform /usr/local/bin/kubeconform
 

@@ -1,2 +1,2 @@
 checks:
-  addAllBuiltIn: false
+  addAllBuiltIn: true

@@ -540,7 +540,7 @@ class TestDatabasePathCaching(unittest.TestCase):
 
     @patch("os.makedirs")
     @patch("mmrelay.db_utils.logger")
-    def test_get_db_path_legacy_format(self, mock_logger, mock_makedirs):
+    def test_get_db_path_legacy_format(self, mock_logger, _mock_makedirs):
         """Test get_db_path with legacy config format."""
         # Mock config with legacy format
         test_config = {"db": {"path": "/legacy/path.db"}}  # Legacy format

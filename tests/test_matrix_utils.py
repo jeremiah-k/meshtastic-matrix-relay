@@ -5212,7 +5212,7 @@ async def test_connect_matrix_legacy_config(
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
 async def test_login_matrix_bot_reuses_existing_device_id(
-    _mock_ssl_context, mock_async_client, _mock_save_credentials
+    _mock_ssl_context, mock_async_client, _mock_save_credentials, tmp_path
 ):
     """Existing credentials should supply device_id when available."""
     mock_discovery_client = AsyncMock()
@@ -5229,11 +5229,13 @@ async def test_login_matrix_bot_reuses_existing_device_id(
     mock_main_client.whoami.return_value = MagicMock(user_id="@user:matrix.org")
     mock_main_client.close = AsyncMock()
 
+    credentials_path = str(tmp_path / "credentials.json")
+
     with (
         patch(
             "mmrelay.paths.resolve_all_paths",
             return_value={
-                "credentials_path": "/tmp/credentials.json",
+                "credentials_path": credentials_path,
                 "legacy_sources": [],
             },
         ),
@@ -5885,6 +5887,7 @@ async def test_login_matrix_bot_credentials_load_failure_logs_debug(
     _mock_ssl_context,
     mock_async_client,
     _mock_save_credentials,
+    tmp_path,
 ):
     """Credential load errors should be logged and ignored."""
     mock_discovery_client = AsyncMock()
@@ -5901,11 +5904,13 @@ async def test_login_matrix_bot_credentials_load_failure_logs_debug(
     mock_main_client.whoami.return_value = MagicMock(user_id="@user:matrix.org")
     mock_main_client.close = AsyncMock()
 
+    credentials_path = str(tmp_path / "credentials.json")
+
     with (
         patch(
             "mmrelay.paths.resolve_all_paths",
             return_value={
-                "credentials_path": "/tmp/credentials.json",
+                "credentials_path": credentials_path,
                 "legacy_sources": [],
             },
         ),

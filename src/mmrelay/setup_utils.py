@@ -141,7 +141,7 @@ def wait_for_service_start() -> None:
     running_as_service = is_running_as_service()
     if not running_as_service:
         try:
-            from rich.progress import (  # mypy: ignore[no-redef]
+            from rich.progress import (  # type: ignore[no-redef]
                 Progress,
                 SpinnerColumn,
                 TextColumn,

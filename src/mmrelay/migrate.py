@@ -1209,11 +1209,14 @@ def perform_migration(
             report["success"] = False
             return report
 
-    # Mark migration as complete
-    _mark_migration_completed()
+    # Mark migration as complete (skip for dry run)
+    if not dry_run:
+        _mark_migration_completed()
+        report["message"] = "Migration completed successfully"
+    else:
+        report["message"] = "Dry run complete - no changes made"
 
     report["success"] = True
-    report["message"] = "Migration completed successfully"
 
     logger.info(
         "Migration complete. Summary: %d migrations performed",

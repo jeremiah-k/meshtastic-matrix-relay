@@ -253,7 +253,7 @@ def parse_arguments() -> argparse.Namespace:
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # PATHS command (top-level)
-    paths_parser = subparsers.add_parser(
+    subparsers.add_parser(
         "paths",
         help="Show path configuration and diagnostics",
         description="Display all path information for debugging and verification",
@@ -271,7 +271,7 @@ def parse_arguments() -> argparse.Namespace:
         help="Run migration verification checks (read-only)",
     )
 
-    verify_parser = subparsers.add_parser(
+    subparsers.add_parser(
         "verify-migration",
         help="Verify migration state and detect legacy data",
         description="Check that MMRELAY_HOME is the single source of runtime data",

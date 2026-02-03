@@ -323,7 +323,7 @@ class TestCleanupLocalSessionData:
     )
     @patch("mmrelay.paths.get_e2ee_store_dir", return_value=Path("/test/store"))
     def test_cleanup_success(
-        self, mock_get_e2ee, mock_resolve, mock_rmtree, mock_remove, mock_exists
+        self, _mock_get_e2ee, _mock_resolve, mock_rmtree, mock_remove, mock_exists
     ):
         from mmrelay.cli_utils import _cleanup_local_session_data
 
@@ -349,7 +349,7 @@ class TestCleanupLocalSessionData:
     )
     @patch("mmrelay.paths.get_e2ee_store_dir", return_value=Path("/test/store"))
     def test_cleanup_permission_error(
-        self, mock_get_e2ee, mock_resolve, mock_rmtree, mock_remove, mock_exists
+        self, _mock_get_e2ee, _mock_resolve, _mock_rmtree, _mock_remove, _mock_exists
     ):
         from mmrelay.cli_utils import _cleanup_local_session_data
 

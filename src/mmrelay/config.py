@@ -429,10 +429,8 @@ def get_log_dir() -> str:
     if sys.platform in ["linux", "darwin"]:
         log_dir = os.path.join(get_base_dir(), "logs")
     else:
-        if _has_any_dir_override():
-            log_dir = ntpath.join(str(get_base_dir()), "logs")
-        else:
-            log_dir = platformdirs.user_log_dir(APP_NAME, APP_AUTHOR)
+        # Keep logs under HOME to preserve the unified layout on Windows too
+        log_dir = ntpath.join(str(get_base_dir()), "logs")
 
     os.makedirs(log_dir, exist_ok=True)
     return log_dir
@@ -450,12 +448,8 @@ def get_e2ee_store_dir() -> str:
     if sys.platform in ["linux", "darwin"]:
         store_dir = os.path.join(get_base_dir(), "store")
     else:
-        if _has_any_dir_override():
-            store_dir = ntpath.join(str(get_base_dir()), "store")
-        else:
-            store_dir = ntpath.join(
-                platformdirs.user_data_dir(APP_NAME, APP_AUTHOR), "store"
-            )
+        # Keep E2EE store under HOME to preserve the unified layout on Windows too
+        store_dir = ntpath.join(str(get_base_dir()), "store")
 
     try:
         os.makedirs(store_dir, exist_ok=True)
@@ -919,6 +913,13 @@ def save_credentials(
             target_path = explicit_path
         else:
             target_path = os.path.join(get_base_dir(), "credentials.json")
+
+    if (
+        os.path.isdir(target_path)
+        or target_path.endswith(os.path.sep)
+        or (os.path.altsep and target_path.endswith(os.path.altsep))
+    ):
+        target_path = os.path.join(os.path.normpath(target_path), "credentials.json")
 
     # Ensure target directory exists
     target_dir = os.path.dirname(target_path) or "."

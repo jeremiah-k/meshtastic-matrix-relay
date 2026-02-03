@@ -403,23 +403,22 @@ class TestConfigEdgeCases(unittest.TestCase):
         self.assertEqual(result, "C:\\Users\\test\\AppData\\Local\\mmrelay")
         mock_user_data_dir.assert_called_once_with("mmrelay", None)
         # New unified layout: no automatic directory creation in get_data_dir
+        mock_makedirs.assert_not_called()
 
-    @patch("mmrelay.config.platformdirs.user_log_dir")
+    @patch(
+        "mmrelay.config.get_base_dir",
+        return_value="C:\\Users\\test\\AppData\\Local\\mmrelay",
+    )
     @patch("mmrelay.config.os.makedirs")
     @patch("mmrelay.config.sys.platform", "win32")
-    def test_get_log_dir_windows(self, mock_makedirs, mock_user_log_dir):
+    def test_get_log_dir_windows(self, mock_makedirs, _mock_get_base_dir):
         """Test get_log_dir on Windows platform."""
-        mock_user_log_dir.return_value = (
-            "C:\\Users\\test\\AppData\\Local\\mmrelay\\Logs"
-        )
-
         result = get_log_dir()
+        expected_path = "C:\\Users\\test\\AppData\\Local\\mmrelay\\logs"
 
-        self.assertEqual(result, "C:\\Users\\test\\AppData\\Local\\mmrelay\\Logs")
-        mock_user_log_dir.assert_called_once_with("mmrelay", None)
-        mock_makedirs.assert_called_once_with(
-            "C:\\Users\\test\\AppData\\Local\\mmrelay\\Logs", exist_ok=True
-        )
+        self.assertEqual(result, expected_path)
+        _mock_get_base_dir.assert_called_once()
+        mock_makedirs.assert_called_once_with(expected_path, exist_ok=True)
 
     @patch("mmrelay.config.os.makedirs")
     def test_get_config_paths_permission_error(self, mock_makedirs):
@@ -966,9 +965,9 @@ class TestCredentials(unittest.TestCase):
     def test_save_credentials_with_explicit_path(
         self,
         _mock_open,
-        _mock_makedirs,
-        _mock_join,
         _mock_isdir,
+        _mock_join,
+        _mock_makedirs,
     ):
         """Test save_credentials uses explicit credentials_path parameter."""
         credentials = {"user_id": "test", "access_token": "token"}
@@ -992,11 +991,11 @@ class TestCredentials(unittest.TestCase):
     def test_save_credentials_trailing_separator_treated_as_dir(
         self,
         _mock_open,
-        _mock_makedirs,
-        _mock_dirname,
         _mock_join,
+        _mock_makedirs,
+        _mock_get_home_dir,
     ):
-        """Test credentials_path parameter with trailing separator is used as-is."""
+        """Test credentials_path parameter with trailing separator is normalized."""
         credentials = {"user_id": "test", "access_token": "token"}
 
         save_credentials(credentials, credentials_path="/custom/dir/")
@@ -1006,18 +1005,18 @@ class TestCredentials(unittest.TestCase):
         final_path = call_args[0][0]
         self.assertEqual(
             final_path,
-            "/custom/dir/",
-            "Should use credentials_path as-is with trailing separator",
+            "/custom/dir/credentials.json",
+            "Should append credentials.json to directory path with trailing separator",
         )
 
     @patch("mmrelay.config.os.makedirs")
     @patch("mmrelay.config.os.path.join", side_effect=os.path.join)
     @patch("builtins.open", new_callable=mock_open)
-    def test_save_credentials_with_explicit_path(
+    def test_save_credentials_with_explicit_path_basic(
         self,
         _mock_open,
-        _mock_makedirs,
         _mock_join,
+        _mock_makedirs,
     ):
         """Test save_credentials uses explicit credentials_path parameter."""
         credentials = {"user_id": "test", "access_token": "token"}
@@ -1036,15 +1035,17 @@ class TestCredentials(unittest.TestCase):
     @patch("mmrelay.paths.get_home_dir", return_value=Path("/custom/dir"))
     @patch("mmrelay.config.os.makedirs")
     @patch("mmrelay.config.os.path.join", side_effect=os.path.join)
+    @patch("mmrelay.config.os.path.isdir", return_value=True)
     @patch("builtins.open", new_callable=mock_open)
     def test_save_credentials_directory_as_path(
         self,
         _mock_open,
-        _mock_makedirs,
+        _mock_isdir,
         _mock_join,
+        _mock_makedirs,
         _mock_get_home_dir,
     ):
-        """Test save_credentials when credentials_path parameter is a directory."""
+        """Test save_credentials normalizes directory credentials_path."""
         credentials = {"user_id": "test", "access_token": "token"}
 
         save_credentials(credentials, credentials_path="/custom/dir")
@@ -1054,8 +1055,8 @@ class TestCredentials(unittest.TestCase):
         final_path = call_args[0][0]
         self.assertEqual(
             final_path,
-            "/custom/dir",
-            "Should use directory path as-is",
+            "/custom/dir/credentials.json",
+            "Should append credentials.json to directory path",
         )
 
     @patch("mmrelay.paths.get_home_dir")
@@ -1066,12 +1067,12 @@ class TestCredentials(unittest.TestCase):
     def test_save_credentials_actual_directory_path(
         self,
         _mock_open,
-        _mock_makedirs,
-        _mock_join,
-        _mock_get_home_dir,
         _mock_isdir,
+        _mock_join,
+        _mock_makedirs,
+        _mock_get_home_dir,
     ):
-        """Test save_credentials uses credentials_path parameter as-is."""
+        """Test save_credentials normalizes explicit directory path."""
         credentials = {"user_id": "test", "access_token": "token"}
 
         save_credentials(credentials, credentials_path="/actual/directory")
@@ -1081,8 +1082,8 @@ class TestCredentials(unittest.TestCase):
         final_path = call_args[0][0]
         self.assertEqual(
             final_path,
-            "/actual/directory",
-            "Should use credentials_path parameter as-is",
+            "/actual/directory/credentials.json",
+            "Should append credentials.json to directory path",
         )
 
     @patch("mmrelay.config.get_base_dir", return_value="/custom/dir")
@@ -1092,7 +1093,7 @@ class TestCredentials(unittest.TestCase):
     def test_save_credentials_altsep_path_detection(
         self, _mock_open, _mock_makedirs, _mock_get_base_dir
     ):
-        """Test save_credentials uses path as-is even with altsep."""
+        """Test save_credentials normalizes directory paths with altsep."""
         credentials = {"user_id": "test", "access_token": "token"}
 
         save_credentials(credentials, credentials_path="/custom/dir/")
@@ -1102,8 +1103,8 @@ class TestCredentials(unittest.TestCase):
         final_path = call_args[0][0]
         self.assertEqual(
             final_path,
-            "/custom/dir/",
-            "Should use path with altsep as-is",
+            "/custom/dir/credentials.json",
+            "Should append credentials.json to directory path with altsep",
         )
 
     @patch("mmrelay.config.os.makedirs")

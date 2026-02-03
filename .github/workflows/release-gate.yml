@@ -32,4 +32,4 @@ jobs:
 
       - name: Run pytest (release gate)
         run: |
-          python -m pytest -q
+          python -m pytest -v --cov --tb=short

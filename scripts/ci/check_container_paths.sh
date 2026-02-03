@@ -78,30 +78,35 @@ check_doc_files() {
         # Step 1: Collect allowed line ranges from marker-marked blocks
         # Format: start_line,end_line (inclusive of block content, excluding fences)
         local ALLOWED_RANGES=""
-        local TOTAL_LINES=$(wc -l < "$FILE")
+        local TOTAL_LINES
+        TOTAL_LINES=$(wc -l < "$FILE")
         local LINE_NUM=1
 
         while [ $LINE_NUM -le $TOTAL_LINES ]; do
-            local LINE_CONTENT=$(sed -n "${LINE_NUM}p" "$FILE")
+            local LINE_CONTENT
+            LINE_CONTENT=$(sed -n "${LINE_NUM}p" "$FILE")
 
             # Check if this line is the marker
             if echo "$LINE_CONTENT" | grep -qF "$ALLOW_MARKER"; then
                 # Look for the next fence opening (allowing blank lines between marker and fence)
                 local FENCE_LINE=$((LINE_NUM + 1))
                 while [ $FENCE_LINE -le $TOTAL_LINES ]; do
-                    local FENCE_CONTENT=$(sed -n "${FENCE_LINE}p" "$FILE")
+                    local FENCE_CONTENT
+                    FENCE_CONTENT=$(sed -n "${FENCE_LINE}p" "$FILE")
 
                     # Check for fence opening (``` or ~~~)
                     if echo "$FENCE_CONTENT" | grep -qE '^(`{3}|~{3})'; then
                         # Found opening fence - capture the delimiter (``` or ~~~)
-                        local DELIMITER=$(echo "$FENCE_CONTENT" | grep -oE '^(`{3}|~{3})')
+                        local DELIMITER
+                        DELIMITER=$(echo "$FENCE_CONTENT" | grep -oE '^(`{3}|~{3})')
 
                         # Find matching closing fence (BLOCK_DEPTH starts at 1 for opening fence)
                         local CLOSING_LINE=$((FENCE_LINE + 1))
                         local BLOCK_DEPTH=1
 
                         while [ $CLOSING_LINE -le $TOTAL_LINES ] && [ $BLOCK_DEPTH -gt 0 ]; do
-                            local CLOSING_CONTENT=$(sed -n "${CLOSING_LINE}p" "$FILE")
+                            local CLOSING_CONTENT
+                            CLOSING_CONTENT=$(sed -n "${CLOSING_LINE}p" "$FILE")
 
                             if echo "$CLOSING_CONTENT" | grep -qF "$DELIMITER"; then
                                 if [ $BLOCK_DEPTH -eq 1 ]; then
