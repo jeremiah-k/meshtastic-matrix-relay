@@ -1,11 +1,9 @@
 """Comprehensive tests for migrate.py module covering all migration functions."""
 
-import os
 import sqlite3
 import sys
-from datetime import datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -28,7 +26,6 @@ from mmrelay.migrate import (
     migrate_store,
     perform_migration,
     rollback_migration,
-    verify_migration,
 )
 
 
@@ -67,7 +64,7 @@ class TestPathIsWithinHome:
         """Test OSError on path.resolve() falls back to absolute()."""
         home = clean_migration_home / "home"
 
-        def mock_resolve_oserror(self):
+        def mock_resolve_oserror(_self):
             raise OSError("Mock error")
 
         monkeypatch.setattr(Path, "resolve", mock_resolve_oserror)
@@ -83,7 +80,7 @@ class TestPathIsWithinHome:
         """Test OSError on home.resolve() falls back to absolute()."""
         home = tmp_path / "home"
 
-        def mock_resolve_oserror(self):
+        def mock_resolve_oserror(_self):
             raise OSError("Mock error")
 
         monkeypatch.setattr(Path, "resolve", mock_resolve_oserror)
@@ -872,7 +869,7 @@ class TestMigrateLogs:
         new_home = tmp_path / "home"
         new_home.mkdir()
 
-        result = migrate_logs([legacy_root], new_home, move=False)
+        migrate_logs([legacy_root], new_home, move=False)
 
         migrated_logs = list((new_home / "logs").glob("*_migrated_*.log"))
         assert len(migrated_logs) == 1

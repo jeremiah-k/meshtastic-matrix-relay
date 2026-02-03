@@ -136,7 +136,7 @@ check_doc_files() {
                         break
                     fi
 
-                    if [ -n "$(echo "$FENCE_CONTENT" | tr -d '[:space:]')" ] && ! echo "$FENCE_CONTENT" | grep -qE '^\(```|~~~\)'; then
+                    if [ -n "$(echo "$FENCE_CONTENT" | tr -d '[:space:]')" ] && ! echo "$FENCE_CONTENT" | grep -qE '^(```|~~~)'; then
                         # Found non-fence content - this marker has no following fence
                         break
                     fi

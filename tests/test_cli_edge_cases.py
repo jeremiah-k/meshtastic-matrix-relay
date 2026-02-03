@@ -14,7 +14,6 @@ Tests edge cases and error handling including:
 
 import os
 import sys
-import tempfile
 import unittest
 from unittest.mock import MagicMock, mock_open, patch
 

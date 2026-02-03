@@ -1624,7 +1624,7 @@ def handle_config_paths(args: argparse.Namespace) -> int:
     Returns:
         int: Exit code (0 on success).
     """
-    from mmrelay.paths import get_legacy_dirs, resolve_all_paths
+    from mmrelay.paths import resolve_all_paths
 
     paths_info = resolve_all_paths()
 
@@ -1688,7 +1688,7 @@ def handle_config_paths(args: argparse.Namespace) -> int:
     print(f"     logs/: {paths_info['logs_dir']}")
     logs_source = "HOME"
     if paths_info.get("legacy_sources"):
-        home_path = Path(paths_info["home"])
+        Path(paths_info["home"])
         for legacy_dir in [Path(ld) for ld in paths_info["legacy_sources"]]:
             legacy_logs = legacy_dir / "logs"
             if legacy_logs.exists():
@@ -1720,7 +1720,7 @@ def handle_config_paths(args: argparse.Namespace) -> int:
             print(f"     {var_name}={var_value}")
 
     # Check for legacy data
-    home = paths_info["home"]
+    paths_info["home"]
     if paths_info.get("legacy_sources"):
         print("\n   ⚠️  Legacy data detected!")
         print(
@@ -1806,12 +1806,12 @@ def handle_paths_command(args: argparse.Namespace) -> int:
     print("=" * 60)
 
     # Print HOME information
-    print(f"\n📍 HOME Directory:")
+    print("\n📍 HOME Directory:")
     print(f"   Location: {paths_info['home']}")
     print(f"   Source: {paths_info['home_source']}")
 
     # Print runtime artifact paths
-    print(f"\n📁 Runtime Artifacts (all in HOME):")
+    print("\n📁 Runtime Artifacts (all in HOME):")
     print(f"   Credentials: {paths_info['credentials_path']}")
     print(f"   Database: {paths_info['database_dir']}")
     print(f"   Store (E2EE): {paths_info['store_dir']}")
@@ -1819,13 +1819,13 @@ def handle_paths_command(args: argparse.Namespace) -> int:
     print(f"   Log File: {paths_info['log_file']}")
 
     # Print plugin paths
-    print(f"\n📦 Plugins:")
+    print("\n📦 Plugins:")
     print(f"   Plugins: {paths_info['plugins_dir']}")
     print(f"   Custom: {paths_info['custom_plugins_dir']}")
     print(f"   Community: {paths_info['community_plugins_dir']}")
 
     # Print legacy sources
-    print(f"\n📋 Legacy Sources (read-only):")
+    print("\n📋 Legacy Sources (read-only):")
     if paths_info.get("legacy_sources"):
         for legacy_dir in paths_info["legacy_sources"]:
             print(f"   - {legacy_dir}")
@@ -1833,7 +1833,7 @@ def handle_paths_command(args: argparse.Namespace) -> int:
         print("   (none detected)")
 
     # Print environment variables
-    print(f"\n🔧 Environment Variables:")
+    print("\n🔧 Environment Variables:")
     if paths_info.get("env_vars_detected"):
         for var_name, var_value in paths_info["env_vars_detected"].items():
             print(f"   {var_name}={var_value}")
@@ -1844,11 +1844,11 @@ def handle_paths_command(args: argparse.Namespace) -> int:
     print(f"\n⚙️  CLI Override: {paths_info.get('cli_override', 'None')}")
 
     # Print plugin roots searched
-    print(f"\n   Plugin Roots Searched:")
+    print("\n   Plugin Roots Searched:")
     print(f"   Primary: {paths_info['plugins_dir']}")
 
     # Check for legacy data
-    home = paths_info["home"]
+    paths_info["home"]
     if paths_info.get("legacy_sources"):
         print("\n   ⚠️  Legacy data detected!")
         print(
@@ -1929,7 +1929,7 @@ def handle_doctor_command(args: argparse.Namespace) -> int:
         print("   (none detected)")
 
     # Print environment variables
-    print(f"\n🔧 Environment Variables:")
+    print("\n🔧 Environment Variables:")
     if paths_info.get("env_vars_detected"):
         for var_name, var_value in paths_info["env_vars_detected"].items():
             print(f"   {var_name}={var_value}")
@@ -1940,7 +1940,7 @@ def handle_doctor_command(args: argparse.Namespace) -> int:
     print(f"\n⚙️  CLI Override: {paths_info.get('cli_override', 'None')}")
 
     # Check migration status and print recommendations
-    print(f"\n🔄 Migration Status:")
+    print("\n🔄 Migration Status:")
     if is_migration_needed():
         print("   ⚠️  Migration RECOMMENDED:")
         print("       Legacy data detected in one or more locations.")
@@ -2225,7 +2225,7 @@ def handle_migrate_command(args: argparse.Namespace) -> int:
         if result.get("success"):
             print("✅ Migration completed successfully")
             for migration in result.get("migrations", []):
-                mtype = migration.get("result", {}).get("type", "unknown")
+                mtype = migration.get("type", "unknown")
                 status_icon = (
                     "✅" if migration.get("result", {}).get("success") else "❌"
                 )

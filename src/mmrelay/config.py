@@ -19,7 +19,7 @@ from mmrelay.constants.config import (
 )
 
 # Import new path resolution system
-from mmrelay.paths import get_home_dir, is_deprecation_window_active, resolve_all_paths
+from mmrelay.paths import get_home_dir, is_deprecation_window_active
 
 # Global variables to store directory overrides
 custom_base_dir: str | None = None
@@ -818,11 +818,22 @@ def load_credentials() -> dict[str, Any] | None:
             config_paths=config_paths,
         )
         logger.debug("Looking for credentials at: %s", candidate_paths)
+        from mmrelay.paths import get_legacy_dirs
+
+        legacy_dirs = {os.path.abspath(str(p)) for p in get_legacy_dirs()}
         for credentials_path in candidate_paths:
             if not os.path.exists(credentials_path):
                 continue
             with open(credentials_path, "r", encoding="utf-8") as f:
                 credentials = cast(dict[str, Any], json.load(f))
+            creds_dir = os.path.abspath(os.path.dirname(credentials_path))
+            if creds_dir in legacy_dirs:
+                _get_config_logger().warning(
+                    "Credentials found in legacy location: %s. "
+                    "Please run 'mmrelay migrate' to move to new unified structure. "
+                    "Support for legacy credentials will be removed in v1.4.",
+                    credentials_path,
+                )
             logger.debug("Successfully loaded credentials from %s", credentials_path)
             return credentials
 
@@ -861,7 +872,7 @@ def load_credentials() -> dict[str, Any] | None:
                     )
                     return credentials
 
-    except (OSError, PermissionError, json.JSONDecodeError):
+    except (OSError, PermissionError, json.JSONDecodeError, TypeError):
         logger.exception("Error loading credentials.json")
         return None
     else:

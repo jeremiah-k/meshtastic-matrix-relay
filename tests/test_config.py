@@ -1223,7 +1223,7 @@ class TestLoadConfigUncoveredLines(unittest.TestCase):
                 name, globals=None, locals=None, fromlist=(), level=0
             ):
                 if name in ("mmrelay.cli_utils", "cli_utils"):
-                    raise ImportError("No module named 'cli_utils'")
+                    raise ImportError
                 return real_import(name, globals, locals, fromlist, level)
 
             with patch(
@@ -1279,7 +1279,7 @@ class TestGetMeshtasticConfigValueUncoveredLines(unittest.TestCase):
 
         def import_side_effect(name, globals=None, locals=None, fromlist=(), level=0):
             if name in ("mmrelay.cli_utils", "cli_utils"):
-                raise ImportError("No module named 'cli_utils'")
+                raise ImportError
             return real_import(name, globals, locals, fromlist, level)
 
         with patch(

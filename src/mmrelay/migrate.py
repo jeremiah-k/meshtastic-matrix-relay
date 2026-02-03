@@ -591,7 +591,7 @@ def migrate_database(
     logger.info("Database migration complete")
 
     # Verify database integrity if main database file was copied/moved
-    if not dry_run and most_recent.suffix not in [".wal", ".shm"]:
+    if not dry_run and not most_recent.name.endswith(("-wal", "-shm")):
         main_db = new_db_dir / most_recent.name
         try:
             conn = sqlite3.connect(str(main_db))
@@ -874,6 +874,8 @@ def migrate_plugins(
                             )
                         shutil.move(str(item), str(dest))
                     else:
+                        if dest.exists():
+                            shutil.rmtree(str(dest))
                         shutil.copytree(str(item), str(dest))
                     logger.debug("Migrated custom plugin: %s", item)
             migrated_types.append("custom")
@@ -904,6 +906,8 @@ def migrate_plugins(
                             )
                         shutil.move(str(item), str(dest))
                     else:
+                        if dest.exists():
+                            shutil.rmtree(str(dest))
                         shutil.copytree(str(item), str(dest))
                     logger.debug("Migrated community plugin: %s", item)
             migrated_types.append("community")

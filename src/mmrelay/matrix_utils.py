@@ -119,7 +119,6 @@ from mmrelay.meshtastic_utils import connect_meshtastic, send_text_reply
 
 # Import meshtastic protobuf for port numbers when needed
 from mmrelay.message_queue import get_message_queue, queue_message
-from mmrelay.paths import resolve_all_paths
 
 # Import nio exception types with error handling for test environments.
 # matrix-nio is not marked py.typed in our env; keep import-untyped for mypy --strict.
@@ -1299,9 +1298,13 @@ async def connect_matrix(
             logger.debug("Failed to resolve credentials path: %s", exc)
             return None
 
-    explicit_credentials_path = get_explicit_credentials_path(
-        config if isinstance(config, dict) else None
-    )
+    try:
+        explicit_credentials_path = get_explicit_credentials_path(
+            config if isinstance(config, dict) else None
+        )
+    except TypeError as exc:
+        logger.warning("Invalid credentials_path configuration: %s", exc)
+        explicit_credentials_path = None
 
     # Prefer an explicit credentials path when provided (env/config)
     if isinstance(explicit_credentials_path, str) and explicit_credentials_path:
@@ -2183,10 +2186,14 @@ async def login_matrix_bot(
         try:
             import json
 
-            from mmrelay.paths import resolve_all_paths
+            explicit_path = os.getenv("MMRELAY_CREDENTIALS_PATH")
+            if explicit_path:
+                credentials_path = os.path.expanduser(explicit_path)
+            else:
+                from mmrelay.paths import resolve_all_paths
 
-            paths_info = resolve_all_paths()
-            credentials_path = paths_info["credentials_path"]
+                paths_info = resolve_all_paths()
+                credentials_path = paths_info["credentials_path"]
 
             if os.path.exists(credentials_path):
                 with open(credentials_path, "r", encoding="utf-8") as f:
@@ -2425,11 +2432,15 @@ async def login_matrix_bot(
             }
 
             # save_credentials() now uses unified HOME location
-            save_credentials(credentials)
-            if credentials_path:
-                logger.info(f"Credentials saved to {credentials_path}")
+            explicit_path = os.getenv("MMRELAY_CREDENTIALS_PATH")
+            if explicit_path:
+                target_path = os.path.expanduser(explicit_path)
             else:
-                logger.info("Credentials saved")
+                from mmrelay.paths import resolve_all_paths
+
+                target_path = resolve_all_paths()["credentials_path"]
+            save_credentials(credentials)
+            logger.info("Credentials saved to %s", target_path)
 
             # Logout other sessions if requested
             if logout_others:

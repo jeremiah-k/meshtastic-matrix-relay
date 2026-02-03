@@ -2734,7 +2734,7 @@ class TestPluginDirectories(unittest.TestCase):
     @patch("mmrelay.plugin_loader.logger")
     def test_get_plugin_dirs_user_dir_success(
         self,
-        mock_logger,
+        _mock_logger,
         mock_get_app_path,
         mock_get_legacy_dirs,
         mock_get_home_dir,

@@ -16,7 +16,6 @@ The three-tier plugin data system:
 - Tier 3: Plugin database data (SQLite, default)
 """
 
-import logging
 import os
 import sys
 from pathlib import Path
