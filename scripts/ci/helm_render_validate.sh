@@ -162,13 +162,13 @@ validate_pre_rendered_samples() {
 
 render_and_validate() {
 	local name="$1"
-	local helm_args="$2"
+	shift
 	local output_file="${RENDER_DIR}/${name}.yaml"
 
 	echo -e "${YELLOW}Rendering ${name}...${NC}"
 	if ! helm_in_container template mmrelay "${CHART_PATH}" \
 		--namespace mmrelay \
-		"${helm_args}" >"${output_file}" 2>&1; then
+		"$@" >"${output_file}" 2>&1; then
 		echo -e "${RED}✗ Failed to render ${name}${NC}"
 		echo "Error output:"
 		cat "${output_file}"
@@ -189,14 +189,14 @@ render_and_validate() {
 
 test_expected_failure() {
 	local name="$1"
-	local helm_args="$2"
+	shift
 
 	echo -e "${YELLOW}Testing expected failure for ${name}...${NC}"
 	local output_file="${RENDER_DIR}/${name}-expected-fail.yaml"
 
 	if helm_in_container template mmrelay "${CHART_PATH}" \
 		--namespace mmrelay \
-		"${helm_args}" >"${output_file}" 2>&1; then
+		"$@" >"${output_file}" 2>&1; then
 		echo -e "${RED}✗ Expected failure for ${name} did not occur${NC}"
 		echo "Error output:"
 		cat "${output_file}"
@@ -235,11 +235,17 @@ echo "=================================="
 
 test_expected_failure \
 	"empty-config-data" \
-	"--set config.enabled=true --set config.source=secret --set config.create=true --set-string config.data="
+	--set config.enabled=true \
+	--set config.source=secret \
+	--set config.create=true \
+	--set-string config.data=
 
 test_expected_failure \
 	"empty-credentials-data" \
-	"--set config.enabled=true --set credentials.enabled=true --set credentials.create=true --set-string credentials.data="
+	--set config.enabled=true \
+	--set credentials.enabled=true \
+	--set credentials.create=true \
+	--set-string credentials.data=
 
 echo ""
 echo "=================================="
@@ -248,27 +254,62 @@ echo "=================================="
 
 render_and_validate \
 	"secret-config" \
-	"--set config.enabled=true --set config.source=secret --set config.name=mmrelay-config --set config.key=config.yaml --set persistence.enabled=true --set credentials.enabled=false"
+	--set config.enabled=true \
+	--set config.source=secret \
+	--set config.name=mmrelay-config \
+	--set config.key=config.yaml \
+	--set persistence.enabled=true \
+	--set credentials.enabled=false
 
 render_and_validate \
 	"configmap-config" \
-	"--set config.enabled=true --set config.source=configmap --set config.name=mmrelay-config --set config.key=config.yaml --set persistence.enabled=true --set credentials.enabled=false"
+	--set config.enabled=true \
+	--set config.source=configmap \
+	--set config.name=mmrelay-config \
+	--set config.key=config.yaml \
+	--set persistence.enabled=true \
+	--set credentials.enabled=false
 
 render_and_validate \
 	"with-credentials" \
-	"--set config.enabled=true --set config.source=secret --set config.name=mmrelay-config --set config.key=config.yaml --set persistence.enabled=true --set credentials.enabled=true --set credentials.secretName=mmrelay-credentials --set credentials.key=credentials.json"
+	--set config.enabled=true \
+	--set config.source=secret \
+	--set config.name=mmrelay-config \
+	--set config.key=config.yaml \
+	--set persistence.enabled=true \
+	--set credentials.enabled=true \
+	--set credentials.secretName=mmrelay-credentials \
+	--set credentials.key=credentials.json
 
 render_and_validate \
 	"persistence-disabled-no-matrixauth" \
-	"--set config.enabled=true --set config.source=secret --set config.name=mmrelay-config --set config.key=config.yaml --set persistence.enabled=false --set matrixAuth.enabled=false --set credentials.enabled=false"
+	--set config.enabled=true \
+	--set config.source=secret \
+	--set config.name=mmrelay-config \
+	--set config.key=config.yaml \
+	--set persistence.enabled=false \
+	--set matrixAuth.enabled=false \
+	--set credentials.enabled=false
 
 render_and_validate \
 	"persistence-disabled-matrixauth" \
-	"--set config.enabled=true --set config.source=secret --set config.name=mmrelay-config --set config.key=config.yaml --set persistence.enabled=false --set matrixAuth.enabled=true --set credentials.enabled=false"
+	--set config.enabled=true \
+	--set config.source=secret \
+	--set config.name=mmrelay-config \
+	--set config.key=config.yaml \
+	--set persistence.enabled=false \
+	--set matrixAuth.enabled=true \
+	--set credentials.enabled=false
 
 render_and_validate \
 	"networkpolicy-enabled" \
-	"--set config.enabled=true --set config.source=secret --set config.name=mmrelay-config --set config.key=config.yaml --set persistence.enabled=true --set credentials.enabled=false --set networkPolicy.enabled=true"
+	--set config.enabled=true \
+	--set config.source=secret \
+	--set config.name=mmrelay-config \
+	--set config.key=config.yaml \
+	--set persistence.enabled=true \
+	--set credentials.enabled=false \
+	--set networkPolicy.enabled=true
 
 echo ""
 echo "=================================="
