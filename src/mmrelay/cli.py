@@ -814,7 +814,8 @@ def _find_credentials_json_path(config_path: str | None) -> str | None:
         if os.path.exists(legacy_cred):
             print(
                 f"INFO: Found legacy credentials at: {legacy_cred}\n"
-                f"   Run 'mmrelay migrate --dry-run' (or 'mmrelay service migrate --dry-run') to preview migration to HOME."
+                f"   Run 'mmrelay migrate --dry-run' (or 'mmrelay service migrate --dry-run') to preview migration to HOME.",
+                file=sys.stderr,
             )
             return legacy_cred
 

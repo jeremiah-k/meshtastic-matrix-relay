@@ -490,6 +490,22 @@ class TestGetMostRecentDatabase:
         # Should return main database, not sidecar
         assert result == db
 
+    def test_database_with_wal_newer_than_db(self, tmp_path):
+        """Test returns main database even if WAL is newer."""
+        db = tmp_path / "test.sqlite"
+        db.write_text("db content")
+        wal = tmp_path / "test.sqlite-wal"
+        wal.write_text("wal content")
+        import time
+
+        now = time.time()
+        os.utime(db, (now - 10, now - 10))
+        os.utime(wal, (now, now))
+
+        result = _get_most_recent_database([db, wal])
+
+        assert result == db
+
     def test_database_with_shm_sidecar(self, tmp_path):
         """Test groups database with SHM sidecar."""
         shm = tmp_path / "test.sqlite-shm"

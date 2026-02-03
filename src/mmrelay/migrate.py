@@ -382,17 +382,19 @@ def _get_most_recent_database(candidates: list[Path]) -> Path | None:
         except OSError:
             return 0.0
 
+    def get_base_path(path: Path) -> Path:
+        if path.name.endswith("-wal") or path.name.endswith("-shm"):
+            return path.with_name(path.name[:-4])
+        return path
+
     # Group databases by main file and its sidecars
     db_groups: dict[Path, list[Path]] = {}
     for db_path in candidates:
         if not db_path.exists():
             continue
 
-        # Extract base name (remove -wal, -shm extensions)
-        if db_path.suffix in [".wal", ".shm"]:
-            base = db_path.with_suffix("")
-        else:
-            base = db_path
+        # Extract base name (remove -wal, -shm suffix)
+        base = get_base_path(db_path)
 
         if base not in db_groups:
             db_groups[base] = []
@@ -555,6 +557,11 @@ def migrate_database(
             "message": "No database files found in legacy location",
         }
 
+    def get_base_path(path: Path) -> Path:
+        if path.name.endswith("-wal") or path.name.endswith("-shm"):
+            return path.with_name(path.name[:-4])
+        return path
+
     most_recent = _get_most_recent_database(candidates)
     if not most_recent:
         return {
@@ -562,9 +569,19 @@ def migrate_database(
             "message": "No valid database files found in legacy location",
         }
 
+    selected_group = [
+        candidate for candidate in candidates if get_base_path(candidate) == most_recent
+    ]
+
+    if not selected_group:
+        return {
+            "success": False,
+            "message": "Most recent database group not found in legacy location",
+        }
+
     logger.info("Migrating database from %s to %s", most_recent, new_db_dir)
 
-    for db_path in candidates:
+    for db_path in selected_group:
         dest = new_db_dir / db_path.name
         if dest.exists() and not force:
             logger.info("Backing up existing database: %s", dest)
