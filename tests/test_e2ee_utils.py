@@ -345,3 +345,8 @@ def test_deprecation_window_not_active(
 
         # Verify credentials were not found
         assert result is False
+
+        calls = mock_exists.call_args_list
+        paths_checked = [call[0][0] for call in calls]
+        assert "/primary/credentials.json" in paths_checked
+        assert not any("legacy" in path for path in paths_checked)

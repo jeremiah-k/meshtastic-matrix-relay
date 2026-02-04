@@ -159,7 +159,7 @@ def get_config_paths(*, explicit: str | None = None) -> list[Path]:
     # This allows downstream code to report "file not found" errors appropriately
     # rather than silently falling back to other locations.
     if explicit:
-        explicit_path = Path(explicit).absolute()
+        explicit_path = Path(explicit).expanduser().absolute()
         candidates.append(explicit_path)
 
     # 2. MMRELAY_HOME/config.yaml

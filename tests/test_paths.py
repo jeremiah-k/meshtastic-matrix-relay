@@ -574,5 +574,6 @@ class TestLegacyDirsDetection(unittest.TestCase):
             # depend on whether these paths exist on the system
             self.assertIsInstance(result, list)
 
-    if __name__ == "__main__":
-        unittest.main()
+
+if __name__ == "__main__":
+    unittest.main()

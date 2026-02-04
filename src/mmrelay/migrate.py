@@ -667,6 +667,12 @@ def migrate_credentials(
 
     try:
         if move:
+            if new_creds.exists():
+                if new_creds.is_dir():
+                    shutil.rmtree(str(new_creds))
+                else:
+                    new_creds.unlink()
+                logger.info("Removed existing destination: %s", new_creds)
             logger.info("Moving credentials from %s to %s", old_creds, new_creds)
             shutil.move(str(old_creds), str(new_creds))
         else:
@@ -757,6 +763,12 @@ def migrate_config(
 
     try:
         if move:
+            if new_config.exists():
+                if new_config.is_dir():
+                    shutil.rmtree(str(new_config))
+                else:
+                    new_config.unlink()
+                logger.info("Removed existing destination: %s", new_config)
             logger.info("Moving config from %s to %s", old_config, new_config)
             shutil.move(str(old_config), str(new_config))
         else:
@@ -920,7 +932,7 @@ def migrate_database(
                 raise MigrationError.integrity_check_failed(result[0])
             logger.info("Database integrity check passed")
         except sqlite3.DatabaseError as e:
-            logger.error("Database verification failed: %s", e)
+            logger.exception("Database verification failed")
             logger.info("Cleaning up failed migration attempt")
             for db_path in selected_group:
                 dest = new_db_dir / db_path.name
@@ -1730,9 +1742,7 @@ def perform_migration(
             rollback_result = rollback_migration(completed_steps=completed_steps)
             report["rollback"] = rollback_result
         return report
-    except (
-        Exception
-    ) as exc:  # noqa: BLE001 - catch-all for unexpected errors during migration
+    except Exception as exc:
         logger.exception("Unexpected error during migration")
         if not dry_run:
             _write_migration_state(
