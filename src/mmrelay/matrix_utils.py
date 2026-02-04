@@ -70,11 +70,11 @@ from mmrelay.cli_utils import (
     msg_retry_auth_login,
 )
 from mmrelay.config import (
+    async_load_credentials,
     get_base_dir,
     get_e2ee_store_dir,
     get_explicit_credentials_path,
     get_meshtastic_config_value,
-    load_credentials,
     save_credentials,
 )
 from mmrelay.constants.app import WINDOWS_PLATFORM
@@ -1337,7 +1337,7 @@ async def connect_matrix(
 
     # Load credentials using the shared helper (supports legacy search + env overrides)
     if credentials is None:
-        credentials = load_credentials()
+        credentials = await async_load_credentials()
 
     if credentials is None:
         candidate_path = _resolve_credentials_save_path()
@@ -1406,7 +1406,7 @@ async def connect_matrix(
                     "Automatic login successful! Credentials saved to credentials.json"
                 )
                 # Load the newly created credentials and set up for credentials flow
-                credentials = load_credentials()
+                credentials = await async_load_credentials()
                 if not credentials:
                     logger.error("Failed to load newly created credentials")
                     return None

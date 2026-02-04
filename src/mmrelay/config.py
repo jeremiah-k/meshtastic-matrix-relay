@@ -1,3 +1,4 @@
+import asyncio
 import json
 import ntpath
 import os
@@ -887,6 +888,25 @@ def load_credentials() -> dict[str, Any] | None:
                 except OSError:
                     pass
         return None
+
+
+async def async_load_credentials() -> dict[str, Any] | None:
+    """
+    Async wrapper for load_credentials to enable consistent async credential loading.
+
+    Offloads the synchronous load_credentials call to a thread pool, allowing it
+    to be used from async contexts without blocking the event loop.
+
+    The wrapped load_credentials function uses module-level variables (relay_config,
+    config_path) rather than accepting parameters, so this wrapper simply
+    invokes it without arguments.
+
+    Returns:
+        dict[str, Any] | None: Parsed credentials if a valid credentials file is
+            found, or None if no credentials file is found, is unreadable, or
+            contains invalid JSON.
+    """
+    return await asyncio.to_thread(load_credentials)
 
 
 def save_credentials(

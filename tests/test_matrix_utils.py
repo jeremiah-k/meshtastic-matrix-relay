@@ -1495,7 +1495,7 @@ def matrix_config():
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils.logger")
 @patch("mmrelay.matrix_utils.login_matrix_bot")
-@patch("mmrelay.matrix_utils.load_credentials")
+@patch("mmrelay.matrix_utils.async_load_credentials")
 async def test_connect_matrix_alias_resolution_exception(
     mock_load_credentials, mock_login_bot, _mock_logger, mock_async_client
 ):
@@ -4109,7 +4109,7 @@ async def test_connect_matrix_auto_login_load_credentials_failure(monkeypatch):
     with (
         patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
         patch("mmrelay.matrix_utils.login_matrix_bot", return_value=True),
-        patch("mmrelay.matrix_utils.load_credentials", return_value=None),
+        patch("mmrelay.config.async_load_credentials", return_value=None),
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await connect_matrix(config)
@@ -5156,7 +5156,7 @@ async def test_connect_matrix_e2ee_key_sharing_delay(monkeypatch):
 
 
 @pytest.mark.asyncio
-@patch("mmrelay.matrix_utils.load_credentials")
+@patch("mmrelay.config.async_load_credentials")
 @patch("mmrelay.matrix_utils._create_ssl_context")
 @patch("mmrelay.matrix_utils.AsyncClient")
 async def test_connect_matrix_legacy_config(
