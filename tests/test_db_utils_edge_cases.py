@@ -914,16 +914,15 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
             # Mock config and directories
             mmrelay.db_utils.config = {"database": {}}
 
-            with patch("mmrelay.db_utils.is_new_layout_enabled", return_value=True):
-                with patch(
-                    "mmrelay.db_utils.resolve_all_paths",
-                    return_value={
-                        "database_dir": data_dir,
-                        "legacy_sources": [base_dir],
-                    },
-                ):
-                    clear_db_path_cache()
-                    result = get_db_path()
+            with patch(
+                "mmrelay.db_utils.resolve_all_paths",
+                return_value={
+                    "database_dir": data_dir,
+                    "legacy_sources": [base_dir],
+                },
+            ):
+                clear_db_path_cache()
+                result = get_db_path()
 
             # Should return default path and trigger migration
             self.assertEqual(result, default_path)
@@ -956,28 +955,27 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
 
             mmrelay.db_utils.config = {"database": {}}
 
-            with patch("mmrelay.db_utils.is_new_layout_enabled", return_value=False):
-                with patch(
-                    "mmrelay.db_utils.resolve_all_paths",
-                    return_value={
-                        "database_dir": data_dir,
-                        "legacy_sources": [base_dir],
-                    },
-                ):
-                    with patch("mmrelay.db_utils.logger") as mock_logger:
-                        clear_db_path_cache()
-                        result = get_db_path()
+            with patch(
+                "mmrelay.db_utils.resolve_all_paths",
+                return_value={
+                    "database_dir": data_dir,
+                    "legacy_sources": [base_dir],
+                },
+            ):
+                with patch("mmrelay.db_utils.logger") as mock_logger:
+                    clear_db_path_cache()
+                    result = get_db_path()
 
-                        # Should use resolved database path (default_path)
-                        self.assertEqual(result, default_path)
+                    # Should use resolved database path (default_path)
+                    self.assertEqual(result, default_path)
 
-                        # No warning expected
-                        warning_calls = [
-                            call
-                            for call in mock_logger.method_calls
-                            if call[0] == "warning"
-                        ]
-                        self.assertEqual(len(warning_calls), 0)
+                    # No warning expected
+                    warning_calls = [
+                        call
+                        for call in mock_logger.method_calls
+                        if call[0] == "warning"
+                    ]
+                    self.assertEqual(len(warning_calls), 0)
 
     def test_get_db_path_legacy_multiple_databases_warning(self):
         """Test get_db_path ignores newer legacy databases when new layout is disabled."""
@@ -1006,23 +1004,22 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
 
             mmrelay.db_utils.config = {"database": {}}
 
-            with patch("mmrelay.db_utils.is_new_layout_enabled", return_value=False):
-                with patch(
-                    "mmrelay.db_utils.resolve_all_paths",
-                    return_value={
-                        "database_dir": data_dir,
-                        "legacy_sources": [base_dir],
-                    },
-                ):
-                    with patch("mmrelay.db_utils.logger") as mock_logger:
-                        clear_db_path_cache()
-                        result = get_db_path()
+            with patch(
+                "mmrelay.db_utils.resolve_all_paths",
+                return_value={
+                    "database_dir": data_dir,
+                    "legacy_sources": [base_dir],
+                },
+            ):
+                with patch("mmrelay.db_utils.logger") as mock_logger:
+                    clear_db_path_cache()
+                    result = get_db_path()
 
-                        # Should still use the resolved database path
-                        self.assertEqual(result, default_path)
+                    # Should still use the resolved database path
+                    self.assertEqual(result, default_path)
 
-                        # No warning expected
-                        mock_logger.warning.assert_not_called()
+                    # No warning expected
+                    mock_logger.warning.assert_not_called()
 
     def test_get_db_path_legacy_single_database_not_default(self):
         """Test get_db_path returns resolved database path even if only legacy DB exists."""
@@ -1043,25 +1040,24 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
 
             mmrelay.db_utils.config = {"database": {}}
 
-            with patch("mmrelay.db_utils.is_new_layout_enabled", return_value=False):
-                with patch(
-                    "mmrelay.db_utils.resolve_all_paths",
-                    return_value={
-                        "database_dir": data_dir,
-                        "legacy_sources": [base_dir],
-                    },
-                ):
-                    with patch("mmrelay.db_utils.logger") as mock_logger:
-                        clear_db_path_cache()
-                        result = get_db_path()
+            with patch(
+                "mmrelay.db_utils.resolve_all_paths",
+                return_value={
+                    "database_dir": data_dir,
+                    "legacy_sources": [base_dir],
+                },
+            ):
+                with patch("mmrelay.db_utils.logger") as mock_logger:
+                    clear_db_path_cache()
+                    result = get_db_path()
 
-                        # Should use resolved database path (default_path)
-                        self.assertEqual(result, default_path)
-                        mock_logger.info.assert_called_once_with(
-                            "Migrated database from legacy location %s to %s",
-                            legacy_base_path,
-                            default_path,
-                        )
+                    # Should use resolved database path (default_path)
+                    self.assertEqual(result, default_path)
+                    mock_logger.info.assert_called_once_with(
+                        "Migrated database from legacy location %s to %s",
+                        legacy_base_path,
+                        default_path,
+                    )
 
 
 if __name__ == "__main__":

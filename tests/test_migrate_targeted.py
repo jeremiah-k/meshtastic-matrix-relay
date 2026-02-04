@@ -117,15 +117,23 @@ class TestPerformMigration(unittest.TestCase):
             self.assertTrue(result.get("success"))
             self.assertGreaterEqual(len(result.get("migrations", [])), 3)
 
+    @patch("mmrelay.migrate.rollback_migration")
     @patch("mmrelay.migrate.migrate_store")
+    @patch("mmrelay.migrate.get_home_dir")
     @patch("mmrelay.paths.get_home_dir")
     @patch("mmrelay.paths.resolve_all_paths")
     def test_returns_error_on_migration_failure(
-        self, mock_resolve, mock_home, mock_store
+        self,
+        mock_resolve,
+        mock_paths_home,
+        mock_migrate_home,
+        mock_store,
+        mock_rollback,
     ):
         """Test perform_migration returns error when migration fails."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            mock_home.return_value = Path(tmpdir)
+            mock_paths_home.return_value = Path(tmpdir)
+            mock_migrate_home.return_value = Path(tmpdir)
             legacy_root = Path(tmpdir) / "legacy"
             legacy_root.mkdir()
             mock_resolve.return_value = {
@@ -140,6 +148,7 @@ class TestPerformMigration(unittest.TestCase):
             result = perform_migration(dry_run=False, force=False, move=False)
 
             self.assertFalse(result.get("success"))
+            mock_rollback.assert_called_once()
             # Error is in the migrations list, not at top level
             migrations = result.get("migrations", [])
             store_migration = [m for m in migrations if m.get("type") == "store"]
@@ -171,6 +180,44 @@ class TestPerformMigration(unittest.TestCase):
 
             self.assertTrue(result.get("success"))
             self.assertGreater(len(result.get("migrations", [])), 0)
+
+    @patch("mmrelay.migrate.rollback_migration")
+    @patch("mmrelay.migrate.migrate_database")
+    @patch("mmrelay.migrate.migrate_config")
+    @patch("mmrelay.migrate.migrate_credentials")
+    @patch("mmrelay.migrate.get_home_dir")
+    @patch("mmrelay.paths.get_home_dir")
+    @patch("mmrelay.paths.resolve_all_paths")
+    def test_database_failure_rolls_back_completed_steps(
+        self,
+        mock_resolve,
+        mock_paths_home,
+        mock_migrate_home,
+        mock_creds,
+        mock_config,
+        mock_db,
+        mock_rollback,
+    ):
+        """Test perform_migration rolls back completed steps on database failure."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mock_paths_home.return_value = Path(tmpdir)
+            mock_migrate_home.return_value = Path(tmpdir)
+            legacy_root = Path(tmpdir) / "legacy"
+            legacy_root.mkdir()
+            mock_resolve.return_value = {
+                "home": tmpdir,
+                "legacy_sources": [str(legacy_root)],
+            }
+            mock_creds.return_value = {"success": True}
+            mock_config.return_value = {"success": True}
+            mock_db.side_effect = Exception("Database failure")
+
+            result = perform_migration(dry_run=False, force=False, move=False)
+
+            self.assertFalse(result.get("success"))
+            mock_rollback.assert_called_once()
+            called_steps = mock_rollback.call_args.kwargs.get("completed_steps", [])
+            self.assertEqual(called_steps, ["credentials", "config"])
 
 
 class TestRollbackMigration(unittest.TestCase):

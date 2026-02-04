@@ -3,6 +3,7 @@ import os
 import sys
 import tempfile
 import unittest
+import warnings
 from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
@@ -50,11 +51,12 @@ class TestConfig(unittest.TestCase):
         """
         Test that get_base_dir() returns the default base directory on Linux systems.
         """
-        with (
-            patch("sys.platform", "linux"),
-            patch("mmrelay.config.custom_data_dir", None),
-        ):
-            base_dir = get_base_dir()
+        with patch("sys.platform", "linux"):
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always", DeprecationWarning)
+                base_dir = get_base_dir()
+            if caught:
+                self.assertIn("Use paths.get_home_dir()", str(caught[0].message))
             self.assertEqual(base_dir, os.path.expanduser("~/.mmrelay"))
 
     @patch("mmrelay.paths.platformdirs.user_data_dir")
@@ -63,12 +65,13 @@ class TestConfig(unittest.TestCase):
         """
         Test that get_base_dir returns correct default base directory on Windows when platform detection and user data directory are mocked.
         """
-        with (
-            patch("mmrelay.paths.sys.platform", "win32"),
-            patch("mmrelay.config.custom_data_dir", None),
-        ):
+        with (patch("mmrelay.paths.sys.platform", "win32"),):
             mock_user_data_dir.return_value = "C:\\Users\\test\\AppData\\Local\\mmrelay"
-            base_dir = get_base_dir()
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always", DeprecationWarning)
+                base_dir = get_base_dir()
+            if caught:
+                self.assertIn("Use paths.get_home_dir()", str(caught[0].message))
             self.assertEqual(base_dir, "C:\\Users\\test\\AppData\\Local\\mmrelay")
 
     @patch("mmrelay.config.os.path.isfile")
@@ -107,7 +110,6 @@ class TestConfig(unittest.TestCase):
         with (
             patch("sys.platform", "linux"),
             patch("sys.argv", ["mmrelay"]),
-            patch("mmrelay.config.custom_data_dir", None),
         ):
             paths = get_config_paths()
             self.assertIn(os.path.expanduser("~/.mmrelay/config.yaml"), paths)
@@ -140,11 +142,12 @@ class TestConfig(unittest.TestCase):
         """
         Test that get_data_dir returns default data directory path on Linux platforms.
         """
-        with (
-            patch("sys.platform", "linux"),
-            patch("mmrelay.config.custom_data_dir", None),
-        ):
-            data_dir = get_data_dir(create=False)
+        with (patch("sys.platform", "linux"),):
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always", DeprecationWarning)
+                data_dir = get_data_dir(create=False)
+            if caught:
+                self.assertIn("Use paths.get_home_dir()", str(caught[0].message))
             # New unified layout: data_dir returns home directory
             self.assertEqual(data_dir, os.path.expanduser("~/.mmrelay"))
 
@@ -167,10 +170,7 @@ class TestConfig(unittest.TestCase):
         """
         Test that get_log_dir() returns the default logs directory on Linux platforms.
         """
-        with (
-            patch("sys.platform", "linux"),
-            patch("mmrelay.config.custom_data_dir", None),
-        ):
+        with (patch("sys.platform", "linux"),):
             log_dir = get_log_dir()
             self.assertEqual(log_dir, os.path.expanduser("~/.mmrelay/logs"))
 
@@ -181,10 +181,7 @@ class TestConfig(unittest.TestCase):
 
         Ensures the function resolves both the default plugins data directory and a plugin-specific directory for the Linux platform.
         """
-        with (
-            patch("sys.platform", "linux"),
-            patch("mmrelay.config.custom_data_dir", None),
-        ):
+        with (patch("sys.platform", "linux"),):
             plugin_data_dir = get_plugin_data_dir()
             # New unified layout: plugins under home directory
             self.assertEqual(plugin_data_dir, os.path.expanduser("~/.mmrelay/plugins"))
@@ -413,12 +410,16 @@ class TestConfigEdgeCases(unittest.TestCase):
 
     @patch("mmrelay.paths.platformdirs.user_data_dir")
     @patch("mmrelay.config.os.makedirs")
-    @patch("mmrelay.config.sys.platform", "win32")
+    @patch("mmrelay.paths.sys.platform", "win32")
     def test_get_data_dir_windows(self, mock_makedirs, mock_user_data_dir):
         """Test get_data_dir on Windows platform."""
         mock_user_data_dir.return_value = "C:\\Users\\test\\AppData\\Local\\mmrelay"
 
-        result = get_data_dir(create=False)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always", DeprecationWarning)
+            result = get_data_dir(create=False)
+        if caught:
+            self.assertIn("Use paths.get_home_dir()", str(caught[0].message))
 
         self.assertEqual(result, "C:\\Users\\test\\AppData\\Local\\mmrelay")
         mock_user_data_dir.assert_called_once_with("mmrelay", None)

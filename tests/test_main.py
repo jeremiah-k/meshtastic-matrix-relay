@@ -47,6 +47,7 @@ import functools
 import inspect
 import sys
 import unittest
+from pathlib import Path
 from typing import Any, Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -1572,18 +1573,18 @@ class TestRunMainFunction(unittest.TestCase):
     @patch("mmrelay.main.print_banner")
     @patch("mmrelay.config.load_config")
     @patch("mmrelay.config.load_credentials")
-    @patch("mmrelay.config.is_legacy_layout_enabled")
-    @patch("mmrelay.config.get_base_dir")
-    @patch("mmrelay.config.get_data_dir")
+    @patch("mmrelay.main.get_legacy_env_vars")
+    @patch("mmrelay.main.get_legacy_dirs")
+    @patch("mmrelay.main.get_home_dir")
     @patch("mmrelay.config.get_log_dir")
     @patch("mmrelay.config.os.makedirs")
     def test_run_main_legacy_layout_warning(
         self,
         _mock_makedirs,
         mock_get_log_dir,
-        mock_get_data_dir,
-        mock_get_base_dir,
-        mock_is_legacy_layout_enabled,
+        mock_get_home_dir,
+        mock_get_legacy_dirs,
+        mock_get_legacy_env_vars,
         mock_load_credentials,
         mock_load_config,
         _mock_print_banner,
@@ -1596,9 +1597,9 @@ class TestRunMainFunction(unittest.TestCase):
         }
         mock_load_config.return_value = mock_config
         mock_load_credentials.return_value = None
-        mock_is_legacy_layout_enabled.return_value = True
-        mock_get_base_dir.return_value = "/test/base/dir"
-        mock_get_data_dir.return_value = "/test/data/dir"
+        mock_get_home_dir.return_value = Path("/test/home/dir")
+        mock_get_legacy_dirs.return_value = [Path("/test/legacy/dir")]
+        mock_get_legacy_env_vars.return_value = ["MMRELAY_DATA_DIR"]
         mock_get_log_dir.return_value = "/test/log/dir"
 
         mock_args = MagicMock()
@@ -1615,9 +1616,10 @@ class TestRunMainFunction(unittest.TestCase):
         self.assertEqual(result, 0)
         # Verify warning was called with legacy layout message
         mock_config_logger.warning.assert_any_call(
-            "Legacy data layout detected (base_dir=%s, data_dir=%s). This layout is deprecated and will be removed in a future release.",
-            "/test/base/dir",
-            "/test/data/dir",
+            "Legacy data layout detected (MMRELAY_HOME=%s, legacy_env_vars=%s, legacy_dirs=%s). This layout is deprecated and will be removed in a future release.",
+            "/test/home/dir",
+            "MMRELAY_DATA_DIR",
+            "/test/legacy/dir",
         )
         mock_config_logger.warning.assert_any_call(
             "To migrate to the new layout, see docs/DOCKER.md: Migrating to the New Layout."
@@ -1737,7 +1739,6 @@ class TestMainAsyncFunction(unittest.TestCase):
           reconnecting/shutting_down flags, reconnect_task, and subscription flags.
         - mmrelay.matrix_utils: config, matrix_homeserver, matrix_rooms, matrix_access_token,
           bot_user_id, bot_user_name, matrix_client, and bot_start_time (reset to now).
-        - mmrelay.config: custom_data_dir (reset if present).
         - mmrelay.main: banner printed flag.
         - mmrelay.plugin_loader: invokes _reset_caches_for_tests() if available.
         - mmrelay.message_queue: calls get_message_queue().stop() if present.
@@ -1795,13 +1796,6 @@ class TestMainAsyncFunction(unittest.TestCase):
             import time
 
             module.bot_start_time = int(time.time() * 1000)  # type: ignore[attr-defined]
-
-        # Reset config globals
-        if "mmrelay.config" in sys.modules:
-            module = sys.modules["mmrelay.config"]
-            # Reset custom_data_dir if it was set
-            if hasattr(module, "custom_data_dir"):
-                module.custom_data_dir = None  # type: ignore[attr-defined]
 
         # Reset main module globals if any
         if "mmrelay.main" in sys.modules:

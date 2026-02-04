@@ -145,64 +145,43 @@ class TestApplyDirOverridesPriority(unittest.TestCase):
         self.assertTrue(len(warning_calls) > 0)
 
     @patch("mmrelay.paths.set_home_override")
-    @patch("mmrelay.config")
     @patch("os.makedirs")
-    def test_home_flag_sets_legacy_variables(
-        self, _mock_makedirs, mock_config, mock_set_override
-    ):
-        """Test --home flag sets both legacy custom_base_dir and custom_data_dir."""
+    def test_home_flag_sets_home_override(self, _mock_makedirs, mock_set_override):
+        """Test --home flag sets the paths HOME override."""
         self.args.home = "/custom/home"
         self.args.base_dir = None
         self.args.data_dir = None
 
-        mock_config.custom_base_dir = "/old/base"
-        mock_config.custom_data_dir = "/old/data"
-
         _apply_dir_overrides(self.args)
 
         expected_path = os.path.abspath("/custom/home")
-        self.assertEqual(mock_config.custom_base_dir, expected_path)
-        self.assertEqual(mock_config.custom_data_dir, expected_path)
+        mock_set_override.assert_called_once_with(expected_path, source="--home")
 
     @patch("mmrelay.paths.set_home_override")
-    @patch("mmrelay.config")
     @patch("os.makedirs")
-    def test_base_dir_flag_sets_legacy_variables(
-        self, _mock_makedirs, mock_config, mock_set_override
-    ):
-        """Test --base-dir flag sets both legacy custom_base_dir and custom_data_dir."""
+    def test_base_dir_flag_sets_home_override(self, _mock_makedirs, mock_set_override):
+        """Test --base-dir flag sets the paths HOME override."""
         self.args.home = None
         self.args.base_dir = "/my/base"
         self.args.data_dir = None
 
-        mock_config.custom_base_dir = "/old/base"
-        mock_config.custom_data_dir = "/old/data"
-
         _apply_dir_overrides(self.args)
 
         expected_path = os.path.abspath("/my/base")
-        self.assertEqual(mock_config.custom_base_dir, expected_path)
-        self.assertEqual(mock_config.custom_data_dir, expected_path)
+        mock_set_override.assert_called_once_with(expected_path, source="--base-dir")
 
     @patch("mmrelay.paths.set_home_override")
-    @patch("mmrelay.config")
     @patch("os.makedirs")
-    def test_data_dir_flag_sets_legacy_variables(
-        self, _mock_makedirs, mock_config, mock_set_override
-    ):
-        """Test --data-dir flag sets both legacy custom_base_dir and custom_data_dir."""
+    def test_data_dir_flag_sets_home_override(self, _mock_makedirs, mock_set_override):
+        """Test --data-dir flag sets the paths HOME override."""
         self.args.home = None
         self.args.base_dir = None
         self.args.data_dir = "/my/data"
 
-        mock_config.custom_base_dir = "/old/base"
-        mock_config.custom_data_dir = "/old/data"
-
         _apply_dir_overrides(self.args)
 
         expected_path = os.path.abspath("/my/data")
-        self.assertEqual(mock_config.custom_base_dir, expected_path)
-        self.assertEqual(mock_config.custom_data_dir, expected_path)
+        mock_set_override.assert_called_once_with(expected_path, source="--data-dir")
 
 
 class TestFindCredentialsJsonPath(unittest.TestCase):

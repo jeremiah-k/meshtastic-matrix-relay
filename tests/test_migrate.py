@@ -1,5 +1,6 @@
 """Comprehensive tests for migrate.py module covering all migration functions."""
 
+import json
 import os
 import sqlite3
 import sys
@@ -19,6 +20,7 @@ from mmrelay.migrate import (
     _mark_migration_completed,
     _path_is_within_home,
     is_migration_needed,
+    migrate_config,
     migrate_credentials,
     migrate_database,
     migrate_gpxtracker,
@@ -380,12 +382,9 @@ class TestMigrationStateFunctions:
 
         monkeypatch.setattr(migrate_module, "get_home_dir", lambda: test_home)
 
-        def mock_read(*args, **kwargs):
-            raise OSError("Mock read error")
-
         monkeypatch.setattr(paths_module, "get_home_dir", lambda: test_home)
 
-        with patch("builtins.open", side_effect=mock_read):
+        with patch.object(Path, "read_text", side_effect=OSError("Mock read error")):
             with patch("mmrelay.migrate.logger") as mock_logger:
                 result = _is_migration_completed()
 
@@ -403,7 +402,9 @@ class TestMigrationStateFunctions:
 
         state_file = test_home / "migration_completed.flag"
         assert state_file.exists()
-        assert state_file.read_text() == "1.3"
+        payload = json.loads(state_file.read_text())
+        assert payload["version"] == "1.3"
+        assert payload["status"] == "completed"
 
     def test_mark_migration_completed_write_oserror(self, tmp_path, monkeypatch):
         """Test logs error on OSError writing state file."""
@@ -668,6 +669,70 @@ class TestMigrateCredentials:
                 assert result["success"] is True
                 # Warning should be logged
                 mock_logger.warning.assert_called()
+
+
+class TestMigrateConfig:
+    """Tests for migrate_config function."""
+
+    def test_no_config_found(self, tmp_path):
+        """Test returns success when no config.yaml found."""
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+
+        result = migrate_config([legacy_root], new_home)
+
+        assert result["success"] is True
+        assert "No config.yaml found" in result["message"]
+
+    def test_dry_run_mode(self, tmp_path):
+        """Test dry run mode doesn't modify files."""
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        config_file = legacy_root / "config.yaml"
+        config_file.write_text("matrix: {}")
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+
+        result = migrate_config([legacy_root], new_home, dry_run=True)
+
+        assert result["success"] is True
+        assert result["dry_run"] is True
+        assert not (new_home / "config.yaml").exists()
+
+    def test_copy_config(self, tmp_path):
+        """Test copies config.yaml to new location."""
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        config_file = legacy_root / "config.yaml"
+        config_file.write_text("matrix: {}")
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+
+        result = migrate_config([legacy_root], new_home, move=False)
+
+        assert result["success"] is True
+        assert result["action"] == "copy"
+        assert (new_home / "config.yaml").exists()
+        assert config_file.exists()
+
+    def test_backup_existing_config(self, tmp_path):
+        """Test backs up existing config.yaml."""
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        config_file = legacy_root / "config.yaml"
+        config_file.write_text("matrix: {}")
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+        existing_config = new_home / "config.yaml"
+        existing_config.write_text("old: true")
+
+        result = migrate_config([legacy_root], new_home, move=False)
+
+        assert result["success"] is True
+        backups = list(new_home.glob("config.yaml.bak.*"))
+        assert len(backups) == 1
 
 
 class TestMigrateDatabase:
@@ -1384,6 +1449,97 @@ class TestRollbackMigration:
         assert db.read_text() == "backup db"
         assert result["restored_count"] > 0
 
+    def test_restores_config(self, tmp_path, monkeypatch):
+        """Test restores config.yaml from backup."""
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+        config_file = new_home / "config.yaml"
+        config_file.write_text("current: true")
+        backup = new_home / "config.yaml.bak.20230101_120000"
+        backup.write_text("backup: true")
+
+        monkeypatch.setattr(migrate_module, "get_home_dir", lambda: new_home)
+
+        state_file = new_home / "migration_completed.flag"
+        state_file.write_text("1.3")
+
+        result = rollback_migration()
+
+        assert result["success"] is True
+        assert config_file.read_text() == "backup: true"
+
+    def test_restores_logs_directory(self, tmp_path, monkeypatch):
+        """Test restores logs directory from backup."""
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+        logs_dir = new_home / "logs"
+        logs_dir.mkdir()
+        (logs_dir / "current.log").write_text("current")
+
+        backup_dir = new_home / "logs.bak.20230101_120000"
+        backup_dir.mkdir()
+        (backup_dir / "restored.log").write_text("restored")
+
+        monkeypatch.setattr(migrate_module, "get_home_dir", lambda: new_home)
+
+        state_file = new_home / "migration_completed.flag"
+        state_file.write_text("1.3")
+
+        result = rollback_migration()
+
+        assert result["success"] is True
+        assert (logs_dir / "restored.log").exists()
+        assert not (logs_dir / "current.log").exists()
+
+    def test_restores_store_directory(self, tmp_path, monkeypatch):
+        """Test restores store directory from backup."""
+        if sys.platform == "win32":
+            pytest.skip("Store rollback not supported on Windows")
+
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+        store_dir = new_home / "store"
+        store_dir.mkdir()
+        (store_dir / "current.db").write_text("current")
+
+        backup_dir = new_home / "store.bak.20230101_120000"
+        backup_dir.mkdir()
+        (backup_dir / "restored.db").write_text("restored")
+
+        monkeypatch.setattr(migrate_module, "get_home_dir", lambda: new_home)
+
+        state_file = new_home / "migration_completed.flag"
+        state_file.write_text("1.3")
+
+        result = rollback_migration()
+
+        assert result["success"] is True
+        assert (store_dir / "restored.db").exists()
+        assert not (store_dir / "current.db").exists()
+
+    def test_restores_plugins_directory(self, tmp_path, monkeypatch):
+        """Test restores plugins directory from backup."""
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+        plugins_dir = new_home / "plugins"
+        plugins_dir.mkdir()
+        (plugins_dir / "current.txt").write_text("current")
+
+        backup_dir = new_home / "plugins.bak.20230101_120000"
+        backup_dir.mkdir()
+        (backup_dir / "restored.txt").write_text("restored")
+
+        monkeypatch.setattr(migrate_module, "get_home_dir", lambda: new_home)
+
+        state_file = new_home / "migration_completed.flag"
+        state_file.write_text("1.3")
+
+        result = rollback_migration()
+
+        assert result["success"] is True
+        assert (plugins_dir / "restored.txt").exists()
+        assert not (plugins_dir / "current.txt").exists()
+
     def test_handles_multiple_backups(self, tmp_path, monkeypatch):
         """Test handles multiple backup files."""
         new_home = tmp_path / "home"
@@ -1423,7 +1579,7 @@ class TestRollbackMigration:
             with patch("mmrelay.migrate.logger") as mock_logger:
                 result = rollback_migration()
 
-                assert result["success"] is True
+                assert result["success"] is False
                 mock_logger.warning.assert_called()
 
     def test_removes_state_file(self, tmp_path, monkeypatch):

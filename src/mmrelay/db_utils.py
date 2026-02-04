@@ -6,7 +6,6 @@ import sqlite3
 import threading
 from typing import Any, Dict, Tuple, cast
 
-from mmrelay.config import is_new_layout_enabled
 from mmrelay.constants.database import (
     DEFAULT_BUSY_TIMEOUT_MS,
     DEFAULT_ENABLE_WAL,
@@ -288,16 +287,6 @@ def get_db_path() -> str:
                 legacy_candidates=legacy_candidates,
             )
 
-    if not is_new_layout_enabled():
-        existing_paths = [
-            path for path in (default_path,) if path and os.path.exists(path)
-        ]
-        if len(existing_paths) == 1 and existing_paths[0] != default_path:
-            logger.info(
-                "Using legacy database location: %s",
-                existing_paths[0],
-            )
-            default_path = existing_paths[0]
     _cached_db_path = default_path
     return default_path
 

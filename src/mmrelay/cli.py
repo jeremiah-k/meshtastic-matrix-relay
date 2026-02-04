@@ -157,15 +157,6 @@ def _apply_dir_overrides(args: argparse.Namespace | None) -> None:
     mmrelay.paths.set_home_override(absolute_home, source=home_source)
     os.makedirs(absolute_home, exist_ok=True)
 
-    # For backward compatibility, also set the legacy custom_* variables
-    # This ensures any code that still reads these variables gets the correct value
-    import mmrelay.config
-
-    if mmrelay.config.custom_base_dir != absolute_home:
-        mmrelay.config.custom_base_dir = absolute_home
-    if mmrelay.config.custom_data_dir != absolute_home:
-        mmrelay.config.custom_data_dir = absolute_home
-
 
 def parse_arguments() -> argparse.Namespace:
     """

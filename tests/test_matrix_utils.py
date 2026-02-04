@@ -6,6 +6,7 @@ import ssl
 import sys
 import types
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, PropertyMock, mock_open, patch
 
@@ -3935,7 +3936,10 @@ async def test_connect_matrix_credentials_load_exception_uses_config(
             "mmrelay.matrix_utils.async_load_credentials",
             new=AsyncMock(return_value=None),
         ),
-        patch("mmrelay.matrix_utils.get_base_dir", return_value=str(tmp_path)),
+        patch(
+            "mmrelay.matrix_utils.get_credentials_path",
+            return_value=tmp_path / "credentials.json",
+        ),
         patch(
             "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
         ),

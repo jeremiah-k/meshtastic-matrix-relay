@@ -71,7 +71,6 @@ from mmrelay.cli_utils import (
 )
 from mmrelay.config import (
     async_load_credentials,
-    get_base_dir,
     get_e2ee_store_dir,
     get_explicit_credentials_path,
     get_meshtastic_config_value,
@@ -119,6 +118,7 @@ from mmrelay.meshtastic_utils import connect_meshtastic, send_text_reply
 
 # Import meshtastic protobuf for port numbers when needed
 from mmrelay.message_queue import get_message_queue, queue_message
+from mmrelay.paths import get_credentials_path
 
 # Import nio exception types with error handling for test environments.
 # matrix-nio is not marked py.typed in our env; keep import-untyped for mypy --strict.
@@ -1315,7 +1315,7 @@ async def connect_matrix(
             )
             if explicit_path:
                 return os.path.expanduser(explicit_path)
-            return os.path.join(get_base_dir(), "credentials.json")
+            return str(get_credentials_path())
         except (TypeError, OSError, ValueError) as exc:
             logger.debug("Failed to resolve credentials path: %s", exc)
             return None

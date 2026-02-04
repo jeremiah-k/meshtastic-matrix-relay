@@ -617,25 +617,12 @@ def reset_path_overrides():
     This ensures that CLI overrides (--home, --base-dir, --data-dir) and programmatic
     overrides in mmrelay.config do not leak between tests.
     """
-    import mmrelay.config
     import mmrelay.paths
-
-    # Store original mmrelay.config values
-    original_custom_data_dir = getattr(mmrelay.config, "custom_data_dir", None)
-    original_custom_base_dir = getattr(mmrelay.config, "custom_base_dir", None)
-
-    # Reset mmrelay.config to None before test
-    mmrelay.config.custom_data_dir = None
-    mmrelay.config.custom_base_dir = None
 
     # Reset mmrelay.paths override
     mmrelay.paths.reset_home_override()
 
     yield
-
-    # Restore original mmrelay.config values after test
-    mmrelay.config.custom_data_dir = original_custom_data_dir
-    mmrelay.config.custom_base_dir = original_custom_base_dir
 
     # Reset mmrelay.paths override again for safety
     mmrelay.paths.reset_home_override()

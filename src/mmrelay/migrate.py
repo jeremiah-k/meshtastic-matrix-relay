@@ -45,6 +45,7 @@ Plugin Data Migration (Three-Tier System):
     New: $MMRELAY_HOME/plugins/gpxtracker/data/
 """
 
+import json
 import shutil
 import sqlite3
 import sys
@@ -58,6 +59,15 @@ from mmrelay.paths import get_home_dir, resolve_all_paths
 # Migration state file
 MIGRATION_STATE_FILE = "migration_completed.flag"
 MIGRATION_VERSION = "1.3"
+MIGRATION_STEPS_ORDER = [
+    "credentials",
+    "config",
+    "database",
+    "logs",
+    "store",
+    "plugins",
+    "gpxtracker",
+]
 
 
 logger = get_logger("Migration")
@@ -113,6 +123,10 @@ def _find_legacy_data(legacy_root: Path) -> list[dict[str, str]]:
     credentials = legacy_root / "credentials.json"
     if credentials.exists():
         add_finding("credentials", credentials)
+
+    config_path = legacy_root / "config.yaml"
+    if config_path.exists():
+        add_finding("config", config_path)
 
     db_candidates = [
         legacy_root / "meshtastic.sqlite",
@@ -326,29 +340,69 @@ def _get_migration_state_path() -> Path:
     return get_home_dir() / MIGRATION_STATE_FILE
 
 
-def _is_migration_completed() -> bool:
-    """Check if migration has been completed."""
+def _read_migration_state() -> dict[str, Any] | None:
+    """Read migration state metadata from disk if present."""
     state_path = _get_migration_state_path()
     if not state_path.exists():
-        return False
+        return None
 
     try:
-        with open(state_path, "r", encoding="utf-8") as f:
-            content = f.read().strip()
-            return content == MIGRATION_VERSION
+        content = state_path.read_text(encoding="utf-8").strip()
     except (OSError, IOError):
         logger.warning("Could not read migration state file: %s", state_path)
-        return False
+        return None
 
+    if content == MIGRATION_VERSION:
+        return {"version": MIGRATION_VERSION, "status": "completed"}
 
-def _mark_migration_completed() -> None:
-    """Mark migration as completed."""
-    state_path = _get_migration_state_path()
     try:
-        state_path.write_text(MIGRATION_VERSION, encoding="utf-8")
-        logger.info("Migration completed and marked in: %s", state_path)
+        parsed = json.loads(content)
+    except json.JSONDecodeError:
+        # Legacy format stored only the version string.
+        return {"version": content, "status": "completed"}
+
+    if isinstance(parsed, dict):
+        return parsed
+    logger.warning("Migration state file has unexpected content: %s", state_path)
+    return None
+
+
+def _write_migration_state(
+    *, status: str, completed_steps: list[str] | None = None, error: str | None = None
+) -> None:
+    """Persist migration state metadata to disk."""
+    state_path = _get_migration_state_path()
+    payload: dict[str, Any] = {
+        "version": MIGRATION_VERSION,
+        "status": status,
+        "timestamp": datetime.now().isoformat(),
+    }
+    if completed_steps is not None:
+        payload["completed_steps"] = completed_steps
+    if error:
+        payload["error"] = error
+
+    try:
+        state_path.write_text(json.dumps(payload), encoding="utf-8")
+        logger.debug("Updated migration state: %s", payload)
     except (OSError, IOError) as e:
-        logger.exception("Failed to mark migration as completed: %s", e)
+        logger.exception("Failed to write migration state: %s", e)
+
+
+def _is_migration_completed() -> bool:
+    """Check if migration has been completed."""
+    state = _read_migration_state()
+    if not state:
+        return False
+    return (
+        state.get("version") == MIGRATION_VERSION and state.get("status") == "completed"
+    )
+
+
+def _mark_migration_completed(completed_steps: list[str] | None = None) -> None:
+    """Mark migration as completed."""
+    _write_migration_state(status="completed", completed_steps=completed_steps)
+    logger.info("Migration completed and marked in: %s", _get_migration_state_path())
 
 
 def _backup_file(src_path: Path, suffix: str = ".bak") -> Path:
@@ -498,6 +552,89 @@ def migrate_credentials(
             "success": False,
             "error": str(e),
             "old_path": str(old_creds),
+        }
+
+
+def migrate_config(
+    legacy_roots: list[Path],
+    new_home: Path,
+    dry_run: bool = False,
+    force: bool = False,
+    move: bool = False,
+) -> dict[str, Any]:
+    """Migrate config.yaml to new location.
+
+    Scans all legacy roots for config.yaml and migrates the first one found.
+
+    Args:
+        legacy_roots: List of legacy directory paths to scan for config.yaml.
+        new_home: New home directory.
+        dry_run: If True, only report what would be done without making changes.
+        force: If True, allow overwriting existing files without backup.
+        move: If True, use MOVE operation instead of COPY.
+
+    Returns:
+        dict: Migration result with success status and details.
+    """
+    old_config: Path | None = None
+
+    for legacy_root in legacy_roots:
+        candidate = legacy_root / "config.yaml"
+        if candidate.exists():
+            old_config = candidate
+            logger.info("Found config.yaml in legacy root: %s", old_config)
+            break
+
+    if not old_config or not old_config.exists():
+        return {
+            "success": True,
+            "message": "No config.yaml found in legacy locations",
+        }
+
+    new_config = new_home / "config.yaml"
+
+    if dry_run:
+        logger.info(
+            "[DRY RUN] Would migrate config from %s to %s", old_config, new_config
+        )
+        return {
+            "success": True,
+            "old_path": str(old_config),
+            "new_path": str(new_config),
+            "action": "move" if move else "copy",
+            "dry_run": True,
+        }
+
+    new_home.mkdir(parents=True, exist_ok=True)
+
+    if new_config.exists() and not force:
+        logger.info("Backing up existing config.yaml: %s", new_config)
+        backup_path = _backup_file(new_config)
+        try:
+            shutil.copy2(str(new_config), str(backup_path))
+        except (OSError, IOError) as e:
+            logger.warning("Failed to backup config.yaml: %s", e)
+
+    try:
+        if move:
+            logger.info("Moving config from %s to %s", old_config, new_config)
+            shutil.move(str(old_config), str(new_config))
+        else:
+            logger.info("Copying config from %s to %s", old_config, new_config)
+            shutil.copy2(str(old_config), str(new_config))
+        logger.info("Migrated config from %s to %s", old_config, new_config)
+        return {
+            "success": True,
+            "old_path": str(old_config),
+            "new_path": str(new_config),
+            "action": "move" if move else "copy",
+        }
+    except (OSError, IOError) as e:
+        logger.exception("Failed to migrate config.yaml: %s", e)
+        return {
+            "success": False,
+            "error": str(e),
+            "old_path": str(old_config),
         }
 
 
@@ -685,6 +822,14 @@ def migrate_logs(
             "dry_run": True,
         }
 
+    if new_logs_dir.exists() and not force:
+        logger.info("Backing up existing logs directory: %s", new_logs_dir)
+        backup_path = _backup_file(new_logs_dir)
+        try:
+            shutil.copytree(str(new_logs_dir), str(backup_path))
+        except (OSError, IOError) as e:
+            logger.warning("Failed to backup logs directory: %s", e)
+
     new_logs_dir.mkdir(parents=True, exist_ok=True)
 
     migrated_count = 0
@@ -869,6 +1014,14 @@ def migrate_plugins(
             "dry_run": True,
         }
 
+    if new_plugins_dir.exists() and not force:
+        logger.info("Backing up existing plugins directory: %s", new_plugins_dir)
+        backup_path = _backup_file(new_plugins_dir)
+        try:
+            shutil.copytree(str(new_plugins_dir), str(backup_path))
+        except (OSError, IOError) as e:
+            logger.warning("Failed to backup plugins directory: %s", e)
+
     new_plugins_dir.mkdir(parents=True, exist_ok=True)
 
     migrated_types = []
@@ -995,7 +1148,11 @@ def migrate_gpxtracker(
     """
     old_gpx_dir: Path | None = None
 
-    for legacy_root in legacy_roots:
+    roots_to_scan = list(legacy_roots)
+    if new_home not in roots_to_scan:
+        roots_to_scan.append(new_home)
+
+    for legacy_root in roots_to_scan:
         legacy_config = legacy_root / "config.yaml"
         if legacy_config.exists():
             try:
@@ -1120,23 +1277,16 @@ def perform_migration(
     Returns:
         dict: Migration report with details of all migrations performed.
     """
-    report: dict[str, Any] = {}
+    report: dict[str, Any] = {
+        "dry_run": dry_run,
+        "timestamp": datetime.now().isoformat(),
+        "migrations": [],
+        "completed_steps": [],
+    }
     if dry_run:
         logger.info("DRY RUN MODE - No changes will be made")
-        report.update(
-            {
-                "dry_run": True,
-                "timestamp": datetime.now().isoformat(),
-            }
-        )
     else:
         logger.info("Starting migration to v1.3 directory structure")
-        report.update(
-            {
-                "dry_run": False,
-                "timestamp": datetime.now().isoformat(),
-            }
-        )
 
     # Get authoritative path resolution using unified HOME + legacy model
     paths_info = resolve_all_paths()
@@ -1161,97 +1311,165 @@ def perform_migration(
         report["message"] = f"Failed to create new home directory: {e}"
         return report
 
-    report["migrations"] = []
+    completed_steps: list[str] = []
 
-    # Migrate credentials
-    creds_result = migrate_credentials(
-        legacy_roots, new_home, dry_run=dry_run, force=force, move=move
-    )
-    report["migrations"].append({"type": "credentials", "result": creds_result})
-    if not creds_result.get("success", True):
-        report["success"] = False
-        return report
+    def _record_step(step_name: str, result: dict[str, Any]) -> None:
+        report["migrations"].append({"type": step_name, "result": result})
+        report["completed_steps"] = list(completed_steps)
 
-    # Migrate database
-    db_result = migrate_database(
-        legacy_roots, new_home, dry_run=dry_run, force=force, move=move
-    )
-    report["migrations"].append({"type": "database", "result": db_result})
-    if not db_result.get("success", True):
-        report["success"] = False
-        return report
+    def _run_step(step_name: str, func, *args, **kwargs) -> dict[str, Any]:
+        result = func(*args, **kwargs)
+        _record_step(step_name, result)
+        if not result.get("success", True):
+            error_detail = (
+                result.get("error") or result.get("message") or "Unknown error"
+            )
+            raise MigrationError(f"{step_name} migration failed: {error_detail}")
+        completed_steps.append(step_name)
+        report["completed_steps"] = list(completed_steps)
+        if not dry_run:
+            _write_migration_state(
+                status="in_progress", completed_steps=completed_steps
+            )
+        return result
 
-    # Migrate logs
-    logs_result = migrate_logs(
-        legacy_roots, new_home, dry_run=dry_run, force=force, move=move
-    )
-    report["migrations"].append({"type": "logs", "result": logs_result})
-    if not logs_result.get("success", True):
-        report["success"] = False
-        return report
+    try:
+        if not dry_run:
+            _write_migration_state(
+                status="in_progress", completed_steps=completed_steps
+            )
 
-    # Migrate store (E2EE keys)
-    store_result = migrate_store(
-        legacy_roots, new_home, dry_run=dry_run, force=force, move=move
-    )
-    report["migrations"].append({"type": "store", "result": store_result})
-    if not store_result.get("success", True):
-        report["success"] = False
-        return report
-
-    # Migrate plugins
-    plugins_result = migrate_plugins(
-        legacy_roots, new_home, dry_run=dry_run, force=force, move=move
-    )
-    report["migrations"].append({"type": "plugins", "result": plugins_result})
-
-    # Migrate gpxtracker (if configured)
-    # Scan all legacy roots for gpx_directory config or plugins directory
-    gpx_configured = False
-    for legacy_root in legacy_roots:
-        # Check for gpxtracker config in legacy root
-        legacy_config = legacy_root / "config.yaml"
-        if legacy_config.exists():
-            try:
-                import yaml
-            except ImportError as e:
-                logger.warning("Failed to import yaml: %s", e)
-                continue
-
-            try:
-                with open(legacy_config, "r") as f:
-                    config_data = yaml.safe_load(f)
-                    if isinstance(config_data, dict):
-                        plugins_section = config_data.get("community-plugins", {})
-                        if isinstance(plugins_section, dict):
-                            gpx_section = plugins_section.get("gpxtracker", {})
-                            if isinstance(gpx_section, dict) and gpx_section.get(
-                                "gpx_directory"
-                            ):
-                                gpx_configured = True
-                                break
-            except (OSError, yaml.YAMLError) as e:
-                logger.warning("Failed to read legacy config %s: %s", legacy_config, e)
-
-    if gpx_configured or any(
-        (legacy_root / "plugins").exists() for legacy_root in legacy_roots
-    ):
-        gpx_result = migrate_gpxtracker(
-            legacy_roots, new_home, dry_run=dry_run, force=force, move=move
+        # Migrate credentials
+        _run_step(
+            "credentials",
+            migrate_credentials,
+            legacy_roots,
+            new_home,
+            dry_run=dry_run,
+            force=force,
+            move=move,
         )
-        report["migrations"].append({"type": "gpxtracker", "result": gpx_result})
-        if not gpx_result.get("success", True):
-            report["success"] = False
-            return report
 
-    # Mark migration as complete (skip for dry run)
-    if not dry_run:
-        _mark_migration_completed()
-        report["message"] = "Migration completed successfully"
-    else:
-        report["message"] = "Dry run complete - no changes made"
+        # Migrate config
+        _run_step(
+            "config",
+            migrate_config,
+            legacy_roots,
+            new_home,
+            dry_run=dry_run,
+            force=force,
+            move=move,
+        )
 
-    report["success"] = True
+        # Migrate database
+        _run_step(
+            "database",
+            migrate_database,
+            legacy_roots,
+            new_home,
+            dry_run=dry_run,
+            force=force,
+            move=move,
+        )
+
+        # Migrate logs
+        _run_step(
+            "logs",
+            migrate_logs,
+            legacy_roots,
+            new_home,
+            dry_run=dry_run,
+            force=force,
+            move=move,
+        )
+
+        # Migrate store (E2EE keys)
+        _run_step(
+            "store",
+            migrate_store,
+            legacy_roots,
+            new_home,
+            dry_run=dry_run,
+            force=force,
+            move=move,
+        )
+
+        # Migrate plugins
+        _run_step(
+            "plugins",
+            migrate_plugins,
+            legacy_roots,
+            new_home,
+            dry_run=dry_run,
+            force=force,
+            move=move,
+        )
+
+        # Migrate gpxtracker (if configured)
+        gpx_configured = False
+        roots_to_scan = list(legacy_roots)
+        if new_home not in roots_to_scan:
+            roots_to_scan.append(new_home)
+        for legacy_root in roots_to_scan:
+            legacy_config = legacy_root / "config.yaml"
+            if legacy_config.exists():
+                try:
+                    import yaml
+                except ImportError as e:
+                    logger.warning("Failed to import yaml: %s", e)
+                    continue
+
+                try:
+                    with open(legacy_config, "r") as f:
+                        config_data = yaml.safe_load(f)
+                        if isinstance(config_data, dict):
+                            plugins_section = config_data.get("community-plugins", {})
+                            if isinstance(plugins_section, dict):
+                                gpx_section = plugins_section.get("gpxtracker", {})
+                                if isinstance(gpx_section, dict) and gpx_section.get(
+                                    "gpx_directory"
+                                ):
+                                    gpx_configured = True
+                                    break
+                except (OSError, yaml.YAMLError) as e:
+                    logger.warning(
+                        "Failed to read legacy config %s: %s", legacy_config, e
+                    )
+
+        if gpx_configured or any(
+            (legacy_root / "plugins").exists() for legacy_root in legacy_roots
+        ):
+            _run_step(
+                "gpxtracker",
+                migrate_gpxtracker,
+                legacy_roots,
+                new_home,
+                dry_run=dry_run,
+                force=force,
+                move=move,
+            )
+
+        # Mark migration as complete (skip for dry run)
+        if not dry_run:
+            _mark_migration_completed(completed_steps=completed_steps)
+            report["message"] = "Migration completed successfully"
+        else:
+            report["message"] = "Dry run complete - no changes made"
+
+        report["success"] = True
+    except Exception as exc:
+        report["success"] = False
+        report["error"] = str(exc)
+        report["message"] = "Migration failed"
+        if not dry_run:
+            _write_migration_state(
+                status="failed",
+                completed_steps=completed_steps,
+                error=str(exc),
+            )
+            rollback_result = rollback_migration(completed_steps=completed_steps)
+            report["rollback"] = rollback_result
+        return report
 
     logger.info(
         "Migration complete. Summary: %d migrations performed",
@@ -1261,59 +1479,122 @@ def perform_migration(
     return report
 
 
-def rollback_migration() -> dict[str, Any]:
+def rollback_migration(completed_steps: list[str] | None = None) -> dict[str, Any]:
     """Rollback from a failed migration.
 
     This restores files from backup directories.
 
+    Args:
+        completed_steps: Optional ordered list of completed migration steps.
+
     Returns:
         dict: Rollback result with success status.
     """
-    if not _is_migration_completed():
-        return {
-            "success": False,
-            "message": "No migration to rollback - migration not completed",
-        }
+    state_path = _get_migration_state_path()
+    state = _read_migration_state()
+
+    if completed_steps is None:
+        if not state_path.exists():
+            return {
+                "success": False,
+                "message": "No migration to rollback - migration state file not found",
+            }
+        if state and isinstance(state.get("completed_steps"), list):
+            completed_steps = state["completed_steps"]
+        else:
+            completed_steps = list(MIGRATION_STEPS_ORDER)
+
+    steps_to_rollback = [
+        step for step in completed_steps if step in MIGRATION_STEPS_ORDER
+    ]
+    steps_to_rollback.reverse()
 
     new_home = get_home_dir()
-
-    # Restore from backups
     restored_count = 0
+    rollback_errors: list[str] = []
 
-    # Restore credentials
-    credential_backups = sorted(new_home.glob("credentials.json.bak.*"), reverse=True)
-    if credential_backups:
-        backup = credential_backups[0]
+    def restore_file(backup_glob: str, dest_path: Path) -> None:
+        nonlocal restored_count
+        backups = sorted(dest_path.parent.glob(backup_glob), reverse=True)
+        if not backups:
+            logger.warning("No backups found for %s", dest_path.name)
+            return
+        backup = backups[0]
         try:
-            shutil.copy2(str(backup), str(new_home / "credentials.json"))
-            logger.info("Restored credentials from: %s", backup)
+            shutil.copy2(str(backup), str(dest_path))
+            logger.info("Restored %s from: %s", dest_path.name, backup)
             restored_count += 1
         except (OSError, IOError) as e:
-            logger.warning("Failed to restore credentials backup %s: %s", backup, e)
+            logger.warning(
+                "Failed to restore %s backup %s: %s", dest_path.name, backup, e
+            )
+            rollback_errors.append(f"{dest_path.name}: {e}")
 
-    # Restore database
-    database_backups = sorted(
-        (new_home / "database").glob("meshtastic.sqlite.bak.*"), reverse=True
+    def restore_dir(backup_glob: str, dest_dir: Path, label: str) -> None:
+        nonlocal restored_count
+        backups = sorted(dest_dir.parent.glob(backup_glob), reverse=True)
+        if not backups:
+            logger.warning("No backups found for %s directory", label)
+            return
+        backup = backups[0]
+        try:
+            if dest_dir.exists():
+                shutil.rmtree(str(dest_dir))
+            shutil.copytree(str(backup), str(dest_dir))
+            logger.info("Restored %s directory from: %s", label, backup)
+            restored_count += 1
+        except (OSError, IOError) as e:
+            logger.warning(
+                "Failed to restore %s directory backup %s: %s", label, backup, e
+            )
+            rollback_errors.append(f"{label}: {e}")
+
+    for step in steps_to_rollback:
+        if step == "plugins":
+            restore_dir("plugins.bak.*", new_home / "plugins", "plugins")
+        elif step == "store":
+            if sys.platform == "win32":
+                logger.info("Skipping store rollback on Windows")
+                continue
+            restore_dir("store.bak.*", new_home / "store", "store")
+        elif step == "logs":
+            restore_dir("logs.bak.*", new_home / "logs", "logs")
+        elif step == "database":
+            db_dir = new_home / "database"
+            restore_file("meshtastic.sqlite.bak.*", db_dir / "meshtastic.sqlite")
+            restore_file(
+                "meshtastic.sqlite-wal.bak.*", db_dir / "meshtastic.sqlite-wal"
+            )
+            restore_file(
+                "meshtastic.sqlite-shm.bak.*", db_dir / "meshtastic.sqlite-shm"
+            )
+        elif step == "config":
+            restore_file("config.yaml.bak.*", new_home / "config.yaml")
+        elif step == "credentials":
+            restore_file("credentials.json.bak.*", new_home / "credentials.json")
+        else:
+            logger.debug("No rollback action defined for step: %s", step)
+
+    rollback_ok = len(rollback_errors) == 0
+
+    if rollback_ok and state_path.exists():
+        try:
+            state_path.unlink()
+            logger.info("Removed migration state file (migration rolled back)")
+        except (OSError, IOError) as e:
+            logger.warning("Failed to remove migration state file: %s", e)
+            rollback_ok = False
+            rollback_errors.append(f"state_file: {e}")
+
+    message = (
+        f"Rollback complete. Restored {restored_count} items from backups"
+        if rollback_ok
+        else "Rollback completed with errors"
     )
-    if database_backups:
-        backup = database_backups[0]
-        try:
-            shutil.copy2(str(backup), str(new_home / "database" / "meshtastic.sqlite"))
-            logger.info("Restored database from: %s", backup)
-            restored_count += 1
-        except (OSError, IOError) as e:
-            logger.warning("Failed to restore database backup %s: %s", backup, e)
-
-    # Remove migration state file
-    state_path = _get_migration_state_path()
-    try:
-        state_path.unlink()
-        logger.info("Removed migration state file (migration rolled back)")
-    except (OSError, IOError) as e:
-        logger.warning("Failed to remove migration state file: %s", e)
 
     return {
-        "success": True,
-        "message": f"Rollback complete. Restored {restored_count} items from backups",
+        "success": rollback_ok,
+        "message": message,
         "restored_count": restored_count,
+        "errors": rollback_errors,
     }

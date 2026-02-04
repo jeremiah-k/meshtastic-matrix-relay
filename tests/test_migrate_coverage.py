@@ -927,8 +927,8 @@ class TestRollbackMigration:
         with mock.patch("shutil.copy2", side_effect=OSError("Mock error")):
             result = rollback_migration()
 
-            # Should still succeed overall (error is logged as warning)
-            assert result["success"] is True
+            # Should report failure when restore errors occur
+            assert result["success"] is False
 
     def test_rollback_migration_restore_database_failure(self, tmp_path, monkeypatch):
         """Test handling of database restore failure."""
@@ -950,8 +950,8 @@ class TestRollbackMigration:
         with mock.patch("shutil.copy2", side_effect=OSError("Mock error")):
             result = rollback_migration()
 
-            # Should still succeed overall (error is logged as warning)
-            assert result["success"] is True
+            # Should report failure when restore errors occur
+            assert result["success"] is False
 
     def test_rollback_migration_remove_state_file_success(self, tmp_path, monkeypatch):
         """Test that state file is removed on successful rollback."""
@@ -983,8 +983,8 @@ class TestRollbackMigration:
         with mock.patch.object(Path, "unlink", side_effect=OSError("Mock error")):
             result = rollback_migration()
 
-            # Should still succeed overall (error is logged as warning)
-            assert result["success"] is True
+            # Should report failure when cleanup fails
+            assert result["success"] is False
 
     def test_rollback_migration_multiple_backups_selects_most_recent(
         self, tmp_path, monkeypatch

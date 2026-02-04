@@ -1,9 +1,11 @@
 import asyncio
+import functools
 import json
 import ntpath
 import os
 import re
 import sys
+import warnings
 from typing import TYPE_CHECKING, Any, Iterable, cast
 
 import yaml  # mypy: ignore[import-untyped]
@@ -19,18 +21,11 @@ from mmrelay.constants.config import (
 
 # Import new path resolution system
 from mmrelay.paths import get_config_paths as get_unified_config_paths
+from mmrelay.paths import get_credentials_path
 from mmrelay.paths import get_e2ee_store_dir as get_unified_store_dir
-from mmrelay.paths import (
-    get_home_dir,
-)
+from mmrelay.paths import get_home_dir
 from mmrelay.paths import get_logs_dir as get_unified_logs_dir
-from mmrelay.paths import (
-    is_deprecation_window_active,
-)
-
-# Global variables to store directory overrides
-custom_base_dir: str | None = None
-custom_data_dir: str | None = None
+from mmrelay.paths import get_plugins_dir, is_deprecation_window_active
 
 if TYPE_CHECKING:
     import logging
@@ -54,74 +49,12 @@ def _expand_path(path: str) -> str:
     return os.path.abspath(os.path.expanduser(path))
 
 
-def _get_env_base_dir() -> str | None:
-    """
-    Read the MMRELAY_BASE_DIR environment variable and return its expanded absolute path.
-
-    Returns:
-        Expanded absolute path (`str`) if MMRELAY_BASE_DIR is set, `None` otherwise.
-    """
-    env_base_dir = os.getenv("MMRELAY_BASE_DIR")
-    if env_base_dir:
-        return _expand_path(env_base_dir)
-    return None
-
-
-def _get_env_data_dir() -> str | None:
-    """
-    Return the expanded absolute path specified by the MMRELAY_DATA_DIR environment variable, if present.
-
-    Returns:
-        str | None: Expanded absolute path from MMRELAY_DATA_DIR if the variable is set, `None` otherwise.
-    """
-    env_data_dir = os.getenv("MMRELAY_DATA_DIR")
-    if env_data_dir:
-        return _expand_path(env_data_dir)
-    return None
-
-
-def _has_any_dir_override() -> bool:
-    """
-    Check whether any override for the application's base or data directory is set.
-
-    Returns:
-        `true` if a custom_base_dir, custom_data_dir, `MMRELAY_BASE_DIR`, or `MMRELAY_DATA_DIR` is present, `false` otherwise.
-    """
-    return bool(
-        custom_base_dir
-        or custom_data_dir
-        or os.getenv("MMRELAY_BASE_DIR")
-        or os.getenv("MMRELAY_DATA_DIR")
-    )
-
-
-def is_new_layout_enabled() -> bool:
-    """
-    Report whether the new directory layout is enabled.
-
-    Checks for a programmatic override via `custom_base_dir` or the presence of the
-    `MMRELAY_BASE_DIR` environment variable.
-
-    Returns:
-        `true` if a custom base directory is configured via `custom_base_dir` or
-        `MMRELAY_BASE_DIR`, `false` otherwise.
-    """
-    return bool(custom_base_dir) or bool(os.getenv("MMRELAY_BASE_DIR"))
-
-
-def is_legacy_layout_enabled() -> bool:
-    """
-    Determine whether the legacy (data-dir-based) directory layout is active.
-
-    The legacy layout is considered active when a data-directory override is present via the
-    custom_data_dir module override or the MMRELAY_DATA_DIR environment variable, and the
-    new-layout mode is not enabled.
-
-    Returns:
-        `true` if the legacy layout is enabled, `false` otherwise.
-    """
-    return not is_new_layout_enabled() and bool(
-        custom_data_dir or os.getenv("MMRELAY_DATA_DIR")
+@functools.lru_cache(maxsize=None)
+def _warn_deprecated(_name: str) -> None:
+    warnings.warn(
+        "Use paths.get_home_dir() instead. Support will be removed in v1.4.",
+        DeprecationWarning,
+        stacklevel=3,
     )
 
 
@@ -150,49 +83,11 @@ def get_base_dir() -> str:
     DEPRECATED: Use get_home_dir() from mmrelay.paths instead.
     This function now wraps get_home_dir() for backward compatibility.
 
-    Resolution order:
-        1. Module-level custom_base_dir (legacy override)
-        2. Module-level custom_data_dir (legacy override)
-        3. Environment variable MMRELAY_BASE_DIR (legacy, deprecation warning)
-        4. Environment variable MMRELAY_DATA_DIR (legacy, deprecation warning)
-        5. Unified MMRELAY_HOME environment variable (new system)
-        6. Platform defaults (~/.mmrelay on Linux/macOS, platformdirs on Windows)
-
     Returns:
         The filesystem path to the application's base data directory.
     """
-    if custom_base_dir:
-        _get_config_logger().warning(
-            "custom_base_dir module override is deprecated. "
-            "Use paths.get_home_dir() or set_home_override() instead."
-        )
-        return custom_base_dir
-    if custom_data_dir:
-        _get_config_logger().warning(
-            "custom_data_dir module override is deprecated. "
-            "Use paths.get_home_dir() or set_home_override() instead."
-        )
-        return custom_data_dir
-
-    env_base_dir = _get_env_base_dir()
-    if env_base_dir:
-        _get_config_logger().warning(
-            "MMRELAY_BASE_DIR is deprecated. Use MMRELAY_HOME instead. "
-            "Support will be removed in v1.4."
-        )
-        return env_base_dir
-    env_data_dir = _get_env_data_dir()
-    if env_data_dir:
-        _get_config_logger().warning(
-            "MMRELAY_DATA_DIR is deprecated. Use MMRELAY_HOME instead. "
-            "Support will be removed in v1.4."
-        )
-        return env_data_dir
-
-    # Always return unified HOME (no /data subdirectory)
-    # This ensures there's exactly one root across all modules
-    home_path = str(get_home_dir())
-    return home_path
+    _warn_deprecated("get_base_dir")
+    return str(get_home_dir())
 
 
 def get_app_path() -> str:
@@ -336,41 +231,17 @@ def get_data_dir(*, create: bool = True) -> str:
     DEPRECATED: Use get_home_dir() from mmrelay.paths instead.
     This function now wraps get_home_dir() for backward compatibility.
 
-    Resolution order:
-        1. Module-level custom_data_dir (legacy override)
-        2. Environment variable MMRELAY_DATA_DIR (legacy, deprecation warning)
-        3. Unified MMRELAY_HOME environment variable (new system)
-        4. Platform defaults (~/.mmrelay on Linux/macOS, platformdirs on Windows)
-
     Parameters:
         create (bool): If True, ensure the returned directory exists (attempt to create it).
 
     Returns:
         str: Absolute path to data directory.
     """
-    if custom_data_dir:
-        _get_config_logger().warning(
-            "custom_data_dir module override is deprecated. "
-            "Use paths.get_home_dir() or set_home_override() instead."
-        )
-        if create:
-            os.makedirs(custom_data_dir, exist_ok=True)
-        return custom_data_dir
-
-    env_data_dir = _get_env_data_dir()
-    if env_data_dir:
-        _get_config_logger().warning(
-            "MMRELAY_DATA_DIR is deprecated. Use MMRELAY_HOME instead. "
-            "Support will be removed in v1.4."
-        )
-        if create:
-            os.makedirs(env_data_dir, exist_ok=True)
-        return env_data_dir
-
-    home = get_base_dir()
+    _warn_deprecated("get_data_dir")
+    home = str(get_home_dir())
     if create:
         os.makedirs(home, exist_ok=True)
-    return str(home)
+    return home
 
 
 def get_plugin_data_dir(plugin_name: str | None = None) -> str:
@@ -385,11 +256,7 @@ def get_plugin_data_dir(plugin_name: str | None = None) -> str:
     Returns:
         str: Absolute path to the plugins directory, or to the plugin-specific subdirectory when `plugin_name` is provided.
     """
-    # Get the base data directory
-    base_data_dir = get_data_dir()
-
-    # Create the plugins directory
-    plugins_data_dir = os.path.join(base_data_dir, "plugins")
+    plugins_data_dir = str(get_plugins_dir())
     os.makedirs(plugins_data_dir, exist_ok=True)
 
     # If a plugin name is provided, create and return a plugin-specific directory
@@ -434,7 +301,7 @@ def get_e2ee_store_dir() -> str:
             raise
         # Match legacy behavior on Windows: logs warning and returns a path anyway
         # (even if it won't be used for E2EE)
-        base = get_base_dir()
+        base = str(get_home_dir())
         if sys.platform == "win32":
             store_dir = ntpath.join(base, "store")
         else:
@@ -443,7 +310,7 @@ def get_e2ee_store_dir() -> str:
         return store_dir
     except (OSError, PermissionError) as e:
         # Fallback for permission errors
-        base = get_base_dir()
+        base = str(get_home_dir())
         store_dir = os.path.join(base, "store")
         logger.warning("Could not create E2EE store directory: %s", e)
         return store_dir
@@ -832,41 +699,6 @@ def load_credentials() -> dict[str, Any] | None:
             logger.debug("Successfully loaded credentials from %s", credentials_path)
             return credentials
 
-        # During deprecation window, search legacy locations if primary not found
-        if is_deprecation_window_active():
-            _get_config_logger().info(
-                "Primary credentials file not found. Checking legacy locations..."
-            )
-
-            legacy_base_dir = _get_env_base_dir()
-            legacy_data_dir = _get_env_data_dir()
-
-            if legacy_base_dir:
-                legacy_creds = os.path.join(legacy_base_dir, "credentials.json")
-                if os.path.exists(legacy_creds):
-                    with open(legacy_creds, "r", encoding="utf-8") as f:
-                        credentials = cast(dict[str, Any], json.load(f))
-                    _get_config_logger().warning(
-                        "Credentials found in legacy location: %s. "
-                        "Please run 'mmrelay migrate' to move to new unified structure. "
-                        "Support for legacy credentials will be removed in v1.4.",
-                        legacy_creds,
-                    )
-                    return credentials
-
-            if legacy_data_dir:
-                legacy_creds = os.path.join(legacy_data_dir, "credentials.json")
-                if os.path.exists(legacy_creds):
-                    with open(legacy_creds, "r", encoding="utf-8") as f:
-                        credentials = cast(dict[str, Any], json.load(f))
-                    _get_config_logger().warning(
-                        "Credentials found in legacy location: %s. "
-                        "Please run 'mmrelay migrate' to move to new unified structure. "
-                        "Support for legacy credentials will be removed in v1.4.",
-                        legacy_creds,
-                    )
-                    return credentials
-
     except (OSError, PermissionError, json.JSONDecodeError, TypeError):
         logger.exception("Error loading credentials.json")
         return None
@@ -876,7 +708,7 @@ def load_credentials() -> dict[str, Any] | None:
             debug_candidates: list[str] = []
             if config_path:
                 debug_candidates.append(os.path.dirname(config_path))
-            debug_candidates.append(get_base_dir())
+            debug_candidates.append(str(get_home_dir()))
             seen: set[str] = set()
             for debug_dir in debug_candidates:
                 if not debug_dir or debug_dir in seen:
@@ -939,7 +771,7 @@ def save_credentials(
             raw_target_path = explicit_path
             target_path = os.path.normpath(_expand_path(explicit_path))
         else:
-            raw_target_path = os.path.join(get_base_dir(), "credentials.json")
+            raw_target_path = str(get_credentials_path())
             target_path = os.path.normpath(raw_target_path)
 
     if (
@@ -1332,11 +1164,11 @@ def _resolve_credentials_path(
             candidate = os.path.join(candidate, "credentials.json")
         config_dir = os.path.dirname(candidate)
         if not config_dir:
-            config_dir = get_base_dir()
+            config_dir = str(get_home_dir())
             candidate = os.path.join(config_dir, os.path.basename(candidate))
         return candidate, config_dir
 
-    base_dir = get_base_dir()
+    base_dir = str(get_home_dir())
     return os.path.join(base_dir, "credentials.json"), base_dir
 
 
