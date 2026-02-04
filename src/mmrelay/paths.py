@@ -327,6 +327,11 @@ def get_plugin_data_dir(plugin_name: str, subdir: str | None = None) -> Path:
 
     Returns:
         Path: Path to the plugin's data directory (filesystem subpath when `subdir` is set, otherwise the plugin's database directory under the application's database/plugin_data).
+
+    Note:
+        This function has two distinct behaviors based on the `subdir` parameter:
+        - With `subdir`: Returns Tier 2 filesystem storage path (e.g., plugins/{name}/data/{subdir}) for files like GPX tracks, JSON caches, etc.
+        - Without `subdir`: Returns Tier 3 database storage path (e.g., database/plugin_data/{name}) for SQLite plugin data.
     """
     if subdir:
         # Tier 2: Filesystem storage (e.g., GPX files, JSON caches)
@@ -612,7 +617,6 @@ def get_diagnostics() -> dict[str, Any]:
             - "sources_used": Source chosen to determine the home directory (string).
             - "legacy_active": `True` if the legacy deprecation window is active, `False` otherwise.
     """
-    _logger = get_logger("paths")
     # Note: resolve_all_paths() already resolves home and triggers any deprecation warnings
 
     resolved = resolve_all_paths()

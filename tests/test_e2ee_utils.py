@@ -64,7 +64,7 @@ def test_credentials_found_in_legacy_location(
     but exist in a legacy location, get_e2ee_status correctly marks
     credentials as available and stops searching after first match.
     """
-    temp_dir, config_path, credentials_path, base_config = e2ee_test_config
+    _temp_dir, _config_path, _credentials_path, base_config = e2ee_test_config
 
     # Mock dependencies as installed
     with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
@@ -141,7 +141,7 @@ def test_credentials_not_found_in_legacy_locations(
     legacy locations, get_e2ee_status correctly marks credentials as
     unavailable and adds appropriate issue message.
     """
-    temp_dir, config_path, credentials_path, base_config = e2ee_test_config
+    _temp_dir, _config_path, _credentials_path, base_config = e2ee_test_config
 
     # Mock dependencies as installed
     with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
@@ -200,7 +200,7 @@ def test_credentials_in_legacy_during_deprecation_window(
     This test verifies that when deprecation window is active and credentials
     exist in a legacy location, _check_credentials_available returns True.
     """
-    temp_dir, config_path, credentials_path, base_config = e2ee_test_config
+    _temp_dir, config_path, _credentials_path, _base_config = e2ee_test_config
 
     # Mock dependencies as installed
     with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
@@ -265,7 +265,7 @@ def test_no_credentials_during_deprecation_window(
 
     Mocks an active deprecation window and multiple legacy sources, asserts function returns False and that primary credentials path plus all legacy locations were checked.
     """
-    temp_dir, config_path, credentials_path, base_config = e2ee_test_config
+    _temp_dir, config_path, _credentials_path, _base_config = e2ee_test_config
 
     # Mock dependencies as installed
     with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
@@ -322,7 +322,7 @@ def test_deprecation_window_not_active(
 
     Mocks deprecation window as inactive and supplies legacy_sources; ensures legacy locations are not considered and no credentials are reported found.
     """
-    temp_dir, config_path, credentials_path, base_config = e2ee_test_config
+    _temp_dir, config_path, _credentials_path, _base_config = e2ee_test_config
 
     # Mock dependencies as installed
     with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:

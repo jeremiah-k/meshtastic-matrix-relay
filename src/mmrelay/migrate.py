@@ -1367,7 +1367,7 @@ def migrate_gpxtracker(
                 break
 
             try:
-                with open(legacy_config, "r") as f:
+                with open(legacy_config, "r", encoding="utf-8") as f:
                     config_data = yaml.safe_load(f)
                     if isinstance(config_data, dict):
                         plugins_section = config_data.get("community-plugins", {})
@@ -1667,7 +1667,7 @@ def perform_migration(
                     continue
 
                 try:
-                    with open(legacy_config, "r") as f:
+                    with open(legacy_config, "r", encoding="utf-8") as f:
                         config_data = yaml.safe_load(f)
                         if isinstance(config_data, dict):
                             plugins_section = config_data.get("community-plugins", {})
@@ -1730,7 +1730,9 @@ def perform_migration(
             rollback_result = rollback_migration(completed_steps=completed_steps)
             report["rollback"] = rollback_result
         return report
-    except Exception as exc:
+    except (
+        Exception
+    ) as exc:  # noqa: BLE001 - catch-all for unexpected errors during migration
         logger.exception("Unexpected error during migration")
         if not dry_run:
             _write_migration_state(

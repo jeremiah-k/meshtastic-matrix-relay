@@ -2180,8 +2180,6 @@ async def login_matrix_bot(
         existing_device_id = None
         credentials_path = None
         try:
-            import json
-
             explicit_path = os.getenv("MMRELAY_CREDENTIALS_PATH")
             if explicit_path:
                 credentials_path = os.path.expanduser(explicit_path)
@@ -2200,7 +2198,9 @@ async def login_matrix_bot(
                     ):
                         existing_device_id = existing_creds["device_id"]
                         logger.info(f"Reusing existing device_id: {existing_device_id}")
-        except Exception as e:
+        except (
+            Exception
+        ) as e:  # TODO: Narrow to (OSError, json.JSONDecodeError, KeyError, TypeError)
             logger.debug(f"Could not load existing credentials: {e}")
 
         # Check if E2EE is enabled in configuration
@@ -2435,7 +2435,7 @@ async def login_matrix_bot(
                 from mmrelay.paths import resolve_all_paths
 
                 target_path = resolve_all_paths()["credentials_path"]
-            save_credentials(credentials)
+            save_credentials(credentials, credentials_path=target_path)
             logger.info("Credentials saved to %s", target_path)
 
             # Logout other sessions if requested

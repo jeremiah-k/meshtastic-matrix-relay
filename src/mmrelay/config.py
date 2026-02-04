@@ -201,11 +201,18 @@ def get_credentials_search_paths(
     return candidate_paths
 
 
+class InvalidCredentialsPathTypeError(TypeError):
+    """Raised when credentials_path is not a string."""
+
+    def __init__(self) -> None:
+        super().__init__("credentials_path must be a string")
+
+
 def get_explicit_credentials_path(config: dict[str, Any] | None) -> str | None:
     """
     Return an explicitly configured credentials path, if present.
 
-    Checks the MMRELAY_CREDENTIALS_PATH environment variable first, then the top-level
+    Checks the MMRELAY_CREDENTIALS_PATH environment variable first, then top-level
     `credentials_path` key in `config`, and finally `config["matrix"]["credentials_path"]`.
     If a configured value is present it must be a string.
 
@@ -216,7 +223,7 @@ def get_explicit_credentials_path(config: dict[str, Any] | None) -> str | None:
         str | None: The configured credentials path string, or `None` if not set.
 
     Raises:
-        TypeError: If a found `credentials_path` value exists but is not a string.
+        InvalidCredentialsPathTypeError: If a found `credentials_path` value exists but is not a string.
     """
     env_path = os.getenv("MMRELAY_CREDENTIALS_PATH")
     if env_path:
@@ -226,13 +233,13 @@ def get_explicit_credentials_path(config: dict[str, Any] | None) -> str | None:
     explicit_path = config.get("credentials_path")
     if explicit_path:
         if not isinstance(explicit_path, str):
-            raise TypeError("credentials_path must be a string")
+            raise InvalidCredentialsPathTypeError()
         return explicit_path
     matrix_section = config.get("matrix")
     if isinstance(matrix_section, dict):
         credentials_path = matrix_section.get("credentials_path")
         if credentials_path is not None and not isinstance(credentials_path, str):
-            raise TypeError("credentials_path must be a string")
+            raise InvalidCredentialsPathTypeError()
         return credentials_path
     return None
 
@@ -310,7 +317,6 @@ def get_e2ee_store_dir() -> str:
     try:
         store_dir = str(get_unified_store_dir())
         os.makedirs(store_dir, exist_ok=True)
-        return store_dir
     except RuntimeError as e:
         # Re-raise if it's not the "Windows not supported" error
         if "Windows" not in str(e):
@@ -329,6 +335,8 @@ def get_e2ee_store_dir() -> str:
         base = str(get_home_dir())
         store_dir = os.path.join(base, "store")
         logger.warning("Could not create E2EE store directory: %s", e)
+        return store_dir
+    else:
         return store_dir
 
 
@@ -795,7 +803,7 @@ def save_credentials(
     except (OSError, PermissionError):
         logger.exception("Could not create credentials directory %s", target_dir)
         if sys.platform == "win32":
-            logger.error(
+            logger.exception(
                 "On Windows, ensure the application has write permissions to the credentials path."
             )
         raise
