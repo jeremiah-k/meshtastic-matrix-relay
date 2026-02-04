@@ -273,16 +273,20 @@ def get_db_path() -> str:
     default_path = os.path.join(database_dir, "meshtastic.sqlite")
 
     # Check for legacy database in legacy sources and migrate if needed
-    if is_new_layout_enabled() and not os.path.exists(default_path):
+    if not os.path.exists(default_path):
         legacy_candidates = []
         for legacy_root in paths_info.get("legacy_sources", []):
             legacy_db_path = os.path.join(legacy_root, "meshtastic.sqlite")
+            legacy_data_db_path = os.path.join(legacy_root, "data", "meshtastic.sqlite")
             if legacy_db_path and os.path.exists(legacy_db_path):
                 legacy_candidates.append(legacy_db_path)
-        default_path = _migrate_legacy_db_if_needed(
-            default_path=default_path,
-            legacy_candidates=legacy_candidates,
-        )
+            if legacy_data_db_path and os.path.exists(legacy_data_db_path):
+                legacy_candidates.append(legacy_data_db_path)
+        if legacy_candidates:
+            default_path = _migrate_legacy_db_if_needed(
+                default_path=default_path,
+                legacy_candidates=legacy_candidates,
+            )
 
     if not is_new_layout_enabled():
         existing_paths = [
