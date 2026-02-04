@@ -911,18 +911,21 @@ def save_credentials(
     # Determine target path
     if credentials_path:
         # Explicit path provided - use it directly
-        target_path = credentials_path
+        raw_target_path = credentials_path
+        target_path = os.path.normpath(_expand_path(credentials_path))
     else:
         explicit_path = get_explicit_credentials_path(relay_config)
         if explicit_path:
-            target_path = explicit_path
+            raw_target_path = explicit_path
+            target_path = os.path.normpath(_expand_path(explicit_path))
         else:
-            target_path = os.path.join(get_base_dir(), "credentials.json")
+            raw_target_path = os.path.join(get_base_dir(), "credentials.json")
+            target_path = os.path.normpath(raw_target_path)
 
     if (
         os.path.isdir(target_path)
-        or target_path.endswith(os.path.sep)
-        or (os.path.altsep and target_path.endswith(os.path.altsep))
+        or raw_target_path.endswith(os.path.sep)
+        or (os.path.altsep and raw_target_path.endswith(os.path.altsep))
     ):
         target_path = os.path.join(os.path.normpath(target_path), "credentials.json")
 
@@ -936,7 +939,7 @@ def save_credentials(
             logger.error(
                 "On Windows, ensure the application has write permissions to the credentials path."
             )
-        return None
+        raise
 
     # Write credentials
     try:
