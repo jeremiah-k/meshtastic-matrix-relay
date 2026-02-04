@@ -1111,8 +1111,13 @@ def test_save_credentials(
 def test_cleanup_local_session_data_success():
     """Test successful cleanup of local session data."""
     with (
-        patch("mmrelay.paths.get_home_dir", return_value=Path("/test/config")),
-        patch("mmrelay.paths.get_e2ee_store_dir", return_value=Path("/test/store")),
+        patch(
+            "mmrelay.paths.resolve_all_paths",
+            return_value={
+                "credentials_path": "/test/config/credentials.json",
+                "store_dir": "/test/store",
+            },
+        ),
         patch("mmrelay.config.load_config", return_value={}),
         patch("os.path.exists") as mock_exists,
         patch("os.remove") as mock_remove,
@@ -1124,14 +1129,19 @@ def test_cleanup_local_session_data_success():
 
         assert result is True
         mock_remove.assert_called_once_with("/test/config/credentials.json")
-        mock_rmtree.assert_called_once_with(Path("/test/store"))
+        mock_rmtree.assert_called_once_with("/test/store")
 
 
 def test_cleanup_local_session_data_files_not_exist():
     """Test cleanup when files don't exist."""
     with (
-        patch("mmrelay.paths.get_home_dir", return_value=Path("/test/config")),
-        patch("mmrelay.paths.get_e2ee_store_dir", return_value=Path("/test/store")),
+        patch(
+            "mmrelay.paths.resolve_all_paths",
+            return_value={
+                "credentials_path": "/test/config/credentials.json",
+                "store_dir": "/test/store",
+            },
+        ),
         patch("mmrelay.config.load_config", return_value={}),
         patch("os.path.exists", return_value=False),
     ):
@@ -1143,8 +1153,13 @@ def test_cleanup_local_session_data_files_not_exist():
 def test_cleanup_local_session_data_permission_error():
     """Test cleanup with permission errors."""
     with (
-        patch("mmrelay.paths.get_home_dir", return_value=Path("/test/config")),
-        patch("mmrelay.paths.get_e2ee_store_dir", return_value=Path("/test/store")),
+        patch(
+            "mmrelay.paths.resolve_all_paths",
+            return_value={
+                "credentials_path": "/test/config/credentials.json",
+                "store_dir": "/test/store",
+            },
+        ),
         patch("mmrelay.config.load_config", return_value={}),
         patch("os.path.exists", return_value=True),
         patch("os.remove", side_effect=PermissionError("Access denied")),

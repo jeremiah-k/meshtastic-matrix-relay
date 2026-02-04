@@ -1057,7 +1057,11 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
 
                         # Should use resolved database path (default_path)
                         self.assertEqual(result, default_path)
-                        mock_logger.info.assert_not_called()
+                        mock_logger.info.assert_called_once_with(
+                            "Migrated database from legacy location %s to %s",
+                            legacy_base_path,
+                            default_path,
+                        )
 
 
 if __name__ == "__main__":
