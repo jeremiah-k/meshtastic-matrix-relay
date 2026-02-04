@@ -1413,6 +1413,8 @@ async def connect_matrix(
                     "Automatic login failed. Please check your credentials or use 'mmrelay auth login'"
                 )
                 return None
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             logger.exception(f"Error during automatic login: {type(e).__name__}")
             logger.error("Please use 'mmrelay auth login' for interactive setup")

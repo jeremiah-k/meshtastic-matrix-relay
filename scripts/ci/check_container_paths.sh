@@ -101,28 +101,24 @@ check_doc_files() {
 						local DELIMITER
 						DELIMITER=$(echo "${FENCE_CONTENT}" | sed -nE 's/^[[:space:]]*(`{3}|~{3}).*/\1/p')
 
-						# Find matching closing fence (BLOCK_DEPTH starts at 1 for opening fence)
+						# Find matching closing fence
 						local CLOSING_LINE=$((FENCE_LINE + 1))
-						local BLOCK_DEPTH=1
-
-						while [[ ${CLOSING_LINE} -le ${TOTAL_LINES} ]] && [[ ${BLOCK_DEPTH} -gt 0 ]]; do
+						while [[ ${CLOSING_LINE} -le ${TOTAL_LINES} ]]; do
 							local CLOSING_CONTENT
 							CLOSING_CONTENT=$(sed -n "${CLOSING_LINE}p" "${FILE}")
 
 							if echo "${CLOSING_CONTENT}" | grep -qE "^[[:space:]]*${DELIMITER}[[:space:]]*$"; then
-								if [[ ${BLOCK_DEPTH} -eq 1 ]]; then
-									# Allowed range is from (opening fence + 1) to (closing fence - 1)
-									local BLOCK_START=$((FENCE_LINE + 1))
-									local BLOCK_END=$((CLOSING_LINE - 1))
+								# Found the closing fence
+								local BLOCK_START=$((FENCE_LINE + 1))
+								local BLOCK_END=$((CLOSING_LINE - 1))
 
-									if [[ ${BLOCK_START} -le ${BLOCK_END} ]]; then
-										if [[ -n ${ALLOWED_RANGES} ]]; then
-											ALLOWED_RANGES="${ALLOWED_RANGES}|"
-										fi
-										ALLOWED_RANGES="${ALLOWED_RANGES}${BLOCK_START},${BLOCK_END}"
+								if [[ ${BLOCK_START} -le ${BLOCK_END} ]]; then
+									if [[ -n ${ALLOWED_RANGES} ]]; then
+										ALLOWED_RANGES="${ALLOWED_RANGES}|"
 									fi
-									BLOCK_DEPTH=0
+									ALLOWED_RANGES="${ALLOWED_RANGES}${BLOCK_START},${BLOCK_END}"
 								fi
+								break # Exit inner while loop
 							fi
 
 							CLOSING_LINE=$((CLOSING_LINE + 1))
