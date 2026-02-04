@@ -10,6 +10,7 @@ Inline comments explain test assertions and expected behavior for clarity.
 
 import shutil
 import sqlite3
+import sys
 from pathlib import Path
 from unittest import mock
 
@@ -506,6 +507,9 @@ class TestMigrateDatabaseEdgeCases:
         assert result["success"] is True
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="E2EE store not supported on Windows"
+)
 class TestMigrateStoreEdgeCases:
     """Test migrate_store error paths and edge cases."""
 

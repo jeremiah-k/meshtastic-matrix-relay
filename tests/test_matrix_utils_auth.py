@@ -1047,7 +1047,7 @@ def test_get_e2ee_store_dir(mock_makedirs):
 @patch("builtins.open")
 @patch("mmrelay.config.json.load")
 def test_load_credentials_success(
-    mock_json_load, mock_open, mock_exists, mock_get_credentials_path
+    mock_json_load, _mock_open, mock_exists, mock_get_credentials_path
 ):
     """Test successful credentials loading."""
     mock_get_credentials_path.return_value = Path("/test/config/credentials.json")

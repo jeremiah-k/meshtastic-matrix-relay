@@ -844,7 +844,7 @@ def mock_event():
 @pytest.fixture
 def test_config():
     """
-    Provide a sample Meshtastic–Matrix integration configuration for tests.
+    Provide a sample Meshtastic-Matrix integration configuration for tests.
 
     Returns:
         dict: A configuration dict with keys:

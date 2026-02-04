@@ -76,7 +76,20 @@ logger = get_logger("Migration")
 class MigrationError(Exception):
     """Migration-specific error."""
 
-    pass
+    @classmethod
+    def integrity_check_failed(cls, detail: str) -> "MigrationError":
+        """Create error for database integrity check failure."""
+        return cls(f"Database integrity check failed: {detail}")
+
+    @classmethod
+    def verification_failed(cls, detail: str) -> "MigrationError":
+        """Create error for database verification failure."""
+        return cls(f"Database verification failed: {detail}")
+
+    @classmethod
+    def step_failed(cls, step: str, detail: str) -> "MigrationError":
+        """Create error for migration step failure."""
+        return cls(f"{step} migration failed: {detail}")
 
 
 def _path_is_within_home(path: Path, home: Path) -> bool:
@@ -881,10 +894,10 @@ def migrate_database(
                 logger.info("Copying database file: %s", db_path)
                 shutil.copy2(str(db_path), str(dest))
         except (OSError, IOError) as e:
-            logger.error("Failed to migrate database file %s", db_path)
+            logger.exception("Failed to migrate database file %s", db_path)
             return {
                 "success": False,
-                "error": str(e),
+                "error": "Database file migration failed",
             }
 
     logger.info("Database migration complete")
@@ -898,10 +911,10 @@ def migrate_database(
             result = cur.fetchone()
             conn.close()
             if result and result[0] != "ok":
-                raise MigrationError(f"Database integrity check failed: {result[0]}")
+                raise MigrationError.integrity_check_failed(result[0])
             logger.info("Database integrity check passed")
         except sqlite3.DatabaseError as e:
-            raise MigrationError(f"Database verification failed: {e}") from e
+            raise MigrationError.verification_failed(str(e)) from e
 
     return {
         "success": True,
@@ -1533,7 +1546,7 @@ def perform_migration(
             error_detail = (
                 result.get("error") or result.get("message") or "Unknown error"
             )
-            raise MigrationError(f"{step_name} migration failed: {error_detail}")
+            raise MigrationError.step_failed(step_name, error_detail)
         completed_steps.append(step_name)
         report["completed_steps"] = list(completed_steps)
         if not dry_run:

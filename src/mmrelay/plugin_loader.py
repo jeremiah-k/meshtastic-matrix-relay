@@ -115,8 +115,12 @@ def _is_path_contained(root: str, child: str) -> bool:
     root_normalized = os.path.normcase(os.path.realpath(root))
     child_normalized = os.path.normcase(os.path.realpath(child))
 
-    # Check if child starts with root path
-    return child_normalized.startswith(root_normalized + os.sep)
+    # Use os.path.commonpath for platform-independent containment test
+    try:
+        common = os.path.commonpath([root_normalized, child_normalized])
+    except ValueError:
+        return False
+    return common == root_normalized and child_normalized != root_normalized
 
 
 def _get_plugin_root_dirs() -> list[str]:

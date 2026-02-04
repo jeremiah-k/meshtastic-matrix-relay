@@ -1,3 +1,4 @@
+# yamllint disable-file
 apiVersion: apps/v1
 kind: Deployment
 {{- if not .Values.config.enabled }}
@@ -61,7 +62,7 @@ spec:
           command:
             - chown
             - -R
-            - {{ .Values.containerSecurityContext.runAsUser }}:{{ .Values.containerSecurityContext.runAsGroup }}
+            - {{ .Values.containerSecurityContext.runAsUser }}:{{ default .Values.containerSecurityContext.runAsUser .Values.containerSecurityContext.runAsGroup }}
             - {{ .Values.mmrelayHome }}
           securityContext:
             runAsUser: 0

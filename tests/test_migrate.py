@@ -558,7 +558,7 @@ class TestGetMostRecentDatabase:
 class TestMigrateCredentials:
     """Tests for migrate_credentials function (lines 416-494)."""
 
-    def test_no_credentials_found(self, tmp_path, monkeypatch):
+    def test_no_credentials_found(self, tmp_path, _monkeypatch):
         """Test returns success when no credentials file found."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -570,7 +570,7 @@ class TestMigrateCredentials:
         assert result["success"] is True
         assert "No credentials file found" in result["message"]
 
-    def test_dry_run_mode(self, tmp_path, monkeypatch):
+    def test_dry_run_mode(self, tmp_path, _monkeypatch):
         """Test dry run mode doesn't modify files."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -585,7 +585,7 @@ class TestMigrateCredentials:
         assert result["dry_run"] is True
         assert not (new_home / "credentials.json").exists()
 
-    def test_copy_credentials(self, tmp_path, monkeypatch):
+    def test_copy_credentials(self, tmp_path, _monkeypatch):
         """Test copies credentials to new location."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -602,7 +602,7 @@ class TestMigrateCredentials:
         assert creds.exists()  # Original still there
         assert (new_home / "credentials.json").read_text() == creds.read_text()
 
-    def test_move_credentials(self, tmp_path, monkeypatch):
+    def test_move_credentials(self, tmp_path, _monkeypatch):
         """Test moves credentials to new location."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -618,7 +618,7 @@ class TestMigrateCredentials:
         assert (new_home / "credentials.json").exists()
         assert not creds.exists()  # Original moved
 
-    def test_backup_existing_credentials(self, tmp_path, monkeypatch):
+    def test_backup_existing_credentials(self, tmp_path, _monkeypatch):
         """Test backs up existing credentials."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -636,7 +636,7 @@ class TestMigrateCredentials:
         backups = list(new_home.glob("credentials.json.bak.*"))
         assert len(backups) == 1
 
-    def test_force_no_backup(self, tmp_path, monkeypatch):
+    def test_force_no_backup(self, tmp_path, _monkeypatch):
         """Test force mode skips backup."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -654,7 +654,7 @@ class TestMigrateCredentials:
         backups = list(new_home.glob("credentials.json.bak.*"))
         assert len(backups) == 0
 
-    def test_copy_oserror(self, tmp_path, monkeypatch):
+    def test_copy_oserror(self, tmp_path, _monkeypatch):
         """Test handles OSError on copy."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -669,7 +669,7 @@ class TestMigrateCredentials:
             assert result["success"] is False
             assert "Mock error" in result["error"]
 
-    def test_backup_oserror_logged(self, tmp_path, monkeypatch):
+    def test_backup_oserror_logged(self, tmp_path, _monkeypatch):
         """Test logs warning on backup OSError."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -772,7 +772,7 @@ class TestMigrateConfig:
 class TestMigrateDatabase:
     """Tests for migrate_database function (lines 497-611)."""
 
-    def test_no_database_found(self, tmp_path, monkeypatch):
+    def test_no_database_found(self, tmp_path, _monkeypatch):
         """Test returns success when no database found."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -784,7 +784,7 @@ class TestMigrateDatabase:
         assert result["success"] is True
         assert "No database files found" in result["message"]
 
-    def test_dry_run_mode(self, tmp_path, monkeypatch):
+    def test_dry_run_mode(self, tmp_path, _monkeypatch):
         """Test dry run mode doesn't modify files."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -799,7 +799,7 @@ class TestMigrateDatabase:
         assert result["dry_run"] is True
         assert not (new_home / "database").exists()
 
-    def test_copy_database_with_sidecars(self, tmp_path, monkeypatch):
+    def test_copy_database_with_sidecars(self, tmp_path, _monkeypatch):
         """Test copies database."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -818,7 +818,7 @@ class TestMigrateDatabase:
         assert result["action"] == "copy"
         assert (new_home / "database" / "meshtastic.sqlite").exists()
 
-    def test_move_database(self, tmp_path, monkeypatch):
+    def test_move_database(self, tmp_path, _monkeypatch):
         """Test moves database."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -838,7 +838,7 @@ class TestMigrateDatabase:
         assert (new_home / "database" / "meshtastic.sqlite").exists()
         assert not db.exists()
 
-    def test_integrity_check_success(self, tmp_path, monkeypatch):
+    def test_integrity_check_success(self, tmp_path, _monkeypatch):
         """Test database integrity check passes."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -855,7 +855,7 @@ class TestMigrateDatabase:
 
         assert result["success"] is True
 
-    def test_integrity_check_failure(self, tmp_path, monkeypatch):
+    def test_integrity_check_failure(self, tmp_path, _monkeypatch):
         """Test raises MigrationError on integrity check failure."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -870,7 +870,7 @@ class TestMigrateDatabase:
         with pytest.raises(MigrationError, match="Database verification failed"):
             migrate_database([legacy_root], new_home, move=False)
 
-    def test_most_recent_database_selected(self, tmp_path, monkeypatch):
+    def test_most_recent_database_selected(self, tmp_path, _monkeypatch):
         """Test selects most recent database from multiple candidates."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -922,7 +922,7 @@ class TestMigrateDatabase:
 class TestMigrateLogs:
     """Tests for migrate_logs function (lines 614-695)."""
 
-    def test_no_logs_directory(self, tmp_path, monkeypatch):
+    def test_no_logs_directory(self, tmp_path, _monkeypatch):
         """Test returns success when no logs directory found."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -934,7 +934,7 @@ class TestMigrateLogs:
         assert result["success"] is True
         assert "No logs directory found" in result["message"]
 
-    def test_dry_run_mode(self, tmp_path, monkeypatch):
+    def test_dry_run_mode(self, tmp_path, _monkeypatch):
         """Test dry run mode doesn't modify files."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -950,7 +950,7 @@ class TestMigrateLogs:
         assert result["dry_run"] is True
         assert not (new_home / "logs").exists()
 
-    def test_copy_log_files(self, tmp_path, monkeypatch):
+    def test_copy_log_files(self, tmp_path, _monkeypatch):
         """Test copies log files with timestamped names."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -967,7 +967,7 @@ class TestMigrateLogs:
         assert result["action"] == "copy"
         assert result["migrated_count"] == 2
 
-    def test_move_log_files(self, tmp_path, monkeypatch):
+    def test_move_log_files(self, tmp_path, _monkeypatch):
         """Test moves log files."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -984,7 +984,7 @@ class TestMigrateLogs:
         assert (new_home / "logs").exists()
         assert not (legacy_root / "logs" / "app.log").exists()
 
-    def test_timestamped_log_names(self, tmp_path, monkeypatch):
+    def test_timestamped_log_names(self, tmp_path, _monkeypatch):
         """Test log files get timestamped names."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1004,7 +1004,7 @@ class TestMigrateLogs:
 class TestMigrateStore:
     """Tests for migrate_store function (lines 698-789)."""
 
-    def test_windows_skip(self, tmp_path, monkeypatch):
+    def test_windows_skip(self, tmp_path, _monkeypatch):
         """Test skips store migration on Windows."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1019,7 +1019,7 @@ class TestMigrateStore:
             assert result["success"] is True
             assert "E2EE not supported on Windows" in result["message"]
 
-    def test_no_store_directory(self, tmp_path, monkeypatch):
+    def test_no_store_directory(self, tmp_path, _monkeypatch):
         """Test returns success when no store directory found."""
         if sys.platform == "win32":
             pytest.skip("E2EE not supported on Windows")
@@ -1034,7 +1034,7 @@ class TestMigrateStore:
         assert result["success"] is True
         assert "No E2EE store directory found" in result["message"]
 
-    def test_dry_run_mode(self, tmp_path, monkeypatch):
+    def test_dry_run_mode(self, tmp_path, _monkeypatch):
         """Test dry run mode doesn't modify files."""
         if sys.platform == "win32":
             pytest.skip("E2EE not supported on Windows")
@@ -1053,7 +1053,7 @@ class TestMigrateStore:
         assert result["dry_run"] is True
         assert not (new_home / "store").exists()
 
-    def test_copy_store_directory(self, tmp_path, monkeypatch):
+    def test_copy_store_directory(self, tmp_path, _monkeypatch):
         """Test copies store directory."""
         if sys.platform == "win32":
             pytest.skip("E2EE not supported on Windows")
@@ -1074,7 +1074,7 @@ class TestMigrateStore:
         assert (new_home / "store" / "store.db").exists()
         assert (new_home / "store" / "keys").exists()
 
-    def test_move_store_directory(self, tmp_path, monkeypatch):
+    def test_move_store_directory(self, tmp_path, _monkeypatch):
         """Test moves store directory."""
         if sys.platform == "win32":
             pytest.skip("E2EE not supported on Windows")
@@ -1098,7 +1098,7 @@ class TestMigrateStore:
 class TestMigratePlugins:
     """Tests for migrate_plugins function (lines 792-914)."""
 
-    def test_no_plugins_directory(self, tmp_path, monkeypatch):
+    def test_no_plugins_directory(self, tmp_path, _monkeypatch):
         """Test returns success when no plugins directory found."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1110,7 +1110,7 @@ class TestMigratePlugins:
         assert result["success"] is True
         assert "No plugins directory found" in result["message"]
 
-    def test_dry_run_mode(self, tmp_path, monkeypatch):
+    def test_dry_run_mode(self, tmp_path, _monkeypatch):
         """Test dry run mode doesn't modify files."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1125,7 +1125,7 @@ class TestMigratePlugins:
         assert result["dry_run"] is True
         assert not (new_home / "plugins").exists()
 
-    def test_migrate_custom_plugins(self, tmp_path, monkeypatch):
+    def test_migrate_custom_plugins(self, tmp_path, _monkeypatch):
         """Test migrates custom plugins."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1145,7 +1145,7 @@ class TestMigratePlugins:
         assert (new_home / "plugins" / "custom" / "plugin1").exists()
         assert (new_home / "plugins" / "custom" / "plugin2").exists()
 
-    def test_migrate_community_plugins(self, tmp_path, monkeypatch):
+    def test_migrate_community_plugins(self, tmp_path, _monkeypatch):
         """Test migrates community plugins."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1165,7 +1165,7 @@ class TestMigratePlugins:
         assert (new_home / "plugins" / "community" / "plugin1").exists()
         assert (new_home / "plugins" / "community" / "plugin2").exists()
 
-    def test_move_plugins(self, tmp_path, monkeypatch):
+    def test_move_plugins(self, tmp_path, _monkeypatch):
         """Test moves plugins."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1188,7 +1188,7 @@ class TestMigratePlugins:
 class TestMigrateGpxtracker:
     """Tests for migrate_gpxtracker function (lines 917-1039)."""
 
-    def test_no_config_file(self, tmp_path, monkeypatch):
+    def test_no_config_file(self, tmp_path, _monkeypatch):
         """Test returns success when no config file found."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1200,7 +1200,7 @@ class TestMigrateGpxtracker:
         assert result["success"] is True
         assert "gpx_directory, skipping migration" in result["message"]
 
-    def test_invalid_yaml(self, tmp_path, monkeypatch):
+    def test_invalid_yaml(self, tmp_path, _monkeypatch):
         """Test handles invalid YAML in config."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1214,7 +1214,7 @@ class TestMigrateGpxtracker:
         assert result["success"] is True
         assert "gpx_directory, skipping migration" in result["message"]
 
-    def test_no_gpx_directory_configured(self, tmp_path, monkeypatch):
+    def test_no_gpx_directory_configured(self, tmp_path, _monkeypatch):
         """Test returns success when gpx_directory not configured."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1228,7 +1228,7 @@ class TestMigrateGpxtracker:
         assert result["success"] is True
         assert "gpx_directory, skipping migration" in result["message"]
 
-    def test_gpx_directory_doesnt_exist(self, tmp_path, monkeypatch):
+    def test_gpx_directory_doesnt_exist(self, tmp_path, _monkeypatch):
         """Test handles non-existent configured gpx_directory."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1244,7 +1244,7 @@ class TestMigrateGpxtracker:
         assert result["success"] is True
         # Should handle gracefully
 
-    def test_dry_run_mode(self, tmp_path, monkeypatch):
+    def test_dry_run_mode(self, tmp_path, _monkeypatch):
         """Test dry run mode doesn't modify files."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1263,7 +1263,7 @@ class TestMigrateGpxtracker:
             assert result["dry_run"] is True
             assert not (new_home / "plugins" / "gpxtracker" / "data").exists()
 
-    def test_copy_gpx_files(self, tmp_path, monkeypatch):
+    def test_copy_gpx_files(self, tmp_path, _monkeypatch):
         """Test copies GPX files."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()

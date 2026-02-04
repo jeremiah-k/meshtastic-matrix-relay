@@ -210,6 +210,10 @@ def _resolve_log_file(args: argparse.Namespace | None) -> str:
     return os.path.join(get_log_dir(), "mmrelay.log")
 
 
+class LogsDirTypeError(TypeError):
+    """logs_dir must be a string."""
+
+
 def get_log_dir() -> str:
     """
     Retrieve the filesystem directory used for application logs.
@@ -220,13 +224,13 @@ def get_log_dir() -> str:
         str: The path to the logs directory.
 
     Raises:
-        TypeError: If the resolved `logs_dir` value is not a string.
+        LogsDirTypeError: If the resolved `logs_dir` value is not a string.
     """
     from mmrelay.paths import resolve_all_paths
 
     result = resolve_all_paths()["logs_dir"]
     if not isinstance(result, str):
-        raise TypeError("logs_dir must be a string")
+        raise LogsDirTypeError()
     return result
 
 
