@@ -4069,7 +4069,7 @@ async def test_connect_matrix_ignores_config_access_token_when_credentials_prese
         patch("mmrelay.matrix_utils.os.path.isfile", return_value=True),
         patch("builtins.open", new_callable=MagicMock),
         patch(
-            "mmrelay.matrix_utils.json.load",
+            "json.load",
             return_value={
                 "homeserver": "https://matrix.example.org",
                 "user_id": "@bot:example.org",
@@ -4615,7 +4615,7 @@ async def test_connect_matrix_whoami_missing_device_id_warns(monkeypatch):
         patch("mmrelay.matrix_utils.os.path.isfile", return_value=True),
         patch("builtins.open", new_callable=MagicMock),
         patch(
-            "mmrelay.matrix_utils.json.load",
+            "json.load",
             return_value={
                 "homeserver": "https://matrix.example.org",
                 "user_id": "@bot:example.org",
@@ -4676,7 +4676,7 @@ async def test_connect_matrix_whoami_failure_warns(monkeypatch):
         patch("mmrelay.matrix_utils.os.path.isfile", return_value=True),
         patch("builtins.open", new_callable=MagicMock),
         patch(
-            "mmrelay.matrix_utils.json.load",
+            "json.load",
             return_value={
                 "homeserver": "https://matrix.example.org",
                 "user_id": "@bot:example.org",
@@ -4744,7 +4744,7 @@ async def test_connect_matrix_save_credentials_failure_warns(monkeypatch):
         patch("mmrelay.matrix_utils.os.path.isfile", return_value=True),
         patch("builtins.open", new_callable=MagicMock),
         patch(
-            "mmrelay.matrix_utils.json.load",
+            "json.load",
             return_value={
                 "homeserver": "https://matrix.example.org",
                 "user_id": "@bot:example.org",
@@ -5242,7 +5242,7 @@ async def test_login_matrix_bot_reuses_existing_device_id(
         patch("mmrelay.matrix_utils.os.path.exists", return_value=True),
         patch("builtins.open", new_callable=MagicMock),
         patch(
-            "mmrelay.matrix_utils.json.load",
+            "json.load",
             return_value={"user_id": "@user:matrix.org", "device_id": "DEV"},
         ),
         patch(
