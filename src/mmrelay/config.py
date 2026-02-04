@@ -168,12 +168,13 @@ def get_credentials_search_paths(
         seen.add(path)
 
     if explicit_path:
-        expanded_path = _expand_path(explicit_path)
+        raw_path = explicit_path
+        expanded_path = _expand_path(raw_path)
         path_is_dir = os.path.isdir(expanded_path)
         if not path_is_dir:
             path_is_dir = bool(
-                expanded_path.endswith(os.path.sep)
-                or (os.path.altsep and expanded_path.endswith(os.path.altsep))
+                raw_path.endswith(os.path.sep)
+                or (os.path.altsep and raw_path.endswith(os.path.altsep))
             )
         if path_is_dir:
             normalized_dir = os.path.normpath(expanded_path)

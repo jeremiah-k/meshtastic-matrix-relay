@@ -8,6 +8,7 @@ follow pytest conventions and document the purpose of each test case.
 Inline comments explain test assertions and expected behavior for clarity.
 """
 
+import os
 import shutil
 import sqlite3
 import sys
@@ -242,39 +243,48 @@ class TestGetMostRecentDatabase:
 
         Creates two files with a small time difference and asserts the function returns the path of the file with the later modification time.
         """
+        import time
+
         # Create multiple databases to test sorting with different mtimes
         db1 = tmp_path / "db1.sqlite"
         db1.write_text("db1")
 
-        import time
-
-        time.sleep(0.01)
+        old_ts = time.time() - 10
+        new_ts = time.time()
+        os.utime(db1, (old_ts, old_ts))
 
         db2 = tmp_path / "db2.sqlite"
         db2.write_text("db2")
+        os.utime(db2, (new_ts, new_ts))
 
-        # Should return the most recent one (db2)
+        # Should return most recent one (db2)
         result = _get_most_recent_database([db1, db2])
         assert result == db2
 
     def test_get_most_recent_database_with_sidecars(self, tmp_path):
         """Test selecting most recent database with sidecars."""
+        import time
+
         # Create older database
         old_db = tmp_path / "old.sqlite"
         old_db.write_text("old db")
 
-        # Wait a tiny bit
-        import time
-
-        time.sleep(0.01)
+        old_ts = time.time() - 10
+        os.utime(old_db, (old_ts, old_ts))
 
         # Create newer database with sidecars
+        new_ts = time.time()
         new_db = tmp_path / "new.sqlite"
         new_db.write_text("new db")
+        os.utime(new_db, (new_ts, new_ts))
+
         new_wal = tmp_path / "new.sqlite-wal"
         new_wal.write_text("wal")
+        os.utime(new_wal, (new_ts, new_ts))
+
         new_shm = tmp_path / "new.sqlite-shm"
         new_shm.write_text("shm")
+        os.utime(new_shm, (new_ts, new_ts))
 
         candidates = [old_db, new_db, new_wal, new_shm]
         result = _get_most_recent_database(candidates)

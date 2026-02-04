@@ -96,10 +96,10 @@ check_doc_files() {
 					FENCE_CONTENT=$(sed -n "${FENCE_LINE}p" "${FILE}")
 
 					# Check for fence opening (``` or ~~~)
-					if echo "${FENCE_CONTENT}" | grep -qE '^(`{3}|~{3})'; then
+					if echo "${FENCE_CONTENT}" | grep -qE '^[[:space:]]*(`{3}|~{3})'; then
 						# Found opening fence - capture the delimiter (``` or ~~~)
 						local DELIMITER
-						DELIMITER=$(echo "${FENCE_CONTENT}" | grep -oE '^(`{3}|~{3})')
+						DELIMITER=$(echo "${FENCE_CONTENT}" | sed -nE 's/^[[:space:]]*(`{3}|~{3}).*/\1/p')
 
 						# Find matching closing fence (BLOCK_DEPTH starts at 1 for opening fence)
 						local CLOSING_LINE=$((FENCE_LINE + 1))
@@ -139,7 +139,7 @@ check_doc_files() {
 
 					local FENCE_TRIMMED
 					FENCE_TRIMMED=$(echo "${FENCE_CONTENT}" | tr -d '[:space:]')
-					if [[ -n ${FENCE_TRIMMED} ]] && ! grep -qE '^(```|~~~)' <<<"${FENCE_CONTENT}"; then
+					if [[ -n ${FENCE_TRIMMED} ]] && ! grep -qE '^[[:space:]]*(```|~~~)' <<<"${FENCE_CONTENT}"; then
 						# Found non-fence content - this marker has no following fence
 						break
 					fi

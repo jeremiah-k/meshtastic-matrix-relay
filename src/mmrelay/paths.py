@@ -26,6 +26,15 @@ import platformdirs
 from mmrelay.constants.app import APP_AUTHOR, APP_NAME
 from mmrelay.log_utils import get_logger
 
+
+class E2EENotSupportedError(RuntimeError):
+    """E2EE not supported on Windows."""
+
+    def __init__(self) -> None:
+        """Create an E2EENotSupportedError with a descriptive message."""
+        super().__init__("E2EE not supported on Windows")
+
+
 # Global override set from CLI arguments
 _home_override: str | None = None
 _home_override_source: str | None = None
@@ -251,13 +260,13 @@ def get_e2ee_store_dir() -> Path:
     Only available on Unix-like platforms; calling this on Windows raises an error.
 
     Returns:
-        Path: Path to the E2EE key store directory.
+        Path: Path to E2EE key store directory.
 
     Raises:
-        RuntimeError: If invoked on Windows (E2EE is not supported on Windows).
+        E2EENotSupportedError: If invoked on Windows (E2EE is not supported on Windows).
     """
     if sys.platform == "win32":
-        raise RuntimeError("E2EE not supported on Windows")
+        raise E2EENotSupportedError()
 
     home = get_home_dir()
     return home / "store"
@@ -372,8 +381,8 @@ def ensure_directories(*, create_missing: bool = True) -> None:
             try:
                 dir_path.mkdir(parents=True, exist_ok=True)
                 logger.debug("Created directory: %s", dir_path)
-            except OSError as e:
-                logger.error("Failed to create directory %s: %s", dir_path, e)
+            except OSError:
+                logger.exception("Failed to create directory %s", dir_path)
         else:
             if not dir_path.exists():
                 logger.warning("Directory missing: %s", dir_path)

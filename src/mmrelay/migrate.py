@@ -893,7 +893,7 @@ def migrate_database(
             else:
                 logger.info("Copying database file: %s", db_path)
                 shutil.copy2(str(db_path), str(dest))
-        except (OSError, IOError) as e:
+        except (OSError, IOError):
             logger.exception("Failed to migrate database file %s", db_path)
             return {
                 "success": False,

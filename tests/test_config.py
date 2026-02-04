@@ -1000,8 +1000,8 @@ class TestCredentials(unittest.TestCase):
         call_args = _mock_open.call_args
         final_path = call_args[0][0]
         self.assertEqual(
-            final_path,
-            "/custom/creds.json",
+            os.path.normpath(final_path),
+            os.path.normpath("/custom/creds.json"),
             "Should use explicit credentials_path parameter",
         )
 
@@ -1025,8 +1025,8 @@ class TestCredentials(unittest.TestCase):
         call_args = _mock_open.call_args
         final_path = call_args[0][0]
         self.assertEqual(
-            final_path,
-            "/custom/dir/credentials.json",
+            os.path.normpath(final_path),
+            os.path.normpath("/custom/dir/credentials.json"),
             "Should append credentials.json to directory path with trailing separator",
         )
 
@@ -1044,12 +1044,13 @@ class TestCredentials(unittest.TestCase):
 
         save_credentials(credentials, credentials_path="/custom/creds.json")
 
+        _mock_makedirs.assert_called_once()
         _mock_open.assert_called_once()
         call_args = _mock_open.call_args
         final_path = call_args[0][0]
         self.assertEqual(
-            final_path,
-            "/custom/creds.json",
+            os.path.normpath(final_path),
+            os.path.normpath("/custom/creds.json"),
             "Should use explicit credentials_path parameter",
         )
 

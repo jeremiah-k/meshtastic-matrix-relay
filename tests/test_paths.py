@@ -218,20 +218,20 @@ class TestPathResolutionConfigPaths(unittest.TestCase):
             with patch("mmrelay.paths.Path.home") as mock_home:
                 mock_home.return_value = Path("/home")
 
-                # Mock os.path.exists to check for legacy home
-                with patch("mmrelay.paths.os.path.exists") as mock_exists:
+                # Mock Path.exists to check for legacy home
+                with patch.object(Path, "exists", autospec=True) as mock_exists:
 
-                    def exists_side_effect(path):
+                    def exists_side_effect(self_path):
                         """
                         Determine whether the provided path corresponds to a legacy MMRELAY home location.
 
                         Parameters:
-                            path: A path-like object to check.
+                            self_path: The path object to check (self in Path method).
 
                         Returns:
-                            `True` if the string form of `path` contains "/home/.mmrelay", `False` otherwise.
+                            `True` if the string form of `self_path` contains "/home/.mmrelay", `False` otherwise.
                         """
-                        path_str = str(path)
+                        path_str = str(self_path)
                         # Legacy home exists
                         if "/home/.mmrelay" in path_str:
                             return True
@@ -474,7 +474,27 @@ class TestPathDirectoryCreation(unittest.TestCase):
 
                         error_calls = [
                             call
-                            for call in mock_logger.error.call_args_list
+                            for call in mock_logger.exception.call_args_list
+                            if "Failed to create directory" in str(call)
+                        ]
+                        self.assertTrue(len(error_calls) > 0)
+        """Test OSError on directory creation is logged (lines 379-380)."""
+        with patch("sys.platform", "linux"):
+            with patch("mmrelay.paths.get_home_dir", return_value=Path("/home")):
+                with patch("mmrelay.paths.get_database_dir") as mock_db_dir:
+                    with patch("mmrelay.paths.get_logger") as mock_get_logger:
+                        mock_db_dir.return_value = Path("/home/database")
+                        mock_db_dir.mkdir.side_effect = OSError("Permission denied")
+
+                        from mmrelay.paths import ensure_directories
+
+                        mock_logger = mock_get_logger.return_value
+
+                        ensure_directories(create_missing=True)
+
+                        error_calls = [
+                            call
+                            for call in mock_logger.exception.call_args_list
                             if "Failed to create directory" in str(call)
                         ]
                         self.assertTrue(len(error_calls) > 0)

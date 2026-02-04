@@ -592,7 +592,7 @@ class TestFindCredentialsJsonPathLegacy(unittest.TestCase):
     @patch("os.path.exists")
     @patch("builtins.print")
     def test_returns_legacy_path_when_found(
-        self, mock_print, mock_exists, mock_resolve
+        self, _mock_print, mock_exists, mock_resolve
     ):
         """Test returns path when credentials found in legacy location."""
         mock_resolve.return_value = {

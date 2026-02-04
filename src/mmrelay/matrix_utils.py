@@ -4,6 +4,7 @@ import html
 import importlib
 import inspect
 import io
+import json
 import logging
 import os
 import re
@@ -1268,10 +1269,7 @@ async def connect_matrix(
     # Update the global config if a config is passed
     if passed_config is not None:
         config = passed_config
-        try:
-            config_module.relay_config = passed_config
-        except Exception as exc:
-            logger.debug("Failed to sync relay_config for credential loading: %s", exc)
+        config_module.relay_config = passed_config
 
     # Check if config is available
     if config is None:
@@ -1312,7 +1310,9 @@ async def connect_matrix(
     # Load credentials using the shared helper (supports legacy search + env overrides)
     try:
         credentials = await async_load_credentials()
-    except Exception as exc:
+    except asyncio.CancelledError:
+        raise
+    except (OSError, ValueError, json.JSONDecodeError, TypeError) as exc:
         logger.warning("Error loading credentials: %s", exc)
         credentials = None
 
