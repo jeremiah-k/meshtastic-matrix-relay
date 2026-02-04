@@ -5,7 +5,7 @@ import os
 import sqlite3
 import sys
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -869,6 +869,52 @@ class TestMigrateDatabase:
 
         with pytest.raises(MigrationError, match="Database verification failed"):
             migrate_database([legacy_root], new_home, move=False)
+
+    def test_move_database_integrity_check_failure(self, tmp_path, monkeypatch):
+        """Test that move=True with integrity check failure prevents data loss."""
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        db_path = legacy_root / "meshtastic.sqlite"
+        db_path.write_bytes(b"corrupt data")
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+
+        from mmrelay.migrate import MigrationError
+
+        with pytest.raises(MigrationError, match="Database verification failed"):
+            migrate_database([legacy_root], new_home, move=True)
+
+        assert db_path.exists(), "Source database was deleted - data loss!"
+        dest_db = new_home / "database" / "meshtastic.sqlite"
+        assert not dest_db.exists(), "Corrupted database was left at destination"
+
+    def test_move_database_integrity_check_returns_corrupted(
+        self, tmp_path, monkeypatch
+    ):
+        """Test that move=True with integrity check returning corrupted prevents data loss."""
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        db_path = legacy_root / "meshtastic.sqlite"
+        conn = sqlite3.connect(db_path)
+        conn.execute("CREATE TABLE test (id INTEGER)")
+        conn.commit()
+        conn.close()
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+
+        from mmrelay.migrate import MigrationError
+
+        with patch("sqlite3.connect") as mock_connect:
+            mock_conn = MagicMock()
+            mock_conn.execute.return_value.fetchone.return_value = ["corrupted"]
+            mock_connect.return_value = mock_conn
+
+            with pytest.raises(MigrationError, match="integrity check failed"):
+                migrate_database([legacy_root], new_home, move=True)
+
+        assert db_path.exists(), "Source database was deleted - data loss!"
+        dest_db = new_home / "database" / "meshtastic.sqlite"
+        assert not dest_db.exists(), "Corrupted database was left at destination"
 
     def test_most_recent_database_selected(self, tmp_path, monkeypatch):
         """Test selects most recent database from multiple candidates."""

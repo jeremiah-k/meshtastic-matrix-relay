@@ -788,14 +788,14 @@ def migrate_database(
     """
     Migrate the Meshtastic SQLite database (and its WAL/SHM sidecars) from legacy locations into the new home's database directory.
 
-    Scans the provided legacy roots, picks the most recently modified valid database group (main file plus any sidecars), and copies or moves those files into new_home/database. If a destination file exists it is backed up unless `force` is True. After migration, performs a SQLite integrity check on the main database file.
+    Scans the provided legacy roots, picks the most recently modified valid database group (main file plus any sidecars), and copies those files into new_home/database. If a destination file exists it is backed up unless `force` is True. After copying, performs a SQLite integrity check on the main database file. If `move=True` and the integrity check passes, source files are deleted. Uses copy-then-delete pattern to prevent data loss.
 
     Parameters:
         legacy_roots (list[Path]): Directories to scan for legacy database files.
         new_home (Path): Destination MMRELAY home directory where a `database` subdirectory will be created.
         dry_run (bool): If True, report planned actions without modifying the filesystem.
         force (bool): If True, overwrite existing destination files without creating backups.
-        move (bool): If True, move files instead of copying them.
+        move (bool): If True, move files instead of copying them. Source files are only deleted after successful integrity check.
 
     Returns:
         dict: Result summary including at minimum `success` (bool). On success includes `old_path` (source main DB path), `new_path` (destination database directory), and `action` (`"move"` or `"copy"`). May include `dry_run`, `message`, or `error` keys for additional context.
@@ -874,6 +874,8 @@ def migrate_database(
 
     logger.info("Migrating database from %s to %s", most_recent, new_db_dir)
 
+    # Copy-then-delete pattern: Always copy first, verify, then delete sources only if verification succeeds.
+    # This prevents data loss if integrity check fails after files are moved.
     for db_path in selected_group:
         dest = new_db_dir / db_path.name
         if dest.exists() and not force:
@@ -885,22 +887,16 @@ def migrate_database(
                 logger.warning("Failed to backup database: %s", e)
 
         try:
-            if move:
-                logger.info("Moving database file: %s", db_path)
-                if dest.exists():
-                    dest.unlink()
-                shutil.move(str(db_path), str(dest))
-            else:
-                logger.info("Copying database file: %s", db_path)
-                shutil.copy2(str(db_path), str(dest))
+            logger.info("Copying database file: %s", db_path)
+            shutil.copy2(str(db_path), str(dest))
         except (OSError, IOError):
-            logger.exception("Failed to migrate database file %s", db_path)
+            logger.exception("Failed to copy database file %s", db_path)
             return {
                 "success": False,
                 "error": "Database file migration failed",
             }
 
-    logger.info("Database migration complete")
+    logger.info("Database files copied successfully")
 
     # Verify database integrity if main database file was copied/moved
     if not dry_run and not most_recent.name.endswith(("-wal", "-shm")):
@@ -911,10 +907,39 @@ def migrate_database(
             result = cur.fetchone()
             conn.close()
             if result and result[0] != "ok":
+                logger.error("Database integrity check failed: %s", result[0])
+                logger.info("Cleaning up failed migration attempt")
+                for db_path in selected_group:
+                    dest = new_db_dir / db_path.name
+                    if dest.exists():
+                        try:
+                            dest.unlink()
+                            logger.debug("Deleted copied file: %s", dest)
+                        except (OSError, IOError):
+                            logger.warning("Failed to delete copied file: %s", dest)
                 raise MigrationError.integrity_check_failed(result[0])
             logger.info("Database integrity check passed")
         except sqlite3.DatabaseError as e:
+            logger.error("Database verification failed: %s", e)
+            logger.info("Cleaning up failed migration attempt")
+            for db_path in selected_group:
+                dest = new_db_dir / db_path.name
+                if dest.exists():
+                    try:
+                        dest.unlink()
+                        logger.debug("Deleted copied file: %s", dest)
+                    except (OSError, IOError):
+                        logger.warning("Failed to delete copied file: %s", dest)
             raise MigrationError.verification_failed(str(e)) from e
+
+    # If verification passed and move=True, delete source files
+    if move:
+        for db_path in selected_group:
+            try:
+                db_path.unlink()
+                logger.info("Deleted source file after successful move: %s", db_path)
+            except (OSError, IOError):
+                logger.warning("Failed to delete source file: %s", db_path)
 
     return {
         "success": True,
