@@ -565,7 +565,7 @@ class TestMeshtasticEnvironmentVariables(unittest.TestCase):
 
         config = load_meshtastic_config_from_env()
 
-        self.assertIsNotNone(config)
+        assert config is not None
         self.assertEqual(config["connection_type"], "tcp")
         self.assertEqual(config["host"], "192.168.1.100")
         self.assertEqual(config["port"], 4403)
@@ -577,7 +577,7 @@ class TestMeshtasticEnvironmentVariables(unittest.TestCase):
 
         config = load_meshtastic_config_from_env()
 
-        self.assertIsNotNone(config)
+        assert config is not None
         self.assertEqual(config["connection_type"], "serial")
         self.assertEqual(config["serial_port"], "/dev/ttyUSB0")
 
@@ -588,7 +588,7 @@ class TestMeshtasticEnvironmentVariables(unittest.TestCase):
 
         config = load_meshtastic_config_from_env()
 
-        self.assertIsNotNone(config)
+        assert config is not None
         self.assertEqual(config["connection_type"], "ble")
         self.assertEqual(config["ble_address"], "AA:BB:CC:DD:EE:FF")
 
@@ -600,7 +600,7 @@ class TestMeshtasticEnvironmentVariables(unittest.TestCase):
 
         config = load_meshtastic_config_from_env()
 
-        self.assertIsNotNone(config)
+        assert config is not None
         self.assertEqual(config["broadcast_enabled"], True)
         self.assertEqual(config["meshnet_name"], "Test Mesh")
         self.assertEqual(config["message_delay"], 2.5)
@@ -669,7 +669,7 @@ class TestLoggingEnvironmentVariables(unittest.TestCase):
 
         config = load_logging_config_from_env()
 
-        self.assertIsNotNone(config)
+        assert config is not None
         self.assertEqual(config["level"], "debug")
 
     def test_load_log_file(self):
@@ -678,7 +678,7 @@ class TestLoggingEnvironmentVariables(unittest.TestCase):
 
         config = load_logging_config_from_env()
 
-        self.assertIsNotNone(config)
+        assert config is not None
         self.assertEqual(config["filename"], "/app/logs/mmrelay.log")
         self.assertTrue(config["log_to_file"])
 
@@ -716,7 +716,7 @@ class TestDatabaseEnvironmentVariables(unittest.TestCase):
 
         config = load_database_config_from_env()
 
-        self.assertIsNotNone(config)
+        assert config is not None
         self.assertEqual(config["path"], "/app/data/custom.sqlite")
 
     def test_no_env_vars_returns_none(self):
@@ -1162,6 +1162,7 @@ class TestYAMLValidation(unittest.TestCase):
             "key: value\n  invalid: - item1\n  - item2", "test.yaml"
         )
         self.assertFalse(result[0])  # is_valid should be False
+        assert result[1] is not None
         self.assertIn("YAML parsing error", result[1])
 
     def test_validate_yaml_syntax_empty(self):
@@ -1173,12 +1174,14 @@ class TestYAMLValidation(unittest.TestCase):
         """Test YAML validation for content using '=' instead of ':'"""
         result = validate_yaml_syntax("key = value", "test.yaml")
         self.assertFalse(result[0])
+        assert result[1] is not None
         self.assertIn("Use ':' instead of '='", result[1])
 
     def test_validate_yaml_syntax_non_standard_bool(self):
         """Test YAML validation for non-standard boolean values."""
         result = validate_yaml_syntax("key: yes", "test.yaml")
         self.assertTrue(result[0])  # Should be valid but with a warning
+        assert result[1] is not None
         self.assertIn("Style warning", result[1])
         self.assertIn("Consider using 'true' or 'false'", result[1])
 
@@ -1331,7 +1334,7 @@ class TestGetMeshtasticConfigValueUncoveredLines(unittest.TestCase):
     def test_load_matrix_config_from_env(self):
         """Test that Matrix configuration is loaded from environment variables."""
         config = load_matrix_config_from_env()
-        self.assertIsNotNone(config)
+        assert config is not None
         self.assertEqual(config["homeserver"], "https://matrix.example.org")
         self.assertEqual(config["bot_user_id"], "@bot:example.org")
         self.assertEqual(config["password"], "test_password")
@@ -1524,6 +1527,7 @@ class TestConfigUncoveredLines(unittest.TestCase):
         """Test load_logging_config_from_env with filename (lines 349-350)."""
         mock_load.return_value = {"filename": "/test/log.txt"}
         config = load_logging_config_from_env()
+        assert config is not None
         self.assertTrue(config.get("log_to_file"))
 
     @patch("mmrelay.config.os.path.isfile", return_value=True)

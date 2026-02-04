@@ -54,19 +54,3 @@ class TestGetHomeDir:
 
         with pytest.raises(ValueError):
             get_home_dir()
-
-    def test_get_home_dir_with_legacy_base_dir_and_home(self, monkeypatch):
-        """Test MMRELAY_BASE_DIR with MMRELAY_HOME - should warn and prefer HOME."""
-        monkeypatch.setenv("MMRELAY_HOME", "/new_home")
-        monkeypatch.setenv("MMRELAY_BASE_DIR", "/old_base")
-
-        with pytest.raises(ValueError):
-            get_home_dir()
-
-    def test_get_home_dir_with_legacy_base_dir_and_home(self, monkeypatch):
-        """Test MMRELAY_BASE_DIR with MMRELAY_HOME - should warn and prefer HOME."""
-        monkeypatch.setenv("MMRELAY_HOME", "/new_home")
-        monkeypatch.setenv("MMRELAY_BASE_DIR", "/old_base")
-
-        with pytest.raises(ValueError):
-            get_home_dir()

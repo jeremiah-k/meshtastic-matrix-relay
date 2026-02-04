@@ -1,3 +1,4 @@
+import argparse
 import sqlite3
 import sys
 from types import SimpleNamespace
@@ -62,7 +63,7 @@ def test_verify_migration_missing_credentials(tmp_path, monkeypatch):
     assert verification["ok"] is False
     assert verification["credentials_missing"] is True
 
-    exit_code = handle_verify_migration_command(SimpleNamespace())
+    exit_code = handle_verify_migration_command(argparse.Namespace())
     assert exit_code == 1
 
 
@@ -76,7 +77,7 @@ def test_verify_migration_cli_exit_code_clean(tmp_path, monkeypatch):
     monkeypatch.setattr(paths_module, "_home_override_source", None)
     monkeypatch.setattr(paths_module, "get_legacy_dirs", lambda: [])
 
-    exit_code = handle_verify_migration_command(SimpleNamespace())
+    exit_code = handle_verify_migration_command(argparse.Namespace())
     assert exit_code == 0
 
 
@@ -97,7 +98,7 @@ def test_verify_migration_legacy_only(tmp_path, monkeypatch):
     assert verification["legacy_data_found"] is True
     assert verification["ok"] is False
 
-    exit_code = handle_verify_migration_command(SimpleNamespace())
+    exit_code = handle_verify_migration_command(argparse.Namespace())
     assert exit_code == 1
 
 
@@ -122,7 +123,7 @@ def test_verify_migration_split_roots(tmp_path, monkeypatch):
     assert verification["split_roots"] is True
     assert verification["ok"] is False
 
-    exit_code = handle_verify_migration_command(SimpleNamespace())
+    exit_code = handle_verify_migration_command(argparse.Namespace())
     assert exit_code == 1
 
 
@@ -141,12 +142,12 @@ def test_doctor_migration_exit_codes(tmp_path, monkeypatch):
 
     # Clean state -> exit code 0
     monkeypatch.setattr(paths_module, "get_legacy_dirs", lambda: [])
-    clean_exit = handle_doctor_command(SimpleNamespace(migration=True))
+    clean_exit = handle_doctor_command(argparse.Namespace(migration=True))
     assert clean_exit == 0
 
     # Legacy data present -> exit code 1
     monkeypatch.setattr(paths_module, "get_legacy_dirs", lambda: [legacy_root])
-    legacy_exit = handle_doctor_command(SimpleNamespace(migration=True))
+    legacy_exit = handle_doctor_command(argparse.Namespace(migration=True))
     assert legacy_exit == 1
 
 
