@@ -68,22 +68,16 @@ _PLUGIN_DEPS_DIR: str | None = None
 
 
 def _is_safe_plugin_name(name: str) -> bool:
-    r"""
-    Validate a plugin name/identifier to prevent directory traversal attacks.
-
-    Checks for:
-    - Path traversal sequences (..)
-    - Path separators (/, \, os.sep, os.altsep)
-    - Absolute paths
-
-    This is ONLY for validating plugin names/identifiers (e.g., "my-plugin").
-    Do NOT use this for validating full filesystem paths.
-
-    Args:
-        name: User-provided plugin name or identifier.
-
+    """
+    Validate a plugin identifier to ensure it contains no path traversal sequences, path separators, or absolute-path references.
+    
+    This function is intended for short plugin names/identifiers (for example, "my-plugin") and should not be used to validate full filesystem paths.
+    
+    Parameters:
+        name (str): User-provided plugin name or identifier.
+    
     Returns:
-        bool: True if name is safe, False otherwise.
+        bool: `True` if the name contains no path separators, no ".." segments, is not empty or whitespace, and is not an absolute path; `False` otherwise.
     """
     if not name or name.strip() == "":
         return False
@@ -105,17 +99,17 @@ def _is_safe_plugin_name(name: str) -> bool:
 
 
 def _is_path_contained(root: str, child: str) -> bool:
-    r"""
-    Validate that child path is contained within root directory.
-
-    Uses normcase/realpath for cross-platform correctness, especially on Windows.
-
-    Args:
-        root: Root directory path (absolute).
-        child: Child path to validate (absolute).
-
+    """
+    Check whether a path is strictly contained within a root directory.
+    
+    Both paths are resolved with os.path.realpath and normalized with os.path.normcase before comparison; symbolic links and case differences are therefore accounted for. The function returns True only when the child path is located inside the root (i.e., child is not equal to root and resides within a subpath).
+    
+    Parameters:
+        root (str): Root directory path.
+        child (str): Path to test for containment.
+    
     Returns:
-        bool: True if child is contained within root, False otherwise.
+        bool: `True` if `child` is located inside `root` (strict containment), `False` otherwise.
     """
     # Normalize both paths for comparison
     root_normalized = os.path.normcase(os.path.realpath(root))

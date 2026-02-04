@@ -212,9 +212,15 @@ def _resolve_log_file(args: argparse.Namespace | None) -> str:
 
 def get_log_dir() -> str:
     """
-    Return the filesystem directory to use for application logs, resolved lazily.
-
-    Uses unified path resolution from mmrelay.paths.
+    Retrieve the filesystem directory used for application logs.
+    
+    This resolves paths lazily via mmrelay.paths.resolve_all_paths.
+    
+    Returns:
+        str: The path to the logs directory.
+    
+    Raises:
+        TypeError: If the resolved `logs_dir` value is not a string.
     """
     from mmrelay.paths import resolve_all_paths
 

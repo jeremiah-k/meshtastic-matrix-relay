@@ -1307,6 +1307,14 @@ async def connect_matrix(
     credentials_path = None
 
     def _resolve_credentials_save_path() -> str | None:
+        """
+        Determine the filesystem path where credentials should be saved.
+        
+        Attempts to resolve an explicit credentials path from configuration or falls back to the canonical credentials path; expands a leading `~` to the user home when present.
+        
+        Returns:
+            The absolute path to use for saving credentials, or `None` if the path cannot be resolved.
+        """
         try:
             explicit_path = get_explicit_credentials_path(
                 config if isinstance(config, dict) else None
@@ -1799,13 +1807,10 @@ async def connect_matrix(
 
             async def _sync_ignore_invalid_invites() -> Any:
                 """
-                Perform a Matrix sync using an invite-safe filter while ignoring invalid invite_state payloads.
-
-                Temporarily patches nio.responses.SyncResponse._get_invite_state so that malformed or schema-invalid
-                invite_state payloads are treated as empty (no invite events), invokes matrix_client.sync with the
-                invite-safe filter and configured timeouts, and restores the original _get_invite_state descriptor
-                before returning.
-
+                Perform a Matrix sync using an invite-safe filter while treating malformed or schema-invalid invite_state payloads as empty.
+                
+                Temporarily overrides the invite-state parsing used during sync so that invalid or malformed invite_state entries are ignored (treated as no invite events) and restores the original parser before returning. This ensures the sync completes even when some invite payloads fail validation.
+                
                 Returns:
                     The SyncResponse object returned by the matrix client's sync call.
                 """
@@ -1820,17 +1825,13 @@ async def connect_matrix(
 
                 def _safe_get_invite_state(invite_state_dict: Any) -> list[Any]:
                     """
-                    Safely extract a list of invite-state events from a raw invite_state mapping.
-
-                    Attempts to parse `invite_state_dict["events"]` via an internal callable and returns the resulting list.
-                    If `invite_state_dict` is not a dict, lacks an "events" key, or the parsing raises a JSON schema validation error,
-                    an empty list is returned.
-
+                    Parse an invite_state mapping and extract its 'events' list while ignoring invalid or malformed payloads.
+                    
                     Parameters:
                         invite_state_dict (Any): Raw invite state payload (typically from a Matrix invite event).
-
+                    
                     Returns:
-                        list[Any]: Parsed list of invite-state events, or an empty list on invalid/missing input or validation failure.
+                        list[Any]: The parsed invite-state events, or an empty list if the input is missing, not a mapping, or fails schema validation.
                     """
                     if (
                         not isinstance(invite_state_dict, dict)
@@ -2035,17 +2036,13 @@ async def login_matrix_bot(
     logout_others: bool | None = None,
 ) -> bool:
     """
-    Interactively authenticate the bot with a Matrix homeserver and persist the resulting session credentials.
-
+    Authenticate the bot with a Matrix homeserver and persist the resulting session credentials.
+    
+    If any of homeserver, username, or password are None, the function will prompt interactively for them. On success the acquired credentials (homeserver, user_id, access_token, device_id) are saved to the configured credentials path.
+    
     Parameters:
-        homeserver (str | None): Optional homeserver URL (e.g., "https://matrix.org"). If None, the user will be prompted.
-        username (str | None): Optional Matrix username (localpart like "alice" or full MXID like "@alice:server"). If None, the user will be prompted.
-        password (str | None): Optional account password. If None, the user will be prompted securely.
-        logout_others (bool | None): Controls whether to log out other sessions:
-            True — attempt to log out other sessions;
-            False — do not log out other sessions;
-            None — prompt interactively when credentials are entered, treated as False for non-interactive calls.
-
+        logout_others (bool | None): If True, attempt to log out other sessions; if False, do not; if None and running interactively, the user will be prompted (treated as False in non-interactive calls).
+    
     Returns:
         bool: `True` if login succeeded and credentials were saved, `False` otherwise.
     """

@@ -1731,22 +1731,12 @@ class TestMainAsyncFunction(unittest.TestCase):
 
     def _reset_global_state(self):
         """
-        Reset global state across mmrelay modules to ensure test isolation.
-
-        This clears or restores to defaults module-level globals that are set by runtime
-        calls (for example during set_config or application startup). It affects:
-        - mmrelay.meshtastic_utils: config, matrix_rooms, meshtastic_client, event_loop,
-          reconnecting/shutting_down flags, reconnect_task, and subscription flags.
-        - mmrelay.matrix_utils: config, matrix_homeserver, matrix_rooms, matrix_access_token,
-          bot_user_id, bot_user_name, matrix_client, and bot_start_time (reset to now).
-        - mmrelay.main: banner printed flag.
-        - mmrelay.plugin_loader: invokes _reset_caches_for_tests() if available.
-        - mmrelay.message_queue: calls get_message_queue().stop() if present.
-
-        Intended for use in test setup/teardown to avoid cross-test contamination and
-        previously-observed hanging tests caused by leftover global state. Side effects:
-        it mutates imported mmrelay modules and may call cleanup helpers (such as
-        message queue stop).
+        Reset module-level globals across mmrelay submodules to ensure test isolation.
+        
+        Clears or restores defaults for runtime-set global state in mmrelay.meshtastic_utils,
+        mmrelay.matrix_utils, mmrelay.main, mmrelay.plugin_loader, and mmrelay.message_queue
+        so tests do not leak state between runs. May shut down executors and call cleanup
+        helpers (for example, message queue stop) where present.
         """
 
         # Reset meshtastic_utils globals

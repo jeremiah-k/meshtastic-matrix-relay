@@ -69,6 +69,11 @@ class TestApplyDirOverridesPriority(unittest.TestCase):
     """Tests for dir override priority logic (lines 120-187)."""
 
     def setUp(self):
+        """
+        Create a test fixture with a mocked `args` object and initialize directory override attributes to None.
+        
+        The `args` MagicMock exposes `home`, `base_dir`, and `data_dir` attributes, each set to `None` to represent no override flags provided.
+        """
         self.args = MagicMock()
         self.args.home = None
         self.args.base_dir = None
@@ -226,6 +231,11 @@ class TestHandleSubcommandDispatch(unittest.TestCase):
     """Tests for handle_subcommand command dispatch (lines 1587-1612)."""
 
     def setUp(self):
+        """
+        Prepare a MagicMock args object for use by test methods.
+        
+        Assigns a configurable mock of parsed CLI arguments to `self.args` before each test.
+        """
         self.args = MagicMock()
 
     @patch("mmrelay.cli.handle_service_command")
@@ -298,6 +308,11 @@ class TestHandleMigrateCommand(unittest.TestCase):
     """Tests for handle_migrate_command function (lines 2205-2251)."""
 
     def setUp(self):
+        """
+        Prepare a mock args object with default migration flags set to False.
+        
+        Sets self.args to a MagicMock and initializes the attributes `dry_run`, `force`, and `move` to False.
+        """
         self.args = MagicMock()
         self.args.dry_run = False
         self.args.force = False
@@ -358,6 +373,11 @@ class TestHandleConfigPaths(unittest.TestCase):
     """Tests for handle_config_paths function (lines 1615-1736)."""
 
     def setUp(self):
+        """
+        Prepare a MagicMock args object for use by test methods.
+        
+        Assigns a configurable mock of parsed CLI arguments to `self.args` before each test.
+        """
         self.args = MagicMock()
 
     @patch("mmrelay.paths.resolve_all_paths")
@@ -421,6 +441,11 @@ class TestHandlePathsCommand(unittest.TestCase):
     """Tests for handle_paths_command function (lines 1789-1864)."""
 
     def setUp(self):
+        """
+        Prepare a MagicMock args object for use by test methods.
+        
+        Assigns a configurable mock of parsed CLI arguments to `self.args` before each test.
+        """
         self.args = MagicMock()
 
     @patch("mmrelay.paths.resolve_all_paths")
@@ -488,6 +513,11 @@ class TestHandleDoctorMigrationStatus(unittest.TestCase):
     """Tests for handle_doctor_command migration status (lines 1934-1955)."""
 
     def setUp(self):
+        """
+        Prepare a MagicMock args object for use by test methods.
+        
+        Assigns a configurable mock of parsed CLI arguments to `self.args` before each test.
+        """
         self.args = MagicMock()
 
     @patch("mmrelay.migrate.verify_migration")
@@ -596,6 +626,11 @@ class TestHandleConfigPathsDetails(unittest.TestCase):
     """Tests for handle_config_paths detailed path display (lines 1628-1736)."""
 
     def setUp(self):
+        """
+        Prepare a MagicMock args object for use by test methods.
+        
+        Assigns a configurable mock of parsed CLI arguments to `self.args` before each test.
+        """
         self.args = MagicMock()
 
     @patch("mmrelay.paths.resolve_all_paths")
@@ -640,6 +675,11 @@ class TestHandlePathsCommandDetails(unittest.TestCase):
     """Tests for handle_paths_command detailed output (lines 1799-1864)."""
 
     def setUp(self):
+        """
+        Prepare a MagicMock args object for use by test methods.
+        
+        Assigns a configurable mock of parsed CLI arguments to `self.args` before each test.
+        """
         self.args = MagicMock()
 
     @patch("mmrelay.paths.resolve_all_paths")
@@ -675,6 +715,11 @@ class TestHandleMigrateCommandDetailed(unittest.TestCase):
     """Tests for handle_migrate_command detailed output (lines 2217-2275)."""
 
     def setUp(self):
+        """
+        Prepare a MagicMock args object for use by test methods.
+        
+        Assigns a configurable mock of parsed CLI arguments to `self.args` before each test.
+        """
         self.args = MagicMock()
 
     @patch("mmrelay.migrate.perform_migration")

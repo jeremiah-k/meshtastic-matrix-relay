@@ -181,10 +181,10 @@ def _migrate_legacy_db_if_needed(
 # Get the database path
 def get_db_path() -> str:
     """
-    Resolve the absolute filesystem path to the application's SQLite database, using configured paths when present and falling back to the application data directory.
-
-    Selects the path in this precedence: configuration key `database.path` (preferred), legacy `db.path`, then `<data_dir>/meshtastic.sqlite`. The resolved path is cached and the cache is invalidated when relevant database configuration changes. The function will attempt to create required directories and may migrate legacy database locations to the current layout when applicable; directory-creation or migration failures are logged but do not raise.
-
+    Resolve the absolute filesystem path to the application's SQLite database.
+    
+    Selects the path with this precedence: configuration key `database.path` (preferred), legacy `db.path`, then `<data_dir>/meshtastic.sqlite` from the application's resolved paths. The resolved path is cached and the cache is invalidated when relevant database configuration changes. The function will attempt to create missing directories and will attempt to migrate legacy database locations into the current layout when applicable; directory-creation or migration failures are logged and do not raise exceptions.
+    
     Returns:
         str: Filesystem path to the SQLite database.
     """

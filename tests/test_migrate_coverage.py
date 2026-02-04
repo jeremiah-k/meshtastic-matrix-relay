@@ -236,7 +236,11 @@ class TestGetMostRecentDatabase:
         assert result is None
 
     def test_get_most_recent_database_mtime_error(self, tmp_path):
-        """Test handling OSError when getting mtime for multiple databases."""
+        """
+        Validate that _get_most_recent_database selects the newest file based on modification time.
+        
+        Creates two files with a small time difference and asserts the function returns the path of the file with the later modification time.
+        """
         # Create multiple databases to test sorting with different mtimes
         db1 = tmp_path / "db1.sqlite"
         db1.write_text("db1")
@@ -385,6 +389,24 @@ class TestMigrateDatabaseEdgeCases:
         call_count = [0]
 
         def selective_copy2(src, dst, *args, **kwargs):
+            """
+            Test wrapper for shutil.copy2 that increments a shared call counter and can simulate an OSError for a targeted backup scenario.
+            
+            Parameters:
+                src: Path-like source file to copy.
+                dst: Path-like destination for the copy operation.
+                *args, **kwargs: Forwarded to shutil.copy2.
+            
+            Side effects:
+                Increments call_count[0] on each invocation.
+            
+            Returns:
+                The value returned by shutil.copy2 (typically the destination path).
+            
+            Raises:
+                OSError: Simulated failure on the first invocation when the destination name contains "meshtastic.sqlite"
+                and the destination path contains "new_home".
+            """
             call_count[0] += 1
             # First call should be backup (dest exists)
             if call_count[0] == 1 and "meshtastic.sqlite" in dst and call_count[0] == 1:
@@ -725,6 +747,19 @@ class TestMigratePluginsEdgeCases:
         original_rmtree = shutil.rmtree
 
         def failing_rmtree(path, *args, **kwargs):
+            """
+            Simulate a failing directory removal used in tests to exercise cleanup error handling.
+            
+            Acts like shutil.rmtree for paths that contain "old_plugin" (delegates to the original rmtree) and raises OSError("Mock cleanup error") for any other path. Intended as a test stub.
+            
+            Parameters:
+                path: Path-like object or string pointing to the directory to remove.
+                *args: Additional positional arguments forwarded to the real rmtree when delegated.
+                **kwargs: Additional keyword arguments forwarded to the real rmtree when delegated.
+            
+            Raises:
+                OSError: Always raised for paths that do not contain "old_plugin"; may be raised by the delegated rmtree for matching paths.
+            """
             if "old_plugin" in str(path):
                 # Let it succeed for removal
                 return original_rmtree(path, *args, **kwargs)
@@ -756,6 +791,20 @@ class TestMigrateGpxtrackerEdgeCases:
         original_import = builtins.__import__
 
         def mock_import(name, *args, **kwargs):
+            """
+            Simulate importing modules but force an ImportError when attempting to import the `yaml` module.
+            
+            Parameters:
+                name (str): Name of the module or attribute to import; forwarded to the real import.
+                *args: Positional arguments forwarded to the real import.
+                **kwargs: Keyword arguments forwarded to the real import.
+            
+            Returns:
+                object: The imported module or attribute as returned by the real import.
+            
+            Raises:
+                ImportError: If `name` is equal to "yaml".
+            """
             if name == "yaml":
                 raise ImportError("Mock import error")
             return original_import(name, *args, **kwargs)
@@ -801,6 +850,21 @@ class TestMigrateGpxtrackerEdgeCases:
         original_copy2 = shutil.copy2
 
         def selective_copy2(src, dst, *args, **kwargs):
+            """
+            Perform a file copy from `src` to `dst`, raising an OSError when `src` matches the predefined `dest_path` to simulate a backup error.
+            
+            Parameters:
+                src (str | os.PathLike): Source file path to copy.
+                dst (str | os.PathLike): Destination file path.
+                *args: Additional positional arguments passed to the underlying copy function.
+                **kwargs: Additional keyword arguments passed to the underlying copy function.
+            
+            Returns:
+                The value returned by the underlying copy operation.
+            
+            Raises:
+                OSError: If `src` is equal to the externally defined `dest_path`, to simulate a backup failure.
+            """
             if Path(src) == dest_path:
                 raise OSError("Mock backup error")
             return original_copy2(src, dst, *args, **kwargs)

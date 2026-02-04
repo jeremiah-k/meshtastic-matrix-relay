@@ -36,21 +36,21 @@ def get_e2ee_status(
     config: Dict[str, Any], config_path: Optional[str] = None
 ) -> E2EEStatus:
     """
-    Consolidates E2EE readiness information by inspecting the runtime platform, required crypto dependencies, configuration, and presence of Matrix credentials.
-
+    Consolidates E2EE readiness by inspecting platform support, required crypto dependencies, configuration, and presence of Matrix credentials.
+    
     Parameters:
         config (Dict[str, Any]): Parsed application configuration; used to read `matrix.e2ee.enabled` and legacy `matrix.encryption.enabled`.
-        config_path (Optional[str]): Optional path to the configuration file; when provided the directory containing this path is checked first for `credentials.json`, otherwise the application's base directory is used.
-
+        config_path (Optional[str]): Path to the config file; when provided the directory containing this path is checked for `credentials.json`. When omitted, the standard credentials locations are probed (primary HOME location first, then legacy sources).
+    
     Returns:
         E2EEStatus: A dict with the following keys:
           - enabled (bool): E2EE enabled in configuration.
           - available (bool): Platform and dependencies allow E2EE.
           - configured (bool): Authentication/credentials are present.
-          - platform_supported (bool): True unless running on Windows/msys/cygwin.
+          - platform_supported (bool): True unless running on unsupported platforms (e.g., Windows/msys/cygwin).
           - dependencies_installed (bool): True if required olm/nio components are importable.
-          - credentials_available (bool): True if `credentials.json` is discovered.
-          - overall_status (str): One of "ready", "disabled", "unavailable", "incomplete", or "unknown".
+          - credentials_available (bool): True if `credentials.json` is discovered in any searched location.
+          - overall_status (str): One of "ready", "disabled", "unavailable", or "incomplete".
           - issues (List[str]): Human-readable issues found that prevent full E2EE readiness.
     """
     status: E2EEStatus = {
@@ -145,16 +145,15 @@ def get_e2ee_status(
 
 def _check_credentials_available(config_path: str) -> bool:
     """
-    Check whether Matrix credentials file exists in standard locations.
-
-    Searches for CREDENTIALS_FILENAME in HOME directory and config directory.
-    Checks legacy_sources for compatibility during deprecation window.
-
+    Determine whether a Matrix credentials file exists in any of the standard locations.
+    
+    Checks for the credentials file beside the provided config file, at the primary HOME-based credentials location resolved by mmrelay.paths, and — while a deprecation window is active — in legacy credential locations.
+    
     Parameters:
-        config_path (str): Filesystem path to configuration file whose directory should be checked.
-
+        config_path (str): Path to the application's configuration file; the config file's directory is searched for credentials.
+    
     Returns:
-        bool: True if credentials file exists in HOME or config directory; otherwise False.
+        bool: `True` if a credentials file is found in any checked location, `False` otherwise.
     """
     # Check config directory first
     config_dir = os.path.dirname(config_path)
@@ -189,24 +188,16 @@ def get_room_encryption_warnings(
     rooms: Dict[str, Any], e2ee_status: Dict[str, Any]
 ) -> List[str]:
     """
-    Return user-facing warnings for encrypted rooms when E2EE is not fully ready.
-
-    If the provided E2EE status has overall_status == "ready", returns an empty list.
-    Scans the given rooms mapping for items whose `encrypted` attribute is truthy and
-    produces one or two warning lines per situation:
-    - A line noting how many encrypted rooms were detected and the reason (platform unsupported,
-      disabled, or incomplete).
-    - A follow-up line indicating whether messages to those rooms will be blocked or may be blocked.
-
+    Produce user-facing warnings for encrypted rooms when E2EE is not fully configured.
+    
+    Inspects the provided rooms mapping for items with a truthy `encrypted` attribute and, when E2EE is not ready, returns one or two formatted warning lines describing the issue and whether messages will be blocked.
+    
     Parameters:
-        rooms: Mapping of room_id -> room object. Room objects are expected to expose
-            an `encrypted` attribute and optionally a `display_name` attribute; room_id is
-            used as a fallback name.
-        e2ee_status: E2EE status dictionary as returned by get_e2ee_status(); this function
-            reads the `overall_status` key to decide warning text.
-
+        rooms (Dict[str, Any]): Mapping of room_id to room object. Room objects should expose an `encrypted` attribute and may provide `display_name`; `room_id` is used as a fallback name.
+        e2ee_status (Dict[str, Any]): E2EE status dictionary (as returned by `get_e2ee_status`) — this function reads the `overall_status` key to determine warning text.
+    
     Returns:
-        List[str]: Formatted warning lines (empty if no relevant warnings).
+        List[str]: Formatted warning lines. Returns an empty list if E2EE is ready, there are no encrypted rooms, or the `rooms` input is invalid.
     """
     warnings: list[str] = []
 
