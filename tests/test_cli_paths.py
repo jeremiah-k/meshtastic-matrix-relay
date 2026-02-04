@@ -10,9 +10,9 @@ from mmrelay.cli import handle_config_command, handle_paths_command
 from mmrelay.constants.app import APP_DISPLAY_NAME, APP_NAME
 
 
-def test_handle_paths_command_basic(capsys, monkeypatch):
+def test_handle_paths_command_basic(capsys, monkeypatch, tmp_path):
     """Test handle_paths_command prints basic info."""
-    home = Path("/tmp/fake_home")
+    home = tmp_path / "fake_home"
     monkeypatch.setenv("MMRELAY_HOME", str(home))
     # reset_home_override is handled by conftest.py autouse fixture
 
@@ -26,10 +26,10 @@ def test_handle_paths_command_basic(capsys, monkeypatch):
         assert "HOME Directory" in captured.out
 
 
-def test_handle_paths_command_with_legacy(capsys, monkeypatch):
+def test_handle_paths_command_with_legacy(capsys, monkeypatch, tmp_path):
     """Test handle_paths_command prints legacy warning when detected."""
-    home = Path("/tmp/fake_home")
-    legacy_root = Path("/tmp/legacy_root")
+    home = tmp_path / "fake_home"
+    legacy_root = tmp_path / "legacy_root"
 
     monkeypatch.setenv("MMRELAY_HOME", str(home))
 
@@ -46,9 +46,9 @@ def test_handle_paths_command_with_legacy(capsys, monkeypatch):
         assert f"{APP_NAME} migrate" in captured.out
 
 
-def test_handle_config_paths_subcommand(capsys, monkeypatch):
+def test_handle_config_paths_subcommand(monkeypatch, tmp_path):
     """Test that 'mmrelay config paths' dispatches correctly."""
-    home = Path("/tmp/fake_home")
+    home = tmp_path / "fake_home"
     monkeypatch.setenv("MMRELAY_HOME", str(home))
 
     args = SimpleNamespace(command="config", config_command="paths")
@@ -60,11 +60,11 @@ def test_handle_config_paths_subcommand(capsys, monkeypatch):
         mock_handle.assert_called_once_with(args)
 
 
-def test_handle_paths_command_top_level(capsys, monkeypatch):
+def test_handle_paths_command_top_level(monkeypatch, tmp_path):
     """Test that 'mmrelay paths' dispatches correctly from handle_subcommand."""
     from mmrelay.cli import handle_subcommand
 
-    home = Path("/tmp/fake_home")
+    home = tmp_path / "fake_home"
     monkeypatch.setenv("MMRELAY_HOME", str(home))
 
     args = SimpleNamespace(command="paths")

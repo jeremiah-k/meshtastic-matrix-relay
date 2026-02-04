@@ -104,9 +104,6 @@ def _apply_dir_overrides(args: argparse.Namespace) -> None:
     def _is_valid_path(value: object) -> bool:
         return isinstance(value, str) and value.strip() != ""
 
-    # Track which flags are being ignored for warning messages
-    ignored_flags = []
-
     # Determine which path to use for HOME override
     home_override = None
     home_source = None
@@ -118,7 +115,6 @@ def _apply_dir_overrides(args: argparse.Namespace) -> None:
 
     if _is_valid_path(home_value):
         if _is_valid_path(base_value) or _is_valid_path(data_value):
-            ignored_flags.extend(["--base-dir", "--data-dir"])
             print(
                 "Warning: --home overrides --base-dir/--data-dir; ignoring legacy flags.",
                 file=sys.stderr,
@@ -129,7 +125,6 @@ def _apply_dir_overrides(args: argparse.Namespace) -> None:
     # Priority 2: --base-dir (legacy flag)
     elif _is_valid_path(base_value):
         if _is_valid_path(data_value):
-            ignored_flags.append("--data-dir")
             print(
                 "Warning: --base-dir overrides --data-dir; ignoring --data-dir.",
                 file=sys.stderr,
@@ -211,7 +206,7 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "--data-dir",
-        help="Deprecated: use --base-dir instead",
+        help="Deprecated: use --home instead",
         default=None,
     )
     parser.add_argument(

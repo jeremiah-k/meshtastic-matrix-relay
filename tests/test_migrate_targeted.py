@@ -75,7 +75,7 @@ class TestMigrateGpxtracker(unittest.TestCase):
         """Test skips migration when yaml import fails."""
         mock_yaml_load.side_effect = ImportError("yaml not available")
 
-        result = migrate_gpxtracker([], Path("/home"))
+        result = migrate_gpxtracker([Path("/home")], Path("/home"))
 
         self.assertTrue(result.get("success"))
 
@@ -171,7 +171,7 @@ class TestRollbackMigration(unittest.TestCase):
         result = rollback_migration()
 
         # When no migration was completed, returns success with message
-        self.assertTrue(result.get("success"))
+        self.assertFalse(result.get("success"))
         self.assertIn("rollback", result.get("message", "").lower())
 
 

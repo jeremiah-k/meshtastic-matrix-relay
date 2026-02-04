@@ -61,10 +61,10 @@ class TestConfig(unittest.TestCase):
     def test_get_base_dir_windows(self, mock_user_data_dir):
         # Test default base dir on Windows
         """
-        Test that get_base_dir returns the correct default base directory on Windows when platform detection and user data directory are mocked.
+        Test that get_base_dir returns correct default base directory on Windows when platform detection and user data directory are mocked.
         """
         with (
-            patch("mmrelay.config.sys.platform", "win32"),
+            patch("mmrelay.paths.sys.platform", "win32"),
             patch("mmrelay.config.custom_data_dir", None),
         ):
             mock_user_data_dir.return_value = "C:\\Users\\test\\AppData\\Local\\mmrelay"
@@ -114,7 +114,7 @@ class TestConfig(unittest.TestCase):
 
     @patch("mmrelay.config.os.makedirs")
     @patch("mmrelay.paths.platformdirs.user_data_dir")
-    def test_get_config_paths_windows(self, mock_user_data_dir, mock_makedirs):
+    def test_get_config_paths_windows(self, mock_user_data_dir, _mock_makensures):
         # Test with no args on Windows
         """
         Test that `get_config_paths` returns the correct configuration file path on Windows.
@@ -136,7 +136,7 @@ class TestConfig(unittest.TestCase):
             self.assertIn(os.path.normpath(expected_path), normalized_paths)
 
     @patch("mmrelay.config.os.makedirs")
-    def test_get_data_dir_linux(self, mock_makedirs):
+    def test_get_data_dir_linux(self, _mock_makensures):
         """
         Test that get_data_dir returns default data directory path on Linux platforms.
         """
@@ -390,7 +390,10 @@ class TestConfigEdgeCases(unittest.TestCase):
         mock_args = MagicMock()
         mock_args.config = "../config/test.yaml"
 
-        with patch("mmrelay.paths.get_home_dir", return_value=Path("/tmp/home")):
+        with patch(
+            "mmrelay.paths.get_home_dir",
+            return_value=Path(tempfile.gettempdir()) / "home",
+        ):
             paths = get_config_paths(args=mock_args)
 
             # Should include the absolute version of the relative path
@@ -427,7 +430,7 @@ class TestConfigEdgeCases(unittest.TestCase):
         return_value="C:\\Users\\test\\AppData\\Local\\mmrelay\\logs",
     )
     @patch("mmrelay.config.os.makedirs")
-    @patch("mmrelay.config.sys.platform", "win32")
+    @patch("mmrelay.paths.sys.platform", "win32")
     def test_get_log_dir_windows(self, mock_makedirs, _mock_get_unified_logs_dir):
         """Test get_log_dir on Windows platform."""
         result = get_log_dir()

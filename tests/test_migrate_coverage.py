@@ -283,14 +283,9 @@ class TestGetMostRecentDatabase:
         non_existent = tmp_path / "nonexistent.sqlite"
         candidates = [non_existent]
 
-        with mock.patch("mmrelay.migrate._get_most_recent_database") as mock_func:
-            # Mock to return empty list after filtering
-            def side_effect(cands):
-                return None
-
-            mock_func.side_effect = side_effect
-            result = _get_most_recent_database(candidates)
-            assert result is None
+        # Non-existent files are filtered out, leaving empty groups → returns None
+        result = _get_most_recent_database(candidates)
+        assert result is None
 
 
 class TestBackupFile:

@@ -22,7 +22,7 @@ from mmrelay.paths import (
 class TestGetHomeDir:
     """Test get_home_dir function coverage."""
 
-    def test_get_home_dir_with_override(self, monkeypatch):
+    def test_get_home_dir_with_override(self):
         """Test CLI override takes precedence."""
         set_home_override("/cli_path", source="--home")
         result = get_home_dir()

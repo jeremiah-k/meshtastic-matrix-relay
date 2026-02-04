@@ -63,7 +63,7 @@ class TestE2EEUtilsCredentialChecking(unittest.TestCase):
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     @patch("sys.platform", "linux")
-    @patch("mmrelay.paths.os.path.exists")
+    @patch("mmrelay.e2ee_utils.os.path.exists")
     @patch("mmrelay.paths.resolve_all_paths")
     def test_credentials_found_in_legacy_location(
         self, mock_resolve_all_paths, mock_exists
@@ -126,7 +126,7 @@ class TestE2EEUtilsCredentialChecking(unittest.TestCase):
             )
 
     @patch("sys.platform", "linux")
-    @patch("mmrelay.paths.os.path.exists")
+    @patch("mmrelay.e2ee_utils.os.path.exists")
     @patch("mmrelay.paths.resolve_all_paths")
     def test_credentials_not_found_in_legacy_locations(
         self, mock_resolve_all_paths, mock_exists
@@ -173,7 +173,7 @@ class TestE2EEUtilsCredentialChecking(unittest.TestCase):
             self.assertTrue(len(paths_checked) >= 3)
 
     @patch("sys.platform", "linux")
-    @patch("mmrelay.paths.os.path.exists")
+    @patch("mmrelay.e2ee_utils.os.path.exists")
     @patch("mmrelay.paths.resolve_all_paths")
     @patch("mmrelay.paths.is_deprecation_window_active")
     def test_credentials_in_legacy_during_deprecation_window(
@@ -229,7 +229,7 @@ class TestE2EEUtilsCredentialChecking(unittest.TestCase):
             self.assertTrue(len(paths_checked) >= 3)
 
     @patch("sys.platform", "linux")
-    @patch("mmrelay.paths.os.path.exists")
+    @patch("mmrelay.e2ee_utils.os.path.exists")
     @patch("mmrelay.paths.resolve_all_paths")
     @patch("mmrelay.paths.is_deprecation_window_active")
     def test_no_credentials_during_deprecation_window(
@@ -277,7 +277,7 @@ class TestE2EEUtilsCredentialChecking(unittest.TestCase):
             self.assertTrue(len(paths_checked) >= 3)
 
     @patch("sys.platform", "linux")
-    @patch("mmrelay.paths.os.path.exists")
+    @patch("mmrelay.e2ee_utils.os.path.exists")
     @patch("mmrelay.paths.resolve_all_paths")
     @patch("mmrelay.paths.is_deprecation_window_active")
     def test_deprecation_window_not_active(
