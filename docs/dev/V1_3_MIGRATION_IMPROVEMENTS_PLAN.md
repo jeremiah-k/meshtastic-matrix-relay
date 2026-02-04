@@ -313,6 +313,18 @@ This document outlines systematic improvements to the MMRelay v1.3 migration sys
 
 ---
 
+## Review TODOs (PR Feedback)
+
+- [x] `src/mmrelay/cli_utils.py`: add defensive type checks for `matrix_cfg` and `section_cfg` before calling `.get()` to avoid AttributeError when malformed config uses non-dict values.
+- [x] `src/mmrelay/migrate.py`: remove redundant exception args in `logger.exception` for state writes; narrow broad `Exception` catch to `MigrationError` plus I/O/DB errors and re-raise unexpected exceptions after logging.
+- [x] `tests/test_migrate_targeted.py`: remove unused `mock_print` patch or assert it to avoid ARG002.
+- [x] `tests/test_config_edge_cases.py`: normalize/cast paths to strings before `"AppData"` membership checks; assert `DeprecationWarning` is emitted for `get_data_dir()` before checking message.
+- [x] `tests/test_config.py`: rename unused `mock_makedirs` to `_mock_makedirs` in `test_get_log_dir_linux` to avoid ARG002.
+- [x] `docs/dev/V1_3_MIGRATION_IMPROVEMENTS_PLAN.md`: update `Last Updated` to `2026-02-04`.
+- [x] `src/mmrelay/matrix_utils.py`: refactor `connect_matrix` into smaller helpers (credentials resolution, client init/login, initial sync/room setup) to reduce complexity.
+
+---
+
 ## Success Criteria
 
 - [ ] All 3 high-priority findings (#1, #2, #3) are implemented

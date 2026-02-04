@@ -11,6 +11,7 @@ import re
 import ssl
 import sys
 import time
+from dataclasses import dataclass
 from json import JSONDecodeError
 from types import SimpleNamespace
 from typing import (
@@ -1247,68 +1248,59 @@ async def _handle_detection_sensor_packet(
         meshtastic_logger.error("Failed to relay detection sensor data to Meshtastic")
 
 
-async def connect_matrix(
-    passed_config: dict[str, Any] | None = None,
-) -> AsyncClient | None:
+@dataclass
+class MatrixAuthInfo:
+    homeserver: str
+    access_token: str
+    user_id: str
+    device_id: Optional[str]
+    credentials: dict[str, Any] | None
+    credentials_path: str | None
+
+
+def _resolve_credentials_save_path(config_data: dict[str, Any] | None) -> str | None:
     """
-    Initialize and configure a Matrix AsyncClient using available credentials and configuration.
+    Determine the filesystem path where credentials should be saved.
 
-    Attempts to authenticate (via credentials.json, automatic login, or config), enable end-to-end encryption when configured, perform an initial sync to populate room state, and return a ready-to-use AsyncClient.
-
-    Parameters:
-        passed_config (dict[str, Any] | None): Optional configuration override for this connection attempt; when provided it is used instead of the module-level config for this call.
+    Attempts to resolve an explicit credentials path from configuration or falls back to the
+    canonical credentials path; expands a leading `~` to the user home when present.
 
     Returns:
-        AsyncClient | None: A configured and initialized Matrix AsyncClient on success, or `None` if connection or credential setup failed.
-
-    Raises:
-        ValueError: If the required top-level "matrix_rooms" configuration is missing.
-        ConnectionError: If the initial Matrix sync fails or times out.
+        The absolute path to use for saving credentials, or `None` if the path cannot be resolved.
     """
-    global matrix_client, bot_user_name, matrix_homeserver, matrix_rooms, matrix_access_token, bot_user_id, config
-
-    # Update the global config if a config is passed
-    if passed_config is not None:
-        config = passed_config
-        config_module.relay_config = passed_config
-
-    # Check if config is available
-    if config is None:
-        logger.error("No configuration available. Cannot connect to Matrix.")
+    try:
+        explicit_path = get_explicit_credentials_path(config_data)
+        if explicit_path:
+            return os.path.expanduser(explicit_path)
+        return str(get_credentials_path())
+    except (TypeError, OSError, ValueError) as exc:
+        logger.debug("Failed to resolve credentials path: %s", exc)
         return None
 
-    # Check if client already exists
-    if matrix_client:
-        return matrix_client
 
-    matrix_section = config.get("matrix") if isinstance(config, dict) else None
+def _missing_credentials_keys(credentials: dict[str, Any]) -> list[str]:
+    """Return required credentials keys missing from the provided mapping."""
+    return [
+        key
+        for key in ("homeserver", "access_token", "user_id")
+        if key not in credentials
+    ]
 
-    # Check for credentials.json first
-    credentials = None
+
+async def _resolve_and_load_credentials(
+    config_data: dict[str, Any] | None,
+    matrix_section: Any,
+) -> MatrixAuthInfo | None:
+    """
+    Resolve Matrix auth info from credentials, auto-login, or config.
+
+    Returns:
+        MatrixAuthInfo | None: Auth info when available, otherwise None.
+    """
+    credentials: dict[str, Any] | None = None
     e2ee_device_id: Optional[str] = None
-    credentials_path = None
+    credentials_path: str | None = None
 
-    def _resolve_credentials_save_path() -> str | None:
-        """
-        Determine the filesystem path where credentials should be saved.
-
-        Attempts to resolve an explicit credentials path from configuration or falls back to the canonical credentials path; expands a leading `~` to the user home when present.
-
-        Returns:
-            The absolute path to use for saving credentials, or `None` if the path cannot be resolved.
-        """
-        try:
-            explicit_path = get_explicit_credentials_path(
-                config if isinstance(config, dict) else None
-            )
-            if explicit_path:
-                return os.path.expanduser(explicit_path)
-            return str(get_credentials_path())
-        except (TypeError, OSError, ValueError) as exc:
-            logger.debug("Failed to resolve credentials path: %s", exc)
-            return None
-
-    # Load credentials using the shared helper (supports legacy search + env overrides)
     try:
         credentials = await async_load_credentials()
     except asyncio.CancelledError:
@@ -1318,17 +1310,12 @@ async def connect_matrix(
         credentials = None
 
     if credentials is None:
-        candidate_path = _resolve_credentials_save_path()
+        candidate_path = _resolve_credentials_save_path(config_data)
         if candidate_path and os.path.isfile(candidate_path):
             logger.warning("Ignoring invalid credentials file: %s", candidate_path)
 
-    # If credentials.json exists, use it
     if credentials:
-        missing_keys = [
-            key
-            for key in ("homeserver", "access_token", "user_id")
-            if key not in credentials
-        ]
+        missing_keys = _missing_credentials_keys(credentials)
         if missing_keys:
             logger.warning(
                 "Ignoring credentials.json missing required keys: %s",
@@ -1336,28 +1323,34 @@ async def connect_matrix(
             )
             credentials = None
         else:
-            credentials_path = _resolve_credentials_save_path()
+            credentials_path = _resolve_credentials_save_path(config_data)
             matrix_homeserver = credentials["homeserver"]
             matrix_access_token = credentials["access_token"]
             bot_user_id = credentials["user_id"]
             e2ee_device_id = _get_valid_device_id(credentials.get("device_id"))
 
-            # Log consolidated credentials info
             logger.debug(f"Using Matrix credentials (device: {e2ee_device_id})")
 
-            # If device_id is missing, warn but proceed; we'll learn and persist it after restore_login().
             if e2ee_device_id is None:
                 logger.warning(
                     "credentials.json has no valid device_id; proceeding to restore session and discover device_id."
                 )
 
-            # If config also has Matrix login info, let the user know we're ignoring it
             if isinstance(matrix_section, dict) and "access_token" in matrix_section:
                 logger.info(
                     "NOTE: Ignoring Matrix login details in config.yaml in favor of credentials.json"
                 )
-    # Check if we can automatically create credentials from config.yaml
-    elif _can_auto_create_credentials(matrix_section):
+
+            return MatrixAuthInfo(
+                homeserver=matrix_homeserver,
+                access_token=matrix_access_token,
+                user_id=bot_user_id,
+                device_id=e2ee_device_id,
+                credentials=credentials,
+                credentials_path=credentials_path,
+            )
+
+    if _can_auto_create_credentials(matrix_section):
         matrix_section = cast(dict[str, Any], matrix_section)
         logger.info(
             "No credentials.json found, but config.yaml has password field. Attempting automatic login..."
@@ -1365,12 +1358,10 @@ async def connect_matrix(
 
         homeserver = matrix_section["homeserver"]
         username = matrix_section.get("bot_user_id") or matrix_section.get("user_id")
-        # Normalize the username to ensure it's a full MXID
         if username:
             username = _normalize_bot_user_id(homeserver, username)
         password = matrix_section["password"]
 
-        # Attempt automatic login
         try:
             success = await login_matrix_bot(
                 homeserver=homeserver,
@@ -1383,17 +1374,12 @@ async def connect_matrix(
                 logger.info(
                     "Automatic login successful! Credentials saved to credentials.json"
                 )
-                # Load the newly created credentials and set up for credentials flow
                 credentials = await async_load_credentials()
                 if not credentials:
                     logger.error("Failed to load newly created credentials")
                     return None
 
-                missing_keys = [
-                    key
-                    for key in ("homeserver", "access_token", "user_id")
-                    if key not in credentials
-                ]
+                missing_keys = _missing_credentials_keys(credentials)
                 if missing_keys:
                     logger.error(
                         "Newly created credentials.json missing required keys: %s",
@@ -1401,99 +1387,91 @@ async def connect_matrix(
                     )
                     return None
 
-                credentials_path = _resolve_credentials_save_path()
-
-                # Set up variables for credentials-based connection
+                credentials_path = _resolve_credentials_save_path(config_data)
                 matrix_homeserver = credentials["homeserver"]
                 matrix_access_token = credentials["access_token"]
                 bot_user_id = credentials["user_id"]
                 e2ee_device_id = _get_valid_device_id(credentials.get("device_id"))
-            else:
-                logger.error(
-                    "Automatic login failed. Please check your credentials or use 'mmrelay auth login'"
+
+                return MatrixAuthInfo(
+                    homeserver=matrix_homeserver,
+                    access_token=matrix_access_token,
+                    user_id=bot_user_id,
+                    device_id=e2ee_device_id,
+                    credentials=credentials,
+                    credentials_path=credentials_path,
                 )
-                return None
+
+            logger.error(
+                "Automatic login failed. Please check your credentials or use 'mmrelay auth login'"
+            )
+            return None
         except asyncio.CancelledError:
             raise
         except Exception as e:
             logger.exception(f"Error during automatic login: {type(e).__name__}")
             logger.error("Please use 'mmrelay auth login' for interactive setup")
             return None
-    else:
-        # Check if config is available
-        if config is None:
-            logger.error("No configuration available. Cannot connect to Matrix.")
-            return None
 
-        # Check if matrix section exists in config
-        if "matrix" not in config:
-            logger.error(
-                "No Matrix authentication available. Neither credentials.json nor matrix section in config found."
-            )
-            logger.error(msg_require_auth_login())
-            return None
+    if config_data is None:
+        logger.error("No configuration available. Cannot connect to Matrix.")
+        return None
 
-        if not isinstance(matrix_section, dict):
-            logger.error(
-                "Matrix configuration section is empty or invalid (expected a mapping under 'matrix')."
-            )
-            logger.error(msg_require_auth_login())
-            return None
-
-        # Check for required fields in matrix section
-        required_fields = ["homeserver", "access_token", "bot_user_id"]
-        missing_fields = [
-            field for field in required_fields if field not in matrix_section
-        ]
-
-        if missing_fields:
-            logger.error(f"Matrix section is missing required fields: {missing_fields}")
-            logger.error(msg_require_auth_login())
-            return None
-
-        # Extract Matrix configuration from config
-        matrix_homeserver = matrix_section["homeserver"]
-        matrix_access_token = matrix_section["access_token"]
-        bot_user_id = _normalize_bot_user_id(
-            matrix_homeserver, matrix_section["bot_user_id"]
-        )
-
-        # Manual method does not support device_id - use auth system for E2EE
-        e2ee_device_id = None
-
-    # Get matrix rooms from config
-    if "matrix_rooms" not in config:
-        logger.error("Configuration is missing 'matrix_rooms' section")
+    if "matrix" not in config_data:
         logger.error(
-            "Please ensure your config.yaml includes matrix_rooms configuration"
+            "No Matrix authentication available. Neither credentials.json nor matrix section in config found."
         )
-        raise ValueError("Missing required 'matrix_rooms' configuration")
-    matrix_rooms = config["matrix_rooms"]
+        logger.error(msg_require_auth_login())
+        return None
 
-    # Create SSL context using certifi's certificates with system default fallback
-    ssl_context = _create_ssl_context()
-    if ssl_context is None:
-        logger.warning(
-            "Failed to create certifi/system SSL context; proceeding with AsyncClient defaults"
+    if not isinstance(matrix_section, dict):
+        logger.error(
+            "Matrix configuration section is empty or invalid (expected a mapping under 'matrix')."
         )
+        logger.error(msg_require_auth_login())
+        return None
 
-    # Check if E2EE is enabled
+    required_fields = ["homeserver", "access_token", "bot_user_id"]
+    missing_fields = [field for field in required_fields if field not in matrix_section]
+    if missing_fields:
+        logger.error(f"Matrix section is missing required fields: {missing_fields}")
+        logger.error(msg_require_auth_login())
+        return None
+
+    matrix_homeserver = matrix_section["homeserver"]
+    matrix_access_token = matrix_section["access_token"]
+    bot_user_id = _normalize_bot_user_id(
+        matrix_homeserver, matrix_section["bot_user_id"]
+    )
+
+    return MatrixAuthInfo(
+        homeserver=matrix_homeserver,
+        access_token=matrix_access_token,
+        user_id=bot_user_id,
+        device_id=None,
+        credentials=None,
+        credentials_path=None,
+    )
+
+
+async def _configure_e2ee(
+    config_data: dict[str, Any],
+    matrix_section: Any,
+    e2ee_device_id: Optional[str],
+) -> tuple[bool, str | None]:
+    """Determine E2EE enablement and store path."""
     e2ee_enabled = False
     e2ee_store_path = None
     try:
         from mmrelay.config import is_e2ee_enabled
 
-        # Check if E2EE is enabled using the helper function
-        e2ee_enabled = is_e2ee_enabled(config)
-
-        # Debug logging for E2EE detection
+        e2ee_enabled = is_e2ee_enabled(config_data)
         logger.debug(
-            f"E2EE detection: matrix config section present: {'matrix' in config}"
+            f"E2EE detection: matrix config section present: {'matrix' in config_data}"
         )
         logger.debug(f"E2EE detection: e2ee enabled = {e2ee_enabled}")
 
         if e2ee_enabled:
-            # Check if running on Windows
             if sys.platform == WINDOWS_PLATFORM:
                 logger.error(
                     "E2EE is not supported on Windows due to library limitations."
@@ -1506,11 +1484,9 @@ async def connect_matrix(
                 )
                 e2ee_enabled = False
             else:
-                # Check if python-olm is installed
                 try:
                     importlib.import_module("olm")
 
-                    # Also check for other required E2EE dependencies
                     try:
                         nio_crypto = importlib.import_module("nio.crypto")
                         if not hasattr(nio_crypto, "OlmDevice"):
@@ -1529,12 +1505,9 @@ async def connect_matrix(
                         logger.warning("E2EE will be disabled for this session.")
                         e2ee_enabled = False
                     else:
-                        # Dependencies are available and E2EE is enabled in config
                         logger.info("End-to-End Encryption (E2EE) is enabled")
 
                     if e2ee_enabled:
-                        # Ensure nio receives a store path for the client to load encryption state.
-                        # Prefer explicit config overrides, then fall back to the default store dir.
                         store_override = None
                         if isinstance(matrix_section, dict):
                             encryption_section = matrix_section.get("encryption")
@@ -1549,7 +1522,6 @@ async def connect_matrix(
                         else:
                             e2ee_store_path = str(get_e2ee_store_dir())
 
-                        # Create store directory if it doesn't exist
                         try:
                             await asyncio.to_thread(
                                 os.makedirs, e2ee_store_path, exist_ok=True
@@ -1561,7 +1533,6 @@ async def connect_matrix(
                                 e,
                             )
 
-                        # Check if store directory contains database files
                         store_files = (
                             os.listdir(e2ee_store_path)
                             if os.path.exists(e2ee_store_path)
@@ -1579,7 +1550,6 @@ async def connect_matrix(
 
                         logger.debug(f"Using E2EE store path: {e2ee_store_path}")
 
-                        # If device_id is not present in credentials, we can attempt to learn it later.
                         if not e2ee_device_id:
                             logger.debug(
                                 "No device_id in credentials; will retrieve from store/whoami later if available"
@@ -1591,25 +1561,20 @@ async def connect_matrix(
                     logger.warning("Install 'mmrelay[e2e]' to use E2EE features.")
                     e2ee_enabled = False
     except (KeyError, TypeError):
-        # E2EE not configured
         pass
 
-    if not isinstance(matrix_homeserver, str) or not matrix_homeserver:
-        logger.error("Matrix homeserver is missing or invalid.")
-        return None
-    if not isinstance(matrix_access_token, str) or not matrix_access_token:
-        logger.error("Matrix access token is missing or invalid.")
-        return None
-    if not isinstance(bot_user_id, str) or not bot_user_id:
-        logger.error("Matrix user ID is missing or invalid.")
-        return None
+    return e2ee_enabled, e2ee_store_path
 
-    homeserver = matrix_homeserver
-    access_token = matrix_access_token
-    user_id = bot_user_id
 
-    # Initialize the Matrix client with custom SSL context
-    # Use the same AsyncClientConfig pattern as working E2EE examples
+def _initialize_matrix_client(
+    homeserver: str,
+    user_id: str,
+    device_id: Optional[str],
+    e2ee_enabled: bool,
+    e2ee_store_path: str | None,
+    ssl_context: ssl.SSLContext | None,
+) -> AsyncClient:
+    """Initialize AsyncClient with the unified configuration."""
     client_config = AsyncClientConfig(
         max_limit_exceeded=0,
         max_timeouts=0,
@@ -1617,25 +1582,31 @@ async def connect_matrix(
         encryption_enabled=e2ee_enabled,
     )
 
-    # Log the device ID being used
-    if e2ee_device_id:
-        logger.debug(f"Device ID from credentials: {e2ee_device_id}")
+    if device_id:
+        logger.debug(f"Device ID from credentials: {device_id}")
 
-    matrix_client = AsyncClient(
+    return AsyncClient(
         homeserver=homeserver,
         user=user_id,
-        device_id=e2ee_device_id,  # Will be None if not specified in config or credentials
+        device_id=device_id,
         store_path=e2ee_store_path if e2ee_enabled else None,
         config=client_config,
         ssl=cast(Any, ssl_context),
     )
 
-    # Set the access_token and user_id using restore_login for better session management
-    if credentials:
-        # Use restore_login when a device_id is available so nio can load the store.
-        # When the device_id is unknown, discover it first via whoami and then restore.
+
+async def _perform_matrix_login(
+    client: AsyncClient,
+    auth_info: MatrixAuthInfo,
+) -> Optional[str]:
+    """Restore or configure Matrix login session."""
+    e2ee_device_id = auth_info.device_id
+    user_id = auth_info.user_id
+    access_token = auth_info.access_token
+
+    if auth_info.credentials:
         if e2ee_device_id and user_id:
-            matrix_client.restore_login(
+            client.restore_login(
                 user_id=user_id,
                 device_id=e2ee_device_id,
                 access_token=access_token,
@@ -1644,28 +1615,24 @@ async def connect_matrix(
                 f"Restored login session for {user_id} with device {e2ee_device_id}"
             )
         else:
-            # First-run E2EE setup: discover device_id via whoami before loading the store
             logger.info("First-run E2EE setup: discovering device_id via whoami")
+            client.access_token = access_token
+            client.user_id = user_id
 
-            # Set credentials directly to allow whoami to succeed without a device_id
-            matrix_client.access_token = access_token
-            matrix_client.user_id = user_id
-
-            # Call whoami to discover device_id from server
             try:
-                whoami_response = await matrix_client.whoami()
+                whoami_response = await client.whoami()
                 discovered_device_id = getattr(whoami_response, "device_id", None)
                 if discovered_device_id:
                     e2ee_device_id = discovered_device_id
-                    matrix_client.device_id = e2ee_device_id
+                    client.device_id = e2ee_device_id
                     logger.info(f"Discovered device_id from whoami: {e2ee_device_id}")
 
-                    # Save the discovered device_id to credentials for future use
                     try:
-                        if credentials is not None:
-                            credentials["device_id"] = e2ee_device_id
+                        if auth_info.credentials is not None:
+                            auth_info.credentials["device_id"] = e2ee_device_id
                             save_credentials(
-                                credentials, credentials_path=credentials_path
+                                auth_info.credentials,
+                                credentials_path=auth_info.credentials_path,
                             )
                             logger.info(
                                 "Updated credentials.json with discovered device_id"
@@ -1673,10 +1640,8 @@ async def connect_matrix(
                     except OSError as e:
                         logger.warning(f"Failed to persist discovered device_id: {e}")
 
-                    # Reload login and E2EE store now that we have a device_id.
-                    # matrix-nio requires a concrete device_id for restore_login; None is not supported.
                     if e2ee_device_id and user_id:
-                        matrix_client.restore_login(
+                        client.restore_login(
                             user_id=user_id,
                             device_id=e2ee_device_id,
                             access_token=access_token,
@@ -1690,49 +1655,55 @@ async def connect_matrix(
                 logger.warning(f"Failed to discover device_id via whoami: {e}")
                 logger.warning("E2EE may not work properly without a device_id")
     else:
-        # Fallback to direct assignment for legacy token-based auth
-        matrix_client.access_token = access_token
-        matrix_client.user_id = user_id
+        client.access_token = access_token
+        client.user_id = user_id
 
-    # If E2EE is enabled, upload keys if necessary.
-    # nio will have loaded the store automatically if store_path was provided.
-    if e2ee_enabled:
-        try:
-            if matrix_client.should_upload_keys:
-                logger.info("Uploading encryption keys...")
-                await matrix_client.keys_upload()
-                logger.info("Encryption keys uploaded successfully")
-            else:
-                logger.debug("No key upload needed - keys already present")
-        except NIO_COMM_EXCEPTIONS:
-            logger.exception("Failed to upload E2EE keys")
-            # E2EE might still work, so we don't disable it here
-            logger.error("Consider regenerating credentials with: mmrelay auth login")
+    return e2ee_device_id
 
-    # Perform initial sync to populate rooms (needed for message delivery)
-    logger.debug("Performing initial sync to initialize rooms...")
+
+async def _maybe_upload_e2ee_keys(client: AsyncClient) -> None:
+    """Upload E2EE keys if needed."""
+    try:
+        if client.should_upload_keys:
+            logger.info("Uploading encryption keys...")
+            await client.keys_upload()
+            logger.info("Encryption keys uploaded successfully")
+        else:
+            logger.debug("No key upload needed - keys already present")
+    except NIO_COMM_EXCEPTIONS:
+        logger.exception("Failed to upload E2EE keys")
+        logger.error("Consider regenerating credentials with: mmrelay auth login")
+
+
+async def _close_matrix_client_after_failure(
+    client: AsyncClient | None, context: str
+) -> None:
+    global matrix_client
+    if not client:
+        return
+    try:
+        await client.close()
+    except asyncio.CancelledError:
+        raise
+    except NIO_COMM_EXCEPTIONS:
+        logger.debug(
+            "Ignoring error while closing client after %s", context, exc_info=True
+        )
+    finally:
+        if matrix_client is client:
+            matrix_client = None
+
+
+async def _perform_initial_sync(
+    client: AsyncClient, matrix_homeserver: str
+) -> Any | None:
+    """Perform initial sync and handle server quirks."""
     invite_safe_filter: dict[str, Any] = {"room": {"invite": {"limit": 0}}}
     sync_response: Any | None = None
 
-    async def _close_matrix_client_after_failure(context: str) -> None:
-        global matrix_client
-        if not matrix_client:
-            return
-        try:
-            await matrix_client.close()
-        except asyncio.CancelledError:
-            raise
-        except NIO_COMM_EXCEPTIONS:
-            logger.debug(
-                "Ignoring error while closing client after %s", context, exc_info=True
-            )
-        finally:
-            matrix_client = None
-
     try:
-        # A full_state=True sync is required to get room encryption state
         sync_response = await asyncio.wait_for(
-            matrix_client.sync(timeout=MATRIX_EARLY_SYNC_TIMEOUT, full_state=True),
+            client.sync(timeout=MATRIX_EARLY_SYNC_TIMEOUT, full_state=True),
             timeout=MATRIX_SYNC_OPERATION_TIMEOUT,
         )
     except asyncio.TimeoutError:
@@ -1751,13 +1722,13 @@ async def connect_matrix(
         logger.error(
             "4. Consider using a different Matrix homeserver if the problem persists"
         )
-        await _close_matrix_client_after_failure("sync timeout")
+        await _close_matrix_client_after_failure(client, "sync timeout")
         raise ConnectionError(
             f"Matrix sync timed out after {MATRIX_SYNC_OPERATION_TIMEOUT} seconds - check network connectivity and server status"
         ) from None
     except asyncio.CancelledError:
         logger.exception("Initial sync cancelled")
-        await _close_matrix_client_after_failure("sync cancellation")
+        await _close_matrix_client_after_failure(client, "sync cancellation")
         raise
     except JSONSCHEMA_VALIDATION_ERROR as exc:
         logger.exception("Initial sync response failed schema validation.")
@@ -1769,23 +1740,21 @@ async def connect_matrix(
         )
         try:
             sync_response = await asyncio.wait_for(
-                matrix_client.sync(
+                client.sync(
                     timeout=MATRIX_EARLY_SYNC_TIMEOUT,
                     full_state=False,
                     sync_filter=invite_safe_filter,
                 ),
                 timeout=MATRIX_SYNC_OPERATION_TIMEOUT,
             )
-            cast(Any, matrix_client).mmrelay_sync_filter = invite_safe_filter
-            cast(Any, matrix_client).mmrelay_first_sync_filter = invite_safe_filter
+            cast(Any, client).mmrelay_sync_filter = invite_safe_filter
+            cast(Any, client).mmrelay_first_sync_filter = invite_safe_filter
             logger.info(
                 "Initial sync completed after invite-safe retry. "
                 "Invite handling is disabled for subsequent syncs."
             )
         except JSONSCHEMA_VALIDATION_ERROR:
             logger.exception("Invite-safe sync retry failed")
-            # Some homeservers return invalid invite_state payloads even with invite filtering.
-            # Attempt a final retry that tolerates missing invite_state events.
             logger.warning(
                 "Invite-safe sync retry failed schema validation; "
                 "attempting to ignore invalid invite_state payloads."
@@ -1794,11 +1763,6 @@ async def connect_matrix(
             async def _sync_ignore_invalid_invites() -> Any:
                 """
                 Perform a Matrix sync using an invite-safe filter while treating malformed or schema-invalid invite_state payloads as empty.
-
-                Temporarily overrides the invite-state parsing used during sync so that invalid or malformed invite_state entries are ignored (treated as no invite events) and restores the original parser before returning. This ensures the sync completes even when some invite payloads fail validation.
-
-                Returns:
-                    The SyncResponse object returned by the matrix client's sync call.
                 """
                 import nio.responses as nio_responses
 
@@ -1810,15 +1774,6 @@ async def connect_matrix(
                 )
 
                 def _safe_get_invite_state(invite_state_dict: Any) -> list[Any]:
-                    """
-                    Parse an invite_state mapping and extract its 'events' list while ignoring invalid or malformed payloads.
-
-                    Parameters:
-                        invite_state_dict (Any): Raw invite state payload (typically from a Matrix invite event).
-
-                    Returns:
-                        list[Any]: The parsed invite-state events, or an empty list if the input is missing, not a mapping, or fails schema validation.
-                    """
                     if (
                         not isinstance(invite_state_dict, dict)
                         or "events" not in invite_state_dict
@@ -1842,7 +1797,7 @@ async def connect_matrix(
                         _safe_get_invite_state
                     )
                     return await asyncio.wait_for(
-                        matrix_client.sync(  # pyright: ignore[reportOptionalMemberAccess]  # type: ignore[attr-defined]
+                        client.sync(
                             timeout=MATRIX_EARLY_SYNC_TIMEOUT,
                             full_state=False,
                             sync_filter=invite_safe_filter,
@@ -1857,8 +1812,8 @@ async def connect_matrix(
 
             try:
                 sync_response = await _sync_ignore_invalid_invites()
-                cast(Any, matrix_client).mmrelay_sync_filter = invite_safe_filter
-                cast(Any, matrix_client).mmrelay_first_sync_filter = invite_safe_filter
+                cast(Any, client).mmrelay_sync_filter = invite_safe_filter
+                cast(Any, client).mmrelay_first_sync_filter = invite_safe_filter
                 logger.info(
                     "Initial sync completed after invite-safe retry "
                     "with invalid invite_state payloads ignored."
@@ -1867,7 +1822,7 @@ async def connect_matrix(
                 logger.debug("Invite-safe sync retry handler failed", exc_info=True)
             except asyncio.CancelledError:
                 logger.exception("Invite-ignoring sync retry cancelled")
-                await _close_matrix_client_after_failure("sync cancellation")
+                await _close_matrix_client_after_failure(client, "sync cancellation")
                 raise
             except (  # type: ignore[misc]
                 *NIO_COMM_EXCEPTIONS,
@@ -1881,21 +1836,35 @@ async def connect_matrix(
             )
         except asyncio.CancelledError:
             logger.exception("Invite-safe sync retry cancelled")
-            await _close_matrix_client_after_failure("sync cancellation")
+            await _close_matrix_client_after_failure(client, "sync cancellation")
             raise
         except NIO_COMM_EXCEPTIONS:
             logger.exception("Invite-safe sync retry failed")
 
         if sync_response is None:
             logger.exception("Matrix sync failed")
-            await _close_matrix_client_after_failure("sync failure")
+            await _close_matrix_client_after_failure(client, "sync failure")
             raise ConnectionError("Matrix sync failed") from exc
     except NIO_COMM_EXCEPTIONS as exc:
         logger.exception("Matrix sync failed")
-        await _close_matrix_client_after_failure("sync failure")
+        await _close_matrix_client_after_failure(client, "sync failure")
         raise ConnectionError("Matrix sync failed") from exc
 
-    # If the sync returned an explicit error response, treat it as a failure.
+    return sync_response
+
+
+async def _post_sync_setup(
+    client: AsyncClient,
+    sync_response: Any | None,
+    config_data: dict[str, Any],
+    matrix_rooms: Any,
+    matrix_homeserver: str,
+    bot_user_id: str,
+    e2ee_enabled: bool,
+) -> None:
+    """Handle post-sync room setup, E2EE status, and display name resolution."""
+    global bot_user_name
+
     if isinstance(sync_response, SyncError):
         error_type = sync_response.__class__.__name__
         error_details = _get_detailed_matrix_error_message(sync_response)
@@ -1911,31 +1880,20 @@ async def connect_matrix(
         logger.error("3. Ensure the Matrix server is online and accessible")
         logger.error("4. Check if your credentials are still valid")
 
-        await _close_matrix_client_after_failure("sync failure")
+        await _close_matrix_client_after_failure(client, "sync failure")
         raise ConnectionError(f"Matrix sync failed: {error_type} - {error_details}")
 
-    logger.info(f"Initial sync completed. Found {len(matrix_client.rooms)} rooms.")
+    logger.info(f"Initial sync completed. Found {len(client.rooms)} rooms.")
 
-    # List all rooms with unified E2EE status display
     from mmrelay.e2ee_utils import (
         get_e2ee_status,
         get_room_encryption_warnings,
     )
 
-    # Get comprehensive E2EE status
-    e2ee_status = get_e2ee_status(config or {}, config_module.config_path)
+    e2ee_status = get_e2ee_status(config_data or {}, config_module.config_path)
 
-    # Resolve room aliases in config (supports list[str|dict] and dict[str->str|dict])
     async def _resolve_alias(alias: str) -> str | None:
-        """
-        Return the canonical Matrix room ID for the given room alias.
-
-        If the module-level Matrix client is unavailable or the alias cannot be resolved, returns None. Network and client errors are handled internally and do not raise.
-
-        Returns:
-            The resolved room ID string if successful, None otherwise.
-        """
-        if not matrix_client:
+        if not client:
             logger.warning(
                 f"Cannot resolve alias {alias}: Matrix client is not available"
             )
@@ -1943,7 +1901,7 @@ async def connect_matrix(
 
         logger.debug(f"Resolving alias from config: {alias}")
         try:
-            response = await matrix_client.room_resolve_alias(alias)
+            response = await client.room_resolve_alias(alias)
             room_id = getattr(response, "room_id", None)
             if room_id:
                 logger.debug(f"Resolved alias {alias} to {room_id}")
@@ -1964,54 +1922,141 @@ async def connect_matrix(
 
     await _resolve_aliases_in_mapping(matrix_rooms, _resolve_alias)
 
-    # Display rooms with channel mappings
-    _display_room_channel_mappings(matrix_client.rooms, config, dict(e2ee_status))
+    _display_room_channel_mappings(client.rooms, config_data, dict(e2ee_status))
 
-    # Show warnings for encrypted rooms when E2EE is not ready
-    warnings = get_room_encryption_warnings(matrix_client.rooms, dict(e2ee_status))
+    warnings = get_room_encryption_warnings(client.rooms, dict(e2ee_status))
     for warning in warnings:
         logger.warning(warning)
 
-    # Debug information
     encrypted_count = sum(
-        1 for room in matrix_client.rooms.values() if getattr(room, "encrypted", False)
+        1 for room in client.rooms.values() if getattr(room, "encrypted", False)
     )
     logger.debug(
-        f"Found {encrypted_count} encrypted rooms out of {len(matrix_client.rooms)} total rooms"
+        f"Found {encrypted_count} encrypted rooms out of {len(client.rooms)} total rooms"
     )
     logger.debug(f"E2EE status: {e2ee_status['overall_status']}")
 
-    if e2ee_enabled and encrypted_count == 0 and len(matrix_client.rooms) > 0:
+    if e2ee_enabled and encrypted_count == 0 and len(client.rooms) > 0:
         logger.debug("No encrypted rooms detected - all rooms are plaintext")
 
-    # Add a delay to allow for key sharing to complete
-    # This addresses a race condition where the client attempts to send encrypted messages
-    # before it has received and processed room key sharing messages from other devices.
-    # The initial sync() call triggers key sharing requests, but the actual key exchange
-    # happens asynchronously. Without this delay, outgoing messages may be sent unencrypted
-    # even to encrypted rooms. While not ideal, this timing-based approach is necessary
-    # because matrix-nio doesn't provide event-driven alternatives to detect when key
-    # sharing is complete.
     if e2ee_enabled:
         logger.debug(
             f"Waiting for {E2EE_KEY_SHARING_DELAY_SECONDS} seconds to allow for key sharing..."
         )
         await asyncio.sleep(E2EE_KEY_SHARING_DELAY_SECONDS)
 
-    # Fetch the bot's display name
     try:
-        response = await matrix_client.get_displayname(bot_user_id)
+        response = await client.get_displayname(bot_user_id)
         displayname = getattr(response, "displayname", None)
         if displayname:
             bot_user_name = displayname
         else:
-            bot_user_name = bot_user_id  # Fallback if display name is not set
+            bot_user_name = bot_user_id
     except NIO_COMM_EXCEPTIONS as e:
         logger.debug(f"Failed to get bot display name for {bot_user_id}: {e}")
-        bot_user_name = bot_user_id  # Fallback on network error
+        bot_user_name = bot_user_id
 
-    # AsyncClient doesn't define e2ee_enabled; cast to Any so mypy allows the attribute.
-    cast(Any, matrix_client).e2ee_enabled = e2ee_enabled
+    cast(Any, client).e2ee_enabled = e2ee_enabled
+
+
+async def connect_matrix(
+    passed_config: dict[str, Any] | None = None,
+) -> AsyncClient | None:
+    """
+    Initialize and configure a Matrix AsyncClient using available credentials and configuration.
+
+    Attempts to authenticate (via credentials.json, automatic login, or config), enable end-to-end encryption when configured, perform an initial sync to populate room state, and return a ready-to-use AsyncClient.
+
+    Parameters:
+        passed_config (dict[str, Any] | None): Optional configuration override for this connection attempt; when provided it is used instead of the module-level config for this call.
+
+    Returns:
+        AsyncClient | None: A configured and initialized Matrix AsyncClient on success, or `None` if connection or credential setup failed.
+
+    Raises:
+        ValueError: If the required top-level "matrix_rooms" configuration is missing.
+        ConnectionError: If the initial Matrix sync fails or times out.
+    """
+    global matrix_client, bot_user_name, matrix_homeserver, matrix_rooms, matrix_access_token, bot_user_id, config
+
+    if passed_config is not None:
+        config = passed_config
+        config_module.relay_config = passed_config
+
+    if config is None:
+        logger.error("No configuration available. Cannot connect to Matrix.")
+        return None
+
+    if matrix_client:
+        return matrix_client
+
+    matrix_section = config.get("matrix") if isinstance(config, dict) else None
+
+    auth_info = await _resolve_and_load_credentials(
+        config if isinstance(config, dict) else None,
+        matrix_section,
+    )
+    if auth_info is None:
+        return None
+
+    matrix_homeserver = auth_info.homeserver
+    matrix_access_token = auth_info.access_token
+    bot_user_id = auth_info.user_id
+    e2ee_device_id = auth_info.device_id
+
+    if "matrix_rooms" not in config:
+        logger.error("Configuration is missing 'matrix_rooms' section")
+        logger.error(
+            "Please ensure your config.yaml includes matrix_rooms configuration"
+        )
+        raise ValueError("Missing required 'matrix_rooms' configuration")
+    matrix_rooms = config["matrix_rooms"]
+
+    ssl_context = _create_ssl_context()
+    if ssl_context is None:
+        logger.warning(
+            "Failed to create certifi/system SSL context; proceeding with AsyncClient defaults"
+        )
+
+    e2ee_enabled, e2ee_store_path = await _configure_e2ee(
+        config, matrix_section, e2ee_device_id
+    )
+
+    if not isinstance(matrix_homeserver, str) or not matrix_homeserver:
+        logger.error("Matrix homeserver is missing or invalid.")
+        return None
+    if not isinstance(matrix_access_token, str) or not matrix_access_token:
+        logger.error("Matrix access token is missing or invalid.")
+        return None
+    if not isinstance(bot_user_id, str) or not bot_user_id:
+        logger.error("Matrix user ID is missing or invalid.")
+        return None
+
+    matrix_client = _initialize_matrix_client(
+        homeserver=matrix_homeserver,
+        user_id=bot_user_id,
+        device_id=e2ee_device_id,
+        e2ee_enabled=e2ee_enabled,
+        e2ee_store_path=e2ee_store_path,
+        ssl_context=ssl_context,
+    )
+
+    await _perform_matrix_login(matrix_client, auth_info)
+
+    if e2ee_enabled:
+        await _maybe_upload_e2ee_keys(matrix_client)
+
+    logger.debug("Performing initial sync to initialize rooms...")
+    sync_response = await _perform_initial_sync(matrix_client, matrix_homeserver)
+    await _post_sync_setup(
+        matrix_client,
+        sync_response,
+        config,
+        matrix_rooms,
+        matrix_homeserver,
+        bot_user_id,
+        e2ee_enabled,
+    )
     return matrix_client
 
 
