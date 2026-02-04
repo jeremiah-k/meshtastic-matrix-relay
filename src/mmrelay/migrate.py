@@ -1504,8 +1504,9 @@ def rollback_migration(completed_steps: list[str] | None = None) -> dict[str, An
         else:
             completed_steps = list(MIGRATION_STEPS_ORDER)
 
+    completed_steps_list = completed_steps or []
     steps_to_rollback = [
-        step for step in completed_steps if step in MIGRATION_STEPS_ORDER
+        step for step in completed_steps_list if step in MIGRATION_STEPS_ORDER
     ]
     steps_to_rollback.reverse()
 

@@ -6,9 +6,8 @@ import ssl
 import sys
 import types
 import unittest
-from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, PropertyMock, mock_open, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 from nio import SyncError

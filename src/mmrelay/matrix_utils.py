@@ -1286,8 +1286,6 @@ async def connect_matrix(
     if passed_config is not None:
         config = passed_config
         try:
-            from mmrelay import config as config_module
-
             config_module.relay_config = passed_config
         except Exception as exc:
             logger.debug("Failed to sync relay_config for credential loading: %s", exc)
