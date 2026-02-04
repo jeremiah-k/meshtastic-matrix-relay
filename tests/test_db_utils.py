@@ -421,15 +421,25 @@ class TestDbUtils(unittest.TestCase):
         manager = _get_db_manager()
 
         async def run_async(func, write=False, _loop=None):
+            """
+            Execute the given synchronous callable using the database manager, suitable for awaiting from async code.
+            
+            Parameters:
+                func (callable): A zero-argument callable to execute synchronously.
+                write (bool): If True, run the callable within a write-capable context; otherwise run read-only.
+            
+            Returns:
+                The value returned by `func`.
+            """
             return manager.run_sync(func, write=write)
 
         manager.run_async = run_async  # type: ignore[assignment]
 
         async def exercise():
             """
-            Exercise message-map helpers by storing two entries then pruning to keep the most recent one.
-
-            Stores two message map entries and then prunes the message map to a limit of 1 so that only the latest stored entry remains.
+            Insert two message-map entries and prune the message map so only the most recent entry remains.
+            
+            Used in tests to exercise storing and pruning behavior by inserting two entries and then reducing the map to a single (latest) entry.
             """
             await async_store_message_map(
                 "mesh1", "$event1:matrix.org", "!room:matrix.org", "text1"

@@ -844,21 +844,14 @@ def mock_event():
 @pytest.fixture
 def test_config():
     """
-    Fixture providing a sample configuration for Meshtastic ↔ Matrix integration used by tests.
-
+    Provide a sample Meshtastic–Matrix integration configuration for tests.
+    
     Returns:
-        dict: Configuration with keys:
-          - meshtastic: dict with
-              - broadcast_enabled (bool): whether broadcasting to mesh is enabled.
-              - prefix_enabled (bool): whether Meshtastic message prefixes are applied.
-              - prefix_format (str): format string for message prefixes (supports truncated vars).
-              - message_interactions (dict): interaction toggles, e.g. {'reactions': bool, 'replies': bool}.
-              - meshnet_name (str): logical mesh network name used in templates.
-          - matrix_rooms: list of room mappings where each item is a dict containing:
-              - id (str): Matrix room ID (e.g. "!room:matrix.org").
-              - meshtastic_channel (int): Meshtastic channel number.
-          - matrix: dict with
-              - bot_user_id (str): Matrix user ID of the bot.
+        dict: A configuration dict with keys:
+          - meshtastic: dict containing broadcast_enabled, prefix_enabled, prefix_format,
+            message_interactions, and meshnet_name.
+          - matrix_rooms: list of room mapping dicts each with `id` and `meshtastic_channel`.
+          - matrix: dict containing `bot_user_id`.
     """
     return {
         "meshtastic": {
@@ -881,13 +874,13 @@ def test_config():
 @pytest.fixture
 def clean_migration_home(tmp_path: Path) -> Generator[Path, None, None]:
     """
-    Fixture providing a clean home directory for migration tests.
-
-    Ensures that the home directory exists and has no migration state file
-    from previous tests, providing proper isolation.
-
+    Provide a clean temporary home directory for migration tests.
+    
+    Creates and yields a directory at tmp_path / "clean_migration_home" and ensures any existing
+    migration_completed.flag file is removed so tests start without prior migration state.
+    
     Yields:
-        Path: Clean home directory path.
+        Path: Path to the created clean home directory.
     """
     home = tmp_path / "clean_migration_home"
     home.mkdir()

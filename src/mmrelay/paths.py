@@ -32,11 +32,12 @@ _home_override_source: str | None = None
 
 
 def set_home_override(path: str, *, source: str | None = None) -> None:
-    """Set home directory override from CLI arguments.
-
-    Args:
-        path: User-specified home directory path.
-        source: Source of the override (e.g., "--home", "--base-dir", "--data-dir").
+    """
+    Store a CLI-provided application home path and its source as the module-level override used by path resolution.
+    
+    Parameters:
+    	path (str): The user-specified home directory path.
+    	source (str | None): Optional identifier of the override source (e.g., "--home", "--base-dir"); may be None.
     """
     global _home_override, _home_override_source
     _home_override = path
@@ -129,19 +130,19 @@ def get_home_dir() -> Path:
 
 def get_config_paths(*, explicit: str | None = None) -> list[Path]:
     """
-    Get prioritized list of candidate config file paths.
-
-    Search order (highest to lowest):
-        1. Explicit path from --config argument (always included, even if doesn't exist)
-        2. MMRELAY_HOME/config.yaml (when explicit is not provided)
-        3. Current directory (fallback)
-        4. Legacy locations (for deprecation window)
-
-    Args:
-        explicit: Optional explicit config file path from CLI.
-
+    Produce an ordered list of candidate config.yaml file locations to try, from highest to lowest priority.
+    
+    Order:
+      1. Explicit CLI path (if provided) — always included first, even if the file does not exist.
+      2. MMRELAY_HOME/config.yaml (skipped when an explicit path is provided).
+      3. ./config.yaml in the current working directory (skipped if identical to home).
+      4. Legacy ~/.{APP_NAME}/config.yaml — included only if the directory exists and is not equal to the resolved home.
+    
+    Parameters:
+        explicit (str | None): Optional explicit config file path from the CLI; when provided it is added first.
+    
     Returns:
-        list[Path]: Ordered, de-duplicated list of candidate paths.
+        list[Path]: Ordered, de-duplicated list of candidate config file paths (highest to lowest priority).
     """
     candidates = []
 
@@ -187,10 +188,10 @@ def get_config_paths(*, explicit: str | None = None) -> list[Path]:
 
 def get_credentials_path() -> Path:
     """
-    Get credentials file path (single location).
-
+    Resolve the credentials.json file path inside the application home directory.
+    
     Returns:
-        Path: Location of credentials.json.
+        Path: Path to the credentials.json file located in the resolved application home directory.
     """
     home = get_home_dir()
     return home / "credentials.json"
@@ -198,10 +199,10 @@ def get_credentials_path() -> Path:
 
 def get_database_dir() -> Path:
     """
-    Get database directory.
-
+    Return the path to the application's database directory.
+    
     Returns:
-        Path: Database directory location.
+        Path: Path pointing to the `database` directory inside the resolved application home.
     """
     home = get_home_dir()
     return home / "database"
@@ -209,20 +210,20 @@ def get_database_dir() -> Path:
 
 def get_database_path() -> Path:
     """
-    Get SQLite database file path.
-
+    Return the file path for the application's SQLite database.
+    
     Returns:
-        Path: Database file location.
+        Path: Path to the SQLite file "meshtastic.sqlite" located in the application's database directory.
     """
     return get_database_dir() / "meshtastic.sqlite"
 
 
 def get_logs_dir() -> Path:
     """
-    Get logs directory.
-
+    Get the application's logs directory located under the resolved home.
+    
     Returns:
-        Path: Logs directory location.
+        Path: Path to the logs directory (home / "logs").
     """
     home = get_home_dir()
     return home / "logs"
@@ -230,12 +231,12 @@ def get_logs_dir() -> Path:
 
 def get_log_file() -> Path:
     """
-    Get log file path.
-
-    Environment variable override: MMRELAY_LOG_PATH
-
+    Determine the filesystem path for the application's log file.
+    
+    If the MMRELAY_LOG_PATH environment variable is set, that path is used (expanded and made absolute). Otherwise the function returns the default log file path inside the configured logs directory: `<logs_dir>/mmrelay.log`.
+    
     Returns:
-        Path: Log file location.
+        Path: Path to the log file; `MMRELAY_LOG_PATH` if set, otherwise the default logs directory file.
     """
     env_log = os.getenv("MMRELAY_LOG_PATH")
     if env_log:
@@ -245,12 +246,15 @@ def get_log_file() -> Path:
 
 def get_e2ee_store_dir() -> Path:
     """
-    Get E2EE encryption key store directory.
-
-    Unix/macOS only - E2EE not available on Windows.
-
+    Directory for storing end-to-end encryption (E2EE) keys.
+    
+    Only available on Unix-like platforms; calling this on Windows raises an error.
+    
     Returns:
-        Path: E2EE store directory location.
+        Path: Path to the E2EE key store directory.
+    
+    Raises:
+        RuntimeError: If invoked on Windows (E2EE is not supported on Windows).
     """
     if sys.platform == "win32":
         raise RuntimeError("E2EE not supported on Windows")
@@ -261,10 +265,10 @@ def get_e2ee_store_dir() -> Path:
 
 def get_plugins_dir() -> Path:
     """
-    Get plugins root directory.
-
+    Resolve the plugins root directory within the application home.
+    
     Returns:
-        Path: Plugins root directory.
+        The path to the plugins directory located under the application home.
     """
     home = get_home_dir()
     return home / "plugins"
@@ -282,23 +286,23 @@ def get_custom_plugins_dir() -> Path:
 
 def get_community_plugins_dir() -> Path:
     """
-    Get community plugins directory.
-
+    Return the community plugins directory within the application's plugins folder.
+    
     Returns:
-        Path: Community plugins directory.
+        Path: Path to the community plugins directory.
     """
     return get_plugins_dir() / "community"
 
 
 def get_plugin_code_dir(plugin_name: str) -> Path:
     """
-    Get plugin code directory (Tier 1).
-
+    Locate the Tier 1 code directory for a plugin.
+    
     Args:
-        plugin_name: Name of the plugin.
-
+        plugin_name: Plugin name (directory name under the plugins directory).
+    
     Returns:
-        Path: Directory where plugin's .py file is located.
+        Path to the plugin's code directory.
     """
     # For custom/community plugins
     return get_plugins_dir() / plugin_name
@@ -306,19 +310,14 @@ def get_plugin_code_dir(plugin_name: str) -> Path:
 
 def get_plugin_data_dir(plugin_name: str, subdir: str | None = None) -> Path:
     """
-    Get plugin data directory (Tier 2 or 3).
-
-    Three-tier plugin data system:
-    - Tier 1 (Code): Where plugin .py file lives
-    - Tier 2 (Filesystem): Disk storage for plugins needing it
-    - Tier 3 (Database): SQLite database (default for most plugins)
-
-    Args:
-        plugin_name: Name of the plugin.
-        subdir: Optional subdirectory name inside plugin data directory.
-
+    Return the filesystem path for a plugin's data storage, selecting filesystem (Tier 2) when a subdirectory is requested or the plugin-specific database directory (Tier 3) otherwise.
+    
+    Parameters:
+        plugin_name (str): Plugin identifier.
+        subdir (str | None): If provided, the filesystem subdirectory name inside the plugin's data directory; if None, the function selects the plugin's database storage location.
+    
     Returns:
-        Path: Plugin data directory.
+        Path: Path to the plugin's data directory (filesystem subpath when `subdir` is set, otherwise the plugin's database directory under the application's database/plugin_data).
     """
     if subdir:
         # Tier 2: Filesystem storage (e.g., GPX files, JSON caches)
@@ -330,16 +329,13 @@ def get_plugin_data_dir(plugin_name: str, subdir: str | None = None) -> Path:
 
 def get_plugin_database_path(plugin_name: str) -> Path:
     """
-    Get path to plugin data in SQLite database.
-
-    This is a convenience function that returns the path identifier
-    for plugin data stored in the centralized database.
-
-    Args:
-        plugin_name: Name of the plugin.
-
+    Provide the filesystem path for the central database file used by a plugin.
+    
+    Parameters:
+        plugin_name (str): Plugin identifier.
+    
     Returns:
-        Path: Path identifier for plugin data in database.
+        Path: Path to the plugin's central database file (home/database/plugin_data_{plugin_name}).
     """
     # For database path representation
     return get_home_dir() / "database" / f"plugin_data_{plugin_name}"
@@ -347,14 +343,14 @@ def get_plugin_database_path(plugin_name: str) -> Path:
 
 def ensure_directories(*, create_missing: bool = True) -> None:
     """
-    Ensure all required directories exist.
-
-    Creates missing directories with appropriate permissions.
-    Logs errors but does not raise on permission failures.
-
-    Args:
-        create_missing: If True, create directories that don't exist.
-                        If False, only check and log missing ones.
+    Ensure required MMRelay directories exist.
+    
+    Creates any missing directories when `create_missing` is True and logs failures without raising.
+    When `create_missing` is False, does not modify the filesystem and logs a warning for each missing directory.
+    The set of directories excludes the E2EE store on Windows.
+    
+    Parameters:
+    	create_missing (bool): If True, create missing directories; if False, only report missing ones.
     """
 
     raw_dirs = [
@@ -385,10 +381,10 @@ def ensure_directories(*, create_missing: bool = True) -> None:
 
 def get_legacy_env_vars() -> list[str]:
     """
-    Get list of deprecated environment variables (for warnings).
-
+    List deprecated MMRELAY environment variable names that are currently set.
+    
     Returns:
-        list[str]: Deprecated environment variable names.
+        list[str]: Names of deprecated environment variables (`MMRELAY_BASE_DIR`, `MMRELAY_DATA_DIR`) that exist in the current environment.
     """
     legacy_vars = []
 
@@ -402,16 +398,12 @@ def get_legacy_env_vars() -> list[str]:
 
 def is_deprecation_window_active() -> bool:
     """
-    Check if deprecation window is active (v1.3).
-
-    During v1.3, legacy environment variables are supported
-    alongside the new MMRELAY_HOME variable.
-
-    The deprecation window is active when MMRELAY_HOME is NOT set
-    (so users with old configs continue to work with warnings).
-
+    Determine whether the v1.3 deprecation window for legacy environment variables is active.
+    
+    The window is active when the new `MMRELAY_HOME` environment variable is not set and one or more legacy variables (e.g., `MMRELAY_BASE_DIR`, `MMRELAY_DATA_DIR`) are present in the environment.
+    
     Returns:
-        bool: True if deprecation window is active.
+        True if the deprecation window is active, False otherwise.
     """
     # Check if MMRELAY_HOME is being used (new behavior)
     new_home_set = os.getenv("MMRELAY_HOME") is not None
@@ -434,30 +426,12 @@ def is_deprecation_window_active() -> bool:
 
 def get_legacy_dirs() -> list[Path]:
     """
-    Get list of legacy directories that actually exist.
-
-    Returns directories that were used in v1.2.x or earlier layouts.
-    This is the authoritative source for all legacy roots across the entire codebase.
-
-    Legacy directories checked (in order):
-        - ~/.mmrelay (default legacy home)
-        - platformdirs.user_data_dir(APP_NAME) (Windows or platform-specific locations)
-        - MMRELAY_BASE_DIR environment variable (legacy)
-        - MMRELAY_DATA_DIR environment variable (legacy)
-        - Common Docker legacy mounts:
-            - /data
-            - /app/data
-            - /var/lib/mmrelay
-
-    Only returns directories that:
-        1. Actually exist on the filesystem
-        2. Are not equal to the current HOME directory
-        3. Are deduplicated
-
-    This function is READ-ONLY and does NOT create directories.
-
+    Return existing legacy MMRelay data directories that are distinct from the current home.
+    
+    Considers the following legacy sources (if present): ~/.mmrelay, platform-specific user data dir for the app, the MMRELAY_BASE_DIR and MMRELAY_DATA_DIR environment variables, and common Docker mounts (/data, /app/data, /var/lib/mmrelay). Only directories that exist on disk, are not equal to the resolved current home directory, and are not duplicates are returned. This function does not create or modify any files or directories.
+    
     Returns:
-        list[Path]: List of legacy directory paths that exist.
+        list[Path]: Ordered list of existing legacy directory paths (highest-to-lowest detection priority), de-duplicated and excluding the current home.
     """
     legacy_dirs: list[Path] = []
     seen: set[str] = set()
@@ -530,24 +504,26 @@ def get_legacy_dirs() -> list[Path]:
 
 def resolve_all_paths() -> dict[str, Any]:
     """
-    Resolve all application paths from a single source of truth.
-
-    Returns a comprehensive dictionary with all resolved paths:
-        - home: The canonical HOME directory
-        - legacy_sources: List of legacy directories that exist (not equal to home)
-        - credentials_path: Path to credentials.json
-        - database_dir: Path to database directory
-        - store_dir: Path to E2EE store directory
-        - logs_dir: Path to logs directory
-        - log_file: Path to log file
-        - plugins_dir: Path to plugins root directory
-        - deps_dir: Path to plugin dependencies directory
-        - env_vars_detected: Dictionary of detected environment variables
-        - cli_override: CLI override detected (--home, --base-dir, --data-dir), may be None
-        - home_source: Which input determined to home directory
-
+    Aggregate resolved application paths and related metadata into a single dictionary.
+    
+    The returned dictionary contains canonical paths (stringified) and metadata used for diagnostics and tooling. Keys:
+    - home: canonical application home directory
+    - legacy_sources: list of existing legacy directories (not equal to home)
+    - credentials_path: path to credentials.json
+    - database_dir: path to the database directory
+    - store_dir: path to the E2EE store directory or "N/A (Windows)"
+    - logs_dir: path to the logs directory
+    - log_file: path to the active log file (respecting MMRELAY_LOG_PATH if set)
+    - plugins_dir: path to the plugins root
+    - custom_plugins_dir: path to the custom plugins directory
+    - community_plugins_dir: path to the community plugins directory
+    - deps_dir: path to the plugins dependencies directory (plugins_dir / "deps")
+    - env_vars_detected: mapping of relevant environment variables that were present
+    - cli_override: CLI override source string if set (e.g. "--home"), otherwise None
+    - home_source: human-readable description of which input determined the home directory
+    
     Returns:
-        dict: Comprehensive path resolution information.
+        dict: Mapping of the keys above to their resolved string values or metadata.
     """
     # mypy: ignore[arg-type]  # cli_override may be None which is valid for dict[str, Any]
     home = get_home_dir()
@@ -609,22 +585,23 @@ def resolve_all_paths() -> dict[str, Any]:
 
 def get_diagnostics() -> dict[str, Any]:
     """
-    Get comprehensive diagnostic information about path resolution and configuration.
-
-    Returns a dictionary containing:
-        - home_dir: Resolved home directory path
-        - credentials_path: Path to credentials.json
-        - database_dir: Database directory path
-        - database_path: Full path to database file
-        - logs_dir: Logs directory path
-        - log_file: Effective log file path
-        - plugins_dir: Plugins directory path
-        - custom_plugins_dir: Custom plugins directory path
-        - community_plugins_dir: Community plugins directory path
-        - env_vars: Detected environment variables
-        - cli_override: CLI override (--home, --base-dir, --data-dir)
-        - sources_used: Which inputs determined to home directory
-        - legacy_active: Whether deprecation window is active
+    Produce a diagnostic snapshot of resolved application paths and environment state.
+    
+    Returns:
+        diagnostics (dict): Mapping of diagnostic keys to their values. Keys include:
+            - "home_dir": Resolved application home directory (string).
+            - "credentials_path": Path to credentials.json (string).
+            - "database_dir": Database directory (string).
+            - "database_path": Full path to the main database file (string).
+            - "logs_dir": Logs directory (string).
+            - "log_file": Effective log file path (string).
+            - "plugins_dir": Plugins directory (string).
+            - "custom_plugins_dir": Custom plugins directory (string).
+            - "community_plugins_dir": Community plugins directory (string).
+            - "env_vars": Detected relevant environment variables and their values (dict).
+            - "cli_override": CLI-provided override source/value, if any (string or None).
+            - "sources_used": Source chosen to determine the home directory (string).
+            - "legacy_active": `True` if the legacy deprecation window is active, `False` otherwise.
     """
     _logger = get_logger("paths")
     # Note: resolve_all_paths() already resolves home and triggers any deprecation warnings

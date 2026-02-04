@@ -45,6 +45,7 @@ ERROR_FOUND=0
 
 echo "Checking for legacy container paths and environment variables..."
 
+# check_strict_files checks each file in STRICT_FILES for any occurrence of the patterns in PATTERNS, prints matching lines (up to five) when found, and sets ERROR_FOUND to 1.
 check_strict_files() {
 	for PATTERN in "${PATTERNS[@]}"; do
 		for FILE in "${STRICT_FILES[@]}"; do
@@ -66,7 +67,7 @@ check_strict_files() {
 # The marker applies ONLY to the next fenced block (not the entire document).
 #
 # Pre-parse each DOC file to collect allowed line ranges from marker-marked blocks.
-# Then check each forbidden pattern match to ensure it falls within an allowed range.
+# check_doc_files scans each file in DOC_FILES for entries from PATTERNS, treats fenced code blocks immediately following `<!-- MMRELAY_ALLOW_LEGACY_EXAMPLE -->` as allowed ranges, and reports any forbidden pattern occurrences that fall outside those allowed fenced blocks.
 check_doc_files() {
 	local ALLOW_MARKER="<!-- MMRELAY_ALLOW_LEGACY_EXAMPLE -->"
 
@@ -188,7 +189,8 @@ check_doc_files() {
 	done
 }
 
-# Self-test function (run with CHECK_CONTAINER_PATHS_SELFTEST=1)
+# selftest creates a temporary markdown file with allowed and forbidden legacy examples, runs check_doc_files to verify that forbidden patterns outside allowed fenced blocks are detected, and returns 0 on success or 1 on failure.
+# It preserves and restores PATTERNS, DOC_FILES, and ERROR_FOUND around the test and removes the temporary file before returning.
 selftest() {
 	local TEST_FILE="/tmp/check_container_paths_test.md"
 

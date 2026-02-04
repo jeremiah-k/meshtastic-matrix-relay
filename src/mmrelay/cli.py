@@ -90,18 +90,26 @@ def _get_logger() -> logging.Logger:
 
 def _apply_dir_overrides(args: argparse.Namespace | None) -> None:
     """
-    Apply --home/--base-dir/--data-dir overrides to global config.
-
-    Legacy flags (--base-dir, --data-dir) now feed the HOME resolver
-    to ensure a single unified root across all subsystems (plugins, config, etc.).
-
+    Apply CLI directory overrides to the application's unified HOME path.
+    
+    Checks CLI flags in this priority: --home, --base-dir, then --data-dir. When a valid override is found the function sets the resolved absolute HOME override via the paths subsystem (so all runtime subsystems use the same root), prints deprecation/conflict warnings for legacy flags as appropriate, and ensures the target directory exists.
+    
     Parameters:
-        args (argparse.Namespace): Parsed CLI arguments.
+        args (argparse.Namespace | None): Parsed CLI arguments; expected to possibly contain `home`, `base_dir`, or `data_dir`. If None or no valid override is present, the function is a no-op.
     """
     if not args:
         return
 
     def _is_valid_path(value: object) -> bool:
+        """
+        Check whether the given value is a non-empty string after trimming whitespace.
+        
+        Parameters:
+            value (object): The value to test.
+        
+        Returns:
+            bool: `True` if `value` is a string containing at least one non-whitespace character, `False` otherwise.
+        """
         return isinstance(value, str) and value.strip() != ""
 
     # Determine which path to use for HOME override
@@ -760,20 +768,20 @@ def _analyze_e2ee_setup(config: dict[str, Any], config_path: str) -> dict[str, A
 
 def _find_credentials_json_path(config_path: str | None) -> str | None:
     """
-    Locate a credentials.json file using the unified HOME/legacy model.
-
+    Locate a credentials.json file following the unified HOME-first then legacy search order.
+    
     Search order:
-    1. credentials.json in the same directory as `config_path` (if provided).
-    2. credentials.json in MMRELAY_HOME (primary location).
-    3. For each legacy root directory: legacy_root/credentials.json.
-
-    When credentials are found in a legacy location, prints a migration suggestion.
-
+    1) credentials.json adjacent to `config_path` (if `config_path` is provided),
+    2) credentials.json at the resolved MMRELAY_HOME credentials path,
+    3) credentials.json in each legacy source root.
+    
+    If a credentials.json is found in a legacy location, a migration suggestion is printed to stderr.
+    
     Parameters:
-        config_path (str | None): Path to the configuration file used to derive the adjacent credentials.json location.
-
+        config_path (str | None): Optional path to a configuration file; its directory is checked first for an adjacent credentials.json.
+    
     Returns:
-        str | None: Absolute path to the discovered credentials.json, or `None` if no file is found.
+        str | None: Absolute path to the discovered credentials.json, or `None` if no credentials file is found.
     """
     from mmrelay.paths import resolve_all_paths
 
@@ -1729,13 +1737,12 @@ handle_config_paths = handle_paths_command
 
 def handle_verify_migration_command(_args: argparse.Namespace) -> int:
     """
-    Verify migration state and detect legacy data (read-only).
-
-    Parameters:
-        args (argparse.Namespace): CLI namespace.
-
+    Verify migration readiness and report legacy data findings in read-only mode.
+    
+    Runs the migration verification routine and prints a human-readable report.
+    
     Returns:
-        int: Exit code (0 on success, non-zero on failure).
+        0 if the verification report indicates success, 1 otherwise.
     """
     from mmrelay.migrate import print_migration_verification, verify_migration
 
@@ -1746,19 +1753,12 @@ def handle_verify_migration_command(_args: argparse.Namespace) -> int:
 
 def handle_doctor_command(args: argparse.Namespace) -> int:
     """
-    Diagnose path configuration and migration status.
-
-    Displays comprehensive diagnostic information about:
-    - HOME directory and source
-    - Legacy directories detected
-    - Runtime artifact locations (credentials, DB, store, logs, plugins)
-    - Migration recommendations
-
-    Parameters:
-        args (argparse.Namespace): CLI namespace.
-
+    Print a diagnostic summary of resolved HOME, runtime artifact locations, legacy sources, environment variables, CLI overrides, and migration status; optionally run migration verification.
+    
+    When invoked, this command prints human-readable information about the current path resolution and any detected legacy data, and it will print migration recommendations. If the `migration` attribute on `args` is true, performs a verification step and reports warnings/errors.
+    
     Returns:
-        int: Exit code (0 on success, non-zero on failure).
+        int: 0 on success, 1 if migration verification reported errors.
     """
     from mmrelay.migrate import is_migration_needed, verify_migration
     from mmrelay.paths import resolve_all_paths
@@ -1834,13 +1834,13 @@ def handle_doctor_command(args: argparse.Namespace) -> int:
 
 def handle_auth_login(args: argparse.Namespace) -> int:
     """
-    Run the Matrix bot login flow using either command-line credentials or an interactive prompt.
-
-    Attempts non-interactive authentication when `args` provides all three of `homeserver`, `username`, and `password`; otherwise initiates an interactive login. Prints user-facing messages for missing parameters and error conditions.
-
+    Authenticate a Matrix bot either non-interactively with provided credentials or interactively via prompts.
+    
+    If `args` supplies all three of `homeserver`, `username`, and `password`, performs a non-interactive login (validates that `homeserver` and `username` are non-empty). If none are supplied, runs an interactive login flow and attempts a silent check for E2EE-enabled configuration to tailor user-facing messages. If some but not all credentials are provided, reports the missing parameters and fails.
+    
     Parameters:
         args (argparse.Namespace): Parsed CLI namespace; may include `homeserver`, `username`, and `password`.
-
+    
     Returns:
         int: 0 on successful authentication, 1 on failure, cancellation, or unexpected errors.
     """
@@ -1996,20 +1996,18 @@ def handle_auth_status(args: argparse.Namespace) -> int:
 
 def handle_auth_logout(args: argparse.Namespace) -> int:
     """
-    Log out the Matrix bot and clear local session data.
-
-    Prompts for a verification password (unless a non-empty password is supplied via args.password),
-    optionally asks for confirmation (skipped if args.yes is True), and attempts to remove local
-    credentials, clear any E2EE store, and invalidate the bot's access token by calling the logout flow.
-
+    Log out the Matrix bot, clear local session data, and invalidate the bot's access token.
+    
+    Prompts for a verification password if `args.password` is None or empty, and asks for confirmation
+    unless `args.yes` is True. On success this removes local credentials and clears any E2EE store.
+    
     Parameters:
-        args (argparse.Namespace): CLI arguments with relevant attributes:
-            password (str | None): If a non-empty string is provided, it is used as the verification
-                password; if None or empty, the function prompts securely.
+        args (argparse.Namespace): CLI arguments containing:
+            password (str | None): Verification password to use; if None or empty the function prompts securely.
             yes (bool): If True, skip the interactive confirmation prompt.
-
+    
     Returns:
-        int: 0 on successful logout, 1 if the operation fails or is cancelled (including Ctrl+C).
+        int: 0 on successful logout, 1 if the operation fails or is cancelled.
     """
     import asyncio
 
@@ -2067,13 +2065,13 @@ def handle_auth_logout(args: argparse.Namespace) -> int:
 
 def handle_migrate_command(args: argparse.Namespace) -> int:
     """
-    Execute migration from legacy directory structure to unified layout.
-
-    Supports --dry-run, --move, and --force flags for controlling migration behavior.
-
+    Run data migration from legacy directory layouts to the unified HOME-based layout.
+    
+    Honors CLI flags on `args`: `dry_run` (report actions without changing files), `move` (move files instead of copying), and `force` (override safety checks). 
+    
     Parameters:
-        args (argparse.Namespace): Parsed CLI arguments with migration flags.
-
+        args (argparse.Namespace): Parsed CLI arguments containing optional `dry_run`, `move`, and `force` attributes.
+    
     Returns:
         int: `0` on success, `1` on failure.
     """

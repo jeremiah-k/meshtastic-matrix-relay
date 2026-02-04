@@ -1250,6 +1250,22 @@ class TestLoadConfigUncoveredLines(unittest.TestCase):
             def import_side_effect(
                 name, globals=None, locals=None, fromlist=(), level=0
             ):
+                """
+                Simulate an ImportError for the mmrelay.cli_utils module (and its alias "cli_utils") while performing normal imports otherwise.
+                
+                Parameters:
+                    name (str): The fully qualified module name to import; if it equals "mmrelay.cli_utils" or "cli_utils", an ImportError is raised.
+                    globals (dict): Passed through to the underlying import mechanism.
+                    locals (dict): Passed through to the underlying import mechanism.
+                    fromlist (tuple): Passed through to the underlying import mechanism.
+                    level (int): Passed through to the underlying import mechanism.
+                
+                Returns:
+                    module: The imported module object for successful imports.
+                
+                Raises:
+                    ImportError: When `name` is "mmrelay.cli_utils" or "cli_utils".
+                """
                 if name in ("mmrelay.cli_utils", "cli_utils"):
                     raise ImportError
                 return real_import(name, globals, locals, fromlist, level)
@@ -1306,6 +1322,22 @@ class TestGetMeshtasticConfigValueUncoveredLines(unittest.TestCase):
         real_import = __import__
 
         def import_side_effect(name, globals=None, locals=None, fromlist=(), level=0):
+            """
+            Act as a replacement import function that simulates the absence of the mmrelay.cli_utils module by raising ImportError for that name and otherwise delegates to the real import.
+            
+            Parameters:
+                name (str): Module name to import.
+                globals: Passed through to the underlying import.
+                locals: Passed through to the underlying import.
+                fromlist (tuple): Passed through to the underlying import.
+                level (int): Import level, passed through to the underlying import.
+            
+            Returns:
+                module: The imported module object for names other than "mmrelay.cli_utils" or "cli_utils".
+            
+            Raises:
+                ImportError: If `name` is "mmrelay.cli_utils" or "cli_utils".
+            """
             if name in ("mmrelay.cli_utils", "cli_utils"):
                 raise ImportError
             return real_import(name, globals, locals, fromlist, level)
@@ -1481,9 +1513,9 @@ class TestConfigUncoveredLines(unittest.TestCase):
         def mock_error(*args, **_kwargs):
             """
             Record the first positional argument as an error message in the shared `log_error` list.
-
+            
             Parameters:
-                *args: Positional arguments where the first element is the error message to record.
+                *args: Positional arguments; the first element is treated as the error message to record.
                 **_kwargs: Ignored.
             """
             log_error.append(args[0])

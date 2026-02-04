@@ -359,10 +359,10 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
             # Simulate race condition by clearing cache between calls
             def side_effect_clear_cache(*_args, **_kwargs):
                 """
-                Clears the cached database path and returns a test database path.
-
+                Clear the module's cached database path and return a test path-resolution dictionary.
+                
                 Returns:
-                    dict: Path resolution output with database_dir.
+                    dict: Mapping with keys `database_dir` (the test directory path) and `legacy_sources` (an empty list).
                 """
                 mmrelay.db_utils._cached_db_path = None
                 return {"database_dir": temp_dir, "legacy_sources": []}
