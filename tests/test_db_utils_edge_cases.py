@@ -360,7 +360,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
             def side_effect_clear_cache(*_args, **_kwargs):
                 """
                 Clear the module's cached database path and return a test path-resolution dictionary.
-                
+
                 Returns:
                     dict: Mapping with keys `database_dir` (the test directory path) and `legacy_sources` (an empty list).
                 """

@@ -276,12 +276,12 @@ class Plugin:
             def side_effect(path, **_kwargs):
                 """
                 Simulate a filesystem access check that denies access for restricted paths.
-                
+
                 Parameters:
-                	path (str): Filesystem path to check.
-                
+                        path (str): Filesystem path to check.
+
                 Raises:
-                	PermissionError: If `path` starts with "/restricted".
+                        PermissionError: If `path` starts with "/restricted".
                 """
                 if path.startswith("/restricted"):
                     raise PermissionError("Permission denied")

@@ -70,10 +70,10 @@ class TestPathIsWithinHome:
         def mock_resolve_oserror(_self):
             """
             Replacement for Path.resolve that simulates a resolution failure by always raising OSError.
-            
+
             Parameters:
                 _self: Ignored; the bound instance for which resolve would normally run.
-            
+
             Raises:
                 OSError: Always raised with the message "Mock error".
             """
@@ -95,10 +95,10 @@ class TestPathIsWithinHome:
         def mock_resolve_oserror(_self):
             """
             Replacement for Path.resolve that simulates a resolution failure by always raising OSError.
-            
+
             Parameters:
                 _self: Ignored; the bound instance for which resolve would normally run.
-            
+
             Raises:
                 OSError: Always raised with the message "Mock error".
             """
@@ -171,7 +171,7 @@ class TestDirHasEntries:
         def mock_iterdir(self):
             """
             Simulate a failing Path.iterdir by raising an OSError.
-            
+
             Raises:
                 OSError: Always raised to emulate an iterdir failure in tests.
             """
@@ -683,11 +683,11 @@ class TestMigrateCredentials:
         def mock_copy_oserror(src, dst, *args, **kwargs):
             """
             Simulates a file copy that fails with an OSError when the destination path contains "bak".
-            
+
             Parameters:
                 src: Source path (ignored by this mock).
                 dst: Destination path; if `str(dst)` contains "bak", the function raises an OSError.
-            
+
             Raises:
                 OSError: if "bak" appears in the destination path to simulate a backup-related failure.
             """

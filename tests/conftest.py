@@ -845,7 +845,7 @@ def mock_event():
 def test_config():
     """
     Provide a sample Meshtastic–Matrix integration configuration for tests.
-    
+
     Returns:
         dict: A configuration dict with keys:
           - meshtastic: dict containing broadcast_enabled, prefix_enabled, prefix_format,
@@ -875,10 +875,10 @@ def test_config():
 def clean_migration_home(tmp_path: Path) -> Generator[Path, None, None]:
     """
     Provide a clean temporary home directory for migration tests.
-    
+
     Creates and yields a directory at tmp_path / "clean_migration_home" and ensures any existing
     migration_completed.flag file is removed so tests start without prior migration state.
-    
+
     Yields:
         Path: Path to the created clean home directory.
     """

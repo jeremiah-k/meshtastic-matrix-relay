@@ -37,11 +37,11 @@ def get_e2ee_status(
 ) -> E2EEStatus:
     """
     Consolidates E2EE readiness by inspecting platform support, required crypto dependencies, configuration, and presence of Matrix credentials.
-    
+
     Parameters:
         config (Dict[str, Any]): Parsed application configuration; used to read `matrix.e2ee.enabled` and legacy `matrix.encryption.enabled`.
         config_path (Optional[str]): Path to the config file; when provided the directory containing this path is checked for `credentials.json`. When omitted, the standard credentials locations are probed (primary HOME location first, then legacy sources).
-    
+
     Returns:
         E2EEStatus: A dict with the following keys:
           - enabled (bool): E2EE enabled in configuration.
@@ -146,12 +146,12 @@ def get_e2ee_status(
 def _check_credentials_available(config_path: str) -> bool:
     """
     Determine whether a Matrix credentials file exists in any of the standard locations.
-    
+
     Checks for the credentials file beside the provided config file, at the primary HOME-based credentials location resolved by mmrelay.paths, and — while a deprecation window is active — in legacy credential locations.
-    
+
     Parameters:
         config_path (str): Path to the application's configuration file; the config file's directory is searched for credentials.
-    
+
     Returns:
         bool: `True` if a credentials file is found in any checked location, `False` otherwise.
     """
@@ -189,13 +189,13 @@ def get_room_encryption_warnings(
 ) -> List[str]:
     """
     Produce user-facing warnings for encrypted rooms when E2EE is not fully configured.
-    
+
     Inspects the provided rooms mapping for items with a truthy `encrypted` attribute and, when E2EE is not ready, returns one or two formatted warning lines describing the issue and whether messages will be blocked.
-    
+
     Parameters:
         rooms (Dict[str, Any]): Mapping of room_id to room object. Room objects should expose an `encrypted` attribute and may provide `display_name`; `room_id` is used as a fallback name.
         e2ee_status (Dict[str, Any]): E2EE status dictionary (as returned by `get_e2ee_status`) — this function reads the `overall_status` key to determine warning text.
-    
+
     Returns:
         List[str]: Formatted warning lines. Returns an empty list if E2EE is ready, there are no encrypted rooms, or the `rooms` input is invalid.
     """

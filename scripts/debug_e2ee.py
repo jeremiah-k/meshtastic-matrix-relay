@@ -35,7 +35,7 @@ class E2EEDebugger:
     def __init__(self) -> None:
         """
         Initialize a new E2EEDebugger with no configuration or client set.
-        
+
         Attributes:
             config: The loaded configuration dictionary once load_config() is called; currently None.
             client: The Matrix client instance once connect_matrix() completes; currently None.

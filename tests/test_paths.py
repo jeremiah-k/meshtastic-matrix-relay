@@ -44,7 +44,7 @@ class TestPathResolutionEnvVars(unittest.TestCase):
     def setUp(self):
         """
         Reset the global home-directory override used by path resolution tests.
-        
+
         This ensures each test starts with no overridden home directory state by calling reset_home_override().
         """
         reset_home_override()
@@ -52,7 +52,7 @@ class TestPathResolutionEnvVars(unittest.TestCase):
     def tearDown(self):
         """
         Reset any overridden home-directory state used by tests.
-        
+
         Restores global home/path override to its default so subsequent tests run with a clean environment.
         """
         reset_home_override()
@@ -158,7 +158,7 @@ class TestPathResolutionConfigPaths(unittest.TestCase):
     def setUp(self):
         """
         Reset the global home-directory override used by path resolution tests.
-        
+
         This ensures each test starts with no overridden home directory state by calling reset_home_override().
         """
         reset_home_override()
@@ -166,7 +166,7 @@ class TestPathResolutionConfigPaths(unittest.TestCase):
     def tearDown(self):
         """
         Reset any overridden home-directory state used by tests.
-        
+
         Restores global home/path override to its default so subsequent tests run with a clean environment.
         """
         reset_home_override()
@@ -224,10 +224,10 @@ class TestPathResolutionConfigPaths(unittest.TestCase):
                     def exists_side_effect(path):
                         """
                         Determine whether the provided path corresponds to a legacy MMRELAY home location.
-                        
+
                         Parameters:
                             path: A path-like object to check.
-                        
+
                         Returns:
                             `True` if the string form of `path` contains "/home/.mmrelay", `False` otherwise.
                         """
@@ -271,7 +271,7 @@ class TestPathResolutionDatabase(unittest.TestCase):
     def setUp(self):
         """
         Reset the global home-directory override used by path resolution tests.
-        
+
         This ensures each test starts with no overridden home directory state by calling reset_home_override().
         """
         reset_home_override()
@@ -279,7 +279,7 @@ class TestPathResolutionDatabase(unittest.TestCase):
     def tearDown(self):
         """
         Reset any overridden home-directory state used by tests.
-        
+
         Restores global home/path override to its default so subsequent tests run with a clean environment.
         """
         reset_home_override()
@@ -301,7 +301,7 @@ class TestPathResolutionPlugins(unittest.TestCase):
     def setUp(self):
         """
         Reset the global home-directory override used by path resolution tests.
-        
+
         This ensures each test starts with no overridden home directory state by calling reset_home_override().
         """
         reset_home_override()
@@ -309,7 +309,7 @@ class TestPathResolutionPlugins(unittest.TestCase):
     def tearDown(self):
         """
         Reset any overridden home-directory state used by tests.
-        
+
         Restores global home/path override to its default so subsequent tests run with a clean environment.
         """
         reset_home_override()
@@ -353,7 +353,7 @@ class TestPathDirectoryCreation(unittest.TestCase):
     def setUp(self):
         """
         Reset the global home-directory override used by path resolution tests.
-        
+
         This ensures each test starts with no overridden home directory state by calling reset_home_override().
         """
         reset_home_override()
@@ -361,7 +361,7 @@ class TestPathDirectoryCreation(unittest.TestCase):
     def tearDown(self):
         """
         Reset any overridden home-directory state used by tests.
-        
+
         Restores global home/path override to its default so subsequent tests run with a clean environment.
         """
         reset_home_override()
@@ -436,7 +436,7 @@ class TestPathDirectoryCreation(unittest.TestCase):
     def test_directory_already_exists(self):
         """
         Verify ensure_directories does not attempt to create directories that already exist.
-        
+
         Patches the environment to simulate a Linux home and database directory, stubs Path.exists to return True,
         calls ensure_directories(create_missing=True), and asserts no mkdir calls were made for existing paths.
         """
@@ -486,7 +486,7 @@ class TestLegacyDirsDetection(unittest.TestCase):
     def setUp(self):
         """
         Reset the global home-directory override used by path resolution tests.
-        
+
         This ensures each test starts with no overridden home directory state by calling reset_home_override().
         """
         reset_home_override()
@@ -494,7 +494,7 @@ class TestLegacyDirsDetection(unittest.TestCase):
     def tearDown(self):
         """
         Reset any overridden home-directory state used by tests.
-        
+
         Restores global home/path override to its default so subsequent tests run with a clean environment.
         """
         reset_home_override()

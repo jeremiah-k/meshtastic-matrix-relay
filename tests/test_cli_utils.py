@@ -561,7 +561,7 @@ class TestLogoutMatrixBot:
     async def test_logout_matrix_bot_ssl_context_none(self):
         """
         Verify logout_matrix_bot proceeds when SSL context creation returns None and logs a warning.
-        
+
         Simulates valid credentials and AsyncClient instances, forces _create_ssl_context to return None, and asserts the function completes the logout flow while emitting a warning via the logger.
         """
         from mmrelay.cli_utils import logout_matrix_bot
@@ -866,7 +866,7 @@ class TestLogoutMatrixBot:
     async def test_logout_matrix_bot_process_exception(self):
         """
         Verify logout_matrix_bot returns False and logs an exception when creating the AsyncClient raises an unexpected error.
-        
+
         Patches credential loading and SSL context creation, causes AsyncClient construction to raise, and asserts the function returns False, calls logger.exception once, and prints an error message.
         """
         from mmrelay.cli_utils import logout_matrix_bot

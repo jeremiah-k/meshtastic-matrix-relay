@@ -89,12 +89,12 @@ class TestE2EEUtilsCredentialChecking(unittest.TestCase):
             def exists_side_effect(path):
                 """
                 Simulate filesystem existence checks for credential file paths used by the tests.
-                
+
                 Parameters:
                     path (str): Filesystem path to evaluate. The function looks for "credentials.json"
                         and the substrings "primary", "legacy1", "legacy2", or "legacy3" to determine
                         the simulated result.
-                
+
                 Returns:
                     bool: `True` if the path refers to the credentials file in the second legacy
                     location ("legacy2"), `False` otherwise.
@@ -164,10 +164,10 @@ class TestE2EEUtilsCredentialChecking(unittest.TestCase):
             def exists_side_effect(path):
                 """
                 Side-effect function used in tests to simulate that no file exists at any checked path.
-                
+
                 Parameters:
                     path (str): Filesystem path being queried.
-                
+
                 Returns:
                     bool: `False` for every input path to indicate the file does not exist.
                 """
@@ -223,10 +223,10 @@ class TestE2EEUtilsCredentialChecking(unittest.TestCase):
             def exists_side_effect(path):
                 """
                 Simulate os.path.exists for test cases by reporting existence only for the second legacy credentials path.
-                
+
                 Parameters:
                     path (str): Filesystem path to check.
-                
+
                 Returns:
                     True if `path` contains "credentials.json" and "legacy2", `False` otherwise.
                 """
@@ -267,7 +267,7 @@ class TestE2EEUtilsCredentialChecking(unittest.TestCase):
     ) -> None:
         """
         Verify that _check_credentials_available reports credentials absent when the deprecation window is active and no credential files exist.
-        
+
         Mocks an active deprecation window and multiple legacy sources, asserts the function returns False and that the primary credentials path plus all legacy locations were checked.
         """
         # Mock dependencies as installed
@@ -287,10 +287,10 @@ class TestE2EEUtilsCredentialChecking(unittest.TestCase):
             def exists_side_effect(path):
                 """
                 Side-effect function used in tests to simulate that no file exists at any checked path.
-                
+
                 Parameters:
                     path (str): Filesystem path being queried.
-                
+
                 Returns:
                     bool: `False` for every input path to indicate the file does not exist.
                 """
@@ -323,7 +323,7 @@ class TestE2EEUtilsCredentialChecking(unittest.TestCase):
     ) -> None:
         """
         Verify _check_credentials_available ignores legacy sources when the deprecation window is inactive.
-        
+
         Mocks the deprecation window as inactive and supplies legacy_sources; ensures legacy locations are not considered and no credentials are reported found.
         """
         # Mock dependencies as installed

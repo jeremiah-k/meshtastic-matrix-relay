@@ -4,7 +4,6 @@ import html
 import importlib
 import inspect
 import io
-import json
 import logging
 import os
 import re
@@ -1246,22 +1245,6 @@ async def _handle_detection_sensor_packet(
         meshtastic_logger.error("Failed to relay detection sensor data to Meshtastic")
 
 
-def _read_credentials_file(path: str) -> dict[str, Any]:
-    """Read credentials file for use with asyncio.to_thread.
-
-    This helper function wraps synchronous file I/O so it can be
-    offloaded to a thread pool when called from async context.
-
-    Args:
-        path: Path to credentials file.
-
-    Returns:
-        dict: Parsed credentials dictionary.
-    """
-    with open(path, "r", encoding="utf-8") as f:
-        return cast(dict[str, Any], json.load(f))
-
-
 async def connect_matrix(
     passed_config: dict[str, Any] | None = None,
 ) -> AsyncClient | None:
@@ -1309,9 +1292,9 @@ async def connect_matrix(
     def _resolve_credentials_save_path() -> str | None:
         """
         Determine the filesystem path where credentials should be saved.
-        
+
         Attempts to resolve an explicit credentials path from configuration or falls back to the canonical credentials path; expands a leading `~` to the user home when present.
-        
+
         Returns:
             The absolute path to use for saving credentials, or `None` if the path cannot be resolved.
         """
@@ -1808,9 +1791,9 @@ async def connect_matrix(
             async def _sync_ignore_invalid_invites() -> Any:
                 """
                 Perform a Matrix sync using an invite-safe filter while treating malformed or schema-invalid invite_state payloads as empty.
-                
+
                 Temporarily overrides the invite-state parsing used during sync so that invalid or malformed invite_state entries are ignored (treated as no invite events) and restores the original parser before returning. This ensures the sync completes even when some invite payloads fail validation.
-                
+
                 Returns:
                     The SyncResponse object returned by the matrix client's sync call.
                 """
@@ -1826,10 +1809,10 @@ async def connect_matrix(
                 def _safe_get_invite_state(invite_state_dict: Any) -> list[Any]:
                     """
                     Parse an invite_state mapping and extract its 'events' list while ignoring invalid or malformed payloads.
-                    
+
                     Parameters:
                         invite_state_dict (Any): Raw invite state payload (typically from a Matrix invite event).
-                    
+
                     Returns:
                         list[Any]: The parsed invite-state events, or an empty list if the input is missing, not a mapping, or fails schema validation.
                     """
@@ -2037,12 +2020,12 @@ async def login_matrix_bot(
 ) -> bool:
     """
     Authenticate the bot with a Matrix homeserver and persist the resulting session credentials.
-    
+
     If any of homeserver, username, or password are None, the function will prompt interactively for them. On success the acquired credentials (homeserver, user_id, access_token, device_id) are saved to the configured credentials path.
-    
+
     Parameters:
         logout_others (bool | None): If True, attempt to log out other sessions; if False, do not; if None and running interactively, the user will be prompted (treated as False in non-interactive calls).
-    
+
     Returns:
         bool: `True` if login succeeded and credentials were saved, `False` otherwise.
     """

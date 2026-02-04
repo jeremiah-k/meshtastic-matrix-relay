@@ -423,11 +423,11 @@ class TestDbUtils(unittest.TestCase):
         async def run_async(func, write=False, _loop=None):
             """
             Execute the given synchronous callable using the database manager, suitable for awaiting from async code.
-            
+
             Parameters:
                 func (callable): A zero-argument callable to execute synchronously.
                 write (bool): If True, run the callable within a write-capable context; otherwise run read-only.
-            
+
             Returns:
                 The value returned by `func`.
             """
@@ -438,7 +438,7 @@ class TestDbUtils(unittest.TestCase):
         async def exercise():
             """
             Insert two message-map entries and prune the message map so only the most recent entry remains.
-            
+
             Used in tests to exercise storing and pruning behavior by inserting two entries and then reducing the map to a single (latest) entry.
             """
             await async_store_message_map(
