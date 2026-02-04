@@ -259,7 +259,7 @@ The deployment uses `/data` as the base directory for all persistent data:
 
 - **Credentials**: `/data/credentials.json` (auto-created on first login)
 - **Logs**: `/data/logs/`
-- **Database**: `/data/mmrelay.db`
+- **Database**: `/data/database/meshtastic.sqlite`
 - **E2EE store**: `/data/store/` (if encryption is enabled)
 - **Plugins**: `/data/plugins/`
 

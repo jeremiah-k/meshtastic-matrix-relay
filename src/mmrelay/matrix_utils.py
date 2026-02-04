@@ -1246,6 +1246,22 @@ async def _handle_detection_sensor_packet(
         meshtastic_logger.error("Failed to relay detection sensor data to Meshtastic")
 
 
+def _read_credentials_file(path: str) -> dict[str, Any]:
+    """Read credentials file for use with asyncio.to_thread.
+
+    This helper function wraps synchronous file I/O so it can be
+    offloaded to a thread pool when called from async context.
+
+    Args:
+        path: Path to credentials file.
+
+    Returns:
+        dict: Parsed credentials dictionary.
+    """
+    with open(path, "r", encoding="utf-8") as f:
+        return cast(dict[str, Any], json.load(f))
+
+
 async def connect_matrix(
     passed_config: dict[str, Any] | None = None,
 ) -> AsyncClient | None:
@@ -1311,8 +1327,9 @@ async def connect_matrix(
         expanded_path = os.path.expanduser(explicit_credentials_path)
         try:
             if os.path.isfile(expanded_path):
-                with open(expanded_path, "r", encoding="utf-8") as f:
-                    credentials = json.load(f)
+                credentials = await asyncio.to_thread(
+                    _read_credentials_file, expanded_path
+                )
                 credentials_path = expanded_path
         except (OSError, json.JSONDecodeError):
             logger.warning("Ignoring invalid credentials file: %s", expanded_path)
@@ -1848,13 +1865,11 @@ async def connect_matrix(
                     return []
 
                 try:
-                    nio_responses.SyncResponse._get_invite_state = (
-                        staticmethod(  # pyright: ignore[reportAttributeAccessIssue]
-                            _safe_get_invite_state
-                        )
+                    nio_responses.SyncResponse._get_invite_state = staticmethod(  # pyright: ignore[reportAttributeAccessIssue]  # type: ignore[misc]
+                        _safe_get_invite_state
                     )
                     return await asyncio.wait_for(
-                        matrix_client.sync(  # pyright: ignore[reportOptionalMemberAccess]
+                        matrix_client.sync(  # pyright: ignore[reportOptionalMemberAccess]  # type: ignore[attr-defined]
                             timeout=MATRIX_EARLY_SYNC_TIMEOUT,
                             full_state=False,
                             sync_filter=invite_safe_filter,
@@ -1882,8 +1897,7 @@ async def connect_matrix(
                 await _close_matrix_client_after_failure("sync cancellation")
                 raise
             except (  # type: ignore[misc]
-                asyncio.TimeoutError,
-                NIO_COMM_EXCEPTIONS,
+                *NIO_COMM_EXCEPTIONS,
                 JSONSCHEMA_VALIDATION_ERROR,
             ):
                 logger.exception("Invite-ignoring sync retry failed")

@@ -112,7 +112,13 @@ validate_manifest() {
 import sys
 from pathlib import Path
 
-import yaml
+try:
+    import yaml
+except ModuleNotFoundError as exc:
+    raise SystemExit(
+        "PyYAML is required for fallback validation. "
+        "Install PyYAML or ensure kubeconform/kube-linter is available."
+    ) from exc
 
 path = Path(sys.argv[1])
 docs = list(yaml.safe_load_all(path.read_text()))

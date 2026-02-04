@@ -17,7 +17,7 @@ maintainers:
     url: https://github.com/jeremiah-k
 annotations:
   artifacthub.io/category: networking
-  artifacthub.io/license: MIT
+  artifacthub.io/license: GPL-3.0-or-later
   artifacthub.io/links: |
     - name: Documentation
       url: https://github.com/jeremiah-k/meshtastic-matrix-relay/blob/main/docs/KUBERNETES.md

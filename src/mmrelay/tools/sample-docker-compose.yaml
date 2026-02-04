@@ -29,4 +29,4 @@ services:
     #   - apparmor=unconfined # Recommended for BLE to allow DBus communication
     # privileged: true # Alternative if apparmor=unconfined is not acceptable
 
-    # Tip: For correct permissions and paths, ensure UID, GID, and MMRELAY_HOME are set in a .env file or exported
+    # Tip: For correct permissions and paths, ensure UID, GID, and MMRELAY_HOST_HOME are set in a .env file or exported

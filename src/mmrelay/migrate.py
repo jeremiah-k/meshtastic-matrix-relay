@@ -396,6 +396,10 @@ def _get_most_recent_database(candidates: list[Path]) -> Path | None:
         # Extract base name (remove -wal, -shm suffix)
         base = get_base_path(db_path)
 
+        # Skip orphaned WAL/SHM sidecars (no main database file exists)
+        if not base.exists():
+            continue
+
         if base not in db_groups:
             db_groups[base] = []
 

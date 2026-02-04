@@ -390,7 +390,7 @@ class TestMigrateDatabaseEdgeCases:
             if call_count[0] == 1 and "meshtastic.sqlite" in dst and call_count[0] == 1:
                 # Check if we're backing up existing (not copying from legacy)
                 if "new_home" in str(dst):
-                    raise OSError("Mock backup error")
+                    raise OSError
             return original_copy2(src, dst, *args, **kwargs)
 
         with mock.patch("shutil.copy2", side_effect=selective_copy2):

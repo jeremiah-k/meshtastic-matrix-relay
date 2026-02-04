@@ -371,7 +371,19 @@ def _cleanup_local_session_data() -> bool:
         _get_logger().info("No credentials file found to remove")
 
     # Clear E2EE store directory (default and any configured override)
-    candidate_store_paths = {get_e2ee_store_dir()}
+    # Skip on Windows (E2EE not supported); resolve_all_paths handles this safely
+    candidate_store_paths: set[str] = set()
+    try:
+        paths_info = resolve_all_paths()
+        store_dir = paths_info.get("store_dir")
+        if store_dir and store_dir != "N/A (Windows)":
+            candidate_store_paths.add(store_dir)
+    except Exception as e:
+        _get_logger().debug(
+            "Could not resolve E2EE store path from paths: %s", type(e).__name__
+        )
+
+    # Add any configured override from config
     try:
         from mmrelay.config import load_config
 
@@ -385,7 +397,7 @@ def _cleanup_local_session_data() -> bool:
                 candidate_store_paths.add(override)
     except Exception as e:
         _get_logger().debug(
-            f"Could not resolve configured E2EE store path: {type(e).__name__}"
+            "Could not resolve configured E2EE store path: %s", type(e).__name__
         )
 
     any_store_found = False

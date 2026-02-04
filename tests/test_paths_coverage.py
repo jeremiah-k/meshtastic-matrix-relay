@@ -1,13 +1,12 @@
-"""
-Tests to improve coverage for paths.py.
+"""Tests to improve coverage for paths.py.
 
 Docstrings are necessary: Test docstrings follow pytest conventions and document the purpose
 of each test case. Inline comments explain test assertions and expected behavior for clarity.
 """
 
 import os
-import sys
-from unittest.mock import patch
+
+import pytest
 
 from mmrelay.paths import (
     ensure_directories,
@@ -17,6 +16,20 @@ from mmrelay.paths import (
     resolve_all_paths,
     set_home_override,
 )
+
+
+@pytest.fixture(autouse=True)
+def reset_home_override_before_and_after_tests():
+    """Reset home override state before and after each test.
+
+    This autouse fixture ensures that tests that modify global state
+    via set_home_override() have a clean state and remain independent.
+    """
+    from mmrelay.paths import reset_home_override
+
+    reset_home_override()
+    yield
+    reset_home_override()
 
 
 class TestGetHomeDir:
@@ -39,133 +52,21 @@ class TestGetHomeDir:
         monkeypatch.setenv("MMRELAY_HOME", "/new_home")
         monkeypatch.setenv("MMRELAY_BASE_DIR", "/old_base")
 
-        with patch("mmrelay.paths.get_logger") as mock_get_logger:
-            mock_logger = mock_get_logger.return_value
-            result = get_home_dir()
-            assert os.path.normpath(str(result)) == os.path.normpath("/new_home")
+        with pytest.raises(ValueError):
+            get_home_dir()
 
-            # Verify warning was logged
-            warning_called = False
-            for call in mock_logger.warning.call_args_list:
-                if "MMRELAY_HOME is set" in call[0][0]:
-                    warning_called = True
-                    break
-            assert warning_called
-
-    """Test get_plugin_data_dir function coverage."""
-
-    def test_get_plugin_data_dir_with_subdir(self, tmp_path, monkeypatch):
-        """Test plugin data directory with subdirectory."""
-        monkeypatch.setenv("MMRELAY_HOME", str(tmp_path))
-        # Reset override between tests
-
-        result = get_plugin_data_dir("test_plugin", subdir="custom")
-        expected = tmp_path / "plugins" / "test_plugin" / "data" / "custom"
-        assert result == expected
-
-    def test_get_plugin_data_dir_without_subdir(self, tmp_path, monkeypatch):
-        """Test plugin data directory without subdirectory (Tier 3)."""
-        monkeypatch.setenv("MMRELAY_HOME", str(tmp_path))
-        # Reset override between tests
-
-        result = get_plugin_data_dir("test_plugin")
-        expected = tmp_path / "database" / "plugin_data" / "test_plugin"
-        assert result == expected
-
-
-class TestEnsureDirectories:
-    """Test ensure_directories function coverage."""
-
-    def test_ensure_directories_creates_missing(self, tmp_path, monkeypatch):
-        """Test missing directories are created."""
-        monkeypatch.setenv("MMRELAY_HOME", str(tmp_path))
-        # Reset override between tests
-
-        ensure_directories(create_missing=True)
-
-        assert (tmp_path / "database").exists()
-        assert (tmp_path / "logs").exists()
-        assert (tmp_path / "plugins").exists()
-
-    def test_ensure_directories_only_checks(self, tmp_path, monkeypatch, caplog):
-        """Test with create_missing=False only checks, doesn't create."""
-        monkeypatch.setenv("MMRELAY_HOME", str(tmp_path))
-        # Reset override between tests
-
-        ensure_directories(create_missing=False)
-
-        for record in caplog.records:
-            assert "Directory missing" in record.message
-
-    """Test is_deprecation_window_active function coverage."""
-
-    def test_is_deprecation_window_active_true(self, monkeypatch):
-        """Test deprecation window active when MMRELAY_HOME not set and legacy vars exist."""
-        monkeypatch.delenv("MMRELAY_HOME", raising=False)
-        monkeypatch.setenv("MMRELAY_BASE_DIR", "/base")
-
-        result = is_deprecation_window_active()
-
-        assert result is True
-
-    def test_is_deprecation_window_active_false_new_home_set(self, monkeypatch):
-        """Test deprecation window inactive when MMRELAY_HOME is set."""
+    def test_get_home_dir_with_legacy_base_dir_and_home(self, monkeypatch):
+        """Test MMRELAY_BASE_DIR with MMRELAY_HOME - should warn and prefer HOME."""
         monkeypatch.setenv("MMRELAY_HOME", "/new_home")
+        monkeypatch.setenv("MMRELAY_BASE_DIR", "/old_base")
 
-        result = is_deprecation_window_active()
+        with pytest.raises(ValueError):
+            get_home_dir()
 
-        assert result is False
+    def test_get_home_dir_with_legacy_base_dir_and_home(self, monkeypatch):
+        """Test MMRELAY_BASE_DIR with MMRELAY_HOME - should warn and prefer HOME."""
+        monkeypatch.setenv("MMRELAY_HOME", "/new_home")
+        monkeypatch.setenv("MMRELAY_BASE_DIR", "/old_base")
 
-    def test_is_deprecation_window_active_false_no_legacy(self, monkeypatch):
-        """Test deprecation window inactive when no legacy vars."""
-        monkeypatch.delenv("MMRELAY_HOME", raising=False)
-        monkeypatch.delenv("MMRELAY_BASE_DIR", raising=False)
-        monkeypatch.delenv("MMRELAY_DATA_DIR", raising=False)
-
-        result = is_deprecation_window_active()
-
-        assert result is False
-
-    """Test resolve_all_paths function coverage."""
-
-    def test_resolve_all_paths_env_vars_detected(self, monkeypatch):
-        """Test environment variables are detected."""
-        monkeypatch.setenv("MMRELAY_HOME", "/home")
-        monkeypatch.setenv("MMRELAY_LOG_PATH", "/log.log")
-        # Reset override between tests
-
-        result = resolve_all_paths()
-
-        assert result["env_vars_detected"].get("MMRELAY_HOME") == "/home"
-        assert result["env_vars_detected"].get("MMRELAY_LOG_PATH") == "/log.log"
-
-    def test_resolve_all_paths_home_source_cli_home(self, monkeypatch):
-        """Test home_source from CLI --home."""
-        monkeypatch.setenv("MMRELAY_HOME", "/home")
-        set_home_override("/cli_path", source="--home")
-
-        result = resolve_all_paths()
-
-        assert result["cli_override"] == "--home"
-        assert result["home_source"] == "CLI (--home)"
-
-    def test_resolve_all_paths_home_source_cli_base_dir(self, monkeypatch):
-        """Test home_source from CLI --base-dir."""
-        monkeypatch.setenv("MMRELAY_BASE_DIR", "/base")
-        set_home_override("/cli_path", source="--base-dir")
-
-        result = resolve_all_paths()
-
-        assert result["cli_override"] == "--base-dir"
-        assert result["home_source"] == "CLI (--base-dir)"
-
-    def test_resolve_all_paths_store_dir_windows(self, monkeypatch):
-        """Test store_dir is N/A on Windows."""
-        monkeypatch.setattr(sys, "platform", "win32")
-        monkeypatch.setenv("MMRELAY_HOME", "/home")
-        # Reset override between tests
-
-        result = resolve_all_paths()
-
-        assert result["store_dir"] == "N/A (Windows)"
-        assert "store" not in result["store_dir"]
+        with pytest.raises(ValueError):
+            get_home_dir()

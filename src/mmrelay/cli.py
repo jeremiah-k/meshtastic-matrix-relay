@@ -88,7 +88,7 @@ def _get_logger() -> logging.Logger:
 # =============================================================================
 
 
-def _apply_dir_overrides(args: argparse.Namespace) -> None:
+def _apply_dir_overrides(args: argparse.Namespace | None) -> None:
     """
     Apply --home/--base-dir/--data-dir overrides to global config.
 

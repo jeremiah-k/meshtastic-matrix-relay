@@ -785,9 +785,11 @@ class TestMigrateDatabase:
         conn.execute("INSERT INTO old_table VALUES (1)")
         conn.commit()
         conn.close()
-        import time
 
-        time.sleep(0.01)
+        # Set deterministic timestamps - newer database should be newer
+        base_time = tmp_path.stat().st_mtime
+        old_ts = base_time - 100  # 100 seconds older
+        new_ts = base_time
 
         # Create newer database in data subdirectory
         new_db = data_dir / "meshtastic.sqlite"
@@ -796,6 +798,10 @@ class TestMigrateDatabase:
         conn.execute("INSERT INTO new_table VALUES (2)")
         conn.commit()
         conn.close()
+
+        # Set modification times deterministically
+        os.utime(old_db, (old_ts, old_ts))
+        os.utime(new_db, (new_ts, new_ts))
 
         new_home = tmp_path / "home"
         new_home.mkdir()

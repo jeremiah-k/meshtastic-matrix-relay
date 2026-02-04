@@ -434,7 +434,7 @@ The chart uses fixed runtime paths (consistent with container design):
 All persistent data lives under `/data`:
 
 - `/data/credentials.json` - Matrix authentication
-- `/data/mmrelay.db` - SQLite database
+- `/data/database/meshtastic.sqlite` - SQLite database
 - `/data/logs/` - Application logs
 - `/data/store/` - E2EE encryption keys (if enabled)
 - `/data/plugins/` - Custom and community plugins

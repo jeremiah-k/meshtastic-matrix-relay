@@ -79,7 +79,7 @@ class TestApplyDirOverridesPriority(unittest.TestCase):
     @patch("os.makedirs")
     @patch("builtins.print")
     def test_home_flag_overrides_base_and_data(
-        self, mock_print, mock_makedirs, mock_config, mock_set_override
+        self, mock_print, _mock_makedirs, _mock_config, mock_set_override
     ):
         """Test --home flag overrides --base-dir and --data-dir."""
         self.args.home = "/custom/home"
@@ -102,7 +102,7 @@ class TestApplyDirOverridesPriority(unittest.TestCase):
     @patch("os.makedirs")
     @patch("builtins.print")
     def test_base_dir_flag_overrides_data_dir(
-        self, mock_print, mock_makedirs, mock_config, mock_set_override
+        self, mock_print, _mock_makedirs, _mock_config, mock_set_override
     ):
         """Test --base-dir flag overrides --data-dir."""
         self.args.home = None
@@ -128,7 +128,7 @@ class TestApplyDirOverridesPriority(unittest.TestCase):
     @patch("os.makedirs")
     @patch("builtins.print")
     def test_data_dir_flag_used_alone(
-        self, mock_print, mock_makedirs, mock_config, mock_set_override
+        self, mock_print, _mock_makedirs, _mock_config, mock_set_override
     ):
         """Test --data-dir flag is used when alone."""
         self.args.home = None
@@ -148,7 +148,7 @@ class TestApplyDirOverridesPriority(unittest.TestCase):
     @patch("mmrelay.config")
     @patch("os.makedirs")
     def test_home_flag_sets_legacy_variables(
-        self, mock_makedirs, mock_config, mock_set_override
+        self, _mock_makedirs, mock_config, mock_set_override
     ):
         """Test --home flag sets both legacy custom_base_dir and custom_data_dir."""
         self.args.home = "/custom/home"
@@ -168,7 +168,7 @@ class TestApplyDirOverridesPriority(unittest.TestCase):
     @patch("mmrelay.config")
     @patch("os.makedirs")
     def test_base_dir_flag_sets_legacy_variables(
-        self, mock_makedirs, mock_config, mock_set_override
+        self, _mock_makedirs, mock_config, mock_set_override
     ):
         """Test --base-dir flag sets both legacy custom_base_dir and custom_data_dir."""
         self.args.home = None
@@ -188,7 +188,7 @@ class TestApplyDirOverridesPriority(unittest.TestCase):
     @patch("mmrelay.config")
     @patch("os.makedirs")
     def test_data_dir_flag_sets_legacy_variables(
-        self, mock_makedirs, mock_config, mock_set_override
+        self, _mock_makedirs, mock_config, mock_set_override
     ):
         """Test --data-dir flag sets both legacy custom_base_dir and custom_data_dir."""
         self.args.home = None
