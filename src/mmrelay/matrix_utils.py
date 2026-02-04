@@ -1444,6 +1444,11 @@ async def _resolve_and_load_credentials(
         matrix_homeserver, matrix_section["bot_user_id"]
     )
 
+    if bot_user_id is None:
+        logger.error("Matrix section has invalid bot_user_id")
+        logger.error(msg_require_auth_login())
+        return None
+
     return MatrixAuthInfo(
         homeserver=matrix_homeserver,
         access_token=matrix_access_token,
@@ -2260,10 +2265,14 @@ async def login_matrix_bot(
             logger.debug(f"Could not load existing credentials: {e}")
 
         # Check if E2EE is enabled in configuration
-        try:
-            e2ee_enabled = is_e2ee_enabled(config_for_paths)
-        except Exception as e:
-            logger.debug(f"Could not load config for E2EE check: {e}")
+        if config_for_paths is not None:
+            try:
+                e2ee_enabled = is_e2ee_enabled(config_for_paths)
+            except Exception as e:
+                logger.debug(f"Could not load config for E2EE check: {e}")
+                e2ee_enabled = False
+        else:
+            logger.debug("Could not load config for E2EE check: config load failed")
             e2ee_enabled = False
 
         logger.debug(f"E2EE enabled in config: {e2ee_enabled}")
