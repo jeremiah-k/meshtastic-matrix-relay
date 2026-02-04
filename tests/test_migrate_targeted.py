@@ -88,8 +88,15 @@ class TestPerformMigration(unittest.TestCase):
     @patch("mmrelay.migrate.migrate_gpxtracker")
     @patch("mmrelay.paths.get_home_dir")
     @patch("mmrelay.paths.resolve_all_paths")
+    @patch("mmrelay.migrate._get_migration_state_path")
     def test_runs_all_migrations(
-        self, mock_resolve, mock_home, mock_gpx, mock_plugins, mock_store
+        self,
+        mock_get_state_path,
+        mock_resolve,
+        mock_home,
+        mock_gpx,
+        mock_plugins,
+        mock_store,
     ):
         """Test perform_migration runs all migration steps."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -101,6 +108,7 @@ class TestPerformMigration(unittest.TestCase):
             mock_store.return_value = {"success": True, "message": "Done"}
             mock_plugins.return_value = {"success": True, "message": "Done"}
             mock_gpx.return_value = {"success": True, "message": "Done"}
+            mock_get_state_path.return_value = Path(tmpdir) / "migration_completed.flag"
 
             result = perform_migration(dry_run=False, force=False, move=False)
 
