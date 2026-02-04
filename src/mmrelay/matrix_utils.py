@@ -11,6 +11,7 @@ import re
 import ssl
 import sys
 import time
+from json import JSONDecodeError
 from types import SimpleNamespace
 from typing import (
     TYPE_CHECKING,
@@ -2029,6 +2030,8 @@ async def login_matrix_bot(
     Returns:
         bool: `True` if login succeeded and credentials were saved, `False` otherwise.
     """
+    import json  # Local import to avoid Pyright false positive in nested scope
+
     client = None  # Initialize to avoid unbound variable errors
     try:
         # Optionally enable verbose nio/aiohttp debug logging
@@ -2198,9 +2201,7 @@ async def login_matrix_bot(
                     ):
                         existing_device_id = existing_creds["device_id"]
                         logger.info(f"Reusing existing device_id: {existing_device_id}")
-        except (
-            Exception
-        ) as e:  # TODO: Narrow to (OSError, json.JSONDecodeError, KeyError, TypeError)
+        except (OSError, JSONDecodeError, KeyError, TypeError) as e:
             logger.debug(f"Could not load existing credentials: {e}")
 
         # Check if E2EE is enabled in configuration
