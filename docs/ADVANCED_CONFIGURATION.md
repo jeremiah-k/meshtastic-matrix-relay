@@ -214,7 +214,7 @@ The `MMRELAY_MATRIX_*` variables (HOMESERVER, BOT_USER_ID, PASSWORD, ACCESS_TOKE
 #### System Configuration
 
 - **`MMRELAY_LOGGING_LEVEL`**: Log level (`debug`, `info`, `warning`, `error`, `critical`)
-- **`MMRELAY_LOG_FILE`**: Path to log file (enables file logging when set; for Docker use a path under `/app/data/logs/...` to persist)
+- **`MMRELAY_LOG_FILE`**: Path to log file (enables file logging when set; for Docker use a path under `/data/logs/...` to persist)
 - **`MMRELAY_DATABASE_PATH`**: Path to SQLite database file
 
 ### Why Config.yaml is Usually Better

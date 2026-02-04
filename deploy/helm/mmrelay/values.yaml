@@ -1,0 +1,204 @@
+# Default values for mmrelay Helm chart
+
+# Image configuration
+image:
+  repository: ghcr.io/jeremiah-k/mmrelay
+  tag: 1.3.0
+  pullPolicy: IfNotPresent
+  # If set, overrides tag (format: sha256:abc123...)
+  digest: ""
+  # Image pull secrets for private registries
+  pullSecrets: []
+
+# Runtime paths (fixed by container design)
+mmrelayHome: /data
+configPath: /app/config.yaml
+readyFile: /run/mmrelay/ready
+
+# Config injection
+config:
+  # Config is required; chart will fail if disabled.
+  enabled: true
+  # source: "secret" or "configmap"
+  source: secret
+  name: mmrelay-config
+  key: config.yaml
+  # Only create the Secret/ConfigMap when explicitly enabled
+  create: false
+  # Inline config data (used only when create=true)
+  data: ""
+
+# Credentials injection
+credentials:
+  enabled: false
+  secretName: mmrelay-credentials
+  key: credentials.json
+  # Only create the Secret when explicitly enabled
+  create: false
+  # Inline credentials data (used only when create=true)
+  data: ""
+
+# Persistence configuration
+persistence:
+  enabled: true
+  # If set, use existing claim instead of creating one
+  existingClaim: ""
+  storageClass: ""
+  size: 1Gi
+  accessModes:
+    - ReadWriteOnce
+
+# Security contexts
+podSecurityContext:
+  fsGroup: 1000
+
+containerSecurityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  runAsNonRoot: true
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# Init container to fix data permissions (auto-disabled when persistence.enabled=false)
+initContainer:
+  enabled: true
+  image:
+    repository: busybox
+    tag: "1.36"
+    # If set, overrides tag (format: sha256:abc123...)
+    digest: ""
+    pullPolicy: IfNotPresent
+
+# Health probes
+probes:
+  enabled: true
+  readiness:
+    initialDelaySeconds: 0
+    periodSeconds: 10
+    timeoutSeconds: 2
+    failureThreshold: 3
+  startup:
+    initialDelaySeconds: 0
+    periodSeconds: 5
+    timeoutSeconds: 2
+    failureThreshold: 60
+  liveness:
+    initialDelaySeconds: 0
+    periodSeconds: 60
+    timeoutSeconds: 20
+    failureThreshold: 3
+
+# Lifecycle hooks
+lifecycle:
+  enabled: true
+  preStopSleepSeconds: 5
+  terminationGracePeriodSeconds: 30
+
+# Resource limits and requests
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Node placement
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# ServiceAccount configuration
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: false
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use
+  name: ""
+
+# Service configuration (disabled by default as mmrelay has no stable port)
+service:
+  enabled: false
+  type: ClusterIP
+  port: 8080
+  annotations: {}
+
+# Ingress configuration (disabled by default)
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: mmrelay.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# NetworkPolicy (disabled by default)
+networkPolicy:
+  enabled: false
+
+# Horizontal Pod Autoscaler (disabled by default)
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# Pod annotations
+podAnnotations: {}
+
+# Pod labels
+podLabels: {}
+
+# Replica count
+replicaCount: 1
+
+# Kubernetes namespace
+namespaceOverride: ""
+
+# AutomountServiceAccountToken
+automountServiceAccountToken: false
+
+# Seccomp profile
+seccompProfile:
+  type: RuntimeDefault
+
+# Environment variables
+env: []
+# Additional environment variables
+# env:
+#   - name: TZ
+#     value: UTC
+#   - name: PYTHONUNBUFFERED
+#     value: "1"
+
+# Matrix auth environment variables (bootstrap mode)
+# These are optional and only used for initial credential creation
+# Set these via a separate Secret if needed
+matrixAuth:
+  enabled: false
+  # Secret name for Matrix auth credentials
+  secretName: mmrelay-matrix-auth
+
+# Additional volumes (use with caution)
+extraVolumes: []
+# Example:
+# extraVolumes:
+#   - name: serial-device
+#     hostPath:
+#       path: /dev/ttyUSB0
+#       type: CharDevice
+
+# Additional volume mounts (use with caution)
+extraVolumeMounts: []
+# Example:
+# extraVolumeMounts:
+#   - name: serial-device
+#     mountPath: /dev/ttyUSB0

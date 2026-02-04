@@ -29,9 +29,11 @@ You need Docker installed on your system. Follow the [official Docker installati
 
 **Most users should start here** - prebuilt images without cloning the repository:
 
+> **Migrating?** If upgrading from an older version with the old directory layout, see the [Migration Guide for v1.3](MIGRATION_1.3.md).
+
 ```bash
-# Create directories and download config
-mkdir -p ~/.mmrelay/data ~/.mmrelay/logs
+# Create directory and download config
+mkdir -p ~/.mmrelay
 curl -Lo ~/.mmrelay/config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample_config.yaml
 
 # Adjust permissions and edit the file
@@ -39,7 +41,7 @@ chmod 600 ~/.mmrelay/config.yaml
 nano ~/.mmrelay/config.yaml
 
 # Set up environment and get docker-compose file
-grep -q '^MMRELAY_HOME=' .env 2>/dev/null || echo 'MMRELAY_HOME=$HOME' >> .env
+grep -q '^MMRELAY_HOST_HOME=' .env 2>/dev/null || echo 'MMRELAY_HOST_HOME=$HOME' >> .env
 grep -q '^UID=' .env 2>/dev/null || echo "UID=$(id -u)" >> .env
 grep -q '^GID=' .env 2>/dev/null || echo "GID=$(id -g)" >> .env
 curl -o docker-compose.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample-docker-compose-prebuilt.yaml
@@ -53,6 +55,8 @@ docker compose logs -f
 ```
 
 **That's it!** Your MMRelay is now running with the official prebuilt image.
+
+> **Production deployment**: The `:latest` tag is mutable and may change. For production deployments, pin a specific version tag or digest to ensure reproducible deployments. See the [Kubernetes Guide](KUBERNETES.md#pinning-digests-for-production) for digest pinning examples.
 
 ## Deployment Methods
 
@@ -75,17 +79,17 @@ For users who prefer web-based Docker management:
 1. **Create config file on your host:**
 
    ```bash
-   mkdir -p ~/.mmrelay/data ~/.mmrelay/logs
+   mkdir -p ~/.mmrelay
    curl -o ~/.mmrelay/config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample_config.yaml
    nano ~/.mmrelay/config.yaml
    ```
 
 2. **In Portainer, create a new Stack with this compose:**
    - Copy content from: [sample-docker-compose-prebuilt.yaml](https://github.com/jeremiah-k/meshtastic-matrix-relay/blob/main/src/mmrelay/tools/sample-docker-compose-prebuilt.yaml)
-   - **Important:** Replace `${MMRELAY_HOME}` with your actual home directory path (e.g., `/home/username`)
+   - **Important:** Use `MMRELAY_HOST_HOME` environment variable for host paths (the sample compose file already uses this pattern)
    - Set environment variables in Portainer if needed (UID, GID, etc.)
+   3. **Minimal Portainer compose (if you prefer to start simple):**
 
-3. **Minimal Portainer compose (if you prefer to start simple):**
    ```yaml
    services:
      mmrelay:
@@ -94,13 +98,15 @@ For users who prefer web-based Docker management:
        restart: unless-stopped
        user: "1000:1000" # May need to match your user's UID/GID. See the Troubleshooting section.
        environment:
+         - MMRELAY_HOME=/data
          - TZ=UTC
          - PYTHONUNBUFFERED=1
          - MPLCONFIGDIR=/tmp/matplotlib
        volumes:
          - /home/yourusername/.mmrelay/config.yaml:/app/config.yaml:ro,Z
-         - /home/yourusername/.mmrelay:/app/data:Z # credentials.json, E2EE store, logs, DB
+         - /home/yourusername/.mmrelay:/data:Z # credentials.json, E2EE store, logs, DB, plugins
    ```
+
    Replace `/home/yourusername` with your actual home directory.
 
 ### Build from Source with Make
@@ -120,7 +126,7 @@ If you prefer not to use Make commands:
 
 ```bash
 # After cloning the repository:
-mkdir -p ~/.mmrelay/data ~/.mmrelay/logs
+mkdir -p ~/.mmrelay
 cp src/mmrelay/tools/sample_config.yaml ~/.mmrelay/config.yaml
 nano ~/.mmrelay/config.yaml  # Edit your settings
 cp src/mmrelay/tools/sample-docker-compose-prebuilt.yaml docker-compose.yaml
@@ -169,7 +175,7 @@ This creates `~/.mmrelay/credentials.json` with:
 - Automatic token refresh and key management
 - Matrix 2.0 / MAS (Authentication Service) compatibility
 
-The `credentials.json` file is automatically mounted to `/app/data/credentials.json` in the container.
+The `credentials.json` file is automatically available at `/data/credentials.json` in the container.
 
 ### Authentication Precedence
 
@@ -298,34 +304,50 @@ services:
 Uses the same directories as standalone installation:
 
 - **Config**: `~/.mmrelay/config.yaml` (mounted read-only to `/app/config.yaml`)
-- **Data Directory**: `~/.mmrelay/` (mounted to `/app/data`). This directory on your host will contain subdirectories for the database (`data/`), logs (`logs/`), and plugins.
+- **Data Directory**: `~/.mmrelay/` (mounted to `/data`). This directory on your host will contain subdirectories for the database (`meshtastic.sqlite`), logs (`logs/`), plugins (`plugins/`), E2EE store (`store/`), and credentials (`credentials.json`).
 
 **Volume Mounting Explanation:**
-The Docker compose files mount `~/.mmrelay/` to `/app/data` for persistent data and separately bind-mount `config.yaml` to `/app/config.yaml` (read-only). This dual-mounting pattern ensures the container can find the config file at its expected canonical path, while keeping all other data in a single directory. On SELinux systems, add `:Z` to volume options to label mounts correctly, e.g., `/app/config.yaml:ro,Z` and `/app/data:Z`.
+The Docker compose files mount `~/.mmrelay/` to `/data` for persistent data and separately bind-mount `config.yaml` to `/app/config.yaml` (read-only). This dual-mounting pattern ensures the container can find the config file at its expected canonical path, while keeping all other data in a single directory. On SELinux systems, add `:Z` to volume options to label mounts correctly, e.g., `/app/config.yaml:ro,Z` and `/data:Z`.
 
 This means your Docker and standalone installations share the same data!
 
 **Environment Configuration:**
-Docker Compose uses the `.env` file to set data directory paths. The `make config` command creates this automatically with:
+Docker Compose uses environment variables to set container paths. The sample files set:
 
-```bash
-MMRELAY_HOME=$HOME
+```yaml
+environment:
+  - MMRELAY_HOME=/data
 ```
 
-**Custom Data Location:**
-To use a different location, edit the `.env` file:
+Inside the container, `MMRELAY_HOME` drives all runtime paths (credentials, database, logs, E2EE store, plugins).
+
+**Custom Host Data Location:**
+To use a different location on your host, use the `MMRELAY_HOST_HOME` variable in your `.env` file or compose file:
 
 ```bash
-MMRELAY_HOME=/path/to/your/data
+MMRELAY_HOST_HOME=/path/to/your/data
 ```
+
+Note: Use `MMRELAY_HOST_HOME` for host paths to avoid conflict with the container's `MMRELAY_HOME` environment variable.
 
 ## Health Checks
 
-The Docker image includes a built-in health check. By default it uses process detection (legacy behavior). You can opt in to the more reliable ready-file check by setting `MMRELAY_READY_FILE` to a writable path.
+The Docker image includes a built-in health check that supports two modes:
 
-**How it works (when ready-file mode is enabled):**
+**Default mode (no MMRELAY_READY_FILE):**
 
-- When MMRelay starts successfully, it creates a ready file at the path you set (example: `/tmp/mmrelay/ready`)
+- Runs `mmrelay doctor --config /app/config.yaml` to verify runtime HOME validity and no legacy paths
+- Suitable for standalone deployments where you want deeper health checks
+
+**Recommended mode (MMRELAY_READY_FILE set):**
+
+- Checks if a ready file exists at the path you specify
+- This is cheap, stable, and matches Kubernetes readiness semantics
+- Set `MMRELAY_READY_FILE` to a writable path to enable this mode
+
+**How the ready-file mode works:**
+
+- When MMRelay starts successfully, it creates a ready file at the path you set (example: `/tmp/mmrelay/ready` or `/run/mmrelay/ready`)
 - The health check (`test -f "$MMRELAY_READY_FILE"`) verifies this file exists
 - The file is periodically updated (every 60 seconds by default) to show the application is still responsive
 - If the application crashes or fails to start, the ready file is not created/removed, and the container is marked as unhealthy
@@ -336,10 +358,10 @@ The Docker image includes a built-in health check. By default it uses process de
 - Docker compose shows health status in `docker compose ps`
 - Monitoring tools can detect when the app is truly ready vs. just running
 
-**Configuration (optional):**
+**Configuration (recommended for production):**
 
-- Enable ready-file mode by setting `MMRELAY_READY_FILE` (example: `/tmp/mmrelay/ready`)
-- Ensure the path is writable; for read-only root filesystems, use a mounted path like `/app/data/mmrelay/ready`
+- Set `MMRELAY_READY_FILE` to enable ready-file mode (example: `/tmp/mmrelay/ready` or `/run/mmrelay/ready`)
+- Ensure the path is writable; for read-only root filesystems, use a mounted path like `/data/mmrelay/ready`
 - To customize the heartbeat interval, set `MMRELAY_READY_HEARTBEAT_SECONDS` (default: 60)
 - To enable this in Compose, add `MMRELAY_READY_FILE` to the `environment` section (e.g., `- MMRELAY_READY_FILE=/tmp/mmrelay/ready`)
 
@@ -351,7 +373,7 @@ The Docker image includes a built-in health check. By default it uses process de
 
 - Ensure paths like `/home/yourusername/.mmrelay/` exist on the host
 - Replace `yourusername` with your actual username
-- Create directories manually: `mkdir -p ~/.mmrelay/data ~/.mmrelay/logs`
+- Create directory manually: `mkdir -p ~/.mmrelay`
 
 **Permission errors:**
 
@@ -363,7 +385,7 @@ The Docker image includes a built-in health check. By default it uses process de
 
 - Portainer doesn't expand `$HOME` - use absolute paths
 - Set environment variables in Portainer's stack environment section
-- Or replace `${MMRELAY_HOME}` with absolute paths in the compose file
+- Use `MMRELAY_HOST_HOME` variable for host paths (not `MMRELAY_HOME`, which is the container path)
 
 **Config file not found:**
 
@@ -434,7 +456,7 @@ mmrelay auth login
 ### Step 2: Create and configure config.yaml
 
 ```bash
-mkdir -p ~/.mmrelay/data ~/.mmrelay/logs
+mkdir -p ~/.mmrelay
 curl -o ~/.mmrelay/config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample_config.yaml
 nano ~/.mmrelay/config.yaml  # Configure your settings
 ```
@@ -448,20 +470,23 @@ services:
     container_name: meshtastic-matrix-relay
     restart: unless-stopped
     user: "${UID:-1000}:${GID:-1000}"
+    environment:
+      - MMRELAY_HOME=/data
     volumes:
+      # Use MMRELAY_HOST_HOME for host paths (not MMRELAY_HOME to avoid conflict)
       # For SELinux systems (RHEL/CentOS/Fedora), add :Z flag to prevent permission denied errors
-      - ${MMRELAY_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro,Z
-      - ${MMRELAY_HOME:-$HOME}/.mmrelay:/app/data:Z
+      - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro,Z
+      - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay:/data:Z
       # For non-SELinux systems, you can use:
-      # - ${MMRELAY_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
-      # - ${MMRELAY_HOME:-$HOME}/.mmrelay:/app/data
+      # - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
+      # - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay:/data
 ```
 
 ### Step 4: Start the container
 
 ```bash
 # The following commands set up your environment to prevent permission issues
-grep -q '^MMRELAY_HOME=' .env 2>/dev/null || echo 'MMRELAY_HOME=$HOME' >> .env
+grep -q '^MMRELAY_HOST_HOME=' .env 2>/dev/null || echo 'MMRELAY_HOST_HOME=$HOME' >> .env
 grep -q '^UID=' .env 2>/dev/null || echo "UID=$(id -u)" >> .env
 grep -q '^GID=' .env 2>/dev/null || echo "GID=$(id -g)" >> .env
 docker compose up -d
@@ -489,25 +514,17 @@ Look for messages like:
 - "Using credentials from ~/.mmrelay/credentials.json"
 - "Found X encrypted rooms out of Y total rooms"
 
-## Migrating to the New Layout (Optional)
+## Data Directory Structure
 
-By default, the Docker image uses the legacy layout so existing setups keep
-working. That means `base_dir == data_dir` and everything lives under
-`/app/data`.
+The unified `MMRELAY_HOME` model is now the default. All runtime state lives under `/data` inside the container:
 
-If you want to opt in to the new layout (`base_dir` with data under
-`<base_dir>/data`), follow these steps:
+- `credentials.json` - Matrix authentication credentials (auto-created)
+- `mmrelay.db` - SQLite database for node information
+- `logs/` - Application logs
+- `store/` - E2EE encryption store (if enabled)
+- `plugins/` - Custom and community plugins
 
-1. Update your volume mount to map your host directory to `/app` (not
-   `/app/data`), or add a `/app` mount so logs/store are persisted.
-2. Set `MMRELAY_BASE_DIR=/app` (or add `--base-dir /app` to the command).
-3. If you want credentials in the new default location, move
-   `credentials.json` to `/app/credentials.json` (or keep the old location and
-   set `MMRELAY_CREDENTIALS_PATH=/app/data/credentials.json`).
-4. On first startup, MMRelay will attempt to migrate legacy database files (including `-wal`/`-shm` sidecars) to the new location at `/app/data/meshtastic.sqlite`. This handles common legacy paths like `/app/data/data/meshtastic.sqlite` (from older Docker setups) and `/app/meshtastic.sqlite`.
-5. Logs and E2EE store files will default to `/app/logs` and `/app/store`.
-   To keep them under `/app/data`, set `logging.filename` and
-   `matrix.e2ee.store_path` accordingly.
+This provides a clean, predictable structure for all persistent data.
 
 ## Updates
 

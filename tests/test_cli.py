@@ -543,11 +543,11 @@ class TestMainFunction(unittest.TestCase):
     @patch("mmrelay.cli.os.path.expanduser")
     @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.main.run_main")
-    def test_main_sets_custom_base_dir(
+    def test_main_sets_home_override(
         self, mock_run_main, mock_parse, mock_expanduser, mock_makedirs
     ):
         """
-        Verify that --base-dir expands user paths and sets custom_base_dir.
+        Verify that --base-dir expands user paths and sets the HOME override.
         """
         args = MagicMock()
         args.command = None
@@ -556,24 +556,27 @@ class TestMainFunction(unittest.TestCase):
         args.generate_config = False
         args.version = False
         args.auth = False
+        args.home = None
         args.base_dir = "~/mmrelay"
         args.data_dir = None
         mock_parse.return_value = args
         mock_run_main.return_value = 0
         mock_expanduser.return_value = "/home/test/mmrelay"
 
-        import mmrelay.config
+        import mmrelay.paths
 
-        original_custom_base_dir = mmrelay.config.custom_base_dir
+        original_home_override = mmrelay.paths._home_override
+        original_home_override_source = mmrelay.paths._home_override_source
         try:
             result = main()
 
             self.assertEqual(result, 0)
             mock_expanduser.assert_called_once_with("~/mmrelay")
             mock_makedirs.assert_called_once_with("/home/test/mmrelay", exist_ok=True)
-            self.assertEqual(mmrelay.config.custom_base_dir, "/home/test/mmrelay")
+            self.assertEqual(str(mmrelay.paths.get_home_dir()), "/home/test/mmrelay")
         finally:
-            mmrelay.config.custom_base_dir = original_custom_base_dir
+            mmrelay.paths._home_override = original_home_override
+            mmrelay.paths._home_override_source = original_home_override_source
 
 
 class TestCLIValidationFunctions(unittest.TestCase):

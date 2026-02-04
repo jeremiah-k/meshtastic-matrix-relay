@@ -29,6 +29,8 @@ import ssl
 from types import ModuleType
 from typing import Any, cast
 
+# Import resolve_all_paths for unified path resolution
+
 try:
     import certifi
 except ImportError:
@@ -349,15 +351,15 @@ def _cleanup_local_session_data() -> bool:
     """
     import shutil
 
-    from mmrelay.config import get_base_dir, get_e2ee_store_dir
+    from mmrelay.paths import resolve_all_paths
 
     _get_logger().info("Clearing local session data...")
+
     success = True
 
-    # Remove credentials.json
-    config_dir = get_base_dir()
-    credentials_path = os.path.join(config_dir, "credentials.json")
+    # Use unified path resolution for credentials
 
+    credentials_path = resolve_all_paths()["credentials_path"]
     if os.path.exists(credentials_path):
         try:
             os.remove(credentials_path)
@@ -369,21 +371,36 @@ def _cleanup_local_session_data() -> bool:
         _get_logger().info("No credentials file found to remove")
 
     # Clear E2EE store directory (default and any configured override)
-    candidate_store_paths = {get_e2ee_store_dir()}
+    # Skip on Windows (E2EE not supported); resolve_all_paths handles this safely
+    candidate_store_paths: set[str] = set()
+    try:
+        paths_info = resolve_all_paths()
+        store_dir = paths_info.get("store_dir")
+        if store_dir and store_dir != "N/A (Windows)":
+            candidate_store_paths.add(store_dir)
+    except (OSError, RuntimeError) as e:
+        _get_logger().debug(
+            "Could not resolve E2EE store path from paths: %s", type(e).__name__
+        )
+
+    # Add any configured override from config
     try:
         from mmrelay.config import load_config
 
         cfg = load_config(args=None) or {}
         matrix_cfg = cfg.get("matrix", {})
+        if not isinstance(matrix_cfg, dict):
+            matrix_cfg = {}
         for section in ("e2ee", "encryption"):
-            override = os.path.expanduser(
-                matrix_cfg.get(section, {}).get("store_path", "")
-            )
+            section_cfg = matrix_cfg.get(section, {})
+            if not isinstance(section_cfg, dict):
+                continue
+            override = os.path.expanduser(section_cfg.get("store_path", ""))
             if override:
                 candidate_store_paths.add(override)
-    except Exception as e:
+    except (ImportError, OSError) as e:
         _get_logger().debug(
-            f"Could not resolve configured E2EE store path: {type(e).__name__}"
+            "Could not resolve configured E2EE store path: %s", type(e).__name__
         )
 
     any_store_found = False
@@ -564,10 +581,8 @@ async def logout_matrix_bot(password: str) -> bool:
     """
 
     # Import inside function to avoid circular imports
-    from mmrelay.matrix_utils import (  # type: ignore[attr-defined]
-        MATRIX_LOGIN_TIMEOUT,
-        load_credentials,
-    )
+    from mmrelay.config import async_load_credentials
+    from mmrelay.matrix_utils import MATRIX_LOGIN_TIMEOUT
 
     # Check if matrix-nio is available
     if AsyncClient is None:
@@ -576,7 +591,7 @@ async def logout_matrix_bot(password: str) -> bool:
         return False
 
     # Load current credentials
-    credentials = load_credentials()
+    credentials = await async_load_credentials()
     if not credentials:
         _get_logger().info("No active session found. Already logged out.")
         print("ℹ️  No active session found. Already logged out.")

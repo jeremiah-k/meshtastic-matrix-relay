@@ -6,17 +6,19 @@ services:
     stop_grace_period: 30s
     user: "${UID:-1000}:${GID:-1000}"
     environment:
+      - MMRELAY_HOME=/data
       - TZ=UTC # Set timezone (PYTHONUNBUFFERED and MPLCONFIGDIR are set in Dockerfile)
 
     volumes:
       # Mount your config directory - create ~/.mmrelay/config.yaml first
       # Run 'make config' to set up the files
+      # Use MMRELAY_HOST_HOME (not MMRELAY_HOME) for host paths to avoid conflict with container env
       # For non-SELinux systems (most common):
-      - ${MMRELAY_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
-      - ${MMRELAY_HOME:-$HOME}/.mmrelay:/app/data
+      - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
+      - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay:/data
       # For SELinux systems (RHEL/CentOS/Fedora), add :Z flag to prevent permission denied errors:
-      # - ${MMRELAY_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro,Z
-      # - ${MMRELAY_HOME:-$HOME}/.mmrelay:/app/data:Z
+      # - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro,Z
+      # - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay:/data:Z
 
       # For BLE connections, uncomment these lines (Linux only):
       # - /var/run/dbus:/var/run/dbus:ro
@@ -27,4 +29,4 @@ services:
     #   - apparmor=unconfined # Recommended for BLE to allow DBus communication
     # privileged: true # Alternative if apparmor=unconfined is not acceptable
 
-    # Tip: For correct permissions and paths, ensure UID, GID, and MMRELAY_HOME are set in a .env file or exported
+    # Tip: For correct permissions and paths, ensure UID, GID, and MMRELAY_HOST_HOME are set in a .env file or exported

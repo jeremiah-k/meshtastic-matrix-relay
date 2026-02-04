@@ -17,6 +17,7 @@ import sys
 import tempfile
 import types
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 # Add src to path for imports
@@ -265,18 +266,36 @@ class Plugin:
 
     def test_get_custom_plugin_dirs_permission_error(self):
         """
-        Verify that get_custom_plugin_dirs returns plugin directories even when directory listing raises a PermissionError.
+        Verify that get_custom_plugin_dirs returns local directories even when user dir creation fails.
         """
-        with patch("mmrelay.config.get_base_dir", return_value="/restricted"):
-            with patch("os.path.exists", return_value=True):
+        with patch(
+            "mmrelay.plugin_loader._get_plugin_root_dirs",
+            return_value=["/restricted/plugins"],
+        ):
+
+            def side_effect(path, **_kwargs):
+                """
+                Simulate a filesystem access check that denies access for restricted paths.
+
+                Parameters:
+                        path (str): Filesystem path to check.
+
+                Raises:
+                        PermissionError: If `path` starts with "/restricted".
+                """
+                if path.startswith("/restricted"):
+                    raise PermissionError("Permission denied")
+                return None
+
+            with patch("os.makedirs", side_effect=side_effect):
                 with patch(
-                    "os.listdir", side_effect=PermissionError("Permission denied")
+                    "mmrelay.plugin_loader.get_app_path", return_value="/test/app"
                 ):
                     with patch("mmrelay.plugin_loader.logger"):
                         dirs = get_custom_plugin_dirs()
-                        # Function should still return directories even if listing fails
-                        self.assertGreater(len(dirs), 0)
-                        # The function itself doesn't perform directory listing, so no error logging expected
+                        # Should still include local directory
+                        self.assertEqual(len(dirs), 1)
+                        self.assertIn("/test/app/plugins/custom", dirs)
 
     def test_get_custom_plugin_dirs_broken_symlinks(self):
         """
@@ -284,7 +303,10 @@ class Plugin:
 
         Verifies that the function attempts to create the user plugin directory and includes both expected directories in the result.
         """
-        with patch("mmrelay.plugin_loader.get_base_dir", return_value="/test"):
+        with patch(
+            "mmrelay.plugin_loader._get_plugin_root_dirs",
+            return_value=["/test/plugins"],
+        ):
             with patch("mmrelay.plugin_loader.get_app_path", return_value="/test/app"):
                 with patch("os.makedirs") as mock_makedirs:
                     dirs = get_custom_plugin_dirs()
@@ -297,53 +319,66 @@ class Plugin:
 
     def test_get_community_plugin_dirs_git_clone_failure(self):
         """
-        Test that get_community_plugin_dirs returns plugin directories even if a git clone operation fails.
-
-        Simulates a failure during the git clone process and verifies that the function still returns a non-empty list of directories without logging errors.
+        Test that get_community_plugin_dirs returns plugin directories without relying on git.
         """
-        with patch("mmrelay.config.get_base_dir", return_value="/test"):
-            with patch("os.path.exists", return_value=False):
-                with patch("subprocess.run") as mock_run:
-                    mock_run.return_value.returncode = 1  # Git clone failed
-                    with patch("mmrelay.plugin_loader.logger"):
-                        dirs = get_community_plugin_dirs()
-                        # Function should still return directories even if git operations fail
-                        self.assertGreater(len(dirs), 0)
-                        # The function itself doesn't perform git operations, so no error logging expected
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plugin_root = os.path.join(temp_dir, "plugins")
+            app_root = os.path.join(temp_dir, "app")
+
+            with patch(
+                "mmrelay.plugin_loader._get_plugin_root_dirs",
+                return_value=[plugin_root],
+            ):
+                with patch(
+                    "mmrelay.plugin_loader.get_app_path",
+                    return_value=app_root,
+                ):
+                    dirs = get_community_plugin_dirs()
+                    self.assertEqual(len(dirs), 2)
+                    self.assertIn(os.path.join(plugin_root, "community"), dirs)
+                    self.assertIn(os.path.join(app_root, "plugins", "community"), dirs)
 
     def test_get_community_plugin_dirs_git_pull_failure(self):
         """
-        Test that get_community_plugin_dirs returns directory paths even if a git pull operation fails.
-
-        Simulates a git pull failure and verifies that the function still returns the expected plugin directories without logging warnings or errors.
+        Test that get_community_plugin_dirs returns directory paths in normal operation.
         """
-        with patch("mmrelay.config.get_base_dir", return_value="/test"):
-            with patch("os.path.exists", return_value=True):
-                with patch("subprocess.run") as mock_run:
-                    mock_run.return_value.returncode = 1  # Git pull failed
-                    with patch("mmrelay.plugin_loader.logger"):
-                        dirs = get_community_plugin_dirs()
-                        # Should still return directory paths regardless of git operations
-                        self.assertGreater(len(dirs), 0)
-                        # get_community_plugin_dirs doesn't perform git operations, so no warning expected
-                        # The function just returns directory paths
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plugin_root = os.path.join(temp_dir, "plugins")
+            app_root = os.path.join(temp_dir, "app")
+
+            with patch(
+                "mmrelay.plugin_loader._get_plugin_root_dirs",
+                return_value=[plugin_root],
+            ):
+                with patch(
+                    "mmrelay.plugin_loader.get_app_path",
+                    return_value=app_root,
+                ):
+                    dirs = get_community_plugin_dirs()
+                    self.assertEqual(len(dirs), 2)
+                    self.assertIn(os.path.join(plugin_root, "community"), dirs)
+                    self.assertIn(os.path.join(app_root, "plugins", "community"), dirs)
 
     def test_get_community_plugin_dirs_git_not_available(self):
         """
-        Test that get_community_plugin_dirs returns plugin directories when git is not available.
-
-        Simulates the absence of the git command and verifies that the function still returns a list of directories without logging errors.
+        Test that get_community_plugin_dirs returns plugin directories regardless of git availability.
         """
-        with patch("mmrelay.config.get_base_dir", return_value="/test"):
-            with patch("os.path.exists", return_value=False):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            plugin_root = os.path.join(temp_dir, "plugins")
+            app_root = os.path.join(temp_dir, "app")
+
+            with patch(
+                "mmrelay.plugin_loader._get_plugin_root_dirs",
+                return_value=[plugin_root],
+            ):
                 with patch(
-                    "subprocess.run", side_effect=FileNotFoundError("git not found")
+                    "mmrelay.plugin_loader.get_app_path",
+                    return_value=app_root,
                 ):
-                    with patch("mmrelay.plugin_loader.logger"):
-                        dirs = get_community_plugin_dirs()
-                        # Function should still return directories even if git is not available
-                        self.assertGreater(len(dirs), 0)
-                        # The function itself doesn't perform git operations, so no error logging expected
+                    dirs = get_community_plugin_dirs()
+                    self.assertEqual(len(dirs), 2)
+                    self.assertIn(os.path.join(plugin_root, "community"), dirs)
+                    self.assertIn(os.path.join(app_root, "plugins", "community"), dirs)
 
     def test_load_plugins_config_none(self):
         """
@@ -510,80 +545,64 @@ class Plugin:
                     self.assertGreaterEqual(len(plugins), 1)
 
     def test_get_plugin_root_dirs_with_new_layout(self):
-        """Test _get_plugin_root_dirs when new layout is enabled."""
+        """Test _get_plugin_root_dirs includes home and legacy plugin roots."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            base_dir = os.path.join(temp_dir, "base")
-            data_dir = os.path.join(base_dir, "data")
+            home_dir = os.path.join(temp_dir, "home")
+            legacy_dir = os.path.join(temp_dir, "legacy")
 
-            os.makedirs(data_dir, exist_ok=True)
+            os.makedirs(os.path.join(home_dir, "plugins"), exist_ok=True)
+            os.makedirs(os.path.join(legacy_dir, "plugins"), exist_ok=True)
 
-            with patch("mmrelay.plugin_loader.get_base_dir", return_value=base_dir):
+            with patch("mmrelay.paths.get_home_dir", return_value=Path(home_dir)):
                 with patch(
-                    "mmrelay.plugin_loader.is_new_layout_enabled", return_value=True
+                    "mmrelay.paths.get_legacy_dirs",
+                    return_value=[Path(legacy_dir)],
                 ):
-                    with patch(
-                        "mmrelay.plugin_loader.is_legacy_layout_enabled",
-                        return_value=False,
-                    ):
-                        with patch(
-                            "mmrelay.plugin_loader.get_data_dir", return_value=data_dir
-                        ):
-                            result = _get_plugin_root_dirs()
+                    result = _get_plugin_root_dirs()
 
-                            # Should include base_dir/plugins and data_dir/plugins
-                            self.assertIn(os.path.join(base_dir, "plugins"), result)
-                            self.assertIn(os.path.join(data_dir, "plugins"), result)
+                    # Should include home and legacy plugin roots
+                    self.assertEqual(result[0], os.path.join(home_dir, "plugins"))
+                    self.assertIn(os.path.join(legacy_dir, "plugins"), result)
 
     def test_get_plugin_root_dirs_with_legacy_layout(self):
-        """Test _get_plugin_root_dirs when legacy layout is enabled."""
+        """Test _get_plugin_root_dirs ignores legacy roots without plugin directories."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            base_dir = os.path.join(temp_dir, "base")
-            data_dir = os.path.join(base_dir, "data")
+            home_dir = os.path.join(temp_dir, "home")
+            legacy_dir = os.path.join(temp_dir, "legacy")
 
-            os.makedirs(data_dir, exist_ok=True)
+            os.makedirs(os.path.join(home_dir, "plugins"), exist_ok=True)
+            # Do NOT create legacy plugins directory
 
-            with patch("mmrelay.plugin_loader.get_base_dir", return_value=base_dir):
+            with patch("mmrelay.paths.get_home_dir", return_value=Path(home_dir)):
                 with patch(
-                    "mmrelay.plugin_loader.is_new_layout_enabled", return_value=False
+                    "mmrelay.paths.get_legacy_dirs",
+                    return_value=[Path(legacy_dir)],
                 ):
-                    with patch(
-                        "mmrelay.plugin_loader.is_legacy_layout_enabled",
-                        return_value=True,
-                    ):
-                        with patch(
-                            "mmrelay.plugin_loader.get_data_dir", return_value=data_dir
-                        ):
-                            result = _get_plugin_root_dirs()
+                    result = _get_plugin_root_dirs()
 
-                            # Should include base_dir/plugins and data_dir/plugins
-                            self.assertIn(os.path.join(base_dir, "plugins"), result)
-                            self.assertIn(os.path.join(data_dir, "plugins"), result)
+                    # Only home plugins should be included
+                    self.assertEqual(result, [os.path.join(home_dir, "plugins")])
 
     def test_get_plugin_root_dirs_data_root_preferred(self):
-        """Test _get_plugin_root_dirs puts data_root at front when it exists and base doesn't."""
+        """Test _get_plugin_root_dirs always prioritizes home plugins directory."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            base_dir = os.path.join(temp_dir, "base")
-            data_dir = os.path.join(base_dir, "data")
-            data_root = os.path.join(data_dir, "plugins")
+            home_dir = os.path.join(temp_dir, "home")
+            legacy_dir = os.path.join(temp_dir, "legacy")
+            legacy_root = os.path.join(legacy_dir, "plugins")
 
-            # Only create data plugins directory
-            os.makedirs(data_root, exist_ok=True)
+            # Only create legacy plugins directory
+            os.makedirs(legacy_root, exist_ok=True)
 
-            with patch("mmrelay.plugin_loader.get_base_dir", return_value=base_dir):
+            with patch("mmrelay.paths.get_home_dir", return_value=Path(home_dir)):
                 with patch(
-                    "mmrelay.plugin_loader.is_new_layout_enabled", return_value=True
+                    "mmrelay.paths.get_legacy_dirs",
+                    return_value=[Path(legacy_dir)],
                 ):
-                    with patch(
-                        "mmrelay.plugin_loader.is_legacy_layout_enabled",
-                        return_value=False,
-                    ):
-                        with patch(
-                            "mmrelay.plugin_loader.get_data_dir", return_value=data_dir
-                        ):
-                            result = _get_plugin_root_dirs()
+                    result = _get_plugin_root_dirs()
 
-                            # Data root should be first since it exists and base doesn't
-                            self.assertEqual(result[0], data_root)
+                    # Home plugins should be first even if it doesn't exist on disk
+                    self.assertEqual(result[0], os.path.join(home_dir, "plugins"))
+                    self.assertIn(legacy_root, result)
 
     def test_get_plugin_dirs_local_directory_error(self):
         """Test _get_plugin_dirs handles errors when creating local directory."""

@@ -6,7 +6,6 @@ import sqlite3
 import threading
 from typing import Any, Dict, Tuple, cast
 
-from mmrelay.config import get_base_dir, get_data_dir, is_new_layout_enabled
 from mmrelay.constants.database import (
     DEFAULT_BUSY_TIMEOUT_MS,
     DEFAULT_ENABLE_WAL,
@@ -14,6 +13,7 @@ from mmrelay.constants.database import (
 )
 from mmrelay.db_runtime import DatabaseManager
 from mmrelay.log_utils import get_logger
+from mmrelay.paths import resolve_all_paths
 
 # Global config variable that will be set from main.py
 config = None
@@ -89,6 +89,7 @@ def _migrate_legacy_db_if_needed(
     moved_main = False
     moved_sidecars: list[tuple[str, str]] = []
     sidecar_failures: list[tuple[str, str, OSError | PermissionError]] = []
+    sidecar_err: OSError | PermissionError | None = None
     try:
         shutil.move(legacy_path, default_path)
         moved_main = True
@@ -99,22 +100,26 @@ def _migrate_legacy_db_if_needed(
                 try:
                     shutil.move(legacy_sidecar, new_sidecar)
                     moved_sidecars.append((new_sidecar, legacy_sidecar))
-                except (OSError, PermissionError) as sidecar_err:
+                except (OSError, PermissionError) as err:
+                    sidecar_err = err
                     sidecar_failures.append((legacy_sidecar, new_sidecar, sidecar_err))
         if sidecar_failures:
             rollback_errors: list[tuple[str, str, str, OSError | PermissionError]] = []
+            rollback_err: OSError | PermissionError | None = None
             if moved_main:
                 try:
                     shutil.move(default_path, legacy_path)
                     moved_main = False
-                except (OSError, PermissionError) as rollback_err:
+                except (OSError, PermissionError) as err:
+                    rollback_err = err
                     rollback_errors.append(
                         ("database", default_path, legacy_path, rollback_err)
                     )
             for new_sidecar, legacy_sidecar in moved_sidecars:
                 try:
                     shutil.move(new_sidecar, legacy_sidecar)
-                except (OSError, PermissionError) as rollback_err:
+                except (OSError, PermissionError) as err:
+                    rollback_err = err
                     rollback_errors.append(
                         ("sidecar", new_sidecar, legacy_sidecar, rollback_err)
                     )
@@ -176,9 +181,9 @@ def _migrate_legacy_db_if_needed(
 # Get the database path
 def get_db_path() -> str:
     """
-    Resolve the absolute filesystem path to the application's SQLite database, using configured paths when present and falling back to the application data directory.
+    Resolve the absolute filesystem path to the application's SQLite database.
 
-    Selects the path in this precedence: configuration key `database.path` (preferred), legacy `db.path`, then `<data_dir>/meshtastic.sqlite`. The resolved path is cached and the cache is invalidated when relevant database configuration changes. The function will attempt to create required directories and may migrate legacy database locations to the current layout when applicable; directory-creation or migration failures are logged but do not raise.
+    Selects the path with this precedence: configuration key `database.path` (preferred), legacy `db.path`, then `<data_dir>/meshtastic.sqlite` from the application's resolved paths. The resolved path is cached and the cache is invalidated when relevant database configuration changes. The function will attempt to create missing directories and will attempt to migrate legacy database locations into the current layout when applicable; directory-creation or migration failures are logged and do not raise exceptions.
 
     Returns:
         str: Filesystem path to the SQLite database.
@@ -253,53 +258,35 @@ def get_db_path() -> str:
                     _db_path_logged = True
                 return custom_path
 
-    # Use the standard data directory
-    data_dir = get_data_dir()
-    # Ensure the data directory exists before using it
+    # Use unified path resolution for database
+    paths_info = resolve_all_paths()
+    database_dir = paths_info["database_dir"]
+
+    # Ensure the database directory exists before using it
     try:
-        os.makedirs(data_dir, exist_ok=True)
+        os.makedirs(database_dir, exist_ok=True)
     except (OSError, PermissionError) as e:
-        logger.warning("Could not create data directory %s: %s", data_dir, e)
+        logger.warning("Could not create database directory %s: %s", database_dir, e)
         # Continue anyway - the database connection will fail later if needed
 
-    default_path = os.path.join(data_dir, "meshtastic.sqlite")
-    legacy_base_path = os.path.join(get_base_dir(), "meshtastic.sqlite")
-    legacy_data_path = os.path.join(get_base_dir(), "data", "meshtastic.sqlite")
-    legacy_nested_data_path = os.path.join(
-        get_base_dir(), "data", "data", "meshtastic.sqlite"
-    )
+    default_path = os.path.join(database_dir, "meshtastic.sqlite")
 
-    if is_new_layout_enabled() and not os.path.exists(default_path):
-        legacy_candidates = [
-            path
-            for path in (legacy_base_path, legacy_nested_data_path)
-            if path and os.path.exists(path)
-        ]
-        default_path = _migrate_legacy_db_if_needed(
-            default_path=default_path,
-            legacy_candidates=legacy_candidates,
-        )
-
-    if not is_new_layout_enabled():
-        existing_paths = [
-            path
-            for path in (default_path, legacy_base_path, legacy_data_path)
-            if path and os.path.exists(path)
-        ]
-        if len(existing_paths) > 1:
-            active_path = max(existing_paths, key=_active_mtime)
-            if active_path != default_path:
-                logger.warning(
-                    "Multiple database files found. Using the most recently updated: %s",
-                    active_path,
-                )
-                default_path = active_path
-        elif len(existing_paths) == 1 and existing_paths[0] != default_path:
-            logger.info(
-                "Using legacy database location: %s",
-                existing_paths[0],
+    # Check for legacy database in legacy sources and migrate if needed
+    if not os.path.exists(default_path):
+        legacy_candidates = []
+        for legacy_root in paths_info.get("legacy_sources", []):
+            legacy_db_path = os.path.join(legacy_root, "meshtastic.sqlite")
+            legacy_data_db_path = os.path.join(legacy_root, "data", "meshtastic.sqlite")
+            if legacy_db_path and os.path.exists(legacy_db_path):
+                legacy_candidates.append(legacy_db_path)
+            if legacy_data_db_path and os.path.exists(legacy_data_db_path):
+                legacy_candidates.append(legacy_data_db_path)
+        if legacy_candidates:
+            default_path = _migrate_legacy_db_if_needed(
+                default_path=default_path,
+                legacy_candidates=legacy_candidates,
             )
-            default_path = existing_paths[0]
+
     _cached_db_path = default_path
     return default_path
 

@@ -110,43 +110,36 @@ Start the relay with a single command:
 mmrelay
 ```
 
+By default, MMRelay uses `~/.mmrelay` as the home directory for all runtime data.
+
 ### Command-Line Options
 
 Customize your setup with command-line options:
 
 ```bash
-mmrelay --config /path/to/config.yaml --logfile /path/to/logfile.log
+mmrelay --config /path/to/config.yaml --home /path/to/mmrelay-home
 ```
 
-```bash
-mmrelay [OPTIONS]
+**Common flags:**
 
-Options:
-  -h, --help            Show this help message and exit
-  --config PATH         Path to the configuration file
-  --base-dir PATH       Base directory for all data (logs, database, plugins)
-  --data-dir PATH       Deprecated alias for --base-dir
-  --log-level {error,warning,info,debug}
-                        Set logging level
-  --logfile PATH        Path to log file. When provided, this overrides any path
-                        derived from --base-dir. If omitted, the log file defaults
-                        to <base-dir>/logs/mmrelay.log. Note that --data-dir is a
-                        deprecated alias for --base-dir and does not override an
-                        explicit --logfile.
-  --version             Show version and exit
-Commands:
-  config                Configuration management
-    generate            Create a sample config.yaml file with default settings
-    check               Validate configuration file syntax and completeness
-  auth                  Authentication management
-    login               Authenticate with Matrix and save credentials for E2EE support
-    logout              Secure session cleanup with server-side token invalidation
-    status              Check current authentication status
-  service               Service management
-    install             Install or update the systemd user service for MMRelay
-```
+- `--config PATH` - Specify a custom configuration file location
+- `--home PATH` - Set the home directory for all runtime data (credentials, logs, database, plugins)
+- `--log-level {error,warning,info,debug}` - Set the logging verbosity
+- `--version` - Show version information and exit
+- `--help` - Display help message
 
-#### Useful Commands
+### Data Locations
+
+MMRelay stores all runtime data in the home directory (`~/.mmrelay` by default, or as specified with `--home` or the `MMRELAY_HOME` environment variable). This directory contains:
+
+- `config.yaml` - Your configuration file
+- `credentials.json` - Matrix authentication credentials (created by `mmrelay auth login`)
+- `mmrelay.db` - SQLite database for node information
+- `logs/` - Application logs
+- `store/` - E2EE encryption keys (Linux/macOS)
+- `plugins/` - Custom and community plugins
+
+### Useful Commands
 
 ```bash
 # Generate a sample configuration file
@@ -161,6 +154,10 @@ mmrelay service install
 # Set up Matrix E2EE authentication (for encrypted rooms)
 mmrelay auth login
 ```
+
+### Migrating from an Older Setup?
+
+If you're upgrading from a previous version of MMRelay with the old directory layout, see the [Migration Guide for v1.3](MIGRATION_1.3.md) for detailed instructions on migrating to the unified HOME model.
 
 ## Running as a Service
 

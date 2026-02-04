@@ -24,6 +24,8 @@ import queue
 import threading
 import time
 from concurrent.futures import Future
+from pathlib import Path
+from typing import Generator
 from unittest.mock import MagicMock
 
 import pytest
@@ -608,30 +610,22 @@ ensure_builtins_not_mocked()
 
 
 @pytest.fixture(autouse=True)
-def reset_custom_data_dir():
+def reset_path_overrides():
     """
-    Autouse pytest fixture that resets mmrelay.config custom dir overrides to None for each test and restores their original values afterwards.
+    Autouse pytest fixture that resets all directory and path overrides for each test.
 
-    Before the test runs, stores the current values of mmrelay.config.custom_data_dir
-    and mmrelay.config.custom_base_dir (if any) and sets them to None to ensure tests
-    do not share or depend on persistent overrides. After the test yields, the original
-    values are restored.
+    This ensures that CLI overrides (--home, --base-dir, --data-dir) and programmatic
+    overrides in mmrelay.config do not leak between tests.
     """
-    import mmrelay.config
+    import mmrelay.paths
 
-    # Store original value
-    original_custom_data_dir = getattr(mmrelay.config, "custom_data_dir", None)
-    original_custom_base_dir = getattr(mmrelay.config, "custom_base_dir", None)
-
-    # Reset to None before test
-    mmrelay.config.custom_data_dir = None
-    mmrelay.config.custom_base_dir = None
+    # Reset mmrelay.paths override
+    mmrelay.paths.reset_home_override()
 
     yield
 
-    # Restore original value after test
-    mmrelay.config.custom_data_dir = original_custom_data_dir
-    mmrelay.config.custom_base_dir = original_custom_base_dir
+    # Reset mmrelay.paths override again for safety
+    mmrelay.paths.reset_home_override()
 
 
 @pytest.fixture(autouse=True)
@@ -850,21 +844,14 @@ def mock_event():
 @pytest.fixture
 def test_config():
     """
-    Fixture providing a sample configuration for Meshtastic ↔ Matrix integration used by tests.
+    Provide a sample Meshtastic-Matrix integration configuration for tests.
 
     Returns:
-        dict: Configuration with keys:
-          - meshtastic: dict with
-              - broadcast_enabled (bool): whether broadcasting to mesh is enabled.
-              - prefix_enabled (bool): whether Meshtastic message prefixes are applied.
-              - prefix_format (str): format string for message prefixes (supports truncated vars).
-              - message_interactions (dict): interaction toggles, e.g. {'reactions': bool, 'replies': bool}.
-              - meshnet_name (str): logical mesh network name used in templates.
-          - matrix_rooms: list of room mappings where each item is a dict containing:
-              - id (str): Matrix room ID (e.g. "!room:matrix.org").
-              - meshtastic_channel (int): Meshtastic channel number.
-          - matrix: dict with
-              - bot_user_id (str): Matrix user ID of the bot.
+        dict: A configuration dict with keys:
+          - meshtastic: dict containing broadcast_enabled, prefix_enabled, prefix_format,
+            message_interactions, and meshnet_name.
+          - matrix_rooms: list of room mapping dicts each with `id` and `meshtastic_channel`.
+          - matrix: dict containing `bot_user_id`.
     """
     return {
         "meshtastic": {
@@ -882,3 +869,24 @@ def test_config():
         ],
         "matrix": {"bot_user_id": "@bot:matrix.org"},
     }
+
+
+@pytest.fixture
+def clean_migration_home(tmp_path: Path) -> Generator[Path, None, None]:
+    """
+    Provide a clean temporary home directory for migration tests.
+
+    Creates and yields a directory at tmp_path / "clean_migration_home" and ensures any existing
+    migration_completed.flag file is removed so tests start without prior migration state.
+
+    Yields:
+        Path: Path to the created clean home directory.
+    """
+    home = tmp_path / "clean_migration_home"
+    home.mkdir()
+
+    # Ensure no migration state file exists
+    state_file = home / "migration_completed.flag"
+    state_file.unlink(missing_ok=True)
+
+    yield home

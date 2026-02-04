@@ -1,7 +1,9 @@
 """Tests for authentication flow fixes."""
 
+import ntpath
 import os
 import unittest
+from pathlib import Path
 from unittest.mock import mock_open, patch
 
 from mmrelay.config import check_e2ee_enabled_silently, is_e2ee_enabled
@@ -66,8 +68,10 @@ class TestAuthFlowFixes(unittest.TestCase):
         # Mock Windows paths
         with patch("sys.platform", "win32"):
             with patch(
-                "mmrelay.config.get_base_dir",
-                return_value="C:\\Users\\Test\\AppData\\Local\\mmrelay",
+                "mmrelay.config.get_credentials_path",
+                return_value=Path(
+                    "C:\\Users\\Test\\AppData\\Local\\mmrelay\\credentials.json"
+                ),
             ):
                 with patch("os.makedirs") as mock_makedirs:
                     with patch("builtins.open", mock_open()) as mock_file:
@@ -89,9 +93,7 @@ class TestAuthFlowFixes(unittest.TestCase):
                             )
 
                             # Should open the correct path - use os.path.join to get the right separator
-                            import os
-
-                            expected_path = os.path.join(
+                            expected_path = ntpath.join(
                                 "C:\\Users\\Test\\AppData\\Local\\mmrelay",
                                 "credentials.json",
                             )
@@ -107,17 +109,17 @@ class TestAuthFlowFixes(unittest.TestCase):
             config_dir = "C:\\Users\\Test\\AppData\\Local\\mmrelay"
             credentials_path = os.path.join(config_dir, "credentials.json")
 
-            with patch("mmrelay.config.get_base_dir", return_value=config_dir):
+            with patch("mmrelay.config.get_home_dir", return_value=Path(config_dir)):
                 # Mock os.path.exists to return False for credentials.json but True for the directory
                 def mock_exists(path):
                     """
-                    Simulate filesystem existence for tests by returning True only when the checked path equals the test configuration directory.
+                    Simulate filesystem existence for test paths.
 
                     Parameters:
-                        path (str): Path to check; compared against the outer-scope test variables `credentials_path` and `config_dir`.
+                        path (str): Path to check; compared against the test-scoped `credentials_path` and `config_dir` variables.
 
                     Returns:
-                        bool: `True` if `path` equals `config_dir`, `False` otherwise.
+                        bool: `True` if `path` equals the test configuration directory (`config_dir`), `False` otherwise.
                     """
                     if path == credentials_path:
                         return False  # credentials.json doesn't exist

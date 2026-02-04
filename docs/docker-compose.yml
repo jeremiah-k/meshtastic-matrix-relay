@@ -1,0 +1,42 @@
+version: "3.8"
+
+services:
+  mmrelay:
+    # Replace REPLACE_ME with a published image tag before running
+    image: ghcr.io/jeremiah-k/mmrelay:REPLACE_ME
+    container_name: mmrelay
+    restart: unless-stopped
+
+    environment:
+      - MMRELAY_HOME=/data
+      - TZ=UTC
+
+    volumes:
+      # Persistent data directory (credentials, database, logs, plugins, E2EE store)
+      - ./mmrelay-data:/data
+
+      # Configuration file (read-only, binds from current directory)
+      - ./config.yaml:/app/config.yaml:ro
+
+    # Command uses only --config; MMRELAY_HOME drives all other paths
+    command:
+      - mmrelay
+      - --config
+      - /app/config.yaml
+
+    # Optional: Resource limits
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '1'
+    #       memory: 512M
+    #     reservations:
+    #       cpus: '0.1'
+    #       memory: 128M
+
+    # Optional: Read-only root filesystem (requires tmpfs for /tmp)
+    # security_opt:
+    #   - no-new-privileges:true
+    # read_only: true
+    # tmpfs:
+    #   - /tmp:mode=1777

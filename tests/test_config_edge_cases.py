@@ -16,13 +16,14 @@ import os
 import sys
 import tempfile
 import unittest
-from unittest.mock import MagicMock, call, mock_open, patch
+import warnings
+from pathlib import Path
+from unittest.mock import MagicMock, mock_open, patch
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.config import (
-    _get_env_data_dir,
     get_app_path,
     get_config_paths,
     get_credentials_search_paths,
@@ -49,7 +50,6 @@ class TestConfigEdgeCases(unittest.TestCase):
 
         mmrelay.config.relay_config = {}
         mmrelay.config.config_path = None
-        mmrelay.config.custom_data_dir = None
 
     def test_get_app_path_frozen_executable(self):
         """
@@ -85,20 +85,19 @@ class TestConfigEdgeCases(unittest.TestCase):
 
         Verifies that the returned paths include a directory under 'AppData', as expected for Windows environments.
         """
-        with patch("mmrelay.config.sys.platform", "win32"):
-            with patch(
-                "mmrelay.config.platformdirs.user_config_dir"
-            ) as mock_user_config:
-                mock_user_config.return_value = (
-                    "C:\\Users\\Test\\AppData\\Local\\mmrelay"
-                )
-                with patch(
-                    "mmrelay.config.os.makedirs"
-                ):  # Mock directory creation in the right namespace
-                    paths = get_config_paths()
-                    # Check that a Windows-style path is in the list
-                    windows_path_found = any("AppData" in path for path in paths)
-                    self.assertTrue(windows_path_found)
+        with (
+            patch("mmrelay.paths.sys.platform", "win32"),
+            patch("mmrelay.paths.platformdirs.user_data_dir") as mock_user_data,
+            patch("mmrelay.config.os.makedirs"),
+        ):
+            mock_user_data.return_value = "C:\\Users\\Test\\AppData\\Local\\mmrelay"
+            paths = get_config_paths()
+            # Check that a Windows-style path is in the list
+            # We normalize because get_config_paths uses absolute path which might
+            # prepend CWD on Linux if the mock path isn't recognized as absolute.
+            # But "C:\" should be absolute enough.
+            windows_path_found = any("AppData" in str(path) for path in paths)
+            self.assertTrue(windows_path_found)
 
     def test_get_config_paths_darwin_platform(self):
         """
@@ -106,15 +105,15 @@ class TestConfigEdgeCases(unittest.TestCase):
 
         Simulates a Darwin platform and a custom base directory to ensure get_config_paths includes the expected config.yaml path in its results.
         """
-        with patch("sys.platform", "darwin"):
-            with patch("mmrelay.config.get_base_dir") as mock_get_base_dir:
-                with tempfile.TemporaryDirectory() as temp_dir:
-                    mock_get_base_dir.return_value = temp_dir
-                    with patch(
-                        "mmrelay.config.os.makedirs"
-                    ):  # Mock directory creation in the right namespace
-                        paths = get_config_paths()
-                        self.assertIn(f"{temp_dir}/config.yaml", paths)
+        with (
+            patch("mmrelay.paths.sys.platform", "darwin"),
+            patch("mmrelay.paths.Path.home", return_value=Path("/home/test")),
+            patch("mmrelay.config.os.makedirs"),
+        ):
+            paths = get_config_paths()
+            self.assertIn(
+                "/home/test/.mmrelay/config.yaml", [os.path.normpath(p) for p in paths]
+            )
 
     def test_load_config_yaml_parse_error(self):
         """
@@ -323,26 +322,6 @@ class TestConfigEdgeCases(unittest.TestCase):
                     # Should log error messages
                     mock_logger.error.assert_called()
 
-    def test_get_env_data_dir_not_set(self):
-        """Test _get_env_data_dir returns None when MMRELAY_DATA_DIR is not set."""
-        with patch.dict(os.environ, {}, clear=True):
-            result = _get_env_data_dir()
-            self.assertIsNone(result)
-
-    def test_get_env_data_dir_set(self):
-        """Test _get_env_data_dir returns expanded path when MMRELAY_DATA_DIR is set."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            with patch.dict(os.environ, {"MMRELAY_DATA_DIR": temp_dir}):
-                result = _get_env_data_dir()
-                self.assertEqual(result, temp_dir)
-
-    def test_get_env_data_dir_with_tilde(self):
-        """Test _get_env_data_dir expands user home directory."""
-        with patch.dict(os.environ, {"MMRELAY_DATA_DIR": "~/test_data"}):
-            result = _get_env_data_dir()
-            self.assertTrue(result.endswith("test_data"))
-            self.assertFalse(result.startswith("~"))
-
     def test_get_credentials_search_paths_with_explicit_path(self):
         """Test get_credentials_search_paths with explicit path."""
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -376,115 +355,67 @@ class TestConfigEdgeCases(unittest.TestCase):
             expected_creds = os.path.join(temp_dir, "credentials.json")
             self.assertIn(expected_creds, result)
 
-    def test_get_explicit_credentials_path_from_env(self):
-        """Test get_explicit_credentials_path reads from environment variable."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            creds_path = os.path.join(temp_dir, "env_creds.json")
-
-            with patch.dict(os.environ, {"MMRELAY_CREDENTIALS_PATH": creds_path}):
-                result = get_explicit_credentials_path(None)
-                self.assertEqual(result, creds_path)
-
-    def test_get_explicit_credentials_path_from_config(self):
-        """Test get_explicit_credentials_path reads from config."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            creds_path = os.path.join(temp_dir, "config_creds.json")
-            config = {"credentials_path": creds_path}
-
-            result = get_explicit_credentials_path(config)
-            self.assertEqual(result, creds_path)
-
-    def test_get_explicit_credentials_path_from_matrix_config(self):
-        """Test get_explicit_credentials_path reads from matrix section."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            creds_path = os.path.join(temp_dir, "matrix_creds.json")
-            config = {"matrix": {"credentials_path": creds_path}}
-
-            result = get_explicit_credentials_path(config)
-            self.assertEqual(result, creds_path)
-
     def test_get_explicit_credentials_path_no_config(self):
         """Test get_explicit_credentials_path returns None when no config provided."""
         with patch.dict(os.environ, {}, clear=True):
             result = get_explicit_credentials_path(None)
             self.assertIsNone(result)
 
-    def test_get_data_dir_with_legacy_data(self):
-        """Test get_data_dir detects and uses legacy data directory."""
+    def test_get_data_dir_uses_home_env(self):
+        """Test get_data_dir respects MMRELAY_HOME and emits deprecation warning."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Create legacy structure with data subdirectory
-            legacy_data_dir = os.path.join(temp_dir, "data")
-            legacy_db = os.path.join(legacy_data_dir, "meshtastic.sqlite")
+            with (
+                patch.dict(os.environ, {"MMRELAY_HOME": temp_dir}),
+                patch("mmrelay.config.os.makedirs"),
+            ):
+                from mmrelay import config as config_module
 
-            os.makedirs(legacy_data_dir, exist_ok=True)
-
-            # Create a legacy database file to trigger legacy detection
-            with open(legacy_db, "w") as f:
-                f.write("legacy db")
-
-            with patch("mmrelay.config.custom_data_dir", temp_dir):
-                with patch("mmrelay.config._get_env_data_dir", return_value=None):
+                config_module._warn_deprecated.cache_clear()
+                with warnings.catch_warnings(record=True) as caught:
+                    warnings.simplefilter("always", DeprecationWarning)
                     result = get_data_dir(create=False)
-
-                    # Should use legacy data dir when legacy db exists
-                    self.assertEqual(result, legacy_data_dir)
-
-    def test_get_data_dir_without_legacy_data(self):
-        """Test get_data_dir uses override directly when no legacy data exists."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # No legacy data files
-
-            with patch("mmrelay.config.custom_data_dir", temp_dir):
-                with patch("mmrelay.config._get_env_data_dir", return_value=None):
-                    with patch("mmrelay.config.os.makedirs"):
-                        result = get_data_dir()
-
-                        # Should use the override directly
-                        self.assertEqual(result, temp_dir)
+                self.assertTrue(
+                    caught, "Expected DeprecationWarning from get_data_dir()"
+                )
+                self.assertIn("Use paths.get_home_dir()", str(caught[0].message))
+                self.assertEqual(result, temp_dir)
 
     def test_get_log_dir_windows_with_override(self):
         """Test get_log_dir on Windows with directory override."""
-        with patch("mmrelay.config.sys.platform", "win32"):
-            with patch("mmrelay.config._has_any_dir_override", return_value=True):
-                with patch("mmrelay.config.get_base_dir", return_value="C:\\mmrelay"):
-                    with patch("mmrelay.config.os.makedirs"):
-                        result = get_log_dir()
+        with (
+            patch(
+                "mmrelay.config.get_unified_logs_dir", return_value="C:\\mmrelay\\logs"
+            ),
+            patch("mmrelay.config.os.makedirs"),
+        ):
+            result = get_log_dir()
 
-                        # Should use base_dir/logs with override
-                        self.assertEqual(result, "C:\\mmrelay\\logs")
+            # Should use base_dir/logs with override
+            self.assertEqual(result, "C:\\mmrelay\\logs")
 
     def test_get_e2ee_store_dir_windows_without_override(self):
         """Test get_e2ee_store_dir on Windows without directory override."""
-        with patch("mmrelay.config.sys.platform", "win32"):
-            with patch("mmrelay.config._has_any_dir_override", return_value=False):
-                with patch(
-                    "mmrelay.config.platformdirs.user_data_dir",
-                    return_value="C:\\Users\\test\\AppData\\Local\\mmrelay",
-                ):
-                    with patch("mmrelay.config.os.makedirs"):
-                        result = get_e2ee_store_dir()
+        with (
+            patch("mmrelay.config.sys.platform", "win32"),
+            patch(
+                "mmrelay.config.get_unified_store_dir",
+                side_effect=RuntimeError("E2EE not supported on Windows"),
+            ),
+            patch("mmrelay.config.get_home_dir", return_value=Path("C:\\mmrelay")),
+        ):
+            result = get_e2ee_store_dir()
 
-                        # Should use platformdirs with store subdirectory
-                        self.assertEqual(
-                            result, "C:\\Users\\test\\AppData\\Local\\mmrelay\\store"
-                        )
-
-    def test_get_e2ee_store_dir_windows_with_override(self):
-        """Test get_e2ee_store_dir on Windows with directory override."""
-        with patch("mmrelay.config.sys.platform", "win32"):
-            with patch("mmrelay.config._has_any_dir_override", return_value=True):
-                with patch("mmrelay.config.get_base_dir", return_value="C:\\mmrelay"):
-                    with patch("mmrelay.config.os.makedirs"):
-                        result = get_e2ee_store_dir()
-
-                        # Should use base_dir/store with override
-                        self.assertEqual(result, "C:\\mmrelay\\store")
+            # Should use home/store on Windows fallback
+            self.assertEqual(result, "C:\\mmrelay\\store")
 
     def test_load_credentials_windows_debug(self):
         """Test load_credentials on Windows logs directory contents."""
         with patch("mmrelay.config.sys.platform", "win32"):
             with patch("mmrelay.config.os.path.exists", return_value=False):
-                with patch("mmrelay.config.get_base_dir", return_value="C:\\mmrelay"):
+                with patch(
+                    "mmrelay.config.get_home_dir",
+                    return_value=Path("C:\\mmrelay"),
+                ):
                     with patch(
                         "mmrelay.config.os.listdir",
                         return_value=["file1.txt", "file2.json"],
@@ -551,9 +482,10 @@ class TestConfigEdgeCases(unittest.TestCase):
 
         with patch("mmrelay.config.os.makedirs", side_effect=OSError("Disk full")):
             with patch("mmrelay.config.logger") as mock_logger:
-                save_credentials(credentials)
+                with self.assertRaises(OSError):
+                    save_credentials(credentials)
 
-                # Should log exception and not raise
+                # Should log exception and raise
                 mock_logger.exception.assert_called()
 
 

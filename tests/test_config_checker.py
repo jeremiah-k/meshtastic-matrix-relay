@@ -127,13 +127,15 @@ class TestConfigChecker(unittest.TestCase):
         """
         Verify get_config_paths() returns a list of candidate configuration file paths.
 
-        Asserts that the result is a list with at least three entries and that each returned path ends with "config.yaml".
+        Asserts that the result is a list and that each returned path ends with "config.yaml".
         """
         # Test the actual function behavior
         paths = get_config_paths()
 
         self.assertIsInstance(paths, list)
-        self.assertGreaterEqual(len(paths), 3)  # Should return at least 3 paths
+        self.assertGreaterEqual(
+            len(paths), 2
+        )  # v1.3: Should return at least home and cwd paths
 
         # Verify all paths end with config.yaml
         for path in paths:

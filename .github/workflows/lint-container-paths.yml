@@ -1,0 +1,21 @@
+name: Lint Container Paths
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - develop
+
+permissions:
+  contents: read
+
+jobs:
+  check-container-paths:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for legacy container paths and environment variables
+        run: |
+          bash scripts/ci/check_container_paths.sh

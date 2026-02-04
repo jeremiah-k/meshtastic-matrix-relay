@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -139,7 +140,7 @@ async def test_connect_matrix_without_credentials(matrix_config):
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils.logger")
 @patch("mmrelay.matrix_utils.login_matrix_bot")
-@patch("mmrelay.matrix_utils.load_credentials")
+@patch("mmrelay.matrix_utils.async_load_credentials", new_callable=AsyncMock)
 async def test_connect_matrix_alias_resolution_success(
     mock_load_credentials, mock_login_bot, _mock_logger, mock_async_client
 ):
@@ -237,7 +238,7 @@ async def test_connect_matrix_alias_resolution_success(
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils.logger")
 @patch("mmrelay.matrix_utils.login_matrix_bot")
-@patch("mmrelay.matrix_utils.load_credentials")
+@patch("mmrelay.matrix_utils.async_load_credentials", new_callable=AsyncMock)
 async def test_connect_matrix_alias_resolution_failure(
     mock_load_credentials, mock_login_bot, _mock_logger, mock_async_client
 ):
@@ -337,7 +338,7 @@ async def test_connect_matrix_alias_resolution_failure(
 @patch("mmrelay.matrix_utils.os.path.exists")
 @patch("mmrelay.matrix_utils.os.path.isfile")
 @patch("builtins.open")
-@patch("mmrelay.matrix_utils.json.load")
+@patch("json.load")
 @patch("mmrelay.matrix_utils._create_ssl_context")
 @patch("mmrelay.matrix_utils.matrix_client", None)
 @patch("mmrelay.matrix_utils.AsyncClient")
@@ -891,7 +892,9 @@ async def test_login_matrix_bot_username_warnings(
 @patch("mmrelay.cli_utils.AsyncClient", MagicMock(spec=True))
 async def test_logout_matrix_bot_no_credentials():
     """Test logout when no credentials exist."""
-    with patch("mmrelay.matrix_utils.load_credentials", return_value=None):
+    with patch(
+        "mmrelay.config.async_load_credentials", new=AsyncMock(return_value=None)
+    ):
         result = await logout_matrix_bot(password="test_password")
         assert result is True
 
@@ -908,7 +911,9 @@ async def test_logout_matrix_bot_no_credentials():
 @patch("mmrelay.cli_utils._cleanup_local_session_data", return_value=True)
 async def test_logout_matrix_bot_invalid_credentials(mock_cleanup, credentials):
     """Test logout with invalid/incomplete credentials falls back to local cleanup."""
-    with patch("mmrelay.matrix_utils.load_credentials", return_value=credentials):
+    with patch(
+        "mmrelay.config.async_load_credentials", new=AsyncMock(return_value=credentials)
+    ):
         result = await logout_matrix_bot(password="test_password")
         assert result is True
         mock_cleanup.assert_called_once()
@@ -925,7 +930,10 @@ async def test_logout_matrix_bot_password_verification_success():
     }
 
     with (
-        patch("mmrelay.matrix_utils.load_credentials", return_value=mock_credentials),
+        patch(
+            "mmrelay.config.async_load_credentials",
+            new=AsyncMock(return_value=mock_credentials),
+        ),
         patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
         patch(
             "mmrelay.cli_utils._cleanup_local_session_data", return_value=True
@@ -964,7 +972,10 @@ async def test_logout_matrix_bot_password_verification_failure():
     }
 
     with (
-        patch("mmrelay.matrix_utils.load_credentials", return_value=mock_credentials),
+        patch(
+            "mmrelay.config.async_load_credentials",
+            new=AsyncMock(return_value=mock_credentials),
+        ),
         patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
         patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
     ):
@@ -991,7 +1002,10 @@ async def test_logout_matrix_bot_server_logout_failure():
     }
 
     with (
-        patch("mmrelay.matrix_utils.load_credentials", return_value=mock_credentials),
+        patch(
+            "mmrelay.config.async_load_credentials",
+            new=AsyncMock(return_value=mock_credentials),
+        ),
         patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
         patch(
             "mmrelay.cli_utils._cleanup_local_session_data", return_value=True
@@ -1028,15 +1042,15 @@ def test_get_e2ee_store_dir(mock_makedirs):
     mock_makedirs.assert_called_once()
 
 
-@patch("mmrelay.config.get_base_dir")
+@patch("mmrelay.config.get_credentials_path")
 @patch("os.path.exists")
 @patch("builtins.open")
 @patch("mmrelay.config.json.load")
 def test_load_credentials_success(
-    mock_json_load, mock_open, mock_exists, mock_get_base_dir
+    mock_json_load, _mock_open, mock_exists, mock_get_credentials_path
 ):
     """Test successful credentials loading."""
-    mock_get_base_dir.return_value = "/test/config"
+    mock_get_credentials_path.return_value = Path("/test/config/credentials.json")
     mock_exists.return_value = True
     mock_json_load.return_value = {
         "homeserver": "https://matrix.example.org",
@@ -1054,11 +1068,11 @@ def test_load_credentials_success(
     assert credentials["device_id"] == "TEST_DEVICE"
 
 
-@patch("mmrelay.config.get_base_dir")
+@patch("mmrelay.config.get_credentials_path")
 @patch("os.path.exists")
-def test_load_credentials_file_not_exists(mock_exists, mock_get_base_dir):
+def test_load_credentials_file_not_exists(mock_exists, mock_get_credentials_path):
     """Test credentials loading when file doesn't exist."""
-    mock_get_base_dir.return_value = "/test/config"
+    mock_get_credentials_path.return_value = Path("/test/config/credentials.json")
     mock_exists.return_value = False
 
     credentials = load_credentials()
@@ -1066,20 +1080,24 @@ def test_load_credentials_file_not_exists(mock_exists, mock_get_base_dir):
     assert credentials is None
 
 
-@patch("mmrelay.config.get_base_dir")
+@patch("mmrelay.config.get_credentials_path")
 @patch("builtins.open")
 @patch("mmrelay.config.json.dump")
 @patch("os.makedirs")  # Mock the directory creation
 @patch("os.path.exists", return_value=True)  # Mock file existence check
 def test_save_credentials(
-    _mock_exists, _mock_makedirs, mock_json_dump, _mock_open, mock_get_base_dir
+    _mock_exists,
+    _mock_makedirs,
+    mock_json_dump,
+    _mock_open,
+    mock_get_credentials_path,
 ):
     """
     Verify that save_credentials writes the provided credentials JSON to the resolved config directory.
-    
+
     This test sets the module-level config_path to None to force resolution via the base directory fixture, then calls save_credentials with a credentials dict and asserts that the target directory is created, the credentials file is opened, and json.dump is called with the credentials and an indent of 2.
     """
-    mock_get_base_dir.return_value = "/test/config"
+    mock_get_credentials_path.return_value = Path("/test/config/credentials.json")
     import mmrelay.config as config_module
 
     original_config_path = config_module.config_path
@@ -1110,8 +1128,14 @@ def test_save_credentials(
 def test_cleanup_local_session_data_success():
     """Test successful cleanup of local session data."""
     with (
-        patch("mmrelay.config.get_base_dir", return_value="/test/config"),
-        patch("mmrelay.config.get_e2ee_store_dir", return_value="/test/store"),
+        patch(
+            "mmrelay.paths.resolve_all_paths",
+            return_value={
+                "credentials_path": "/test/config/credentials.json",
+                "store_dir": "/test/store",
+            },
+        ),
+        patch("mmrelay.config.load_config", return_value={}),
         patch("os.path.exists") as mock_exists,
         patch("os.remove") as mock_remove,
         patch("shutil.rmtree") as mock_rmtree,
@@ -1128,8 +1152,14 @@ def test_cleanup_local_session_data_success():
 def test_cleanup_local_session_data_files_not_exist():
     """Test cleanup when files don't exist."""
     with (
-        patch("mmrelay.config.get_base_dir", return_value="/test/config"),
-        patch("mmrelay.config.get_e2ee_store_dir", return_value="/test/store"),
+        patch(
+            "mmrelay.paths.resolve_all_paths",
+            return_value={
+                "credentials_path": "/test/config/credentials.json",
+                "store_dir": "/test/store",
+            },
+        ),
+        patch("mmrelay.config.load_config", return_value={}),
         patch("os.path.exists", return_value=False),
     ):
         result = _cleanup_local_session_data()
@@ -1140,8 +1170,14 @@ def test_cleanup_local_session_data_files_not_exist():
 def test_cleanup_local_session_data_permission_error():
     """Test cleanup with permission errors."""
     with (
-        patch("mmrelay.config.get_base_dir", return_value="/test/config"),
-        patch("mmrelay.config.get_e2ee_store_dir", return_value="/test/store"),
+        patch(
+            "mmrelay.paths.resolve_all_paths",
+            return_value={
+                "credentials_path": "/test/config/credentials.json",
+                "store_dir": "/test/store",
+            },
+        ),
+        patch("mmrelay.config.load_config", return_value={}),
         patch("os.path.exists", return_value=True),
         patch("os.remove", side_effect=PermissionError("Access denied")),
         patch("shutil.rmtree", side_effect=PermissionError("Access denied")),
@@ -1211,8 +1247,8 @@ async def test_logout_matrix_bot_missing_user_id_fetch_success():
 
     with (
         patch(
-            "mmrelay.matrix_utils.load_credentials",
-            return_value=mock_credentials.copy(),
+            "mmrelay.config.async_load_credentials",
+            new=AsyncMock(return_value=mock_credentials.copy()),
         ),
         patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
         patch("mmrelay.config.save_credentials") as mock_save_credentials,
@@ -1270,7 +1306,10 @@ async def test_logout_matrix_bot_timeout():
     }
 
     with (
-        patch("mmrelay.matrix_utils.load_credentials", return_value=mock_credentials),
+        patch(
+            "mmrelay.config.async_load_credentials",
+            new=AsyncMock(return_value=mock_credentials),
+        ),
         patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
         patch("asyncio.wait_for") as mock_wait_for,
         patch("mmrelay.cli_utils._create_ssl_context", return_value=None),

@@ -14,7 +14,6 @@ Tests edge cases and error handling including:
 
 import os
 import sys
-import tempfile
 import unittest
 from unittest.mock import MagicMock, mock_open, patch
 
@@ -347,81 +346,6 @@ class TestCLIEdgeCases(unittest.TestCase):
         with patch("mmrelay.cli.generate_sample_config", return_value=False):
             result = handle_cli_commands(args)
             self.assertEqual(result, 1)
-
-    def test_handle_cli_commands_with_base_dir(self):
-        """Test that --base-dir argument sets custom_base_dir and creates directory."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            base_dir = os.path.join(temp_dir, "custom_base")
-
-            args = MagicMock()
-            args.version = False
-            args.install_service = False
-            args.generate_config = False
-            args.check_config = False
-            args.base_dir = base_dir
-            args.data_dir = None
-            args.command = None
-
-            # Reset the global config variables
-            import mmrelay.config
-
-            original_base = mmrelay.config.custom_base_dir
-            original_data = mmrelay.config.custom_data_dir
-
-            try:
-                mmrelay.config.custom_base_dir = None
-                mmrelay.config.custom_data_dir = None
-
-                with patch("mmrelay.cli.logger"):
-                    result = handle_cli_commands(args)
-
-                # Verify the base directory was set and created
-                self.assertIsNone(result)
-                self.assertEqual(
-                    mmrelay.config.custom_base_dir, os.path.abspath(base_dir)
-                )
-                self.assertTrue(os.path.exists(base_dir))
-            finally:
-                mmrelay.config.custom_base_dir = original_base
-                mmrelay.config.custom_data_dir = original_data
-
-    def test_handle_cli_commands_with_data_dir(self):
-        """Test that deprecated --data-dir argument sets custom_data_dir and creates directory."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            data_dir = os.path.join(temp_dir, "custom_data")
-
-            args = MagicMock()
-            args.version = False
-            args.install_service = False
-            args.generate_config = False
-            args.check_config = False
-            args.base_dir = None
-            args.data_dir = data_dir
-            args.command = None
-
-            # Reset the global config variables
-            import mmrelay.config
-
-            original_base = mmrelay.config.custom_base_dir
-            original_data = mmrelay.config.custom_data_dir
-
-            try:
-                mmrelay.config.custom_base_dir = None
-                mmrelay.config.custom_data_dir = None
-
-                with patch("mmrelay.cli.logger"):
-                    with patch("sys.stderr"):  # Suppress deprecation warning
-                        result = handle_cli_commands(args)
-
-                # Verify the data directory was set and created
-                self.assertIsNone(result)
-                self.assertEqual(
-                    mmrelay.config.custom_data_dir, os.path.abspath(data_dir)
-                )
-                self.assertTrue(os.path.exists(data_dir))
-            finally:
-                mmrelay.config.custom_base_dir = original_base
-                mmrelay.config.custom_data_dir = original_data
 
 
 if __name__ == "__main__":

@@ -69,7 +69,10 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
         """
         Test that get_db_path returns a valid database path even if directory creation fails due to permission errors.
         """
-        with patch("mmrelay.db_utils.get_data_dir", return_value="/readonly/data"):
+        with patch(
+            "mmrelay.db_utils.resolve_all_paths",
+            return_value={"database_dir": "/readonly/data", "legacy_sources": []},
+        ):
             with patch("os.makedirs", side_effect=PermissionError("Permission denied")):
                 # Should still return a path even if directory creation fails
                 result = get_db_path()
@@ -352,25 +355,27 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
         """
         import mmrelay.db_utils
 
-        # Simulate race condition by clearing cache between calls
-        def side_effect_clear_cache(*args, **kwargs):
-            """
-            Clears the cached database path and returns a test database path.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Simulate race condition by clearing cache between calls
+            def side_effect_clear_cache(*_args, **_kwargs):
+                """
+                Clear the module's cached database path and return a test path-resolution dictionary.
 
-            Returns:
-                str: The test database path "/test/path/meshtastic.sqlite".
-            """
-            mmrelay.db_utils._cached_db_path = None
-            return "/test/path/meshtastic.sqlite"
+                Returns:
+                    dict: Mapping with keys `database_dir` (the test directory path) and `legacy_sources` (an empty list).
+                """
+                mmrelay.db_utils._cached_db_path = None
+                return {"database_dir": temp_dir, "legacy_sources": []}
 
-        with patch(
-            "mmrelay.db_utils.get_data_dir", side_effect=side_effect_clear_cache
-        ):
-            path1 = get_db_path()
-            path2 = get_db_path()
-            # Should handle race condition gracefully
-            self.assertIsInstance(path1, str)
-            self.assertIsInstance(path2, str)
+            with patch(
+                "mmrelay.db_utils.resolve_all_paths",
+                side_effect=side_effect_clear_cache,
+            ):
+                path1 = get_db_path()
+                path2 = get_db_path()
+                # Should handle race condition gracefully
+                self.assertIsInstance(path1, str)
+                self.assertIsInstance(path2, str)
 
     def test_database_initialization_partial_failure(self):
         """
@@ -909,17 +914,21 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
             # Mock config and directories
             mmrelay.db_utils.config = {"database": {}}
 
-            with patch("mmrelay.db_utils.is_new_layout_enabled", return_value=True):
-                with patch("mmrelay.db_utils.get_data_dir", return_value=data_dir):
-                    with patch("mmrelay.db_utils.get_base_dir", return_value=base_dir):
-                        clear_db_path_cache()
-                        result = get_db_path()
+            with patch(
+                "mmrelay.db_utils.resolve_all_paths",
+                return_value={
+                    "database_dir": data_dir,
+                    "legacy_sources": [base_dir],
+                },
+            ):
+                clear_db_path_cache()
+                result = get_db_path()
 
             # Should return default path and trigger migration
             self.assertEqual(result, default_path)
 
     def test_get_db_path_legacy_multiple_databases(self):
-        """Test get_db_path when multiple legacy databases exist."""
+        """Test get_db_path uses resolved database path when multiple legacy databases exist."""
         import mmrelay.db_utils
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -946,29 +955,30 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
 
             mmrelay.db_utils.config = {"database": {}}
 
-            with patch("mmrelay.db_utils.is_new_layout_enabled", return_value=False):
-                with patch("mmrelay.db_utils.get_data_dir", return_value=data_dir):
-                    with patch("mmrelay.db_utils.get_base_dir", return_value=base_dir):
-                        with patch("mmrelay.db_utils.logger") as mock_logger:
-                            clear_db_path_cache()
-                            result = get_db_path()
+            with patch(
+                "mmrelay.db_utils.resolve_all_paths",
+                return_value={
+                    "database_dir": data_dir,
+                    "legacy_sources": [base_dir],
+                },
+            ):
+                with patch("mmrelay.db_utils.logger") as mock_logger:
+                    clear_db_path_cache()
+                    result = get_db_path()
 
-                            # Should use most recently updated database (default_path)
-                            self.assertEqual(result, default_path)
+                    # Should use resolved database path (default_path)
+                    self.assertEqual(result, default_path)
 
-                            # Should log warning about multiple databases
-                            # Only if active_path != default_path (i.e., if we pick a non-default path)
-                            # In this case we pick default_path, so no warning expected
-                            warning_calls = [
-                                call
-                                for call in mock_logger.method_calls
-                                if call[0] == "warning"
-                            ]
-                            # No warning since we picked the default path
-                            self.assertEqual(len(warning_calls), 0)
+                    # No warning expected
+                    warning_calls = [
+                        call
+                        for call in mock_logger.method_calls
+                        if call[0] == "warning"
+                    ]
+                    self.assertEqual(len(warning_calls), 0)
 
     def test_get_db_path_legacy_multiple_databases_warning(self):
-        """Test get_db_path logs warning when using non-default legacy database."""
+        """Test get_db_path ignores newer legacy databases when new layout is disabled."""
         import mmrelay.db_utils
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -994,30 +1004,35 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
 
             mmrelay.db_utils.config = {"database": {}}
 
-            with patch("mmrelay.db_utils.is_new_layout_enabled", return_value=False):
-                with patch("mmrelay.db_utils.get_data_dir", return_value=data_dir):
-                    with patch("mmrelay.db_utils.get_base_dir", return_value=base_dir):
-                        with patch("mmrelay.db_utils.logger") as mock_logger:
-                            clear_db_path_cache()
-                            result = get_db_path()
+            with patch(
+                "mmrelay.db_utils.resolve_all_paths",
+                return_value={
+                    "database_dir": data_dir,
+                    "legacy_sources": [base_dir],
+                },
+            ):
+                with patch("mmrelay.db_utils.logger") as mock_logger:
+                    clear_db_path_cache()
+                    result = get_db_path()
 
-                            # Should use the newer legacy database (not default)
-                            self.assertEqual(result, legacy_base_path)
+                    # Should still use the resolved database path
+                    self.assertEqual(result, default_path)
 
-                            # Should log warning about multiple databases
-                            mock_logger.warning.assert_called_once()
-                            warning_msg = mock_logger.warning.call_args[0][0]
-                            self.assertIn("Multiple database files found", warning_msg)
+                    # No warning expected
+                    mock_logger.warning.assert_not_called()
 
     def test_get_db_path_legacy_single_database_not_default(self):
-        """Test get_db_path when single legacy database exists but not at default path."""
+        """Test get_db_path returns resolved database path even if only legacy DB exists."""
         import mmrelay.db_utils
 
         with tempfile.TemporaryDirectory() as temp_dir:
             data_dir = os.path.join(temp_dir, "data")
             base_dir = temp_dir
+            default_path = os.path.join(data_dir, "meshtastic.sqlite")
             # Use legacy_base_path which is at base_dir, not inside data/ subdirectory
             legacy_base_path = os.path.join(base_dir, "meshtastic.sqlite")
+
+            os.makedirs(data_dir, exist_ok=True)
 
             # Create single legacy database at base_dir (not at default data_dir path)
             with open(legacy_base_path, "w") as f:
@@ -1025,18 +1040,24 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
 
             mmrelay.db_utils.config = {"database": {}}
 
-            with patch("mmrelay.db_utils.is_new_layout_enabled", return_value=False):
-                with patch("mmrelay.db_utils.get_data_dir", return_value=data_dir):
-                    with patch("mmrelay.db_utils.get_base_dir", return_value=base_dir):
-                        with patch("mmrelay.db_utils.logger") as mock_logger:
-                            clear_db_path_cache()
-                            result = get_db_path()
+            with patch(
+                "mmrelay.db_utils.resolve_all_paths",
+                return_value={
+                    "database_dir": data_dir,
+                    "legacy_sources": [base_dir],
+                },
+            ):
+                with patch("mmrelay.db_utils.logger") as mock_logger:
+                    clear_db_path_cache()
+                    result = get_db_path()
 
-                            # Should use legacy path and log info message
-                            self.assertEqual(result, legacy_base_path)
-                            mock_logger.info.assert_any_call(
-                                "Using legacy database location: %s", legacy_base_path
-                            )
+                    # Should use resolved database path (default_path)
+                    self.assertEqual(result, default_path)
+                    mock_logger.info.assert_called_once_with(
+                        "Migrated database from legacy location %s to %s",
+                        legacy_base_path,
+                        default_path,
+                    )
 
 
 if __name__ == "__main__":

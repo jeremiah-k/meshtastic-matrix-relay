@@ -47,6 +47,7 @@ import functools
 import inspect
 import sys
 import unittest
+from pathlib import Path
 from typing import Any, Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -1360,7 +1361,7 @@ def test_main_database_wipe_config(
     Detailed behavior:
     - Builds a minimal config with one Matrix room and a database section under the provided `db_key` where `msg_map.wipe_on_restart` is True.
     - Mocks Matrix and Meshtastic connections and the message queue to avoid external I/O.
-    - Runs main(config) until a short KeyboardInterrupt stops the startup sequence.
+    - Runs main(config) with an immediate shutdown event to stop after startup.
     - Asserts that wipe_message_map() was invoked and that the message queue's processor was started.
     """
     # Mock config with database wipe settings
@@ -1378,28 +1379,25 @@ def test_main_database_wipe_config(
 
     # Mock the message queue to avoid hanging and combine contexts for clarity
     with (
+        patch(
+            "mmrelay.main.asyncio.get_running_loop",
+            side_effect=_make_patched_get_running_loop(),
+        ),
+        patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
         patch("mmrelay.main.get_message_queue") as mock_get_queue,
         patch(
             "mmrelay.main.meshtastic_utils.check_connection", new_callable=AsyncMock
         ) as mock_check_conn,
+        patch("mmrelay.main.shutdown_plugins") as mock_shutdown_plugins,
+        patch("mmrelay.main.stop_message_queue") as mock_stop_queue,
         patch("mmrelay.main.wipe_message_map") as mock_wipe,
     ):
         mock_queue = MagicMock()
         mock_queue.ensure_processor_started = MagicMock()
         mock_get_queue.return_value = mock_queue
         mock_check_conn.return_value = True
-
-        # Set up sync_forever to raise KeyboardInterrupt after a short delay
-        async def mock_sync_forever(*args, **kwargs):
-            """
-            Coroutine used in tests to simulate an async run loop that immediately interrupts execution.
-
-            Awaits a very short sleep (0.01s) to yield control, then raises KeyboardInterrupt to terminate callers (e.g., to stop startup loops cleanly during tests).
-            """
-            await asyncio.sleep(0.01)  # Very short delay
-            raise KeyboardInterrupt()
-
-        mock_matrix_client.sync_forever = mock_sync_forever
+        mock_shutdown_plugins.return_value = None
+        mock_stop_queue.return_value = None
 
         # Run the test with proper exception handling
         with contextlib.suppress(KeyboardInterrupt):
@@ -1575,18 +1573,18 @@ class TestRunMainFunction(unittest.TestCase):
     @patch("mmrelay.main.print_banner")
     @patch("mmrelay.config.load_config")
     @patch("mmrelay.config.load_credentials")
-    @patch("mmrelay.config.is_legacy_layout_enabled")
-    @patch("mmrelay.config.get_base_dir")
-    @patch("mmrelay.config.get_data_dir")
+    @patch("mmrelay.paths.get_legacy_env_vars")
+    @patch("mmrelay.paths.get_legacy_dirs")
+    @patch("mmrelay.paths.get_home_dir")
     @patch("mmrelay.config.get_log_dir")
     @patch("mmrelay.config.os.makedirs")
     def test_run_main_legacy_layout_warning(
         self,
         _mock_makedirs,
         mock_get_log_dir,
-        mock_get_data_dir,
-        mock_get_base_dir,
-        mock_is_legacy_layout_enabled,
+        mock_get_home_dir,
+        mock_get_legacy_dirs,
+        mock_get_legacy_env_vars,
         mock_load_credentials,
         mock_load_config,
         _mock_print_banner,
@@ -1599,9 +1597,9 @@ class TestRunMainFunction(unittest.TestCase):
         }
         mock_load_config.return_value = mock_config
         mock_load_credentials.return_value = None
-        mock_is_legacy_layout_enabled.return_value = True
-        mock_get_base_dir.return_value = "/test/base/dir"
-        mock_get_data_dir.return_value = "/test/data/dir"
+        mock_get_home_dir.return_value = Path("/test/home/dir")
+        mock_get_legacy_dirs.return_value = [Path("/test/legacy/dir")]
+        mock_get_legacy_env_vars.return_value = ["MMRELAY_DATA_DIR"]
         mock_get_log_dir.return_value = "/test/log/dir"
 
         mock_args = MagicMock()
@@ -1618,9 +1616,10 @@ class TestRunMainFunction(unittest.TestCase):
         self.assertEqual(result, 0)
         # Verify warning was called with legacy layout message
         mock_config_logger.warning.assert_any_call(
-            "Legacy data layout detected (base_dir=%s, data_dir=%s). This layout is deprecated and will be removed in a future release.",
-            "/test/base/dir",
-            "/test/data/dir",
+            "Legacy data layout detected (MMRELAY_HOME=%s, legacy_env_vars=%s, legacy_dirs=%s). This layout is deprecated and will be removed in a future release.",
+            "/test/home/dir",
+            "MMRELAY_DATA_DIR",
+            "/test/legacy/dir",
         )
         mock_config_logger.warning.assert_any_call(
             "To migrate to the new layout, see docs/DOCKER.md: Migrating to the New Layout."
@@ -1732,23 +1731,12 @@ class TestMainAsyncFunction(unittest.TestCase):
 
     def _reset_global_state(self):
         """
-        Reset global state across mmrelay modules to ensure test isolation.
+        Reset module-level globals across mmrelay submodules to ensure test isolation.
 
-        This clears or restores to defaults module-level globals that are set by runtime
-        calls (for example during set_config or application startup). It affects:
-        - mmrelay.meshtastic_utils: config, matrix_rooms, meshtastic_client, event_loop,
-          reconnecting/shutting_down flags, reconnect_task, and subscription flags.
-        - mmrelay.matrix_utils: config, matrix_homeserver, matrix_rooms, matrix_access_token,
-          bot_user_id, bot_user_name, matrix_client, and bot_start_time (reset to now).
-        - mmrelay.config: custom_data_dir (reset if present).
-        - mmrelay.main: banner printed flag.
-        - mmrelay.plugin_loader: invokes _reset_caches_for_tests() if available.
-        - mmrelay.message_queue: calls get_message_queue().stop() if present.
-
-        Intended for use in test setup/teardown to avoid cross-test contamination and
-        previously-observed hanging tests caused by leftover global state. Side effects:
-        it mutates imported mmrelay modules and may call cleanup helpers (such as
-        message queue stop).
+        Clears or restores defaults for runtime-set global state in mmrelay.meshtastic_utils,
+        mmrelay.matrix_utils, mmrelay.main, mmrelay.plugin_loader, and mmrelay.message_queue
+        so tests do not leak state between runs. May shut down executors and call cleanup
+        helpers (for example, message queue stop) where present.
         """
 
         # Reset meshtastic_utils globals
@@ -1798,13 +1786,6 @@ class TestMainAsyncFunction(unittest.TestCase):
             import time
 
             module.bot_start_time = int(time.time() * 1000)  # type: ignore[attr-defined]
-
-        # Reset config globals
-        if "mmrelay.config" in sys.modules:
-            module = sys.modules["mmrelay.config"]
-            # Reset custom_data_dir if it was set
-            if hasattr(module, "custom_data_dir"):
-                module.custom_data_dir = None  # type: ignore[attr-defined]
 
         # Reset main module globals if any
         if "mmrelay.main" in sys.modules:
