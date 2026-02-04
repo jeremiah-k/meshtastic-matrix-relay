@@ -1263,6 +1263,12 @@ def rollback_migration() -> dict[str, Any]:
     Returns:
         dict: Rollback result with success status.
     """
+    if not _is_migration_completed():
+        return {
+            "success": False,
+            "message": "No migration to rollback - migration not completed",
+        }
+
     new_home = get_home_dir()
 
     # Restore from backups

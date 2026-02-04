@@ -1192,7 +1192,7 @@ class TestE2EEStoreDir(unittest.TestCase):
     )
     @patch("mmrelay.config.os.makedirs")
     def test_get_e2ee_store_dir_creates_directory(
-        self, mock_makedirs, _mock_get_unified_store_dir, _mock_platform
+        self, mock_makedirs, _mock_get_unified_store_dir
     ):
         """Test E2EE store directory creation when it doesn't exist."""
         result = get_e2ee_store_dir()
@@ -1207,7 +1207,7 @@ class TestE2EEStoreDir(unittest.TestCase):
     )
     @patch("mmrelay.config.os.makedirs")
     def test_get_e2ee_store_dir_existing_directory(
-        self, mock_makedirs, _mock_get_unified_store_dir, _mock_platform
+        self, mock_makedirs, _mock_get_unified_store_dir
     ):
         """Test E2EE store directory when it already exists."""
         result = get_e2ee_store_dir()
