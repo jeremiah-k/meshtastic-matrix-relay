@@ -3165,7 +3165,7 @@ async def test_on_room_message_emote_reaction_uses_original_event_id(monkeypatch
 @patch("mmrelay.matrix_utils.os.path.exists")
 @patch("mmrelay.matrix_utils.os.path.isfile")
 @patch("builtins.open")
-@patch("mmrelay.matrix_utils.json.load")
+@patch("json.load")
 @patch("mmrelay.matrix_utils.save_credentials")
 @patch("mmrelay.matrix_utils._create_ssl_context")
 @patch("mmrelay.matrix_utils.matrix_client", None)

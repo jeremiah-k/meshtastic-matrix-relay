@@ -338,7 +338,7 @@ async def test_connect_matrix_alias_resolution_failure(
 @patch("mmrelay.matrix_utils.os.path.exists")
 @patch("mmrelay.matrix_utils.os.path.isfile")
 @patch("builtins.open")
-@patch("mmrelay.matrix_utils.json.load")
+@patch("json.load")
 @patch("mmrelay.matrix_utils._create_ssl_context")
 @patch("mmrelay.matrix_utils.matrix_client", None)
 @patch("mmrelay.matrix_utils.AsyncClient")
