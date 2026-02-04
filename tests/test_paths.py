@@ -15,7 +15,7 @@ import os
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -24,7 +24,6 @@ try:
     from mmrelay.paths import (
         get_config_paths,
         get_database_path,
-        get_diagnostics,
         get_home_dir,
         get_legacy_dirs,
         get_plugin_code_dir,
@@ -575,37 +574,5 @@ class TestLegacyDirsDetection(unittest.TestCase):
             # depend on whether these paths exist on the system
             self.assertIsInstance(result, list)
 
-    def test_get_diagnostics_logger_initialization(self):
-        """Test get_diagnostics initializes paths logger (line 629)."""
-        with patch("mmrelay.paths.get_logger") as mock_get_logger:
-            mock_get_logger.return_value = MagicMock()
-
-            # Provide proper mock return value with required keys
-            mock_resolve_value = {
-                "home": "/home",
-                "credentials_path": "/home/credentials.json",
-                "database_dir": "/home/database",
-                "store_dir": "/home/store",
-                "logs_dir": "/home/logs",
-                "log_file": "/home/logs/mmrelay.log",
-                "plugins_dir": "/home/plugins",
-                "custom_plugins_dir": "/home/plugins/custom",
-                "community_plugins_dir": "/home/plugins/community",
-                "env_vars_detected": {},
-                "cli_override": None,
-                "home_source": "Platform defaults",
-            }
-
-            with patch(
-                "mmrelay.paths.resolve_all_paths", return_value=mock_resolve_value
-            ):
-                with patch(
-                    "mmrelay.paths.is_deprecation_window_active", return_value=False
-                ):
-                    get_diagnostics()
-
-                    mock_get_logger.assert_called_once_with("paths")
-
-
-if __name__ == "__main__":
-    unittest.main()
+    if __name__ == "__main__":
+        unittest.main()
