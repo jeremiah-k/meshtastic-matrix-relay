@@ -147,8 +147,8 @@ def _get_plugin_root_dirs() -> list[str]:
                 roots.append(home_plugins)
                 seen.add(home_plugins)
                 logger.info("Using primary plugin root: %s", home_plugins)
-    except (OSError, RuntimeError, ValueError):
-        pass
+    except (OSError, RuntimeError, ValueError) as e:
+        logger.warning("Could not determine primary plugin root: %s", e)
 
     legacy_dirs_list = get_legacy_dirs()
     for legacy_root in legacy_dirs_list:
