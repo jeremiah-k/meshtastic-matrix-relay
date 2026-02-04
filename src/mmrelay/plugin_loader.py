@@ -2344,16 +2344,17 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                 )
                 continue
 
+            # Validate plugin name is safe before trying directories
+            if not _is_safe_plugin_name(repo_name_candidate):
+                logger.error(
+                    "Plugin name '%s' rejected: contains invalid characters or path traversal",
+                    repo_name_candidate,
+                )
+                continue
+
             # Try each directory in order
             plugin_found = False
             for dir_path in community_plugin_dirs:
-                if not _is_safe_plugin_name(repo_name_candidate):
-                    logger.error(
-                        "Plugin name '%s' rejected: contains invalid characters or path traversal",
-                        repo_name_candidate,
-                    )
-                    continue
-
                 plugin_path = os.path.join(dir_path, repo_name_candidate)
                 if os.path.exists(plugin_path):
                     logger.info(f"Loading community plugin from: {plugin_path}")
