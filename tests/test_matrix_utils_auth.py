@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -1041,15 +1042,15 @@ def test_get_e2ee_store_dir(mock_makedirs):
     mock_makedirs.assert_called_once()
 
 
-@patch("mmrelay.config.get_base_dir")
+@patch("mmrelay.config.get_credentials_path")
 @patch("os.path.exists")
 @patch("builtins.open")
 @patch("mmrelay.config.json.load")
 def test_load_credentials_success(
-    mock_json_load, mock_open, mock_exists, mock_get_base_dir
+    mock_json_load, mock_open, mock_exists, mock_get_credentials_path
 ):
     """Test successful credentials loading."""
-    mock_get_base_dir.return_value = "/test/config"
+    mock_get_credentials_path.return_value = Path("/test/config/credentials.json")
     mock_exists.return_value = True
     mock_json_load.return_value = {
         "homeserver": "https://matrix.example.org",
@@ -1067,11 +1068,11 @@ def test_load_credentials_success(
     assert credentials["device_id"] == "TEST_DEVICE"
 
 
-@patch("mmrelay.config.get_base_dir")
+@patch("mmrelay.config.get_credentials_path")
 @patch("os.path.exists")
-def test_load_credentials_file_not_exists(mock_exists, mock_get_base_dir):
+def test_load_credentials_file_not_exists(mock_exists, mock_get_credentials_path):
     """Test credentials loading when file doesn't exist."""
-    mock_get_base_dir.return_value = "/test/config"
+    mock_get_credentials_path.return_value = Path("/test/config/credentials.json")
     mock_exists.return_value = False
 
     credentials = load_credentials()
@@ -1079,20 +1080,24 @@ def test_load_credentials_file_not_exists(mock_exists, mock_get_base_dir):
     assert credentials is None
 
 
-@patch("mmrelay.config.get_base_dir")
+@patch("mmrelay.config.get_credentials_path")
 @patch("builtins.open")
 @patch("mmrelay.config.json.dump")
 @patch("os.makedirs")  # Mock the directory creation
 @patch("os.path.exists", return_value=True)  # Mock file existence check
 def test_save_credentials(
-    _mock_exists, _mock_makedirs, mock_json_dump, _mock_open, mock_get_base_dir
+    _mock_exists,
+    _mock_makedirs,
+    mock_json_dump,
+    _mock_open,
+    mock_get_credentials_path,
 ):
     """
     Verify that save_credentials writes the provided credentials JSON to the resolved config directory.
 
     This test sets the module-level config_path to None to force resolution via the base directory fixture, then calls save_credentials with a credentials dict and asserts that the target directory is created, the credentials file is opened, and json.dump is called with the credentials and an indent of 2.
     """
-    mock_get_base_dir.return_value = "/test/config"
+    mock_get_credentials_path.return_value = Path("/test/config/credentials.json")
     import mmrelay.config as config_module
 
     original_config_path = config_module.config_path

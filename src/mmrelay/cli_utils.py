@@ -389,10 +389,13 @@ def _cleanup_local_session_data() -> bool:
 
         cfg = load_config(args=None) or {}
         matrix_cfg = cfg.get("matrix", {})
+        if not isinstance(matrix_cfg, dict):
+            matrix_cfg = {}
         for section in ("e2ee", "encryption"):
-            override = os.path.expanduser(
-                matrix_cfg.get(section, {}).get("store_path", "")
-            )
+            section_cfg = matrix_cfg.get(section, {})
+            if not isinstance(section_cfg, dict):
+                continue
+            override = os.path.expanduser(section_cfg.get("store_path", ""))
             if override:
                 candidate_store_paths.add(override)
     except (ImportError, OSError) as e:

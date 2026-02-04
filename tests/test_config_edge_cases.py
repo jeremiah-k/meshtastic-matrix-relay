@@ -96,7 +96,7 @@ class TestConfigEdgeCases(unittest.TestCase):
             # We normalize because get_config_paths uses absolute path which might
             # prepend CWD on Linux if the mock path isn't recognized as absolute.
             # But "C:\" should be absolute enough.
-            windows_path_found = any("AppData" in path for path in paths)
+            windows_path_found = any("AppData" in str(path) for path in paths)
             self.assertTrue(windows_path_found)
 
     def test_get_config_paths_darwin_platform(self):
@@ -368,11 +368,16 @@ class TestConfigEdgeCases(unittest.TestCase):
                 patch.dict(os.environ, {"MMRELAY_HOME": temp_dir}),
                 patch("mmrelay.config.os.makedirs"),
             ):
+                from mmrelay import config as config_module
+
+                config_module._warn_deprecated.cache_clear()
                 with warnings.catch_warnings(record=True) as caught:
                     warnings.simplefilter("always", DeprecationWarning)
                     result = get_data_dir(create=False)
-                if caught:
-                    self.assertIn("Use paths.get_home_dir()", str(caught[0].message))
+                self.assertTrue(
+                    caught, "Expected DeprecationWarning from get_data_dir()"
+                )
+                self.assertIn("Use paths.get_home_dir()", str(caught[0].message))
                 self.assertEqual(result, temp_dir)
 
     def test_get_log_dir_windows_with_override(self):

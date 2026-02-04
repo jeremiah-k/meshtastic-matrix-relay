@@ -761,28 +761,36 @@ def save_credentials(
     """
 
     # Determine target path
+    path_module = os.path
+    if sys.platform == "win32":
+        import ntpath
+
+        path_module = ntpath
+
     if credentials_path:
         # Explicit path provided - use it directly
         raw_target_path = credentials_path
-        target_path = os.path.normpath(_expand_path(credentials_path))
+        target_path = path_module.normpath(_expand_path(credentials_path))
     else:
         explicit_path = get_explicit_credentials_path(relay_config)
         if explicit_path:
             raw_target_path = explicit_path
-            target_path = os.path.normpath(_expand_path(explicit_path))
+            target_path = path_module.normpath(_expand_path(explicit_path))
         else:
             raw_target_path = str(get_credentials_path())
-            target_path = os.path.normpath(raw_target_path)
+            target_path = path_module.normpath(raw_target_path)
 
     if (
-        os.path.isdir(target_path)
-        or raw_target_path.endswith(os.path.sep)
-        or (os.path.altsep and raw_target_path.endswith(os.path.altsep))
+        path_module.isdir(target_path)
+        or raw_target_path.endswith(path_module.sep)
+        or (path_module.altsep and raw_target_path.endswith(path_module.altsep))
     ):
-        target_path = os.path.join(os.path.normpath(target_path), "credentials.json")
+        target_path = path_module.join(
+            path_module.normpath(target_path), "credentials.json"
+        )
 
     # Ensure target directory exists
-    target_dir = os.path.dirname(target_path) or "."
+    target_dir = path_module.dirname(target_path) or "."
     try:
         os.makedirs(target_dir, exist_ok=True)
     except (OSError, PermissionError):

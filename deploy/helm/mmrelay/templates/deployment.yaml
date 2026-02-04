@@ -56,7 +56,8 @@ spec:
       {{- if and .Values.initContainer.enabled .Values.persistence.enabled }}
       initContainers:
         - name: fix-data-perms
-          image: {{ .Values.initContainer.image }}
+          image: "{{ .Values.initContainer.image.repository }}:{{ .Values.initContainer.image.tag }}{{- if .Values.initContainer.image.digest }}@{{ .Values.initContainer.image.digest }}{{- end }}"
+          imagePullPolicy: {{ .Values.initContainer.image.pullPolicy }}
           command:
             - chown
             - -R

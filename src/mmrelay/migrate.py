@@ -385,8 +385,8 @@ def _write_migration_state(
     try:
         state_path.write_text(json.dumps(payload), encoding="utf-8")
         logger.debug("Updated migration state: %s", payload)
-    except (OSError, IOError) as e:
-        logger.exception("Failed to write migration state: %s", e)
+    except (OSError, IOError):
+        logger.exception("Failed to write migration state")
 
 
 def _is_migration_completed() -> bool:
@@ -546,11 +546,11 @@ def migrate_credentials(
             "new_path": str(new_creds),
             "action": "move" if move else "copy",
         }
-    except (OSError, IOError) as e:
-        logger.exception("Failed to migrate credentials: %s", e)
+    except (OSError, IOError) as exc:
+        logger.exception("Failed to migrate credentials")
         return {
             "success": False,
-            "error": str(e),
+            "error": str(exc),
             "old_path": str(old_creds),
         }
 
@@ -629,11 +629,11 @@ def migrate_config(
             "new_path": str(new_config),
             "action": "move" if move else "copy",
         }
-    except (OSError, IOError) as e:
-        logger.exception("Failed to migrate config.yaml: %s", e)
+    except (OSError, IOError) as exc:
+        logger.exception("Failed to migrate config.yaml")
         return {
             "success": False,
-            "error": str(e),
+            "error": str(exc),
             "old_path": str(old_config),
         }
 
@@ -953,11 +953,11 @@ def migrate_store(
             "new_path": str(new_store_dir),
             "action": "move" if move else "copy",
         }
-    except (OSError, IOError) as e:
-        logger.exception("Failed to migrate E2EE store: %s", e)
+    except (OSError, IOError) as exc:
+        logger.exception("Failed to migrate E2EE store")
         return {
             "success": False,
-            "error": str(e),
+            "error": str(exc),
             "old_path": str(old_store_dir),
         }
 
@@ -1237,13 +1237,13 @@ def migrate_gpxtracker(
                     shutil.copy2(str(gpx_file), str(dest_path))
                 logger.debug("Migrated GPX file: %s", gpx_file)
                 migrated_count += 1
-            except (OSError, IOError) as e:
-                logger.exception("Failed to migrate GPX file %s: %s", gpx_file, e)
-    except (OSError, IOError) as e:
-        logger.exception("Failed to migrate gpxtracker GPX files: %s", e)
+            except (OSError, IOError) as exc:
+                logger.exception("Failed to migrate GPX file %s", gpx_file)
+    except (OSError, IOError) as exc:
+        logger.exception("Failed to migrate gpxtracker GPX files")
         return {
             "success": False,
-            "error": str(e),
+            "error": str(exc),
             "old_path": str(expanded_old_gpx_dir),
         }
 
@@ -1457,7 +1457,7 @@ def perform_migration(
             report["message"] = "Dry run complete - no changes made"
 
         report["success"] = True
-    except Exception as exc:
+    except MigrationError as exc:
         report["success"] = False
         report["error"] = str(exc)
         report["message"] = "Migration failed"
@@ -1470,6 +1470,30 @@ def perform_migration(
             rollback_result = rollback_migration(completed_steps=completed_steps)
             report["rollback"] = rollback_result
         return report
+    except (OSError, IOError, sqlite3.DatabaseError) as exc:
+        report["success"] = False
+        report["error"] = str(exc)
+        report["message"] = "Migration failed"
+        if not dry_run:
+            _write_migration_state(
+                status="failed",
+                completed_steps=completed_steps,
+                error=str(exc),
+            )
+            rollback_result = rollback_migration(completed_steps=completed_steps)
+            report["rollback"] = rollback_result
+        return report
+    except Exception as exc:
+        logger.exception("Unexpected error during migration")
+        if not dry_run:
+            _write_migration_state(
+                status="failed",
+                completed_steps=completed_steps,
+                error=str(exc),
+            )
+            rollback_result = rollback_migration(completed_steps=completed_steps)
+            report["rollback"] = rollback_result
+        raise
 
     logger.info(
         "Migration complete. Summary: %d migrations performed",

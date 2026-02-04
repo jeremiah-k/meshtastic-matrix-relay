@@ -29,6 +29,7 @@ spec:
           type: RuntimeDefault
       initContainers:
         - name: fix-data-perms
+          # For production, pin this image by digest (sha256:...) via an overlay.
           image: busybox:1.36
           command:
             - chown

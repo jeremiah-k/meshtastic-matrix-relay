@@ -166,7 +166,7 @@ class TestConfig(unittest.TestCase):
             mock_makedirs.assert_any_call("/custom/home", exist_ok=True)
 
     @patch("mmrelay.config.os.makedirs")
-    def test_get_log_dir_linux(self, mock_makedirs):
+    def test_get_log_dir_linux(self, _mock_makedirs):
         """
         Test that get_log_dir() returns the default logs directory on Linux platforms.
         """

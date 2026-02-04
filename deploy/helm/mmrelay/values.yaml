@@ -65,7 +65,12 @@ containerSecurityContext:
 # Init container to fix data permissions (auto-disabled when persistence.enabled=false)
 initContainer:
   enabled: true
-  image: busybox:1.36
+  image:
+    repository: busybox
+    tag: "1.36"
+    # If set, overrides tag (format: sha256:abc123...)
+    digest: ""
+    pullPolicy: IfNotPresent
 
 # Health probes
 probes:

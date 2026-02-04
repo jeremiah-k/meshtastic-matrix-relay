@@ -10,6 +10,7 @@ Tests covering:
 """
 
 import os
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -210,7 +211,7 @@ class TestPerformMigration(unittest.TestCase):
             }
             mock_creds.return_value = {"success": True}
             mock_config.return_value = {"success": True}
-            mock_db.side_effect = Exception("Database failure")
+            mock_db.side_effect = sqlite3.DatabaseError("Database failure")
 
             result = perform_migration(dry_run=False, force=False, move=False)
 
@@ -231,6 +232,7 @@ class TestRollbackMigration(unittest.TestCase):
 
         result = rollback_migration()
 
+        mock_print.assert_not_called()
         # When no migration was completed, returns success with message
         self.assertFalse(result.get("success"))
         self.assertIn("rollback", result.get("message", "").lower())
