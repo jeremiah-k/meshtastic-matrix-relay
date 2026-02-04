@@ -1200,9 +1200,9 @@ class TestE2EEStoreDir(unittest.TestCase):
     ):
         """Test E2EE store directory creation when it doesn't exist."""
         result = get_e2ee_store_dir()
-        expected_path = Path("/home/user/.mmrelay/store")
+        expected_path = "/home/user/.mmrelay/store"
         self.assertEqual(result, expected_path)
-        mock_makedirs.assert_not_called()
+        mock_makedirs.assert_called_once_with(expected_path, exist_ok=True)
 
     @patch("mmrelay.config.sys.platform", "linux")
     @patch(
@@ -1215,9 +1215,9 @@ class TestE2EEStoreDir(unittest.TestCase):
     ):
         """Test E2EE store directory when it already exists."""
         result = get_e2ee_store_dir()
-        expected_path = Path(tempfile.gettempdir()) / ".mmrelay" / "store"
+        expected_path = os.path.join(tempfile.gettempdir(), ".mmrelay", "store")
         self.assertEqual(result, expected_path)
-        mock_makedirs.assert_not_called()
+        mock_makedirs.assert_called_once_with(expected_path, exist_ok=True)
 
 
 class TestLoadConfigUncoveredLines(unittest.TestCase):

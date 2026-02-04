@@ -52,5 +52,6 @@ class TestGetHomeDir:
         monkeypatch.setenv("MMRELAY_HOME", "/new_home")
         monkeypatch.setenv("MMRELAY_BASE_DIR", "/old_base")
 
-        with pytest.raises(ValueError):
-            get_home_dir()
+        # MMRELAY_HOME takes precedence; legacy var is ignored with warning
+        result = get_home_dir()
+        assert os.path.normpath(str(result)) == os.path.normpath("/new_home")
