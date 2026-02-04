@@ -217,7 +217,7 @@ selftest() {
 		echo ""
 		echo ""
 		echo '```bash'
-		echo "# Allowed with tilde fence"
+		echo "# Allowed with backtick fence"
 		echo "mmrelay --logfile /var/log/mmrelay.log"
 		echo '```'
 		echo ""

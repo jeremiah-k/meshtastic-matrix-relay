@@ -2181,18 +2181,26 @@ async def login_matrix_bot(
         if logout_others is None:
             logout_others = False
 
+        from mmrelay.config import is_e2ee_enabled, load_config
+
+        config_for_paths: dict[str, Any] | None = None
+        e2ee_enabled = False
+        try:
+            config_for_paths = load_config()
+        except Exception as e:
+            logger.debug("Could not load config for credentials path: %s", e)
+
         # Check for existing credentials to reuse device_id
         existing_device_id = None
         credentials_path = None
         try:
-            explicit_path = os.getenv("MMRELAY_CREDENTIALS_PATH")
+            explicit_path = get_explicit_credentials_path(config_for_paths)
             if explicit_path:
                 credentials_path = os.path.expanduser(explicit_path)
             else:
                 from mmrelay.paths import resolve_all_paths
 
-                paths_info = resolve_all_paths()
-                credentials_path = paths_info["credentials_path"]
+                credentials_path = resolve_all_paths()["credentials_path"]
 
             if os.path.exists(credentials_path):
                 with open(credentials_path, "r", encoding="utf-8") as f:
@@ -2207,11 +2215,8 @@ async def login_matrix_bot(
             logger.debug(f"Could not load existing credentials: {e}")
 
         # Check if E2EE is enabled in configuration
-        from mmrelay.config import is_e2ee_enabled, load_config
-
         try:
-            config = load_config()
-            e2ee_enabled = is_e2ee_enabled(config)
+            e2ee_enabled = is_e2ee_enabled(config_for_paths)
         except Exception as e:
             logger.debug(f"Could not load config for E2EE check: {e}")
             e2ee_enabled = False
@@ -2431,15 +2436,15 @@ async def login_matrix_bot(
             }
 
             # save_credentials() now uses unified HOME location
-            explicit_path = os.getenv("MMRELAY_CREDENTIALS_PATH")
+            explicit_path = get_explicit_credentials_path(config_for_paths)
             if explicit_path:
-                target_path = os.path.expanduser(explicit_path)
+                credentials_path = os.path.expanduser(explicit_path)
             else:
                 from mmrelay.paths import resolve_all_paths
 
-                target_path = resolve_all_paths()["credentials_path"]
-            save_credentials(credentials, credentials_path=target_path)
-            logger.info("Credentials saved to %s", target_path)
+                credentials_path = resolve_all_paths()["credentials_path"]
+            save_credentials(credentials, credentials_path=credentials_path)
+            logger.info("Credentials saved to %s", credentials_path)
 
             # Logout other sessions if requested
             if logout_others:
