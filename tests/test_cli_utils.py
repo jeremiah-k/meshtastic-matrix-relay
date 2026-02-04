@@ -456,7 +456,8 @@ class TestLogoutMatrixBot:
 
         with (
             patch(
-                "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_credentials),
             ),
             patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
@@ -488,7 +489,8 @@ class TestLogoutMatrixBot:
 
         with (
             patch(
-                "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_credentials),
             ),
             patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
@@ -533,7 +535,8 @@ class TestLogoutMatrixBot:
 
         with (
             patch(
-                "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_credentials),
             ),
             patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
@@ -578,7 +581,8 @@ class TestLogoutMatrixBot:
 
         with (
             patch(
-                "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_credentials),
             ),
             patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
@@ -617,7 +621,8 @@ class TestLogoutMatrixBot:
 
         with (
             patch(
-                "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_credentials),
             ),
             patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.cli_utils._create_ssl_context", return_value=MagicMock()),
@@ -659,7 +664,8 @@ class TestLogoutMatrixBot:
 
         with (
             patch(
-                "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_credentials),
             ),
             patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.cli_utils._create_ssl_context", return_value=MagicMock()),
@@ -701,7 +707,8 @@ class TestLogoutMatrixBot:
 
         with (
             patch(
-                "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_credentials),
             ),
             patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.cli_utils._create_ssl_context", return_value=MagicMock()),
@@ -742,7 +749,8 @@ class TestLogoutMatrixBot:
 
         with (
             patch(
-                "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_credentials),
             ),
             patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.cli_utils._create_ssl_context", return_value=MagicMock()),
@@ -789,7 +797,8 @@ class TestLogoutMatrixBot:
 
         with (
             patch(
-                "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_credentials),
             ),
             patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.cli_utils._create_ssl_context", return_value=MagicMock()),
@@ -831,7 +840,8 @@ class TestLogoutMatrixBot:
 
         with (
             patch(
-                "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_credentials),
             ),
             patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.cli_utils._create_ssl_context", return_value=MagicMock()),
@@ -862,7 +872,8 @@ class TestLogoutMatrixBot:
 
         with (
             patch(
-                "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_credentials),
             ),
             patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.cli_utils._create_ssl_context", return_value=MagicMock()),

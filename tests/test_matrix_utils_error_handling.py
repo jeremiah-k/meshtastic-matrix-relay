@@ -361,7 +361,10 @@ class TestMatrixLoginErrorHandling(unittest.TestCase):
             patch("mmrelay.matrix_utils.AsyncClient", return_value=mock_client),
             patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
             patch("mmrelay.matrix_utils.save_credentials"),
-            patch("mmrelay.matrix_utils.load_credentials", return_value=None),
+            patch(
+                "mmrelay.matrix_utils.async_load_credentials",
+                new=AsyncMock(return_value=None),
+            ),
         ):
             import asyncio
 
@@ -405,7 +408,10 @@ class TestMatrixLoginErrorHandling(unittest.TestCase):
             patch("mmrelay.matrix_utils.AsyncClient", return_value=mock_client),
             patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
             patch("mmrelay.matrix_utils.save_credentials"),
-            patch("mmrelay.matrix_utils.load_credentials", return_value=None),
+            patch(
+                "mmrelay.matrix_utils.async_load_credentials",
+                new=AsyncMock(return_value=None),
+            ),
         ):
             import asyncio
 
@@ -446,7 +452,10 @@ class TestMatrixLoginErrorHandling(unittest.TestCase):
             patch("mmrelay.matrix_utils.AsyncClient", return_value=mock_client),
             patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
             patch("mmrelay.matrix_utils.save_credentials"),
-            patch("mmrelay.matrix_utils.load_credentials", return_value=None),
+            patch(
+                "mmrelay.matrix_utils.async_load_credentials",
+                new=AsyncMock(return_value=None),
+            ),
         ):
             import asyncio
 
@@ -485,7 +494,10 @@ class TestMatrixLoginErrorHandling(unittest.TestCase):
             patch("mmrelay.matrix_utils.AsyncClient", return_value=mock_client),
             patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
             patch("mmrelay.matrix_utils.save_credentials"),
-            patch("mmrelay.matrix_utils.load_credentials", return_value=None),
+            patch(
+                "mmrelay.matrix_utils.async_load_credentials",
+                new=AsyncMock(return_value=None),
+            ),
         ):
             import asyncio
 

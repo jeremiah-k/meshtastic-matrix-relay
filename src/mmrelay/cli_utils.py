@@ -578,10 +578,8 @@ async def logout_matrix_bot(password: str) -> bool:
     """
 
     # Import inside function to avoid circular imports
-    from mmrelay.matrix_utils import (  # type: ignore[attr-defined]
-        MATRIX_LOGIN_TIMEOUT,
-        load_credentials,
-    )
+    from mmrelay.config import async_load_credentials
+    from mmrelay.matrix_utils import MATRIX_LOGIN_TIMEOUT
 
     # Check if matrix-nio is available
     if AsyncClient is None:
@@ -590,7 +588,7 @@ async def logout_matrix_bot(password: str) -> bool:
         return False
 
     # Load current credentials
-    credentials = load_credentials()
+    credentials = await async_load_credentials()
     if not credentials:
         _get_logger().info("No active session found. Already logged out.")
         print("ℹ️  No active session found. Already logged out.")

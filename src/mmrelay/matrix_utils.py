@@ -1285,6 +1285,12 @@ async def connect_matrix(
     # Update the global config if a config is passed
     if passed_config is not None:
         config = passed_config
+        try:
+            from mmrelay import config as config_module
+
+            config_module.relay_config = passed_config
+        except Exception as exc:
+            logger.debug("Failed to sync relay_config for credential loading: %s", exc)
 
     # Check if config is available
     if config is None:
@@ -1314,30 +1320,12 @@ async def connect_matrix(
             logger.debug("Failed to resolve credentials path: %s", exc)
             return None
 
-    try:
-        explicit_credentials_path = get_explicit_credentials_path(
-            config if isinstance(config, dict) else None
-        )
-    except TypeError as exc:
-        logger.warning("Invalid credentials_path configuration: %s", exc)
-        explicit_credentials_path = None
-
-    # Prefer an explicit credentials path when provided (env/config)
-    if isinstance(explicit_credentials_path, str) and explicit_credentials_path:
-        expanded_path = os.path.expanduser(explicit_credentials_path)
-        try:
-            if os.path.isfile(expanded_path):
-                credentials = await asyncio.to_thread(
-                    _read_credentials_file, expanded_path
-                )
-                credentials_path = expanded_path
-        except (OSError, json.JSONDecodeError):
-            logger.warning("Ignoring invalid credentials file: %s", expanded_path)
-            credentials = None
-
     # Load credentials using the shared helper (supports legacy search + env overrides)
-    if credentials is None:
+    try:
         credentials = await async_load_credentials()
+    except Exception as exc:
+        logger.warning("Error loading credentials: %s", exc)
+        credentials = None
 
     if credentials is None:
         candidate_path = _resolve_credentials_save_path()
