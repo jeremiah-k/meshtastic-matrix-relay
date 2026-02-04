@@ -348,7 +348,7 @@ def _mark_migration_completed() -> None:
         state_path.write_text(MIGRATION_VERSION, encoding="utf-8")
         logger.info("Migration completed and marked in: %s", state_path)
     except (OSError, IOError) as e:
-        logger.error("Failed to mark migration as completed: %s", e)
+        logger.exception("Failed to mark migration as completed: %s", e)
 
 
 def _backup_file(src_path: Path, suffix: str = ".bak") -> Path:
@@ -493,7 +493,7 @@ def migrate_credentials(
             "action": "move" if move else "copy",
         }
     except (OSError, IOError) as e:
-        logger.error("Failed to migrate credentials: %s", e)
+        logger.exception("Failed to migrate credentials: %s", e)
         return {
             "success": False,
             "error": str(e),
@@ -598,12 +598,14 @@ def migrate_database(
         try:
             if move:
                 logger.info("Moving database file: %s", db_path)
+                if dest.exists():
+                    dest.unlink()
                 shutil.move(str(db_path), str(dest))
             else:
                 logger.info("Copying database file: %s", db_path)
                 shutil.copy2(str(db_path), str(dest))
         except (OSError, IOError) as e:
-            logger.exception("Failed to migrate database file %s", db_path)
+            logger.error("Failed to migrate database file %s", db_path)
             return {
                 "success": False,
                 "error": str(e),
@@ -807,7 +809,7 @@ def migrate_store(
             "action": "move" if move else "copy",
         }
     except (OSError, IOError) as e:
-        logger.error("Failed to migrate E2EE store: %s", e)
+        logger.exception("Failed to migrate E2EE store: %s", e)
         return {
             "success": False,
             "error": str(e),
@@ -1079,9 +1081,9 @@ def migrate_gpxtracker(
                 logger.debug("Migrated GPX file: %s", gpx_file)
                 migrated_count += 1
             except (OSError, IOError) as e:
-                logger.error("Failed to migrate GPX file %s: %s", gpx_file, e)
+                logger.exception("Failed to migrate GPX file %s: %s", gpx_file, e)
     except (OSError, IOError) as e:
-        logger.error("Failed to migrate gpxtracker GPX files: %s", e)
+        logger.exception("Failed to migrate gpxtracker GPX files: %s", e)
         return {
             "success": False,
             "error": str(e),

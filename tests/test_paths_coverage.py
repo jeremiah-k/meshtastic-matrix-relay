@@ -9,11 +9,7 @@ import os
 import pytest
 
 from mmrelay.paths import (
-    ensure_directories,
     get_home_dir,
-    get_plugin_data_dir,
-    is_deprecation_window_active,
-    resolve_all_paths,
     set_home_override,
 )
 

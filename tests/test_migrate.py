@@ -419,7 +419,7 @@ class TestMigrationStateFunctions:
             with patch("mmrelay.migrate.logger") as mock_logger:
                 _mark_migration_completed()
 
-                mock_logger.error.assert_called_once()
+                mock_logger.exception.assert_called_once()
 
     def test_backup_file_creates_timestamped_backup(self, tmp_path):
         """Test _backup_file creates timestamped backup path."""

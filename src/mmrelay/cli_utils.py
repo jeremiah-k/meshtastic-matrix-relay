@@ -351,7 +351,7 @@ def _cleanup_local_session_data() -> bool:
     """
     import shutil
 
-    from mmrelay.paths import get_e2ee_store_dir, resolve_all_paths
+    from mmrelay.paths import resolve_all_paths
 
     _get_logger().info("Clearing local session data...")
 
@@ -378,7 +378,7 @@ def _cleanup_local_session_data() -> bool:
         store_dir = paths_info.get("store_dir")
         if store_dir and store_dir != "N/A (Windows)":
             candidate_store_paths.add(store_dir)
-    except Exception as e:
+    except (OSError, RuntimeError) as e:
         _get_logger().debug(
             "Could not resolve E2EE store path from paths: %s", type(e).__name__
         )
@@ -395,7 +395,7 @@ def _cleanup_local_session_data() -> bool:
             )
             if override:
                 candidate_store_paths.add(override)
-    except Exception as e:
+    except (ImportError, OSError) as e:
         _get_logger().debug(
             "Could not resolve configured E2EE store path: %s", type(e).__name__
         )

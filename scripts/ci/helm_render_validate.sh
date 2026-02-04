@@ -224,11 +224,15 @@ test_expected_failure() {
 		cat "${output_file}"
 		return 1
 	else
-		echo -e "${GREEN}✓ Expected failure confirmed for ${name}${NC}"
 		if grep -q "empty" "${output_file}"; then
+			echo -e "${GREEN}✓ Expected failure confirmed for ${name}${NC}"
 			echo -e "${GREEN}  Failure message is about empty data (expected)${NC}"
+			return 0
 		else
-			echo -e "${YELLOW}  Warning: Failure message may not be about empty data${NC}"
+			echo -e "${RED}✗ Expected failure for ${name} occurred but not due to empty data${NC}"
+			echo "Error output:"
+			cat "${output_file}"
+			return 1
 		fi
 	fi
 }

@@ -1,7 +1,6 @@
 import argparse
 import sqlite3
 import sys
-from types import SimpleNamespace
 
 from mmrelay import paths as paths_module
 from mmrelay.cli import handle_doctor_command, handle_verify_migration_command

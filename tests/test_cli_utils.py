@@ -7,7 +7,6 @@ that provide consistent command references across the application.
 
 import asyncio
 import ssl
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

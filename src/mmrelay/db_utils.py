@@ -273,12 +273,6 @@ def get_db_path() -> str:
     default_path = os.path.join(database_dir, "meshtastic.sqlite")
 
     # Check for legacy database in legacy sources and migrate if needed
-    # Also check if custom home directory was specified (MMRELAY_HOME/--home)
-    home_source = paths_info.get("home_source")
-    new_layout_enabled = is_new_layout_enabled() or home_source in {
-        "CLI (--home)",
-        "MMRELAY_HOME env var",
-    }
     if not os.path.exists(default_path):
         legacy_candidates = []
         for legacy_root in paths_info.get("legacy_sources", []):
