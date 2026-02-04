@@ -101,9 +101,11 @@ class TestPerformMigration(unittest.TestCase):
         """Test perform_migration runs all migration steps."""
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_home.return_value = Path(tmpdir)
+            legacy_root = Path(tmpdir) / "legacy"
+            legacy_root.mkdir()
             mock_resolve.return_value = {
                 "home": tmpdir,
-                "legacy_sources": [],
+                "legacy_sources": [str(legacy_root)],
             }
             mock_store.return_value = {"success": True, "message": "Done"}
             mock_plugins.return_value = {"success": True, "message": "Done"}
@@ -124,9 +126,11 @@ class TestPerformMigration(unittest.TestCase):
         """Test perform_migration returns error when migration fails."""
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_home.return_value = Path(tmpdir)
+            legacy_root = Path(tmpdir) / "legacy"
+            legacy_root.mkdir()
             mock_resolve.return_value = {
                 "home": tmpdir,
-                "legacy_sources": [],
+                "legacy_sources": [str(legacy_root)],
             }
             mock_store.return_value = {
                 "success": False,
@@ -151,9 +155,11 @@ class TestPerformMigration(unittest.TestCase):
         """Test perform_migration in dry run mode."""
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_home.return_value = Path(tmpdir)
+            legacy_root = Path(tmpdir) / "legacy"
+            legacy_root.mkdir()
             mock_resolve.return_value = {
                 "home": tmpdir,
-                "legacy_sources": [],
+                "legacy_sources": [str(legacy_root)],
             }
             mock_store.return_value = {
                 "success": True,

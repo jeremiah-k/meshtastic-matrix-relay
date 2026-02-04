@@ -898,7 +898,7 @@ def save_credentials(
     The primary credentials location is resolve_all_paths()["credentials_path"].
     If credentials_path is provided, it is used directly; otherwise, credentials are saved to the HOME location.
     The function will create the target directory when missing and, on Unix-like systems,
-    attempt to set file permissions to 0o600. I/O and permission errors are logged.
+    attempt to set file permissions to 0o600. I/O and permission errors are logged and re-raised.
 
     Parameters:
         credentials (dict): JSON-serializable mapping of credentials to persist.

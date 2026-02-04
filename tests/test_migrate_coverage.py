@@ -771,6 +771,8 @@ class TestMigrateGpxtrackerEdgeCases:
 
     def test_migrate_gpxtracker_backup_failure(self, tmp_path):
         """Test handling of GPX file backup failure."""
+        from datetime import datetime
+
         new_home = tmp_path / "new_home"
         new_home.mkdir()
         new_gpx_dir = new_home / "plugins" / "gpxtracker" / "data"
@@ -780,16 +782,37 @@ class TestMigrateGpxtrackerEdgeCases:
 
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
+        gpx_dir = legacy_root / "gpx"
+        gpx_dir.mkdir()
+        gpx_file = gpx_dir / "track.gpx"
+        gpx_file.write_text("track")
         config = legacy_root / "config.yaml"
-        # No gpxtracker config, so migration won't happen
-        config.write_text("test: config")
+        config.write_text(
+            f"community-plugins:\n  gpxtracker:\n    gpx_directory: {gpx_dir}\n"
+        )
 
-        with mock.patch("shutil.copy2", side_effect=OSError("Mock backup error")):
-            result = migrate_gpxtracker(
+        fixed_time = datetime(2024, 1, 1, 12, 0, 0)
+        dest_name = (
+            f"{gpx_file.stem}_migrated_{fixed_time.strftime('%Y%m%d_%H%M%S')}.gpx"
+        )
+        dest_path = new_gpx_dir / dest_name
+        dest_path.write_text("existing")
+
+        original_copy2 = shutil.copy2
+
+        def selective_copy2(src, dst, *args, **kwargs):
+            if Path(src) == dest_path:
+                raise OSError("Mock backup error")
+            return original_copy2(src, dst, *args, **kwargs)
+
+        with (
+            mock.patch("mmrelay.migrate.datetime") as mock_datetime,
+            mock.patch("shutil.copy2", side_effect=selective_copy2),
+        ):
+            mock_datetime.now.return_value = fixed_time
+            migrate_gpxtracker(
                 [legacy_root], new_home, dry_run=False, force=False, move=False
             )
-            # Should succeed (no migration needed)
-            assert result["success"] is True
 
     @pytest.mark.skip("Temporarily skipped - needs debugging")
     def test_migrate_gpxtracker_move_failure(self, tmp_path):

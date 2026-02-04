@@ -30,7 +30,7 @@ except ImportError:
 class TestE2EEUtilsCredentialChecking(unittest.TestCase):
     """Test E2EE credential checking in legacy locations (lines 115-122, 172-182)."""
 
-    def setUp(self):
+    def setUp(self) -> None:
         """
         Prepare test environment: skip tests if E2EE utilities are unavailable, create a temporary directory with config and credentials paths, and initialize a baseline config used by tests.
 
@@ -51,11 +51,11 @@ class TestE2EEUtilsCredentialChecking(unittest.TestCase):
             "matrix_rooms": [{"id": "!room:test.org", "meshtastic_channel": 0}],
         }
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         """
-        Remove the temporary test directory created during setUp.
+        Remove temporary test directory created during setUp.
 
-        This deletes the directory referenced by self.temp_dir and its contents. Errors
+        This deletes directory referenced by self.temp_dir and its contents. Errors
         during removal are ignored (best-effort cleanup).
         """
         import shutil
@@ -67,13 +67,13 @@ class TestE2EEUtilsCredentialChecking(unittest.TestCase):
     @patch("mmrelay.paths.resolve_all_paths")
     def test_credentials_found_in_legacy_location(
         self, mock_resolve_all_paths, mock_exists
-    ):
+    ) -> None:
         """
         Test credential detection when credentials are found in legacy location (lines 115-122).
 
-        This test verifies that when credentials are not found in the primary location
+        This test verifies that when credentials are not found in primary location
         but exist in a legacy location, get_e2ee_status correctly marks
-        credentials as available and stops searching after the first match.
+        credentials as available and stops searching after first match.
         """
         # Mock dependencies as installed
         with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
@@ -130,7 +130,7 @@ class TestE2EEUtilsCredentialChecking(unittest.TestCase):
     @patch("mmrelay.paths.resolve_all_paths")
     def test_credentials_not_found_in_legacy_locations(
         self, mock_resolve_all_paths, mock_exists
-    ):
+    ) -> None:
         """
         Test credential detection when credentials are not found in any location (lines 115-122).
 
@@ -178,11 +178,11 @@ class TestE2EEUtilsCredentialChecking(unittest.TestCase):
     @patch("mmrelay.paths.is_deprecation_window_active")
     def test_credentials_in_legacy_during_deprecation_window(
         self, mock_deprecation_active, mock_resolve_all_paths, mock_exists
-    ):
+    ) -> None:
         """
         Test _check_credentials_available finds credentials in legacy location during deprecation window (lines 172-182).
 
-        This test verifies that when the deprecation window is active and credentials
+        This test verifies that when deprecation window is active and credentials
         exist in a legacy location, _check_credentials_available returns True.
         """
         # Mock dependencies as installed
@@ -234,11 +234,11 @@ class TestE2EEUtilsCredentialChecking(unittest.TestCase):
     @patch("mmrelay.paths.is_deprecation_window_active")
     def test_no_credentials_during_deprecation_window(
         self, mock_deprecation_active, mock_resolve_all_paths, mock_exists
-    ):
+    ) -> None:
         """
         Test _check_credentials_available returns False when no credentials found during deprecation window (lines 172-182).
 
-        This test verifies that when the deprecation window is active but credentials
+        This test verifies that when deprecation window is active but credentials
         are not found in any location, _check_credentials_available returns False.
         """
         # Mock dependencies as installed
@@ -282,11 +282,11 @@ class TestE2EEUtilsCredentialChecking(unittest.TestCase):
     @patch("mmrelay.paths.is_deprecation_window_active")
     def test_deprecation_window_not_active(
         self, mock_deprecation_active, mock_resolve_all_paths, mock_exists
-    ):
+    ) -> None:
         """
         Test _check_credentials_available skips legacy sources when deprecation window is not active (lines 172-182).
 
-        This test verifies that when the deprecation window is not active, legacy
+        This test verifies that when deprecation window is not active, legacy
         sources are not checked even if they exist.
         """
         # Mock dependencies as installed

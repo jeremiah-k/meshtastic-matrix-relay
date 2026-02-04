@@ -161,24 +161,10 @@ def _apply_dir_overrides(args: argparse.Namespace) -> None:
     # This ensures any code that still reads these variables gets the correct value
     import mmrelay.config
 
-    if home_value:
-        # --home: Set both for consistency, but HOME resolver is authoritative
-        if mmrelay.config.custom_base_dir != absolute_home:
-            mmrelay.config.custom_base_dir = absolute_home
-        if mmrelay.config.custom_data_dir != absolute_home:
-            mmrelay.config.custom_data_dir = absolute_home
-    elif base_value:
-        # --base-dir: Set both for consistency
-        if mmrelay.config.custom_base_dir != absolute_home:
-            mmrelay.config.custom_base_dir = absolute_home
-        if mmrelay.config.custom_data_dir != absolute_home:
-            mmrelay.config.custom_data_dir = absolute_home
-    elif data_value:
-        # --data-dir: Set both for consistency
-        if mmrelay.config.custom_base_dir != absolute_home:
-            mmrelay.config.custom_base_dir = absolute_home
-        if mmrelay.config.custom_data_dir != absolute_home:
-            mmrelay.config.custom_data_dir = absolute_home
+    if mmrelay.config.custom_base_dir != absolute_home:
+        mmrelay.config.custom_base_dir = absolute_home
+    if mmrelay.config.custom_data_dir != absolute_home:
+        mmrelay.config.custom_data_dir = absolute_home
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -315,6 +301,11 @@ def parse_arguments() -> argparse.Namespace:
         "paths",
         help="Show path configuration and diagnostics",
         description="Display all path information for debugging and verification",
+    )
+    config_subparsers.add_parser(
+        "diagnose",
+        help="Run configuration diagnostics",
+        description="Run non-destructive configuration diagnostics",
     )
 
     # AUTH group
@@ -1727,7 +1718,6 @@ def handle_paths_command(args: argparse.Namespace) -> int:
     print(f"   Primary: {paths_info['plugins_dir']}")
 
     # Check for legacy data
-    paths_info["home"]
     if paths_info.get("legacy_sources"):
         print("\n   ⚠️  Legacy data detected!")
         print(

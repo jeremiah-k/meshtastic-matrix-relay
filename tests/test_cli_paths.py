@@ -2,7 +2,6 @@
 Tests for CLI path diagnostics and legacy warnings.
 """
 
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
