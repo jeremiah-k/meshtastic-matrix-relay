@@ -967,8 +967,8 @@ class TestCredentials(unittest.TestCase):
     def test_save_credentials_directory_creation_failure(self, _mock_makedirs):
         """Test credential saving when directory creation fails."""
         credentials = {"user_id": "test"}
-        result = save_credentials(credentials)
-        self.assertIsNone(result)
+        with self.assertRaises(OSError):
+            save_credentials(credentials)
 
     @patch("mmrelay.config.os.makedirs")
     @patch("builtins.open", side_effect=OSError("Permission denied"))
@@ -1143,8 +1143,8 @@ class TestCredentials(unittest.TestCase):
         final_path = call_args[0][0]
         self.assertEqual(
             final_path,
-            "creds.json",
-            "Should use credentials_path as-is when it's a filename",
+            os.path.abspath("creds.json"),
+            "Should normalize credentials_path when it's a filename",
         )
 
 
@@ -1487,7 +1487,8 @@ class TestConfigUncoveredLines(unittest.TestCase):
             patch("sys.platform", "win32"),
             patch.object(mmrelay.config.logger, "error", side_effect=mock_error),
         ):
-            save_credentials({"access_token": "test"})
+            with self.assertRaises(OSError):
+                save_credentials({"access_token": "test"})
             self.assertTrue(
                 any(
                     "On Windows, ensure the application has write permissions" in msg

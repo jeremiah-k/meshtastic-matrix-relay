@@ -527,9 +527,10 @@ class TestConfigEdgeCases(unittest.TestCase):
 
         with patch("mmrelay.config.os.makedirs", side_effect=OSError("Disk full")):
             with patch("mmrelay.config.logger") as mock_logger:
-                save_credentials(credentials)
+                with self.assertRaises(OSError):
+                    save_credentials(credentials)
 
-                # Should log exception and not raise
+                # Should log exception and raise
                 mock_logger.exception.assert_called()
 
 
