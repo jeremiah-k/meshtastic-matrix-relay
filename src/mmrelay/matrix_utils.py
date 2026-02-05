@@ -72,8 +72,6 @@ from mmrelay.cli_utils import (
     msg_retry_auth_login,
 )
 from mmrelay.config import (
-    InvalidCredentialsPathTypeError,
-    async_load_credentials,
     get_e2ee_store_dir,
     get_explicit_credentials_path,
     get_meshtastic_config_value,
@@ -122,6 +120,16 @@ from mmrelay.meshtastic_utils import connect_meshtastic, send_text_reply
 # Import meshtastic protobuf for port numbers when needed
 from mmrelay.message_queue import get_message_queue, queue_message
 from mmrelay.paths import get_credentials_path
+
+# Avoid mypy attr-defined complaints when config symbols move across refactors.
+_config_any = cast(Any, config_module)
+async_load_credentials = cast(
+    Callable[[], Awaitable[dict[str, Any] | None]],
+    _config_any.async_load_credentials,
+)
+InvalidCredentialsPathTypeError = cast(
+    type[Exception], _config_any.InvalidCredentialsPathTypeError
+)
 
 # Import nio exception types with error handling for test environments.
 # matrix-nio is not marked py.typed in our env; keep import-untyped for mypy --strict.

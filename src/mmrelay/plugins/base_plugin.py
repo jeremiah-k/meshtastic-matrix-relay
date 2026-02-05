@@ -20,18 +20,6 @@ from nio import (
 
 # Provide a patchable module attribute for tests while avoiding name confusion.
 from mmrelay.config import get_plugin_data_dir as resolve_plugin_data_dir
-
-
-class _PluginDataDirGetter(Protocol):
-    def __call__(
-        self,
-        plugin_name: str | None = None,
-        *,
-        subdir: str | None = None,
-        plugin_type: str | None = None,
-    ) -> str: ...
-
-
 from mmrelay.constants.config import (
     CONFIG_KEY_REQUIRE_BOT_MENTION,
     DEFAULT_REQUIRE_BOT_MENTION,
@@ -56,6 +44,17 @@ from mmrelay.plugin_loader import logger as plugins_logger
 from mmrelay.plugin_loader import (
     schedule_job,
 )
+
+
+class _PluginDataDirGetter(Protocol):
+    def __call__(
+        self,
+        plugin_name: str | None = None,
+        *,
+        subdir: str | None = None,
+        plugin_type: str | None = None,
+    ) -> str: ...
+
 
 get_plugin_data_dir = resolve_plugin_data_dir
 
