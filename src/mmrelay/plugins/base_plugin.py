@@ -687,12 +687,15 @@ class BasePlugin(ABC):
         """
         # Get the plugin-specific data directory
         plugin_name = self._require_plugin_name()
+        module_get_plugin_data_dir = globals().get(
+            "get_plugin_data_dir", resolve_plugin_data_dir
+        )
         if subdir:
-            return resolve_plugin_data_dir(
+            return module_get_plugin_data_dir(
                 plugin_name, subdir=subdir, plugin_type=self.plugin_type
             )
 
-        return resolve_plugin_data_dir(plugin_name, plugin_type=self.plugin_type)
+        return module_get_plugin_data_dir(plugin_name, plugin_type=self.plugin_type)
 
     def matches(
         self,
