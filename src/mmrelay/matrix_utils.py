@@ -1349,7 +1349,7 @@ async def _resolve_and_load_credentials(
 
     if credentials is None:
         candidate_path = _resolve_credentials_save_path(config_data)
-        if candidate_path and await asyncio.to_thread(os.path.isfile, candidate_path):
+        if candidate_path and await asyncio.to_thread(os.path.isfile, candidate_path):  # type: ignore[arg-type]
             logger.warning("Ignoring invalid credentials file: %s", candidate_path)
 
     if credentials:
@@ -1734,13 +1734,6 @@ async def _perform_matrix_login(
             try:
                 whoami_response = await client.whoami()
                 discovered_user_id = getattr(whoami_response, "user_id", None)
-
-                # Verify user_id matching if already set from config
-                if discovered_user_id and user_id and discovered_user_id != user_id:
-                    logger.warning(
-                        f"Matrix user_id mismatch: config says {user_id} but whoami says {discovered_user_id}. "
-                        "Overriding with whoami result."
-                    )
 
                 if discovered_user_id:
                     client.user_id = discovered_user_id

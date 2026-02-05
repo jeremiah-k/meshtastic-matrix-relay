@@ -3,11 +3,9 @@ Targeted tests for migration rollback invariants, specifically focusing on
 ensuring no residue is left after rollback and gpxtracker rollback behavior.
 """
 
-import os
-import shutil
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -15,9 +13,10 @@ import mmrelay.migrate as migrate_module
 from mmrelay.migrate import (
     migrate_logs,
     migrate_store,
-    rollback_migration,
     perform_migration,
+    rollback_migration,
 )
+
 
 @pytest.fixture
 def test_env(tmp_path):
@@ -27,11 +26,8 @@ def test_env(tmp_path):
     new_home = tmp_path / "home"
     # Don't create new_home yet, migrate should do it
 
-    return {
-        "legacy_root": legacy_root,
-        "new_home": new_home,
-        "tmp_path": tmp_path
-    }
+    return {"legacy_root": legacy_root, "new_home": new_home, "tmp_path": tmp_path}
+
 
 def test_rollback_logs_no_residue(test_env, monkeypatch):
     """Test that logs rollback leaves no residue when it didn't exist before."""
@@ -61,6 +57,7 @@ def test_rollback_logs_no_residue(test_env, monkeypatch):
 
     # 3. Verify no residue: logs directory should be GONE
     assert not (new_home / "logs").exists()
+
 
 def test_rollback_store_no_residue(test_env, monkeypatch):
     """Test that store rollback leaves no residue when it didn't exist before."""
@@ -94,6 +91,7 @@ def test_rollback_store_no_residue(test_env, monkeypatch):
     # 3. Verify no residue
     assert not (new_home / "store").exists()
 
+
 def test_gpxtracker_rollback_via_plugins(test_env, monkeypatch):
     """Test that gpxtracker migration is rolled back via the plugins step."""
     legacy_root = test_env["legacy_root"]
@@ -119,23 +117,34 @@ community-plugins:
 
     monkeypatch.setenv("MMRELAY_HOME", str(new_home))
     monkeypatch.setattr(migrate_module, "get_home_dir", lambda: new_home)
-    monkeypatch.setattr(Path, "expanduser", lambda self: gpx_legacy if "gpx_legacy" in str(self) else self)
+    monkeypatch.setattr(
+        Path,
+        "expanduser",
+        lambda self: gpx_legacy if "gpx_legacy" in str(self) else self,
+    )
 
     # Mock resolve_all_paths
-    monkeypatch.setattr(migrate_module, "resolve_all_paths", lambda: {
-        "home": str(new_home),
-        "legacy_sources": [str(legacy_root)],
-        "credentials_path": str(new_home / "credentials.json"),
-        "database_dir": str(new_home / "database"),
-        "logs_dir": str(new_home / "logs"),
-        "plugins_dir": str(new_home / "plugins"),
-        "store_dir": str(new_home / "store")
-    })
+    monkeypatch.setattr(
+        migrate_module,
+        "resolve_all_paths",
+        lambda: {
+            "home": str(new_home),
+            "legacy_sources": [str(legacy_root)],
+            "credentials_path": str(new_home / "credentials.json"),
+            "database_dir": str(new_home / "database"),
+            "logs_dir": str(new_home / "logs"),
+            "plugins_dir": str(new_home / "plugins"),
+            "store_dir": str(new_home / "store"),
+        },
+    )
 
     # Simulate a failure AFTER gpxtracker step
     # We'll use a mock to raise an error at the end of perform_migration
 
-    with patch("mmrelay.migrate._mark_migration_completed", side_effect=Exception("Simulated failure")):
+    with patch(
+        "mmrelay.migrate._mark_migration_completed",
+        side_effect=Exception("Simulated failure"),
+    ):
         with pytest.raises(Exception, match="Simulated failure"):
             perform_migration()
 
@@ -143,6 +152,7 @@ community-plugins:
     gpx_dest = new_home / "plugins" / "community" / "gpxtracker" / "data"
     assert not gpx_dest.exists()
     assert not (new_home / "plugins").exists()
+
 
 def test_rollback_restores_non_empty_dir(test_env, monkeypatch):
     """Test that rollback restores a non-empty directory if it was non-empty before."""

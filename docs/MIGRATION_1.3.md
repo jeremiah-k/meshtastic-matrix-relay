@@ -71,6 +71,7 @@ This prints human-readable warnings when legacy data is still present.
 If the `mmrelay migrate` command fails during its execution, it will attempt to automatically roll back any changes made during that run. This process uses internal backups created during the migration.
 
 A successful automatic rollback ensures that:
+
 - Files and directories are restored to their pre-migration state.
 - Newly created directories (like `logs/` or `store/`) that did not exist before are removed to leave no residue.
 - The migration state is cleared, allowing you to retry after resolving the issue.
