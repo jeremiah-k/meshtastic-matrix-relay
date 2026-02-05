@@ -935,7 +935,8 @@ def migrate_database(
     if not dry_run and not most_recent.name.endswith(("-wal", "-shm")):
         main_db = new_db_dir / most_recent.name
         try:
-            with sqlite3.connect(str(main_db)) as conn:
+            db_uri = f"{main_db.resolve().as_uri()}?mode=ro"
+            with sqlite3.connect(db_uri, uri=True) as conn:
                 result = conn.execute("PRAGMA integrity_check").fetchone()
             if result and result[0] != "ok":
                 logger.error("Database integrity check failed: %s", result[0])
