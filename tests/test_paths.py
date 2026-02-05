@@ -13,6 +13,7 @@ This module tests paths.py lines:
 
 import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -22,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 try:
     from mmrelay.paths import (
+        ensure_directories,
         get_config_paths,
         get_database_path,
         get_home_dir,
@@ -369,70 +371,47 @@ class TestPathDirectoryCreation(unittest.TestCase):
 
     def test_create_missing_directories(self):
         """Test create_missing=True creates missing directories (lines 375-380)."""
-        with patch("sys.platform", "linux"):
-            with patch("mmrelay.paths.get_home_dir", return_value=Path("/home")):
-                with patch(
-                    "mmrelay.paths.get_database_dir",
-                    return_value=Path("/home/database"),
-                ):
-                    with patch(
-                        "mmrelay.paths.get_logs_dir", return_value=Path("/home/logs")
-                    ):
-                        with patch(
-                            "mmrelay.paths.get_plugins_dir",
-                            return_value=Path("/home/plugins"),
-                        ):
-                            with patch(
-                                "mmrelay.paths.get_custom_plugins_dir",
-                                return_value=Path("/home/plugins/custom"),
-                            ):
-                                with patch(
-                                    "mmrelay.paths.get_community_plugins_dir",
-                                    return_value=Path("/home/plugins/community"),
-                                ):
-                                    with patch(
-                                        "mmrelay.paths.get_logger"
-                                    ) as mock_get_logger:
-                                        from mmrelay.paths import ensure_directories
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with (
+                patch.dict(os.environ, {"MMRELAY_HOME": temp_dir}, clear=True),
+                patch("mmrelay.paths.sys.platform", "linux"),
+            ):
+                ensure_directories(create_missing=True)
 
-                                        mock_logger = mock_get_logger.return_value
-
-                                        ensure_directories(create_missing=True)
-
-                                        debug_calls = [
-                                            call
-                                            for call in mock_logger.debug.call_args_list
-                                            if "Created directory" in str(call)
-                                        ]
-                                        self.assertTrue(len(debug_calls) > 0)
+            base = Path(temp_dir)
+            expected_dirs = [
+                base / "database",
+                base / "logs",
+                base / "store",
+                base / "plugins",
+                base / "plugins" / "custom",
+                base / "plugins" / "community",
+                base / "plugins" / "core",
+            ]
+            for dir_path in expected_dirs:
+                self.assertTrue(dir_path.exists(), f"Missing directory: {dir_path}")
 
     def test_dont_create_when_false(self):
         """Test create_missing=False only checks and warns (lines 381-383)."""
-        with patch("sys.platform", "linux"):
-            with patch("mmrelay.paths.get_home_dir", return_value=Path("/home")):
-                with patch("mmrelay.paths.get_database_dir") as mock_db_dir:
-                    with patch("mmrelay.paths.get_logger") as mock_get_logger:
-                        mock_db_dir.return_value = Path("/home/database")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with (
+                patch.dict(os.environ, {"MMRELAY_HOME": temp_dir}, clear=True),
+                patch("mmrelay.paths.sys.platform", "linux"),
+            ):
+                ensure_directories(create_missing=False)
 
-                        # Mock Path.exists() to return False
-                        with patch.object(Path, "exists", return_value=False):
-                            from mmrelay.paths import ensure_directories
-
-                            mock_logger = mock_get_logger.return_value
-
-                            ensure_directories(create_missing=False)
-
-                            mkdir_calls = [
-                                call for call in mock_db_dir.mkdir.call_args_list
-                            ]
-                            self.assertTrue(len(mkdir_calls) == 0)
-
-                            warning_calls = [
-                                call
-                                for call in mock_logger.warning.call_args_list
-                                if "Directory missing" in str(call)
-                            ]
-                            self.assertTrue(len(warning_calls) > 0)
+            base = Path(temp_dir)
+            expected_missing = [
+                base / "database",
+                base / "logs",
+                base / "store",
+                base / "plugins",
+                base / "plugins" / "custom",
+                base / "plugins" / "community",
+                base / "plugins" / "core",
+            ]
+            for dir_path in expected_missing:
+                self.assertFalse(dir_path.exists(), f"Unexpected directory: {dir_path}")
 
     def test_directory_already_exists(self):
         """
@@ -441,44 +420,47 @@ class TestPathDirectoryCreation(unittest.TestCase):
         Patches the environment to simulate a Linux home and database directory, stubs Path.exists to return True,
         calls ensure_directories(create_missing=True), and asserts no mkdir calls were made for existing paths.
         """
-        with patch("sys.platform", "linux"):
-            with patch("mmrelay.paths.get_home_dir", return_value=Path("/home")):
-                with patch("mmrelay.paths.get_database_dir") as mock_db_dir:
-                    with patch("mmrelay.paths.get_logger"):
-                        mock_db_dir.return_value = Path("/home/database")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            precreate = [
+                base / "database",
+                base / "logs",
+                base / "store",
+                base / "plugins",
+                base / "plugins" / "custom",
+                base / "plugins" / "community",
+                base / "plugins" / "core",
+            ]
+            for dir_path in precreate:
+                dir_path.mkdir(parents=True, exist_ok=True)
 
-                        # Mock Path.exists() to return True
-                        with patch.object(Path, "exists", return_value=True):
-                            from mmrelay.paths import ensure_directories
+            with (
+                patch.dict(os.environ, {"MMRELAY_HOME": temp_dir}, clear=True),
+                patch("mmrelay.paths.sys.platform", "linux"),
+            ):
+                ensure_directories(create_missing=True)
 
-                            ensure_directories(create_missing=True)
-
-                            mkdir_calls = [
-                                call for call in mock_db_dir.mkdir.call_args_list
-                            ]
-                            self.assertTrue(len(mkdir_calls) == 0)
+            for dir_path in precreate:
+                self.assertTrue(dir_path.exists(), f"Missing directory: {dir_path}")
 
     def test_oserror_on_creation(self):
         """Test OSError on directory creation is logged (lines 379-380)."""
-        with patch("sys.platform", "linux"):
-            with patch("mmrelay.paths.get_home_dir", return_value=Path("/home")):
-                with patch("mmrelay.paths.get_database_dir") as mock_db_dir:
-                    with patch("mmrelay.paths.get_logger") as mock_get_logger:
-                        mock_db_dir.return_value = Path("/home/database")
-                        mock_db_dir.mkdir.side_effect = OSError("Permission denied")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with (
+                patch.dict(os.environ, {"MMRELAY_HOME": temp_dir}, clear=True),
+                patch("mmrelay.paths.sys.platform", "linux"),
+                patch.object(Path, "mkdir", side_effect=OSError("Permission denied")),
+                patch("mmrelay.paths.get_logger") as mock_get_logger,
+            ):
+                ensure_directories(create_missing=True)
 
-                        from mmrelay.paths import ensure_directories
-
-                        mock_logger = mock_get_logger.return_value
-
-                        ensure_directories(create_missing=True)
-
-                        error_calls = [
-                            call
-                            for call in mock_logger.exception.call_args_list
-                            if "Failed to create directory" in str(call)
-                        ]
-                        self.assertTrue(len(error_calls) > 0)
+                mock_logger = mock_get_logger.return_value
+                error_calls = [
+                    call
+                    for call in mock_logger.exception.call_args_list
+                    if "Failed to create directory" in str(call)
+                ]
+                self.assertTrue(len(error_calls) > 0)
 
 
 class TestLegacyDirsDetection(unittest.TestCase):

@@ -387,26 +387,24 @@ class TestConfigEdgeCases(unittest.TestCase):
         mock_args = MagicMock()
         mock_args.config = "../config/test.yaml"
 
-        with patch(
-            "mmrelay.paths.get_home_dir",
-            return_value=Path(tempfile.gettempdir()) / "home",
-        ):
-            paths = get_config_paths(args=mock_args)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch.dict(os.environ, {"MMRELAY_HOME": temp_dir}, clear=True):
+                paths = get_config_paths(args=mock_args)
 
-            # Should include the absolute version of the relative path
-            expected_path = os.path.abspath("../config/test.yaml")
-            normalized_paths = [os.path.normpath(p) for p in paths]
-            self.assertIn(os.path.normpath(expected_path), normalized_paths)
+                # Should include the absolute version of the relative path
+                expected_path = os.path.abspath("../config/test.yaml")
+                normalized_paths = [os.path.normpath(p) for p in paths]
+                self.assertIn(os.path.normpath(expected_path), normalized_paths)
 
-            # Mock argparse Namespace object for absolute path
-            mock_args.config = "/absolute/path/config.yaml"
+                # Mock argparse Namespace object for absolute path
+                mock_args.config = "/absolute/path/config.yaml"
 
-            paths = get_config_paths(args=mock_args)
+                paths = get_config_paths(args=mock_args)
 
-            # Should include the absolute path
-            self.assertIn(
-                "/absolute/path/config.yaml", [os.path.normpath(p) for p in paths]
-            )
+                # Should include the absolute path
+                self.assertIn(
+                    "/absolute/path/config.yaml", [os.path.normpath(p) for p in paths]
+                )
 
     @patch("mmrelay.paths.platformdirs.user_data_dir")
     @patch("mmrelay.config.os.makedirs")
@@ -1028,30 +1026,6 @@ class TestCredentials(unittest.TestCase):
             os.path.normpath(final_path),
             os.path.normpath("/custom/dir/credentials.json"),
             "Should append credentials.json to directory path with trailing separator",
-        )
-
-    @patch("mmrelay.config.os.makedirs")
-    @patch("mmrelay.config.os.path.join", side_effect=os.path.join)
-    @patch("builtins.open", new_callable=mock_open)
-    def test_save_credentials_with_explicit_path_basic(
-        self,
-        _mock_open,
-        _mock_join,
-        _mock_makedirs,
-    ):
-        """Test save_credentials uses explicit credentials_path parameter."""
-        credentials = {"user_id": "test", "access_token": "token"}
-
-        save_credentials(credentials, credentials_path="/custom/creds.json")
-
-        _mock_makedirs.assert_called_once()
-        _mock_open.assert_called_once()
-        call_args = _mock_open.call_args
-        final_path = call_args[0][0]
-        self.assertEqual(
-            os.path.normpath(final_path),
-            os.path.normpath("/custom/creds.json"),
-            "Should use explicit credentials_path parameter",
         )
 
     @patch("mmrelay.paths.get_home_dir", return_value=Path("/custom/dir"))

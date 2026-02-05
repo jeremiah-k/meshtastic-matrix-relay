@@ -188,7 +188,7 @@ class BasePlugin(ABC):
         else:
             self.mapped_channels = []
 
-        self.plugin_type = "core"
+        self.plugin_type: str = "core"
         if config is not None:
             if self.plugin_name in config.get("community-plugins", {}):
                 self.plugin_type = "community"

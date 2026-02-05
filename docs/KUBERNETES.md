@@ -277,12 +277,11 @@ All MMRelay runtime state lives under `/data` inside the container:
 ```text
 /data/
 ├── credentials.json      # Matrix authentication credentials
-├── meshtastic.sqlite           # SQLite database (nodes, messages, state)
-├── logs/               # Application logs
-├── store/              # E2EE encryption keys (if enabled)
-└── plugins/            # Custom and community plugins
-    ├── custom/
-    └── community/
+├── database/
+│   └── meshtastic.sqlite  # SQLite database (nodes, messages, state)
+├── logs/                  # Application logs
+├── store/                 # E2EE encryption keys (if enabled)
+└── plugins/               # Custom and community plugins
     ├── custom/
     └── community/
 ```

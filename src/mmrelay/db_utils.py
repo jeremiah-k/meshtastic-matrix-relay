@@ -183,7 +183,7 @@ def get_db_path() -> str:
     """
     Resolve the absolute filesystem path to the application's SQLite database.
 
-    Selects the path with this precedence: configuration key `database.path` (preferred), legacy `db.path`, then `<data_dir>/meshtastic.sqlite` from the application's resolved paths. The resolved path is cached and the cache is invalidated when relevant database configuration changes. The function will attempt to create missing directories and will attempt to migrate legacy database locations into the current layout when applicable; directory-creation or migration failures are logged and do not raise exceptions.
+    Selects the path with this precedence: configuration key `database.path` (preferred), legacy `db.path`, then `<data_dir>/meshtastic.sqlite` from the application's resolved paths. The resolved path is cached and the cache is invalidated when relevant database configuration changes. The function will attempt to create missing directories; legacy database migration is handled explicitly by `mmrelay migrate` rather than implicitly here. Directory-creation failures are logged and do not raise exceptions.
 
     Returns:
         str: Filesystem path to the SQLite database.
@@ -270,22 +270,6 @@ def get_db_path() -> str:
         # Continue anyway - the database connection will fail later if needed
 
     default_path = os.path.join(database_dir, "meshtastic.sqlite")
-
-    # Check for legacy database in legacy sources and migrate if needed
-    if not os.path.exists(default_path):
-        legacy_candidates = []
-        for legacy_root in paths_info.get("legacy_sources", []):
-            legacy_db_path = os.path.join(legacy_root, "meshtastic.sqlite")
-            legacy_data_db_path = os.path.join(legacy_root, "data", "meshtastic.sqlite")
-            if legacy_db_path and os.path.exists(legacy_db_path):
-                legacy_candidates.append(legacy_db_path)
-            if legacy_data_db_path and os.path.exists(legacy_data_db_path):
-                legacy_candidates.append(legacy_data_db_path)
-        if legacy_candidates:
-            default_path = _migrate_legacy_db_if_needed(
-                default_path=default_path,
-                legacy_candidates=legacy_candidates,
-            )
 
     _cached_db_path = default_path
     return default_path

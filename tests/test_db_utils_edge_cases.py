@@ -895,8 +895,8 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                         "Expected sidecar rollback error to be logged",
                     )
 
-    def test_get_db_path_new_layout_migration(self):
-        """Test get_db_path with new layout enabled and legacy migration."""
+    def test_get_db_path_new_layout_no_implicit_migration(self):
+        """Test get_db_path uses new layout without implicitly migrating legacy DBs."""
         import mmrelay.db_utils
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -924,7 +924,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                 clear_db_path_cache()
                 result = get_db_path()
 
-            # Should return default path and trigger migration
+            # Should return default path without migrating legacy data
             self.assertEqual(result, default_path)
 
     def test_get_db_path_legacy_multiple_databases(self):
@@ -1053,11 +1053,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
 
                     # Should use resolved database path (default_path)
                     self.assertEqual(result, default_path)
-                    mock_logger.info.assert_called_once_with(
-                        "Migrated database from legacy location %s to %s",
-                        legacy_base_path,
-                        default_path,
-                    )
+                    mock_logger.info.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -35,6 +35,13 @@ class E2EENotSupportedError(RuntimeError):
         super().__init__("E2EE not supported on Windows")
 
 
+class UnknownPluginTypeError(ValueError):
+    """Unknown plugin_type passed to path resolver."""
+
+    def __init__(self, plugin_type: str | None) -> None:
+        super().__init__(f"Unknown plugin_type: {plugin_type!r}")
+
+
 # Global override set from CLI arguments
 _home_override: str | None = None
 _home_override_source: str | None = None
@@ -320,7 +327,7 @@ def _normalize_plugin_type(plugin_type: str | None) -> str | None:
     normalized = plugin_type.strip().lower()
     if normalized in {"custom", "community", "core"}:
         return normalized
-    raise ValueError(f"Unknown plugin_type: {plugin_type!r}")
+    raise UnknownPluginTypeError(plugin_type)
 
 
 def get_plugin_code_dir(plugin_name: str, plugin_type: str | None = None) -> Path:

@@ -219,7 +219,7 @@ Plugin Data Tiers (v1.3):
 
 Tier 1 (Code):     $MMRELAY_HOME/plugins/custom/{name}/ or $MMRELAY_HOME/plugins/community/{name}/         # Plugin .py file
 Tier 2 (Filesystem): $MMRELAY_HOME/plugins/custom/{name}/data/ or $MMRELAY_HOME/plugins/community/{name}/data/      # Disk storage (GPX, JSON, etc.)
-Tier 3 (Database):   $MMRELAY_HOME/database/plugin_data/         # SQLite (default)
+Tier 3 (Database):   $MMRELAY_HOME/database/meshtastic.sqlite    # SQLite tables (default)
 
 Migration Rules:
 - Most plugins (nodes, telemetry, map, mesh_relay, drop_plugin): Use Tier 3 only

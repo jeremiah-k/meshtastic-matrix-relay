@@ -420,7 +420,7 @@ class TestMigrateDatabaseEdgeCases:
             """
             call_count[0] += 1
             # First call should be backup (dest exists)
-            if call_count[0] == 1 and "meshtastic.sqlite" in dst:
+            if call_count[0] == 1 and "meshtastic.sqlite" in str(dst):
                 # Check if we're backing up existing (not copying from legacy)
                 if "new_home" in str(dst):
                     raise OSError

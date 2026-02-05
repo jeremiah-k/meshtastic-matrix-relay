@@ -35,7 +35,7 @@ from mmrelay.migrate import (
 class TestPathIsWithinHome:
     """Tests for _path_is_within_home function (lines 72-84)."""
 
-    def test_path_within_home(self, clean_migration_home, tmp_path):
+    def test_path_within_home(self, clean_migration_home):
         """Test path within home directory returns True."""
         home = clean_migration_home / "home"
         child = home / "subdir" / "file.txt"
@@ -44,7 +44,7 @@ class TestPathIsWithinHome:
 
         assert result is True
 
-    def test_path_is_home_itself(self, clean_migration_home, tmp_path):
+    def test_path_is_home_itself(self, clean_migration_home):
         """Test path that is home directory returns True."""
         home = clean_migration_home / "home"
 
@@ -62,7 +62,7 @@ class TestPathIsWithinHome:
         assert result is False
 
     def test_path_resolve_uses_absolute_on_oserror(
-        self, clean_migration_home, tmp_path, monkeypatch
+        self, clean_migration_home, monkeypatch
     ):
         """Test OSError on path.resolve() falls back to absolute()."""
         home = clean_migration_home / "home"

@@ -519,7 +519,7 @@ Look for messages like:
 The unified `MMRELAY_HOME` model is now the default. All runtime state lives under `/data` inside the container:
 
 - `credentials.json` - Matrix authentication credentials (auto-created)
-- `mmrelay.db` - SQLite database for node information
+- `database/meshtastic.sqlite` - SQLite database for node information
 - `logs/` - Application logs
 - `store/` - E2EE encryption store (if enabled)
 - `plugins/custom/` - Custom plugins

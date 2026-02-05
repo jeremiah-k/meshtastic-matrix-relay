@@ -1225,6 +1225,8 @@ def migrate_plugins(
             "dry_run": True,
         }
 
+    errors: list[str] = []
+
     if new_plugins_dir.exists() and not force:
         logger.info("Backing up existing plugins directory: %s", new_plugins_dir)
         backup_path = _backup_file(new_plugins_dir)
@@ -1232,6 +1234,7 @@ def migrate_plugins(
             shutil.copytree(str(new_plugins_dir), str(backup_path))
         except (OSError, IOError) as e:
             logger.warning("Failed to backup plugins directory: %s", e)
+            errors.append(f"plugins backup: {e}")
     elif not new_plugins_dir.exists() and not force:
         backup_path = _backup_file(new_plugins_dir)
         try:
@@ -1239,27 +1242,39 @@ def migrate_plugins(
             logger.info("Created empty plugins backup directory: %s", backup_path)
         except (OSError, IOError) as e:
             logger.warning("Failed to create plugins backup directory: %s", e)
+            errors.append(f"plugins backup dir: {e}")
 
-    new_plugins_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        new_plugins_dir.mkdir(parents=True, exist_ok=True)
+    except (OSError, IOError) as e:
+        logger.warning("Failed to create plugins directory: %s", e)
+        errors.append(f"plugins dir: {e}")
 
-    migrated_types = []
+    migrated_types: list[str] = []
 
     # Migrate custom plugins
     old_custom_dir = old_plugins_dir / "custom"
     if old_custom_dir.exists():
         new_custom_dir = new_plugins_dir / "custom"
-        new_custom_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            new_custom_dir.mkdir(parents=True, exist_ok=True)
+        except (OSError, IOError) as e:
+            logger.warning("Failed to create custom plugins directory: %s", e)
+            errors.append(f"custom dir: {e}")
         try:
             for item in old_custom_dir.iterdir():
-                if item.is_dir():
-                    dest = new_custom_dir / item.name
-                    if dest.exists() and not force:
-                        logger.info("Backing up existing custom plugin: %s", dest)
-                        backup_path = _backup_file(dest)
-                        try:
-                            shutil.copytree(str(dest), str(backup_path))
-                        except (OSError, IOError) as e:
-                            logger.warning("Failed to backup custom plugin: %s", e)
+                if not item.is_dir():
+                    continue
+                dest = new_custom_dir / item.name
+                if dest.exists() and not force:
+                    logger.info("Backing up existing custom plugin: %s", dest)
+                    backup_path = _backup_file(dest)
+                    try:
+                        shutil.copytree(str(dest), str(backup_path))
+                    except (OSError, IOError) as e:
+                        logger.warning("Failed to backup custom plugin: %s", e)
+                        errors.append(f"custom backup {dest}: {e}")
+                try:
                     if move:
                         if dest.exists():
                             shutil.rmtree(str(dest))
@@ -1272,26 +1287,37 @@ def migrate_plugins(
                             shutil.rmtree(str(dest))
                         shutil.copytree(str(item), str(dest))
                     logger.debug("Migrated custom plugin: %s", item)
+                except (OSError, IOError) as e:
+                    logger.warning("Failed to migrate custom plugin %s: %s", item, e)
+                    errors.append(f"custom {item}: {e}")
             migrated_types.append("custom")
         except (OSError, IOError) as e:
             logger.warning("Failed to migrate custom plugins: %s", e)
+            errors.append(f"custom: {e}")
 
     # Migrate community plugins
     old_community_dir = old_plugins_dir / "community"
     if old_community_dir.exists():
         new_community_dir = new_plugins_dir / "community"
-        new_community_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            new_community_dir.mkdir(parents=True, exist_ok=True)
+        except (OSError, IOError) as e:
+            logger.warning("Failed to create community plugins directory: %s", e)
+            errors.append(f"community dir: {e}")
         try:
             for item in old_community_dir.iterdir():
-                if item.is_dir():
-                    dest = new_community_dir / item.name
-                    if dest.exists() and not force:
-                        logger.info("Backing up existing community plugin: %s", dest)
-                        backup_path = _backup_file(dest)
-                        try:
-                            shutil.copytree(str(dest), str(backup_path))
-                        except (OSError, IOError) as e:
-                            logger.warning("Failed to backup community plugin: %s", e)
+                if not item.is_dir():
+                    continue
+                dest = new_community_dir / item.name
+                if dest.exists() and not force:
+                    logger.info("Backing up existing community plugin: %s", dest)
+                    backup_path = _backup_file(dest)
+                    try:
+                        shutil.copytree(str(dest), str(backup_path))
+                    except (OSError, IOError) as e:
+                        logger.warning("Failed to backup community plugin: %s", e)
+                        errors.append(f"community backup {dest}: {e}")
+                try:
                     if move:
                         if dest.exists():
                             shutil.rmtree(str(dest))
@@ -1304,11 +1330,17 @@ def migrate_plugins(
                             shutil.rmtree(str(dest))
                         shutil.copytree(str(item), str(dest))
                     logger.debug("Migrated community plugin: %s", item)
+                except (OSError, IOError) as e:
+                    logger.warning("Failed to migrate community plugin %s: %s", item, e)
+                    errors.append(f"community {item}: {e}")
             migrated_types.append("community")
         except (OSError, IOError) as e:
             logger.warning("Failed to migrate community plugins: %s", e)
+            errors.append(f"community: {e}")
 
-    if move:
+    failed = len(errors) > 0
+
+    if move and not failed:
         for plugin_dir in (old_custom_dir, old_community_dir):
             if plugin_dir.exists():
                 try:
@@ -1320,6 +1352,7 @@ def migrate_plugins(
                         plugin_dir,
                         e,
                     )
+                    errors.append(f"cleanup {plugin_dir}: {e}")
 
         if old_plugins_dir.exists():
             try:
@@ -1331,14 +1364,20 @@ def migrate_plugins(
                     old_plugins_dir,
                     e,
                 )
+                errors.append(f"cleanup {old_plugins_dir}: {e}")
 
-    return {
-        "success": True,
+    success = len(errors) == 0
+
+    result = {
+        "success": success,
         "migrated_types": migrated_types,
         "old_path": str(old_plugins_dir),
         "new_path": str(new_plugins_dir),
         "action": "move" if move else "copy",
     }
+    if errors:
+        result["error"] = "; ".join(errors)
+    return result
 
 
 def migrate_gpxtracker(
@@ -1351,14 +1390,15 @@ def migrate_gpxtracker(
     """
     Migrate GPX files used by the community gpxtracker plugin into the new plugins/community/gpxtracker/data location.
 
-    Scans legacy roots for a `gpx_directory` setting in legacy config.yaml files and copies or moves any `*.gpx` files found into `new_home/plugins/community/gpxtracker/data`, creating per-file timestamped names. Creates backups of existing destination files unless `force` is True. Operates in dry-run mode if requested.
+    Scans legacy roots for a `gpx_directory` setting in legacy config.yaml files and copies any `*.gpx` files found into `new_home/plugins/community/gpxtracker/data`, creating per-file timestamped names. Creates backups of existing destination files unless `force` is True. Operates in dry-run mode if requested.
 
     Parameters:
         legacy_roots (list[Path]): Legacy directories to scan for a `config.yaml` containing `community-plugins.gpxtracker.gpx_directory`.
         new_home (Path): Destination MMRELAY_HOME root where plugin data should be placed.
         dry_run (bool): If True, report planned actions without making filesystem changes.
         force (bool): If True, overwrite existing destination files without creating backups.
-        move (bool): If True, move files instead of copying them.
+        move (bool): If True, move files instead of copying them. This is ignored for
+            gpxtracker migrations, which always copy for rollback safety.
 
     Returns:
         dict: Result summary. Typical keys:
@@ -1412,6 +1452,8 @@ def migrate_gpxtracker(
         }
 
     new_gpx_data_dir = new_home / "plugins" / "community" / "gpxtracker" / "data"
+    if move:
+        logger.info("gpxtracker migration uses copy-only to preserve rollback safety")
 
     if dry_run:
         logger.info(
@@ -1453,12 +1495,8 @@ def migrate_gpxtracker(
                     logger.warning("Failed to backup GPX file: %s", e)
 
             try:
-                if move:
-                    logger.info("Moving GPX file: %s", gpx_file)
-                    shutil.move(str(gpx_file), str(dest_path))
-                else:
-                    logger.info("Copying GPX file: %s", gpx_file)
-                    shutil.copy2(str(gpx_file), str(dest_path))
+                logger.info("Copying GPX file: %s", gpx_file)
+                shutil.copy2(str(gpx_file), str(dest_path))
                 logger.debug("Migrated GPX file: %s", gpx_file)
                 migrated_count += 1
             except (OSError, IOError):
@@ -1476,7 +1514,7 @@ def migrate_gpxtracker(
         "migrated_count": migrated_count,
         "old_path": str(expanded_old_gpx_dir),
         "new_path": str(new_gpx_data_dir),
-        "action": "move" if move else "copy",
+        "action": "copy",
     }
 
 

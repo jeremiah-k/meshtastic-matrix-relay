@@ -516,7 +516,7 @@ If credentials don't exist, enable bootstrap mode or provide credentials via Sec
 ### Database Issues
 
 ```bash
-kubectl exec -n mmrelay <pod-name> -- ls -l /data/mmrelay.db
+kubectl exec -n mmrelay <pod-name> -- ls -l /data/database/meshtastic.sqlite
 kubectl exec -n mmrelay <pod-name> -- mmrelay doctor --config /app/config.yaml
 ```
 
