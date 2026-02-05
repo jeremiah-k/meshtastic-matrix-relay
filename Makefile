@@ -5,6 +5,12 @@ DOCKER_COMPOSE := $(shell docker compose version >/dev/null 2>&1 && echo "docker
 
 .PHONY: all test help build build-nocache rebuild run stop logs shell clean config edit setup setup-prebuilt update-compose doctor paths
 
+# Alias targets for checkmake compliance
+all: help
+
+test:
+	@echo "Run tests with: python -m pytest -v --cov --tb=short"
+
 # Default target
 help:
 	@echo "Available Docker commands:"

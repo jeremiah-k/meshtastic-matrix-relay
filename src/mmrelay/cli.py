@@ -479,7 +479,9 @@ def _validate_e2ee_dependencies() -> bool:
     return False
 
 
-def _validate_credentials_json(config_path: str) -> bool:
+def _validate_credentials_json(
+    config_path: str, config: Mapping[str, Any] | None = None
+) -> bool:
     """
     Check for a Matrix credentials.json next to the provided config and validate required fields.
 
@@ -487,6 +489,7 @@ def _validate_credentials_json(config_path: str) -> bool:
 
     Parameters:
         config_path (str): Path to the configuration file used to determine where to look for credentials.json.
+        config (Mapping[str, Any] | None): Parsed configuration to honor explicit credentials_path values.
 
     Returns:
         bool: `True` if credentials.json exists and contains non-empty "homeserver", "access_token", "user_id", and "device_id"; `False` otherwise.
@@ -495,7 +498,7 @@ def _validate_credentials_json(config_path: str) -> bool:
 
     try:
         # Look for credentials.json using helper function
-        credentials_path = _find_credentials_json_path(config_path)
+        credentials_path = _find_credentials_json_path(config_path, config)
         if not credentials_path:
             return False
 
@@ -565,7 +568,9 @@ def _has_valid_password_auth(matrix_section: Mapping[str, Any] | None) -> bool:
 
 
 def _validate_matrix_authentication(
-    config_path: str, matrix_section: Mapping[str, Any] | None
+    config_path: str,
+    matrix_section: Mapping[str, Any] | None,
+    config: Mapping[str, Any] | None = None,
 ) -> bool:
     """
     Determine whether Matrix authentication is configured and usable.
@@ -575,11 +580,12 @@ def _validate_matrix_authentication(
     Parameters:
         config_path (str): Path to the application's YAML config file; used to locate a credentials.json candidate.
         matrix_section (Mapping[str, Any] | None): The parsed "matrix" configuration section; an `access_token` or password-based fields may provide authentication when credentials.json is not present.
+        config (Mapping[str, Any] | None): Parsed configuration to honor explicit credentials_path values.
 
     Returns:
         bool: `True` if a usable authentication method (credentials.json, password-based config, or access_token) is available, `False` otherwise.
     """
-    has_valid_credentials = _validate_credentials_json(config_path)
+    has_valid_credentials = _validate_credentials_json(config_path, config)
     token = (matrix_section or {}).get(CONFIG_KEY_ACCESS_TOKEN)
     has_access_token = _is_valid_non_empty_string(token)
 
@@ -639,7 +645,7 @@ def _validate_e2ee_config(
         and E2EE store-path notes.
     """
     # First validate authentication
-    if not _validate_matrix_authentication(config_path, matrix_section):
+    if not _validate_matrix_authentication(config_path, matrix_section, _config):
         return False
 
     # Check for E2EE configuration
@@ -741,7 +747,7 @@ def _analyze_e2ee_setup(config: dict[str, Any], config_path: str) -> dict[str, A
         )
 
     # Check credentials file existence
-    credentials_path = _find_credentials_json_path(config_path)
+    credentials_path = _find_credentials_json_path(config_path, config)
     analysis["credentials_available"] = bool(credentials_path)
 
     if not analysis["credentials_available"]:
@@ -766,7 +772,9 @@ def _analyze_e2ee_setup(config: dict[str, Any], config_path: str) -> dict[str, A
     return analysis
 
 
-def _find_credentials_json_path(config_path: str | None) -> str | None:
+def _find_credentials_json_path(
+    config_path: str | None, config: Mapping[str, Any] | None = None
+) -> str | None:
     """
     Locate a credentials.json file following the unified HOME-first then legacy search order.
 
@@ -781,6 +789,7 @@ def _find_credentials_json_path(config_path: str | None) -> str | None:
 
     Parameters:
         config_path (str | None): Optional path to a configuration file; its directory is checked first for an adjacent credentials.json.
+        config (Mapping[str, Any] | None): Parsed configuration to honor explicit credentials_path values.
 
     Returns:
         str | None: Absolute path to the discovered credentials.json, or `None` if no credentials file is found.
@@ -788,7 +797,7 @@ def _find_credentials_json_path(config_path: str | None) -> str | None:
     from mmrelay.config import get_explicit_credentials_path, relay_config
     from mmrelay.paths import resolve_all_paths
 
-    explicit_path = get_explicit_credentials_path(relay_config)
+    explicit_path = get_explicit_credentials_path(config or relay_config)
     if explicit_path and os.path.exists(explicit_path):
         return explicit_path
 
@@ -1128,7 +1137,7 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                 config = apply_env_config_overrides(config)
 
                 # Check if we have valid credentials.json first
-                has_valid_credentials = _validate_credentials_json(config_path)
+                has_valid_credentials = _validate_credentials_json(config_path, config)
 
                 # Check matrix section requirements based on credentials.json availability
                 if has_valid_credentials:
@@ -2091,12 +2100,16 @@ def handle_migrate_command(args: argparse.Namespace) -> int:
 
         result = perform_migration(dry_run=dry_run, force=force, move=move)
 
-        if result.get("success"):
+        if result.get("ok", result.get("success")):
             print("✅ Migration completed successfully")
             for migration in result.get("migrations", []):
                 mtype = migration.get("type", "unknown")
                 status_icon = (
-                    "✅" if migration.get("result", {}).get("success") else "❌"
+                    "✅"
+                    if migration.get("result", {}).get(
+                        "ok", migration.get("result", {}).get("success")
+                    )
+                    else "❌"
                 )
                 print(
                     f"  {status_icon} {mtype}: {migration.get('result', {}).get('message', 'No details')}"

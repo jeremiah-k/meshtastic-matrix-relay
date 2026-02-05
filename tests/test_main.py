@@ -1573,9 +1573,9 @@ class TestRunMainFunction(unittest.TestCase):
     @patch("mmrelay.main.print_banner")
     @patch("mmrelay.config.load_config")
     @patch("mmrelay.config.load_credentials")
-    @patch("mmrelay.paths.get_legacy_env_vars")
-    @patch("mmrelay.paths.get_legacy_dirs")
-    @patch("mmrelay.paths.get_home_dir")
+    @patch("mmrelay.main.get_legacy_env_vars")
+    @patch("mmrelay.main.get_legacy_dirs")
+    @patch("mmrelay.main.get_home_dir")
     @patch("mmrelay.config.get_log_dir")
     @patch("mmrelay.config.os.makedirs")
     def test_run_main_legacy_layout_warning(

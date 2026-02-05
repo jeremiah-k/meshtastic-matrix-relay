@@ -6,7 +6,7 @@ import os
 import re
 import sys
 import warnings
-from typing import TYPE_CHECKING, Any, Iterable, cast
+from typing import TYPE_CHECKING, Any, Iterable, Mapping, cast
 
 import yaml
 from yaml.loader import SafeLoader
@@ -20,6 +20,9 @@ from mmrelay.constants.config import (
 )
 
 # Import new path resolution system
+from mmrelay.paths import (
+    E2EENotSupportedError,
+)
 from mmrelay.paths import get_config_paths as get_unified_config_paths
 from mmrelay.paths import (
     get_credentials_path,
@@ -216,7 +219,7 @@ class InvalidCredentialsPathTypeError(TypeError):
         super().__init__("credentials_path must be a string")
 
 
-def get_explicit_credentials_path(config: dict[str, Any] | None) -> str | None:
+def get_explicit_credentials_path(config: Mapping[str, Any] | None) -> str | None:
     """
     Return an explicitly configured credentials path, if present.
 
@@ -342,10 +345,7 @@ def get_e2ee_store_dir() -> str:
     try:
         store_dir = str(get_unified_store_dir())
         os.makedirs(store_dir, exist_ok=True)
-    except RuntimeError as e:
-        # Re-raise if it's not the "Windows not supported" error
-        if "Windows" not in str(e):
-            raise
+    except E2EENotSupportedError as e:
         # Match legacy behavior on Windows: logs warning and returns a path anyway
         # (even if it won't be used for E2EE)
         base = str(get_home_dir())
@@ -355,6 +355,8 @@ def get_e2ee_store_dir() -> str:
             store_dir = os.path.join(base, "store")
         logger.warning("E2EE store not officially supported on this platform: %s", e)
         return store_dir
+    except RuntimeError:
+        raise
     except (OSError, PermissionError) as e:
         # Fallback for permission errors - re-raise to fail fast
         base = str(get_home_dir())

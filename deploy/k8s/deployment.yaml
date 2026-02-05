@@ -9,6 +9,7 @@ metadata:
     checkov.io/skip3: CKV_K8S_15=Default uses latest tag; use digest overlay for production pinning.
     checkov.io/skip4: CKV_K8S_14=Base manifest intentionally omits tag; pin via kustomization overlay.
     checkov.io/skip5: CKV_K8S_40=Service account token is not required for this workload.
+    checkov.io/skip6: CKV_K8S_25=Init container needs CHOWN to set /data permissions on the PVC.
   labels:
     app: mmrelay
 spec:
@@ -44,6 +45,8 @@ spec:
             capabilities:
               drop:
                 - ALL
+              add:
+                - CHOWN
           resources:
             requests:
               cpu: 10m

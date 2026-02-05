@@ -5,50 +5,47 @@ This is a minimal deterministic test to verify the fix for the indentation bug
 that made the legacy credentials loop unreachable.
 """
 
-import os
-import sys
-import tempfile
-import unittest
-from unittest.mock import patch
+from pathlib import Path
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+import pytest
 
 from mmrelay.cli import _find_credentials_json_path
 
 
-class TestFindCredentialsPath(unittest.TestCase):
-    def test_legacy_credentials_search(self):
-        """
-        Test that credentials.json in a legacy root are found when HOME creds don't exist.
+def test_legacy_credentials_search(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """
+    Test that credentials.json in a legacy root are found when HOME creds don't exist.
 
-        This test verifies the fix for the indentation bug that made the legacy
-        loop unreachable. The search order should be:
-        1) Config-adjacent (only if config_path provided)
-        2) HOME credentials
-        3) Legacy roots
+    This test verifies the fix for the indentation bug that made the legacy
+    loop unreachable. The search order should be:
+    1) Explicit path (if provided)
+    2) Config-adjacent (only if config_path provided)
+    3) HOME credentials
+    4) Legacy roots
 
-        When HOME credentials are missing, it should fall through to search legacy.
-        """
-        with tempfile.TemporaryDirectory() as tmpdir:
-            home = os.path.join(tmpdir, "home")
-            legacy = os.path.join(tmpdir, "legacy")
-            os.makedirs(home)
-            os.makedirs(legacy)
+    When HOME credentials are missing, it should fall through to search legacy.
+    """
+    home = tmp_path / "home"
+    legacy = tmp_path / "legacy"
+    home.mkdir()
+    legacy.mkdir()
 
-            legacy_creds = os.path.join(legacy, "credentials.json")
-            with open(legacy_creds, "w") as f:
-                f.write('{"homeserver": "https://matrix.org", "access_token": "test"}')
+    legacy_creds = legacy / "credentials.json"
+    legacy_creds.write_text(
+        '{"homeserver": "https://matrix.org", "access_token": "test"}'
+    )
 
-            with patch("mmrelay.paths.resolve_all_paths") as mock_resolve:
-                mock_resolve.return_value = {
-                    "credentials_path": os.path.join(home, "credentials.json"),
-                    "legacy_sources": [legacy],
-                }
+    monkeypatch.setattr("mmrelay.config.get_explicit_credentials_path", lambda _c: None)
+    monkeypatch.setattr(
+        "mmrelay.paths.resolve_all_paths",
+        lambda: {
+            "credentials_path": str(home / "credentials.json"),
+            "legacy_sources": [str(legacy)],
+        },
+    )
 
-                result = _find_credentials_json_path(None)
+    result = _find_credentials_json_path(None)
 
-                self.assertEqual(result, legacy_creds)
-
-
-if __name__ == "__main__":
-    unittest.main()
+    assert result == str(legacy_creds)

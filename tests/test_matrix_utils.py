@@ -3991,9 +3991,9 @@ async def test_connect_matrix_explicit_credentials_path_is_used(tmp_path):
     with (
         patch("mmrelay.config.os.getenv", return_value=None),
         patch(
-            "mmrelay.config._expand_path",
+            "mmrelay.config.os.path.expanduser",
             return_value=expanded_path_str,
-        ) as mock_expand,
+        ) as mock_expanduser,
         patch("mmrelay.matrix_utils.AsyncClient", lambda *_a, **_k: mock_client),
         patch("mmrelay.matrix_utils.matrix_client", None),
         patch("mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock()),
@@ -4014,7 +4014,7 @@ async def test_connect_matrix_explicit_credentials_path_is_used(tmp_path):
         client = await connect_matrix(config)
 
     assert client is mock_client
-    mock_expand.assert_any_call("~/explicit_credentials.json")
+    mock_expanduser.assert_any_call("~/explicit_credentials.json")
     mock_client.restore_login.assert_called_once_with(
         user_id="@bot:example.org",
         device_id="DEVICE123",

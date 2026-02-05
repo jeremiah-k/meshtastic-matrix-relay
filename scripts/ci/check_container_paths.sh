@@ -130,6 +130,7 @@ check_doc_files() {
 					# Only skip blank lines after marker
 					if [[ ${FENCE_LINE} -gt $((LINE_NUM + 10)) ]]; then
 						# Safety limit: don't search more than 10 lines after marker
+						echo "DEBUG: Marker at line ${LINE_NUM} in ${FILE} has no fence within 10 lines" >&2
 						break
 					fi
 

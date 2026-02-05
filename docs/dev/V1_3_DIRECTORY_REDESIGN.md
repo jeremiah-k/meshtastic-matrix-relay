@@ -1258,7 +1258,7 @@ args:
 ### Phase 5: Testing (Week 5-6)
 
 1. [ ] Run unit tests and achieve coverage target
-2. [ ] Test automatic migration on first run
+2. [ ] Test explicit migration flow via `mmrelay migrate` on first run
 3. [ ] Test deprecation warnings for old env vars
 4. [ ] Test in Docker environment (old env vars still work)
 5. [ ] Test in K8s environment (old env vars still work)
@@ -1352,5 +1352,5 @@ $MMRELAY_HOME/
 - 2026-02-01: **CRITICAL UPDATE**: Plugin data storage research - plugins use SQLite database, NOT filesystem!
 - 2026-02-01: **UPDATED**: Backward compatibility strategy - 6-month deprecation window; migration is explicit via `mmrelay migrate`
 - 2026-02-01: **ADDED**: Docker/K8s compatibility patterns from research (env var precedence, deprecation policies)
-- 2026-02-01: **ADDED**: Seamless migration patterns (VS Code, Homebrew, automatic on first run)
+- 2026-02-01: **ADDED**: Seamless migration patterns (VS Code, Homebrew, explicit `mmrelay migrate` flow)
 - 2026-02-01: **RESOLVED**: Plugin directory concern - no filesystem interference with current architecture

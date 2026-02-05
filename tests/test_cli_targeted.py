@@ -34,24 +34,17 @@ class TestApplyDirOverridesEarlyReturn(unittest.TestCase):
     """Tests for _apply_dir_overrides early return (lines 102-103)."""
 
     @patch("mmrelay.paths.set_home_override")
-    @patch("mmrelay.config")
     @patch("os.makedirs")
-    def test_none_args_returns_early(
-        self, mock_makedirs, mock_config, mock_set_override
-    ):
+    def test_none_args_returns_early(self, mock_makedirs, mock_set_override):
         """Test _apply_dir_overrides returns early when args is None."""
         result = _apply_dir_overrides(None)
         self.assertIsNone(result)
         mock_set_override.assert_not_called()
-        mock_config.assert_not_called()
         mock_makedirs.assert_not_called()
 
     @patch("mmrelay.paths.set_home_override")
-    @patch("mmrelay.config")
     @patch("os.makedirs")
-    def test_no_override_flags_returns_early(
-        self, mock_makedirs, mock_config, mock_set_override
-    ):
+    def test_no_override_flags_returns_early(self, mock_makedirs, mock_set_override):
         """Test _apply_dir_overrides returns early when no override flags are set."""
         args = MagicMock()
         args.home = None
@@ -61,7 +54,6 @@ class TestApplyDirOverridesEarlyReturn(unittest.TestCase):
         result = _apply_dir_overrides(args)
         self.assertIsNone(result)
         mock_set_override.assert_not_called()
-        mock_config.assert_not_called()
         mock_makedirs.assert_not_called()
 
 
@@ -80,11 +72,10 @@ class TestApplyDirOverridesPriority(unittest.TestCase):
         self.args.data_dir = None
 
     @patch("mmrelay.paths.set_home_override")
-    @patch("mmrelay.config")
     @patch("os.makedirs")
     @patch("builtins.print")
     def test_home_flag_overrides_base_and_data(
-        self, mock_print, _mock_makedirs, _mock_config, mock_set_override
+        self, mock_print, _mock_makedirs, mock_set_override
     ):
         """Test --home flag overrides --base-dir and --data-dir."""
         self.args.home = "/custom/home"
@@ -103,11 +94,10 @@ class TestApplyDirOverridesPriority(unittest.TestCase):
         self.assertTrue(len(warning_calls) > 0)
 
     @patch("mmrelay.paths.set_home_override")
-    @patch("mmrelay.config")
     @patch("os.makedirs")
     @patch("builtins.print")
     def test_base_dir_flag_overrides_data_dir(
-        self, mock_print, _mock_makedirs, _mock_config, mock_set_override
+        self, mock_print, _mock_makedirs, mock_set_override
     ):
         """Test --base-dir flag overrides --data-dir."""
         self.args.home = None
@@ -129,11 +119,10 @@ class TestApplyDirOverridesPriority(unittest.TestCase):
         self.assertTrue(len(deprecation_calls) > 0)
 
     @patch("mmrelay.paths.set_home_override")
-    @patch("mmrelay.config")
     @patch("os.makedirs")
     @patch("builtins.print")
     def test_data_dir_flag_used_alone(
-        self, mock_print, _mock_makedirs, _mock_config, mock_set_override
+        self, mock_print, _mock_makedirs, mock_set_override
     ):
         """Test --data-dir flag is used when alone."""
         self.args.home = None
@@ -192,11 +181,12 @@ class TestApplyDirOverridesPriority(unittest.TestCase):
 class TestFindCredentialsJsonPath(unittest.TestCase):
     """Tests for _find_credentials_json_path function (lines 780-822)."""
 
+    @patch("mmrelay.config.get_explicit_credentials_path", return_value=None)
     @patch("mmrelay.paths.resolve_all_paths")
     @patch("os.path.exists")
     @patch("os.path.dirname")
     def test_returns_path_when_found_in_config_dir(
-        self, mock_dirname, mock_exists, mock_resolve
+        self, mock_dirname, mock_exists, mock_resolve, _mock_explicit
     ):
         """Test returns path when credentials found in config directory."""
         config_path = "/config/config.yaml"
@@ -212,9 +202,12 @@ class TestFindCredentialsJsonPath(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result, "/config/credentials.json")
 
+    @patch("mmrelay.config.get_explicit_credentials_path", return_value=None)
     @patch("mmrelay.paths.resolve_all_paths")
     @patch("os.path.exists")
-    def test_returns_none_when_not_found(self, mock_exists, mock_resolve):
+    def test_returns_none_when_not_found(
+        self, mock_exists, mock_resolve, _mock_explicit
+    ):
         """Test returns None when credentials not found anywhere."""
         mock_resolve.return_value = {
             "credentials_path": "/home/credentials.json",
@@ -588,11 +581,12 @@ class TestHandleDoctorMigrationStatus(unittest.TestCase):
 class TestFindCredentialsJsonPathLegacy(unittest.TestCase):
     """Tests for _find_credentials_json_path legacy path discovery (lines 811-812)."""
 
+    @patch("mmrelay.config.get_explicit_credentials_path", return_value=None)
     @patch("mmrelay.paths.resolve_all_paths")
     @patch("os.path.exists")
     @patch("builtins.print")
     def test_returns_legacy_path_when_found(
-        self, _mock_print, mock_exists, mock_resolve
+        self, _mock_print, mock_exists, mock_resolve, _mock_explicit
     ):
         """Test returns path when credentials found in legacy location."""
         mock_resolve.return_value = {
@@ -607,9 +601,12 @@ class TestFindCredentialsJsonPathLegacy(unittest.TestCase):
         if result is not None:
             self.assertIn("legacy1", result)
 
+    @patch("mmrelay.config.get_explicit_credentials_path", return_value=None)
     @patch("mmrelay.paths.resolve_all_paths")
     @patch("os.path.exists")
-    def test_returns_home_path_when_no_legacy(self, mock_exists, mock_resolve):
+    def test_returns_home_path_when_no_legacy(
+        self, mock_exists, mock_resolve, _mock_explicit
+    ):
         """Test returns home path when no legacy path exists."""
         mock_resolve.return_value = {
             "credentials_path": "/home/credentials.json",

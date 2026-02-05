@@ -696,10 +696,6 @@ async def logout_matrix_bot(password: str) -> bool:
         else:
             print("❌ Local cleanup completed with some errors.")
         return success
-    assert homeserver is not None
-    assert user_id is not None
-    assert access_token is not None
-    assert device_id is not None
     homeserver_str = cast(str, homeserver)
     user_id_str = cast(str, user_id)
     access_token_str = cast(str, access_token)

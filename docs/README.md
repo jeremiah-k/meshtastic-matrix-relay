@@ -27,7 +27,8 @@ cp docs/docker-compose.yml .
 
 # 2. Replace image tag in docker-compose.yml
 #    Change: ghcr.io/jeremiah-k/mmrelay:REPLACE_ME
-#    To: ghcr.io/jeremiah-k/mmrelay:<tag>
+#    To: ghcr.io/jeremiah-k/mmrelay:<version>
+#    (See https://github.com/jeremiah-k/meshtastic-matrix-relay/pkgs/container/mmrelay for available tags)
 
 # 3. Create your config.yaml (or use sample)
 cp src/mmrelay/tools/sample_config.yaml config.yaml

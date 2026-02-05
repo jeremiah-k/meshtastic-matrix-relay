@@ -241,6 +241,31 @@ class TestFindLegacyData:
         config_findings = [f for f in findings if f["type"] == "config"]
         assert len(config_findings) == 1
 
+    def test_find_legacy_data_duplicate_paths(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test duplicate findings are skipped by path string."""
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        creds = legacy_root / "credentials.json"
+        creds.write_text("creds")
+        config = legacy_root / "config.yaml"
+        config.write_text("config")
+
+        creds_str = str(creds)
+        original_str = Path.__str__
+
+        def fake_str(self: Path) -> str:
+            if self.name == "config.yaml":
+                return creds_str
+            return original_str(self)
+
+        monkeypatch.setattr(Path, "__str__", fake_str)
+
+        findings = _find_legacy_data(legacy_root)
+        paths = [f["path"] for f in findings]
+        assert paths.count(creds_str) == 1
+
 
 class TestVerifyMigration:
     """Test verify_migration and print_migration_verification coverage."""
@@ -292,6 +317,112 @@ class TestVerifyMigration:
         print_migration_verification(report)
         captured = capsys.readouterr()
         assert "N/A (Windows)" in captured.out
+
+    def test_verify_migration_store_applicable_no_legacy(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test store directory resolution when applicable and no legacy data."""
+        home = tmp_path / "home"
+        home.mkdir()
+        (home / "credentials.json").write_text("creds")
+        database_dir = home / "database"
+        database_dir.mkdir()
+        (database_dir / "meshtastic.sqlite").write_text("db")
+        logs_dir = home / "logs"
+        logs_dir.mkdir()
+        plugins_dir = home / "plugins"
+        plugins_dir.mkdir()
+        store_dir = home / "store"
+        store_dir.mkdir()
+
+        paths_info = {
+            "home": str(home),
+            "credentials_path": str(home / "credentials.json"),
+            "database_dir": str(database_dir),
+            "logs_dir": str(logs_dir),
+            "plugins_dir": str(plugins_dir),
+            "store_dir": str(store_dir),
+            "legacy_sources": [],
+        }
+
+        monkeypatch.setattr("mmrelay.migrate.resolve_all_paths", lambda: paths_info)
+
+        report = verify_migration()
+        store_artifact = next(
+            artifact
+            for artifact in report["artifacts"]
+            if artifact["key"] == "e2ee_store"
+        )
+        assert store_artifact["not_applicable"] is False
+        assert report["ok"] is True
+
+    def test_verify_migration_with_legacy_and_missing_credentials(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test warnings and errors when legacy data exists and credentials are missing."""
+        home = tmp_path / "home"
+        home.mkdir()
+        database_dir = tmp_path / "outside_db"
+        database_dir.mkdir()
+        (database_dir / "meshtastic.sqlite").write_text("db")
+        logs_dir = home / "logs"
+        logs_dir.mkdir()
+        plugins_dir = home / "plugins"
+        plugins_dir.mkdir()
+        store_dir = home / "store"
+        store_dir.mkdir()
+
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        legacy_logs = legacy_root / "logs"
+        legacy_logs.mkdir()
+        (legacy_logs / "legacy.log").write_text("log")
+
+        paths_info = {
+            "home": str(home),
+            "credentials_path": str(home / "credentials.json"),
+            "database_dir": str(database_dir),
+            "logs_dir": str(logs_dir),
+            "plugins_dir": str(plugins_dir),
+            "store_dir": str(store_dir),
+            "legacy_sources": [str(legacy_root)],
+        }
+
+        monkeypatch.setattr("mmrelay.migrate.resolve_all_paths", lambda: paths_info)
+
+        report = verify_migration()
+        assert any("Found legacy data at" in warning for warning in report["warnings"])
+        assert any("Missing credentials.json" in error for error in report["errors"])
+        assert any("Legacy data exists outside" in error for error in report["errors"])
+        assert any("Split roots detected" in error for error in report["errors"])
+        assert any("outside MMRELAY_HOME" in error for error in report["errors"])
+
+    def test_print_migration_verification_no_legacy_ok(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Test verification output when no legacy data is present and ok=True."""
+        report = {
+            "home": "/tmp/home",
+            "artifacts": [
+                {
+                    "key": "credentials",
+                    "label": "credentials.json",
+                    "path": "/tmp/home/credentials.json",
+                    "exists": True,
+                    "inside_home": True,
+                    "not_applicable": False,
+                }
+            ],
+            "legacy_data": [],
+            "warnings": [],
+            "errors": [],
+            "ok": True,
+        }
+
+        print_migration_verification(report)
+        captured = capsys.readouterr()
+        assert "No legacy data found" in captured.out
+        assert "Migration verification PASSED" in captured.out
 
 
 class TestGetMostRecentDatabase:
@@ -402,6 +533,38 @@ class TestGetMostRecentDatabase:
         result = _get_most_recent_database([wal])
         assert result is None
 
+    def test_get_most_recent_database_base_exists_oserror(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test base.exists OSError is handled."""
+        wal = tmp_path / "db.sqlite-wal"
+        wal.write_text("wal")
+        base = tmp_path / "db.sqlite"
+
+        original_exists = Path.exists
+
+        def fake_exists(self: Path) -> bool:
+            if self == base:
+                raise OSError("exists failed")
+            return original_exists(self)
+
+        monkeypatch.setattr(Path, "exists", fake_exists)
+
+        result = _get_most_recent_database([wal])
+        assert result is None
+
+    def test_get_most_recent_database_max_returns_none(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test unexpected max result is handled."""
+        db = tmp_path / "db.sqlite"
+        db.write_text("db")
+
+        monkeypatch.setattr("builtins.max", lambda *args, **kwargs: None)
+
+        result = _get_most_recent_database([db])
+        assert result is None
+
 
 class TestBackupFile:
     """Test _backup_file function coverage."""
@@ -479,6 +642,54 @@ class TestMigrateCredentialsEdgeCases:
         assert new_creds.is_file()
         assert new_creds.read_text() == "creds"
 
+    def test_migrate_credentials_move_removes_existing_file(
+        self, tmp_path: Path
+    ) -> None:
+        """Test move removes an existing credentials file."""
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        old_creds = legacy_root / "credentials.json"
+        old_creds.write_text("creds")
+
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+        new_creds = new_home / "credentials.json"
+        new_creds.write_text("old")
+
+        result = migrate_credentials(
+            [legacy_root], new_home, dry_run=False, force=False, move=True
+        )
+
+        assert result["success"] is True
+        assert new_creds.read_text() == "creds"
+
+    def test_migrate_credentials_backup_failure_continues(self, tmp_path: Path) -> None:
+        """Test backup failure does not block credentials migration."""
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        old_creds = legacy_root / "credentials.json"
+        old_creds.write_text("new-creds")
+
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+        new_creds = new_home / "credentials.json"
+        new_creds.write_text("old-creds")
+
+        original_copy2 = shutil.copy2
+
+        def selective_copy2(src, dst, *args, **kwargs):
+            if Path(src) == new_creds:
+                raise OSError("Mock backup error")
+            return original_copy2(src, dst, *args, **kwargs)
+
+        with mock.patch("shutil.copy2", side_effect=selective_copy2):
+            result = migrate_credentials(
+                [legacy_root], new_home, dry_run=False, force=False, move=False
+            )
+
+        assert result["success"] is True
+        assert new_creds.read_text() == "new-creds"
+
 
 class TestMigrateConfigEdgeCases:
     """Test migrate_config edge cases."""
@@ -504,6 +715,70 @@ class TestMigrateConfigEdgeCases:
         assert result["success"] is True
         assert new_config.is_file()
         assert new_config.read_text() == "config"
+
+    def test_migrate_config_move_removes_existing_file(self, tmp_path: Path) -> None:
+        """Test move removes an existing config file before migrating."""
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        old_config = legacy_root / "config.yaml"
+        old_config.write_text("config")
+
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+        new_config = new_home / "config.yaml"
+        new_config.write_text("old")
+
+        result = migrate_config(
+            [legacy_root], new_home, dry_run=False, force=False, move=True
+        )
+
+        assert result["success"] is True
+        assert new_config.read_text() == "config"
+
+    def test_migrate_config_backup_failure_continues(self, tmp_path: Path) -> None:
+        """Test backup failure does not block config migration."""
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        old_config = legacy_root / "config.yaml"
+        old_config.write_text("new-config")
+
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+        new_config = new_home / "config.yaml"
+        new_config.write_text("old-config")
+
+        original_copy2 = shutil.copy2
+
+        def selective_copy2(src, dst, *args, **kwargs):
+            if Path(src) == new_config:
+                raise OSError("Mock backup error")
+            return original_copy2(src, dst, *args, **kwargs)
+
+        with mock.patch("shutil.copy2", side_effect=selective_copy2):
+            result = migrate_config(
+                [legacy_root], new_home, dry_run=False, force=False, move=False
+            )
+
+        assert result["success"] is True
+        assert new_config.read_text() == "new-config"
+
+    def test_migrate_config_copy_failure(self, tmp_path: Path) -> None:
+        """Test migrate_config returns error on copy failure."""
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        old_config = legacy_root / "config.yaml"
+        old_config.write_text("config")
+
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+
+        with mock.patch("shutil.copy2", side_effect=OSError("Mock copy error")):
+            result = migrate_config(
+                [legacy_root], new_home, dry_run=False, force=False, move=False
+            )
+
+        assert result["success"] is False
+        assert "Mock copy error" in result["error"]
 
 
 class TestMigrateDatabaseEdgeCases:
@@ -689,6 +964,104 @@ class TestMigrateDatabaseEdgeCases:
             assert result["success"] is False
             assert "error" in result
 
+    def test_migrate_database_from_data_dir_with_sidecars(self, tmp_path: Path) -> None:
+        """Test migration from legacy data/ directory with sidecars."""
+        new_home = tmp_path / "new_home"
+        new_home.mkdir()
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+
+        data_dir = legacy_root / "data"
+        data_dir.mkdir()
+        legacy_db = data_dir / "meshtastic.sqlite"
+        conn = sqlite3.connect(legacy_db)
+        conn.execute("CREATE TABLE test (id INTEGER)")
+        conn.close()
+
+        wal = data_dir / "meshtastic.sqlite-wal"
+        wal.write_text("wal")
+        shm = data_dir / "meshtastic.sqlite-shm"
+        shm.write_text("shm")
+
+        result = migrate_database(
+            [legacy_root], new_home, dry_run=False, force=False, move=False
+        )
+
+        assert result["success"] is True
+        assert (new_home / "database" / "meshtastic.sqlite").exists()
+        assert (new_home / "database" / "meshtastic.sqlite-wal").exists()
+        assert (new_home / "database" / "meshtastic.sqlite-shm").exists()
+
+    def test_migrate_database_integrity_check_cleanup_unlink_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test cleanup warning when integrity check cleanup cannot unlink."""
+        new_home = tmp_path / "new_home"
+        new_home.mkdir()
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+
+        legacy_db = legacy_root / "meshtastic.sqlite"
+        conn = sqlite3.connect(legacy_db)
+        conn.execute("CREATE TABLE test (id INTEGER)")
+        conn.close()
+
+        dest_path = new_home / "database" / "meshtastic.sqlite"
+        original_unlink = Path.unlink
+
+        def failing_unlink(self: Path, *args: object, **kwargs: object) -> None:
+            if self == dest_path:
+                raise OSError("unlink failed")
+            original_unlink(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "unlink", failing_unlink)
+
+        with mock.patch("sqlite3.connect") as mock_connect:
+            mock_conn = mock.MagicMock()
+            mock_conn.execute.return_value.fetchone.return_value = ["corrupted"]
+            mock_connect.return_value.__enter__.return_value = mock_conn
+
+            with pytest.raises(MigrationError) as exc_info:
+                migrate_database(
+                    [legacy_root], new_home, dry_run=False, force=False, move=False
+                )
+
+        assert "integrity check failed" in str(exc_info.value).lower()
+
+    def test_migrate_database_db_error_cleanup_unlink_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test cleanup warning when DatabaseError cleanup cannot unlink."""
+        new_home = tmp_path / "new_home"
+        new_home.mkdir()
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+
+        legacy_db = legacy_root / "meshtastic.sqlite"
+        conn = sqlite3.connect(legacy_db)
+        conn.execute("CREATE TABLE test (id INTEGER)")
+        conn.close()
+
+        dest_path = new_home / "database" / "meshtastic.sqlite"
+        original_unlink = Path.unlink
+
+        def failing_unlink(self: Path, *args: object, **kwargs: object) -> None:
+            if self == dest_path:
+                raise OSError("unlink failed")
+            original_unlink(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "unlink", failing_unlink)
+
+        with mock.patch(
+            "sqlite3.connect", side_effect=sqlite3.DatabaseError("Mock error")
+        ):
+            with pytest.raises(MigrationError) as exc_info:
+                migrate_database(
+                    [legacy_root], new_home, dry_run=False, force=False, move=False
+                )
+
+        assert "Database verification failed" in str(exc_info.value)
+
     def test_migrate_database_integrity_check_failure(self, tmp_path: Path) -> None:
         """Test SQLite integrity check failure."""
         new_home = tmp_path / "new_home"
@@ -830,8 +1203,8 @@ class TestMigrateStoreEdgeCases:
             result = migrate_store(
                 [legacy_root], new_home, dry_run=False, force=False, move=True
             )
-            # Should still succeed despite backup failure
-            assert result["success"] is True
+            assert result["success"] is False
+            assert "backup" in result["error"]
 
     def test_migrate_store_move_existing_directory_removal(
         self, tmp_path: Path
@@ -965,6 +1338,32 @@ class TestMigratePluginsEdgeCases:
         assert result["success"] is False
         assert "plugins backup dir" in result["error"]
 
+    def test_migrate_plugins_new_dir_creation_failure(self, tmp_path: Path) -> None:
+        """Test plugins directory creation failure is surfaced."""
+        new_home = tmp_path / "new_home"
+        new_home.mkdir()
+
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        old_plugins_dir = legacy_root / "plugins"
+        old_plugins_dir.mkdir()
+
+        new_plugins_dir = new_home / "plugins"
+        original_mkdir = Path.mkdir
+
+        def failing_mkdir(self: Path, *args, **kwargs):
+            if self == new_plugins_dir:
+                raise OSError("Mock mkdir error")
+            return original_mkdir(self, *args, **kwargs)
+
+        with mock.patch.object(Path, "mkdir", autospec=True, side_effect=failing_mkdir):
+            result = migrate_plugins(
+                [legacy_root], new_home, dry_run=False, force=True, move=False
+            )
+
+        assert result["success"] is False
+        assert "plugins dir" in result["error"]
+
     def test_migrate_plugins_backup_community_plugin_failure(
         self, tmp_path: Path
     ) -> None:
@@ -1016,7 +1415,7 @@ class TestMigratePluginsEdgeCases:
 
         def failing_rmdir(self: Path, *args, **kwargs):
             if self == old_custom_dir:
-                raise OSError("Mock rmdir error")
+                raise OSError
             return original_rmdir(self, *args, **kwargs)
 
         with mock.patch.object(Path, "rmdir", autospec=True, side_effect=failing_rmdir):
@@ -1045,7 +1444,7 @@ class TestMigratePluginsEdgeCases:
 
         def failing_rmdir(self: Path, *args, **kwargs):
             if self == old_plugins_dir:
-                raise OSError("Mock rmdir error")
+                raise OSError
             return original_rmdir(self, *args, **kwargs)
 
         with mock.patch.object(Path, "rmdir", autospec=True, side_effect=failing_rmdir):
@@ -1727,6 +2126,90 @@ class TestPerformMigration:
         config.write_text(
             "community-plugins:\n  gpxtracker:\n    gpx_directory: /tmp/gpx\n"
         )
+
+        paths_info = {"home": str(new_home), "legacy_sources": [str(legacy_root)]}
+        monkeypatch.setattr("mmrelay.migrate.resolve_all_paths", lambda: paths_info)
+
+        def ok_result(*_args, **_kwargs):
+            return {"success": True}
+
+        gpx_called = {"value": False}
+
+        def gpx_result(*_args, **_kwargs):
+            gpx_called["value"] = True
+            return {"success": True}
+
+        monkeypatch.setattr("mmrelay.migrate.migrate_credentials", ok_result)
+        monkeypatch.setattr("mmrelay.migrate.migrate_config", ok_result)
+        monkeypatch.setattr("mmrelay.migrate.migrate_database", ok_result)
+        monkeypatch.setattr("mmrelay.migrate.migrate_logs", ok_result)
+        monkeypatch.setattr("mmrelay.migrate.migrate_store", ok_result)
+        monkeypatch.setattr("mmrelay.migrate.migrate_plugins", ok_result)
+        monkeypatch.setattr("mmrelay.migrate.migrate_gpxtracker", gpx_result)
+
+        report = perform_migration(dry_run=True, force=False, move=False)
+        assert report["success"] is True
+        assert gpx_called["value"] is True
+
+    def test_perform_migration_gpx_yaml_import_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test YAML import failure during gpxtracker detection."""
+        import builtins
+
+        new_home = tmp_path / "home"
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+
+        config = legacy_root / "config.yaml"
+        config.write_text(
+            "community-plugins:\n  gpxtracker:\n    gpx_directory: /tmp/gpx\n"
+        )
+
+        paths_info = {"home": str(new_home), "legacy_sources": [str(legacy_root)]}
+        monkeypatch.setattr("mmrelay.migrate.resolve_all_paths", lambda: paths_info)
+
+        def ok_result(*_args, **_kwargs):
+            return {"success": True}
+
+        gpx_called = {"value": False}
+
+        def gpx_result(*_args, **_kwargs):
+            gpx_called["value"] = True
+            return {"success": True}
+
+        monkeypatch.setattr("mmrelay.migrate.migrate_credentials", ok_result)
+        monkeypatch.setattr("mmrelay.migrate.migrate_config", ok_result)
+        monkeypatch.setattr("mmrelay.migrate.migrate_database", ok_result)
+        monkeypatch.setattr("mmrelay.migrate.migrate_logs", ok_result)
+        monkeypatch.setattr("mmrelay.migrate.migrate_store", ok_result)
+        monkeypatch.setattr("mmrelay.migrate.migrate_plugins", ok_result)
+        monkeypatch.setattr("mmrelay.migrate.migrate_gpxtracker", gpx_result)
+
+        original_import = builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if name == "yaml":
+                raise ImportError("Mock import error")
+            return original_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", mock_import)
+
+        report = perform_migration(dry_run=True, force=False, move=False)
+        assert report["success"] is True
+        assert gpx_called["value"] is False
+
+    def test_perform_migration_gpx_yaml_parse_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test YAML parse failure during gpxtracker detection."""
+        new_home = tmp_path / "home"
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        (legacy_root / "plugins").mkdir()
+
+        config = legacy_root / "config.yaml"
+        config.write_text("community-plugins: [")
 
         paths_info = {"home": str(new_home), "legacy_sources": [str(legacy_root)]}
         monkeypatch.setattr("mmrelay.migrate.resolve_all_paths", lambda: paths_info)

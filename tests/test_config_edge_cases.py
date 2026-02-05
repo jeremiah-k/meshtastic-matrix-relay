@@ -12,6 +12,7 @@ Tests edge cases and error handling including:
 """
 
 import json
+import ntpath
 import os
 import sys
 import tempfile
@@ -383,30 +384,32 @@ class TestConfigEdgeCases(unittest.TestCase):
     def test_get_log_dir_windows_with_override(self):
         """Test get_log_dir on Windows with directory override."""
         with (
-            patch(
-                "mmrelay.config.get_unified_logs_dir", return_value="C:\\mmrelay\\logs"
-            ),
+            patch.dict(os.environ, {"MMRELAY_HOME": "C:\\mmrelay"}, clear=True),
+            patch("mmrelay.config.sys.platform", "win32"),
+            patch("mmrelay.paths.sys.platform", "win32"),
             patch("mmrelay.config.os.makedirs"),
         ):
             result = get_log_dir()
 
             # Should use base_dir/logs with override
-            self.assertEqual(result, "C:\\mmrelay\\logs")
+            expected = str(Path("C:\\mmrelay").expanduser().absolute() / "logs")
+            self.assertEqual(result, expected)
 
     def test_get_e2ee_store_dir_windows_without_override(self):
         """Test get_e2ee_store_dir on Windows without directory override."""
         with (
             patch("mmrelay.config.sys.platform", "win32"),
-            patch(
-                "mmrelay.config.get_unified_store_dir",
-                side_effect=RuntimeError("E2EE not supported on Windows"),
-            ),
-            patch("mmrelay.config.get_home_dir", return_value=Path("C:\\mmrelay")),
+            patch("mmrelay.paths.sys.platform", "win32"),
+            patch.dict(os.environ, {"MMRELAY_HOME": "C:\\mmrelay"}, clear=True),
         ):
             result = get_e2ee_store_dir()
 
             # Should use home/store on Windows fallback
-            self.assertEqual(result, "C:\\mmrelay\\store")
+            expected = ntpath.join(
+                str(Path("C:\\mmrelay").expanduser().absolute()),
+                "store",
+            )
+            self.assertEqual(result, expected)
 
     def test_load_credentials_windows_debug(self):
         """Test load_credentials on Windows logs directory contents."""

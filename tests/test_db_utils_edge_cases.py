@@ -15,14 +15,10 @@ Tests edge cases and error handling including:
 import os
 import shutil
 import sqlite3
-import sys
 import tempfile
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-# Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.db_utils import (
     _reset_db_manager,

@@ -1409,8 +1409,10 @@ async def _resolve_and_load_credentials(
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            logger.exception(f"Error during automatic login: {type(e).__name__}")
-            logger.error("Please use 'mmrelay auth login' for interactive setup")
+            logger.exception(
+                "Error during automatic login (%s). Please use 'mmrelay auth login' for interactive setup",
+                type(e).__name__,
+            )
             return None
 
     if config_data is None:
@@ -1566,7 +1568,7 @@ async def _configure_e2ee(
                     logger.warning("Install 'mmrelay[e2e]' to use E2EE features.")
                     e2ee_enabled = False
     except (KeyError, TypeError):
-        pass
+        logger.debug("E2EE configuration not found or malformed, E2EE disabled")
 
     return e2ee_enabled, e2ee_store_path
 
@@ -1676,8 +1678,9 @@ async def _maybe_upload_e2ee_keys(client: AsyncClient) -> None:
         else:
             logger.debug("No key upload needed - keys already present")
     except NIO_COMM_EXCEPTIONS:
-        logger.exception("Failed to upload E2EE keys")
-        logger.error("Consider regenerating credentials with: mmrelay auth login")
+        logger.exception(
+            "Failed to upload E2EE keys. Consider regenerating credentials with: mmrelay auth login"
+        )
 
 
 async def _close_matrix_client_after_failure(
@@ -2237,7 +2240,7 @@ async def login_matrix_bot(
         e2ee_enabled = False
         try:
             config_for_paths = load_config()
-        except Exception as e:
+        except (OSError, ValueError, KeyError, TypeError) as e:
             logger.debug("Could not load config for credentials path: %s", e)
 
         # Check for existing credentials to reuse device_id
@@ -2268,7 +2271,7 @@ async def login_matrix_bot(
         if config_for_paths is not None:
             try:
                 e2ee_enabled = is_e2ee_enabled(config_for_paths)
-            except Exception as e:
+            except (KeyError, TypeError, ValueError) as e:
                 logger.debug(f"Could not load config for E2EE check: {e}")
                 e2ee_enabled = False
         else:

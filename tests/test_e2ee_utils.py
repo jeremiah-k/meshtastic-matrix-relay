@@ -7,15 +7,10 @@ This module tests lines 115-122 and 172-182 of e2ee_utils.py:
 """
 
 import os
-import sys
 import tempfile
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-# Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from mmrelay.e2ee_utils import (
     _check_credentials_available,
@@ -53,8 +48,8 @@ def e2ee_test_config():
 
 @patch("sys.platform", "linux")
 @patch("mmrelay.e2ee_utils.os.path.exists")
-@patch("mmrelay.paths.resolve_all_paths")
-@patch("mmrelay.paths.is_deprecation_window_active")
+@patch("mmrelay.e2ee_utils.resolve_all_paths")
+@patch("mmrelay.e2ee_utils.is_deprecation_window_active")
 def test_credentials_found_in_legacy_location(
     mock_deprecation_active, mock_resolve_all_paths, mock_exists, e2ee_test_config
 ) -> None:
@@ -134,8 +129,8 @@ def test_credentials_found_in_legacy_location(
 
 @patch("sys.platform", "linux")
 @patch("mmrelay.e2ee_utils.os.path.exists")
-@patch("mmrelay.paths.resolve_all_paths")
-@patch("mmrelay.paths.is_deprecation_window_active")
+@patch("mmrelay.e2ee_utils.resolve_all_paths")
+@patch("mmrelay.e2ee_utils.is_deprecation_window_active")
 def test_credentials_not_found_in_legacy_locations(
     mock_deprecation_active, mock_resolve_all_paths, mock_exists, e2ee_test_config
 ) -> None:
@@ -162,18 +157,8 @@ def test_credentials_not_found_in_legacy_locations(
         }
 
         # Mock os.path.exists to return False for all credential paths
-        def exists_side_effect(path):
-            """
-            Side-effect function used in tests to simulate that no file exists at any checked path.
-
-            Parameters:
-                path (str): Filesystem path being queried.
-
-            Returns:
-                bool: `False` for every input path to indicate the file does not exist.
-            """
-            if "credentials.json" in path:
-                return False
+        def exists_side_effect(_path):
+            """Return False for every input path to indicate the file does not exist."""
             return False
 
         mock_exists.side_effect = exists_side_effect
@@ -197,8 +182,8 @@ def test_credentials_not_found_in_legacy_locations(
 
 @patch("sys.platform", "linux")
 @patch("mmrelay.e2ee_utils.os.path.exists")
-@patch("mmrelay.paths.resolve_all_paths")
-@patch("mmrelay.paths.is_deprecation_window_active")
+@patch("mmrelay.e2ee_utils.resolve_all_paths")
+@patch("mmrelay.e2ee_utils.is_deprecation_window_active")
 def test_credentials_in_legacy_during_deprecation_window(
     mock_deprecation_active, mock_resolve_all_paths, mock_exists, e2ee_test_config
 ) -> None:
@@ -263,8 +248,8 @@ def test_credentials_in_legacy_during_deprecation_window(
 
 @patch("sys.platform", "linux")
 @patch("mmrelay.e2ee_utils.os.path.exists")
-@patch("mmrelay.paths.resolve_all_paths")
-@patch("mmrelay.paths.is_deprecation_window_active")
+@patch("mmrelay.e2ee_utils.resolve_all_paths")
+@patch("mmrelay.e2ee_utils.is_deprecation_window_active")
 def test_no_credentials_during_deprecation_window(
     mock_deprecation_active, mock_resolve_all_paths, mock_exists, e2ee_test_config
 ) -> None:
@@ -289,18 +274,8 @@ def test_no_credentials_during_deprecation_window(
         }
 
         # Mock os.path.exists to return False for all credential paths
-        def exists_side_effect(path):
-            """
-            Side-effect function used in tests to simulate that no file exists at any checked path.
-
-            Parameters:
-                path (str): Filesystem path being queried.
-
-            Returns:
-                bool: `False` for every input path to indicate the file does not exist.
-            """
-            if "credentials.json" in path:
-                return False
+        def exists_side_effect(_path):
+            """Return False for every input path to indicate the file does not exist."""
             return False
 
         mock_exists.side_effect = exists_side_effect
@@ -320,8 +295,8 @@ def test_no_credentials_during_deprecation_window(
 
 @patch("sys.platform", "linux")
 @patch("mmrelay.e2ee_utils.os.path.exists")
-@patch("mmrelay.paths.resolve_all_paths")
-@patch("mmrelay.paths.is_deprecation_window_active")
+@patch("mmrelay.e2ee_utils.resolve_all_paths")
+@patch("mmrelay.e2ee_utils.is_deprecation_window_active")
 def test_deprecation_window_not_active(
     mock_deprecation_active, mock_resolve_all_paths, mock_exists, e2ee_test_config
 ) -> None:

@@ -1802,10 +1802,17 @@ def clone_or_update_repo(repo_url: str, ref: dict[str, str], plugins_dir: str) -
         return False
 
     # Delegate to internal function that assumes inputs are already validated
-    assert validation_result.repo_url is not None
-    assert validation_result.ref_type is not None
-    assert validation_result.ref_value is not None
-    assert validation_result.repo_name is not None
+    if (
+        validation_result.repo_url is None
+        or validation_result.ref_type is None
+        or validation_result.ref_value is None
+        or validation_result.repo_name is None
+    ):
+        logger.error(
+            "Repository validation returned incomplete data for %s",
+            _redact_url(repo_url),
+        )
+        return False
     return _clone_or_update_repo_validated(
         validation_result.repo_url,
         validation_result.ref_type,
@@ -2306,14 +2313,10 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                     )
                     continue
                 repo_name = validation_result.repo_name
-                # validation_result.repo_url is guaranteed to be non-None when is_valid is True
-                assert validation_result.repo_url is not None
-                success = clone_or_update_repo(
-                    validation_result.repo_url, ref, community_plugins_dir
-                )
-                if not success:
-                    logger.warning(
-                        f"Failed to clone/update plugin {plugin_name}, skipping"
+                if not _is_safe_plugin_name(repo_name):
+                    logger.error(
+                        "Repository name '%s' rejected: contains invalid characters or path traversal",
+                        repo_name,
                     )
                     continue
                 repo_path = os.path.join(community_plugins_dir, repo_name)
@@ -2322,6 +2325,22 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                         "Plugin repo path '%s' is not contained within allowed root '%s'",
                         repo_path,
                         community_plugins_dir,
+                    )
+                    continue
+                if validation_result.repo_url is None:
+                    logger.error(
+                        "Validation returned no repository URL for community plugin %s",
+                        plugin_name,
+                    )
+                    continue
+                success = clone_or_update_repo(
+                    validation_result.repo_url,
+                    ref,
+                    community_plugins_dir,
+                )
+                if not success:
+                    logger.warning(
+                        f"Failed to clone/update plugin {plugin_name}, skipping"
                     )
                     continue
                 _install_requirements_for_repo(repo_path, repo_name)

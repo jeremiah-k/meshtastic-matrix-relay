@@ -1141,6 +1141,7 @@ def migrate_store(
 
     new_home.mkdir(parents=True, exist_ok=True)
 
+    backup_error: str | None = None
     if new_store_dir.exists() and not force:
         logger.info("Backing up existing store directory: %s", new_store_dir)
         backup_path = _backup_file(new_store_dir)
@@ -1148,6 +1149,14 @@ def migrate_store(
             shutil.copytree(str(new_store_dir), str(backup_path))
         except (OSError, IOError) as e:
             logger.warning("Failed to backup store directory: %s", e)
+            backup_error = str(e)
+
+    if backup_error:
+        return {
+            "success": False,
+            "error": f"Failed to backup store directory: {backup_error}",
+            "old_path": str(old_store_dir),
+        }
 
     try:
         if move:
@@ -1894,10 +1903,11 @@ def rollback_migration(completed_steps: list[str] | None = None) -> dict[str, An
 
     if completed_steps is None:
         if not state_path.exists():
-            # No migration was performed, so rollback is trivially successful
+            # No migration was performed, so rollback cannot proceed.
             return {
-                "success": True,
+                "success": False,
                 "message": "No migration to rollback - migration state file not found",
+                "errors": ["Migration state file not found"],
             }
         if state and isinstance(state.get("completed_steps"), list):
             completed_steps = state["completed_steps"]
