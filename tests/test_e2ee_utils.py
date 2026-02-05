@@ -54,8 +54,9 @@ def e2ee_test_config():
 @patch("sys.platform", "linux")
 @patch("mmrelay.e2ee_utils.os.path.exists")
 @patch("mmrelay.paths.resolve_all_paths")
+@patch("mmrelay.paths.is_deprecation_window_active")
 def test_credentials_found_in_legacy_location(
-    mock_resolve_all_paths, mock_exists, e2ee_test_config
+    mock_deprecation_active, mock_resolve_all_paths, mock_exists, e2ee_test_config
 ) -> None:
     """
     Test credential detection when credentials are found in legacy location (lines 115-122).
@@ -69,6 +70,8 @@ def test_credentials_found_in_legacy_location(
     # Mock dependencies as installed
     with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
         mock_import.side_effect = lambda _: MagicMock()
+
+        mock_deprecation_active.return_value = True
 
         # Mock paths_info with legacy sources
         mock_resolve_all_paths.return_value = {
@@ -132,8 +135,9 @@ def test_credentials_found_in_legacy_location(
 @patch("sys.platform", "linux")
 @patch("mmrelay.e2ee_utils.os.path.exists")
 @patch("mmrelay.paths.resolve_all_paths")
+@patch("mmrelay.paths.is_deprecation_window_active")
 def test_credentials_not_found_in_legacy_locations(
-    mock_resolve_all_paths, mock_exists, e2ee_test_config
+    mock_deprecation_active, mock_resolve_all_paths, mock_exists, e2ee_test_config
 ) -> None:
     """
     Test credential detection when credentials are not found in any location (lines 115-122).
@@ -147,6 +151,8 @@ def test_credentials_not_found_in_legacy_locations(
     # Mock dependencies as installed
     with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
         mock_import.side_effect = lambda _: MagicMock()
+
+        mock_deprecation_active.return_value = True
 
         # Mock paths_info with legacy sources
         mock_resolve_all_paths.return_value = {

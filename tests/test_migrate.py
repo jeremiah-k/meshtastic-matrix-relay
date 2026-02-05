@@ -1674,3 +1674,114 @@ class TestRollbackMigration:
         rollback_migration()
 
         assert not state_file.exists()
+
+
+class TestAutomaticRollback:
+    def test_perform_migration_partial_failure_rollback(self, tmp_path, monkeypatch):
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        (legacy_root / "credentials.json").write_text('{"token": "legacy"}')
+        (legacy_root / "config.yaml").write_text("legacy: true")
+        db = legacy_root / "meshtastic.sqlite"
+        conn = sqlite3.connect(db)
+        conn.execute("CREATE TABLE test (id INTEGER)")
+        conn.commit()
+        conn.close()
+
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+
+        monkeypatch.setenv("MMRELAY_HOME", str(new_home))
+        monkeypatch.setattr(
+            migrate_module,
+            "resolve_all_paths",
+            lambda: {"home": str(new_home), "legacy_sources": [str(legacy_root)]},
+        )
+
+        creds_backup = new_home / "credentials.json.bak.20230101_120000"
+        creds_backup.parent.mkdir(parents=True, exist_ok=True)
+        creds_backup.write_text('{"token": "backup"}')
+
+        call_count = 0
+
+        def failing_migrate_database(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            raise sqlite3.DatabaseError("Simulated database failure")
+
+        monkeypatch.setattr(
+            migrate_module, "migrate_database", failing_migrate_database
+        )
+
+        result = perform_migration(move=True, force=True)
+
+        assert result["success"] is False
+        assert "rollback" in result
+        assert result["rollback"]["success"] is True
+
+    def test_perform_migration_database_failure_rolls_back_creds(
+        self, tmp_path, monkeypatch
+    ):
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        (legacy_root / "credentials.json").write_text('{"token": "legacy"}')
+        db = legacy_root / "meshtastic.sqlite"
+        conn = sqlite3.connect(db)
+        conn.execute("CREATE TABLE test (id INTEGER)")
+        conn.commit()
+        conn.close()
+
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+
+        monkeypatch.setenv("MMRELAY_HOME", str(new_home))
+        monkeypatch.setattr(
+            migrate_module,
+            "resolve_all_paths",
+            lambda: {"home": str(new_home), "legacy_sources": [str(legacy_root)]},
+        )
+
+        backup = new_home / "credentials.json.bak.20230101_120000"
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        backup.write_text('{"token": "backup"}')
+
+        def failing_migrate_database(*args, **kwargs):
+            raise sqlite3.DatabaseError("Simulated database failure")
+
+        monkeypatch.setattr(
+            migrate_module, "migrate_database", failing_migrate_database
+        )
+
+        result = perform_migration(move=True, force=True)
+
+        assert result["success"] is False
+        assert "rollback" in result
+        assert result["rollback"]["restored_count"] >= 1
+
+    def test_rollback_migration_no_completed_steps(self, tmp_path, monkeypatch):
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+
+        monkeypatch.setattr(migrate_module, "get_home_dir", lambda: new_home)
+
+        result = rollback_migration(completed_steps=[])
+
+        assert result["success"] is True
+        assert result["restored_count"] == 0
+
+    def test_rollback_migration_partial_steps(self, tmp_path, monkeypatch):
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+
+        creds = new_home / "credentials.json"
+        creds.write_text('{"token": "new"}')
+        creds_backup = new_home / "credentials.json.bak.20230101_120000"
+        creds_backup.write_text('{"token": "backup"}')
+
+        monkeypatch.setattr(migrate_module, "get_home_dir", lambda: new_home)
+
+        result = rollback_migration(completed_steps=["credentials"])
+
+        assert result["success"] is True
+        assert result["restored_count"] == 1
+        assert creds.read_text() == '{"token": "backup"}'
