@@ -2,7 +2,7 @@
 
 ## Context
 
-This document outlines systematic improvements to the MMRelay v1.3 migration system based on the [Migration Audit](../../../MMRELAY_V13_MIGRATION_AUDIT.md). The audit identified 5 key findings, with Finding #4 (limited plugin data migration) deemed acceptable since gpxtracker is the only community plugin with Tier 2 filesystem storage needs.
+This document outlines systematic improvements to the MMRelay v1.3 migration system based on the [Migration Guide for v1.3](../MIGRATION_1.3.md). The audit identified 5 key findings, with Finding #4 (limited plugin data migration) deemed acceptable since gpxtracker is the only community plugin with Tier 2 filesystem storage needs.
 
 ## Reference Documents
 

@@ -150,7 +150,12 @@ def _get_plugin_root_dirs() -> list[str]:
     except (OSError, RuntimeError, ValueError) as e:
         logger.warning("Could not determine primary plugin root: %s", e)
 
-    legacy_dirs_list = get_legacy_dirs()
+    try:
+        legacy_dirs_list = get_legacy_dirs()
+    except (OSError, RuntimeError, ValueError) as e:
+        logger.warning("Could not determine legacy plugin roots: %s", e)
+        legacy_dirs_list = []
+
     for legacy_root in legacy_dirs_list:
         legacy_plugins = os.path.join(str(legacy_root), "plugins")
         if legacy_plugins not in seen and os.path.exists(legacy_plugins):
@@ -173,8 +178,14 @@ def _get_legacy_plugin_roots() -> set[str]:
     """Return the set of legacy plugin root directories (legacy_root/plugins)."""
     from mmrelay.paths import get_legacy_dirs
 
+    try:
+        legacy_dirs = get_legacy_dirs()
+    except (OSError, RuntimeError, ValueError) as e:
+        logger.warning("Could not determine legacy plugin roots: %s", e)
+        return set()
+
     legacy_roots: set[str] = set()
-    for legacy_root in get_legacy_dirs():
+    for legacy_root in legacy_dirs:
         legacy_roots.add(os.path.join(str(legacy_root), "plugins"))
     return legacy_roots
 
@@ -2401,6 +2412,14 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
             plugin_found = False
             for dir_path in community_plugin_dirs:
                 plugin_path = os.path.join(dir_path, repo_name_candidate)
+                # Validate path containment to prevent symlink escapes
+                if not _is_path_contained(dir_path, plugin_path):
+                    logger.error(
+                        "Plugin path '%s' is not contained within allowed root '%s'",
+                        plugin_path,
+                        dir_path,
+                    )
+                    continue
                 if os.path.exists(plugin_path):
                     logger.info(f"Loading community plugin from: {plugin_path}")
                     try:

@@ -76,7 +76,7 @@ class TestDatabaseManagerIntegration(unittest.TestCase):
         except OSError:
             pass
 
-    @patch("os.makedirs")
+    @patch("mmrelay.db_utils.os.makedirs")
     def test_get_db_manager_with_config(self, mock_makedirs):
         """Test _get_db_manager with custom configuration."""
 
@@ -108,7 +108,7 @@ class TestDatabaseManagerIntegration(unittest.TestCase):
             # Verify directory creation was attempted
             mock_makedirs.assert_called_with("/test/custom", exist_ok=True)
 
-    @patch("os.makedirs")
+    @patch("mmrelay.db_utils.os.makedirs")
     def test_get_db_manager_legacy_config(self, _mock_makedirs):
         """Test _get_db_manager with legacy configuration format."""
 
@@ -519,7 +519,7 @@ class TestDatabasePathCaching(unittest.TestCase):
         """
         clear_db_path_cache()
 
-    @patch("os.makedirs")
+    @patch("mmrelay.db_utils.os.makedirs")
     def test_get_db_path_custom_path(self, mock_makedirs):
         """Test get_db_path with custom path from config."""
         # Mock config with custom path
@@ -538,7 +538,7 @@ class TestDatabasePathCaching(unittest.TestCase):
         # Verify directory creation was attempted
         mock_makedirs.assert_called_with("/custom", exist_ok=True)
 
-    @patch("os.makedirs")
+    @patch("mmrelay.db_utils.os.makedirs")
     @patch("mmrelay.db_utils.logger")
     def test_get_db_path_legacy_format(self, mock_logger, _mock_makedirs):
         """Test get_db_path with legacy config format."""
@@ -553,7 +553,7 @@ class TestDatabasePathCaching(unittest.TestCase):
             mock_logger.warning.assert_called_once()
             self.assertIn("legacy", mock_logger.warning.call_args[0][0])
 
-    @patch("os.makedirs")
+    @patch("mmrelay.db_utils.os.makedirs")
     def test_get_db_path_default(self, mock_makedirs):
         """Test get_db_path with default configuration."""
         # Mock config as empty

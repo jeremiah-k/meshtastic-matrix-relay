@@ -3166,7 +3166,6 @@ async def test_on_room_message_emote_reaction_uses_original_event_id(monkeypatch
 @patch("mmrelay.matrix_utils.os.path.isfile")
 @patch("builtins.open")
 @patch("mmrelay.config.json.load")
-@pytest.mark.asyncio
 @patch("mmrelay.matrix_utils.save_credentials")
 @patch("mmrelay.matrix_utils._create_ssl_context")
 @patch("mmrelay.matrix_utils.matrix_client", None)

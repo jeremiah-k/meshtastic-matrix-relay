@@ -79,35 +79,37 @@ check_doc_files() {
 		# Step 1: Collect allowed line ranges from marker-marked blocks
 		# Format: start_line,end_line (inclusive of block content, excluding fences)
 		local ALLOWED_RANGES=""
-		local TOTAL_LINES
-		TOTAL_LINES=$(awk 'END {print NR}' "${FILE}")
-		local LINE_NUM=1
 
-		while [[ ${LINE_NUM} -le ${TOTAL_LINES} ]]; do
-			local LINE_CONTENT
-			LINE_CONTENT=$(sed -n "${LINE_NUM}p" "${FILE}")
+		# Read entire file into array for O(n) processing
+		local -a FILE_LINES
+		mapfile -t FILE_LINES <"${FILE}"
+		local TOTAL_LINES=${#FILE_LINES[@]}
+		local LINE_IDX=0
+
+		while [[ ${LINE_IDX} -lt ${TOTAL_LINES} ]]; do
+			local LINE_CONTENT="${FILE_LINES[LINE_IDX]}"
+			local LINE_NUM=$((LINE_IDX + 1))
 
 			# Check if this line is the marker
-			if echo "${LINE_CONTENT}" | grep -qF "${ALLOW_MARKER}"; then
+			if [[ "${LINE_CONTENT}" == *"${ALLOW_MARKER}"* ]]; then
 				# Look for the next fence opening (allowing blank lines between marker and fence)
-				local FENCE_LINE=$((LINE_NUM + 1))
-				while [[ ${FENCE_LINE} -le ${TOTAL_LINES} ]]; do
-					local FENCE_CONTENT
-					FENCE_CONTENT=$(sed -n "${FENCE_LINE}p" "${FILE}")
+				local FENCE_IDX=$((LINE_IDX + 1))
+				while [[ ${FENCE_IDX} -lt ${TOTAL_LINES} ]]; do
+					local FENCE_CONTENT="${FILE_LINES[FENCE_IDX]}"
+					local FENCE_LINE=$((FENCE_IDX + 1))
 
 					# Check for fence opening (``` or ~~~)
-					if echo "${FENCE_CONTENT}" | grep -qE '^[[:space:]]*(`{3}|~{3})'; then
+					if [[ "${FENCE_CONTENT}" =~ ^[[:space:]]*(\`{3}|~{3}) ]]; then
 						# Found opening fence - capture the delimiter (``` or ~~~)
-						local DELIMITER
-						DELIMITER=$(echo "${FENCE_CONTENT}" | sed -nE 's/^[[:space:]]*(`{3}|~{3}).*/\1/p')
+						local DELIMITER="${BASH_REMATCH[1]}"
 
 						# Find matching closing fence
-						local CLOSING_LINE=$((FENCE_LINE + 1))
-						while [[ ${CLOSING_LINE} -le ${TOTAL_LINES} ]]; do
-							local CLOSING_CONTENT
-							CLOSING_CONTENT=$(sed -n "${CLOSING_LINE}p" "${FILE}")
+						local CLOSING_IDX=$((FENCE_IDX + 1))
+						while [[ ${CLOSING_IDX} -lt ${TOTAL_LINES} ]]; do
+							local CLOSING_CONTENT="${FILE_LINES[CLOSING_IDX]}"
+							local CLOSING_LINE=$((CLOSING_IDX + 1))
 
-							if echo "${CLOSING_CONTENT}" | grep -qE "^[[:space:]]*${DELIMITER}[[:space:]]*$"; then
+							if [[ "${CLOSING_CONTENT}" =~ ^[[:space:]]*${DELIMITER}[[:space:]]*$ ]]; then
 								# Found the closing fence
 								local BLOCK_START=$((FENCE_LINE + 1))
 								local BLOCK_END=$((CLOSING_LINE - 1))
@@ -121,7 +123,7 @@ check_doc_files() {
 								break # Exit inner while loop
 							fi
 
-							CLOSING_LINE=$((CLOSING_LINE + 1))
+							CLOSING_IDX=$((CLOSING_IDX + 1))
 						done
 						break
 					fi
@@ -130,22 +132,24 @@ check_doc_files() {
 					# Only skip blank lines after marker
 					if [[ ${FENCE_LINE} -gt $((LINE_NUM + 10)) ]]; then
 						# Safety limit: don't search more than 10 lines after marker
-						echo "DEBUG: Marker at line ${LINE_NUM} in ${FILE} has no fence within 10 lines" >&2
+						if [[ ${DEBUG:-} == "1" ]]; then
+							echo "DEBUG: Marker at line ${LINE_NUM} in ${FILE} has no fence within 10 lines" >&2
+						fi
 						break
 					fi
 
-					local FENCE_TRIMMED
-					FENCE_TRIMMED=$(echo "${FENCE_CONTENT}" | tr -d '[:space:]')
-					if [[ -n ${FENCE_TRIMMED} ]] && ! grep -qE '^[[:space:]]*(```|~~~)' <<<"${FENCE_CONTENT}"; then
+					# Trim whitespace
+					local FENCE_TRIMMED="${FENCE_CONTENT//[[:space:]]/}"
+					if [[ -n ${FENCE_TRIMMED} ]] && [[ ! "${FENCE_CONTENT}" =~ ^[[:space:]]*(\`{3}|~{3}) ]]; then
 						# Found non-fence content - this marker has no following fence
 						break
 					fi
 
-					FENCE_LINE=$((FENCE_LINE + 1))
+					FENCE_IDX=$((FENCE_IDX + 1))
 				done
 			fi
 
-			LINE_NUM=$((LINE_NUM + 1))
+			LINE_IDX=$((LINE_IDX + 1))
 		done
 
 		# Step 2: Check each forbidden pattern match
@@ -189,7 +193,8 @@ check_doc_files() {
 # selftest creates a temporary markdown file with allowed and forbidden legacy examples, runs check_doc_files to verify that forbidden patterns outside allowed fenced blocks are detected, and returns 0 on success or 1 on failure.
 # It preserves and restores PATTERNS, DOC_FILES, and ERROR_FOUND around the test and removes the temporary file before returning.
 selftest() {
-	local TEST_FILE="/tmp/check_container_paths_test.md"
+	local TEST_FILE
+	TEST_FILE=$(mktemp --suffix=_check_container_paths_test.md)
 
 	# Write test file line by line to preserve backticks
 	{

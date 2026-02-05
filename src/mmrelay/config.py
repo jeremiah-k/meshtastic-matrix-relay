@@ -211,6 +211,21 @@ def get_credentials_search_paths(
     return candidate_paths
 
 
+# Backward-compatibility alias (tests/integrations may still patch this name)
+def get_candidate_credentials_paths(
+    *,
+    explicit_path: str | None = None,
+    config_paths: Iterable[str] | None = None,
+    include_base_data: bool = True,
+) -> list[str]:
+    """Compatibility wrapper for get_credentials_search_paths()."""
+    return get_credentials_search_paths(
+        explicit_path=explicit_path,
+        config_paths=config_paths,
+        include_base_data=include_base_data,
+    )
+
+
 class InvalidCredentialsPathTypeError(TypeError):
     """Raised when credentials_path is not a string."""
 

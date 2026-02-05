@@ -1430,24 +1430,22 @@ def migrate_plugins(
                     if not any(plugin_dir.iterdir()):
                         plugin_dir.rmdir()
                 except (OSError, IOError) as e:
-                    logger.debug(
+                    logger.warning(
                         "Failed to remove empty plugin directory %s: %s",
                         plugin_dir,
                         e,
                     )
-                    errors.append(f"cleanup {plugin_dir}: {e}")
 
         if old_plugins_dir.exists():
             try:
                 if not any(old_plugins_dir.iterdir()):
                     old_plugins_dir.rmdir()
             except (OSError, IOError) as e:
-                logger.debug(
+                logger.warning(
                     "Failed to remove empty plugins directory %s: %s",
                     old_plugins_dir,
                     e,
                 )
-                errors.append(f"cleanup {old_plugins_dir}: {e}")
 
     success = len(errors) == 0
 

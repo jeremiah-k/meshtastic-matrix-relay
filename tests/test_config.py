@@ -1075,21 +1075,28 @@ class TestCredentials(unittest.TestCase):
             "Should append credentials.json to directory path",
         )
 
+    @patch("mmrelay.config._expand_path", side_effect=lambda x: x)
     @patch("mmrelay.config.os.makedirs")
-    @patch.object(os.path, "altsep", "\\")
+    @patch("mmrelay.config.sys.platform", "win32")
     @patch("builtins.open", new_callable=mock_open)
-    def test_save_credentials_altsep_path_detection(self, _mock_open, _mock_makedirs):
+    def test_save_credentials_altsep_path_detection(
+        self, _mock_open, _mock_makedirs, _mock_expand_path
+    ):
         """Test save_credentials normalizes directory paths with altsep."""
         credentials = {"user_id": "test", "access_token": "token"}
 
-        save_credentials(credentials, credentials_path="/custom/dir/")
+        # Use a Windows-style path to trigger altsep/ntpath logic
+        save_credentials(credentials, credentials_path="C:/custom/dir/")
 
         _mock_open.assert_called_once()
         call_args = _mock_open.call_args
         final_path = call_args[0][0]
+
+        import ntpath
+
         self.assertEqual(
-            final_path,
-            "/custom/dir/credentials.json",
+            ntpath.normpath(final_path),
+            ntpath.normpath("C:/custom/dir/credentials.json"),
             "Should append credentials.json to directory path with altsep",
         )
 

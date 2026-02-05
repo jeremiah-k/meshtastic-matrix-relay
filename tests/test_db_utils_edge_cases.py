@@ -468,7 +468,7 @@ class TestDBUtilsEdgeCases:
             with open(legacy_path, "w") as f:
                 f.write("legacy db content")
 
-            with patch("shutil.move", side_effect=OSError("Permission denied")):
+            with patch("mmrelay.db_utils.shutil.move", side_effect=OSError("Permission denied")):
                 with patch("mmrelay.db_utils.logger") as mock_logger:
                     _migrate_legacy_db_if_needed(
                         default_path=default_path, legacy_candidates=[legacy_path]
@@ -491,7 +491,7 @@ class TestDBUtilsEdgeCases:
             with open(legacy_path, "w") as f:
                 f.write("legacy db content")
 
-            with patch("shutil.move", side_effect=PermissionError("Access denied")):
+            with patch("mmrelay.db_utils.shutil.move", side_effect=PermissionError("Access denied")):
                 with patch("mmrelay.db_utils.logger") as mock_logger:
                     _migrate_legacy_db_if_needed(
                         default_path=default_path, legacy_candidates=[legacy_path]
@@ -535,7 +535,7 @@ class TestDBUtilsEdgeCases:
                     # Rollback calls
                     return real_shutil_move(src, dst)
 
-            with patch("shutil.move", side_effect=mock_move):
+            with patch("mmrelay.db_utils.shutil.move", side_effect=mock_move):
                 with patch("mmrelay.db_utils.logger") as mock_logger:
                     result = _migrate_legacy_db_if_needed(
                         default_path=default_path, legacy_candidates=[legacy_path]
@@ -589,7 +589,7 @@ class TestDBUtilsEdgeCases:
                         f"Unexpected call {call_count[0]}: {src} -> {dst}"
                     )
 
-            with patch("shutil.move", side_effect=mock_move):
+            with patch("mmrelay.db_utils.shutil.move", side_effect=mock_move):
                 with patch("mmrelay.db_utils.logger") as mock_logger:
                     result = _migrate_legacy_db_if_needed(
                         default_path=default_path, legacy_candidates=[legacy_path]
@@ -649,7 +649,7 @@ class TestDBUtilsEdgeCases:
                         f"Unexpected call {call_count[0]}: {src} -> {dst}"
                     )
 
-            with patch("shutil.move", side_effect=mock_move):
+            with patch("mmrelay.db_utils.shutil.move", side_effect=mock_move):
                 with patch("mmrelay.db_utils.logger") as mock_logger:
                     result = _migrate_legacy_db_if_needed(
                         default_path=default_path, legacy_candidates=[legacy_path]
@@ -743,7 +743,7 @@ class TestDBUtilsEdgeCases:
                         f"Unexpected call {call_count[0]}: {src} -> {dst}"
                     )
 
-            with patch("shutil.move", side_effect=mock_move):
+            with patch("mmrelay.db_utils.shutil.move", side_effect=mock_move):
                 with patch("mmrelay.db_utils.logger") as mock_logger:
                     result = _migrate_legacy_db_if_needed(
                         default_path=default_path, legacy_candidates=[legacy_path]
@@ -832,7 +832,7 @@ class TestDBUtilsEdgeCases:
                         f"Unexpected call {call_count[0]}: {src} -> {dst}"
                     )
 
-            with patch("shutil.move", side_effect=mock_move):
+            with patch("mmrelay.db_utils.shutil.move", side_effect=mock_move):
                 with patch("mmrelay.db_utils.logger") as mock_logger:
                     result = _migrate_legacy_db_if_needed(
                         default_path=default_path, legacy_candidates=[legacy_path]

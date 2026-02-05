@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.cli import check_config
 from mmrelay.config import get_config_paths
+from mmrelay.paths import get_home_dir
 
 
 class TestConfigChecker(unittest.TestCase):
@@ -133,9 +134,12 @@ class TestConfigChecker(unittest.TestCase):
         paths = get_config_paths()
 
         self.assertIsInstance(paths, list)
-        self.assertGreaterEqual(
-            len(paths), 2
-        )  # v1.3: Should return at least home and cwd paths
+
+        # Compute expected minimum dynamically based on home vs cwd
+        home_dir = os.path.abspath(str(get_home_dir()))
+        cwd_dir = os.path.abspath(os.getcwd())
+        expected_min = 2 if cwd_dir != home_dir else 1
+        self.assertGreaterEqual(len(paths), expected_min)
 
         # Verify all paths end with config.yaml
         for path in paths:
