@@ -18,10 +18,8 @@ from nio import (
     RoomSendResponse,
 )
 
-from mmrelay.config import get_plugin_data_dir as resolve_plugin_data_dir
-
 # Provide a patchable module attribute for tests while avoiding name confusion.
-get_plugin_data_dir = resolve_plugin_data_dir
+from mmrelay.config import get_plugin_data_dir as resolve_plugin_data_dir
 from mmrelay.constants.config import (
     CONFIG_KEY_REQUIRE_BOT_MENTION,
     DEFAULT_REQUIRE_BOT_MENTION,
@@ -46,6 +44,8 @@ from mmrelay.plugin_loader import logger as plugins_logger
 from mmrelay.plugin_loader import (
     schedule_job,
 )
+
+get_plugin_data_dir = resolve_plugin_data_dir
 
 # Global config variable that will be set from main.py
 config: dict[str, Any] | None = None

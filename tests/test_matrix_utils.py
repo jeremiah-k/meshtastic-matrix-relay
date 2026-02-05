@@ -4177,7 +4177,7 @@ async def test_connect_matrix_missing_required_fields_returns_none():
 
     assert result is None
     assert any(
-        "Matrix section is missing required fields" in call.args[0]
+        "Matrix section is missing required field: access_token" in call.args[0]
         for call in mock_logger.error.call_args_list
     )
 

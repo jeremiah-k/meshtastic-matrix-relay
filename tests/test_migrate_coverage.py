@@ -872,9 +872,9 @@ class TestMigrateDatabaseEdgeCases:
             result = migrate_database(
                 [legacy_root], new_home, dry_run=False, force=False, move=False
             )
-            # Backup failure should not block database migration
-            assert result["success"] is True
-            assert (new_home / "database" / "meshtastic.sqlite").exists()
+            # Backup failure should abort database migration to avoid overwriting data
+            assert result["success"] is False
+            assert "Failed to backup database" in result.get("error", "")
 
     def test_migrate_database_from_database_dir(self, tmp_path: Path) -> None:
         """Test migration from legacy database/ directory."""

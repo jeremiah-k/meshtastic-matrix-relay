@@ -909,16 +909,23 @@ def migrate_database(
 
     # Copy-then-delete pattern: Always copy first, verify, then delete sources only if verification succeeds.
     # This prevents data loss if integrity check fails after files are moved.
+    if not force:
+        for db_path in selected_group:
+            dest = new_db_dir / db_path.name
+            if dest.exists():
+                logger.info("Backing up existing database: %s", dest)
+                backup_path = _backup_file(dest)
+                try:
+                    shutil.copy2(str(dest), str(backup_path))
+                except (OSError, IOError) as e:
+                    logger.error("Failed to backup database %s: %s", dest, e)
+                    return {
+                        "success": False,
+                        "error": f"Failed to backup database {dest}: {e}",
+                    }
+
     for db_path in selected_group:
         dest = new_db_dir / db_path.name
-        if dest.exists() and not force:
-            logger.info("Backing up existing database: %s", dest)
-            backup_path = _backup_file(dest)
-            try:
-                shutil.copy2(str(dest), str(backup_path))
-            except (OSError, IOError) as e:
-                logger.warning("Failed to backup database: %s", e)
-
         try:
             logger.info("Copying database file: %s", db_path)
             shutil.copy2(str(db_path), str(dest))

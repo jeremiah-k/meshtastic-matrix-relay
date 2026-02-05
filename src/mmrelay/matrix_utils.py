@@ -2059,8 +2059,10 @@ async def connect_matrix(
         logger.error("Matrix access token is missing or invalid.")
         return None
     if not isinstance(bot_user_id, str) or not bot_user_id:
-        logger.error("Matrix user ID is missing or invalid.")
-        return None
+        logger.warning(
+            "Matrix user ID is missing or invalid; will attempt whoami after login."
+        )
+        bot_user_id = ""
 
     matrix_client = _initialize_matrix_client(
         homeserver=matrix_homeserver,
@@ -2072,6 +2074,14 @@ async def connect_matrix(
     )
 
     await _perform_matrix_login(matrix_client, auth_info)
+    if not bot_user_id:
+        resolved_user_id = matrix_client.user_id
+        if isinstance(resolved_user_id, str) and resolved_user_id:
+            bot_user_id = resolved_user_id
+            globals()["bot_user_id"] = resolved_user_id
+        else:
+            logger.error("Matrix user ID is missing or invalid.")
+            return None
 
     if e2ee_enabled:
         await _maybe_upload_e2ee_keys(matrix_client)
