@@ -170,15 +170,15 @@ database: delete_plugin_data(plugin_name, meshtastic_id)       # Delete from SQL
 
 ### File Paths (v1.3)
 
-| File Type           | v1.3 Path                                     | Notes                                  |
-| ------------------- | --------------------------------------------- | -------------------------------------- |
-| Config              | `$MMRELAY_HOME/config.yaml` or user-specified | Read-only search in multiple locations |
-| Credentials         | `$MMRELAY_HOME/credentials.json`              | One location, no fallbacks             |
-| Database            | `$MMRELAY_HOME/database/meshtastic.sqlite`    | Single location, auto-migrate          |
-| Logs                | `$MMRELAY_HOME/logs/mmrelay.log`              | Default, overrideable via env var      |
-| E2EE Store          | `$MMRELAY_HOME/store/`                        | Unix/macOS only                        |
-| Plugins (custom)    | `$MMRELAY_HOME/plugins/custom/<name>`         | User-installed plugins                 |
-| Plugins (community) | `$MMRELAY_HOME/plugins/community/<name>`      | Third-party plugins                    |
+| File Type           | v1.3 Path                                     | Notes                                                        |
+| ------------------- | --------------------------------------------- | ------------------------------------------------------------ |
+| Config              | `$MMRELAY_HOME/config.yaml` or user-specified | Read-only search in multiple locations                       |
+| Credentials         | `$MMRELAY_HOME/credentials.json`              | One location, no fallbacks                                   |
+| Database            | `$MMRELAY_HOME/database/meshtastic.sqlite`    | Single location; migration is explicit via `mmrelay migrate` |
+| Logs                | `$MMRELAY_HOME/logs/mmrelay.log`              | Default, overrideable via env var                            |
+| E2EE Store          | `$MMRELAY_HOME/store/`                        | Unix/macOS only                                              |
+| Plugins (custom)    | `$MMRELAY_HOME/plugins/custom/<name>`         | User-installed plugins                                       |
+| Plugins (community) | `$MMRELAY_HOME/plugins/community/<name>`      | Third-party plugins                                          |
 
 ---
 
@@ -1112,7 +1112,7 @@ args:
 
 ### Deprecated Features
 
-**Removed in v1.3**:
+**Deprecated in v1.3 (removed in v1.4)**:
 
 - `--base-dir` CLI argument (use `--home`)
 - `--data-dir` CLI argument (use `--home`)
@@ -1120,7 +1120,7 @@ args:
 - `MMRELAY_DATA_DIR` environment variable (use `MMRELAY_HOME`)
 - `is_new_layout_enabled()` / `is_legacy_layout_enabled()` functions
 - `get_base_dir()` function (use `get_home_dir()`)
-- `get_data_dir()` function (individual path functions)
+- `get_data_dir()` function (use `get_home_dir()` and specific path helpers)
 - Dual directory concept (single home directory only)
 
 ### New Features in v1.3

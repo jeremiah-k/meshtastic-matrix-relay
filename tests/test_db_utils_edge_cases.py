@@ -54,6 +54,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
         """
         # Clear any cached database path
         clear_db_path_cache()
+        _reset_db_manager()
         # Reset global config
         import mmrelay.db_utils
 
@@ -64,6 +65,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
         Cleans up test environment after each test by clearing the cached database path.
         """
         clear_db_path_cache()
+        _reset_db_manager()
 
     def test_get_db_path_permission_error(self):
         """
@@ -364,7 +366,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                 Returns:
                     dict: Mapping with keys `database_dir` (the test directory path) and `legacy_sources` (an empty list).
                 """
-                mmrelay.db_utils._cached_db_path = None
+                clear_db_path_cache()
                 return {"database_dir": temp_dir, "legacy_sources": []}
 
             with patch(

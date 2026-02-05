@@ -177,18 +177,19 @@ def get_config_paths(*, explicit: str | None = None) -> list[Path]:
         if config_path not in candidates:
             candidates.append(config_path)
 
-    # 3. Current working directory (fallback)
-    cwd = Path.cwd()
-    cwd_config = cwd / "config.yaml"
-    if cwd != home and cwd_config not in candidates:
-        candidates.append(cwd_config)
+    if not explicit:
+        # 3. Current working directory (fallback)
+        cwd = Path.cwd()
+        cwd_config = cwd / "config.yaml"
+        if cwd != home and cwd_config not in candidates:
+            candidates.append(cwd_config)
 
-    # 4. Legacy locations (deprecation window)
-    # These are searched for migration purposes
-    legacy_home = Path.home() / f".{APP_NAME}"
-    if legacy_home != home and legacy_home.exists():
-        if (legacy_home / "config.yaml") not in candidates:
-            candidates.append(legacy_home / "config.yaml")
+        # 4. Legacy locations (deprecation window)
+        # These are searched for migration purposes
+        legacy_home = Path.home() / f".{APP_NAME}"
+        if legacy_home != home and legacy_home.exists():
+            if (legacy_home / "config.yaml") not in candidates:
+                candidates.append(legacy_home / "config.yaml")
 
     # Remove duplicates while preserving order
     seen = set()
@@ -596,7 +597,6 @@ def resolve_all_paths() -> dict[str, Any]:
     Returns:
         dict: Mapping of the keys above to their resolved string values or metadata.
     """
-    # mypy: ignore[arg-type]  # cli_override may be None which is valid for dict[str, Any]
     home = get_home_dir()
     legacy_dirs = get_legacy_dirs()
 

@@ -37,20 +37,20 @@ from mmrelay.paths import get_home_dir
 class TestPathIsWithinHome:
     """Test _path_is_within_home function coverage."""
 
-    def test_path_is_within_home_exact_match(self, tmp_path):
+    def test_path_is_within_home_exact_match(self, tmp_path: Path) -> None:
         """Test path that is exactly the home directory."""
         home = tmp_path / "home"
         home.mkdir()
         assert _path_is_within_home(home, home) is True
 
-    def test_path_is_within_home_subdirectory(self, tmp_path):
+    def test_path_is_within_home_subdirectory(self, tmp_path: Path) -> None:
         """Test path that is inside home directory."""
         home = tmp_path / "home"
         home.mkdir()
         subdir = home / "subdir"
         assert _path_is_within_home(subdir, home) is True
 
-    def test_path_is_within_home_not_inside(self, tmp_path):
+    def test_path_is_within_home_not_inside(self, tmp_path: Path) -> None:
         """Test path that is outside home directory."""
         home = tmp_path / "home"
         home.mkdir()
@@ -58,7 +58,7 @@ class TestPathIsWithinHome:
         other.mkdir()
         assert _path_is_within_home(other, home) is False
 
-    def test_path_is_within_home_os_error_resolve(self, tmp_path):
+    def test_path_is_within_home_os_error_resolve(self, tmp_path: Path) -> None:
         """Test handling of OSError during path resolution."""
         home = tmp_path / "home"
         path = tmp_path / "path"
@@ -72,26 +72,26 @@ class TestPathIsWithinHome:
 class TestDirHasEntries:
     """Test _dir_has_entries function coverage."""
 
-    def test_dir_has_entries_nonexistent(self, tmp_path):
+    def test_dir_has_entries_nonexistent(self, tmp_path: Path) -> None:
         """Test non-existent directory returns False."""
         result = _dir_has_entries(tmp_path / "nonexistent")
         assert result is False
 
-    def test_dir_has_entries_file(self, tmp_path):
+    def test_dir_has_entries_file(self, tmp_path: Path) -> None:
         """Test file path returns False."""
         file_path = tmp_path / "file.txt"
         file_path.write_text("test")
         result = _dir_has_entries(file_path)
         assert result is False
 
-    def test_dir_has_entries_empty(self, tmp_path):
+    def test_dir_has_entries_empty(self, tmp_path: Path) -> None:
         """Test empty directory returns False."""
         empty_dir = tmp_path / "empty"
         empty_dir.mkdir()
         result = _dir_has_entries(empty_dir)
         assert result is False
 
-    def test_dir_has_entries_with_files(self, tmp_path):
+    def test_dir_has_entries_with_files(self, tmp_path: Path) -> None:
         """Test directory with files returns True."""
         dir_with_files = tmp_path / "with_files"
         dir_with_files.mkdir()
@@ -99,7 +99,7 @@ class TestDirHasEntries:
         result = _dir_has_entries(dir_with_files)
         assert result is True
 
-    def test_dir_has_entries_os_error_iterdir(self, tmp_path):
+    def test_dir_has_entries_os_error_iterdir(self, tmp_path: Path) -> None:
         """Test handling of OSError during iterdir()."""
         dir_path = tmp_path / "test_dir"
         dir_path.mkdir()
@@ -112,7 +112,7 @@ class TestDirHasEntries:
 class TestFindLegacyData:
     """Test _find_legacy_data function coverage."""
 
-    def test_find_legacy_data_credentials(self, tmp_path):
+    def test_find_legacy_data_credentials(self, tmp_path: Path) -> None:
         """Test finding credentials.json."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -124,7 +124,7 @@ class TestFindLegacyData:
         assert findings[0]["type"] == "credentials"
         assert findings[0]["path"] == str(creds)
 
-    def test_find_legacy_data_database(self, tmp_path):
+    def test_find_legacy_data_database(self, tmp_path: Path) -> None:
         """Test finding meshtastic.sqlite."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -135,7 +135,7 @@ class TestFindLegacyData:
         assert len(findings) == 1
         assert findings[0]["type"] == "database"
 
-    def test_find_legacy_data_wal_shm(self, tmp_path):
+    def test_find_legacy_data_wal_shm(self, tmp_path: Path) -> None:
         """Test finding database with WAL/SHM sidecars."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -151,7 +151,7 @@ class TestFindLegacyData:
         db_findings = [f for f in findings if f["type"] == "database"]
         assert len(db_findings) == 3
 
-    def test_find_legacy_data_partial_database(self, tmp_path):
+    def test_find_legacy_data_partial_database(self, tmp_path: Path) -> None:
         """Test finding database in partial new layout (data/ directory)."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -165,7 +165,7 @@ class TestFindLegacyData:
         assert len(db_findings) == 1
         assert "data" in db_findings[0]["path"]
 
-    def test_find_legacy_data_logs(self, tmp_path):
+    def test_find_legacy_data_logs(self, tmp_path: Path) -> None:
         """Test finding logs directory."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -177,7 +177,7 @@ class TestFindLegacyData:
         log_findings = [f for f in findings if f["type"] == "logs"]
         assert len(log_findings) == 1
 
-    def test_find_legacy_data_store(self, tmp_path):
+    def test_find_legacy_data_store(self, tmp_path: Path) -> None:
         """Test finding E2EE store directory."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -189,7 +189,7 @@ class TestFindLegacyData:
         store_findings = [f for f in findings if f["type"] == "e2ee_store"]
         assert len(store_findings) == 1
 
-    def test_find_legacy_data_plugins(self, tmp_path):
+    def test_find_legacy_data_plugins(self, tmp_path: Path) -> None:
         """Test finding plugins directory."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -201,7 +201,7 @@ class TestFindLegacyData:
         plugin_findings = [f for f in findings if f["type"] == "plugins"]
         assert len(plugin_findings) == 1
 
-    def test_find_legacy_data_deduplication(self, tmp_path):
+    def test_find_legacy_data_deduplication(self, tmp_path: Path) -> None:
         """Test that duplicate paths are deduplicated."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -226,18 +226,18 @@ class TestFindLegacyData:
 class TestGetMostRecentDatabase:
     """Test _get_most_recent_database function coverage."""
 
-    def test_get_most_recent_database_empty_list(self):
+    def test_get_most_recent_database_empty_list(self) -> None:
         """Test with empty candidates list returns None."""
         result = _get_most_recent_database([])
         assert result is None
 
-    def test_get_most_recent_database_all_nonexistent(self, tmp_path):
+    def test_get_most_recent_database_all_nonexistent(self, tmp_path: Path) -> None:
         """Test when all candidates don't exist."""
         candidates = [tmp_path / "db1.sqlite", tmp_path / "db2.sqlite"]
         result = _get_most_recent_database(candidates)
         assert result is None
 
-    def test_get_most_recent_database_selects_by_mtime(self, tmp_path):
+    def test_get_most_recent_database_selects_by_mtime(self, tmp_path: Path) -> None:
         """
         Validate that _get_most_recent_database selects the newest file based on modification time.
 
@@ -261,7 +261,7 @@ class TestGetMostRecentDatabase:
         result = _get_most_recent_database([db1, db2])
         assert result == db2
 
-    def test_get_most_recent_database_with_sidecars(self, tmp_path):
+    def test_get_most_recent_database_with_sidecars(self, tmp_path: Path) -> None:
         """Test selecting most recent database with sidecars."""
         import time
 
@@ -292,7 +292,7 @@ class TestGetMostRecentDatabase:
         # Should return the base path of the most recent group
         assert result == new_db
 
-    def test_get_most_recent_database_empty_group(self, tmp_path):
+    def test_get_most_recent_database_empty_group(self, tmp_path: Path) -> None:
         """Test when db_groups is empty after filtering."""
         # Create candidate that will be filtered out (doesn't exist)
         non_existent = tmp_path / "nonexistent.sqlite"
@@ -306,7 +306,7 @@ class TestGetMostRecentDatabase:
 class TestBackupFile:
     """Test _backup_file function coverage."""
 
-    def test_backup_file_creates_timestamped_name(self, tmp_path):
+    def test_backup_file_creates_timestamped_name(self, tmp_path: Path) -> None:
         """Test that backup filename includes timestamp."""
         src_path = tmp_path / "test.txt"
         src_path.write_text("content")
@@ -317,7 +317,7 @@ class TestBackupFile:
         assert backup_path.name.startswith("test.txt.bak.")
         assert backup_path.parent == src_path.parent
 
-    def test_backup_file_custom_suffix(self, tmp_path):
+    def test_backup_file_custom_suffix(self, tmp_path: Path) -> None:
         """Test backup with custom suffix."""
         src_path = tmp_path / "test.txt"
         src_path.write_text("content")
@@ -330,7 +330,7 @@ class TestBackupFile:
 class TestMigrationStatePath:
     """Test _get_migration_state_path function coverage."""
 
-    def test_get_migration_state_path(self):
+    def test_get_migration_state_path(self) -> None:
         """Test that state path is under home directory."""
         state_path = _get_migration_state_path()
         home = get_home_dir()
@@ -342,7 +342,7 @@ class TestMigrationStatePath:
 class TestMigrateDatabaseEdgeCases:
     """Test migrate_database error paths and edge cases."""
 
-    def test_migrate_database_all_candidates_invalid(self, tmp_path):
+    def test_migrate_database_all_candidates_invalid(self, tmp_path: Path) -> None:
         """Test when all database candidates are invalid."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
@@ -357,7 +357,7 @@ class TestMigrateDatabaseEdgeCases:
         assert result["success"] is True
         assert "No database files found" in result["message"]
 
-    def test_migrate_database_most_recent_not_found(self, tmp_path):
+    def test_migrate_database_most_recent_not_found(self, tmp_path: Path) -> None:
         """Test when _get_most_recent_database returns None."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
@@ -375,7 +375,7 @@ class TestMigrateDatabaseEdgeCases:
             assert result["success"] is False
             assert "No valid database files found" in result["message"]
 
-    def test_migrate_database_backup_failure(self, tmp_path):
+    def test_migrate_database_backup_failure(self, tmp_path: Path) -> None:
         """Test handling of backup failure."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
@@ -433,7 +433,7 @@ class TestMigrateDatabaseEdgeCases:
             # Should still succeed despite backup failure
             assert result["success"] is True
 
-    def test_migrate_database_move_failure(self, tmp_path):
+    def test_migrate_database_move_failure(self, tmp_path: Path) -> None:
         """Test handling of move/copy failure."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
@@ -449,7 +449,7 @@ class TestMigrateDatabaseEdgeCases:
             assert result["success"] is False
             assert "error" in result
 
-    def test_migrate_database_integrity_check_failure(self, tmp_path):
+    def test_migrate_database_integrity_check_failure(self, tmp_path: Path) -> None:
         """Test SQLite integrity check failure."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
@@ -475,7 +475,7 @@ class TestMigrateDatabaseEdgeCases:
 
             assert "integrity check failed" in str(exc_info.value).lower()
 
-    def test_migrate_database_integrity_check_db_error(self, tmp_path):
+    def test_migrate_database_integrity_check_db_error(self, tmp_path: Path) -> None:
         """Test SQLite DatabaseError during integrity check."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
@@ -499,7 +499,9 @@ class TestMigrateDatabaseEdgeCases:
 
             assert "Database verification failed" in str(exc_info.value)
 
-    def test_migrate_database_wal_file_skip_integrity_check(self, tmp_path):
+    def test_migrate_database_wal_file_skip_integrity_check(
+        self, tmp_path: Path
+    ) -> None:
         """Test that WAL/SHM files skip integrity check."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
@@ -523,7 +525,7 @@ class TestMigrateDatabaseEdgeCases:
 class TestMigrateStoreEdgeCases:
     """Test migrate_store error paths and edge cases."""
 
-    def test_migrate_store_backup_directory_failure(self, tmp_path):
+    def test_migrate_store_backup_directory_failure(self, tmp_path: Path) -> None:
         """Test handling of directory backup failure."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
@@ -544,7 +546,9 @@ class TestMigrateStoreEdgeCases:
             # Should still succeed despite backup failure
             assert result["success"] is True
 
-    def test_migrate_store_move_existing_directory_removal(self, tmp_path):
+    def test_migrate_store_move_existing_directory_removal(
+        self, tmp_path: Path
+    ) -> None:
         """Test that move operation removes existing directory."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
@@ -568,7 +572,9 @@ class TestMigrateStoreEdgeCases:
         assert not (new_store_dir / "old_file").exists()
         assert (new_store_dir / "new_file").exists()
 
-    def test_migrate_store_copy_existing_directory_removal(self, tmp_path):
+    def test_migrate_store_copy_existing_directory_removal(
+        self, tmp_path: Path
+    ) -> None:
         """Test that copy operation removes existing directory."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
@@ -592,7 +598,7 @@ class TestMigrateStoreEdgeCases:
         assert not (new_store_dir / "old_file").exists()
         assert (new_store_dir / "new_file").exists()
 
-    def test_migrate_store_copytree_failure(self, tmp_path):
+    def test_migrate_store_copytree_failure(self, tmp_path: Path) -> None:
         """Test handling of copytree failure."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
@@ -613,7 +619,7 @@ class TestMigrateStoreEdgeCases:
 class TestMigratePluginsEdgeCases:
     """Test migrate_plugins error paths and edge cases."""
 
-    def test_migrate_plugins_backup_custom_plugin_failure(self, tmp_path):
+    def test_migrate_plugins_backup_custom_plugin_failure(self, tmp_path: Path) -> None:
         """Test handling of custom plugin backup failure."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
@@ -639,7 +645,7 @@ class TestMigratePluginsEdgeCases:
             assert result["success"] is False
             assert "error" in result
 
-    def test_migrate_plugins_move_removes_existing_custom(self, tmp_path):
+    def test_migrate_plugins_move_removes_existing_custom(self, tmp_path: Path) -> None:
         """Test that move operation removes existing custom plugin."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
@@ -671,7 +677,7 @@ class TestMigratePluginsEdgeCases:
         # New file should exist
         assert (new_custom_dir / "test_plugin" / "new_file.txt").exists()
 
-    def test_migrate_plugins_copy_removes_existing_custom(self, tmp_path):
+    def test_migrate_plugins_copy_removes_existing_custom(self, tmp_path: Path) -> None:
         """Test that copy operation removes existing custom plugin."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
@@ -703,7 +709,9 @@ class TestMigratePluginsEdgeCases:
         # New file should exist
         assert (new_custom_dir / "test_plugin" / "new_file.txt").exists()
 
-    def test_migrate_plugins_cleanup_empty_custom_dir_on_move(self, tmp_path):
+    def test_migrate_plugins_cleanup_empty_custom_dir_on_move(
+        self, tmp_path: Path
+    ) -> None:
         """Test that move operation cleans up empty custom directory."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
@@ -725,7 +733,9 @@ class TestMigratePluginsEdgeCases:
         # After move, old custom dir should be empty and removed
         assert not old_custom_dir.exists() or not list(old_custom_dir.iterdir())
 
-    def test_migrate_plugins_cleanup_empty_plugins_dir_on_move(self, tmp_path):
+    def test_migrate_plugins_cleanup_empty_plugins_dir_on_move(
+        self, tmp_path: Path
+    ) -> None:
         """Test that move operation cleans up empty plugins directory."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
@@ -746,7 +756,7 @@ class TestMigratePluginsEdgeCases:
         # After moving all plugins, old plugins dir should be empty or removed
         # The exact behavior depends on directory state, but cleanup is attempted
 
-    def test_migrate_plugins_cleanup_os_error_handling(self, tmp_path):
+    def test_migrate_plugins_cleanup_os_error_handling(self, tmp_path: Path) -> None:
         """Test handling of OSError during cleanup."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
@@ -791,7 +801,9 @@ class TestMigratePluginsEdgeCases:
 class TestMigrateGpxtrackerEdgeCases:
     """Test migrate_gpxtracker error paths and edge cases."""
 
-    def test_migrate_gpxtracker_yaml_import_error(self, tmp_path, monkeypatch):
+    def test_migrate_gpxtracker_yaml_import_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test handling of YAML import error."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
@@ -833,13 +845,13 @@ class TestMigrateGpxtrackerEdgeCases:
         assert result["success"] is True
         assert "gpxtracker plugin not configured" in result["message"]
 
-    def test_migrate_gpxtracker_backup_failure(self, tmp_path):
+    def test_migrate_gpxtracker_backup_failure(self, tmp_path: Path) -> None:
         """Test handling of GPX file backup failure."""
         from datetime import datetime
 
         new_home = tmp_path / "new_home"
         new_home.mkdir()
-        new_gpx_dir = new_home / "plugins" / "gpxtracker" / "data"
+        new_gpx_dir = new_home / "plugins" / "community" / "gpxtracker" / "data"
         new_gpx_dir.mkdir(parents=True)
         existing_gpx = new_gpx_dir / "existing.gpx"
         existing_gpx.write_text("existing")
@@ -889,14 +901,22 @@ class TestMigrateGpxtrackerEdgeCases:
             mock.patch("shutil.copy2", side_effect=selective_copy2),
         ):
             mock_datetime.now.return_value = fixed_time
-            migrate_gpxtracker(
+            result = migrate_gpxtracker(
                 [legacy_root], new_home, dry_run=False, force=False, move=False
             )
+
+        assert result["success"] is True
+        assert gpx_file.exists()
+        assert gpx_file.read_text() == "track"
+        assert dest_path.read_text() == "existing"
+        assert sorted(p.name for p in new_gpx_dir.iterdir()) == sorted(
+            [existing_gpx.name, dest_path.name]
+        )
 
     @pytest.mark.xfail(
         reason="known move/copy edge-case - see ISSUE-XXXX", strict=False
     )
-    def test_migrate_gpxtracker_move_failure(self, tmp_path):
+    def test_migrate_gpxtracker_move_failure(self, tmp_path: Path) -> None:
         """Test handling of GPX file move/copy failure."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
@@ -920,7 +940,7 @@ community-plugins:
             )
             assert result["success"] is False
 
-    def test_migrate_gpxtracker_expanded_path_not_found(self, tmp_path):
+    def test_migrate_gpxtracker_expanded_path_not_found(self, tmp_path: Path) -> None:
         """Test handling when expanded GPX directory doesn't exist."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
@@ -946,7 +966,9 @@ community-plugins:
 class TestRollbackMigration:
     """Test rollback_migration function coverage."""
 
-    def test_rollback_migration_no_migration_completed(self, tmp_path, monkeypatch):
+    def test_rollback_migration_no_migration_completed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test rollback when no migration was completed."""
         # Ensure migration state file doesn't exist
         home = tmp_path / "home"
@@ -958,8 +980,8 @@ class TestRollbackMigration:
         assert "No migration to rollback" in result["message"]
 
     def test_rollback_migration_restore_credentials_success(
-        self, tmp_path, monkeypatch
-    ):
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test successful rollback of credentials."""
         home = tmp_path / "home"
         home.mkdir()
@@ -983,7 +1005,9 @@ class TestRollbackMigration:
         assert creds.exists()
         assert creds.read_text() == '{"backup": true}'
 
-    def test_rollback_migration_restore_database_success(self, tmp_path, monkeypatch):
+    def test_rollback_migration_restore_database_success(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test successful rollback of database."""
         home = tmp_path / "home"
         home.mkdir()
@@ -1009,8 +1033,8 @@ class TestRollbackMigration:
         assert db.read_text() == "backup db"
 
     def test_rollback_migration_restore_credentials_failure(
-        self, tmp_path, monkeypatch
-    ):
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test handling of credentials restore failure."""
         home = tmp_path / "home"
         home.mkdir()
@@ -1031,7 +1055,9 @@ class TestRollbackMigration:
             # Should report failure when restore errors occur
             assert result["success"] is False
 
-    def test_rollback_migration_restore_database_failure(self, tmp_path, monkeypatch):
+    def test_rollback_migration_restore_database_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test handling of database restore failure."""
         home = tmp_path / "home"
         home.mkdir()
@@ -1054,7 +1080,9 @@ class TestRollbackMigration:
             # Should report failure when restore errors occur
             assert result["success"] is False
 
-    def test_rollback_migration_remove_state_file_success(self, tmp_path, monkeypatch):
+    def test_rollback_migration_remove_state_file_success(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test that state file is removed on successful rollback."""
         home = tmp_path / "home"
         home.mkdir()
@@ -1070,7 +1098,9 @@ class TestRollbackMigration:
         # State file should be removed
         assert not state_file.exists()
 
-    def test_rollback_migration_remove_state_file_failure(self, tmp_path, monkeypatch):
+    def test_rollback_migration_remove_state_file_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test handling of state file removal failure."""
         home = tmp_path / "home"
         home.mkdir()
@@ -1088,8 +1118,8 @@ class TestRollbackMigration:
             assert result["success"] is False
 
     def test_rollback_migration_multiple_backups_selects_most_recent(
-        self, tmp_path, monkeypatch
-    ):
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test that rollback selects most recent backup."""
         home = tmp_path / "home"
         home.mkdir()

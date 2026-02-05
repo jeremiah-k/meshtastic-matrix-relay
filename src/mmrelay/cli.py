@@ -771,9 +771,11 @@ def _find_credentials_json_path(config_path: str | None) -> str | None:
     Locate a credentials.json file following the unified HOME-first then legacy search order.
 
     Search order:
-    1) credentials.json adjacent to `config_path` (if `config_path` is provided),
-    2) credentials.json at the resolved MMRELAY_HOME credentials path,
-    3) credentials.json in each legacy source root.
+    1) Explicit credentials path from env/config (MMRELAY_CREDENTIALS_PATH or
+       credentials_path in config),
+    2) credentials.json adjacent to `config_path` (if `config_path` is provided),
+    3) credentials.json at the resolved MMRELAY_HOME credentials path,
+    4) credentials.json in each legacy source root.
 
     If a credentials.json is found in a legacy location, a migration suggestion is printed to stderr.
 
@@ -783,7 +785,12 @@ def _find_credentials_json_path(config_path: str | None) -> str | None:
     Returns:
         str | None: Absolute path to the discovered credentials.json, or `None` if no credentials file is found.
     """
+    from mmrelay.config import get_explicit_credentials_path, relay_config
     from mmrelay.paths import resolve_all_paths
+
+    explicit_path = get_explicit_credentials_path(relay_config)
+    if explicit_path and os.path.exists(explicit_path):
+        return explicit_path
 
     if config_path:
         config_dir = os.path.dirname(config_path)

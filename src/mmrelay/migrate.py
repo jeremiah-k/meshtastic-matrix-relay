@@ -914,10 +914,8 @@ def migrate_database(
     if not dry_run and not most_recent.name.endswith(("-wal", "-shm")):
         main_db = new_db_dir / most_recent.name
         try:
-            conn = sqlite3.connect(str(main_db))
-            cur = conn.execute("PRAGMA integrity_check")
-            result = cur.fetchone()
-            conn.close()
+            with sqlite3.connect(str(main_db)) as conn:
+                result = conn.execute("PRAGMA integrity_check").fetchone()
             if result and result[0] != "ok":
                 logger.error("Database integrity check failed: %s", result[0])
                 logger.info("Cleaning up failed migration attempt")
@@ -1479,6 +1477,33 @@ def migrate_gpxtracker(
             "Old GPX directory not found at expanded path: %s", expanded_old_gpx_dir
         )
 
+    try:
+        if expanded_old_gpx_dir.resolve() == new_gpx_data_dir.resolve():
+            logger.info(
+                "gpxtracker source directory matches destination; skipping migration"
+            )
+            return {
+                "success": True,
+                "migrated_count": 0,
+                "old_path": str(expanded_old_gpx_dir),
+                "new_path": str(new_gpx_data_dir),
+                "action": "copy",
+                "message": "gpxtracker source equals destination, skipping",
+            }
+    except OSError:
+        if expanded_old_gpx_dir.absolute() == new_gpx_data_dir.absolute():
+            logger.info(
+                "gpxtracker source directory matches destination; skipping migration"
+            )
+            return {
+                "success": True,
+                "migrated_count": 0,
+                "old_path": str(expanded_old_gpx_dir),
+                "new_path": str(new_gpx_data_dir),
+                "action": "copy",
+                "message": "gpxtracker source equals destination, skipping",
+            }
+
     # Copy GPX files
     try:
         for gpx_file in expanded_old_gpx_dir.glob("*.gpx"):
@@ -1486,6 +1511,7 @@ def migrate_gpxtracker(
             new_name = f"{gpx_file.stem}_migrated_{timestamp}.gpx"
             dest_path = new_gpx_data_dir / new_name
 
+            backup_failed = False
             if dest_path.exists() and not force:
                 logger.info("Backing up existing GPX file: %s", dest_path)
                 backup_path = _backup_file(dest_path)
@@ -1493,6 +1519,11 @@ def migrate_gpxtracker(
                     shutil.copy2(str(dest_path), str(backup_path))
                 except (OSError, IOError) as e:
                     logger.warning("Failed to backup GPX file: %s", e)
+                    backup_failed = True
+
+            if backup_failed:
+                logger.info("Skipping GPX file due to backup failure: %s", dest_path)
+                continue
 
             try:
                 logger.info("Copying GPX file: %s", gpx_file)
