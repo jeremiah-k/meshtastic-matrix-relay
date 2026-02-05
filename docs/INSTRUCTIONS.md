@@ -137,7 +137,8 @@ MMRelay stores all runtime data in the home directory (`~/.mmrelay` by default, 
 - `database/meshtastic.sqlite` - SQLite database for node information
 - `logs/` - Application logs
 - `store/` - E2EE encryption keys (Linux/macOS)
-- `plugins/` - Custom and community plugins
+- `plugins/custom/` - Custom plugins
+- `plugins/community/` - Community plugins
 
 ### Useful Commands
 

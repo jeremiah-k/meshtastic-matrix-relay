@@ -316,25 +316,27 @@ class TestPathResolutionPlugins(unittest.TestCase):
     def test_get_plugin_code_dir(self):
         """Test get_plugin_code_dir returns correct path (line 304)."""
         with patch("mmrelay.paths.get_plugins_dir", return_value=Path("/home/plugins")):
-            result = get_plugin_code_dir("test_plugin")
+            result = get_plugin_code_dir("test_plugin", plugin_type="community")
 
-            expected = Path("/home/plugins") / "test_plugin"
+            expected = Path("/home/plugins") / "community" / "test_plugin"
             self.assertEqual(result, expected)
 
     def test_get_plugin_data_dir_with_subdir(self):
         """Test get_plugin_data_dir with subdir returns Tier 2 path (lines 323-325)."""
         with patch("mmrelay.paths.get_plugins_dir", return_value=Path("/home/plugins")):
-            result = get_plugin_data_dir("weather", subdir="gpx")
+            result = get_plugin_data_dir(
+                "weather", subdir="gpx", plugin_type="community"
+            )
 
-            expected = Path("/home/plugins") / "weather" / "data" / "gpx"
+            expected = Path("/home/plugins") / "community" / "weather" / "data" / "gpx"
             self.assertEqual(result, expected)
 
     def test_get_plugin_data_dir_without_subdir(self):
-        """Test get_plugin_data_dir without subdir returns Tier 3 path (lines 327-328)."""
-        with patch("mmrelay.paths.get_home_dir", return_value=Path("/home")):
-            result = get_plugin_data_dir("weather")
+        """Test get_plugin_data_dir without subdir returns Tier 2 path."""
+        with patch("mmrelay.paths.get_plugins_dir", return_value=Path("/home/plugins")):
+            result = get_plugin_data_dir("weather", plugin_type="custom")
 
-            expected = Path("/home") / "database" / "plugin_data" / "weather"
+            expected = Path("/home/plugins") / "custom" / "weather" / "data"
             self.assertEqual(result, expected)
 
     def test_get_plugin_database_path(self):

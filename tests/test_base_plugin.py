@@ -672,7 +672,7 @@ class TestBasePlugin(unittest.TestCase):
             result = plugin.get_plugin_data_dir()
 
             self.assertEqual(result, "/path/to/plugin/data")
-            mock_get_dir.assert_called_once_with("test_plugin")
+            mock_get_dir.assert_called_once_with("test_plugin", plugin_type="core")
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_get_my_node_id_success(self, mock_connect_meshtastic):
@@ -1267,17 +1267,18 @@ class TestBasePlugin(unittest.TestCase):
         mock_store.assert_called_once_with("test_plugin", "!node123", expected_data)
 
     @patch("mmrelay.plugins.base_plugin.get_plugin_data_dir")
-    @patch("os.makedirs")
-    def test_get_plugin_data_dir_with_subdir(self, mock_makedirs, mock_get_dir):
+    def test_get_plugin_data_dir_with_subdir(self, mock_get_dir):
         """Test get_plugin_data_dir with subdirectory (lines 607-609)."""
-        mock_get_dir.return_value = "/base/plugin/dir"
+        mock_get_dir.return_value = "/base/plugin/dir/subdir"
 
         plugin = MockPlugin()
         result = plugin.get_plugin_data_dir("subdir")
 
         expected_path = "/base/plugin/dir/subdir"
         self.assertEqual(result, expected_path)
-        mock_makedirs.assert_called_once_with(expected_path, exist_ok=True)
+        mock_get_dir.assert_called_once_with(
+            "test_plugin", subdir="subdir", plugin_type="core"
+        )
 
 
 if __name__ == "__main__":

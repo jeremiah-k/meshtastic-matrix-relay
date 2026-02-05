@@ -1307,7 +1307,9 @@ class TestMigrateGpxtracker:
 
             assert result["success"] is True
             assert result["dry_run"] is True
-            assert not (new_home / "plugins" / "gpxtracker" / "data").exists()
+            assert not (
+                new_home / "plugins" / "community" / "gpxtracker" / "data"
+            ).exists()
 
     def test_copy_gpx_files(self, tmp_path, monkeypatch):
         """Test copies GPX files."""
@@ -1328,6 +1330,9 @@ class TestMigrateGpxtracker:
             assert result["success"] is True
             assert result["action"] == "copy"
             assert result["migrated_count"] == 2
+            expected_dir = new_home / "plugins" / "community" / "gpxtracker" / "data"
+            assert result["new_path"] == str(expected_dir)
+            assert expected_dir.exists()
 
 
 class TestIsMigrationNeeded:

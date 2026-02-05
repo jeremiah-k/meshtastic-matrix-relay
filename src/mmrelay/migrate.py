@@ -36,13 +36,13 @@ Partial New Layout (v1.2.10-1.2.11):
 Plugin Data Migration (Three-Tier System):
 
   Plugin data tiers in v1.3:
-    - Tier 1 (Code): $MMRELAY_HOME/plugins/{name>/
-    - Tier 2 (Filesystem): $MMRELAY_HOME/plugins/{name}/data/
+    - Tier 1 (Code): $MMRELAY_HOME/plugins/custom/{name}/ or $MMRELAY_HOME/plugins/community/{name}/
+    - Tier 2 (Filesystem): $MMRELAY_HOME/plugins/custom/{name}/data/ or $MMRELAY_HOME/plugins/community/{name}/data/
     - Tier 3 (Database): SQLite via store_plugin_data()
 
   Migration for gpxtracker (community plugin):
     Old: gpx_directory: "~/my_gpx_files"
-    New: $MMRELAY_HOME/plugins/gpxtracker/data/
+    New: $MMRELAY_HOME/plugins/community/gpxtracker/data/
 """
 
 import json
@@ -1232,6 +1232,13 @@ def migrate_plugins(
             shutil.copytree(str(new_plugins_dir), str(backup_path))
         except (OSError, IOError) as e:
             logger.warning("Failed to backup plugins directory: %s", e)
+    elif not new_plugins_dir.exists() and not force:
+        backup_path = _backup_file(new_plugins_dir)
+        try:
+            backup_path.mkdir(parents=True, exist_ok=True)
+            logger.info("Created empty plugins backup directory: %s", backup_path)
+        except (OSError, IOError) as e:
+            logger.warning("Failed to create plugins backup directory: %s", e)
 
     new_plugins_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1342,9 +1349,9 @@ def migrate_gpxtracker(
     move: bool = False,
 ) -> dict[str, Any]:
     """
-    Migrate GPX files used by the community gpxtracker plugin into the new plugins/gpxtracker/data location.
+    Migrate GPX files used by the community gpxtracker plugin into the new plugins/community/gpxtracker/data location.
 
-    Scans legacy roots for a `gpx_directory` setting in legacy config.yaml files and copies or moves any `*.gpx` files found into `new_home/plugins/gpxtracker/data`, creating per-file timestamped names. Creates backups of existing destination files unless `force` is True. Operates in dry-run mode if requested.
+    Scans legacy roots for a `gpx_directory` setting in legacy config.yaml files and copies or moves any `*.gpx` files found into `new_home/plugins/community/gpxtracker/data`, creating per-file timestamped names. Creates backups of existing destination files unless `force` is True. Operates in dry-run mode if requested.
 
     Parameters:
         legacy_roots (list[Path]): Legacy directories to scan for a `config.yaml` containing `community-plugins.gpxtracker.gpx_directory`.
@@ -1404,13 +1411,13 @@ def migrate_gpxtracker(
             "message": "gpxtracker plugin not configured with gpx_directory, skipping migration",
         }
 
-    new_gpx_data_dir = new_home / "plugins" / "gpxtracker" / "data"
+    new_gpx_data_dir = new_home / "plugins" / "community" / "gpxtracker" / "data"
 
     if dry_run:
         logger.info(
             "[DRY RUN] Would migrate gpxtracker GPX files from %s to %s",
             old_gpx_dir if old_gpx_dir else "not configured",
-            new_home / "plugins" / "gpxtracker" / "data",
+            new_home / "plugins" / "community" / "gpxtracker" / "data",
         )
         return {
             "success": True,

@@ -303,42 +303,90 @@ def get_community_plugins_dir() -> Path:
     return get_plugins_dir() / "community"
 
 
-def get_plugin_code_dir(plugin_name: str) -> Path:
+def get_core_plugins_dir() -> Path:
+    """
+    Return the directory used for core plugin data storage under MMRELAY_HOME.
+
+    Core plugins are bundled with the application code, but any filesystem data
+    they write should live under the unified plugins tree to keep runtime state
+    in MMRELAY_HOME.
+    """
+    return get_plugins_dir() / "core"
+
+
+def _normalize_plugin_type(plugin_type: str | None) -> str | None:
+    if plugin_type is None:
+        return None
+    normalized = plugin_type.strip().lower()
+    if normalized in {"custom", "community", "core"}:
+        return normalized
+    raise ValueError(f"Unknown plugin_type: {plugin_type!r}")
+
+
+def get_plugin_code_dir(plugin_name: str, plugin_type: str | None = None) -> Path:
     """
     Locate the Tier 1 code directory for a plugin.
 
     Args:
         plugin_name: Plugin name (directory name under the plugins directory).
+        plugin_type: Plugin category ("custom", "community", or "core"). If omitted,
+            the function will try to locate the plugin under custom/community
+            directories and fall back to the bundled core plugins path.
 
     Returns:
         Path to the plugin's code directory.
     """
-    # For custom/community plugins
-    return get_plugins_dir() / plugin_name
+    normalized_type = _normalize_plugin_type(plugin_type)
+    if normalized_type == "custom":
+        return get_custom_plugins_dir() / plugin_name
+    if normalized_type == "community":
+        return get_community_plugins_dir() / plugin_name
+    if normalized_type == "core":
+        return Path(__file__).resolve().parent / "plugins" / plugin_name
+
+    for plugin_root in (get_custom_plugins_dir(), get_community_plugins_dir()):
+        candidate = plugin_root / plugin_name
+        if candidate.exists():
+            return candidate
+
+    return Path(__file__).resolve().parent / "plugins" / plugin_name
 
 
-def get_plugin_data_dir(plugin_name: str, subdir: str | None = None) -> Path:
+def get_plugin_data_dir(
+    plugin_name: str, subdir: str | None = None, plugin_type: str | None = None
+) -> Path:
     """
-    Return the filesystem path for a plugin's data storage, selecting filesystem (Tier 2) when a subdirectory is requested or the plugin-specific database directory (Tier 3) otherwise.
+    Return the filesystem path for a plugin's Tier 2 data directory.
 
     Parameters:
         plugin_name (str): Plugin identifier.
-        subdir (str | None): If provided, the filesystem subdirectory name inside the plugin's data directory; if None, the function selects the plugin's database storage location.
+        subdir (str | None): Optional subdirectory name inside the plugin's data directory.
+        plugin_type (str | None): Plugin category ("custom", "community", or "core").
+            When omitted, the function will try to resolve the plugin under
+            custom/community directories and fall back to the core plugins area.
 
     Returns:
-        Path: Path to the plugin's data directory (filesystem subpath when `subdir` is set, otherwise the plugin's database directory under the application's database/plugin_data).
-
-    Note:
-        This function has two distinct behaviors based on the `subdir` parameter:
-        - With `subdir`: Returns Tier 2 filesystem storage path (e.g., plugins/{name}/data/{subdir}) for files like GPX tracks, JSON caches, etc.
-        - Without `subdir`: Returns Tier 3 database storage path (e.g., database/plugin_data/{name}) for SQLite plugin data.
+        Path: Path to the plugin's data directory (filesystem Tier 2 path).
     """
-    if subdir:
-        # Tier 2: Filesystem storage (e.g., GPX files, JSON caches)
-        return get_plugins_dir() / plugin_name / "data" / subdir
+    normalized_type = _normalize_plugin_type(plugin_type)
+    if normalized_type == "custom":
+        base_dir = get_custom_plugins_dir() / plugin_name
+    elif normalized_type == "community":
+        base_dir = get_community_plugins_dir() / plugin_name
+    elif normalized_type == "core":
+        base_dir = get_core_plugins_dir() / plugin_name
     else:
-        # Tier 3: Database storage (default for most plugins)
-        return get_home_dir() / "database" / "plugin_data" / plugin_name
+        base_dir = None
+        for plugin_root in (get_custom_plugins_dir(), get_community_plugins_dir()):
+            candidate = plugin_root / plugin_name
+            if candidate.exists():
+                base_dir = candidate
+                break
+        if base_dir is None:
+            base_dir = get_core_plugins_dir() / plugin_name
+
+    data_dir = base_dir / "data"
+    return data_dir / subdir if subdir else data_dir
 
 
 def get_plugin_database_path(plugin_name: str) -> Path:
@@ -349,9 +397,10 @@ def get_plugin_database_path(plugin_name: str) -> Path:
         plugin_name (str): Plugin identifier.
 
     Returns:
-        Path: Path to the plugin's central database file (home/database/plugin_data_{plugin_name}).
+        Path: Path to a plugin-specific database file (diagnostic only).
     """
-    # For database path representation
+    # NOTE: MMRelay stores plugin data in the main SQLite database today.
+    # This helper exists for diagnostics and potential future per-plugin DB files.
     return get_home_dir() / "database" / f"plugin_data_{plugin_name}"
 
 
@@ -375,6 +424,7 @@ def ensure_directories(*, create_missing: bool = True) -> None:
         get_plugins_dir(),
         get_custom_plugins_dir(),
         get_community_plugins_dir(),
+        get_core_plugins_dir(),
     ]
 
     # Filter out None values to prevent crashes on Windows

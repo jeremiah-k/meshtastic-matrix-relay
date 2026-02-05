@@ -36,7 +36,7 @@ data_dir = ~/.mmrelay/data     # Database, E2EE store, plugin data
 **Issues**:
 
 - Credentials can be in either location depending on how saved
-- Plugins discovered in `base_dir/plugins` but store data in `data_dir/plugins/{name}`
+- Plugins discovered in `base_dir/plugins` but store data in `data_dir/plugins/{custom|community}/{name}`
 - Windows defaults differ from Unix (platformdirs vs XDG)
 - Database migration logic complex due to layout detection
 
@@ -89,7 +89,7 @@ roots = [
 <base_dir>/plugins/ or <data_dir>/plugins/
 
 # Plugin data storage (from config.py):
-plugin_data_dir = "<data_dir>/plugins/{name}"  # Available but barely used
+plugin_data_dir = "<data_dir>/plugins/{custom|community}/{name}"  # Available but barely used
 
 # Plugin ACTUAL data storage (from db_utils.py - PRIMARY METHOD):
 database: store_plugin_data(plugin_name, meshtastic_id, data)  # JSON in SQLite
@@ -119,7 +119,7 @@ database: delete_plugin_data(plugin_name, meshtastic_id)       # Delete from SQL
 
 - Option A: Keep `get_plugin_data_dir()` for plugins that want filesystem storage
 - Option B: Remove `get_plugin_data_dir()` entirely (plugins use only database)
-- **My recommendation**: Keep `get_plugin_data_dir()` available (for future plugins that need file I/O), but unify location to `<home_dir>/plugins/{name}/`
+- **My recommendation**: Keep `get_plugin_data_dir()` available (for future plugins that need file I/O), but unify location to `<home_dir>/plugins/{custom|community}/{name}/data/`
 
 ### 5. Documentation Drift
 
@@ -230,8 +230,8 @@ Migration Rules:
 **Community Plugin Example - gpxtracker**:
 
 - Old: `gpx_directory: "~/my_gpx_files"` (from plugin config)
-- New: `$MMRELAY_HOME/plugins/gpxtracker/data/` (Tier 2 location)
-- Migration: `~/my_gpx_files/` → `$MMRELAY_HOME/plugins/gpxtracker/data/`
+- New: `$MMRELAY_HOME/plugins/community/gpxtracker/data/` (Tier 2 location)
+- Migration: `~/my_gpx_files/` → `$MMRELAY_HOME/plugins/community/gpxtracker/data/`
 
 **From Partial New Layout** (v1.2.10-1.2.11):
 
@@ -437,7 +437,7 @@ def get_community_plugins_dir() -> Path:
     return get_plugins_dir() / "community"
 
 
-def get_plugin_data_dir(plugin_name: str) -> Path:
+def get_plugin_data_dir(plugin_name: str, plugin_type: str) -> Path:
     """
     Get data directory for a specific plugin.
 
@@ -447,9 +447,9 @@ def get_plugin_data_dir(plugin_name: str) -> Path:
     Returns:
         Path: Plugin data directory
     """
-    # Plugins store their data under <home>/plugins/<name>/data/
+    # Plugins store their data under <home>/plugins/{custom|community}/{name}/data/
     # This keeps plugin code and data together
-    return get_plugins_dir() / plugin_name / "data"
+    return get_plugins_dir() / plugin_type / plugin_name / "data"
 
 
 def ensure_directories() -> None:
@@ -466,6 +466,7 @@ def ensure_directories() -> None:
         get_plugins_dir(),
         get_custom_plugins_dir(),
         get_community_plugins_dir(),
+        get_core_plugins_dir(),
     ]
 
     for dir_path in filter(None, dirs_to_create):
@@ -1206,8 +1207,8 @@ args:
 3. **Logs handling**: Should logs be in `logs/` subdirectory or allow flexible paths?
    - Recommendation: Default to `logs/`, override via `MMRELAY_LOG_PATH`
 
-4. **Plugin data location**: Should plugins store data in `plugins/{name}/data/` or `plugins/data/{name}/`?
-   - Recommendation: `plugins/{name}/` (unified with discovery)
+4. **Plugin data location**: Should plugins store data in `plugins/{custom|community}/{name}/data/` or `plugins/data/{name}/`?
+   - Recommendation: `plugins/{custom|community}/{name}/data/` (unified with discovery)
 
 5. **Backward compatibility window**: How long to support old env vars?
    - Recommendation: Deprecate in v1.3, remove in v1.4
@@ -1334,7 +1335,7 @@ $MMRELAY_HOME/
 
 - **Primary**: Plugin data stored in SQLite database (via `store_plugin_data()`)
 - `get_plugin_data_dir()` available for plugins that need filesystem I/O
-- Plugin code location: `$MMRELAY_HOME/plugins/{name}/`
+- Plugin code location: `$MMRELAY_HOME/plugins/{custom|community}/{name}/`
 - **No interference** with existing functionality (plugins don't write files)
 - **Backward compatible**: Old plugins still work, new plugins can use file I/O if needed
 

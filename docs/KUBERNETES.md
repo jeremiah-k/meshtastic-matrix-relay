@@ -261,7 +261,8 @@ The deployment uses `/data` as the base directory for all persistent data:
 - **Logs**: `/data/logs/`
 - **Database**: `/data/database/meshtastic.sqlite`
 - **E2EE store**: `/data/store/` (if encryption is enabled)
-- **Plugins**: `/data/plugins/`
+- **Plugins (custom)**: `/data/plugins/custom/`
+- **Plugins (community)**: `/data/plugins/community/`
 
 This is configured in `deployment.yaml` via `MMRELAY_HOME=/data` and the PVC mount. All data persists across pod restarts.
 
@@ -280,6 +281,8 @@ All MMRelay runtime state lives under `/data` inside the container:
 ├── logs/               # Application logs
 ├── store/              # E2EE encryption keys (if enabled)
 └── plugins/            # Custom and community plugins
+    ├── custom/
+    └── community/
     ├── custom/
     └── community/
 ```

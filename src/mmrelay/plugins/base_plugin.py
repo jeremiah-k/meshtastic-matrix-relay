@@ -188,6 +188,13 @@ class BasePlugin(ABC):
         else:
             self.mapped_channels = []
 
+        self.plugin_type = "core"
+        if config is not None:
+            if self.plugin_name in config.get("community-plugins", {}):
+                self.plugin_type = "community"
+            elif self.plugin_name in config.get("custom-plugins", {}):
+                self.plugin_type = "custom"
+
         # Get the channels specified for this plugin, or default to all mapped channels
         self.channels = self.config.get("channels", self.mapped_channels)
 
@@ -677,15 +684,12 @@ class BasePlugin(ABC):
         """
         # Get the plugin-specific data directory
         plugin_name = self._require_plugin_name()
-        plugin_dir: str = get_plugin_data_dir(plugin_name)
-
-        # If a subdirectory is specified, create and return it
         if subdir:
-            subdir_path = os.path.join(plugin_dir, subdir)
-            os.makedirs(subdir_path, exist_ok=True)
-            return subdir_path
+            return get_plugin_data_dir(
+                plugin_name, subdir=subdir, plugin_type=self.plugin_type
+            )
 
-        return plugin_dir
+        return get_plugin_data_dir(plugin_name, plugin_type=self.plugin_type)
 
     def matches(
         self,

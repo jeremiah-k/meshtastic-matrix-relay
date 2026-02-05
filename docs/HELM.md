@@ -437,7 +437,8 @@ All persistent data lives under `/data`:
 - `/data/database/meshtastic.sqlite` - SQLite database
 - `/data/logs/` - Application logs
 - `/data/store/` - E2EE encryption keys (if enabled)
-- `/data/plugins/` - Custom and community plugins
+- `/data/plugins/custom/` - Custom plugins
+- `/data/plugins/community/` - Community plugins
 
 ## Running Doctor
 

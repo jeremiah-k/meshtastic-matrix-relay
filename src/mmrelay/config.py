@@ -21,11 +21,19 @@ from mmrelay.constants.config import (
 
 # Import new path resolution system
 from mmrelay.paths import get_config_paths as get_unified_config_paths
-from mmrelay.paths import get_credentials_path
+from mmrelay.paths import (
+    get_credentials_path,
+)
 from mmrelay.paths import get_e2ee_store_dir as get_unified_store_dir
-from mmrelay.paths import get_home_dir
+from mmrelay.paths import (
+    get_home_dir,
+)
 from mmrelay.paths import get_logs_dir as get_unified_logs_dir
-from mmrelay.paths import get_plugins_dir, is_deprecation_window_active
+from mmrelay.paths import get_plugin_data_dir as get_unified_plugin_data_dir
+from mmrelay.paths import (
+    get_plugins_dir,
+    is_deprecation_window_active,
+)
 
 if TYPE_CHECKING:
     import logging
@@ -264,26 +272,43 @@ def get_data_dir(*, create: bool = True) -> str:
     return home
 
 
-def get_plugin_data_dir(plugin_name: str | None = None) -> str:
+def get_plugin_data_dir(
+    plugin_name: str | None = None,
+    *,
+    subdir: str | None = None,
+    plugin_type: str | None = None,
+) -> str:
     """
     Resolve and ensure the application's plugins data directory, optionally for a specific plugin.
 
-    Creates the top-level plugins directory if missing; if `plugin_name` is provided, creates and returns a subdirectory for that plugin.
+    Creates the top-level plugins directory if missing; if `plugin_name` is provided, creates and returns the plugin's Tier 2 data directory (and optional subdir) under the unified plugins tree.
 
     Parameters:
         plugin_name (str | None): Optional plugin identifier to return a plugin-specific subdirectory.
+        subdir (str | None): Optional subdirectory name inside the plugin data directory.
+        plugin_type (str | None): Optional plugin category ("custom", "community", or "core").
 
     Returns:
-        str: Absolute path to the plugins directory, or to the plugin-specific subdirectory when `plugin_name` is provided.
+        str: Absolute path to the plugins directory, or to the plugin-specific data directory when `plugin_name` is provided.
     """
     plugins_data_dir = str(get_plugins_dir())
     os.makedirs(plugins_data_dir, exist_ok=True)
 
     # If a plugin name is provided, create and return a plugin-specific directory
     if plugin_name:
-        plugin_data_dir = os.path.join(plugins_data_dir, plugin_name)
-        os.makedirs(plugin_data_dir, exist_ok=True)
-        return plugin_data_dir
+        if plugin_type is None and isinstance(relay_config, dict):
+            if plugin_name in relay_config.get("community-plugins", {}):
+                plugin_type = "community"
+            elif plugin_name in relay_config.get("custom-plugins", {}):
+                plugin_type = "custom"
+            else:
+                plugin_type = "core"
+
+        plugin_data_dir = get_unified_plugin_data_dir(
+            plugin_name, subdir=subdir, plugin_type=plugin_type
+        )
+        os.makedirs(str(plugin_data_dir), exist_ok=True)
+        return str(plugin_data_dir)
 
     return plugins_data_dir
 
