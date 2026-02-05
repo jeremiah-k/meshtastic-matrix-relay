@@ -80,7 +80,7 @@ check_doc_files() {
 		# Format: start_line,end_line (inclusive of block content, excluding fences)
 		local ALLOWED_RANGES=""
 		local TOTAL_LINES
-		TOTAL_LINES=$(wc -l <"${FILE}")
+		TOTAL_LINES=$(awk 'END {print NR}' "${FILE}")
 		local LINE_NUM=1
 
 		while [[ ${LINE_NUM} -le ${TOTAL_LINES} ]]; do

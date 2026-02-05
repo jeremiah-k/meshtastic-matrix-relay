@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   mmrelay:
     # Replace REPLACE_ME with a published image tag before running

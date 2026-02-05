@@ -445,6 +445,7 @@ def get_plugin_data_dir(plugin_name: str, plugin_type: str) -> Path:
 
     Args:
         plugin_name: Name of the plugin
+        plugin_type: Plugin category ("custom", "community", or "core")
 
     Returns:
         Path: Plugin data directory

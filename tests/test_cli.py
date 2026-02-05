@@ -563,20 +563,17 @@ class TestMainFunction(unittest.TestCase):
         mock_run_main.return_value = 0
         mock_expanduser.return_value = "/home/test/mmrelay"
 
-        import mmrelay.paths
+        from mmrelay.paths import get_home_dir, reset_home_override
 
-        original_home_override = mmrelay.paths._home_override
-        original_home_override_source = mmrelay.paths._home_override_source
         try:
             result = main()
 
             self.assertEqual(result, 0)
             mock_expanduser.assert_called_once_with("~/mmrelay")
             mock_makedirs.assert_called_once_with("/home/test/mmrelay", exist_ok=True)
-            self.assertEqual(str(mmrelay.paths.get_home_dir()), "/home/test/mmrelay")
+            self.assertEqual(str(get_home_dir()), "/home/test/mmrelay")
         finally:
-            mmrelay.paths._home_override = original_home_override
-            mmrelay.paths._home_override_source = original_home_override_source
+            reset_home_override()
 
 
 class TestCLIValidationFunctions(unittest.TestCase):

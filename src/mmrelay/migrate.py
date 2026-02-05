@@ -669,7 +669,13 @@ def migrate_credentials(
         try:
             shutil.copy2(str(new_creds), str(backup_path))
         except (OSError, IOError) as e:
-            logger.warning("Failed to backup credentials: %s", e)
+            logger.exception("Failed to backup credentials: %s", e)
+            return {
+                "success": False,
+                "error": f"Failed to backup credentials: {e}",
+                "old_path": str(old_creds),
+                "new_path": str(new_creds),
+            }
 
     try:
         if move:
@@ -765,7 +771,13 @@ def migrate_config(
         try:
             shutil.copy2(str(new_config), str(backup_path))
         except (OSError, IOError) as e:
-            logger.warning("Failed to backup config.yaml: %s", e)
+            logger.exception("Failed to backup config.yaml: %s", e)
+            return {
+                "success": False,
+                "error": str(e),
+                "old_path": str(old_config),
+                "new_path": str(new_config),
+            }
 
     try:
         if move:
@@ -918,7 +930,7 @@ def migrate_database(
                 try:
                     shutil.copy2(str(dest), str(backup_path))
                 except (OSError, IOError) as e:
-                    logger.error("Failed to backup database %s: %s", dest, e)
+                    logger.exception("Failed to backup database %s: %s", dest, e)
                     return {
                         "success": False,
                         "error": f"Failed to backup database {dest}: {e}",

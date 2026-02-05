@@ -797,25 +797,32 @@ def _find_credentials_json_path(
     from mmrelay.config import get_explicit_credentials_path, relay_config
     from mmrelay.paths import resolve_all_paths
 
+    def _normalize_path(path: str) -> str:
+        return os.path.abspath(os.path.expanduser(path))
+
     explicit_path = get_explicit_credentials_path(config or relay_config)
-    if explicit_path and os.path.exists(explicit_path):
-        return explicit_path
+    if explicit_path:
+        explicit_path = _normalize_path(explicit_path)
+        if os.path.exists(explicit_path):
+            return explicit_path
 
     if config_path:
-        config_dir = os.path.dirname(config_path)
-        candidate = os.path.join(config_dir, "credentials.json")
+        config_dir = os.path.dirname(_normalize_path(config_path))
+        candidate = _normalize_path(os.path.join(config_dir, "credentials.json"))
         if os.path.exists(candidate):
             return candidate
 
     p = resolve_all_paths()
     home_cred = p["credentials_path"]
-    if isinstance(home_cred, str) and os.path.exists(home_cred):
-        return home_cred
+    if isinstance(home_cred, str):
+        home_cred = _normalize_path(home_cred)
+        if os.path.exists(home_cred):
+            return home_cred
 
     for legacy_root in p["legacy_sources"]:
         if not isinstance(legacy_root, str):
             continue
-        legacy_cred = os.path.join(legacy_root, "credentials.json")
+        legacy_cred = _normalize_path(os.path.join(legacy_root, "credentials.json"))
         if os.path.exists(legacy_cred):
             print(
                 f"INFO: Found legacy credentials at: {legacy_cred}\n"

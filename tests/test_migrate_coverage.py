@@ -664,7 +664,7 @@ class TestMigrateCredentialsEdgeCases:
         assert new_creds.read_text() == "creds"
 
     def test_migrate_credentials_backup_failure_continues(self, tmp_path: Path) -> None:
-        """Test backup failure does not block credentials migration."""
+        """Test backup failure aborts credentials migration."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
         old_creds = legacy_root / "credentials.json"
@@ -687,8 +687,8 @@ class TestMigrateCredentialsEdgeCases:
                 [legacy_root], new_home, dry_run=False, force=False, move=False
             )
 
-        assert result["success"] is True
-        assert new_creds.read_text() == "new-creds"
+        assert result["success"] is False
+        assert "Failed to backup credentials" in result.get("error", "")
 
 
 class TestMigrateConfigEdgeCases:
@@ -736,7 +736,7 @@ class TestMigrateConfigEdgeCases:
         assert new_config.read_text() == "config"
 
     def test_migrate_config_backup_failure_continues(self, tmp_path: Path) -> None:
-        """Test backup failure does not block config migration."""
+        """Test backup failure aborts config migration."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
         old_config = legacy_root / "config.yaml"
@@ -759,8 +759,8 @@ class TestMigrateConfigEdgeCases:
                 [legacy_root], new_home, dry_run=False, force=False, move=False
             )
 
-        assert result["success"] is True
-        assert new_config.read_text() == "new-config"
+        assert result["success"] is False
+        assert "Mock backup error" in result.get("error", "")
 
     def test_migrate_config_copy_failure(self, tmp_path: Path) -> None:
         """Test migrate_config returns error on copy failure."""

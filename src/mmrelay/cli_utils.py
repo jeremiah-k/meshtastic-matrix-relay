@@ -356,8 +356,15 @@ def _cleanup_local_session_data() -> bool:
     success = True
 
     # Use unified path resolution for credentials
+    paths_info: dict[str, Any] = {}
+    try:
+        paths_info = resolve_all_paths()
+    except (OSError, RuntimeError) as e:
+        _get_logger().debug(
+            "Could not resolve paths for logout cleanup: %s", type(e).__name__
+        )
 
-    credentials_path = resolve_all_paths()["credentials_path"]
+    credentials_path = paths_info.get("credentials_path", "")
     if os.path.exists(credentials_path):
         try:
             os.remove(credentials_path)
@@ -371,15 +378,9 @@ def _cleanup_local_session_data() -> bool:
     # Clear E2EE store directory (default and any configured override)
     # Skip on Windows (E2EE not supported); resolve_all_paths handles this safely
     candidate_store_paths: set[str] = set()
-    try:
-        paths_info = resolve_all_paths()
-        store_dir = paths_info.get("store_dir")
-        if store_dir and store_dir != "N/A (Windows)":
-            candidate_store_paths.add(store_dir)
-    except (OSError, RuntimeError) as e:
-        _get_logger().debug(
-            "Could not resolve E2EE store path from paths: %s", type(e).__name__
-        )
+    store_dir = paths_info.get("store_dir")
+    if store_dir and store_dir != "N/A (Windows)":
+        candidate_store_paths.add(store_dir)
 
     # Add any configured override from config
     try:

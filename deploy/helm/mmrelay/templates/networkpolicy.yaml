@@ -13,11 +13,20 @@ spec:
   policyTypes:
     - Ingress
     - Egress
-  ingress: []
+  ingress:
+    {{- if hasKey .Values.networkPolicy "ingress" }}
+    {{- toYaml .Values.networkPolicy.ingress | nindent 4 }}
+    {{- else }}
+    []
+    {{- end }}
   egress:
+    {{- if hasKey .Values.networkPolicy "egress" }}
+    {{- toYaml .Values.networkPolicy.egress | nindent 4 }}
+    {{- else }}
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
         - ipBlock:
             cidr: ::/0
+    {{- end }}
 {{- end }}

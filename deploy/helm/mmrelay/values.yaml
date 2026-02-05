@@ -142,6 +142,8 @@ ingress:
 # NetworkPolicy (disabled by default)
 networkPolicy:
   enabled: false
+  # ingress: []
+  # egress: []
 
 # Horizontal Pod Autoscaler (disabled by default)
 autoscaling:

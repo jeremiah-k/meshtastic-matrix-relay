@@ -15,7 +15,24 @@ def test_handle_paths_command_basic(capsys, monkeypatch, tmp_path):
     monkeypatch.setenv("MMRELAY_HOME", str(home))
     # reset_home_override is handled by conftest.py autouse fixture
 
-    with patch("mmrelay.paths.get_home_dir", return_value=home):
+    with patch(
+        "mmrelay.paths.resolve_all_paths",
+        return_value={
+            "home": str(home),
+            "home_source": "env",
+            "credentials_path": str(home / "credentials.json"),
+            "database_dir": str(home / "database"),
+            "store_dir": str(home / "store"),
+            "logs_dir": str(home / "logs"),
+            "log_file": str(home / "logs" / "mmrelay.log"),
+            "plugins_dir": str(home / "plugins"),
+            "custom_plugins_dir": str(home / "plugins" / "custom"),
+            "community_plugins_dir": str(home / "plugins" / "community"),
+            "legacy_sources": [],
+            "env_vars_detected": {},
+            "cli_override": None,
+        },
+    ):
         exit_code = handle_paths_command(SimpleNamespace())
 
         assert exit_code == 0
@@ -32,9 +49,23 @@ def test_handle_paths_command_with_legacy(capsys, monkeypatch, tmp_path):
 
     monkeypatch.setenv("MMRELAY_HOME", str(home))
 
-    with (
-        patch("mmrelay.paths.get_home_dir", return_value=home),
-        patch("mmrelay.paths.get_legacy_dirs", return_value=[legacy_root]),
+    with patch(
+        "mmrelay.paths.resolve_all_paths",
+        return_value={
+            "home": str(home),
+            "home_source": "env",
+            "credentials_path": str(home / "credentials.json"),
+            "database_dir": str(home / "database"),
+            "store_dir": str(home / "store"),
+            "logs_dir": str(home / "logs"),
+            "log_file": str(home / "logs" / "mmrelay.log"),
+            "plugins_dir": str(home / "plugins"),
+            "custom_plugins_dir": str(home / "plugins" / "custom"),
+            "community_plugins_dir": str(home / "plugins" / "community"),
+            "legacy_sources": [str(legacy_root)],
+            "env_vars_detected": {},
+            "cli_override": None,
+        },
     ):
         exit_code = handle_paths_command(SimpleNamespace())
 

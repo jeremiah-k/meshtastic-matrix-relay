@@ -420,21 +420,6 @@ class TestDbUtils(unittest.TestCase):
 
         manager = _get_db_manager()
 
-        async def run_async(func, write=False, _loop=None):
-            """
-            Execute the given synchronous callable using the database manager, suitable for awaiting from async code.
-
-            Parameters:
-                func (callable): A zero-argument callable to execute synchronously.
-                write (bool): If True, run the callable within a write-capable context; otherwise run read-only.
-
-            Returns:
-                The value returned by `func`.
-            """
-            return manager.run_sync(func, write=write)
-
-        manager.run_async = run_async  # type: ignore[assignment]
-
         async def exercise():
             """
             Insert two message-map entries and prune the message map so only the most recent entry remains.

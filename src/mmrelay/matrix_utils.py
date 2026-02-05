@@ -188,6 +188,35 @@ else:
 
 logger = get_logger(name="Matrix")
 
+
+class MissingMatrixRoomsError(ValueError):
+    """Raised when matrix_rooms configuration is missing."""
+
+    def __init__(self) -> None:
+        super().__init__("Missing required matrix_rooms configuration")
+
+
+class MatrixSyncTimeoutError(ConnectionError):
+    """Raised when initial Matrix sync times out."""
+
+    def __init__(self) -> None:
+        super().__init__("Matrix sync timed out")
+
+
+class MatrixSyncFailedError(ConnectionError):
+    """Raised when Matrix sync fails."""
+
+    def __init__(self) -> None:
+        super().__init__("Matrix sync failed")
+
+
+class MatrixSyncFailedDetailsError(ConnectionError):
+    """Raised when Matrix sync fails with detailed error info."""
+
+    def __init__(self, error_type: str, error_details: str) -> None:
+        super().__init__(f"Matrix sync failed: {error_type} - {error_details}")
+
+
 _MIME_TYPE_MAP: Dict[str, str] = {
     "PNG": "image/png",
     "JPEG": "image/jpeg",
@@ -1320,7 +1349,7 @@ async def _resolve_and_load_credentials(
 
     if credentials is None:
         candidate_path = _resolve_credentials_save_path(config_data)
-        if candidate_path and os.path.isfile(candidate_path):
+        if candidate_path and await asyncio.to_thread(os.path.isfile, candidate_path):
             logger.warning("Ignoring invalid credentials file: %s", candidate_path)
 
     if credentials:
@@ -1654,7 +1683,8 @@ async def _perform_matrix_login(
                     try:
                         if auth_info.credentials is not None:
                             auth_info.credentials["device_id"] = e2ee_device_id
-                            save_credentials(
+                            await asyncio.to_thread(
+                                save_credentials,
                                 auth_info.credentials,
                                 credentials_path=auth_info.credentials_path,
                             )
@@ -1763,7 +1793,7 @@ async def _perform_initial_sync(
             "4. Consider using a different Matrix homeserver if the problem persists"
         )
         await _close_matrix_client_after_failure(client, "sync timeout")
-        raise ConnectionError("Matrix sync timed out") from None
+        raise MatrixSyncTimeoutError() from None
     except asyncio.CancelledError:
         logger.exception("Initial sync cancelled")
         await _close_matrix_client_after_failure(client, "sync cancellation")
@@ -1882,11 +1912,11 @@ async def _perform_initial_sync(
         if sync_response is None:
             logger.exception("Matrix sync failed")
             await _close_matrix_client_after_failure(client, "sync failure")
-            raise ConnectionError("Matrix sync failed") from exc
+            raise MatrixSyncFailedError() from exc
     except NIO_COMM_EXCEPTIONS as exc:
         logger.exception("Matrix sync failed")
         await _close_matrix_client_after_failure(client, "sync failure")
-        raise ConnectionError("Matrix sync failed") from exc
+        raise MatrixSyncFailedError() from exc
 
     return sync_response
 
@@ -1919,7 +1949,7 @@ async def _post_sync_setup(
         logger.error("4. Check if your credentials are still valid")
 
         await _close_matrix_client_after_failure(client, "sync failure")
-        raise ConnectionError(f"Matrix sync failed: {error_type} - {error_details}")
+        raise MatrixSyncFailedDetailsError(error_type, error_details)
 
     logger.info(f"Initial sync completed. Found {len(client.rooms)} rooms.")
 
@@ -2047,7 +2077,7 @@ async def connect_matrix(
         logger.error(
             "Please ensure your config.yaml includes matrix_rooms configuration"
         )
-        raise ValueError("Missing required matrix_rooms configuration")
+        raise MissingMatrixRoomsError()
     matrix_rooms = config["matrix_rooms"]
 
     ssl_context = _create_ssl_context()
@@ -2295,15 +2325,23 @@ async def login_matrix_bot(
 
                 credentials_path = resolve_all_paths()["credentials_path"]
 
-            if os.path.exists(credentials_path):
-                with open(credentials_path, "r", encoding="utf-8") as f:
-                    existing_creds = json.load(f)
-                    if (
-                        "device_id" in existing_creds
-                        and existing_creds["user_id"] == username
-                    ):
-                        existing_device_id = existing_creds["device_id"]
-                        logger.info(f"Reusing existing device_id: {existing_device_id}")
+            if credentials_path and await asyncio.to_thread(
+                os.path.exists, credentials_path
+            ):
+
+                def _load_existing_creds(path: str) -> dict[str, Any]:
+                    with open(path, "r", encoding="utf-8") as f:
+                        return json.load(f)
+
+                existing_creds = await asyncio.to_thread(
+                    _load_existing_creds, credentials_path
+                )
+                if (
+                    "device_id" in existing_creds
+                    and existing_creds["user_id"] == username
+                ):
+                    existing_device_id = existing_creds["device_id"]
+                    logger.info(f"Reusing existing device_id: {existing_device_id}")
         except (OSError, JSONDecodeError, KeyError, TypeError) as e:
             logger.debug(f"Could not load existing credentials: {e}")
 
@@ -2540,7 +2578,9 @@ async def login_matrix_bot(
                 from mmrelay.paths import resolve_all_paths
 
                 credentials_path = resolve_all_paths()["credentials_path"]
-            save_credentials(credentials, credentials_path=credentials_path)
+            await asyncio.to_thread(
+                save_credentials, credentials, credentials_path=credentials_path
+            )
             logger.info("Credentials saved to %s", credentials_path)
 
             # Logout other sessions if requested

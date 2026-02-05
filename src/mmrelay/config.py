@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING, Any, Iterable, Mapping, cast
 import yaml
 from yaml.loader import SafeLoader
 
+import mmrelay.paths as paths_module
+
 # Import application constants
 from mmrelay.constants.config import (
     CONFIG_KEY_ACCESS_TOKEN,
@@ -20,9 +22,6 @@ from mmrelay.constants.config import (
 )
 
 # Import new path resolution system
-from mmrelay.paths import (
-    E2EENotSupportedError,
-)
 from mmrelay.paths import get_config_paths as get_unified_config_paths
 from mmrelay.paths import (
     get_credentials_path,
@@ -345,7 +344,7 @@ def get_e2ee_store_dir() -> str:
     try:
         store_dir = str(get_unified_store_dir())
         os.makedirs(store_dir, exist_ok=True)
-    except E2EENotSupportedError as e:
+    except paths_module.E2EENotSupportedError as e:
         # Match legacy behavior on Windows: logs warning and returns a path anyway
         # (even if it won't be used for E2EE)
         base = str(get_home_dir())

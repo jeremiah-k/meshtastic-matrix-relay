@@ -326,7 +326,7 @@ mmrelay auth login
 
 ```yaml
 volumes:
-  - ${MMRELAY_HOST_HOME}/.mmrelay:/data # Includes credentials.json and E2EE store
+  - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay:/data # Includes credentials.json and E2EE store
 ```
 
 ### Configuration

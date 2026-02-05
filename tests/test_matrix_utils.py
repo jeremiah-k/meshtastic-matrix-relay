@@ -3166,6 +3166,7 @@ async def test_on_room_message_emote_reaction_uses_original_event_id(monkeypatch
 @patch("mmrelay.matrix_utils.os.path.isfile")
 @patch("builtins.open")
 @patch("mmrelay.config.json.load")
+@pytest.mark.asyncio
 @patch("mmrelay.matrix_utils.save_credentials")
 @patch("mmrelay.matrix_utils._create_ssl_context")
 @patch("mmrelay.matrix_utils.matrix_client", None)
@@ -3932,8 +3933,8 @@ async def test_connect_matrix_credentials_load_exception_uses_config(
 
     with (
         patch(
-            "mmrelay.matrix_utils.async_load_credentials",
-            new=AsyncMock(return_value=None),
+            "mmrelay.config.get_candidate_credentials_paths",
+            return_value=[str(candidate_path)],
         ),
         patch(
             "mmrelay.matrix_utils.get_credentials_path",
