@@ -9,6 +9,7 @@ Tests covering:
 - rollback_migration (lines 1298-1307)
 """
 
+import builtins
 import os
 import sqlite3
 import sys
@@ -26,6 +27,8 @@ from mmrelay.migrate import (
     perform_migration,
     rollback_migration,
 )
+
+_original_builtins_import = builtins.__import__
 
 
 class TestMigrateStore(unittest.TestCase):
@@ -70,21 +73,21 @@ class TestMigrateGpxtracker(unittest.TestCase):
         self.assertTrue(result.get("success"))
         self.assertIn("gpxtracker plugin not configured", result.get("message", ""))
 
-    @patch("yaml.safe_load")
-    @patch("builtins.open")
-    def test_returns_skip_on_yaml_import_error(self, _mock_open, mock_yaml_load):
+    @patch("builtins.__import__")
+    def test_returns_skip_on_yaml_import_error(self, mock_import):
         """Test skips migration when yaml import fails."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            legacy_root = Path(tmpdir)
-            legacy_root.mkdir()
-            config = legacy_root / "config.yaml"
-            config.write_text("test: config")
 
-            mock_yaml_load.side_effect = ImportError("yaml not available")
+        def side_effect_import(name, *args, **kwargs):
+            if name == "yaml":
+                raise ImportError("Mock import error")
+            return _original_builtins_import(name, *args, **kwargs)
 
-            result = migrate_gpxtracker([legacy_root], Path("/home"))
+        mock_import.side_effect = side_effect_import
 
-            self.assertTrue(result.get("success"))
+        result = migrate_gpxtracker([], Path("/home"))
+
+        self.assertTrue(result.get("success"))
+        self.assertIn("gpxtracker plugin not configured", result.get("message", ""))
 
 
 class TestPerformMigration(unittest.TestCase):
