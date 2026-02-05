@@ -477,26 +477,6 @@ class TestPathDirectoryCreation(unittest.TestCase):
                             if "Failed to create directory" in str(call)
                         ]
                         self.assertTrue(len(error_calls) > 0)
-        """Test OSError on directory creation is logged (lines 379-380)."""
-        with patch("sys.platform", "linux"):
-            with patch("mmrelay.paths.get_home_dir", return_value=Path("/home")):
-                with patch("mmrelay.paths.get_database_dir") as mock_db_dir:
-                    with patch("mmrelay.paths.get_logger") as mock_get_logger:
-                        mock_db_dir.return_value = Path("/home/database")
-                        mock_db_dir.mkdir.side_effect = OSError("Permission denied")
-
-                        from mmrelay.paths import ensure_directories
-
-                        mock_logger = mock_get_logger.return_value
-
-                        ensure_directories(create_missing=True)
-
-                        error_calls = [
-                            call
-                            for call in mock_logger.exception.call_args_list
-                            if "Failed to create directory" in str(call)
-                        ]
-                        self.assertTrue(len(error_calls) > 0)
 
 
 class TestLegacyDirsDetection(unittest.TestCase):

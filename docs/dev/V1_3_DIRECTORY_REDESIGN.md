@@ -217,8 +217,8 @@ Old                          →  New (v1.3)
 ```text
 Plugin Data Tiers (v1.3):
 
-Tier 1 (Code):     $MMRELAY_HOME/plugins/{name}/         # Plugin .py file
-Tier 2 (Filesystem): $MMRELAY_HOME/plugins/{name}/data/      # Disk storage (GPX, JSON, etc.)
+Tier 1 (Code):     $MMRELAY_HOME/plugins/custom/{name}/ or $MMRELAY_HOME/plugins/community/{name}/         # Plugin .py file
+Tier 2 (Filesystem): $MMRELAY_HOME/plugins/custom/{name}/data/ or $MMRELAY_HOME/plugins/community/{name}/data/      # Disk storage (GPX, JSON, etc.)
 Tier 3 (Database):   $MMRELAY_HOME/database/plugin_data/         # SQLite (default)
 
 Migration Rules:
@@ -263,7 +263,7 @@ If migration fails:
 
 1. Preserve original files (don't delete)
 2. Log detailed error with paths
-3. Provide manual migration command: `mmrelay config migrate --rollback`
+3. Provide manual migration command: `mmrelay migrate --rollback`
 4. Document manual steps
 
 ---

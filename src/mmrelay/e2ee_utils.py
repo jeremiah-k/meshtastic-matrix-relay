@@ -111,8 +111,10 @@ def get_e2ee_status(
         primary_credentials_path = paths_info["credentials_path"]
         status["credentials_available"] = os.path.exists(primary_credentials_path)
 
-        # If not found in HOME, search legacy locations
-        if not status["credentials_available"]:
+        # If not found in HOME, search legacy locations (during deprecation window)
+        if not status["credentials_available"] and paths_info.get(
+            "legacy_active", False
+        ):
             for legacy_root in paths_info.get("legacy_sources", []):
                 legacy_credentials_path = os.path.join(
                     legacy_root, CREDENTIALS_FILENAME

@@ -15,7 +15,7 @@ import sys
 from collections.abc import Mapping
 from typing import Any
 
-import yaml  # mypy: ignore[import-untyped]
+import yaml
 
 # Import version from package
 from mmrelay import __version__
@@ -1213,7 +1213,7 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                     if not e2ee_status.get("platform_supported", True):
                         print("\n⚠️  Warning: E2EE is not supported on Windows")
                         print("   Messages to encrypted rooms will be blocked")
-                except Exception as e:
+                except (ImportError, OSError) as e:
                     print(f"\n⚠️  Could not perform E2EE analysis: {e}")
                     print("   Falling back to basic E2EE validation...")
                     if not _validate_e2ee_config(config, matrix_section, config_path):
@@ -1654,7 +1654,7 @@ def handle_auth_command(args: argparse.Namespace) -> int:
         return handle_auth_login(args)
 
 
-def handle_paths_command(args: argparse.Namespace) -> int:
+def handle_paths_command(_args: argparse.Namespace) -> int:
     """
     Display all path configuration and diagnostics.
 

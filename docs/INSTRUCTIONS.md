@@ -110,7 +110,7 @@ Start the relay with a single command:
 mmrelay
 ```
 
-By default, MMRelay uses `~/.mmrelay` as the home directory for all runtime data.
+By default, MMRelay uses `~/.mmrelay` as the home directory for all runtime data on Linux/macOS. On Windows, it uses the platform-specific application data directory (e.g., `%APPDATA%/mmrelay`).
 
 ### Command-Line Options
 

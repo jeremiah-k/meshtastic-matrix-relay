@@ -268,34 +268,28 @@ class Plugin:
         """
         Verify that get_custom_plugin_dirs returns local directories even when user dir creation fails.
         """
-        with patch(
-            "mmrelay.plugin_loader._get_plugin_root_dirs",
-            return_value=["/restricted/plugins"],
-        ):
 
-            def side_effect(path, **_kwargs):
-                """
-                Simulate a filesystem access check that denies access for restricted paths.
+        def side_effect(path, **_kwargs):
+            """
+            Simulate a filesystem access check that denies access for restricted paths.
 
-                Parameters:
-                        path (str): Filesystem path to check.
+            Parameters:
+                    path (str): Filesystem path to check.
 
-                Raises:
-                        PermissionError: If `path` starts with "/restricted".
-                """
-                if path.startswith("/restricted"):
-                    raise PermissionError("Permission denied")
-                return None
+            Raises:
+                    PermissionError: If `path` starts with "/restricted".
+            """
+            if path.startswith("/restricted"):
+                raise PermissionError("Permission denied")
+            return None
 
+        with patch("mmrelay.plugin_loader.get_app_path", return_value="/test/app"):
             with patch("os.makedirs", side_effect=side_effect):
-                with patch(
-                    "mmrelay.plugin_loader.get_app_path", return_value="/test/app"
-                ):
-                    with patch("mmrelay.plugin_loader.logger"):
-                        dirs = get_custom_plugin_dirs()
-                        # Should still include local directory
-                        self.assertEqual(len(dirs), 1)
-                        self.assertIn("/test/app/plugins/custom", dirs)
+                with patch("mmrelay.plugin_loader.logger"):
+                    dirs = get_custom_plugin_dirs()
+                    # Should still include local directory
+                    self.assertEqual(len(dirs), 1)
+                    self.assertIn("/test/app/plugins/custom", dirs)
 
     def test_get_custom_plugin_dirs_broken_symlinks(self):
         """

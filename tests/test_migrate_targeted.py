@@ -72,7 +72,7 @@ class TestMigrateGpxtracker(unittest.TestCase):
 
     @patch("yaml.safe_load")
     @patch("builtins.open")
-    def test_returns_skip_on_yaml_import_error(self, mock_open, mock_yaml_load):
+    def test_returns_skip_on_yaml_import_error(self, _mock_open, mock_yaml_load):
         """Test skips migration when yaml import fails."""
         mock_yaml_load.side_effect = ImportError("yaml not available")
 

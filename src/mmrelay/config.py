@@ -8,8 +8,8 @@ import sys
 import warnings
 from typing import TYPE_CHECKING, Any, Iterable, cast
 
-import yaml  # mypy: ignore[import-untyped]
-from yaml.loader import SafeLoader  # mypy: ignore[import-untyped]
+import yaml
+from yaml.loader import SafeLoader
 
 # Import application constants
 from mmrelay.constants.config import (

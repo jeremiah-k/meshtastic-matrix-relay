@@ -8,7 +8,7 @@ metadata:
     checkov.io/skip2: CKV_K8S_35=Matrix auth uses env vars to bootstrap credentials.json on the PVC.
     checkov.io/skip3: CKV_K8S_15=Default uses latest tag; use digest overlay for production pinning.
     checkov.io/skip4: CKV_K8S_14=Base manifest intentionally omits tag; pin via kustomization overlay.
-    checkov.io/skip5: CKV_K8S_40=Init container runs as root to chown PVC for non-root runtime container.
+    checkov.io/skip5: CKV_K8S_40=Service account token is not required for this workload.
   labels:
     app: mmrelay
 spec:
