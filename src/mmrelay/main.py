@@ -54,6 +54,7 @@ from mmrelay.message_queue import (
     start_message_queue,
     stop_message_queue,
 )
+from mmrelay.paths import get_home_dir, get_legacy_dirs, get_legacy_env_vars
 from mmrelay.plugin_loader import load_plugins, shutdown_plugins
 
 # Initialize logger
@@ -599,7 +600,6 @@ def run_main(args: Any) -> int:
     # Get config path and log file path for logging
     from mmrelay.config import config_path
     from mmrelay.log_utils import log_file_path
-    from mmrelay.paths import get_home_dir, get_legacy_dirs, get_legacy_env_vars
 
     # Create a logger with a different name to avoid conflicts with the one in config.py
     config_rich_logger = get_logger("ConfigInfo", args=args)

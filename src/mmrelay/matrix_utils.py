@@ -1678,9 +1678,8 @@ async def _maybe_upload_e2ee_keys(client: AsyncClient) -> None:
         else:
             logger.debug("No key upload needed - keys already present")
     except NIO_COMM_EXCEPTIONS:
-        logger.exception(
-            "Failed to upload E2EE keys. Consider regenerating credentials with: mmrelay auth login"
-        )
+        logger.error("Consider regenerating credentials with: mmrelay auth login")
+        logger.exception("Failed to upload E2EE keys")
 
 
 async def _close_matrix_client_after_failure(
@@ -2240,7 +2239,7 @@ async def login_matrix_bot(
         e2ee_enabled = False
         try:
             config_for_paths = load_config()
-        except (OSError, ValueError, KeyError, TypeError) as e:
+        except (OSError, ValueError, KeyError, TypeError, RuntimeError) as e:
             logger.debug("Could not load config for credentials path: %s", e)
 
         # Check for existing credentials to reuse device_id

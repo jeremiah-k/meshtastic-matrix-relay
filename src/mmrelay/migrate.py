@@ -893,6 +893,12 @@ def migrate_database(
     selected_group = [
         candidate for candidate in candidates if get_base_path(candidate) == most_recent
     ]
+    if most_recent not in selected_group:
+        selected_group.insert(0, most_recent)
+    for suffix in ("-wal", "-shm"):
+        sidecar = most_recent.with_name(f"{most_recent.name}{suffix}")
+        if sidecar.exists() and sidecar not in selected_group:
+            selected_group.append(sidecar)
 
     if not selected_group:
         return {

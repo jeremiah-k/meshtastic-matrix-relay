@@ -17,6 +17,7 @@ from mmrelay.constants.app import (
     PYTHON_OLM_PACKAGE,
     WINDOWS_PLATFORM,
 )
+from mmrelay.paths import is_deprecation_window_active, resolve_all_paths
 
 
 class E2EEStatus(TypedDict):
@@ -107,8 +108,6 @@ def get_e2ee_status(
     else:
         # Check HOME location and legacy sources
         # Check primary credentials location (HOME)
-        from mmrelay.paths import is_deprecation_window_active, resolve_all_paths
-
         paths_info = resolve_all_paths()
         primary_credentials_path = paths_info["credentials_path"]
         status["credentials_available"] = os.path.exists(primary_credentials_path)
@@ -165,8 +164,6 @@ def _check_credentials_available(config_path: str) -> bool:
         return True
 
     # Check HOME location (primary)
-    from mmrelay.paths import is_deprecation_window_active, resolve_all_paths
-
     paths_info = resolve_all_paths()
     primary_credentials_path = paths_info["credentials_path"]
 

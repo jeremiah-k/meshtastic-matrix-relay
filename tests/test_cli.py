@@ -2357,7 +2357,7 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
 
         # Verify results
         self.assertTrue(result)
-        mock_validate_creds.assert_called_once_with(config_path)
+        mock_validate_creds.assert_called_once_with(config_path, None)
         mock_print.assert_any_call(
             "✅ Using credentials.json for Matrix authentication"
         )
@@ -2385,7 +2385,7 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
 
         # Verify results
         self.assertTrue(result)
-        mock_validate_creds.assert_called_once_with(config_path)
+        mock_validate_creds.assert_called_once_with(config_path, None)
         mock_print.assert_any_call(
             "✅ Using access_token for Matrix authentication (deprecated — consider 'mmrelay auth login' to create credentials.json)"
         )
@@ -2413,7 +2413,7 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
 
         # Verify results
         self.assertFalse(result)
-        mock_validate_creds.assert_called_once_with(config_path)
+        mock_validate_creds.assert_called_once_with(config_path, None)
         mock_print.assert_any_call("❌ Error: No Matrix authentication configured")
         mock_print.assert_any_call(
             "   Please run 'mmrelay auth login' to set up authentication"
@@ -2437,7 +2437,7 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
 
         # Verify results
         self.assertFalse(result)
-        mock_validate_creds.assert_called_once_with(config_path)
+        mock_validate_creds.assert_called_once_with(config_path, None)
         mock_print.assert_any_call("❌ Error: No Matrix authentication configured")
 
     @patch("mmrelay.cli._validate_credentials_json")
@@ -2460,7 +2460,7 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
 
         # Verify results
         self.assertFalse(result)  # Function now correctly rejects empty strings
-        mock_validate_creds.assert_called_once_with(config_path)
+        mock_validate_creds.assert_called_once_with(config_path, None)
         mock_print.assert_any_call("❌ Error: No Matrix authentication configured")
         mock_print.assert_any_call("   Setup: mmrelay auth login")
 
@@ -3044,7 +3044,9 @@ class TestValidateE2eeConfig(unittest.TestCase):
 
         # Verify results
         self.assertFalse(result)  # Should return False when auth fails
-        mock_validate_auth.assert_called_once_with(self.config_path, matrix_section)
+        mock_validate_auth.assert_called_once_with(
+            self.config_path, matrix_section, self.base_config
+        )
         mock_print.assert_not_called()  # Should not print anything
 
     @patch("mmrelay.cli._validate_matrix_authentication")
@@ -3066,7 +3068,9 @@ class TestValidateE2eeConfig(unittest.TestCase):
 
         # Verify results
         self.assertTrue(result)  # Should return True when no matrix section
-        mock_validate_auth.assert_called_once_with(self.config_path, matrix_section)
+        mock_validate_auth.assert_called_once_with(
+            self.config_path, matrix_section, self.base_config
+        )
         mock_print.assert_not_called()  # Should not print anything
 
     @patch("mmrelay.cli._validate_matrix_authentication")
@@ -3089,7 +3093,9 @@ class TestValidateE2eeConfig(unittest.TestCase):
 
         # Verify results
         self.assertTrue(result)  # Should return True when E2EE disabled
-        mock_validate_auth.assert_called_once_with(self.config_path, matrix_section)
+        mock_validate_auth.assert_called_once_with(
+            self.config_path, matrix_section, self.base_config
+        )
         mock_print.assert_not_called()  # Should not print anything
 
     @patch("mmrelay.cli._validate_matrix_authentication")
@@ -3113,7 +3119,9 @@ class TestValidateE2eeConfig(unittest.TestCase):
 
         # Verify results
         self.assertFalse(result)  # Should return False when deps missing
-        mock_validate_auth.assert_called_once_with(self.config_path, matrix_section)
+        mock_validate_auth.assert_called_once_with(
+            self.config_path, matrix_section, self.base_config
+        )
         mock_validate_deps.assert_called_once()
         mock_print.assert_not_called()  # Dependencies function handles printing
 
@@ -3151,7 +3159,9 @@ class TestValidateE2eeConfig(unittest.TestCase):
 
         # Verify results
         self.assertTrue(result)  # Should return True on success
-        mock_validate_auth.assert_called_once_with(self.config_path, matrix_section)
+        mock_validate_auth.assert_called_once_with(
+            self.config_path, matrix_section, self.base_config
+        )
         mock_validate_deps.assert_called_once()
         mock_expanduser.assert_called_once_with("~/.mmrelay/store")
         mock_print.assert_any_call(
@@ -3184,7 +3194,9 @@ class TestValidateE2eeConfig(unittest.TestCase):
 
         # Verify results
         self.assertTrue(result)  # Should return True on success
-        mock_validate_auth.assert_called_once_with(self.config_path, matrix_section)
+        mock_validate_auth.assert_called_once_with(
+            self.config_path, matrix_section, self.base_config
+        )
         mock_validate_deps.assert_called_once()
         mock_print.assert_any_call("✅ E2EE configuration is valid")
 
@@ -3225,7 +3237,9 @@ class TestValidateE2eeConfig(unittest.TestCase):
 
         # Verify results
         self.assertTrue(result)  # Should return True on success
-        mock_validate_auth.assert_called_once_with(self.config_path, matrix_section)
+        mock_validate_auth.assert_called_once_with(
+            self.config_path, matrix_section, self.base_config
+        )
         mock_validate_deps.assert_called_once()
         mock_expanduser.assert_called_once_with("~/.mmrelay/legacy_store")
         # Should not print directory creation message since it exists

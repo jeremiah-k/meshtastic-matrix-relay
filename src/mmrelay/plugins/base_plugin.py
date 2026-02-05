@@ -18,7 +18,7 @@ from nio import (
     RoomSendResponse,
 )
 
-from mmrelay.config import get_plugin_data_dir
+from mmrelay.config import get_plugin_data_dir as resolve_plugin_data_dir
 from mmrelay.constants.config import (
     CONFIG_KEY_REQUIRE_BOT_MENTION,
     DEFAULT_REQUIRE_BOT_MENTION,
@@ -685,11 +685,11 @@ class BasePlugin(ABC):
         # Get the plugin-specific data directory
         plugin_name = self._require_plugin_name()
         if subdir:
-            return get_plugin_data_dir(
+            return resolve_plugin_data_dir(
                 plugin_name, subdir=subdir, plugin_type=self.plugin_type
             )
 
-        return get_plugin_data_dir(plugin_name, plugin_type=self.plugin_type)
+        return resolve_plugin_data_dir(plugin_name, plugin_type=self.plugin_type)
 
     def matches(
         self,
