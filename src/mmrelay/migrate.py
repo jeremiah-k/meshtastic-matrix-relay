@@ -667,7 +667,10 @@ def migrate_credentials(
         logger.info("Backing up existing credentials: %s", new_creds)
         backup_path = _backup_file(new_creds)
         try:
-            shutil.copy2(str(new_creds), str(backup_path))
+            if new_creds.is_dir():
+                shutil.copytree(str(new_creds), str(backup_path))
+            else:
+                shutil.copy2(str(new_creds), str(backup_path))
         except (OSError, IOError) as e:
             logger.exception("Failed to backup credentials: %s", e)
             return {
@@ -769,7 +772,10 @@ def migrate_config(
         logger.info("Backing up existing config.yaml: %s", new_config)
         backup_path = _backup_file(new_config)
         try:
-            shutil.copy2(str(new_config), str(backup_path))
+            if new_config.is_dir():
+                shutil.copytree(str(new_config), str(backup_path))
+            else:
+                shutil.copy2(str(new_config), str(backup_path))
         except (OSError, IOError) as e:
             logger.exception("Failed to backup config.yaml: %s", e)
             return {
@@ -1069,6 +1075,7 @@ def migrate_logs(
                 "success": False,
                 "error": f"Failed to backup logs directory: {e}",
                 "old_path": str(old_logs_dir),
+                "migrated_count": 0,
             }
     elif not new_logs_dir.exists() and not force:
         backup_path = _backup_file(new_logs_dir)
@@ -1081,6 +1088,7 @@ def migrate_logs(
                 "success": False,
                 "error": f"Failed to create logs backup directory: {e}",
                 "old_path": str(old_logs_dir),
+                "migrated_count": 0,
             }
 
     new_logs_dir.mkdir(parents=True, exist_ok=True)

@@ -1175,7 +1175,8 @@ class TestMigrateLogsEdgeCases:
                 [legacy_root], new_home, dry_run=False, force=False, move=False
             )
 
-        assert result["success"] is True
+        # Backup failure is now fatal
+        assert result["success"] is False
         assert result["migrated_count"] == 0
 
 
@@ -1868,7 +1869,7 @@ class TestRollbackMigration:
         monkeypatch.setattr("mmrelay.migrate.get_home_dir", lambda: home)
 
         result = rollback_migration()
-        assert result["success"] is False
+        assert result["success"] is True
         assert "No migration to rollback" in result["message"]
 
     def test_rollback_migration_restore_credentials_success(

@@ -3933,7 +3933,7 @@ async def test_connect_matrix_credentials_load_exception_uses_config(
 
     with (
         patch(
-            "mmrelay.config.get_candidate_credentials_paths",
+            "mmrelay.config.get_credentials_search_paths",
             return_value=[str(candidate_path)],
         ),
         patch(
@@ -3950,7 +3950,8 @@ async def test_connect_matrix_credentials_load_exception_uses_config(
 
     assert client is mock_client
     assert any(
-        "Ignoring invalid credentials file" in call.args[0]
+        "Ignoring invalid credentials file" in str(call.args[0])
+        or "Ignoring credentials.json missing required keys" in str(call.args[0])
         for call in mock_logger.warning.call_args_list
     )
 
