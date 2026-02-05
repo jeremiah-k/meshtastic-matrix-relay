@@ -40,7 +40,9 @@ def get_e2ee_status(
 
     Parameters:
         config (Dict[str, Any]): Parsed application configuration; used to read `matrix.e2ee.enabled` and legacy `matrix.encryption.enabled`.
-        config_path (Optional[str]): Path to the config file; when provided the directory containing this path is checked for `credentials.json`. When omitted, the standard credentials locations are probed (primary HOME location first, then legacy sources).
+        config_path (Optional[str]): Path to the config file; when provided the config directory is checked
+            first, then the standard credentials locations are probed (primary HOME location first, then legacy
+            sources). When omitted, only the standard credentials locations are probed.
 
     Returns:
         E2EEStatus: A dict with the following keys:

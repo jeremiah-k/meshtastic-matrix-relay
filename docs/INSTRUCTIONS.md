@@ -134,7 +134,7 @@ MMRelay stores all runtime data in the home directory (`~/.mmrelay` by default, 
 
 - `config.yaml` - Your configuration file
 - `credentials.json` - Matrix authentication credentials (created by `mmrelay auth login`)
-- `mmrelay.db` - SQLite database for node information
+- `database/meshtastic.sqlite` - SQLite database for node information
 - `logs/` - Application logs
 - `store/` - E2EE encryption keys (Linux/macOS)
 - `plugins/` - Custom and community plugins

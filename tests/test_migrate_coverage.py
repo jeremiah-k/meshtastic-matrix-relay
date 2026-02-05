@@ -237,7 +237,7 @@ class TestGetMostRecentDatabase:
         result = _get_most_recent_database(candidates)
         assert result is None
 
-    def test_get_most_recent_database_mtime_error(self, tmp_path):
+    def test_get_most_recent_database_selects_by_mtime(self, tmp_path):
         """
         Validate that _get_most_recent_database selects the newest file based on modification time.
 
@@ -420,7 +420,7 @@ class TestMigrateDatabaseEdgeCases:
             """
             call_count[0] += 1
             # First call should be backup (dest exists)
-            if call_count[0] == 1 and "meshtastic.sqlite" in dst and call_count[0] == 1:
+            if call_count[0] == 1 and "meshtastic.sqlite" in dst:
                 # Check if we're backing up existing (not copying from legacy)
                 if "new_home" in str(dst):
                     raise OSError
@@ -897,8 +897,16 @@ class TestMigrateGpxtrackerEdgeCases:
     )
     def test_migrate_gpxtracker_move_failure(self, tmp_path):
         """Test handling of GPX file move/copy failure."""
-        # Skipped due to complexity - focusing on other coverage improvements
-        # See ISSUE-XXXX for tracking this edge case
+        new_home = tmp_path / "new_home"
+        new_home.mkdir()
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+
+        with mock.patch("shutil.move", side_effect=OSError("Mock move error")):
+            result = migrate_gpxtracker(
+                [legacy_root], new_home, dry_run=False, force=False, move=True
+            )
+            assert result["success"] is False
 
     def test_migrate_gpxtracker_expanded_path_not_found(self, tmp_path):
         """Test handling when expanded GPX directory doesn't exist."""

@@ -218,7 +218,7 @@ To rotate credentials:
 1. Generate new credentials.json locally:
 
    ```bash
-   mmrelay auth login --force  # This overwrites existing credentials.json
+   mmrelay auth login  # This overwrites existing credentials.json
    ```
 
 2. Update the Secret:

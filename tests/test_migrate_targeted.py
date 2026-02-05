@@ -74,11 +74,17 @@ class TestMigrateGpxtracker(unittest.TestCase):
     @patch("builtins.open")
     def test_returns_skip_on_yaml_import_error(self, _mock_open, mock_yaml_load):
         """Test skips migration when yaml import fails."""
-        mock_yaml_load.side_effect = ImportError("yaml not available")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            legacy_root = Path(tmpdir)
+            legacy_root.mkdir()
+            config = legacy_root / "config.yaml"
+            config.write_text("test: config")
 
-        result = migrate_gpxtracker([Path("/home")], Path("/home"))
+            mock_yaml_load.side_effect = ImportError("yaml not available")
 
-        self.assertTrue(result.get("success"))
+            result = migrate_gpxtracker([legacy_root], Path("/home"))
+
+            self.assertTrue(result.get("success"))
 
 
 class TestPerformMigration(unittest.TestCase):
