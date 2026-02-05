@@ -134,33 +134,37 @@ def wait_for_service_start() -> None:
 
     from mmrelay.runtime_utils import is_running_as_service
 
-    Progress: type[Any] | None = None
-    SpinnerColumn: type[Any] | None = None
-    TextColumn: type[Any] | None = None
-    TimeElapsedColumn: type[Any] | None = None
+    progress_cls: type[Any] | None = None
+    spinner_cls: type[Any] | None = None
+    text_cls: type[Any] | None = None
+    elapsed_cls: type[Any] | None = None
     running_as_service = is_running_as_service()
     if not running_as_service:
         try:
-            from rich.progress import (
-                Progress,
-                SpinnerColumn,
-                TextColumn,
-                TimeElapsedColumn,
-            )
+            from rich.progress import Progress as rich_progress
+            from rich.progress import SpinnerColumn as rich_spinner
+            from rich.progress import TextColumn as rich_text
+            from rich.progress import TimeElapsedColumn as rich_elapsed
+
+            progress_cls = rich_progress
+            spinner_cls = rich_spinner
+            text_cls = rich_text
+            elapsed_cls = rich_elapsed
         except ImportError:
             running_as_service = True
 
     # Create a Rich progress display with spinner and elapsed time
-    if not running_as_service and Progress is not None:
-        assert (
-            SpinnerColumn is not None
-            and TextColumn is not None
-            and TimeElapsedColumn is not None
-        )
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[bold green]Starting mmrelay service..."),
-            TimeElapsedColumn(),
+    if (
+        not running_as_service
+        and progress_cls is not None
+        and spinner_cls is not None
+        and text_cls is not None
+        and elapsed_cls is not None
+    ):
+        with progress_cls(
+            spinner_cls(),
+            text_cls("[bold green]Starting mmrelay service..."),
+            elapsed_cls(),
             transient=True,
         ) as progress:
             # Add a task that will run for approximately 10 seconds
