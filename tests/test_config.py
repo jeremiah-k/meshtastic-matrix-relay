@@ -4,7 +4,6 @@ import sys
 import tempfile
 import unittest
 import warnings
-from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
 # Add src to path for imports

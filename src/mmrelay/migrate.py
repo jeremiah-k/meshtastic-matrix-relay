@@ -51,7 +51,7 @@ import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from mmrelay.log_utils import get_logger
 from mmrelay.paths import get_home_dir, resolve_all_paths
@@ -1044,7 +1044,6 @@ def migrate_logs(
     new_logs_dir.mkdir(parents=True, exist_ok=True)
 
     migrated_count = 0
-    errors: list[str] = []
 
     for log_file in old_logs_dir.glob("*.log"):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1665,7 +1664,12 @@ def perform_migration(
         report["migrations"].append({"type": step_name, "result": result})
         report["completed_steps"] = list(completed_steps)
 
-    def _run_step(step_name: str, func, *args, **kwargs) -> dict[str, Any]:
+    def _run_step(
+        step_name: str,
+        func: Callable[..., dict[str, Any]],
+        *args: Any,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
         """
         Execute a migration step, record its result, update progress state, and raise on failure.
 

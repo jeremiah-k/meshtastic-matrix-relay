@@ -1829,7 +1829,7 @@ async def _perform_initial_sync(
                 logger.exception("Invite-ignoring sync retry cancelled")
                 await _close_matrix_client_after_failure(client, "sync cancellation")
                 raise
-            except (  # type: ignore[misc]
+            except (
                 *NIO_COMM_EXCEPTIONS,
                 JSONSCHEMA_VALIDATION_ERROR,
             ):

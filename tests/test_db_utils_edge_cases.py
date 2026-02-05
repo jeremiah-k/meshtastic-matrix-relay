@@ -17,8 +17,9 @@ import shutil
 import sqlite3
 import sys
 import tempfile
-import unittest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -45,27 +46,21 @@ from mmrelay.db_utils import (
 )
 
 
-class TestDBUtilsEdgeCases(unittest.TestCase):
+@pytest.fixture(autouse=True)
+def reset_db_utils_state() -> None:
+    """Reset cached database state between tests."""
+    clear_db_path_cache()
+    _reset_db_manager()
+    import mmrelay.db_utils
+
+    mmrelay.db_utils.config = None
+    yield
+    clear_db_path_cache()
+    _reset_db_manager()
+
+
+class TestDBUtilsEdgeCases:
     """Test cases for Database utilities edge cases and error handling."""
-
-    def setUp(self):
-        """
-        Prepares the test environment before each test by clearing the cached database path and resetting the global configuration.
-        """
-        # Clear any cached database path
-        clear_db_path_cache()
-        _reset_db_manager()
-        # Reset global config
-        import mmrelay.db_utils
-
-        mmrelay.db_utils.config = None
-
-    def tearDown(self):
-        """
-        Cleans up test environment after each test by clearing the cached database path.
-        """
-        clear_db_path_cache()
-        _reset_db_manager()
 
     def test_get_db_path_permission_error(self):
         """
@@ -78,7 +73,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
             with patch("os.makedirs", side_effect=PermissionError("Permission denied")):
                 # Should still return a path even if directory creation fails
                 result = get_db_path()
-                self.assertIn("meshtastic.sqlite", result)
+                assert "meshtastic.sqlite" in result
 
     def test_get_db_path_custom_config_invalid_path(self):
         """
@@ -95,7 +90,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
         with patch("os.makedirs", side_effect=OSError("Cannot create directory")):
             # Should handle the error gracefully
             result = get_db_path()
-            self.assertIsInstance(result, str)
+            assert isinstance(result, str)
 
     def test_initialize_database_connection_failure(self):
         """
@@ -112,7 +107,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
 
             with patch("mmrelay.db_utils.logger") as mock_logger:
                 # Should raise exception on connection failure (fail fast)
-                with self.assertRaises(sqlite3.Error):
+                with pytest.raises(sqlite3.Error):
                     initialize_database()
                 mock_logger.exception.assert_called()
 
@@ -129,7 +124,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
             with patch("mmrelay.db_utils.get_db_path", return_value=temp_db_path):
                 with patch("mmrelay.db_utils.logger"):
                     # Should raise exception on corrupted database (fail fast)
-                    with self.assertRaises(sqlite3.DatabaseError):
+                    with pytest.raises(sqlite3.DatabaseError):
                         initialize_database()
         finally:
             os.unlink(temp_db_path)
@@ -177,7 +172,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
             mock_get_manager.return_value = mock_manager
 
             result = get_longname("test_id")
-            self.assertIsNone(result)
+            assert result is None
 
     def test_get_shortname_table_not_exists(self):
         """
@@ -192,7 +187,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
             mock_get_manager.return_value = mock_manager
 
             result = get_shortname("test_id")
-            self.assertIsNone(result)
+            assert result is None
 
     def test_store_message_map_disk_full(self):
         """
@@ -220,7 +215,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
 
             result = get_message_map_by_meshtastic_id("test_id")
             # Should handle malformed data gracefully by returning None
-            self.assertIsNone(result)
+            assert result is None
 
     def test_get_message_map_by_matrix_event_id_unicode_error(self):
         """
@@ -235,7 +230,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
             mock_get_manager.return_value = mock_manager
 
             result = get_message_map_by_matrix_event_id("test_id")
-            self.assertIsNone(result)
+            assert result is None
 
     def test_prune_message_map_large_dataset(self):
         """
@@ -295,7 +290,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
             mock_connect.return_value.__enter__.return_value = mock_conn
 
             result = get_plugin_data_for_node("test_plugin", "test_node")
-            self.assertEqual(result, [])
+            assert result == []
 
     def test_get_plugin_data_for_node_memory_error(self):
         """
@@ -309,7 +304,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
             mock_connect.return_value.__enter__.return_value = mock_conn
 
             result = get_plugin_data_for_node("test_plugin", "test_node")
-            self.assertEqual(result, [])
+            assert result == []
 
     def test_delete_plugin_data_foreign_key_constraint(self):
         """
@@ -355,7 +350,6 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
         """
         Verify that database path caching remains consistent and robust when the cache is cleared between calls, simulating a race condition.
         """
-        import mmrelay.db_utils
 
         with tempfile.TemporaryDirectory() as temp_dir:
             # Simulate race condition by clearing cache between calls
@@ -376,8 +370,8 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                 path1 = get_db_path()
                 path2 = get_db_path()
                 # Should handle race condition gracefully
-                self.assertIsInstance(path1, str)
-                self.assertIsInstance(path2, str)
+                assert isinstance(path1, str)
+                assert isinstance(path2, str)
 
     def test_database_initialization_partial_failure(self):
         """
@@ -393,7 +387,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
             mock_manager.run_sync.side_effect = sqlite3.Error("Table creation failed")
 
             # Should raise exception on table creation failure (fail fast)
-            with self.assertRaises(sqlite3.Error):
+            with pytest.raises(sqlite3.Error):
                 initialize_database()
 
     def test_active_mtime_file_not_found(self):
@@ -402,7 +396,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
 
         # Test with a path that doesn't exist
         result = _active_mtime("/nonexistent/path/to/file.sqlite")
-        self.assertEqual(result, 0.0)
+        assert result == 0.0
 
     def test_active_mtime_partial_files_exist(self):
         """Test _active_mtime when only some files (main, wal, shm) exist."""
@@ -414,7 +408,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
         try:
             # Only main file exists (no wal or shm)
             result = _active_mtime(temp_db_path)
-            self.assertGreater(result, 0.0)
+            assert result > 0.0
 
             # Create a wal file
             wal_path = f"{temp_db_path}-wal"
@@ -423,7 +417,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
 
             # Now both main and wal exist
             result_with_wal = _active_mtime(temp_db_path)
-            self.assertGreater(result_with_wal, 0.0)
+            assert result_with_wal > 0.0
 
             os.unlink(wal_path)
         finally:
@@ -461,10 +455,10 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
             )
 
             # Verify migration happened
-            self.assertTrue(os.path.exists(default_path))
-            self.assertFalse(os.path.exists(legacy_path))
-            self.assertTrue(os.path.exists(f"{default_path}-wal"))
-            self.assertTrue(os.path.exists(f"{default_path}-shm"))
+            assert os.path.exists(default_path)
+            assert not os.path.exists(legacy_path)
+            assert os.path.exists(f"{default_path}-wal")
+            assert os.path.exists(f"{default_path}-shm")
 
     def test_migrate_legacy_db_os_error(self):
         """Test _migrate_legacy_db_if_needed handles OSError gracefully."""
@@ -487,7 +481,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                     # Should log warning about failed migration
                     mock_logger.warning.assert_called_once()
                     warning_call = mock_logger.warning.call_args[0]
-                    self.assertIn("Failed to migrate", warning_call[0])
+                    assert "Failed to migrate" in warning_call[0]
 
     def test_migrate_legacy_db_permission_error(self):
         """Test _migrate_legacy_db_if_needed handles PermissionError gracefully."""
@@ -510,7 +504,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                     # Should log warning about failed migration
                     mock_logger.warning.assert_called_once()
                     warning_call = mock_logger.warning.call_args[0]
-                    self.assertIn("Failed to migrate", warning_call[0])
+                    assert "Failed to migrate" in warning_call[0]
 
     def test_migrate_legacy_db_sidecar_failure_with_rollback(self):
         """Test _migrate_legacy_db_if_needed handles sidecar migration failure and rollback."""
@@ -552,7 +546,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                     )
 
                     # Should return legacy_path due to sidecar failure
-                    self.assertEqual(result, legacy_path)
+                    assert result == legacy_path
 
                     # Should log sidecar failure warnings
                     warning_calls = [
@@ -560,7 +554,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                         for call in mock_logger.method_calls
                         if call[0] == "warning"
                     ]
-                    self.assertTrue(len(warning_calls) > 0)
+                    assert len(warning_calls) > 0
 
     def test_migrate_legacy_db_partial_rollback_failure(self):
         """Test _migrate_legacy_db_if_needed handles sidecar failure with rollback."""
@@ -606,7 +600,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                     )
 
                     # Should return legacy_path after rollback
-                    self.assertEqual(result, legacy_path)
+                    assert result == legacy_path
 
                     # Should log warning about sidecar failure and successful rollback
                     warning_calls = [
@@ -615,9 +609,9 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                         if call[0] == "warning"
                     ]
                     # We expect at least the sidecar failure warning
-                    self.assertTrue(
-                        len(warning_calls) >= 1,
-                        f"Expected at least 1 warning call, got {len(warning_calls)}: {warning_calls}",
+                    assert len(warning_calls) >= 1, (
+                        f"Expected at least 1 warning call, got {len(warning_calls)}: "
+                        f"{warning_calls}"
                     )
 
     def test_migrate_legacy_db_rollback_errors_logged(self):
@@ -666,7 +660,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                     )
 
                     # Should return default_path (main db still moved)
-                    self.assertEqual(result, default_path)
+                    assert result == default_path
 
                     # Debug: print all method calls to understand what's happening
                     # Check for "partial state" warning (lines 137-141)
@@ -677,10 +671,9 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                     ]
 
                     # Should have at least sidecar failure + rollback error + partial state warnings
-                    self.assertTrue(
-                        len(warning_calls) >= 2,
-                        f"Expected at least 2 warning calls, got {len(warning_calls)}",
-                    )
+                    assert (
+                        len(warning_calls) >= 2
+                    ), f"Expected at least 2 warning calls, got {len(warning_calls)}"
 
                     # Verify "partial state" warning was logged (lines 137-141)
                     partial_state_logged = False
@@ -690,10 +683,9 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                             partial_state_logged = True
                             break
 
-                    self.assertTrue(
-                        partial_state_logged,
-                        "Expected 'partial state' warning to be logged when rollback fails",
-                    )
+                    assert (
+                        partial_state_logged
+                    ), "Expected 'partial state' warning to be logged when rollback fails"
 
                     # Verify rollback error was logged (lines 128-136)
                     rollback_error_logged = False
@@ -703,10 +695,9 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                             rollback_error_logged = True
                             break
 
-                    self.assertTrue(
-                        rollback_error_logged,
-                        "Expected 'Failed to roll back' warning to be logged",
-                    )
+                    assert (
+                        rollback_error_logged
+                    ), "Expected 'Failed to roll back' warning to be logged"
 
     def test_migrate_legacy_db_sidecar_rollback_loop(self):
         """Test _migrate_legacy_db_if_needed rolls back sidecars that were moved before a later failure (lines 114-120)."""
@@ -763,13 +754,13 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                     )
 
                     # Should return legacy_path after rollback
-                    self.assertEqual(result, legacy_path)
+                    assert result == legacy_path
 
                     # Verify files are back at legacy location
-                    self.assertTrue(os.path.exists(legacy_path))
-                    self.assertTrue(os.path.exists(wal_path))
-                    self.assertTrue(os.path.exists(shm_path))
-                    self.assertFalse(os.path.exists(default_path))
+                    assert os.path.exists(legacy_path)
+                    assert os.path.exists(wal_path)
+                    assert os.path.exists(shm_path)
+                    assert not os.path.exists(default_path)
 
                     # Check warning calls
                     warning_calls = [
@@ -779,10 +770,9 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                     ]
 
                     # Should have sidecar failure + successful rollback warning
-                    self.assertTrue(
-                        len(warning_calls) >= 1,
-                        f"Expected at least 1 warning call, got {len(warning_calls)}",
-                    )
+                    assert (
+                        len(warning_calls) >= 1
+                    ), f"Expected at least 1 warning call, got {len(warning_calls)}"
 
                     # Verify successful rollback message (lines 142-147)
                     rollback_success_logged = False
@@ -794,10 +784,9 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                             rollback_success_logged = True
                             break
 
-                    self.assertTrue(
-                        rollback_success_logged,
-                        "Expected successful rollback warning to be logged",
-                    )
+                    assert (
+                        rollback_success_logged
+                    ), "Expected successful rollback warning to be logged"
 
     def test_migrate_legacy_db_sidecar_rollback_failure(self):
         """Test _migrate_legacy_db_if_needed when sidecar rollback fails (lines 117-118, 128-141)."""
@@ -854,7 +843,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                     )
 
                     # Should return legacy_path
-                    self.assertEqual(result, legacy_path)
+                    assert result == legacy_path
 
                     # Check warning calls
                     warning_calls = [
@@ -864,10 +853,9 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                     ]
 
                     # Should have sidecar failure + sidecar rollback error + partial state warnings
-                    self.assertTrue(
-                        len(warning_calls) >= 2,
-                        f"Expected at least 2 warning calls, got {len(warning_calls)}",
-                    )
+                    assert (
+                        len(warning_calls) >= 2
+                    ), f"Expected at least 2 warning calls, got {len(warning_calls)}"
 
                     # Verify "partial state" warning was logged (lines 137-141)
                     partial_state_logged = False
@@ -877,10 +865,9 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                             partial_state_logged = True
                             break
 
-                    self.assertTrue(
-                        partial_state_logged,
-                        "Expected 'partial state' warning when sidecar rollback fails",
-                    )
+                    assert (
+                        partial_state_logged
+                    ), "Expected 'partial state' warning when sidecar rollback fails"
 
                     # Verify sidecar rollback error was logged (lines 117-118, 128-136)
                     sidecar_rollback_error_logged = False
@@ -892,10 +879,9 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                             sidecar_rollback_error_logged = True
                             break
 
-                    self.assertTrue(
-                        sidecar_rollback_error_logged,
-                        "Expected sidecar rollback error to be logged",
-                    )
+                    assert (
+                        sidecar_rollback_error_logged
+                    ), "Expected sidecar rollback error to be logged"
 
     def test_get_db_path_new_layout_no_implicit_migration(self):
         """Test get_db_path uses new layout without implicitly migrating legacy DBs."""
@@ -927,7 +913,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                 result = get_db_path()
 
             # Should return default path without migrating legacy data
-            self.assertEqual(result, default_path)
+            assert result == default_path
 
     def test_get_db_path_legacy_multiple_databases(self):
         """Test get_db_path uses resolved database path when multiple legacy databases exist."""
@@ -969,7 +955,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                     result = get_db_path()
 
                     # Should use resolved database path (default_path)
-                    self.assertEqual(result, default_path)
+                    assert result == default_path
 
                     # No warning expected
                     warning_calls = [
@@ -977,7 +963,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                         for call in mock_logger.method_calls
                         if call[0] == "warning"
                     ]
-                    self.assertEqual(len(warning_calls), 0)
+                    assert len(warning_calls) == 0
 
     def test_get_db_path_legacy_multiple_databases_warning(self):
         """Test get_db_path ignores newer legacy databases when new layout is disabled."""
@@ -1018,7 +1004,7 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                     result = get_db_path()
 
                     # Should still use the resolved database path
-                    self.assertEqual(result, default_path)
+                    assert result == default_path
 
                     # No warning expected
                     mock_logger.warning.assert_not_called()
@@ -1054,9 +1040,5 @@ class TestDBUtilsEdgeCases(unittest.TestCase):
                     result = get_db_path()
 
                     # Should use resolved database path (default_path)
-                    self.assertEqual(result, default_path)
+                    assert result == default_path
                     mock_logger.info.assert_not_called()
-
-
-if __name__ == "__main__":
-    unittest.main()

@@ -382,13 +382,12 @@ def get_plugin_data_dir(
     elif normalized_type == "core":
         base_dir = get_core_plugins_dir() / plugin_name
     else:
-        base_dir = None
         for plugin_root in (get_custom_plugins_dir(), get_community_plugins_dir()):
             candidate = plugin_root / plugin_name
             if candidate.exists():
                 base_dir = candidate
                 break
-        if base_dir is None:
+        else:
             base_dir = get_core_plugins_dir() / plugin_name
 
     data_dir = base_dir / "data"
