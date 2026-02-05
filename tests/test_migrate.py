@@ -699,10 +699,10 @@ class TestMigrateCredentials:
             with patch("mmrelay.migrate.logger") as mock_logger:
                 result = migrate_credentials([legacy_root], new_home, move=False)
 
-                # Migration should still succeed
-                assert result["success"] is True
-                # Warning should be logged
-                mock_logger.warning.assert_called()
+                # Migration should fail if backup fails (safety first)
+                assert result["success"] is False
+                # Error should be logged
+                mock_logger.exception.assert_called()
 
 
 class TestMigrateConfig:
@@ -1479,7 +1479,7 @@ class TestRollbackMigration:
     """Tests for rollback_migration function (lines 1197-1246)."""
 
     def test_no_migration_to_rollback(self, tmp_path, monkeypatch):
-        """Test returns error when migration not completed."""
+        """Test returns success when migration not completed (idempotent)."""
         new_home = tmp_path / "home"
         new_home.mkdir()
 
@@ -1487,7 +1487,7 @@ class TestRollbackMigration:
 
         result = rollback_migration()
 
-        assert result["success"] is False
+        assert result["success"] is True
         assert "No migration to rollback" in result["message"]
 
     def test_restores_credentials(self, tmp_path, monkeypatch):

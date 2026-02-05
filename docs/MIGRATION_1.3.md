@@ -66,10 +66,21 @@ mmrelay doctor --migration
 
 This prints human-readable warnings when legacy data is still present.
 
-## How to Roll Back Safely
+## Automatic Migration Rollback
+
+If the `mmrelay migrate` command fails during its execution, it will attempt to automatically roll back any changes made during that run. This process uses internal backups created during the migration.
+
+A successful automatic rollback ensures that:
+- Files and directories are restored to their pre-migration state.
+- Newly created directories (like `logs/` or `store/`) that did not exist before are removed to leave no residue.
+- The migration state is cleared, allowing you to retry after resolving the issue.
+
+## How to Roll Back Safely (Manual)
+
+If you need to manually undo a successful migration:
 
 1. Stop MMRelay.
-2. Restore your backup to the pre-upgrade location.
+2. Restore your manual backup to the pre-upgrade location.
 3. Downgrade the package or container image.
 4. Start MMRelay.
 5. Confirm the service starts and data is intact.

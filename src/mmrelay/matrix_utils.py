@@ -1674,23 +1674,41 @@ async def _perform_matrix_login(
 
             try:
                 whoami_response = await client.whoami()
+                credentials_updated = False
+
+                # Verify user_id matching
+                discovered_user_id = getattr(whoami_response, "user_id", None)
+                if discovered_user_id and user_id and discovered_user_id != user_id:
+                    logger.warning(
+                        f"Matrix user_id mismatch: credentials say {user_id} but whoami says {discovered_user_id}. "
+                        "Updating credentials to match whoami."
+                    )
+                    user_id = discovered_user_id
+                    client.user_id = user_id
+                    if auth_info.credentials is not None:
+                        auth_info.credentials["user_id"] = user_id
+                        credentials_updated = True
+
                 discovered_device_id = getattr(whoami_response, "device_id", None)
-                if discovered_device_id:
+                if discovered_device_id and discovered_device_id != e2ee_device_id:
                     e2ee_device_id = discovered_device_id
                     client.device_id = e2ee_device_id
                     logger.info(f"Discovered device_id from whoami: {e2ee_device_id}")
 
+                    if auth_info.credentials is not None:
+                        auth_info.credentials["device_id"] = e2ee_device_id
+                        credentials_updated = True
+
+                if credentials_updated and auth_info.credentials is not None:
                     try:
-                        if auth_info.credentials is not None:
-                            auth_info.credentials["device_id"] = e2ee_device_id
-                            await asyncio.to_thread(
-                                save_credentials,
-                                auth_info.credentials,
-                                credentials_path=auth_info.credentials_path,
-                            )
-                            logger.info(
-                                "Updated credentials.json with discovered device_id"
-                            )
+                        await asyncio.to_thread(
+                            save_credentials,
+                            auth_info.credentials,
+                            credentials_path=auth_info.credentials_path,
+                        )
+                        logger.info(
+                            "Updated credentials.json with discovered information"
+                        )
                     except OSError as e:
                         logger.warning(f"Failed to persist discovered device_id: {e}")
 
@@ -1716,6 +1734,14 @@ async def _perform_matrix_login(
             try:
                 whoami_response = await client.whoami()
                 discovered_user_id = getattr(whoami_response, "user_id", None)
+
+                # Verify user_id matching if already set from config
+                if discovered_user_id and user_id and discovered_user_id != user_id:
+                    logger.warning(
+                        f"Matrix user_id mismatch: config says {user_id} but whoami says {discovered_user_id}. "
+                        "Overriding with whoami result."
+                    )
+
                 if discovered_user_id:
                     client.user_id = discovered_user_id
                     user_id = discovered_user_id

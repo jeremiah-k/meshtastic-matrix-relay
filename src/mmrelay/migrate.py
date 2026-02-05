@@ -1064,7 +1064,24 @@ def migrate_logs(
         try:
             shutil.copytree(str(new_logs_dir), str(backup_path))
         except (OSError, IOError) as e:
-            logger.warning("Failed to backup logs directory: %s", e)
+            logger.exception("Failed to backup logs directory: %s", e)
+            return {
+                "success": False,
+                "error": f"Failed to backup logs directory: {e}",
+                "old_path": str(old_logs_dir),
+            }
+    elif not new_logs_dir.exists() and not force:
+        backup_path = _backup_file(new_logs_dir)
+        try:
+            backup_path.mkdir(parents=True, exist_ok=True)
+            logger.info("Created empty logs backup directory: %s", backup_path)
+        except (OSError, IOError) as e:
+            logger.exception("Failed to create logs backup directory: %s", e)
+            return {
+                "success": False,
+                "error": f"Failed to create logs backup directory: {e}",
+                "old_path": str(old_logs_dir),
+            }
 
     new_logs_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1173,7 +1190,15 @@ def migrate_store(
         try:
             shutil.copytree(str(new_store_dir), str(backup_path))
         except (OSError, IOError) as e:
-            logger.warning("Failed to backup store directory: %s", e)
+            logger.exception("Failed to backup store directory: %s", e)
+            backup_error = str(e)
+    elif not new_store_dir.exists() and not force:
+        backup_path = _backup_file(new_store_dir)
+        try:
+            backup_path.mkdir(parents=True, exist_ok=True)
+            logger.info("Created empty store backup directory: %s", backup_path)
+        except (OSError, IOError) as e:
+            logger.exception("Failed to create store backup directory: %s", e)
             backup_error = str(e)
 
     if backup_error:
@@ -1930,11 +1955,11 @@ def rollback_migration(completed_steps: list[str] | None = None) -> dict[str, An
 
     if completed_steps is None:
         if not state_path.exists():
-            # No migration was performed, so rollback cannot proceed.
+            # No migration was performed, so rollback is technically successful (nothing to undo).
             return {
-                "success": False,
+                "success": True,
                 "message": "No migration to rollback - migration state file not found",
-                "errors": ["Migration state file not found"],
+                "errors": [],
             }
         if state and isinstance(state.get("completed_steps"), list):
             completed_steps = state["completed_steps"]
@@ -1980,7 +2005,7 @@ def rollback_migration(completed_steps: list[str] | None = None) -> dict[str, An
         """
         Restore the destination directory from the most recent backup matching `backup_glob`.
 
-        Attempts to remove `dest_dir` if it exists and then copies the newest matching backup directory into `dest_dir`. On success increments the enclosing `restored_count`. On failure records a descriptive error into the enclosing `rollback_errors` list and does not raise.
+        Attempts to remove `dest_dir` if it exists and then restores from the newest matching backup directory. If the backup directory is empty (indicating a "pre-migration empty" state), the destination is left removed to leave no residue. On success increments the enclosing `restored_count`. On failure records a descriptive error into the enclosing `rollback_errors` list and does not raise.
 
         Parameters:
             backup_glob (str): Glob pattern (applied to `dest_dir.parent`) used to find backup directories.
@@ -1996,8 +2021,16 @@ def rollback_migration(completed_steps: list[str] | None = None) -> dict[str, An
         try:
             if dest_dir.exists():
                 shutil.rmtree(str(dest_dir))
-            shutil.copytree(str(backup), str(dest_dir))
-            logger.info("Restored %s directory from: %s", label, backup)
+
+            # If the backup has entries, restore it; otherwise leave dest_dir removed (no residue)
+            if _dir_has_entries(backup):
+                shutil.copytree(str(backup), str(dest_dir))
+                logger.info("Restored %s directory from: %s", label, backup)
+            else:
+                logger.info(
+                    "Restored %s as empty (removed directory to leave no residue)",
+                    label,
+                )
             restored_count += 1
         except (OSError, IOError) as e:
             logger.warning(
@@ -2028,6 +2061,12 @@ def rollback_migration(completed_steps: list[str] | None = None) -> dict[str, An
             restore_file("config.yaml.bak.*", new_home / "config.yaml")
         elif step == "credentials":
             restore_file("credentials.json.bak.*", new_home / "credentials.json")
+        elif step == "gpxtracker":
+            # No-op by design: the 'plugins' rollback step (which runs after this step in
+            # reverse order) restores the entire plugins directory, effectively removing
+            # any GPX files migrated into plugins/community/gpxtracker/data/.
+            # We explicitly handle this step to confirm it's part of the rollback contract.
+            logger.info("Rollback for gpxtracker covered by plugins restoration")
         else:
             logger.debug("No rollback action defined for step: %s", step)
 
