@@ -91,7 +91,7 @@ check_doc_files() {
 			local LINE_NUM=$((LINE_IDX + 1))
 
 			# Check if this line is the marker
-			if [[ "${LINE_CONTENT}" == *"${ALLOW_MARKER}"* ]]; then
+			if [[ ${LINE_CONTENT} == *"${ALLOW_MARKER}"* ]]; then
 				# Look for the next fence opening (allowing blank lines between marker and fence)
 				local FENCE_IDX=$((LINE_IDX + 1))
 				while [[ ${FENCE_IDX} -lt ${TOTAL_LINES} ]]; do
@@ -99,7 +99,7 @@ check_doc_files() {
 					local FENCE_LINE=$((FENCE_IDX + 1))
 
 					# Check for fence opening (``` or ~~~)
-					if [[ "${FENCE_CONTENT}" =~ ^[[:space:]]*(\`{3}|~{3}) ]]; then
+					if [[ ${FENCE_CONTENT} =~ ^[[:space:]]*(\`{3}|~{3}) ]]; then
 						# Found opening fence - capture the delimiter (``` or ~~~)
 						local DELIMITER="${BASH_REMATCH[1]}"
 
@@ -109,7 +109,7 @@ check_doc_files() {
 							local CLOSING_CONTENT="${FILE_LINES[CLOSING_IDX]}"
 							local CLOSING_LINE=$((CLOSING_IDX + 1))
 
-							if [[ "${CLOSING_CONTENT}" =~ ^[[:space:]]*${DELIMITER}[[:space:]]*$ ]]; then
+							if [[ ${CLOSING_CONTENT} =~ ^[[:space:]]*${DELIMITER}[[:space:]]*$ ]]; then
 								# Found the closing fence
 								local BLOCK_START=$((FENCE_LINE + 1))
 								local BLOCK_END=$((CLOSING_LINE - 1))
@@ -132,7 +132,7 @@ check_doc_files() {
 					# Only skip blank lines after marker
 					if [[ ${FENCE_LINE} -gt $((LINE_NUM + 10)) ]]; then
 						# Safety limit: don't search more than 10 lines after marker
-						if [[ ${DEBUG:-} == "1" ]]; then
+						if [[ ${DEBUG-} == "1" ]]; then
 							echo "DEBUG: Marker at line ${LINE_NUM} in ${FILE} has no fence within 10 lines" >&2
 						fi
 						break
@@ -140,7 +140,7 @@ check_doc_files() {
 
 					# Trim whitespace
 					local FENCE_TRIMMED="${FENCE_CONTENT//[[:space:]]/}"
-					if [[ -n ${FENCE_TRIMMED} ]] && [[ ! "${FENCE_CONTENT}" =~ ^[[:space:]]*(\`{3}|~{3}) ]]; then
+					if [[ -n ${FENCE_TRIMMED} ]] && [[ ! ${FENCE_CONTENT} =~ ^[[:space:]]*(\`{3}|~{3}) ]]; then
 						# Found non-fence content - this marker has no following fence
 						break
 					fi

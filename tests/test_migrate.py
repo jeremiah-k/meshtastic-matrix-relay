@@ -52,7 +52,9 @@ class TestPathIsWithinHome:
 
         assert result is True
 
-    def test_path_outside_home(self, clean_migration_home: Path, tmp_path: Path) -> None:
+    def test_path_outside_home(
+        self, clean_migration_home: Path, tmp_path: Path
+    ) -> None:
         """Test path outside home directory returns False."""
         home = clean_migration_home / "home"
         child = tmp_path / "other" / "file.txt"
@@ -61,7 +63,9 @@ class TestPathIsWithinHome:
 
         assert result is False
 
-    def test_path_resolve_uses_absolute_on_oserror(self, clean_migration_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_path_resolve_uses_absolute_on_oserror(
+        self, clean_migration_home: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test OSError on path.resolve() falls back to absolute()."""
         home = clean_migration_home / "home"
 
@@ -86,7 +90,9 @@ class TestPathIsWithinHome:
         # Should not raise, just use absolute()
         assert isinstance(result, bool)
 
-    def test_home_resolve_uses_absolute_on_oserror(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_home_resolve_uses_absolute_on_oserror(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test OSError on home.resolve() falls back to absolute()."""
         home = tmp_path / "home"
 
@@ -161,7 +167,9 @@ class TestDirHasEntries:
 
         assert result is True
 
-    def test_iterdir_raises_oserror(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_iterdir_raises_oserror(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test OSError on iterdir() returns False."""
         test_dir = tmp_path / "test_dir"
         test_dir.mkdir()
@@ -358,7 +366,9 @@ class TestFindLegacyData:
 class TestMigrationStateFunctions:
     """Tests for migration state functions (lines 324-365)."""
 
-    def test_is_migration_completed_no_state_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_is_migration_completed_no_state_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test returns False when state file doesn't exist."""
         test_home = tmp_path / "state_test_home"
         test_home.mkdir()
@@ -369,7 +379,9 @@ class TestMigrationStateFunctions:
 
         assert result is False
 
-    def test_is_migration_completed_correct_version(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_is_migration_completed_correct_version(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test returns True when state file has correct version."""
         test_home = tmp_path / "completed_home"
         test_home.mkdir()
@@ -382,7 +394,9 @@ class TestMigrationStateFunctions:
 
         assert result is True
 
-    def test_is_migration_completed_wrong_version(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_is_migration_completed_wrong_version(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test returns False when state file has wrong version."""
         test_home = tmp_path / "wrong_version_home"
         test_home.mkdir()
@@ -395,7 +409,9 @@ class TestMigrationStateFunctions:
 
         assert result is False
 
-    def test_is_migration_completed_read_oserror(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_is_migration_completed_read_oserror(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test returns False and logs warning on OSError reading state file."""
         test_home = tmp_path / "read_oserror_home"
         test_home.mkdir()
@@ -413,7 +429,9 @@ class TestMigrationStateFunctions:
                 assert result is False
                 mock_logger.warning.assert_called_once()
 
-    def test_mark_migration_completed_creates_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_mark_migration_completed_creates_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test creates state file with correct version."""
         test_home = tmp_path / "creates_home"
         test_home.mkdir()
@@ -428,7 +446,9 @@ class TestMigrationStateFunctions:
         assert payload["version"] == "1.3"
         assert payload["status"] == "completed"
 
-    def test_mark_migration_completed_write_oserror(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_mark_migration_completed_write_oserror(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test logs error on OSError writing state file."""
         test_home = tmp_path / "write_oserror_home"
         test_home.mkdir()
@@ -556,7 +576,9 @@ class TestGetMostRecentDatabase:
 class TestMigrateCredentials:
     """Tests for migrate_credentials function (lines 416-494)."""
 
-    def test_no_credentials_found(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_no_credentials_found(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test returns success when no credentials file found."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -568,7 +590,9 @@ class TestMigrateCredentials:
         assert result["success"] is True
         assert "No credentials file found" in result["message"]
 
-    def test_dry_run_mode(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_dry_run_mode(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test dry run mode doesn't modify files."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -583,7 +607,9 @@ class TestMigrateCredentials:
         assert result["dry_run"] is True
         assert not (new_home / "credentials.json").exists()
 
-    def test_copy_credentials(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_copy_credentials(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test copies credentials to new location."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -600,7 +626,9 @@ class TestMigrateCredentials:
         assert creds.exists()  # Original still there
         assert (new_home / "credentials.json").read_text() == creds.read_text()
 
-    def test_move_credentials(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_move_credentials(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test moves credentials to new location."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -616,7 +644,9 @@ class TestMigrateCredentials:
         assert (new_home / "credentials.json").exists()
         assert not creds.exists()  # Original moved
 
-    def test_backup_existing_credentials(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_backup_existing_credentials(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test backs up existing credentials."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -634,7 +664,9 @@ class TestMigrateCredentials:
         backups = list(new_home.glob("credentials.json.bak.*"))
         assert len(backups) == 1
 
-    def test_force_no_backup(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_force_no_backup(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test force mode skips backup."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -652,7 +684,9 @@ class TestMigrateCredentials:
         backups = list(new_home.glob("credentials.json.bak.*"))
         assert len(backups) == 0
 
-    def test_copy_oserror(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_copy_oserror(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test handles OSError on copy."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -667,7 +701,9 @@ class TestMigrateCredentials:
             assert result["success"] is False
             assert "Mock error" in result["error"]
 
-    def test_backup_oserror_logged(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_backup_oserror_logged(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test logs warning on backup OSError."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -771,7 +807,9 @@ class TestMigrateConfig:
 class TestMigrateDatabase:
     """Tests for migrate_database function (lines 497-611)."""
 
-    def test_no_database_found(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_no_database_found(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test returns success when no database found."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -783,7 +821,9 @@ class TestMigrateDatabase:
         assert result["success"] is True
         assert "No database files found" in result["message"]
 
-    def test_dry_run_mode(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_dry_run_mode(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test dry run mode doesn't modify files."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -798,7 +838,9 @@ class TestMigrateDatabase:
         assert result["dry_run"] is True
         assert not (new_home / "database").exists()
 
-    def test_copy_database_with_sidecars(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_copy_database_with_sidecars(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test copies database."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -817,7 +859,9 @@ class TestMigrateDatabase:
         assert result["action"] == "copy"
         assert (new_home / "database" / "meshtastic.sqlite").exists()
 
-    def test_move_database(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_move_database(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test moves database."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -837,7 +881,9 @@ class TestMigrateDatabase:
         assert (new_home / "database" / "meshtastic.sqlite").exists()
         assert not db.exists()
 
-    def test_integrity_check_success(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_integrity_check_success(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test database integrity check passes."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -854,7 +900,9 @@ class TestMigrateDatabase:
 
         assert result["success"] is True
 
-    def test_integrity_check_failure(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_integrity_check_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test raises MigrationError on integrity check failure."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -869,7 +917,9 @@ class TestMigrateDatabase:
         with pytest.raises(MigrationError, match="Database verification failed"):
             migrate_database([legacy_root], new_home, move=False)
 
-    def test_move_database_integrity_check_failure(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_move_database_integrity_check_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test that move=True with integrity check failure prevents data loss."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -887,7 +937,9 @@ class TestMigrateDatabase:
         dest_db = new_home / "database" / "meshtastic.sqlite"
         assert not dest_db.exists(), "Corrupted database was left at destination"
 
-    def test_move_database_integrity_check_returns_corrupted(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_move_database_integrity_check_returns_corrupted(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test that move=True with integrity check returning corrupted prevents data loss."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -913,7 +965,9 @@ class TestMigrateDatabase:
         dest_db = new_home / "database" / "meshtastic.sqlite"
         assert not dest_db.exists(), "Corrupted database was left at destination"
 
-    def test_most_recent_database_selected(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_most_recent_database_selected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test selects most recent database from multiple candidates."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -965,7 +1019,9 @@ class TestMigrateDatabase:
 class TestMigrateLogs:
     """Tests for migrate_logs function (lines 614-695)."""
 
-    def test_no_logs_directory(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_no_logs_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test returns success when no logs directory found."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -977,7 +1033,9 @@ class TestMigrateLogs:
         assert result["success"] is True
         assert "No logs directory found" in result["message"]
 
-    def test_dry_run_mode(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_dry_run_mode(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test dry run mode doesn't modify files."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -993,7 +1051,9 @@ class TestMigrateLogs:
         assert result["dry_run"] is True
         assert not (new_home / "logs").exists()
 
-    def test_copy_log_files(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_copy_log_files(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test copies log files with timestamped names."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1010,7 +1070,9 @@ class TestMigrateLogs:
         assert result["action"] == "copy"
         assert result["migrated_count"] == 2
 
-    def test_move_log_files(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_move_log_files(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test moves log files."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1027,7 +1089,9 @@ class TestMigrateLogs:
         assert (new_home / "logs").exists()
         assert not (legacy_root / "logs" / "app.log").exists()
 
-    def test_timestamped_log_names(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_timestamped_log_names(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test log files get timestamped names."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1047,7 +1111,9 @@ class TestMigrateLogs:
 class TestMigrateStore:
     """Tests for migrate_store function (lines 698-789)."""
 
-    def test_windows_skip(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_windows_skip(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test skips store migration on Windows."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1062,7 +1128,9 @@ class TestMigrateStore:
             assert result["success"] is True
             assert "E2EE not supported on Windows" in result["message"]
 
-    def test_no_store_directory(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_no_store_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test returns success when no store directory found."""
         if sys.platform == "win32":
             pytest.skip("E2EE not supported on Windows")
@@ -1077,7 +1145,9 @@ class TestMigrateStore:
         assert result["success"] is True
         assert "No E2EE store directory found" in result["message"]
 
-    def test_dry_run_mode(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_dry_run_mode(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test dry run mode doesn't modify files."""
         if sys.platform == "win32":
             pytest.skip("E2EE not supported on Windows")
@@ -1096,7 +1166,9 @@ class TestMigrateStore:
         assert result["dry_run"] is True
         assert not (new_home / "store").exists()
 
-    def test_copy_store_directory(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_copy_store_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test copies store directory."""
         if sys.platform == "win32":
             pytest.skip("E2EE not supported on Windows")
@@ -1117,7 +1189,9 @@ class TestMigrateStore:
         assert (new_home / "store" / "store.db").exists()
         assert (new_home / "store" / "keys").exists()
 
-    def test_move_store_directory(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_move_store_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test moves store directory."""
         if sys.platform == "win32":
             pytest.skip("E2EE not supported on Windows")
@@ -1141,7 +1215,9 @@ class TestMigrateStore:
 class TestMigratePlugins:
     """Tests for migrate_plugins function (lines 792-914)."""
 
-    def test_no_plugins_directory(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_no_plugins_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test returns success when no plugins directory found."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1153,7 +1229,9 @@ class TestMigratePlugins:
         assert result["success"] is True
         assert "No plugins directory found" in result["message"]
 
-    def test_dry_run_mode(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_dry_run_mode(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test dry run mode doesn't modify files."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1168,7 +1246,9 @@ class TestMigratePlugins:
         assert result["dry_run"] is True
         assert not (new_home / "plugins").exists()
 
-    def test_migrate_custom_plugins(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_migrate_custom_plugins(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test migrates custom plugins."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1188,7 +1268,9 @@ class TestMigratePlugins:
         assert (new_home / "plugins" / "custom" / "plugin1").exists()
         assert (new_home / "plugins" / "custom" / "plugin2").exists()
 
-    def test_migrate_community_plugins(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_migrate_community_plugins(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test migrates community plugins."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1208,7 +1290,9 @@ class TestMigratePlugins:
         assert (new_home / "plugins" / "community" / "plugin1").exists()
         assert (new_home / "plugins" / "community" / "plugin2").exists()
 
-    def test_move_plugins(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_move_plugins(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test moves plugins."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1231,7 +1315,9 @@ class TestMigratePlugins:
 class TestMigrateGpxtracker:
     """Tests for migrate_gpxtracker function (lines 917-1039)."""
 
-    def test_no_config_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_no_config_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test returns success when no config file found."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1243,7 +1329,9 @@ class TestMigrateGpxtracker:
         assert result["success"] is True
         assert "gpx_directory, skipping migration" in result["message"]
 
-    def test_invalid_yaml(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_invalid_yaml(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test handles invalid YAML in config."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1257,7 +1345,9 @@ class TestMigrateGpxtracker:
         assert result["success"] is True
         assert "gpx_directory, skipping migration" in result["message"]
 
-    def test_no_gpx_directory_configured(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_no_gpx_directory_configured(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test returns success when gpx_directory not configured."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1271,7 +1361,9 @@ class TestMigrateGpxtracker:
         assert result["success"] is True
         assert "gpx_directory, skipping migration" in result["message"]
 
-    def test_gpx_directory_doesnt_exist(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_gpx_directory_doesnt_exist(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test handles non-existent configured gpx_directory."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1287,7 +1379,9 @@ class TestMigrateGpxtracker:
         assert result["success"] is True
         # Should handle gracefully
 
-    def test_dry_run_mode(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_dry_run_mode(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test dry run mode doesn't modify files."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1308,7 +1402,9 @@ class TestMigrateGpxtracker:
                 new_home / "plugins" / "community" / "gpxtracker" / "data"
             ).exists()
 
-    def test_copy_gpx_files(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_copy_gpx_files(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test copies GPX files."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1335,7 +1431,9 @@ class TestMigrateGpxtracker:
 class TestIsMigrationNeeded:
     """Tests for is_migration_needed function (lines 1042-1047)."""
 
-    def test_migration_completed(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_migration_completed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test returns False when migration already completed."""
         home = tmp_path / "home"
         home.mkdir()
@@ -1351,7 +1449,9 @@ class TestIsMigrationNeeded:
 
         assert result is False
 
-    def test_legacy_sources_exist(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_legacy_sources_exist(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test returns True when legacy sources exist."""
         home = tmp_path / "home"
         home.mkdir()
@@ -1367,7 +1467,9 @@ class TestIsMigrationNeeded:
 
         assert result is True
 
-    def test_no_legacy_and_not_completed(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_no_legacy_and_not_completed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test returns False when no legacy and not completed."""
         home = tmp_path / "home"
         home.mkdir()
@@ -1385,7 +1487,9 @@ class TestIsMigrationNeeded:
 class TestPerformMigration:
     """Tests for perform_migration function (lines 1050-1194)."""
 
-    def test_dry_run_mode(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_dry_run_mode(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test dry run mode."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1405,7 +1509,9 @@ class TestPerformMigration:
         assert result["success"] is True
         assert result["dry_run"] is True
 
-    def test_no_legacy_installation(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_no_legacy_installation(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test returns success when no legacy installation."""
         new_home = tmp_path / "home"
         new_home.mkdir()
@@ -1424,7 +1530,9 @@ class TestPerformMigration:
         assert "No legacy installation detected" in result["message"]
         assert len(result["migrations"]) == 0
 
-    def test_full_migration_success(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_full_migration_success(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test complete migration with all components."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1452,7 +1560,9 @@ class TestPerformMigration:
         assert "Migration completed successfully" in result["message"]
         assert len(result["migrations"]) >= 3
 
-    def test_migration_creates_home_directory(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_migration_creates_home_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test creates home directory if it doesn't exist."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
@@ -1475,7 +1585,9 @@ class TestPerformMigration:
 class TestRollbackMigration:
     """Tests for rollback_migration function (lines 1197-1246)."""
 
-    def test_no_migration_to_rollback(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_no_migration_to_rollback(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test returns success when migration not completed (idempotent)."""
         new_home = tmp_path / "home"
         new_home.mkdir()
@@ -1487,7 +1599,9 @@ class TestRollbackMigration:
         assert result["success"] is True
         assert "No migration to rollback" in result["message"]
 
-    def test_restores_credentials(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_restores_credentials(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test restores credentials from backup."""
         new_home = tmp_path / "home"
         new_home.mkdir()
@@ -1508,7 +1622,9 @@ class TestRollbackMigration:
         assert creds.read_text() == '{"token": "backup"}'
         assert not state_file.exists()
 
-    def test_restores_database(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_restores_database(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test restores database from backup."""
         new_home = tmp_path / "home"
         new_home.mkdir()
@@ -1531,7 +1647,9 @@ class TestRollbackMigration:
         assert db.read_text() == "backup db"
         assert result["restored_count"] > 0
 
-    def test_restores_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_restores_config(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test restores config.yaml from backup."""
         new_home = tmp_path / "home"
         new_home.mkdir()
@@ -1550,7 +1668,9 @@ class TestRollbackMigration:
         assert result["success"] is True
         assert config_file.read_text() == "backup: true"
 
-    def test_restores_logs_directory(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_restores_logs_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test restores logs directory from backup."""
         new_home = tmp_path / "home"
         new_home.mkdir()
@@ -1573,7 +1693,9 @@ class TestRollbackMigration:
         assert (logs_dir / "restored.log").exists()
         assert not (logs_dir / "current.log").exists()
 
-    def test_restores_store_directory(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_restores_store_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test restores store directory from backup."""
         if sys.platform == "win32":
             pytest.skip("Store rollback not supported on Windows")
@@ -1599,7 +1721,9 @@ class TestRollbackMigration:
         assert (store_dir / "restored.db").exists()
         assert not (store_dir / "current.db").exists()
 
-    def test_restores_plugins_directory(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_restores_plugins_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test restores plugins directory from backup."""
         new_home = tmp_path / "home"
         new_home.mkdir()
@@ -1622,7 +1746,9 @@ class TestRollbackMigration:
         assert (plugins_dir / "restored.txt").exists()
         assert not (plugins_dir / "current.txt").exists()
 
-    def test_handles_multiple_backups(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_handles_multiple_backups(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test handles multiple backup files."""
         new_home = tmp_path / "home"
         new_home.mkdir()
@@ -1646,7 +1772,9 @@ class TestRollbackMigration:
         assert result["success"] is True
         assert result["restored_count"] > 0
 
-    def test_restore_oserror_logged(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_restore_oserror_logged(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test logs warning on restore OSError."""
         new_home = tmp_path / "home"
         new_home.mkdir()
@@ -1664,7 +1792,9 @@ class TestRollbackMigration:
                 assert result["success"] is False
                 mock_logger.warning.assert_called()
 
-    def test_removes_state_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_removes_state_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Test removes migration state file on rollback."""
         new_home = tmp_path / "home"
         new_home.mkdir()
@@ -1679,7 +1809,9 @@ class TestRollbackMigration:
 
 
 class TestAutomaticRollback:
-    def test_perform_migration_partial_failure_rollback(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_perform_migration_partial_failure_rollback(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
         (legacy_root / "credentials.json").write_text('{"token": "legacy"}')
@@ -1721,7 +1853,9 @@ class TestAutomaticRollback:
         assert "rollback" in result
         assert result["rollback"]["success"] is True
 
-    def test_perform_migration_database_failure_rolls_back_creds(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_perform_migration_database_failure_rolls_back_creds(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
         (legacy_root / "credentials.json").write_text('{"token": "legacy"}')
@@ -1758,7 +1892,9 @@ class TestAutomaticRollback:
         assert "rollback" in result
         assert result["rollback"]["restored_count"] >= 1
 
-    def test_rollback_migration_no_completed_steps(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_rollback_migration_no_completed_steps(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         new_home = tmp_path / "home"
         new_home.mkdir()
 
@@ -1769,7 +1905,9 @@ class TestAutomaticRollback:
         assert result["success"] is True
         assert result["restored_count"] == 0
 
-    def test_rollback_migration_partial_steps(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_rollback_migration_partial_steps(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         new_home = tmp_path / "home"
         new_home.mkdir()
 
