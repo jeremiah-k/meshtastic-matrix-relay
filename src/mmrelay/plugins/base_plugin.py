@@ -4,7 +4,7 @@ import re
 import threading
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, Protocol, cast
 
 # markdown has stubs in our env; avoid import-untyped so mypy --strict stays clean.
 import markdown  # mypy: ignore[import-untyped]
@@ -20,6 +20,18 @@ from nio import (
 
 # Provide a patchable module attribute for tests while avoiding name confusion.
 from mmrelay.config import get_plugin_data_dir as resolve_plugin_data_dir
+
+
+class _PluginDataDirGetter(Protocol):
+    def __call__(
+        self,
+        plugin_name: str | None = None,
+        *,
+        subdir: str | None = None,
+        plugin_type: str | None = None,
+    ) -> str: ...
+
+
 from mmrelay.constants.config import (
     CONFIG_KEY_REQUIRE_BOT_MENTION,
     DEFAULT_REQUIRE_BOT_MENTION,
@@ -687,8 +699,9 @@ class BasePlugin(ABC):
         """
         # Get the plugin-specific data directory
         plugin_name = self._require_plugin_name()
-        module_get_plugin_data_dir = globals().get(
-            "get_plugin_data_dir", resolve_plugin_data_dir
+        module_get_plugin_data_dir = cast(
+            _PluginDataDirGetter,
+            globals().get("get_plugin_data_dir", resolve_plugin_data_dir),
         )
         if subdir:
             return module_get_plugin_data_dir(
