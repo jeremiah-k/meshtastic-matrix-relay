@@ -1894,8 +1894,9 @@ def rollback_migration(completed_steps: list[str] | None = None) -> dict[str, An
 
     if completed_steps is None:
         if not state_path.exists():
+            # No migration was performed, so rollback is trivially successful
             return {
-                "success": False,
+                "success": True,
                 "message": "No migration to rollback - migration state file not found",
             }
         if state and isinstance(state.get("completed_steps"), list):

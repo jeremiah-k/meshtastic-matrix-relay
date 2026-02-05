@@ -356,11 +356,11 @@ def get_e2ee_store_dir() -> str:
         logger.warning("E2EE store not officially supported on this platform: %s", e)
         return store_dir
     except (OSError, PermissionError) as e:
-        # Fallback for permission errors
+        # Fallback for permission errors - re-raise to fail fast
         base = str(get_home_dir())
         store_dir = os.path.join(base, "store")
         logger.warning("Could not create E2EE store directory: %s", e)
-        return store_dir
+        raise
     else:
         return store_dir
 

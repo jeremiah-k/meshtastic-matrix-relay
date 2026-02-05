@@ -243,7 +243,7 @@ class TestRollbackMigration(unittest.TestCase):
 
         mock_print.assert_not_called()
         # When no migration was completed, returns success with message
-        self.assertFalse(result.get("success"))
+        self.assertTrue(result.get("success"))
         self.assertIn("rollback", result.get("message", "").lower())
 
 
