@@ -169,13 +169,30 @@ def _get_plugin_root_dirs() -> list[str]:
     return roots
 
 
+def _get_legacy_plugin_roots() -> set[str]:
+    """Return the set of legacy plugin root directories (legacy_root/plugins)."""
+    from mmrelay.paths import get_legacy_dirs
+
+    legacy_roots: set[str] = set()
+    for legacy_root in get_legacy_dirs():
+        legacy_roots.add(os.path.join(str(legacy_root), "plugins"))
+    return legacy_roots
+
+
 try:
     deps_roots = _get_plugin_root_dirs()
 except (OSError, RuntimeError, ValueError) as exc:  # pragma: no cover
     logger.debug("Unable to resolve base dir for plugin deps at import time: %s", exc)
     _PLUGIN_DEPS_DIR = None
 else:
+    legacy_roots = _get_legacy_plugin_roots()
     for deps_root in deps_roots:
+        if deps_root in legacy_roots:
+            logger.debug(
+                "Skipping legacy plugin root for deps directory creation: %s",
+                deps_root,
+            )
+            continue
         deps_dir = os.path.join(deps_root, "deps")
         try:
             os.makedirs(deps_dir, exist_ok=True)
@@ -901,12 +918,21 @@ def _get_plugin_dirs(plugin_type: str) -> list[str]:
     """
     dirs = []
 
+    legacy_roots = _get_legacy_plugin_roots()
     for root_dir in _get_plugin_root_dirs():
         if os.path.basename(root_dir) == "plugins":
             user_dir = os.path.join(root_dir, plugin_type)
         else:
             user_dir = root_dir
         if user_dir in dirs:
+            continue
+        if root_dir in legacy_roots:
+            if os.path.isdir(user_dir):
+                dirs.append(user_dir)
+            else:
+                logger.debug(
+                    "Skipping legacy plugin directory creation for %s", user_dir
+                )
             continue
         try:
             os.makedirs(user_dir, exist_ok=True)

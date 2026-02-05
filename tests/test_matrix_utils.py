@@ -4836,8 +4836,8 @@ async def test_connect_matrix_keys_upload_failure_logs(monkeypatch):
         client = await connect_matrix(config)
 
     assert client is mock_client
-    mock_logger.error.assert_any_call(
-        "Consider regenerating credentials with: mmrelay auth login"
+    mock_logger.exception.assert_any_call(
+        "Failed to upload E2EE keys. Consider regenerating credentials with: mmrelay auth login"
     )
 
 

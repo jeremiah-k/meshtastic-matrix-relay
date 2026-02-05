@@ -358,11 +358,14 @@ def get_e2ee_store_dir() -> str:
     except RuntimeError:
         raise
     except (OSError, PermissionError) as e:
-        # Fallback for permission errors - re-raise to fail fast
+        # Fallback for permission errors - log and return a home-based path
         base = str(get_home_dir())
-        store_dir = os.path.join(base, "store")
+        if sys.platform == "win32":
+            store_dir = ntpath.join(base, "store")
+        else:
+            store_dir = os.path.join(base, "store")
         logger.warning("Could not create E2EE store directory: %s", e)
-        raise
+        return store_dir
     else:
         return store_dir
 

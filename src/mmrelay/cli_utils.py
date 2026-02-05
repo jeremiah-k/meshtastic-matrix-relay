@@ -29,8 +29,6 @@ import ssl
 from types import ModuleType
 from typing import Any, cast
 
-# Import resolve_all_paths for unified path resolution
-
 try:
     import certifi
 except ImportError:

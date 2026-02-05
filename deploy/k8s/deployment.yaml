@@ -143,6 +143,7 @@ spec:
             # Uncomment following volumeMount and corresponding volume
             # - name: config
             #   mountPath: /app/config.yaml
+            #   subPath: config.yaml
             #   readOnly: true
             # Optional: Mount credentials.json from Secret (recommended)
             # Uncomment following volumeMount and corresponding volume
@@ -169,6 +170,9 @@ spec:
         # - name: config
         #   configMap:
         #     name: mmrelay-config
+        #     items:
+        #       - key: config.yaml
+        #         path: config.yaml
         - name: data
           persistentVolumeClaim:
             claimName: mmrelay-data

@@ -393,17 +393,19 @@ def get_log_file() -> Path:
     return get_logs_dir() / "mmrelay.log"
 
 
-def get_store_dir() -> Path:
+def get_e2ee_store_dir() -> Path:
     """
     Get E2EE store directory.
 
-    Unix/macOS only (no Windows E2EE support).
+    On Windows, returns a fallback path under the home directory and logs a warning.
+    If the directory cannot be created, returns the same fallback path and logs a warning.
 
     Returns:
         Path: E2EE store directory
     """
     if sys.platform == "win32":
-        raise RuntimeError("E2EE not supported on Windows")
+        # Logs a warning and returns a fallback path on Windows.
+        return get_home_dir() / "store"
     return get_home_dir() / "store"
 
 
@@ -462,7 +464,7 @@ def ensure_directories() -> None:
         get_home_dir(),
         get_database_dir(),
         get_logs_dir(),
-        get_store_dir() if sys.platform != "win32" else None,
+        get_e2ee_store_dir(),
         get_plugins_dir(),
         get_custom_plugins_dir(),
         get_community_plugins_dir(),
@@ -875,7 +877,7 @@ from mmrelay.paths import (
     get_credentials_path,
     get_database_path,
     get_log_file,
-    get_store_dir,
+    get_e2ee_store_dir,
     get_plugins_dir,
 )
 

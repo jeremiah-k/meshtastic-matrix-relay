@@ -554,6 +554,21 @@ def get_legacy_dirs() -> list[Path]:
                 legacy_dirs.append(data_path)
                 seen.add(data_str)
 
+    def _has_mmrelay_artifacts(root: Path) -> bool:
+        """
+        Return True when the given root looks like an MMRelay data directory.
+
+        Uses lightweight checks for known MMRelay artifacts to avoid false positives.
+        """
+        candidates = [
+            root / "config.yaml",
+            root / "credentials.json",
+            root / "meshtastic.sqlite",
+            root / "data" / "meshtastic.sqlite",
+            root / "database" / "meshtastic.sqlite",
+        ]
+        return any(candidate.exists() for candidate in candidates)
+
     # 5. Check common Docker legacy mounts
     # These are common volume mount points in Docker deployments
     docker_legacy_paths = [
@@ -562,7 +577,7 @@ def get_legacy_dirs() -> list[Path]:
         Path("/var/lib/mmrelay"),
     ]
     for docker_path in docker_legacy_paths:
-        if docker_path.exists():
+        if docker_path.exists() and _has_mmrelay_artifacts(docker_path):
             docker_str = str(docker_path.absolute())
             if docker_str != home_str and docker_str not in seen:
                 legacy_dirs.append(docker_path)

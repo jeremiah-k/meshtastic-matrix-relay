@@ -184,7 +184,7 @@ def get_db_path() -> str:
     """
     Resolve the absolute filesystem path to the application's SQLite database.
 
-    Selects the path with this precedence: configuration key `database.path` (preferred), legacy `db.path`, then `<data_dir>/meshtastic.sqlite` from the application's resolved paths. The resolved path is cached and the cache is invalidated when relevant database configuration changes. The function will attempt to create missing directories; legacy database migration is handled explicitly by `mmrelay migrate` rather than implicitly here. Directory-creation failures are logged and do not raise exceptions.
+    Selects the path with this precedence: configuration key `database.path` (preferred), legacy `db.path`, then `<database_dir>/meshtastic.sqlite` from the application's resolved paths. The resolved path is cached and the cache is invalidated when relevant database configuration changes. The function will attempt to create missing directories; legacy database migration is handled explicitly by `mmrelay migrate` rather than implicitly here. Directory-creation failures are logged and do not raise exceptions.
 
     Returns:
         str: Filesystem path to the SQLite database.

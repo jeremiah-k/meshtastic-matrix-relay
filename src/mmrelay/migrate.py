@@ -1303,6 +1303,7 @@ def migrate_plugins(
                     except (OSError, IOError) as e:
                         logger.warning("Failed to backup custom plugin: %s", e)
                         errors.append(f"custom backup {dest}: {e}")
+                        continue
                 try:
                     if move:
                         if dest.exists():
@@ -1346,6 +1347,7 @@ def migrate_plugins(
                     except (OSError, IOError) as e:
                         logger.warning("Failed to backup community plugin: %s", e)
                         errors.append(f"community backup {dest}: {e}")
+                        continue
                 try:
                     if move:
                         if dest.exists():
