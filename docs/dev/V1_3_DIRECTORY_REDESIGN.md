@@ -263,8 +263,8 @@ If migration fails:
 
 1. Preserve original files (don't delete)
 2. Log detailed error with paths
-3. Provide manual migration command: `mmrelay migrate --rollback`
-4. Document manual steps
+3. Provide manual recovery guidance using `mmrelay migrate --dry-run` (and `--move`/`--force` as needed)
+4. Document manual restore steps (copy from `.bak` files in MMRELAY_HOME if needed)
 
 ---
 
@@ -921,9 +921,14 @@ migrate_parser.add_argument(
     help="Show what would be migrated without making changes",
 )
 migrate_parser.add_argument(
-    "--rollback",
+    "--move",
     action="store_true",
-    help="Rollback from a failed migration",
+    help="Move files instead of copying (requires confirmation unless --force)",
+)
+migrate_parser.add_argument(
+    "--force",
+    action="store_true",
+    help="Overwrite existing destination files and skip backups",
 )
 ```
 
@@ -1129,7 +1134,7 @@ args:
 
 - `--home <path>` CLI argument
 - `MMRELAY_HOME` environment variable
-- `mmrelay migrate` command (with --dry-run and --rollback)
+- `mmrelay migrate` command (with --dry-run, --move, and --force)
 - Unified directory structure under single home directory
 - Atomic migrations with rollback support
 - Clear separation between config and data
@@ -1345,7 +1350,7 @@ $MMRELAY_HOME/
 
 - 2026-02-01: Initial draft based on comprehensive analysis of v1.2.x codebase
 - 2026-02-01: **CRITICAL UPDATE**: Plugin data storage research - plugins use SQLite database, NOT filesystem!
-- 2026-02-01: **UPDATED**: Backward compatibility strategy - 6-month deprecation window with auto-migration
+- 2026-02-01: **UPDATED**: Backward compatibility strategy - 6-month deprecation window; migration is explicit via `mmrelay migrate`
 - 2026-02-01: **ADDED**: Docker/K8s compatibility patterns from research (env var precedence, deprecation policies)
 - 2026-02-01: **ADDED**: Seamless migration patterns (VS Code, Homebrew, automatic on first run)
 - 2026-02-01: **RESOLVED**: Plugin directory concern - no filesystem interference with current architecture

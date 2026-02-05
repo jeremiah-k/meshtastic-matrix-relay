@@ -8,6 +8,7 @@ follow pytest conventions and document the purpose of each test case.
 Inline comments explain test assertions and expected behavior for clarity.
 """
 
+import json
 import os
 import shutil
 import sqlite3
@@ -25,11 +26,18 @@ from mmrelay.migrate import (
     _get_migration_state_path,
     _get_most_recent_database,
     _path_is_within_home,
+    _read_migration_state,
+    migrate_config,
+    migrate_credentials,
     migrate_database,
     migrate_gpxtracker,
+    migrate_logs,
     migrate_plugins,
     migrate_store,
+    perform_migration,
+    print_migration_verification,
     rollback_migration,
+    verify_migration,
 )
 from mmrelay.paths import get_home_dir
 
@@ -222,6 +230,69 @@ class TestFindLegacyData:
         # Should have unique paths only
         assert len(paths) == len(set(paths))
 
+    def test_find_legacy_data_config(self, tmp_path: Path) -> None:
+        """Test finding config.yaml."""
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        config = legacy_root / "config.yaml"
+        config.write_text("config")
+
+        findings = _find_legacy_data(legacy_root)
+        config_findings = [f for f in findings if f["type"] == "config"]
+        assert len(config_findings) == 1
+
+
+class TestVerifyMigration:
+    """Test verify_migration and print_migration_verification coverage."""
+
+    def test_verify_migration_store_not_applicable(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Test store not applicable and warning output."""
+        home = tmp_path / "home"
+        home.mkdir()
+        (home / "credentials.json").write_text("creds")
+        database_dir = home / "database"
+        database_dir.mkdir()
+        logs_dir = home / "logs"
+        logs_dir.mkdir()
+        plugins_dir = home / "plugins"
+        plugins_dir.mkdir()
+
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        store_dir = legacy_root / "store"
+        store_dir.mkdir()
+        (store_dir / "keys.db").write_text("keys")
+
+        paths_info = {
+            "home": str(home),
+            "credentials_path": str(home / "credentials.json"),
+            "database_dir": str(database_dir),
+            "logs_dir": str(logs_dir),
+            "plugins_dir": str(plugins_dir),
+            "store_dir": "N/A (Windows)",
+            "legacy_sources": [str(legacy_root)],
+        }
+
+        monkeypatch.setattr("mmrelay.migrate.resolve_all_paths", lambda: paths_info)
+
+        report = verify_migration()
+        store_artifact = next(
+            artifact
+            for artifact in report["artifacts"]
+            if artifact["key"] == "e2ee_store"
+        )
+        assert store_artifact["not_applicable"] is True
+        assert any("E2EE store" in warning for warning in report["warnings"])
+
+        print_migration_verification(report)
+        captured = capsys.readouterr()
+        assert "N/A (Windows)" in captured.out
+
 
 class TestGetMostRecentDatabase:
     """Test _get_most_recent_database function coverage."""
@@ -302,6 +373,35 @@ class TestGetMostRecentDatabase:
         result = _get_most_recent_database(candidates)
         assert result is None
 
+    def test_get_most_recent_database_stat_oserror(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test get_most_recent_database handles stat OSError."""
+        db1 = tmp_path / "db1.sqlite"
+        db2 = tmp_path / "db2.sqlite"
+        db1.write_text("db1")
+        db2.write_text("db2")
+
+        original_stat = Path.stat
+
+        def fake_stat(self: Path, *args: object, **kwargs: object):
+            if self == db1:
+                raise OSError("stat failed")
+            return original_stat(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "stat", fake_stat)
+
+        result = _get_most_recent_database([db1, db2])
+        assert result == db2
+
+    def test_get_most_recent_database_orphaned_sidecar(self, tmp_path: Path) -> None:
+        """Test that orphaned sidecars are ignored."""
+        wal = tmp_path / "orphan.sqlite-wal"
+        wal.write_text("wal")
+
+        result = _get_most_recent_database([wal])
+        assert result is None
+
 
 class TestBackupFile:
     """Test _backup_file function coverage."""
@@ -337,6 +437,73 @@ class TestMigrationStatePath:
 
         assert home in state_path.parents or state_path.parent == home
         assert state_path.name == "migration_completed.flag"
+
+
+class TestMigrationStateRead:
+    """Test _read_migration_state legacy parsing."""
+
+    def test_read_migration_state_legacy_string(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test legacy non-JSON migration state content."""
+        monkeypatch.setattr("mmrelay.migrate.get_home_dir", lambda: tmp_path)
+        state_path = _get_migration_state_path()
+        state_path.write_text("legacy-version", encoding="utf-8")
+
+        result = _read_migration_state()
+        assert result == {"version": "legacy-version", "status": "completed"}
+
+
+class TestMigrateCredentialsEdgeCases:
+    """Test migrate_credentials edge cases."""
+
+    def test_migrate_credentials_move_removes_existing_destination_dir(
+        self, tmp_path: Path
+    ) -> None:
+        """Test move removes an existing credentials directory."""
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        old_creds = legacy_root / "credentials.json"
+        old_creds.write_text("creds")
+
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+        new_creds = new_home / "credentials.json"
+        new_creds.mkdir()
+
+        result = migrate_credentials(
+            [legacy_root], new_home, dry_run=False, force=False, move=True
+        )
+
+        assert result["success"] is True
+        assert new_creds.is_file()
+        assert new_creds.read_text() == "creds"
+
+
+class TestMigrateConfigEdgeCases:
+    """Test migrate_config edge cases."""
+
+    def test_migrate_config_move_removes_existing_directory(
+        self, tmp_path: Path
+    ) -> None:
+        """Test move removes an existing config directory before migrating."""
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        old_config = legacy_root / "config.yaml"
+        old_config.write_text("config")
+
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+        new_config = new_home / "config.yaml"
+        new_config.mkdir()
+
+        result = migrate_config(
+            [legacy_root], new_home, dry_run=False, force=False, move=True
+        )
+
+        assert result["success"] is True
+        assert new_config.is_file()
+        assert new_config.read_text() == "config"
 
 
 class TestMigrateDatabaseEdgeCases:
@@ -430,7 +597,80 @@ class TestMigrateDatabaseEdgeCases:
             result = migrate_database(
                 [legacy_root], new_home, dry_run=False, force=False, move=False
             )
-            # Should still succeed despite backup failure
+            # Backup failure should not block database migration
+            assert result["success"] is True
+            assert (new_home / "database" / "meshtastic.sqlite").exists()
+
+    def test_migrate_database_from_database_dir(self, tmp_path: Path) -> None:
+        """Test migration from legacy database/ directory."""
+        new_home = tmp_path / "new_home"
+        new_home.mkdir()
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+
+        database_dir = legacy_root / "database"
+        database_dir.mkdir()
+        legacy_db = database_dir / "meshtastic.sqlite"
+        conn = sqlite3.connect(legacy_db)
+        conn.execute("CREATE TABLE test (id INTEGER)")
+        conn.close()
+
+        wal = database_dir / "meshtastic.sqlite-wal"
+        wal.write_text("wal")
+
+        result = migrate_database(
+            [legacy_root], new_home, dry_run=False, force=False, move=False
+        )
+
+        assert result["success"] is True
+        assert (new_home / "database" / "meshtastic.sqlite").exists()
+        assert (new_home / "database" / "meshtastic.sqlite-wal").exists()
+
+    def test_migrate_database_selected_group_missing(self, tmp_path: Path) -> None:
+        """Test when selected_group is empty."""
+        new_home = tmp_path / "new_home"
+        new_home.mkdir()
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+
+        db = legacy_root / "meshtastic.sqlite"
+        db.write_text("db")
+
+        with mock.patch(
+            "mmrelay.migrate._get_most_recent_database",
+            return_value=tmp_path / "other.sqlite",
+        ):
+            result = migrate_database(
+                [legacy_root], new_home, dry_run=False, force=False, move=False
+            )
+            assert result["success"] is False
+            assert "Most recent database group not found" in result["message"]
+
+    def test_migrate_database_move_unlink_failure(self, tmp_path: Path) -> None:
+        """Test move path logs warning when source unlink fails."""
+        new_home = tmp_path / "new_home"
+        new_home.mkdir()
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+
+        legacy_db = legacy_root / "meshtastic.sqlite"
+        conn = sqlite3.connect(legacy_db)
+        conn.execute("CREATE TABLE test (id INTEGER)")
+        conn.close()
+
+        original_unlink = Path.unlink
+
+        def failing_unlink(self: Path, *args, **kwargs):
+            if self == legacy_db:
+                raise OSError("unlink failed")
+            return original_unlink(self, *args, **kwargs)
+
+        with mock.patch.object(
+            Path, "unlink", autospec=True, side_effect=failing_unlink
+        ):
+            result = migrate_database(
+                [legacy_root], new_home, dry_run=False, force=False, move=True
+            )
             assert result["success"] is True
 
     def test_migrate_database_move_failure(self, tmp_path: Path) -> None:
@@ -517,6 +757,53 @@ class TestMigrateDatabaseEdgeCases:
             [legacy_root], new_home, dry_run=False, force=False, move=False
         )
         assert result["success"] is True
+
+
+class TestMigrateLogsEdgeCases:
+    """Test migrate_logs error paths and edge cases."""
+
+    def test_migrate_logs_backup_and_copy_failure(self, tmp_path: Path) -> None:
+        """Test log backup failure and copy error handling."""
+        from datetime import datetime
+
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        logs_dir = legacy_root / "logs"
+        logs_dir.mkdir()
+        log_file = logs_dir / "app.log"
+        log_file.write_text("log")
+
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+        new_logs_dir = new_home / "logs"
+        new_logs_dir.mkdir()
+
+        fixed_time = datetime(2024, 1, 1, 12, 0, 0)
+        dest_name = (
+            f"{log_file.stem}_migrated_{fixed_time.strftime('%Y%m%d_%H%M%S')}.log"
+        )
+        dest_path = new_logs_dir / dest_name
+        dest_path.write_text("existing")
+
+        original_copy2 = shutil.copy2
+
+        def selective_copy2(src, dst, *args, **kwargs):
+            if Path(src) == log_file:
+                raise OSError("Mock copy error")
+            return original_copy2(src, dst, *args, **kwargs)
+
+        with (
+            mock.patch("mmrelay.migrate.datetime") as mock_datetime,
+            mock.patch("shutil.copytree", side_effect=OSError("Mock backup failure")),
+            mock.patch("shutil.copy2", side_effect=selective_copy2),
+        ):
+            mock_datetime.now.return_value = fixed_time
+            result = migrate_logs(
+                [legacy_root], new_home, dry_run=False, force=False, move=False
+            )
+
+        assert result["success"] is True
+        assert result["migrated_count"] == 0
 
 
 @pytest.mark.skipif(
@@ -644,6 +931,149 @@ class TestMigratePluginsEdgeCases:
             # Backup failure should surface as migration failure
             assert result["success"] is False
             assert "error" in result
+
+    def test_migrate_plugins_backup_dir_creation_failure(self, tmp_path: Path) -> None:
+        """Test backup directory creation failure is surfaced."""
+        new_home = tmp_path / "new_home"
+        new_home.mkdir()
+
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        old_plugins_dir = legacy_root / "plugins"
+        old_plugins_dir.mkdir()
+
+        backup_path = tmp_path / "plugins.bak.test"
+
+        def fake_backup_file(_path: Path) -> Path:
+            return backup_path
+
+        original_mkdir = Path.mkdir
+
+        def failing_mkdir(self: Path, *args, **kwargs):
+            if self == backup_path:
+                raise OSError("Mock mkdir error")
+            return original_mkdir(self, *args, **kwargs)
+
+        with (
+            mock.patch("mmrelay.migrate._backup_file", side_effect=fake_backup_file),
+            mock.patch.object(Path, "mkdir", autospec=True, side_effect=failing_mkdir),
+        ):
+            result = migrate_plugins(
+                [legacy_root], new_home, dry_run=False, force=False, move=False
+            )
+
+        assert result["success"] is False
+        assert "plugins backup dir" in result["error"]
+
+    def test_migrate_plugins_backup_community_plugin_failure(
+        self, tmp_path: Path
+    ) -> None:
+        """Test handling of community plugin backup failure."""
+        new_home = tmp_path / "new_home"
+        new_home.mkdir()
+        new_plugins_dir = new_home / "plugins"
+        new_plugins_dir.mkdir()
+        new_community_dir = new_plugins_dir / "community"
+        new_community_dir.mkdir()
+        (new_community_dir / "existing").mkdir()
+
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        old_plugins_dir = legacy_root / "plugins"
+        old_plugins_dir.mkdir()
+        old_community_dir = old_plugins_dir / "community"
+        old_community_dir.mkdir()
+        (old_community_dir / "existing").mkdir()
+
+        original_copytree = shutil.copytree
+
+        def selective_copytree(src, dst, *args, **kwargs):
+            if Path(src) == new_community_dir / "existing":
+                raise OSError("Mock backup error")
+            return original_copytree(src, dst, *args, **kwargs)
+
+        with mock.patch("shutil.copytree", side_effect=selective_copytree):
+            result = migrate_plugins(
+                [legacy_root], new_home, dry_run=False, force=False, move=False
+            )
+
+        assert result["success"] is False
+        assert "community backup" in result["error"]
+
+    def test_migrate_plugins_cleanup_rmdir_error(self, tmp_path: Path) -> None:
+        """Test cleanup rmdir errors are captured."""
+        new_home = tmp_path / "new_home"
+        new_home.mkdir()
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        old_plugins_dir = legacy_root / "plugins"
+        old_plugins_dir.mkdir()
+        old_custom_dir = old_plugins_dir / "custom"
+        old_custom_dir.mkdir()
+        (old_custom_dir / "plugin").mkdir()
+
+        original_rmdir = Path.rmdir
+
+        def failing_rmdir(self: Path, *args, **kwargs):
+            if self == old_custom_dir:
+                raise OSError("Mock rmdir error")
+            return original_rmdir(self, *args, **kwargs)
+
+        with mock.patch.object(Path, "rmdir", autospec=True, side_effect=failing_rmdir):
+            result = migrate_plugins(
+                [legacy_root], new_home, dry_run=False, force=False, move=True
+            )
+
+        assert result["success"] is False
+        assert "cleanup" in result["error"]
+
+    def test_migrate_plugins_cleanup_plugins_dir_rmdir_error(
+        self, tmp_path: Path
+    ) -> None:
+        """Test cleanup errors when removing the plugins root."""
+        new_home = tmp_path / "new_home"
+        new_home.mkdir()
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        old_plugins_dir = legacy_root / "plugins"
+        old_plugins_dir.mkdir()
+        old_custom_dir = old_plugins_dir / "custom"
+        old_custom_dir.mkdir()
+        (old_custom_dir / "plugin").mkdir()
+
+        original_rmdir = Path.rmdir
+
+        def failing_rmdir(self: Path, *args, **kwargs):
+            if self == old_plugins_dir:
+                raise OSError("Mock rmdir error")
+            return original_rmdir(self, *args, **kwargs)
+
+        with mock.patch.object(Path, "rmdir", autospec=True, side_effect=failing_rmdir):
+            result = migrate_plugins(
+                [legacy_root], new_home, dry_run=False, force=False, move=True
+            )
+
+        assert result["success"] is False
+        assert "cleanup" in result["error"]
+
+    def test_migrate_plugins_custom_iterdir_failure(self, tmp_path: Path) -> None:
+        """Test handling of iterdir failure for custom plugins."""
+        new_home = tmp_path / "new_home"
+        new_home.mkdir()
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        old_plugins_dir = legacy_root / "plugins"
+        old_plugins_dir.mkdir()
+        old_custom_dir = old_plugins_dir / "custom"
+        old_custom_dir.mkdir()
+
+        with mock.patch.object(Path, "iterdir", side_effect=OSError("Mock error")):
+            result = migrate_plugins(
+                [legacy_root], new_home, dry_run=False, force=False, move=False
+            )
+
+        assert result["success"] is False
+        assert "custom" in result["error"]
 
     def test_migrate_plugins_move_removes_existing_custom(self, tmp_path: Path) -> None:
         """Test that move operation removes existing custom plugin."""
@@ -775,7 +1205,7 @@ class TestMigratePluginsEdgeCases:
             """
             Simulate a failing directory removal used in tests to exercise cleanup error handling.
 
-            Acts like shutil.rmtree for paths that contain "old_plugin" (delegates to the original rmtree) and raises OSError("Mock cleanup error") for any other path. Intended as a test stub.
+            Acts like shutil.rmtree for paths that contain "old_plugin" (delegates to the original rmtree) and raises OSError for any other path. Intended as a test stub.
 
             Parameters:
                 path: Path-like object or string pointing to the directory to remove.
@@ -788,7 +1218,7 @@ class TestMigratePluginsEdgeCases:
             if "old_plugin" in str(path):
                 # Let it succeed for removal
                 return original_rmtree(path, *args, **kwargs)
-            raise OSError("Mock cleanup error")
+            raise OSError
 
         with mock.patch("shutil.rmtree", side_effect=failing_rmtree):
             result = migrate_plugins(
@@ -905,7 +1335,8 @@ class TestMigrateGpxtrackerEdgeCases:
                 [legacy_root], new_home, dry_run=False, force=False, move=False
             )
 
-        assert result["success"] is True
+        assert result["success"] is False
+        assert "error" in result
         assert gpx_file.exists()
         assert gpx_file.read_text() == "track"
         assert dest_path.read_text() == "existing"
@@ -913,9 +1344,6 @@ class TestMigrateGpxtrackerEdgeCases:
             [existing_gpx.name, dest_path.name]
         )
 
-    @pytest.mark.xfail(
-        reason="known move/copy edge-case - see ISSUE-XXXX", strict=False
-    )
     def test_migrate_gpxtracker_move_failure(self, tmp_path: Path) -> None:
         """Test handling of GPX file move/copy failure."""
         new_home = tmp_path / "new_home"
@@ -934,11 +1362,76 @@ community-plugins:
     gpx_directory: {gpx_dir}
 """)
 
-        with mock.patch("shutil.move", side_effect=OSError("Mock move error")):
+        with mock.patch("shutil.copy2", side_effect=OSError("Mock copy error")):
             result = migrate_gpxtracker(
-                [legacy_root], new_home, dry_run=False, force=False, move=True
+                [legacy_root], new_home, dry_run=False, force=False, move=False
             )
             assert result["success"] is False
+
+    def test_migrate_gpxtracker_source_equals_destination(self, tmp_path: Path) -> None:
+        """Test skipping migration when source equals destination."""
+        new_home = tmp_path / "new_home"
+        new_home.mkdir()
+        new_gpx_dir = new_home / "plugins" / "community" / "gpxtracker" / "data"
+        new_gpx_dir.mkdir(parents=True)
+
+        config = new_home / "config.yaml"
+        config.write_text(
+            f"community-plugins:\n  gpxtracker:\n    gpx_directory: {new_gpx_dir}\n"
+        )
+
+        result = migrate_gpxtracker(
+            [], new_home, dry_run=False, force=False, move=False
+        )
+
+        assert result["success"] is True
+        assert result["migrated_count"] == 0
+        assert "skipping" in result["message"]
+
+    def test_migrate_gpxtracker_copy_failure(self, tmp_path: Path) -> None:
+        """Test handling of GPX file copy failure."""
+        new_home = tmp_path / "new_home"
+        new_home.mkdir()
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        gpx_dir = legacy_root / "gpx"
+        gpx_dir.mkdir()
+        gpx_file = gpx_dir / "track.gpx"
+        gpx_file.write_text("track")
+
+        config = legacy_root / "config.yaml"
+        config.write_text(
+            f"community-plugins:\n  gpxtracker:\n    gpx_directory: {gpx_dir}\n"
+        )
+
+        with mock.patch("shutil.copy2", side_effect=OSError("Mock copy error")):
+            result = migrate_gpxtracker(
+                [legacy_root], new_home, dry_run=False, force=False, move=False
+            )
+
+        assert result["success"] is False
+        assert "copy failed" in result["error"]
+
+    def test_migrate_gpxtracker_glob_oserror(self, tmp_path: Path) -> None:
+        """Test handling of OSError during glob iteration."""
+        new_home = tmp_path / "new_home"
+        new_home.mkdir()
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        gpx_dir = legacy_root / "gpx"
+        gpx_dir.mkdir()
+
+        config = legacy_root / "config.yaml"
+        config.write_text(
+            f"community-plugins:\n  gpxtracker:\n    gpx_directory: {gpx_dir}\n"
+        )
+
+        with mock.patch.object(Path, "glob", side_effect=OSError("Mock glob error")):
+            result = migrate_gpxtracker(
+                [legacy_root], new_home, dry_run=False, force=False, move=False
+            )
+
+        assert result["success"] is False
 
     def test_migrate_gpxtracker_expanded_path_not_found(self, tmp_path: Path) -> None:
         """Test handling when expanded GPX directory doesn't exist."""
@@ -1143,3 +1636,190 @@ class TestRollbackMigration:
         # Should restore most recent (backup2)
         creds = home / "credentials.json"
         assert creds.read_text() == "backup2"
+
+    def test_rollback_migration_uses_completed_steps_from_state(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test completed_steps are loaded from state when not provided."""
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setattr("mmrelay.migrate.get_home_dir", lambda: home)
+
+        state_file = home / "migration_completed.flag"
+        state_file.write_text(
+            json.dumps({"version": "1.3", "status": "completed", "completed_steps": []})
+        )
+
+        result = rollback_migration()
+        assert result["success"] is True
+        assert not state_file.exists()
+
+    def test_rollback_migration_restores_plugins_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test plugins directory restore removes existing and copies backup."""
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setattr("mmrelay.migrate.get_home_dir", lambda: home)
+
+        plugins_dir = home / "plugins"
+        plugins_dir.mkdir()
+        (plugins_dir / "old.txt").write_text("old")
+
+        backup_dir = home / "plugins.bak.20240101_120000"
+        backup_dir.mkdir()
+        (backup_dir / "new.txt").write_text("new")
+
+        result = rollback_migration(completed_steps=["plugins"])
+        assert result["success"] is True
+        assert (plugins_dir / "new.txt").exists()
+        assert not (plugins_dir / "old.txt").exists()
+
+    def test_rollback_migration_store_skip_windows(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test store rollback is skipped on Windows."""
+        home = tmp_path / "home"
+        home.mkdir()
+        monkeypatch.setattr("mmrelay.migrate.get_home_dir", lambda: home)
+        monkeypatch.setattr("mmrelay.migrate.sys.platform", "win32")
+
+        result = rollback_migration(completed_steps=["store"])
+        assert result["success"] is True
+
+
+class TestPerformMigration:
+    """Test perform_migration coverage for error handling."""
+
+    def test_perform_migration_home_mkdir_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test new home directory creation failure."""
+        new_home = tmp_path / "home"
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+
+        paths_info = {"home": str(new_home), "legacy_sources": [str(legacy_root)]}
+        monkeypatch.setattr("mmrelay.migrate.resolve_all_paths", lambda: paths_info)
+
+        original_mkdir = Path.mkdir
+
+        def failing_mkdir(self: Path, *args, **kwargs):
+            if self == new_home:
+                raise OSError("mkdir failed")
+            return original_mkdir(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "mkdir", failing_mkdir)
+
+        report = perform_migration(dry_run=False, force=False, move=False)
+        assert report["success"] is False
+        assert "Failed to create new home directory" in report["message"]
+
+    def test_perform_migration_gpx_configured_runs_step(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test gpxtracker step runs when configured."""
+        new_home = tmp_path / "home"
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+
+        config = legacy_root / "config.yaml"
+        config.write_text(
+            "community-plugins:\n  gpxtracker:\n    gpx_directory: /tmp/gpx\n"
+        )
+
+        paths_info = {"home": str(new_home), "legacy_sources": [str(legacy_root)]}
+        monkeypatch.setattr("mmrelay.migrate.resolve_all_paths", lambda: paths_info)
+
+        def ok_result(*_args, **_kwargs):
+            return {"success": True}
+
+        gpx_called = {"value": False}
+
+        def gpx_result(*_args, **_kwargs):
+            gpx_called["value"] = True
+            return {"success": True}
+
+        monkeypatch.setattr("mmrelay.migrate.migrate_credentials", ok_result)
+        monkeypatch.setattr("mmrelay.migrate.migrate_config", ok_result)
+        monkeypatch.setattr("mmrelay.migrate.migrate_database", ok_result)
+        monkeypatch.setattr("mmrelay.migrate.migrate_logs", ok_result)
+        monkeypatch.setattr("mmrelay.migrate.migrate_store", ok_result)
+        monkeypatch.setattr("mmrelay.migrate.migrate_plugins", ok_result)
+        monkeypatch.setattr("mmrelay.migrate.migrate_gpxtracker", gpx_result)
+
+        report = perform_migration(dry_run=True, force=False, move=False)
+        assert report["success"] is True
+        assert gpx_called["value"] is True
+
+    def test_perform_migration_migration_error_branch(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test MigrationError handling branch."""
+        new_home = tmp_path / "home"
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+
+        paths_info = {"home": str(new_home), "legacy_sources": [str(legacy_root)]}
+        monkeypatch.setattr("mmrelay.migrate.resolve_all_paths", lambda: paths_info)
+
+        def failed_step(*_args, **_kwargs):
+            return {"success": False, "error": "boom"}
+
+        monkeypatch.setattr("mmrelay.migrate.migrate_credentials", failed_step)
+        monkeypatch.setattr(
+            "mmrelay.migrate.rollback_migration",
+            lambda *args, **kwargs: {"success": True},
+        )
+
+        report = perform_migration(dry_run=False, force=False, move=False)
+        assert report["success"] is False
+        assert "rollback" in report
+
+    def test_perform_migration_oserror_branch(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test OSError handling branch."""
+        new_home = tmp_path / "home"
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+
+        paths_info = {"home": str(new_home), "legacy_sources": [str(legacy_root)]}
+        monkeypatch.setattr("mmrelay.migrate.resolve_all_paths", lambda: paths_info)
+
+        def raise_oserror(*_args, **_kwargs):
+            raise OSError("boom")
+
+        monkeypatch.setattr("mmrelay.migrate.migrate_credentials", raise_oserror)
+        monkeypatch.setattr(
+            "mmrelay.migrate.rollback_migration",
+            lambda *args, **kwargs: {"success": True},
+        )
+
+        report = perform_migration(dry_run=False, force=False, move=False)
+        assert report["success"] is False
+        assert "rollback" in report
+
+    def test_perform_migration_unexpected_exception_branch(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test unexpected exception branch re-raises."""
+        new_home = tmp_path / "home"
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+
+        paths_info = {"home": str(new_home), "legacy_sources": [str(legacy_root)]}
+        monkeypatch.setattr("mmrelay.migrate.resolve_all_paths", lambda: paths_info)
+
+        def raise_runtime(*_args, **_kwargs):
+            raise RuntimeError("boom")
+
+        rollback_mock = mock.Mock(return_value={"success": True})
+
+        monkeypatch.setattr("mmrelay.migrate.migrate_credentials", raise_runtime)
+        monkeypatch.setattr("mmrelay.migrate.rollback_migration", rollback_mock)
+
+        with pytest.raises(RuntimeError):
+            perform_migration(dry_run=False, force=False, move=False)
+
+        assert rollback_mock.called

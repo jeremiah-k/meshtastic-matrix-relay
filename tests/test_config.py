@@ -1003,7 +1003,6 @@ class TestCredentials(unittest.TestCase):
             "Should use explicit credentials_path parameter",
         )
 
-    @patch("mmrelay.paths.get_home_dir", return_value=Path("/custom/dir"))
     @patch("mmrelay.config.os.makedirs")
     @patch("mmrelay.config.os.path.join", side_effect=os.path.join)
     @patch("builtins.open", new_callable=mock_open)
@@ -1012,7 +1011,6 @@ class TestCredentials(unittest.TestCase):
         _mock_open,
         _mock_join,
         _mock_makedirs,
-        _mock_get_home_dir,
     ):
         """Test credentials_path parameter with trailing separator is normalized."""
         credentials = {"user_id": "test", "access_token": "token"}
@@ -1028,7 +1026,6 @@ class TestCredentials(unittest.TestCase):
             "Should append credentials.json to directory path with trailing separator",
         )
 
-    @patch("mmrelay.paths.get_home_dir", return_value=Path("/custom/dir"))
     @patch("mmrelay.config.os.makedirs")
     @patch("mmrelay.config.os.path.join", side_effect=os.path.join)
     @patch("mmrelay.config.os.path.isdir", return_value=True)
@@ -1039,7 +1036,6 @@ class TestCredentials(unittest.TestCase):
         _mock_isdir,
         _mock_join,
         _mock_makedirs,
-        _mock_get_home_dir,
     ):
         """Test save_credentials normalizes directory credentials_path."""
         credentials = {"user_id": "test", "access_token": "token"}
@@ -1055,7 +1051,6 @@ class TestCredentials(unittest.TestCase):
             "Should append credentials.json to directory path",
         )
 
-    @patch("mmrelay.paths.get_home_dir")
     @patch("mmrelay.config.os.makedirs")
     @patch("mmrelay.config.os.path.join", side_effect=os.path.join)
     @patch("mmrelay.config.os.path.isdir", return_value=True)
@@ -1066,7 +1061,6 @@ class TestCredentials(unittest.TestCase):
         _mock_isdir,
         _mock_join,
         _mock_makedirs,
-        _mock_get_home_dir,
     ):
         """Test save_credentials normalizes explicit directory path."""
         credentials = {"user_id": "test", "access_token": "token"}
@@ -1082,13 +1076,10 @@ class TestCredentials(unittest.TestCase):
             "Should append credentials.json to directory path",
         )
 
-    @patch("mmrelay.config.get_base_dir", return_value="/custom/dir")
     @patch("mmrelay.config.os.makedirs")
     @patch.object(os.path, "altsep", "\\")
     @patch("builtins.open", new_callable=mock_open)
-    def test_save_credentials_altsep_path_detection(
-        self, _mock_open, _mock_makedirs, _mock_get_base_dir
-    ):
+    def test_save_credentials_altsep_path_detection(self, _mock_open, _mock_makedirs):
         """Test save_credentials normalizes directory paths with altsep."""
         credentials = {"user_id": "test", "access_token": "token"}
 

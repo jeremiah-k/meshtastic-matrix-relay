@@ -169,15 +169,13 @@ def get_config_paths(*, explicit: str | None = None) -> list[Path]:
         explicit_path = Path(explicit).expanduser().absolute()
         candidates.append(explicit_path)
 
-    # 2. MMRELAY_HOME/config.yaml
-    # Always resolve home for use in later checks
-    home = get_home_dir()
     if not explicit:
+        # 2. MMRELAY_HOME/config.yaml
+        home = get_home_dir()
         config_path = home / "config.yaml"
         if config_path not in candidates:
             candidates.append(config_path)
 
-    if not explicit:
         # 3. Current working directory (fallback)
         cwd = Path.cwd()
         cwd_config = cwd / "config.yaml"

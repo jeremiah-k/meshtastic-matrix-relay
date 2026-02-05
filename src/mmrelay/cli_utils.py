@@ -390,10 +390,19 @@ def _cleanup_local_session_data() -> bool:
         cfg = load_config(args=None) or {}
         matrix_cfg = cfg.get("matrix", {})
         if not isinstance(matrix_cfg, dict):
+            _get_logger().warning(
+                "Matrix configuration ('matrix') is not a dictionary; "
+                "cannot resolve E2EE store path from config."
+            )
             matrix_cfg = {}
         for section in ("e2ee", "encryption"):
             section_cfg = matrix_cfg.get(section, {})
             if not isinstance(section_cfg, dict):
+                _get_logger().warning(
+                    "Matrix configuration section '%s' is not a dictionary; "
+                    "cannot resolve E2EE store path.",
+                    section,
+                )
                 continue
             override = os.path.expanduser(section_cfg.get("store_path", ""))
             if override:

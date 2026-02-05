@@ -576,14 +576,20 @@ def _get_most_recent_database(candidates: list[Path]) -> Path | None:
     # Group databases by main file and its sidecars
     db_groups: dict[Path, list[Path]] = {}
     for db_path in candidates:
-        if not db_path.exists():
+        try:
+            if not db_path.exists():
+                continue
+        except OSError:
             continue
 
         # Extract base name (remove -wal, -shm suffix)
         base = get_base_path(db_path)
 
         # Skip orphaned WAL/SHM sidecars (no main database file exists)
-        if not base.exists():
+        try:
+            if not base.exists():
+                continue
+        except OSError:
             continue
 
         if base not in db_groups:
@@ -845,6 +851,16 @@ def migrate_database(
                     if sidecar.exists():
                         candidates.append(sidecar)
 
+        legacy_db_dir = legacy_root / "database"
+        if legacy_db_dir.exists():
+            legacy_db = legacy_db_dir / "meshtastic.sqlite"
+            if legacy_db.exists():
+                candidates.append(legacy_db)
+                for suffix in ["-wal", "-shm"]:
+                    sidecar = legacy_db.with_suffix(f".sqlite{suffix}")
+                    if sidecar.exists():
+                        candidates.append(sidecar)
+
     if not candidates:
         return {
             "success": True,
@@ -1028,6 +1044,7 @@ def migrate_logs(
     new_logs_dir.mkdir(parents=True, exist_ok=True)
 
     migrated_count = 0
+    errors: list[str] = []
 
     for log_file in old_logs_dir.glob("*.log"):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1469,6 +1486,7 @@ def migrate_gpxtracker(
     new_gpx_data_dir.mkdir(parents=True, exist_ok=True)
 
     migrated_count = 0
+    errors: list[str] = []
 
     # Expand ~ if needed
     expanded_old_gpx_dir = Path(old_gpx_dir).expanduser()
@@ -1523,6 +1541,7 @@ def migrate_gpxtracker(
 
             if backup_failed:
                 logger.info("Skipping GPX file due to backup failure: %s", dest_path)
+                errors.append(f"backup failed for {dest_path}")
                 continue
 
             try:
@@ -1530,14 +1549,25 @@ def migrate_gpxtracker(
                 shutil.copy2(str(gpx_file), str(dest_path))
                 logger.debug("Migrated GPX file: %s", gpx_file)
                 migrated_count += 1
-            except (OSError, IOError):
+            except (OSError, IOError) as e:
                 logger.exception("Failed to migrate GPX file %s", gpx_file)
+                errors.append(f"copy failed for {gpx_file}: {e}")
     except (OSError, IOError) as exc:
         logger.exception("Failed to migrate gpxtracker GPX files")
         return {
             "success": False,
             "error": str(exc),
             "old_path": str(expanded_old_gpx_dir),
+        }
+
+    if errors:
+        return {
+            "success": False,
+            "error": "; ".join(errors),
+            "migrated_count": migrated_count,
+            "old_path": str(expanded_old_gpx_dir),
+            "new_path": str(new_gpx_data_dir),
+            "action": "copy",
         }
 
     return {
