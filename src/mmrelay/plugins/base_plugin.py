@@ -19,6 +19,9 @@ from nio import (
 )
 
 from mmrelay.config import get_plugin_data_dir as resolve_plugin_data_dir
+
+# Provide a patchable module attribute for tests while avoiding name confusion.
+get_plugin_data_dir = resolve_plugin_data_dir
 from mmrelay.constants.config import (
     CONFIG_KEY_REQUIRE_BOT_MENTION,
     DEFAULT_REQUIRE_BOT_MENTION,
