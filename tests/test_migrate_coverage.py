@@ -902,6 +902,17 @@ class TestMigrateGpxtrackerEdgeCases:
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
 
+        gpx_dir = legacy_root / "gpx"
+        gpx_dir.mkdir()
+        (gpx_dir / "track.gpx").write_text("track")
+
+        config = legacy_root / "config.yaml"
+        config.write_text(f"""
+community-plugins:
+  gpxtracker:
+    gpx_directory: {gpx_dir}
+""")
+
         with mock.patch("shutil.move", side_effect=OSError("Mock move error")):
             result = migrate_gpxtracker(
                 [legacy_root], new_home, dry_run=False, force=False, move=True

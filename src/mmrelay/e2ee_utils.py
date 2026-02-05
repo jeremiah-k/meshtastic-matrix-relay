@@ -28,7 +28,7 @@ class E2EEStatus(TypedDict):
     platform_supported: bool
     dependencies_installed: bool
     credentials_available: bool
-    overall_status: Literal["ready", "disabled", "unavailable", "incomplete", "unknown"]
+    overall_status: Literal["ready", "disabled", "unavailable", "incomplete"]
     issues: List[str]
 
 
@@ -62,7 +62,7 @@ def get_e2ee_status(
         "platform_supported": True,
         "dependencies_installed": False,
         "credentials_available": False,
-        "overall_status": "unknown",
+        "overall_status": "incomplete",
         "issues": [],
     }
 
@@ -106,17 +106,15 @@ def get_e2ee_status(
         status["credentials_available"] = _check_credentials_available(config_path)
     else:
         # Check HOME location and legacy sources
-        from mmrelay.paths import resolve_all_paths
-
         # Check primary credentials location (HOME)
+        from mmrelay.paths import is_deprecation_window_active, resolve_all_paths
+
         paths_info = resolve_all_paths()
         primary_credentials_path = paths_info["credentials_path"]
         status["credentials_available"] = os.path.exists(primary_credentials_path)
 
         # If not found in HOME, search legacy locations (during deprecation window)
-        if not status["credentials_available"] and paths_info.get(
-            "legacy_active", False
-        ):
+        if not status["credentials_available"] and is_deprecation_window_active():
             for legacy_root in paths_info.get("legacy_sources", []):
                 legacy_credentials_path = os.path.join(
                     legacy_root, CREDENTIALS_FILENAME
@@ -167,7 +165,7 @@ def _check_credentials_available(config_path: str) -> bool:
         return True
 
     # Check HOME location (primary)
-    from mmrelay.paths import resolve_all_paths
+    from mmrelay.paths import is_deprecation_window_active, resolve_all_paths
 
     paths_info = resolve_all_paths()
     primary_credentials_path = paths_info["credentials_path"]
@@ -176,7 +174,6 @@ def _check_credentials_available(config_path: str) -> bool:
         return True
 
     # Check legacy sources during deprecation window
-    from mmrelay.paths import is_deprecation_window_active
 
     if is_deprecation_window_active():
         for legacy_root in paths_info.get("legacy_sources", []):
@@ -203,7 +200,7 @@ def get_room_encryption_warnings(
     Returns:
         List[str]: Formatted warning lines. Returns an empty list if E2EE is ready, there are no encrypted rooms, or the `rooms` input is invalid.
     """
-    warnings: list[str] = []
+    warnings: List[str] = []
 
     if e2ee_status["overall_status"] == "ready":
         # No warnings needed when E2EE is fully ready

@@ -548,7 +548,7 @@ MMRelay uses Kubernetes startup, readiness, and liveness probes to ensure the po
 
 **Liveness probe** (period: 60s, timeout: 20s, failureThreshold: 3):
 
-- Runs `mmrelay doctor --config /app/config.yaml` for deeper health checks
+- Runs `mmrelay doctor` for deeper health checks
 - Checks if MMRelay is still healthy after startup completes
 - If the probe fails repeatedly, Kubernetes will restart the pod
 - The longer period and timeout reduce false positives for transient issues
@@ -556,10 +556,9 @@ MMRelay uses Kubernetes startup, readiness, and liveness probes to ensure the po
 `mmrelay doctor` verifies:
 
 - Runtime HOME (`/data`) is valid
-- Database is accessible
-- Credentials exist or can be created
-- No legacy paths are active
-- Plugins are loaded correctly
+- Path resolution is working correctly
+- Legacy data sources are detected (if any)
+- Migration status is reported
 
 **Why this split?**
 
@@ -586,7 +585,7 @@ If a pod is not ready or keeps restarting:
 3. Run doctor inside the pod:
 
    ```bash
-   kubectl exec -n mmrelay <pod-name> -- mmrelay doctor --config /app/config.yaml
+   kubectl exec -n mmrelay <pod-name> -- mmrelay doctor
    ```
 
 4. Verify the config Secret is mounted:
@@ -605,7 +604,8 @@ If a pod is not ready or keeps restarting:
 MMRelay implements safe shutdown via a Kubernetes `preStop` lifecycle hook:
 
 ```bash
-mmrelay shutdown --config /app/config.yaml || true; sleep 5
+# Send SIGTERM to allow graceful shutdown
+sleep 5 || true
 ```
 
 This gives MMRelay time to:
