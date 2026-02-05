@@ -635,8 +635,9 @@ class TestMigratePluginsEdgeCases:
             result = migrate_plugins(
                 [legacy_root], new_home, dry_run=False, force=False, move=False
             )
-            # Should still succeed despite backup failure
-            assert result["success"] is True
+            # Backup failure should surface as migration failure
+            assert result["success"] is False
+            assert "error" in result
 
     def test_migrate_plugins_move_removes_existing_custom(self, tmp_path):
         """Test that move operation removes existing custom plugin."""
