@@ -74,6 +74,7 @@ def test_credentials_found_in_legacy_location(
         mock_resolve_all_paths.return_value = {
             "credentials_path": "/primary/credentials.json",
             "legacy_sources": ["/legacy1", "/legacy2", "/legacy3"],
+            "legacy_active": True,
         }
 
         # Mock os.path.exists to find credentials in second legacy location
@@ -151,6 +152,7 @@ def test_credentials_not_found_in_legacy_locations(
         mock_resolve_all_paths.return_value = {
             "credentials_path": "/primary/credentials.json",
             "legacy_sources": ["/legacy1", "/legacy2"],
+            "legacy_active": True,
         }
 
         # Mock os.path.exists to return False for all credential paths

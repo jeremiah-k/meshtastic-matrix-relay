@@ -283,13 +283,17 @@ class Plugin:
                 raise PermissionError("Permission denied")
             return None
 
-        with patch("mmrelay.plugin_loader.get_app_path", return_value="/test/app"):
-            with patch("os.makedirs", side_effect=side_effect):
-                with patch("mmrelay.plugin_loader.logger"):
-                    dirs = get_custom_plugin_dirs()
-                    # Should still include local directory
-                    self.assertEqual(len(dirs), 1)
-                    self.assertIn("/test/app/plugins/custom", dirs)
+        with patch(
+            "mmrelay.plugin_loader._get_plugin_root_dirs",
+            return_value=["/restricted/plugins"],
+        ):
+            with patch("mmrelay.plugin_loader.get_app_path", return_value="/test/app"):
+                with patch("os.makedirs", side_effect=side_effect):
+                    with patch("mmrelay.plugin_loader.logger"):
+                        dirs = get_custom_plugin_dirs()
+                        # Should still include local directory
+                        self.assertEqual(len(dirs), 1)
+                        self.assertIn("/test/app/plugins/custom", dirs)
 
     def test_get_custom_plugin_dirs_broken_symlinks(self):
         """
