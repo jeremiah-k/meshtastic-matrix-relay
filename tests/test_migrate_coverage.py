@@ -1424,8 +1424,9 @@ class TestMigratePluginsEdgeCases:
                 [legacy_root], new_home, dry_run=False, force=False, move=True
             )
 
-        assert result["success"] is False
-        assert "cleanup" in result["error"]
+        # Cleanup errors are now non-fatal warnings
+        assert result["success"] is True
+        assert "error" not in result
 
     def test_migrate_plugins_cleanup_plugins_dir_rmdir_error(
         self, tmp_path: Path
@@ -1453,8 +1454,9 @@ class TestMigratePluginsEdgeCases:
                 [legacy_root], new_home, dry_run=False, force=False, move=True
             )
 
-        assert result["success"] is False
-        assert "cleanup" in result["error"]
+        # Cleanup errors are now non-fatal warnings
+        assert result["success"] is True
+        assert "error" not in result
 
     def test_migrate_plugins_custom_iterdir_failure(self, tmp_path: Path) -> None:
         """Test handling of iterdir failure for custom plugins."""
