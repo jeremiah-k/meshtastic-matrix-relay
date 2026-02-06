@@ -59,6 +59,7 @@ spec:
               mountPath: /data
       containers:
         - name: mmrelay
+          # The image tag is intentionally omitted here; it should be set via kustomization or a digest overlay.
           image: ghcr.io/jeremiah-k/mmrelay
           imagePullPolicy: IfNotPresent
           command:
@@ -102,7 +103,7 @@ spec:
               command:
                 - sh
                 - -c
-                - mmrelay doctor --config /app/config.yaml
+                - mmrelay doctor
             initialDelaySeconds: 0
             periodSeconds: 60
             timeoutSeconds: 20
@@ -132,7 +133,7 @@ spec:
                 command:
                   - sh
                   - -c
-                  - mmrelay shutdown --config /app/config.yaml || true; sleep 5
+                  - mmrelay shutdown || true; sleep 5
           volumeMounts:
             # Pattern A (default): Secret-based config injection
             - name: config

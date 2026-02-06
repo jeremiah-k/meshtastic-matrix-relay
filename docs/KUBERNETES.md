@@ -95,11 +95,15 @@ ${EDITOR:-vi} ./config.yaml
 # No legacy environment variables or CLI flags are required for container deployments.
 
 # Create a Matrix auth secret (environment-based auth)
-# The password is entered interactively and will not be shown or stored in shell history
+# Set credentials (bash required for interactive prompts)
+read -p "Matrix homeserver URL (e.g., https://matrix.example.org): " HOMESERVER
+read -p "Matrix bot user ID (e.g., @bot:example.org): " BOT_USER_ID
+read -s -p "Matrix password: " PASSWORD; echo
+
 kubectl create secret generic mmrelay-matrix-auth \
-  --from-literal=MMRELAY_MATRIX_HOMESERVER=$(read -p "Matrix homeserver URL (e.g., https://matrix.example.org): "; echo "$REPLY") \
-  --from-literal=MMRELAY_MATRIX_BOT_USER_ID=$(read -p "Matrix bot user ID (e.g., @bot:example.org): "; echo "$REPLY") \
-  --from-literal=MMRELAY_MATRIX_PASSWORD=$(read -s -p "Matrix password: "; echo >&2; echo "$REPLY") \
+  --from-literal=MMRELAY_MATRIX_HOMESERVER="$HOMESERVER" \
+  --from-literal=MMRELAY_MATRIX_BOT_USER_ID="$BOT_USER_ID" \
+  --from-literal=MMRELAY_MATRIX_PASSWORD="$PASSWORD" \
   --namespace mmrelay
 
 # Store config.yaml in a Kubernetes Secret
@@ -646,10 +650,10 @@ After deployment, verify your configuration:
 POD_NAME=$(kubectl get pods -n mmrelay -l app=mmrelay -o jsonpath='{.items[0].metadata.name}')
 
 # Run diagnostics
-kubectl exec -n mmrelay $POD_NAME -- mmrelay doctor --config /app/config.yaml
+kubectl exec -n mmrelay $POD_NAME -- mmrelay doctor
 
 # Verify paths
-kubectl exec -n mmrelay $POD_NAME -- mmrelay paths --config /app/config.yaml
+kubectl exec -n mmrelay $POD_NAME -- mmrelay paths
 ```
 
 **Expected output (summary)**:

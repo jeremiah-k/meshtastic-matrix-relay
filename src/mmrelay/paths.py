@@ -58,6 +58,9 @@ class UnknownPluginTypeError(ValueError):
         super().__init__(f"Unknown plugin_type: {plugin_type!r}")
 
 
+# Module-level logger
+_logger = get_logger("paths")
+
 # Global override set from CLI arguments
 _home_override: str | None = None
 _home_override_source: str | None = None
@@ -100,7 +103,6 @@ def get_home_dir() -> Path:
     Returns:
         Path: Resolved application home directory.
     """
-    _logger = get_logger("paths")
 
     # Check CLI override first
     if _home_override:
@@ -466,17 +468,16 @@ def ensure_directories(*, create_missing: bool = True) -> None:
     # Filter out None values to prevent crashes on Windows
     dirs_to_ensure: list[Path] = [d for d in raw_dirs if d is not None]
 
-    logger = get_logger("paths")
     for dir_path in dirs_to_ensure:
         if create_missing:
             try:
                 dir_path.mkdir(parents=True, exist_ok=True)
-                logger.debug("Created directory: %s", dir_path)
+                _logger.debug("Created directory: %s", dir_path)
             except OSError:
-                logger.exception("Failed to create directory %s", dir_path)
+                _logger.exception("Failed to create directory %s", dir_path)
         else:
             if not dir_path.exists():
-                logger.warning("Directory missing: %s", dir_path)
+                _logger.warning("Directory missing: %s", dir_path)
 
 
 def get_legacy_env_vars() -> list[str]:
@@ -512,7 +513,6 @@ def is_deprecation_window_active() -> bool:
     if not new_home_set:
         legacy_vars = get_legacy_env_vars()
         if legacy_vars:
-            _logger = get_logger("paths")
             _logger.warning(
                 "Deprecated environment variable(s) detected: %s. "
                 "Use MMRELAY_HOME instead. "
@@ -633,6 +633,7 @@ def resolve_all_paths() -> dict[str, Any]:
 
     The returned dictionary contains canonical paths (stringified) and metadata used for diagnostics and tooling. Keys:
     - home: canonical application home directory
+    - matrix_dir: path to the Matrix application data directory
     - legacy_sources: list of existing legacy directories (not equal to home)
     - credentials_path: path to credentials.json
     - database_dir: path to the database directory

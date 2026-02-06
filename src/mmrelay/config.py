@@ -850,6 +850,11 @@ async def async_load_credentials() -> dict[str, Any] | None:
     """
     Load Matrix credentials using a background thread.
 
+    Note: This reads module-level globals (relay_config, config_path) without
+    explicit synchronization. This is safe assuming these globals are fully
+    initialized during the application's sequential startup before any
+    asynchronous tasks are spawned.
+
     Returns:
         dict[str, Any] | None: Parsed credentials mapping if a readable, valid credentials file is found; `None` otherwise.
     """
@@ -936,24 +941,38 @@ def _get_config_logger() -> "logging.Logger":
     """
     Obtain a logger for configuration-related messages.
 
-    Selects a logger named "Config". When running under a unittest.mock patched environment, returns the standard library logger to avoid import cycles during tests.
-
     Returns:
         logging.Logger: Logger instance named "Config".
     """
-    # Detect if os.path.join has been mocked by unittest.mock (e.g., during tests).
-    # This brittle check is used to avoid circular imports during tests that
-    # mock os.path, which could lead to logging initialization failures.
-    if os.path.join.__module__ == "unittest.mock":
-        import logging as _logging
-
-        return _logging.getLogger("Config")
     from mmrelay.log_utils import get_logger
 
     return get_logger("Config")
 
 
-logger = _get_config_logger()
+# Lazy logger initialization to avoid circular import issues during startup
+_config_logger: "logging.Logger | None" = None
+
+
+def _get_logger() -> "logging.Logger":
+    """
+    Return the configuration logger, initializing it on first access.
+
+    Returns:
+        logging.Logger: The configuration logger instance.
+    """
+    global _config_logger
+    if _config_logger is None:
+        _config_logger = _get_config_logger()
+    return _config_logger
+
+
+# Proxy for backward compatibility and tests
+class _LoggerProxy:
+    def __getattr__(self, name: str) -> Any:
+        return getattr(_get_logger(), name)
+
+
+logger: Any = _LoggerProxy()
 
 # Initialize empty config
 relay_config: dict[str, Any] = {}

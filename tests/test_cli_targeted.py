@@ -363,12 +363,13 @@ class TestHandleConfigPaths(unittest.TestCase):
         """Test prints HOME directory and source."""
         mock_resolve.return_value = {
             "home": "/custom/home",
+            "matrix_dir": "/custom/home/matrix",
             "home_source": "--home",
             "cli_override": None,
             "legacy_sources": [],
-            "credentials_path": "/custom/home/credentials.json",
+            "credentials_path": "/custom/home/matrix/credentials.json",
             "database_dir": "/custom/home/database",
-            "store_dir": "/custom/home/store",
+            "store_dir": "/custom/home/matrix/store",
             "logs_dir": "/custom/home/logs",
             "log_file": "/custom/home/logs/mmrelay.log",
             "plugins_dir": "/custom/home/plugins",
@@ -390,12 +391,13 @@ class TestHandleConfigPaths(unittest.TestCase):
         """Test shows warning when legacy data is detected."""
         mock_resolve.return_value = {
             "home": "/custom/home",
+            "matrix_dir": "/custom/home/matrix",
             "home_source": "--home",
             "cli_override": None,
             "legacy_sources": ["/legacy1", "/legacy2"],
-            "credentials_path": "/custom/home/credentials.json",
+            "credentials_path": "/custom/home/matrix/credentials.json",
             "database_dir": "/custom/home/database",
-            "store_dir": "/custom/home/store",
+            "store_dir": "/custom/home/matrix/store",
             "logs_dir": "/custom/home/logs",
             "log_file": "/custom/home/logs/mmrelay.log",
             "plugins_dir": "/custom/home/plugins",
@@ -431,12 +433,13 @@ class TestHandlePathsCommand(unittest.TestCase):
         """Test prints header."""
         mock_resolve.return_value = {
             "home": "/custom/home",
+            "matrix_dir": "/custom/home/matrix",
             "home_source": "--home",
             "cli_override": None,
             "legacy_sources": [],
-            "credentials_path": "/custom/home/credentials.json",
+            "credentials_path": "/custom/home/matrix/credentials.json",
             "database_dir": "/custom/home/database",
-            "store_dir": "/custom/home/store",
+            "store_dir": "/custom/home/matrix/store",
             "logs_dir": "/custom/home/logs",
             "log_file": "/custom/home/logs/mmrelay.log",
             "plugins_dir": "/custom/home/plugins",
@@ -462,12 +465,13 @@ class TestHandlePathsCommand(unittest.TestCase):
         """Test shows legacy data warning."""
         mock_resolve.return_value = {
             "home": "/custom/home",
+            "matrix_dir": "/custom/home/matrix",
             "home_source": "--home",
             "cli_override": None,
             "legacy_sources": ["/legacy1"],
-            "credentials_path": "/custom/home/credentials.json",
+            "credentials_path": "/custom/home/matrix/credentials.json",
             "database_dir": "/custom/home/database",
-            "store_dir": "/custom/home/store",
+            "store_dir": "/custom/home/matrix/store",
             "logs_dir": "/custom/home/logs",
             "log_file": "/custom/home/logs/mmrelay.log",
             "plugins_dir": "/custom/home/plugins",
@@ -508,10 +512,11 @@ class TestHandleDoctorMigrationStatus(unittest.TestCase):
         mock_needed.return_value = True
         mock_resolve.return_value = {
             "home": "/home",
+            "matrix_dir": "/home/matrix",
             "home_source": "default",
-            "credentials_path": "/home/credentials.json",
+            "credentials_path": "/home/matrix/credentials.json",
             "database_dir": "/home/database",
-            "store_dir": "/home/store",
+            "store_dir": "/home/matrix/store",
             "logs_dir": "/home/logs",
             "plugins_dir": "/home/plugins",
             "legacy_sources": [],
@@ -540,10 +545,11 @@ class TestHandleDoctorMigrationStatus(unittest.TestCase):
         mock_needed.return_value = False
         mock_resolve.return_value = {
             "home": "/home",
+            "matrix_dir": "/home/matrix",
             "home_source": "default",
-            "credentials_path": "/home/credentials.json",
+            "credentials_path": "/home/matrix/credentials.json",
             "database_dir": "/home/database",
-            "store_dir": "/home/store",
+            "store_dir": "/home/matrix/store",
             "logs_dir": "/home/logs",
             "plugins_dir": "/home/plugins",
             "legacy_sources": [],
@@ -581,12 +587,13 @@ class TestHandleConfigPathsDetails(unittest.TestCase):
         """Test prints all runtime artifact paths."""
         mock_resolve.return_value = {
             "home": "/custom/home",
+            "matrix_dir": "/custom/home/matrix",
             "home_source": "--home",
             "cli_override": None,
             "legacy_sources": [],
-            "credentials_path": "/custom/home/credentials.json",
+            "credentials_path": "/custom/home/matrix/credentials.json",
             "database_dir": "/custom/home/database",
-            "store_dir": "/custom/home/store",
+            "store_dir": "/custom/home/matrix/store",
             "logs_dir": "/custom/home/logs",
             "log_file": "/custom/home/logs/mmrelay.log",
             "plugins_dir": "/custom/home/plugins",
@@ -630,12 +637,13 @@ class TestHandlePathsCommandDetails(unittest.TestCase):
         """Test prints all path sections."""
         mock_resolve.return_value = {
             "home": "/custom/home",
+            "matrix_dir": "/custom/home/matrix",
             "home_source": "--home",
             "cli_override": None,
             "legacy_sources": [],
-            "credentials_path": "/custom/home/credentials.json",
+            "credentials_path": "/custom/home/matrix/credentials.json",
             "database_dir": "/custom/home/database",
-            "store_dir": "/custom/home/store",
+            "store_dir": "/custom/home/matrix/store",
             "logs_dir": "/custom/home/logs",
             "log_file": "/custom/home/logs/mmrelay.log",
             "plugins_dir": "/custom/home/plugins",

@@ -102,32 +102,10 @@ def get_e2ee_status(
         status["issues"].append("E2EE is disabled in configuration")
 
     # Check credentials
-    if config_path:
-        status["credentials_available"] = _check_credentials_available(config_path)
-    else:
-        # Check HOME location and legacy sources
-        # Check primary credentials location (HOME)
-        paths_info = resolve_all_paths()
-        primary_credentials_path = paths_info["credentials_path"]
-        status["credentials_available"] = os.path.exists(primary_credentials_path)
-
-        # Compatibility fallback for pre-1.3 same-home credentials location.
-        if not status["credentials_available"]:
-            home_root = paths_info.get("home")
-            if isinstance(home_root, str):
-                legacy_same_home_path = os.path.join(home_root, CREDENTIALS_FILENAME)
-                status["credentials_available"] = os.path.exists(legacy_same_home_path)
-
-        # If not found in HOME, search legacy locations (during deprecation window)
-        if not status["credentials_available"] and is_deprecation_window_active():
-            for legacy_root in paths_info.get("legacy_sources", []):
-                legacy_candidates = (
-                    os.path.join(legacy_root, CREDENTIALS_FILENAME),
-                    os.path.join(legacy_root, MATRIX_DIRNAME, CREDENTIALS_FILENAME),
-                )
-                if any(os.path.exists(path) for path in legacy_candidates):
-                    status["credentials_available"] = True
-                    break
+    paths_info = resolve_all_paths()
+    status["credentials_available"] = _check_credentials_available(
+        config_path, paths_info
+    )
 
     if not status["credentials_available"]:
         status["issues"].append("Matrix authentication not configured")
@@ -151,31 +129,37 @@ def get_e2ee_status(
     return status
 
 
-def _check_credentials_available(config_path: str) -> bool:
+def _check_credentials_available(
+    config_path: Optional[str] = None, paths_info: Optional[Dict[str, Any]] = None
+) -> bool:
     """
     Determine whether a Matrix credentials file exists in any of the standard locations.
 
-    Checks for the credentials file beside the provided config file, at the primary HOME-based credentials location resolved by mmrelay.paths, and — while a deprecation window is active — in legacy credential locations.
+    Checks for the credentials file beside the optional config file, at the primary HOME-based credentials location resolved by mmrelay.paths, and — while a deprecation window is active — in legacy credential locations.
 
     Parameters:
-        config_path (str): Path to the application's configuration file; the config file's directory is searched for credentials.
+        config_path (str): Optional path to the application's configuration file; the config file's directory is searched for credentials.
+        paths_info (dict): Optional pre-resolved paths dictionary.
 
     Returns:
         bool: `True` if a credentials file is found in any checked location, `False` otherwise.
     """
     # Check config directory first
-    config_dir = os.path.dirname(config_path)
-    config_candidates = (
-        os.path.join(config_dir, CREDENTIALS_FILENAME),
-        os.path.join(config_dir, MATRIX_DIRNAME, CREDENTIALS_FILENAME),
-    )
-    if any(os.path.exists(path) for path in config_candidates):
-        return True
+    if config_path:
+        config_dir = os.path.dirname(config_path)
+        config_candidates = (
+            os.path.join(config_dir, CREDENTIALS_FILENAME),
+            os.path.join(config_dir, MATRIX_DIRNAME, CREDENTIALS_FILENAME),
+        )
+        if any(os.path.exists(path) for path in config_candidates):
+            return True
+
+    # Resolve paths if not provided
+    if paths_info is None:
+        paths_info = resolve_all_paths()
 
     # Check HOME location (primary)
-    paths_info = resolve_all_paths()
     primary_credentials_path = paths_info["credentials_path"]
-
     if os.path.exists(primary_credentials_path):
         return True
 
@@ -187,7 +171,6 @@ def _check_credentials_available(config_path: str) -> bool:
             return True
 
     # Check legacy sources during deprecation window
-
     if is_deprecation_window_active():
         for legacy_root in paths_info.get("legacy_sources", []):
             legacy_candidates = (

@@ -1771,6 +1771,7 @@ async def _perform_matrix_login(
                     )
                     user_id = discovered_user_id
                     client.user_id = user_id
+                    auth_info.user_id = user_id
                     if auth_info.credentials is not None:
                         auth_info.credentials["user_id"] = user_id
                         credentials_updated = True
@@ -2048,6 +2049,7 @@ async def _perform_initial_sync(
                 await _close_matrix_client_after_failure(client, "sync cancellation")
                 raise
             except (
+                asyncio.TimeoutError,
                 *NIO_COMM_EXCEPTIONS,
                 JSONSCHEMA_VALIDATION_ERROR,
             ):
@@ -2302,6 +2304,11 @@ async def connect_matrix(
 
     try:
         await _perform_matrix_login(matrix_client, auth_info)
+
+        # Re-sync global in case whoami discovered a different user_id
+        if auth_info.user_id and auth_info.user_id != bot_user_id:
+            bot_user_id = auth_info.user_id
+
         if not bot_user_id:
             resolved_user_id = matrix_client.user_id
             if isinstance(resolved_user_id, str) and resolved_user_id:

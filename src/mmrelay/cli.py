@@ -1962,6 +1962,7 @@ def handle_auth_status(args: argparse.Namespace) -> int:
     import json
 
     from mmrelay.config import (
+        InvalidCredentialsPathTypeError,
         get_config_paths,
         get_credentials_search_paths,
         get_explicit_credentials_path,
@@ -1973,7 +1974,13 @@ def handle_auth_status(args: argparse.Namespace) -> int:
 
     config_paths = get_config_paths(args)
     config_data = load_config(args=args, config_paths=config_paths)
-    explicit_path = get_explicit_credentials_path(config_data)
+
+    try:
+        explicit_path = get_explicit_credentials_path(config_data)
+    except InvalidCredentialsPathTypeError as exc:
+        print(f"❌ Error: {exc}", file=sys.stderr)
+        explicit_path = None
+
     candidate_paths = get_credentials_search_paths(
         explicit_path=explicit_path,
         config_paths=config_paths,
@@ -2000,7 +2007,7 @@ def handle_auth_status(args: argparse.Namespace) -> int:
                 print(f"   User ID: {credentials.get('user_id')}")
                 print(f"   Device ID: {credentials.get('device_id')}")
                 return 0
-            except Exception as e:
+            except (OSError, json.JSONDecodeError, TypeError, ValueError) as e:
                 print(
                     f"⚠️  Skipping unreadable credentials.json at {credentials_path}: {e}"
                 )

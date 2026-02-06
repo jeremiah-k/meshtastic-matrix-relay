@@ -65,28 +65,11 @@ If you need to overwrite existing target files without creating backups, use
 
 ### Docker Compose installs
 
-1. Update compose to 1.3 model:
-   - `MMRELAY_HOME=/data`
-   - one persistent host mount to `/data`
-   - config mounted at `/app/config.yaml`
-   - reference examples:
-     - prebuilt image flow: [`src/mmrelay/tools/sample-docker-compose-prebuilt.yaml`](../src/mmrelay/tools/sample-docker-compose-prebuilt.yaml)
-     - local build flow: [`src/mmrelay/tools/sample-docker-compose.yaml`](../src/mmrelay/tools/sample-docker-compose.yaml)
-     - environment template: [`src/mmrelay/tools/sample.env`](../src/mmrelay/tools/sample.env)
-2. Ensure `.env` host path values are valid absolute paths.
-3. Run migration inside container:
-   - `docker compose exec mmrelay mmrelay migrate --dry-run`
-   - `docker compose exec mmrelay mmrelay migrate`
-   - `docker compose exec mmrelay mmrelay verify-migration`
+See [Docker-Specific Notes](#docker-specific-notes) for detailed instructions.
 
 ### Kubernetes / Helm installs
 
-1. Keep one PVC mounted at `/data`.
-2. Keep config mounted at `/app/config.yaml`.
-3. Deploy upgraded manifests/chart and verify in pod:
-   - `kubectl exec -n mmrelay <pod> -- mmrelay migrate --dry-run`
-   - `kubectl exec -n mmrelay <pod> -- mmrelay migrate`
-   - `kubectl exec -n mmrelay <pod> -- mmrelay verify-migration`
+See [Kubernetes-Specific Notes](#kubernetes-specific-notes) for detailed instructions.
 
 ### Migration Command Flags
 
@@ -149,25 +132,30 @@ If you need to manually undo a successful migration:
 
 ## Kubernetes-Specific Notes
 
-1. Keep a single PVC mounted at `/data`.
+1. Keep one PVC mounted at `/data`.
 2. Keep config mounted at `/app/config.yaml`.
-3. Run verification inside the pod:
-
-```bash
-kubectl exec -n mmrelay <pod> -- mmrelay verify-migration
-```
+3. Deploy upgraded manifests/chart and verify in pod:
+   - `kubectl exec -n mmrelay <pod> -- mmrelay migrate --dry-run`
+   - `kubectl exec -n mmrelay <pod> -- mmrelay migrate`
+   - `kubectl exec -n mmrelay <pod> -- mmrelay verify-migration`
 
 If verification fails, stop the rollout and restore your previous image and backup.
 
 ## Docker-Specific Notes
 
-1. Use a single bind mount or volume at `/data`.
-2. Keep config mounted at `/app/config.yaml`.
-3. Run verification inside the container:
-
-```bash
-docker compose exec mmrelay mmrelay verify-migration
-```
+1. Update compose to 1.3 model:
+   - `MMRELAY_HOME=/data`
+   - Use a single bind mount or volume at `/data`
+   - config mounted at `/app/config.yaml`
+   - reference examples:
+     - prebuilt image flow: [`src/mmrelay/tools/sample-docker-compose-prebuilt.yaml`](../src/mmrelay/tools/sample-docker-compose-prebuilt.yaml)
+     - local build flow: [`src/mmrelay/tools/sample-docker-compose.yaml`](../src/mmrelay/tools/sample-docker-compose.yaml)
+     - environment template: [`src/mmrelay/tools/sample.env`](../src/mmrelay/tools/sample.env)
+2. Ensure `.env` host path values are valid absolute paths.
+3. Run migration inside container:
+   - `docker compose exec mmrelay mmrelay migrate --dry-run`
+   - `docker compose exec mmrelay mmrelay migrate`
+   - `docker compose exec mmrelay mmrelay verify-migration`
 
 If verification fails, stop the container, restore your backup, and roll back to the previous image.
 

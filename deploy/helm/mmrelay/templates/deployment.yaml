@@ -60,20 +60,23 @@ spec:
           image: "{{ .Values.initContainer.image.repository }}:{{ .Values.initContainer.image.tag }}{{- if .Values.initContainer.image.digest }}@{{ .Values.initContainer.image.digest }}{{- end }}"
           imagePullPolicy: {{ .Values.initContainer.image.pullPolicy }}
           command:
-            - chown
-            - -R
-            - {{ .Values.containerSecurityContext.runAsUser }}:{{ default .Values.containerSecurityContext.runAsUser .Values.containerSecurityContext.runAsGroup }}
-            - {{ .Values.mmrelayHome }}
+            - sh
+            - -c
+            - |
+              mkdir -p {{ .Values.mmrelayHome }}/matrix
+              chown -R {{ .Values.containerSecurityContext.runAsUser }}:{{ default .Values.containerSecurityContext.runAsUser .Values.containerSecurityContext.runAsGroup }} {{ .Values.mmrelayHome }}
           securityContext:
             runAsUser: 0
             runAsGroup: 0
             allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
+            readOnlyRootFilesystem: false
             capabilities:
               drop:
                 - ALL
               add:
                 - CHOWN
+                - FOWNER
+                - DAC_OVERRIDE
           volumeMounts:
             - name: data
               mountPath: {{ .Values.mmrelayHome }}

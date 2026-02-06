@@ -142,12 +142,13 @@ database: delete_plugin_data(plugin_name, meshtastic_id)       # Delete from SQL
 ```text
 <MMRELAY_HOME>/
 ├── config.yaml              # User configuration (optional, can be elsewhere)
-├── credentials.json          # Matrix authentication credentials
+├── matrix/                  # Matrix runtime artifacts
+│   ├── credentials.json    # Matrix authentication credentials
+│   └── store/              # E2EE encryption keys (Unix/macOS only)
 ├── database/
 │   └── meshtastic.sqlite  # SQLite database (with -wal, -shm)
 ├── logs/
 │   └── mmrelay.log          # Application logs
-├── store/                  # E2EE encryption keys (Unix/macOS only)
 └── plugins/
     ├── core/              # Built-in plugins (read-only, in package)
     ├── custom/            # User plugins
@@ -405,8 +406,8 @@ def get_e2ee_store_dir() -> Path:
     """
     if sys.platform == "win32":
         # Logs a warning and returns a fallback path on Windows.
-        return get_home_dir() / "store"
-    return get_home_dir() / "store"
+        return get_home_dir() / "matrix" / "store"
+    return get_home_dir() / "matrix" / "store"
 
 
 def get_plugins_dir() -> Path:
@@ -585,7 +586,7 @@ def migrate_credentials(legacy_info: dict[str, Any], new_home: Path) -> bool:
         logger.info("No credentials file found in legacy location")
         return False
 
-    new_path = new_home / "credentials.json"
+    new_path = new_home / "matrix" / "credentials.json"
 
     # Backup existing new credentials if present
     if new_path.exists():
@@ -1264,12 +1265,13 @@ Partial New (v1.2.10-1.2.11):
 Unified:
 $MMRELAY_HOME/
 ├── config.yaml              # (optional, can be elsewhere)
-├── credentials.json
+├── matrix/
+│   ├── credentials.json
+│   └── store/              # Unix/macOS only
 ├── database/
 │   └── meshtastic.sqlite
 ├── logs/
 │   └── mmrelay.log
-├── store/                  # Unix/macOS only
 └── plugins/
     ├── core/              # Built-in
     ├── custom/

@@ -37,7 +37,7 @@ def e2ee_test_config():
     # Create temporary directory
     temp_dir = tempfile.mkdtemp()
     config_path = os.path.join(temp_dir, "config.yaml")
-    credentials_path = os.path.join(temp_dir, "credentials.json")
+    credentials_path = os.path.join(temp_dir, "matrix", "credentials.json")
 
     # Basic config
     base_config = {

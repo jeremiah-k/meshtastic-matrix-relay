@@ -40,7 +40,7 @@ def test_legacy_credentials_search(
     monkeypatch.setattr("mmrelay.config.get_explicit_credentials_path", lambda _c: None)
     monkeypatch.setattr(
         "mmrelay.config.get_credentials_search_paths",
-        lambda **kwargs: [str(home / "credentials.json"), str(legacy / "credentials.json")],
+        lambda **_kwargs: [str(home / "credentials.json"), str(legacy / "credentials.json")],
     )
 
     result = _find_credentials_json_path(None)

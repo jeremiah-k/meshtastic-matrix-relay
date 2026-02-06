@@ -74,6 +74,13 @@ MIGRATION_STEPS_ORDER = [
 logger = get_logger("Migration")
 
 
+def _get_db_base_path(path: Path) -> Path:
+    """Strip -wal/-shm suffix to get the main database file path."""
+    if path.name.endswith("-wal") or path.name.endswith("-shm"):
+        return path.with_name(path.name[:-4])
+    return path
+
+
 class MigrationError(Exception):
     """Migration-specific error."""
 
@@ -600,22 +607,6 @@ def _get_most_recent_database(candidates: list[Path]) -> Path | None:
         except OSError:
             return 0.0
 
-    def get_base_path(path: Path) -> Path:
-        """
-        Normalize a database-related Path to its main database file.
-
-        If `path` points to a SQLite WAL or SHM sidecar (file name ending in `-wal` or `-shm`), return a Path with that suffix removed; otherwise return `path` unmodified.
-
-        Parameters:
-            path (Path): A filesystem path that may reference a main database file or a WAL/SHM sidecar.
-
-        Returns:
-            Path: The main database file Path for a sidecar input, or the original Path if no sidecar suffix is present.
-        """
-        if path.name.endswith("-wal") or path.name.endswith("-shm"):
-            return path.with_name(path.name[:-4])
-        return path
-
     # Group databases by main file and its sidecars
     db_groups: dict[Path, list[Path]] = {}
     for db_path in candidates:
@@ -626,7 +617,7 @@ def _get_most_recent_database(candidates: list[Path]) -> Path | None:
             continue
 
         # Extract base name (remove -wal, -shm suffix)
-        base = get_base_path(db_path)
+        base = _get_db_base_path(db_path)
 
         # Skip orphaned WAL/SHM sidecars (no main database file exists)
         try:
@@ -648,8 +639,6 @@ def _get_most_recent_database(candidates: list[Path]) -> Path | None:
         db_groups.items(),
         key=lambda item: max(get_mtime(p) for p in item[1]),
     )
-    if not most_recent_group:
-        return None
 
     # Return main file from most recent group
     return most_recent_group[0]
@@ -958,7 +947,9 @@ def migrate_database(
         }
 
     selected_group = [
-        candidate for candidate in candidates if get_base_path(candidate) == most_recent
+        candidate
+        for candidate in candidates
+        if _get_db_base_path(candidate) == most_recent
     ]
     if not selected_group:
         return {
@@ -1143,6 +1134,7 @@ def migrate_logs(
     new_logs_dir.mkdir(parents=True, exist_ok=True)
 
     migrated_count = 0
+    failed_files = []
 
     for log_file in old_logs_dir.glob("*.log"):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1164,14 +1156,18 @@ def migrate_logs(
             migrated_count += 1
         except (OSError, IOError) as e:
             logger.warning("Failed to migrate log %s: %s", log_file, e)
+            failed_files.append(str(log_file))
 
-    return {
+    result = {
         "success": True,
         "migrated_count": migrated_count,
         "old_path": str(old_logs_dir),
         "new_path": str(new_logs_dir),
         "action": "move" if move else "copy",
     }
+    if failed_files:
+        result["failed_files"] = failed_files
+    return result
 
 
 def migrate_store(
@@ -1912,49 +1908,16 @@ def perform_migration(
             move=move,
         )
 
-        # Migrate gpxtracker (if configured)
-        gpx_configured = False
-        roots_to_scan = list(legacy_roots)
-        if new_home not in roots_to_scan:
-            roots_to_scan.append(new_home)
-        for legacy_root in roots_to_scan:
-            legacy_config = legacy_root / "config.yaml"
-            if legacy_config.exists():
-                try:
-                    import yaml
-                except ImportError as e:
-                    logger.warning("Failed to import yaml: %s", e)
-                    continue
-
-                try:
-                    with open(legacy_config, "r", encoding="utf-8") as f:
-                        config_data = yaml.safe_load(f)
-                        if isinstance(config_data, dict):
-                            plugins_section = config_data.get("community-plugins", {})
-                            if isinstance(plugins_section, dict):
-                                gpx_section = plugins_section.get("gpxtracker", {})
-                                if isinstance(gpx_section, dict) and gpx_section.get(
-                                    "gpx_directory"
-                                ):
-                                    gpx_configured = True
-                                    break
-                except (OSError, yaml.YAMLError) as e:
-                    logger.warning(
-                        "Failed to read legacy config %s: %s", legacy_config, e
-                    )
-
-        if gpx_configured or any(
-            (legacy_root / "plugins").exists() for legacy_root in legacy_roots
-        ):
-            _run_step(
-                "gpxtracker",
-                migrate_gpxtracker,
-                legacy_roots,
-                new_home,
-                dry_run=dry_run,
-                force=force,
-                move=move,
-            )
+        # Migrate gpxtracker (always runs; no-ops if not configured)
+        _run_step(
+            "gpxtracker",
+            migrate_gpxtracker,
+            legacy_roots,
+            new_home,
+            dry_run=dry_run,
+            force=force,
+            move=move,
+        )
 
         # Mark migration as complete (skip for dry run)
         if not dry_run:
@@ -1970,36 +1933,20 @@ def perform_migration(
         report["message"] = "Migration failed"
         if not dry_run:
             _write_migration_state(
-                status="failed",
-                completed_steps=completed_steps,
-                error=str(exc),
+                status="failed", completed_steps=completed_steps, error=str(exc)
             )
-            rollback_result = rollback_migration(completed_steps=completed_steps)
-            report["rollback"] = rollback_result
+            report["rollback"] = rollback_migration(completed_steps=completed_steps)
         return report
-    except (OSError, IOError, sqlite3.DatabaseError) as exc:
+    except Exception as exc:
+        logger.exception("Unexpected error during migration")
         report["success"] = False
         report["error"] = str(exc)
         report["message"] = "Migration failed"
         if not dry_run:
             _write_migration_state(
-                status="failed",
-                completed_steps=completed_steps,
-                error=str(exc),
+                status="failed", completed_steps=completed_steps, error=str(exc)
             )
-            rollback_result = rollback_migration(completed_steps=completed_steps)
-            report["rollback"] = rollback_result
-        return report
-    except Exception as exc:
-        logger.exception("Unexpected error during migration")
-        if not dry_run:
-            _write_migration_state(
-                status="failed",
-                completed_steps=completed_steps,
-                error=str(exc),
-            )
-            rollback_result = rollback_migration(completed_steps=completed_steps)
-            report["rollback"] = rollback_result
+            report["rollback"] = rollback_migration(completed_steps=completed_steps)
         raise
 
     logger.info(
