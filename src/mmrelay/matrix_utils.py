@@ -1510,12 +1510,11 @@ async def _resolve_and_load_credentials(
     matrix_access_token = matrix_section.get("access_token")
     if not isinstance(matrix_access_token, str) or not matrix_access_token.strip():
         auth_keys = ("access_token", "password", "homeserver", "bot_user_id", "user_id")
-        present_auth_keys = [
-            key
-            for key in auth_keys
-            if isinstance(matrix_section.get(key), str)
-            and matrix_section.get(key).strip()
-        ]
+        present_auth_keys: list[str] = []
+        for key in auth_keys:
+            value = matrix_section.get(key)
+            if isinstance(value, str) and value.strip():
+                present_auth_keys.append(key)
         if present_auth_keys:
             logger.error("Matrix section is missing required field: access_token")
         else:
