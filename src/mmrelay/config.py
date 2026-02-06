@@ -22,18 +22,14 @@ from mmrelay.constants.config import (
 )
 
 # Import new path resolution system
-from mmrelay.paths import get_config_paths as get_unified_config_paths
 from mmrelay.paths import (
+    get_config_paths as get_unified_config_paths,
     get_credentials_path,
-)
-from mmrelay.paths import get_e2ee_store_dir as get_unified_store_dir
-from mmrelay.paths import (
+    get_e2ee_store_dir as get_unified_store_dir,
     get_home_dir,
     get_legacy_dirs,
-)
-from mmrelay.paths import get_logs_dir as get_unified_logs_dir
-from mmrelay.paths import get_plugin_data_dir as get_unified_plugin_data_dir
-from mmrelay.paths import (
+    get_logs_dir as get_unified_logs_dir,
+    get_plugin_data_dir as get_unified_plugin_data_dir,
     get_plugins_dir,
     is_deprecation_window_active,
 )
@@ -740,7 +736,6 @@ def load_credentials() -> dict[str, Any] | None:
             config_paths=config_paths,
         )
         logger.debug("Looking for credentials at: %s", candidate_paths)
-        from mmrelay.paths import get_legacy_dirs
 
         legacy_dirs = (
             {os.path.abspath(str(p)) for p in get_legacy_dirs()}
@@ -813,8 +808,6 @@ def save_credentials(
     # Determine target path
     path_module = os.path
     if sys.platform == "win32":
-        import ntpath
-
         path_module = ntpath
 
     if credentials_path:
@@ -846,7 +839,7 @@ def save_credentials(
     except (OSError, PermissionError):
         logger.exception("Could not create credentials directory %s", target_dir)
         if sys.platform == "win32":
-            logger.exception(
+            logger.error(
                 "On Windows, ensure the application has write permissions to the credentials path."
             )
         raise
@@ -880,6 +873,9 @@ def _get_config_logger() -> "logging.Logger":
     Returns:
         logging.Logger: Logger instance named "Config".
     """
+    # Detect if os.path.join has been mocked by unittest.mock (e.g., during tests).
+    # This brittle check is used to avoid circular imports during tests that
+    # mock os.path, which could lead to logging initialization failures.
     if os.path.join.__module__ == "unittest.mock":
         import logging as _logging
 

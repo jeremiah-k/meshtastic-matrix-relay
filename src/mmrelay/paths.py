@@ -169,25 +169,24 @@ def get_config_paths(*, explicit: str | None = None) -> list[Path]:
         explicit_path = Path(explicit).expanduser().absolute()
         candidates.append(explicit_path)
 
-    if not explicit:
-        # 2. MMRELAY_HOME/config.yaml
-        home = get_home_dir()
-        config_path = home / "config.yaml"
-        if config_path not in candidates:
-            candidates.append(config_path)
+    # 2. MMRELAY_HOME/config.yaml
+    home = get_home_dir()
+    config_path = home / "config.yaml"
+    if config_path not in candidates:
+        candidates.append(config_path)
 
-        # 3. Current working directory (fallback)
-        cwd = Path.cwd()
-        cwd_config = cwd / "config.yaml"
-        if cwd != home and cwd_config not in candidates:
-            candidates.append(cwd_config)
+    # 3. Current working directory (fallback)
+    cwd = Path.cwd()
+    cwd_config = cwd / "config.yaml"
+    if cwd != home and cwd_config not in candidates:
+        candidates.append(cwd_config)
 
-        # 4. Legacy locations (deprecation window)
-        # These are searched for migration purposes
-        legacy_home = Path.home() / f".{APP_NAME}"
-        if legacy_home != home and legacy_home.exists():
-            if (legacy_home / "config.yaml") not in candidates:
-                candidates.append(legacy_home / "config.yaml")
+    # 4. Legacy locations (deprecation window)
+    # These are searched for migration purposes
+    legacy_home = Path.home() / f".{APP_NAME}"
+    if legacy_home != home and legacy_home.exists():
+        if (legacy_home / "config.yaml") not in candidates:
+            candidates.append(legacy_home / "config.yaml")
 
     # Remove duplicates while preserving order
     seen = set()

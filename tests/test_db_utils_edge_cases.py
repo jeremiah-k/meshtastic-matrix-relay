@@ -137,12 +137,12 @@ class TestDBUtilsEdgeCases:
 
         Verifies that the function does not crash or raise unhandled exceptions when an OperationalError indicating "database is locked" occurs during execution.
         """
-        with patch("sqlite3.connect") as mock_connect:
-            mock_conn = MagicMock()
-            mock_conn.cursor.return_value.execute.side_effect = (
-                sqlite3.OperationalError("database is locked")
+        with patch("mmrelay.db_utils._get_db_manager") as mock_get_manager:
+            mock_manager = MagicMock()
+            mock_manager.run_sync.side_effect = sqlite3.OperationalError(
+                "database is locked"
             )
-            mock_connect.return_value.__enter__.return_value = mock_conn
+            mock_get_manager.return_value = mock_manager
 
             # Should handle database lock gracefully
             save_longname("test_id", "test_name")
@@ -153,12 +153,12 @@ class TestDBUtilsEdgeCases:
 
         Simulates a constraint violation during the save_shortname operation and verifies that the function does not raise an exception.
         """
-        with patch("sqlite3.connect") as mock_connect:
-            mock_conn = MagicMock()
-            mock_conn.cursor.return_value.execute.side_effect = sqlite3.IntegrityError(
+        with patch("mmrelay.db_utils._get_db_manager") as mock_get_manager:
+            mock_manager = MagicMock()
+            mock_manager.run_sync.side_effect = sqlite3.IntegrityError(
                 "constraint violation"
             )
-            mock_connect.return_value.__enter__.return_value = mock_conn
+            mock_get_manager.return_value = mock_manager
 
             # Should handle constraint violation gracefully
             save_shortname("test_id", "test_name")
@@ -195,12 +195,10 @@ class TestDBUtilsEdgeCases:
         """
         Test that store_message_map handles disk full (disk I/O error) conditions gracefully.
         """
-        with patch("sqlite3.connect") as mock_connect:
-            mock_conn = MagicMock()
-            mock_conn.cursor.return_value.execute.side_effect = (
-                sqlite3.OperationalError("disk I/O error")
-            )
-            mock_connect.return_value.__enter__.return_value = mock_conn
+        with patch("mmrelay.db_utils._get_db_manager") as mock_get_manager:
+            mock_manager = MagicMock()
+            mock_manager.run_sync.side_effect = sqlite3.OperationalError("disk I/O error")
+            mock_get_manager.return_value = mock_manager
 
             # Should handle disk full error gracefully
             store_message_map("mesh_id", "matrix_id", "room_id", "text")
@@ -255,13 +253,10 @@ class TestDBUtilsEdgeCases:
         """
         Test that wipe_message_map properly handles transaction rollback when a database error occurs during execution.
         """
-        with patch("sqlite3.connect") as mock_connect:
-            mock_conn = MagicMock()
-            mock_conn.cursor.return_value.execute.side_effect = [
-                None,
-                sqlite3.Error("Transaction failed"),
-            ]
-            mock_connect.return_value.__enter__.return_value = mock_conn
+        with patch("mmrelay.db_utils._get_db_manager") as mock_get_manager:
+            mock_manager = MagicMock()
+            mock_manager.run_sync.side_effect = sqlite3.Error("Transaction failed")
+            mock_get_manager.return_value = mock_manager
 
             # Should handle transaction rollback
             wipe_message_map()
@@ -270,12 +265,12 @@ class TestDBUtilsEdgeCases:
         """
         Test that store_plugin_data handles database locking due to concurrent access without crashing.
         """
-        with patch("sqlite3.connect") as mock_connect:
-            mock_conn = MagicMock()
-            mock_conn.cursor.return_value.execute.side_effect = (
-                sqlite3.OperationalError("database is locked")
+        with patch("mmrelay.db_utils._get_db_manager") as mock_get_manager:
+            mock_manager = MagicMock()
+            mock_manager.run_sync.side_effect = sqlite3.OperationalError(
+                "database is locked"
             )
-            mock_connect.return_value.__enter__.return_value = mock_conn
+            mock_get_manager.return_value = mock_manager
 
             # Should handle concurrent access gracefully
             store_plugin_data("test_plugin", "test_node", {"key": "value"})
@@ -284,12 +279,11 @@ class TestDBUtilsEdgeCases:
         """
         Test that get_plugin_data_for_node returns an empty list when JSON decoding of plugin data fails.
         """
-        with patch("sqlite3.connect") as mock_connect:
-            mock_conn = MagicMock()
-            mock_cursor = mock_conn.cursor.return_value
+        with patch("mmrelay.db_utils._get_db_manager") as mock_get_manager:
+            mock_manager = MagicMock()
             # Return invalid JSON
-            mock_cursor.fetchone.return_value = ("invalid json {",)
-            mock_connect.return_value.__enter__.return_value = mock_conn
+            mock_manager.run_sync.return_value = ("invalid json {",)
+            mock_get_manager.return_value = mock_manager
 
             result = get_plugin_data_for_node("test_plugin", "test_node")
             assert result == []
@@ -298,12 +292,10 @@ class TestDBUtilsEdgeCases:
         """
         Test that get_plugin_data_for_node returns an empty list when a MemoryError occurs during data retrieval.
         """
-        with patch("sqlite3.connect") as mock_connect:
-            mock_conn = MagicMock()
-            mock_conn.cursor.return_value.fetchone.side_effect = MemoryError(
-                "Out of memory"
-            )
-            mock_connect.return_value.__enter__.return_value = mock_conn
+        with patch("mmrelay.db_utils._get_db_manager") as mock_get_manager:
+            mock_manager = MagicMock()
+            mock_manager.run_sync.side_effect = MemoryError("Out of memory")
+            mock_get_manager.return_value = mock_manager
 
             result = get_plugin_data_for_node("test_plugin", "test_node")
             assert result == []
@@ -312,12 +304,12 @@ class TestDBUtilsEdgeCases:
         """
         Test that delete_plugin_data handles foreign key constraint violations gracefully when deleting plugin data.
         """
-        with patch("sqlite3.connect") as mock_connect:
-            mock_conn = MagicMock()
-            mock_conn.cursor.return_value.execute.side_effect = sqlite3.IntegrityError(
+        with patch("mmrelay.db_utils._get_db_manager") as mock_get_manager:
+            mock_manager = MagicMock()
+            mock_manager.run_sync.side_effect = sqlite3.IntegrityError(
                 "foreign key constraint"
             )
-            mock_connect.return_value.__enter__.return_value = mock_conn
+            mock_get_manager.return_value = mock_manager
 
             # Should handle foreign key constraint gracefully
             delete_plugin_data("test_plugin", "test_node")
@@ -431,9 +423,10 @@ class TestDBUtilsEdgeCases:
         from mmrelay.db_utils import _migrate_legacy_db_if_needed
 
         # Should return early without error when no candidates
-        _migrate_legacy_db_if_needed(
+        result = _migrate_legacy_db_if_needed(
             default_path="/some/path/db.sqlite", legacy_candidates=[]
         )
+        assert result == "/some/path/db.sqlite"
 
     def test_migrate_legacy_db_success(self):
         """Test successful migration of legacy database."""
@@ -669,8 +662,7 @@ class TestDBUtilsEdgeCases:
                     # Should return default_path (main db still moved)
                     assert result == default_path
 
-                    # Debug: print all method calls to understand what's happening
-                    # Check for "partial state" warning (lines 137-141)
+                    # Check for "partial state" warning
                     warning_calls = [
                         call
                         for call in mock_logger.method_calls
@@ -943,9 +935,6 @@ class TestDBUtilsEdgeCases:
                     f.write("legacy db")
 
             # Make default_path newer
-            import time
-
-            time.sleep(0.01)
             os.utime(default_path, None)
 
             mmrelay.db_utils.config = {"database": {}}
@@ -972,7 +961,7 @@ class TestDBUtilsEdgeCases:
                     ]
                     assert len(warning_calls) == 0
 
-    def test_get_db_path_legacy_multiple_databases_warning(self):
+    def test_get_db_path_legacy_newer_db_no_warning(self):
         """Test get_db_path ignores newer legacy databases when new layout is disabled."""
         import mmrelay.db_utils
 
@@ -988,10 +977,7 @@ class TestDBUtilsEdgeCases:
             with open(default_path, "w") as f:
                 f.write("default db")
 
-            # Wait and create database at legacy path
-            import time
-
-            time.sleep(0.01)
+            # Create database at legacy path
             with open(legacy_base_path, "w") as f:
                 f.write("legacy db")
             # Make legacy path newer

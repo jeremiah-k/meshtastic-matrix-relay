@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 import sys
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -446,6 +447,17 @@ class TestMigrationStateFunctions:
         assert payload["version"] == "1.3"
         assert payload["status"] == "completed"
 
+    def test_mark_then_check_round_trip(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Verify a file written by _mark_migration_completed is recognized by _is_migration_completed."""
+        test_home = tmp_path / "roundtrip_home"
+        test_home.mkdir()
+        monkeypatch.setattr(migrate_module, "get_home_dir", lambda: test_home)
+
+        _mark_migration_completed()
+        assert _is_migration_completed() is True
+
     def test_mark_migration_completed_write_oserror(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -508,7 +520,6 @@ class TestGetMostRecentDatabase:
         """Test returns most recently modified database."""
         db1 = tmp_path / "old.sqlite"
         db1.write_text("old")
-        import time
 
         old_ts = time.time() - 10
         new_ts = time.time()
@@ -539,7 +550,6 @@ class TestGetMostRecentDatabase:
         db.write_text("db content")
         wal = tmp_path / "test.sqlite-wal"
         wal.write_text("wal content")
-        import time
 
         now = time.time()
         os.utime(db, (now - 10, now - 10))
@@ -1749,7 +1759,7 @@ class TestRollbackMigration:
     def test_handles_multiple_backups(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Test handles multiple backup files."""
+        """Test handles multiple backup files and restores the most recent one."""
         new_home = tmp_path / "home"
         new_home.mkdir()
         creds = new_home / "credentials.json"
@@ -1771,6 +1781,8 @@ class TestRollbackMigration:
 
         assert result["success"] is True
         assert result["restored_count"] > 0
+        # Verify the most recent backup was restored
+        assert creds.read_text() == '{"token": "old2"}'
 
     def test_restore_oserror_logged(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1809,9 +1821,12 @@ class TestRollbackMigration:
 
 
 class TestAutomaticRollback:
+    """Tests for automatic rollback functionality during failed migrations."""
+
     def test_perform_migration_partial_failure_rollback(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """Test that perform_migration rolls back successful steps if a later step fails."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
         (legacy_root / "credentials.json").write_text('{"token": "legacy"}')
@@ -1836,11 +1851,7 @@ class TestAutomaticRollback:
         creds_backup.parent.mkdir(parents=True, exist_ok=True)
         creds_backup.write_text('{"token": "backup"}')
 
-        call_count = 0
-
         def failing_migrate_database(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
             raise sqlite3.DatabaseError("Simulated database failure")
 
         monkeypatch.setattr(
@@ -1856,6 +1867,7 @@ class TestAutomaticRollback:
     def test_perform_migration_database_failure_rolls_back_creds(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """Test specifically that database failure triggers rollback of credentials."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
         (legacy_root / "credentials.json").write_text('{"token": "legacy"}')
@@ -1895,6 +1907,7 @@ class TestAutomaticRollback:
     def test_rollback_migration_no_completed_steps(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """Test rollback_migration with no steps completed is a no-op."""
         new_home = tmp_path / "home"
         new_home.mkdir()
 
@@ -1908,6 +1921,7 @@ class TestAutomaticRollback:
     def test_rollback_migration_partial_steps(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """Test rollback_migration only rolls back the specified completed steps."""
         new_home = tmp_path / "home"
         new_home.mkdir()
 

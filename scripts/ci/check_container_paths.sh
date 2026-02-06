@@ -138,10 +138,10 @@ check_doc_files() {
 						break
 					fi
 
-					# Trim whitespace
+					# Trim whitespace – if the line is non-blank (and not a
+					# fence, which was already handled above), stop searching.
 					local FENCE_TRIMMED="${FENCE_CONTENT//[[:space:]]/}"
-					if [[ -n ${FENCE_TRIMMED} ]] && [[ ! ${FENCE_CONTENT} =~ ^[[:space:]]*(\`{3}|~{3}) ]]; then
-						# Found non-fence content - this marker has no following fence
+					if [[ -n ${FENCE_TRIMMED} ]]; then
 						break
 					fi
 
@@ -240,18 +240,28 @@ selftest() {
 	DOC_FILES=("${TEST_FILE}")
 	ERROR_FOUND=0
 
-	check_doc_files
+	# Capture output to verify error count
+	local TEST_OUTPUT_FILE
+	TEST_OUTPUT_FILE=$(mktemp)
+	check_doc_files >"${TEST_OUTPUT_FILE}" 2>&1 || true
 
-	if [[ ${ERROR_FOUND} -eq 1 ]]; then
-		echo "✓ Self-test PASSED: Correctly detected forbidden patterns outside allowed blocks"
+	# We expect 2 errors:
+	# 1. --base-dir on line 12
+	# 2. MMRELAY_CREDENTIALS_PATH on line 31
+	local ERROR_COUNT
+	ERROR_COUNT=$(grep -c "ERROR: Found forbidden pattern" "${TEST_OUTPUT_FILE}" || true)
+
+	if [[ ${ERROR_FOUND} -eq 1 ]] && [[ ${ERROR_COUNT} -eq 2 ]]; then
+		echo "✓ Self-test PASSED: Correctly detected forbidden patterns outside allowed blocks (Count: ${ERROR_COUNT})"
 		rm -f "${TEST_FILE}"
 		PATTERNS=("${OLD_PATTERNS[@]}")
 		DOC_FILES=("${OLD_DOC_FILES[@]}")
 		ERROR_FOUND=${OLD_ERROR_FOUND}
 		return 0
 	else
-		echo "✗ Self-test FAILED: Should have detected forbidden patterns"
-		rm -f "${TEST_FILE}"
+		echo "✗ Self-test FAILED: Expected 2 errors, found ${ERROR_COUNT}"
+		cat "${TEST_OUTPUT_FILE}"
+		rm -f "${TEST_FILE}" "${TEST_OUTPUT_FILE}"
 		PATTERNS=("${OLD_PATTERNS[@]}")
 		DOC_FILES=("${OLD_DOC_FILES[@]}")
 		ERROR_FOUND=${OLD_ERROR_FOUND}

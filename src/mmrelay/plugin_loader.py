@@ -145,7 +145,7 @@ def _get_plugin_root_dirs() -> list[str]:
             if home_plugins not in seen:
                 roots.append(home_plugins)
                 seen.add(home_plugins)
-                logger.info("Using primary plugin root: %s", home_plugins)
+            logger.debug("Using primary plugin root: %s", home_plugins)
     except (OSError, RuntimeError, ValueError) as e:
         logger.warning("Could not determine primary plugin root: %s", e)
 
@@ -160,7 +160,7 @@ def _get_plugin_root_dirs() -> list[str]:
         if legacy_plugins not in seen and os.path.exists(legacy_plugins):
             roots.append(legacy_plugins)
             seen.add(legacy_plugins)
-            logger.warning("Using legacy plugin root: %s", legacy_plugins)
+            logger.debug("Using legacy plugin root: %s", legacy_plugins)
 
     primary_root = roots[0] if roots else None
     legacy_roots = roots[1:] if len(roots) > 1 else []
@@ -2223,7 +2223,7 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
 
         # Validate plugin name to prevent path traversal attacks
         if not _is_safe_plugin_name(plugin_name):
-            logger.info(
+            logger.warning(
                 "Custom plugin name '%s' rejected: contains invalid characters or path traversal",
                 plugin_name,
             )
@@ -2235,7 +2235,7 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
 
             # Validate path containment to prevent symlink escapes
             if not _is_path_contained(custom_dir, plugin_path):
-                logger.info(
+                logger.warning(
                     "Custom plugin path '%s' is not contained within allowed root '%s'",
                     plugin_path,
                     custom_dir,
@@ -2361,15 +2361,23 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                         community_plugins_dir,
                     )
                     continue
-                if validation_result.repo_url is None:
+                if (
+                    validation_result.repo_url is None
+                    or validation_result.ref_type is None
+                    or validation_result.ref_value is None
+                ):
                     logger.error(
-                        "Validation returned no repository URL for community plugin %s",
+                        "Validation returned no repository URL or ref for community plugin %s",
                         plugin_name,
                     )
                     continue
-                success = clone_or_update_repo(
+
+                # Use internal validated version to skip redundant validation
+                success = _clone_or_update_repo_validated(
                     validation_result.repo_url,
-                    ref,
+                    validation_result.ref_type,
+                    validation_result.ref_value,
+                    repo_name,
                     community_plugins_dir,
                 )
                 if not success:
@@ -2411,7 +2419,7 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                 plugin_path = os.path.join(dir_path, repo_name_candidate)
                 # Validate path containment to prevent symlink escapes
                 if not _is_path_contained(dir_path, plugin_path):
-                    logger.error(
+                    logger.warning(
                         "Plugin path '%s' is not contained within allowed root '%s'",
                         plugin_path,
                         dir_path,

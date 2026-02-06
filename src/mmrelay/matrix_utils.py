@@ -1896,6 +1896,13 @@ async def _perform_initial_sync(
                         nio_responses.SyncResponse._get_invite_state = (
                             original_descriptor
                         )
+                    else:
+                        # Descriptor didn't exist in class dict; remove it if we added it.
+                        # This avoids leaking the patch if it was shadowing a base class.
+                        try:
+                            del nio_responses.SyncResponse._get_invite_state
+                        except (AttributeError, TypeError):
+                            pass
 
             try:
                 sync_response = await _sync_ignore_invalid_invites()
