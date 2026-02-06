@@ -125,15 +125,11 @@ def _is_path_contained(root: str, child: str) -> bool:
 
 
 def _get_plugin_root_dirs() -> list[str]:
-    r"""
-    Compute ordered list of candidate plugin root directories with security validation.
-
-    Uses HOME/plugins as primary location with legacy fallback during deprecation window.
-    Only includes additional plugin directories when overrides are explicitly set
-    to avoid unexpected behavior.
-
+    """
+    Compute an ordered list of candidate plugin root directories, preferring the user's HOME/plugins and including existing legacy plugin directories when present.
+    
     Returns:
-        list[str]: Ordered list of plugin root directory paths.
+        list[str]: Ordered list of filesystem paths to plugin root directories.
     """
     roots: list[str] = []
     seen: set[str] = set()
@@ -174,7 +170,14 @@ def _get_plugin_root_dirs() -> list[str]:
 
 
 def _get_legacy_plugin_roots() -> set[str]:
-    """Return the set of legacy plugin root directories (legacy_root/plugins)."""
+    """
+    Compute the legacy plugin root directories located under known legacy bases.
+    
+    If discovery of legacy bases fails, an empty set is returned and a warning is logged.
+    
+    Returns:
+        A set of path strings for legacy "plugins" directories; empty if discovery fails or none are found.
+    """
     try:
         legacy_dirs = paths_module.get_legacy_dirs()
     except (OSError, RuntimeError, ValueError) as e:

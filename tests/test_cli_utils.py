@@ -507,7 +507,9 @@ class TestLogoutMatrixBot:
 
     @pytest.mark.asyncio
     async def test_logout_matrix_bot_fetch_user_id_exception(self):
-        """Test logout when fetching user_id raises exception (lines 621-630)."""
+        """
+        Verify logout_matrix_bot handles an unexpected exception raised while fetching the user's ID from the temporary Matrix client: the exception is logged and the temporary client is closed.
+        """
         from mmrelay.cli_utils import logout_matrix_bot
 
         mock_credentials = {
@@ -560,9 +562,9 @@ class TestLogoutMatrixBot:
     @pytest.mark.asyncio
     async def test_logout_matrix_bot_ssl_context_none(self):
         """
-        Verify logout_matrix_bot proceeds when SSL context creation returns None and logs a warning.
-
-        Simulates valid credentials and AsyncClient instances, forces _create_ssl_context to return None, and asserts the function completes the logout flow while emitting a warning via the logger.
+        Ensure logout_matrix_bot proceeds when SSL context creation returns None and emits a warning.
+        
+        Simulates valid credentials and AsyncClient instances, forces _create_ssl_context to return None, and asserts the logout flow completes while a warning is logged.
         """
         from mmrelay.cli_utils import logout_matrix_bot
 

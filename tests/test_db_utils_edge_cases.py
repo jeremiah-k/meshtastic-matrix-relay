@@ -44,7 +44,11 @@ from mmrelay.db_utils import (
 
 @pytest.fixture(autouse=True)
 def reset_db_utils_state() -> None:
-    """Reset cached database state between tests."""
+    """
+    Reset cached database state before each test and restore it afterward.
+    
+    This fixture clears the database path cache, resets the internal DB manager, and clears the module-level config prior to a test and repeats the cleanup after the test completes.
+    """
     clear_db_path_cache()
     _reset_db_manager()
     import mmrelay.db_utils
@@ -349,10 +353,10 @@ class TestDBUtilsEdgeCases:
             # Simulate race condition by clearing cache between calls
             def side_effect_clear_cache(*_args, **_kwargs):
                 """
-                Clear the module's cached database path and return a test path-resolution dictionary.
-
+                Clear the module's cached database path and return a test path-resolution mapping.
+                
                 Returns:
-                    dict: Mapping with keys `database_dir` (the test directory path) and `legacy_sources` (an empty list).
+                    dict: A mapping containing `database_dir` set to the test directory path and `legacy_sources` as an empty list.
                 """
                 clear_db_path_cache()
                 return {"database_dir": temp_dir, "legacy_sources": []}
@@ -528,6 +532,21 @@ class TestDBUtilsEdgeCases:
             call_count = [0]
 
             def mock_move(src, dst):
+                """
+                Simulate shutil.move behavior for tests: succeed on the first call, raise an error on the second, and succeed for subsequent calls.
+                
+                Used to model a successful main-database move, a failing sidecar move (to trigger rollback logic), and rollback moves that succeed.
+                
+                Parameters:
+                    src (str): Source path to move.
+                    dst (str): Destination path to move to.
+                
+                Returns:
+                    The value returned by shutil.move when the operation succeeds (typically the destination path).
+                
+                Raises:
+                    OSError: On the second invocation to simulate a sidecar move failure with message "Sidecar move failed".
+                """
                 call_count[0] += 1
                 if call_count[0] == 1:
                     # First call - move main db successfully
@@ -578,6 +597,20 @@ class TestDBUtilsEdgeCases:
             call_count = [0]
 
             def mock_move(src, dst):
+                """
+                Simulate shutil.move for tests by performing a successful main move, failing the first sidecar move, then performing a rollback on third call; any further calls raise.
+                
+                Parameters:
+                    src (str | pathlib.Path): Source path to move.
+                    dst (str | pathlib.Path): Destination path to move.
+                
+                Returns:
+                    The value returned by the underlying real_shutil_move when a move is performed.
+                
+                Raises:
+                    OSError: Simulated sidecar move failure on the second call.
+                    RuntimeError: If called more times than the simulated sequence.
+                """
                 call_count[0] += 1
                 if call_count[0] == 1:
                     # Move main db successfully using real shutil
@@ -638,6 +671,26 @@ class TestDBUtilsEdgeCases:
             call_count = [0]
 
             def mock_move(src, dst):
+                """
+                Test helper that simulates shutil.move with deterministic outcomes based on invocation order.
+                
+                On the first invocation it performs a real move via `real_shutil_move` and returns its result;
+                on the second invocation it raises an `OSError` with message "Sidecar move failed";
+                on the third invocation it raises a `PermissionError` with message "Rollback failed - access denied";
+                on any subsequent invocation it raises a `RuntimeError` indicating an unexpected call number.
+                
+                Parameters:
+                    src (str): Source path to move.
+                    dst (str): Destination path.
+                
+                Returns:
+                    The value returned by `real_shutil_move(src, dst)` on the first call.
+                
+                Raises:
+                    OSError: On the second call to simulate a sidecar move failure.
+                    PermissionError: On the third call to simulate a rollback failure.
+                    RuntimeError: On any call after the third to indicate an unexpected invocation.
+                """
                 call_count[0] += 1
                 if call_count[0] == 1:
                     # Move main db successfully using REAL shutil.move
@@ -725,6 +778,22 @@ class TestDBUtilsEdgeCases:
             call_count = [0]
 
             def mock_move(src, dst):
+                """
+                Simulate a sequence of file moves for tests, producing two successful moves, a controlled OSError on the third call, then successful rollbacks on subsequent calls.
+                
+                The function increments an external call counter on each invocation and dispatches behavior by call number:
+                - Calls 1 and 2: perform and return the real shutil.move result.
+                - Call 3: raise OSError("SHM sidecar move failed").
+                - Calls 4 and 5: perform and return the real shutil.move result (simulating rollback).
+                - Any further calls: raise RuntimeError indicating an unexpected call.
+                
+                Returns:
+                    The value returned by the real shutil.move for successful calls.
+                
+                Raises:
+                    OSError: on the simulated sidecar move failure (third call).
+                    RuntimeError: if invoked more times than the scenario models.
+                """
                 call_count[0] += 1
                 if call_count[0] == 1:
                     # Move main db successfully
@@ -814,6 +883,21 @@ class TestDBUtilsEdgeCases:
             call_count = [0]
 
             def mock_move(src, dst):
+                """
+                Mock `shutil.move` that enforces a predefined sequence of successful moves and failures to exercise migration and rollback paths.
+                
+                Parameters:
+                    src (str): Source path passed to the move operation.
+                    dst (str): Destination path passed to the move operation.
+                
+                Returns:
+                    The return value of the underlying real move operation when a simulated move succeeds.
+                
+                Raises:
+                    OSError: Simulated failure for the second sidecar move (third call).
+                    PermissionError: Simulated rollback failure for the first sidecar (fifth call).
+                    RuntimeError: If the function is called more times than expected (unexpected call index).
+                """
                 call_count[0] += 1
                 if call_count[0] == 1:
                     # Move main db successfully

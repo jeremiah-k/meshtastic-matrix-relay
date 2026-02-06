@@ -67,7 +67,7 @@ check_strict_files() {
 # The marker applies ONLY to the next fenced block (not the entire document).
 #
 # Pre-parse each DOC file to collect allowed line ranges from marker-marked blocks.
-# check_doc_files scans each file in DOC_FILES for entries from PATTERNS, treats fenced code blocks immediately following `<!-- MMRELAY_ALLOW_LEGACY_EXAMPLE -->` as allowed ranges, and reports any forbidden pattern occurrences that fall outside those allowed fenced blocks.
+# check_doc_files scans documentation files listed in DOC_FILES for entries from PATTERNS and reports any occurrences that are not inside a fenced code block immediately following the <!-- MMRELAY_ALLOW_LEGACY_EXAMPLE --> marker.
 check_doc_files() {
 	local ALLOW_MARKER="<!-- MMRELAY_ALLOW_LEGACY_EXAMPLE -->"
 
@@ -191,7 +191,7 @@ check_doc_files() {
 }
 
 # selftest creates a temporary markdown file with allowed and forbidden legacy examples, runs check_doc_files to verify that forbidden patterns outside allowed fenced blocks are detected, and returns 0 on success or 1 on failure.
-# It preserves and restores PATTERNS, DOC_FILES, and ERROR_FOUND around the test and removes the temporary file before returning.
+# selftest runs an internal regression check by creating a temporary markdown file with marker-allowed fenced blocks and forbidden tokens, temporarily overriding PATTERNS, DOC_FILES, and ERROR_FOUND to exercise check_doc_files, verifying exactly two forbidden-pattern errors are reported, restoring the original variables, removing temporary files, and returning 0 on success or 1 on failure.
 selftest() {
 	local TEST_FILE
 	TEST_FILE=$(mktemp --suffix=_check_container_paths_test.md)

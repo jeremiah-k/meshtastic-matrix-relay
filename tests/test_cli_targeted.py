@@ -62,9 +62,9 @@ class TestApplyDirOverridesPriority(unittest.TestCase):
 
     def setUp(self):
         """
-        Create a test fixture with a mocked `args` object and initialize directory override attributes to None.
-
-        The `args` MagicMock exposes `home`, `base_dir`, and `data_dir` attributes, each set to `None` to represent no override flags provided.
+        Prepare test fixture with a mocked `args` object.
+        
+        Creates `self.args` as a MagicMock and sets its `home`, `base_dir`, and `data_dir` attributes to `None` to simulate no directory override flags.
         """
         self.args = MagicMock()
         self.args.home = None
@@ -225,9 +225,9 @@ class TestHandleSubcommandDispatch(unittest.TestCase):
 
     def setUp(self):
         """
-        Prepare a MagicMock args object for use by test methods.
-
-        Assigns a configurable mock of parsed CLI arguments to `self.args` before each test.
+        Create a MagicMock representing parsed CLI arguments and assign it to `self.args` for use by each test.
+        
+        This runs before each test method to provide a fresh, configurable `args` mock.
         """
         self.args = MagicMock()
 
@@ -302,9 +302,9 @@ class TestHandleMigrateCommand(unittest.TestCase):
 
     def setUp(self):
         """
-        Prepare a mock args object with default migration flags set to False.
-
-        Sets self.args to a MagicMock and initializes the attributes `dry_run`, `force`, and `move` to False.
+        Create self.args as a MagicMock and set migration-related flags `dry_run`, `force`, and `move` to False.
+        
+        Provides a default `args` object for tests that require these migration flag attributes.
         """
         self.args = MagicMock()
         self.args.dry_run = False
@@ -367,9 +367,9 @@ class TestHandleConfigPaths(unittest.TestCase):
 
     def setUp(self):
         """
-        Prepare a MagicMock args object for use by test methods.
-
-        Assigns a configurable mock of parsed CLI arguments to `self.args` before each test.
+        Create a MagicMock representing parsed CLI arguments and assign it to `self.args` for use by each test.
+        
+        This runs before each test method to provide a fresh, configurable `args` mock.
         """
         self.args = MagicMock()
 
@@ -435,9 +435,9 @@ class TestHandlePathsCommand(unittest.TestCase):
 
     def setUp(self):
         """
-        Prepare a MagicMock args object for use by test methods.
-
-        Assigns a configurable mock of parsed CLI arguments to `self.args` before each test.
+        Create a MagicMock representing parsed CLI arguments and assign it to `self.args` for use by each test.
+        
+        This runs before each test method to provide a fresh, configurable `args` mock.
         """
         self.args = MagicMock()
 
@@ -507,9 +507,9 @@ class TestHandleDoctorMigrationStatus(unittest.TestCase):
 
     def setUp(self):
         """
-        Prepare a MagicMock args object for use by test methods.
-
-        Assigns a configurable mock of parsed CLI arguments to `self.args` before each test.
+        Create a MagicMock representing parsed CLI arguments and assign it to `self.args` for use by each test.
+        
+        This runs before each test method to provide a fresh, configurable `args` mock.
         """
         self.args = MagicMock()
 
@@ -624,9 +624,9 @@ class TestHandleConfigPathsDetails(unittest.TestCase):
 
     def setUp(self):
         """
-        Prepare a MagicMock args object for use by test methods.
-
-        Assigns a configurable mock of parsed CLI arguments to `self.args` before each test.
+        Create a MagicMock representing parsed CLI arguments and assign it to `self.args` for use by each test.
+        
+        This runs before each test method to provide a fresh, configurable `args` mock.
         """
         self.args = MagicMock()
 
@@ -673,9 +673,9 @@ class TestHandlePathsCommandDetails(unittest.TestCase):
 
     def setUp(self):
         """
-        Prepare a MagicMock args object for use by test methods.
-
-        Assigns a configurable mock of parsed CLI arguments to `self.args` before each test.
+        Create a MagicMock representing parsed CLI arguments and assign it to `self.args` for use by each test.
+        
+        This runs before each test method to provide a fresh, configurable `args` mock.
         """
         self.args = MagicMock()
 
@@ -713,9 +713,9 @@ class TestHandleMigrateCommandDetailed(unittest.TestCase):
 
     def setUp(self):
         """
-        Prepare a MagicMock args object for use by test methods.
-
-        Assigns a configurable mock of parsed CLI arguments to `self.args` before each test.
+        Create a MagicMock representing parsed CLI arguments and assign it to `self.args` for use by each test.
+        
+        This runs before each test method to provide a fresh, configurable `args` mock.
         """
         self.args = MagicMock()
 

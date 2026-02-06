@@ -422,9 +422,9 @@ class TestDbUtils(unittest.TestCase):
 
         async def exercise():
             """
-            Insert two message-map entries and prune the message map so only the most recent entry remains.
-
-            Used in tests to exercise storing and pruning behavior by inserting two entries and then reducing the map to a single (latest) entry.
+            Store two message-map entries and prune the message map to keep only the most recent entry.
+            
+            Inserts two distinct message-map rows and then trims the table so only the newest row remains.
             """
             await async_store_message_map(
                 "mesh1", "$event1:matrix.org", "!room:matrix.org", "text1"
@@ -549,9 +549,9 @@ class TestDbUtils(unittest.TestCase):
 
     def test_get_db_path_data_directory_creation_error(self):
         """
-        Test that get_db_path() handles OSError/PermissionError when creating the default data directory.
-
-        This test verifies error handling when the default data directory cannot be created.
+        Verify get_db_path returns a default meshtastic.sqlite path and logs a warning when creating the default data directory fails.
+        
+        Mocks resolve_all_paths to point to a non-existent data directory and forces os.makedirs to raise PermissionError; asserts the returned path ends with "meshtastic.sqlite" and that a single warning was logged.
         """
         # Clear cache and remove any database config to force default path
         clear_db_path_cache()
