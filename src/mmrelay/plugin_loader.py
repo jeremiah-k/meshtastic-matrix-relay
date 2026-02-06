@@ -2111,7 +2111,7 @@ def start_global_scheduler() -> None:
         logger.debug("Global scheduler thread started")
         # Capture stop_event locally to avoid races if globals are reset.
         while not stop_event.is_set():
-            if schedule:
+            if schedule is not None:
                 schedule.run_pending()
             # Wait up to 1 second or until stop is requested
             stop_event.wait(1)
@@ -2148,7 +2148,7 @@ def stop_global_scheduler() -> None:
             logger.warning("Global scheduler thread did not stop within timeout")
 
     # Clear all scheduled jobs
-    if schedule:
+    if schedule is not None:
         schedule.clear()
 
     _global_scheduler_thread = None
