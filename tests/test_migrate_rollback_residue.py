@@ -77,10 +77,10 @@ def test_rollback_store_no_residue(test_env, monkeypatch):
     # 1. Migrate store
     result = migrate_store([legacy_root], new_home)
     assert result["success"] is True
-    assert (new_home / "store").exists()
+    assert (new_home / "matrix" / "store").exists()
 
     # Check empty backup
-    backups = list(new_home.glob("store.bak.*"))
+    backups = list((new_home / "matrix").glob("store.bak.*"))
     assert len(backups) == 1
     assert not any(backups[0].iterdir())
 
@@ -89,7 +89,7 @@ def test_rollback_store_no_residue(test_env, monkeypatch):
     assert rollback_result["success"] is True
 
     # 3. Verify no residue
-    assert not (new_home / "store").exists()
+    assert not (new_home / "matrix" / "store").exists()
 
 
 def test_gpxtracker_rollback_via_plugins(test_env, monkeypatch):
@@ -130,11 +130,11 @@ community-plugins:
         lambda: {
             "home": str(new_home),
             "legacy_sources": [str(legacy_root)],
-            "credentials_path": str(new_home / "credentials.json"),
+            "credentials_path": str(new_home / "matrix" / "credentials.json"),
             "database_dir": str(new_home / "database"),
             "logs_dir": str(new_home / "logs"),
             "plugins_dir": str(new_home / "plugins"),
-            "store_dir": str(new_home / "store"),
+            "store_dir": str(new_home / "matrix" / "store"),
         },
     )
 

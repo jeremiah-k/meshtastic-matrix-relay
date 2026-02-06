@@ -382,7 +382,7 @@ class TestPathDirectoryCreation(unittest.TestCase):
             expected_dirs = [
                 base / "database",
                 base / "logs",
-                base / "store",
+                base / "matrix" / "store",
                 base / "plugins",
                 base / "plugins" / "custom",
                 base / "plugins" / "community",
@@ -404,7 +404,7 @@ class TestPathDirectoryCreation(unittest.TestCase):
             expected_missing = [
                 base / "database",
                 base / "logs",
-                base / "store",
+                base / "matrix" / "store",
                 base / "plugins",
                 base / "plugins" / "custom",
                 base / "plugins" / "community",
@@ -425,7 +425,7 @@ class TestPathDirectoryCreation(unittest.TestCase):
             precreate = [
                 base / "database",
                 base / "logs",
-                base / "store",
+                base / "matrix" / "store",
                 base / "plugins",
                 base / "plugins" / "custom",
                 base / "plugins" / "community",

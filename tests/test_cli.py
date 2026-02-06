@@ -1943,6 +1943,7 @@ class TestAuthStatus(unittest.TestCase):
         # Should check both paths
         expected_calls = [
             unittest.mock.call("/home/user/.mmrelay/credentials.json"),
+            unittest.mock.call("/home/user/.mmrelay/matrix/credentials.json"),
             unittest.mock.call("/etc/mmrelay/credentials.json"),
         ]
         mock_exists.assert_has_calls(expected_calls)
