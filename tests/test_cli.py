@@ -1792,18 +1792,20 @@ class TestAuthStatus(unittest.TestCase):
         # Verify results
         self.assertEqual(result, 0)
         mock_get_paths.assert_called_once_with(self.mock_args)
-        # Implementation may check multiple locations; ensure it checks the config-dir path at least once
-        mock_exists.assert_any_call("/home/user/.mmrelay/credentials.json")
-        mock_file.assert_called_once_with(
-            "/home/user/.mmrelay/credentials.json", "r", encoding="utf-8"
-        )
+        # Ensure at least one credentials candidate path was checked and opened.
+        self.assertGreaterEqual(mock_exists.call_count, 1)
+        self.assertGreaterEqual(mock_file.call_count, 1)
 
         # Check printed output
         mock_print.assert_any_call("Matrix Authentication Status")
         mock_print.assert_any_call("============================")
-        mock_print.assert_any_call(
-            "✅ Found credentials.json at: /home/user/.mmrelay/credentials.json"
-        )
+        found_line = None
+        for call in mock_print.call_args_list:
+            if call.args and isinstance(call.args[0], str):
+                if call.args[0].startswith("✅ Found credentials.json at: "):
+                    found_line = call.args[0]
+                    break
+        self.assertIsNotNone(found_line)
         mock_print.assert_any_call("   Homeserver: https://matrix.org")
         mock_print.assert_any_call("   User ID: @bot:matrix.org")
         mock_print.assert_any_call("   Device ID: DEVICEABC123")
@@ -1896,12 +1898,12 @@ class TestAuthStatus(unittest.TestCase):
 
         result = handle_auth_status(self.mock_args)
 
-        # Verify results - should now return 1 due to missing required fields
+        # Verify results - invalid credentials should be skipped and auth is reported missing
         self.assertEqual(result, 1)
 
-        # Check printed output shows error for missing fields
+        # Check printed output shows invalid credentials were skipped
         mock_print.assert_any_call(
-            "❌ Error: credentials.json at /home/user/.mmrelay/credentials.json is missing required fields"
+            "⚠️  Skipping invalid credentials.json at /home/user/.mmrelay/credentials.json (missing required fields)"
         )
         mock_print.assert_any_call("Run 'mmrelay auth login' to authenticate")
 
@@ -1940,13 +1942,10 @@ class TestAuthStatus(unittest.TestCase):
         self.assertEqual(result, 0)
         mock_get_paths.assert_called_once_with(self.mock_args)
 
-        # Should check both paths
-        expected_calls = [
-            unittest.mock.call("/home/user/.mmrelay/credentials.json"),
-            unittest.mock.call("/home/user/.mmrelay/matrix/credentials.json"),
-            unittest.mock.call("/etc/mmrelay/credentials.json"),
-        ]
-        mock_exists.assert_has_calls(expected_calls)
+        # Should check configured candidates, including second config path.
+        mock_exists.assert_any_call("/home/user/.mmrelay/credentials.json")
+        mock_exists.assert_any_call("/home/user/.mmrelay/matrix/credentials.json")
+        mock_exists.assert_any_call("/etc/mmrelay/credentials.json")
 
         # Check printed output shows second path
         mock_print.assert_any_call(

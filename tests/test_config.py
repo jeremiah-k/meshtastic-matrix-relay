@@ -950,9 +950,20 @@ class TestCredentials(unittest.TestCase):
     @patch("mmrelay.config.json.load")
     def test_load_credentials_success(self, mock_json_load, _mock_open, _mock_exists):
         """Test successful credential loading from JSON file."""
-        mock_json_load.return_value = {"user_id": "test", "access_token": "token"}
+        mock_json_load.return_value = {
+            "homeserver": "https://matrix.example.org",
+            "user_id": "test",
+            "access_token": "token",
+        }
         result = load_credentials()
-        self.assertEqual(result, {"user_id": "test", "access_token": "token"})
+        self.assertEqual(
+            result,
+            {
+                "homeserver": "https://matrix.example.org",
+                "user_id": "test",
+                "access_token": "token",
+            },
+        )
 
     @patch("mmrelay.config.os.path.exists", return_value=True)
     @patch("builtins.open", new_callable=mock_open)

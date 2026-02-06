@@ -197,15 +197,8 @@ def get_credentials_search_paths(
         else:
             _add(expanded_path)
 
-    if config_paths:
-        for config_path in config_paths:
-            if not config_path:
-                continue
-            config_dir = os.path.dirname(os.path.abspath(config_path))
-            _add(os.path.join(config_dir, "credentials.json"))
-            _add(os.path.join(config_dir, MATRIX_DIRNAME, "credentials.json"))
-
     if include_base_data:
+        # Prefer v1.3 unified HOME locations before config-adjacent legacy paths.
         _add(str(get_credentials_path()))
         # Compatibility fallback for pre-1.3 credentials location.
         _add(os.path.join(str(get_home_dir()), CREDENTIALS_FILENAME))
@@ -214,6 +207,14 @@ def get_credentials_search_paths(
             for legacy_dir in get_legacy_dirs():
                 _add(os.path.join(legacy_dir, "credentials.json"))
                 _add(os.path.join(legacy_dir, MATRIX_DIRNAME, "credentials.json"))
+
+    if config_paths:
+        for config_path in config_paths:
+            if not config_path:
+                continue
+            config_dir = os.path.dirname(os.path.abspath(config_path))
+            _add(os.path.join(config_dir, "credentials.json"))
+            _add(os.path.join(config_dir, MATRIX_DIRNAME, "credentials.json"))
 
     return candidate_paths
 
@@ -759,68 +760,90 @@ def load_credentials() -> dict[str, Any] | None:
             config_paths=config_paths,
         )
         logger.debug("Looking for credentials at: %s", candidate_paths)
+    except (OSError, PermissionError, TypeError):
+        logger.exception("Error preparing credentials path candidates")
+        return None
 
-        legacy_dirs = (
-            {os.path.abspath(str(p)) for p in get_legacy_dirs()}
-            if is_deprecation_window_active()
-            else set()
-        )
-        primary_credentials_path = os.path.abspath(str(get_credentials_path()))
-        legacy_home_credentials = os.path.abspath(
-            os.path.join(str(get_home_dir()), CREDENTIALS_FILENAME)
-        )
-        for credentials_path in candidate_paths:
-            if not os.path.exists(credentials_path):
-                continue
+    legacy_dirs = (
+        {os.path.abspath(str(p)) for p in get_legacy_dirs()}
+        if is_deprecation_window_active()
+        else set()
+    )
+    primary_credentials_path = os.path.abspath(str(get_credentials_path()))
+    legacy_home_credentials = os.path.abspath(
+        os.path.join(str(get_home_dir()), CREDENTIALS_FILENAME)
+    )
+    for credentials_path in candidate_paths:
+        if not os.path.exists(credentials_path):
+            continue
+
+        try:
             with open(credentials_path, "r", encoding="utf-8") as f:
                 loaded = json.load(f)
-            if not isinstance(loaded, dict):
-                logger.error(
-                    "credentials.json must be a JSON object: %s", credentials_path
-                )
-                continue
-            credentials = cast(dict[str, Any], loaded)
-            creds_dir = os.path.abspath(os.path.dirname(credentials_path))
-            if creds_dir in legacy_dirs:
-                _get_config_logger().warning(
-                    "Credentials found in legacy location: %s. "
-                    "Please run 'mmrelay migrate' to move to new unified structure. "
-                    "Support for legacy credentials will be removed in v1.4.",
-                    credentials_path,
-                )
-            elif (
-                os.path.abspath(credentials_path) == legacy_home_credentials
-                and os.path.abspath(credentials_path) != primary_credentials_path
-            ):
-                _get_config_logger().warning(
-                    "Credentials found in legacy location: %s. "
-                    "Please run 'mmrelay migrate' to move to new unified structure.",
-                    credentials_path,
-                )
-            logger.debug("Successfully loaded credentials from %s", credentials_path)
-            return credentials
+        except (OSError, PermissionError, json.JSONDecodeError, TypeError) as exc:
+            logger.warning(
+                "Ignoring unreadable or invalid credentials.json at %s: %s",
+                credentials_path,
+                exc,
+            )
+            continue
 
-    except (OSError, PermissionError, json.JSONDecodeError, TypeError):
-        logger.exception("Error loading credentials.json")
-        return None
-    else:
-        # On Windows, also log the directory contents for debugging
-        if sys.platform == "win32":
-            debug_candidates: list[str] = []
-            if config_path:
-                debug_candidates.append(os.path.dirname(config_path))
-            debug_candidates.append(str(get_home_dir()))
-            seen: set[str] = set()
-            for debug_dir in debug_candidates:
-                if not debug_dir or debug_dir in seen:
-                    continue
-                seen.add(debug_dir)
-                try:
-                    files = os.listdir(debug_dir)
-                    logger.debug("Directory contents of %s: %s", debug_dir, files)
-                except OSError:
-                    pass
-        return None
+        if not isinstance(loaded, dict):
+            logger.error("credentials.json must be a JSON object: %s", credentials_path)
+            continue
+
+        credentials = cast(dict[str, Any], loaded)
+        missing_required = [
+            key
+            for key in ("homeserver", "access_token", "user_id")
+            if not isinstance(credentials.get(key), str)
+            or not credentials.get(key, "").strip()
+        ]
+        if missing_required:
+            logger.warning(
+                "Ignoring credentials.json missing required keys (%s): %s",
+                ", ".join(missing_required),
+                credentials_path,
+            )
+            continue
+
+        creds_dir = os.path.abspath(os.path.dirname(credentials_path))
+        if creds_dir in legacy_dirs:
+            _get_config_logger().warning(
+                "Credentials found in legacy location: %s. "
+                "Please run 'mmrelay migrate' to move to new unified structure. "
+                "Support for legacy credentials will be removed in v1.4.",
+                credentials_path,
+            )
+        elif (
+            os.path.abspath(credentials_path) == legacy_home_credentials
+            and os.path.abspath(credentials_path) != primary_credentials_path
+        ):
+            _get_config_logger().warning(
+                "Credentials found in legacy location: %s. "
+                "Please run 'mmrelay migrate' to move to new unified structure.",
+                credentials_path,
+            )
+        logger.debug("Successfully loaded credentials from %s", credentials_path)
+        return credentials
+
+    # On Windows, also log the directory contents for debugging
+    if sys.platform == "win32":
+        debug_candidates: list[str] = []
+        if config_path:
+            debug_candidates.append(os.path.dirname(config_path))
+        debug_candidates.append(str(get_home_dir()))
+        seen: set[str] = set()
+        for debug_dir in debug_candidates:
+            if not debug_dir or debug_dir in seen:
+                continue
+            seen.add(debug_dir)
+            try:
+                files = os.listdir(debug_dir)
+                logger.debug("Directory contents of %s: %s", debug_dir, files)
+            except OSError:
+                pass
+    return None
 
 
 async def async_load_credentials() -> dict[str, Any] | None:

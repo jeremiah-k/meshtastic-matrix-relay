@@ -24,7 +24,6 @@ from mmrelay.cli_utils import (
     get_deprecation_warning,
     msg_for_e2ee_support,
     msg_or_run_auth_login,
-    msg_run_auth_login,
     msg_setup_auth,
     msg_setup_authentication,
     msg_suggest_generate_config,
@@ -493,44 +492,61 @@ def _validate_credentials_json(
     """
     import json
 
+    from mmrelay.config import (
+        InvalidCredentialsPathTypeError,
+        get_credentials_search_paths,
+        get_explicit_credentials_path,
+        relay_config,
+    )
+
     try:
-        # Look for credentials.json using helper function
-        credentials_path = _find_credentials_json_path(config_path, config)
-        if not credentials_path:
-            return False
+        explicit_path = get_explicit_credentials_path(config or relay_config)
+    except InvalidCredentialsPathTypeError:
+        explicit_path = None
 
-        # Load and validate credentials
-        with open(credentials_path, "r", encoding="utf-8") as f:
-            credentials = json.load(f)
-        if not isinstance(credentials, dict):
-            print(
-                "❌ Error: credentials.json must be a JSON object",
-                file=sys.stderr,
+    candidate_paths = get_credentials_search_paths(
+        explicit_path=explicit_path,
+        config_paths=[config_path] if config_path else None,
+    )
+
+    for credentials_path in candidate_paths:
+        if not os.path.exists(credentials_path):
+            continue
+        try:
+            with open(credentials_path, "r", encoding="utf-8") as f:
+                credentials = json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            _get_logger().warning(
+                "Skipping invalid credentials candidate %s: %s",
+                credentials_path,
+                e,
             )
-            print(f"   {msg_run_auth_login()}", file=sys.stderr)
-            return False
+            continue
 
-        # Check for required fields
+        if not isinstance(credentials, dict):
+            _get_logger().warning(
+                "Skipping credentials candidate with non-object JSON: %s",
+                credentials_path,
+            )
+            continue
+
         required_fields = ["homeserver", "access_token", "user_id", "device_id"]
         missing_fields = [
             field
             for field in required_fields
             if not _is_valid_non_empty_string((credentials or {}).get(field))
         ]
-
         if missing_fields:
-            print(
-                f"❌ Error: credentials.json missing required fields: {', '.join(missing_fields)}"
+            _get_logger().warning(
+                "Skipping credentials candidate missing required fields (%s): %s",
+                ", ".join(missing_fields),
+                credentials_path,
             )
-            print(f"   {msg_run_auth_login()}")
-            return False
+            continue
 
         return True
-    except (OSError, json.JSONDecodeError) as e:
-        _get_logger().exception("Could not validate credentials.json")
-        print(f"❌ Error: Could not validate credentials.json: {e}", file=sys.stderr)
-        print(f"   {msg_run_auth_login()}", file=sys.stderr)
-        return False
+
+    return False
 
 
 def _is_valid_non_empty_string(value: Any) -> bool:
@@ -769,14 +785,9 @@ def _find_credentials_json_path(
     """
     Locate a credentials.json file following the unified HOME-first then legacy search order.
 
-    Search order:
-    1) Explicit credentials path from env/config (MMRELAY_CREDENTIALS_PATH or
-       credentials_path in config),
-    2) credentials.json adjacent to `config_path` (if `config_path` is provided),
-    3) credentials.json at the resolved MMRELAY_HOME credentials path,
-    4) credentials.json in each legacy source root.
-
-    If a credentials.json is found in a legacy location, a migration suggestion is printed to stderr.
+    Search order follows `mmrelay.config.get_credentials_search_paths()`, which
+    prioritizes explicit and unified HOME locations before compatibility/legacy
+    fallbacks.
 
     Parameters:
         config_path (str | None): Optional path to a configuration file; its directory is checked first for an adjacent credentials.json.
@@ -787,83 +798,23 @@ def _find_credentials_json_path(
     """
     from mmrelay.config import (
         InvalidCredentialsPathTypeError,
+        get_credentials_search_paths,
         get_explicit_credentials_path,
         relay_config,
     )
-    from mmrelay.paths import resolve_all_paths
-
-    def _normalize_path(path: str) -> str:
-        """
-        Normalize a filesystem path by expanding a leading `~` and resolving it to an absolute path.
-
-        Parameters:
-                path (str): A filesystem path, which may be relative or contain a user-home shorthand.
-
-        Returns:
-                A string containing the absolute, user-expanded path.
-        """
-        return os.path.abspath(os.path.expanduser(path))
 
     try:
         explicit_path = get_explicit_credentials_path(config or relay_config)
     except InvalidCredentialsPathTypeError:
         explicit_path = None
-    if explicit_path:
-        raw_explicit = explicit_path
-        explicit_path = _normalize_path(explicit_path)
-        if (
-            os.path.isdir(explicit_path)
-            or raw_explicit.endswith(os.path.sep)
-            or (os.path.altsep and raw_explicit.endswith(os.path.altsep))
-        ):
-            explicit_path = _normalize_path(
-                os.path.join(explicit_path, "credentials.json")
-            )
-        if os.path.exists(explicit_path):
-            return explicit_path
 
-    if config_path:
-        config_dir = os.path.dirname(_normalize_path(config_path))
-        config_candidates = [
-            _normalize_path(os.path.join(config_dir, "credentials.json")),
-            _normalize_path(os.path.join(config_dir, "matrix", "credentials.json")),
-        ]
-        for candidate in config_candidates:
-            if os.path.exists(candidate):
-                return candidate
-
-    p = resolve_all_paths()
-    home_cred = p["credentials_path"]
-    if isinstance(home_cred, str):
-        home_cred = _normalize_path(home_cred)
-        if os.path.exists(home_cred):
-            return home_cred
-    home_root = p.get("home")
-    if isinstance(home_root, str):
-        legacy_home_cred = _normalize_path(os.path.join(home_root, "credentials.json"))
-        if os.path.exists(legacy_home_cred):
-            print(
-                f"INFO: Found legacy credentials at: {legacy_home_cred}\n"
-                f"   Run 'mmrelay migrate --dry-run' (or 'mmrelay service migrate --dry-run') to preview migration to HOME.",
-                file=sys.stderr,
-            )
-            return legacy_home_cred
-
-    for legacy_root in p["legacy_sources"]:
-        if not isinstance(legacy_root, str):
-            continue
-        legacy_candidates = [
-            _normalize_path(os.path.join(legacy_root, "credentials.json")),
-            _normalize_path(os.path.join(legacy_root, "matrix", "credentials.json")),
-        ]
-        for legacy_cred in legacy_candidates:
-            if os.path.exists(legacy_cred):
-                print(
-                    f"INFO: Found legacy credentials at: {legacy_cred}\n"
-                    f"   Run 'mmrelay migrate --dry-run' (or 'mmrelay service migrate --dry-run') to preview migration to HOME.",
-                    file=sys.stderr,
-                )
-                return legacy_cred
+    candidate_paths = get_credentials_search_paths(
+        explicit_path=explicit_path,
+        config_paths=[config_path] if config_path else None,
+    )
+    for candidate in candidate_paths:
+        if os.path.exists(candidate):
+            return candidate
 
     return None
 
@@ -2035,18 +1986,20 @@ def handle_auth_status(args: argparse.Namespace) -> int:
                     for k in required
                 ):
                     print(
-                        f"❌ Error: credentials.json at {credentials_path} is missing required fields"
+                        f"⚠️  Skipping invalid credentials.json at {credentials_path} "
+                        "(missing required fields)"
                     )
-                    print(f"Run '{get_command('auth_login')}' to authenticate")
-                    return 1
+                    continue
                 print(f"✅ Found credentials.json at: {credentials_path}")
                 print(f"   Homeserver: {credentials.get('homeserver')}")
                 print(f"   User ID: {credentials.get('user_id')}")
                 print(f"   Device ID: {credentials.get('device_id')}")
                 return 0
             except Exception as e:
-                print(f"❌ Error reading credentials.json: {e}")
-                return 1
+                print(
+                    f"⚠️  Skipping unreadable credentials.json at {credentials_path}: {e}"
+                )
+                continue
 
     print("❌ No credentials.json found")
     print(f"Run '{get_command('auth_login')}' to authenticate")
