@@ -20,6 +20,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 from mmrelay.config import (
     get_app_path,
 )
+from mmrelay.paths import get_home_dir, get_legacy_dirs
 from mmrelay.constants.plugins import (
     COMMIT_HASH_PATTERN,
     DEFAULT_ALLOWED_COMMUNITY_HOSTS,
@@ -134,8 +135,6 @@ def _get_plugin_root_dirs() -> list[str]:
     Returns:
         list[str]: Ordered list of plugin root directory paths.
     """
-    from mmrelay.paths import get_home_dir, get_legacy_dirs
-
     roots: list[str] = []
     seen: set[str] = set()
 
@@ -176,8 +175,6 @@ def _get_plugin_root_dirs() -> list[str]:
 
 def _get_legacy_plugin_roots() -> set[str]:
     """Return the set of legacy plugin root directories (legacy_root/plugins)."""
-    from mmrelay.paths import get_legacy_dirs
-
     try:
         legacy_dirs = get_legacy_dirs()
     except (OSError, RuntimeError, ValueError) as e:

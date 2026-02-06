@@ -33,6 +33,7 @@ from mmrelay.paths import (
 from mmrelay.paths import get_logs_dir as get_unified_logs_dir
 from mmrelay.paths import get_plugin_data_dir as get_unified_plugin_data_dir
 from mmrelay.paths import (
+    get_legacy_dirs,
     get_plugins_dir,
     is_deprecation_window_active,
 )
@@ -200,8 +201,6 @@ def get_credentials_search_paths(
             _add(os.path.join(config_dir, "credentials.json"))
 
     if include_base_data:
-        from mmrelay.paths import get_credentials_path, get_legacy_dirs
-
         _add(str(get_credentials_path()))
 
         if is_deprecation_window_active():
