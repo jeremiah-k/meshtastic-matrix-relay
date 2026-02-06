@@ -2,7 +2,7 @@
 apiVersion: apps/v1
 kind: Deployment
 {{- if not .Values.config.enabled }}
-{{- fail "config.enabled must be true; config is required and mounted at /app/config.yaml" }}
+{{- fail (printf "config.enabled must be true; config is required and mounted at %s" .Values.configPath) }}
 {{- end }}
 metadata:
   name: {{ include "mmrelay.fullname" . }}
@@ -104,19 +104,16 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.matrixAuth.secretName }}
                   key: MMRELAY_MATRIX_HOMESERVER
-                  optional: true
             - name: MMRELAY_MATRIX_BOT_USER_ID
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.matrixAuth.secretName }}
                   key: MMRELAY_MATRIX_BOT_USER_ID
-                  optional: true
             - name: MMRELAY_MATRIX_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.matrixAuth.secretName }}
                   key: MMRELAY_MATRIX_PASSWORD
-                  optional: true
             {{- end }}
             {{- with .Values.env }}
             {{- toYaml . | nindent 12 }}
@@ -131,9 +128,9 @@ spec:
           readinessProbe:
             exec:
               command:
-                - sh
-                - -c
-                - test -f {{ .Values.readyFile }}
+                - test
+                - -f
+                - {{ .Values.readyFile }}
             initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
             timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
@@ -141,9 +138,9 @@ spec:
           startupProbe:
             exec:
               command:
-                - sh
-                - -c
-                - test -f {{ .Values.readyFile }}
+                - test
+                - -f
+                - {{ .Values.readyFile }}
             initialDelaySeconds: {{ .Values.probes.startup.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.startup.periodSeconds }}
             timeoutSeconds: {{ .Values.probes.startup.timeoutSeconds }}
@@ -151,9 +148,10 @@ spec:
           livenessProbe:
             exec:
               command:
-                - sh
-                - -c
-                - mmrelay doctor --config {{ .Values.configPath }}
+                - mmrelay
+                - doctor
+                - --config
+                - {{ .Values.configPath }}
             initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
             timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}

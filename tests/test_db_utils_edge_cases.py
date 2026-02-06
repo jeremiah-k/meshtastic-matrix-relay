@@ -66,7 +66,10 @@ class TestDBUtilsEdgeCases:
             "mmrelay.db_utils.resolve_all_paths",
             return_value={"database_dir": "/readonly/data", "legacy_sources": []},
         ):
-            with patch("os.makedirs", side_effect=PermissionError("Permission denied")):
+            with patch(
+                "mmrelay.db_utils.os.makedirs",
+                side_effect=PermissionError("Permission denied"),
+            ):
                 # Should still return a path even if directory creation fails
                 result = get_db_path()
                 assert "meshtastic.sqlite" in result
@@ -83,7 +86,10 @@ class TestDBUtilsEdgeCases:
             "database": {"path": "/nonexistent/invalid/path/db.sqlite"}
         }
 
-        with patch("os.makedirs", side_effect=OSError("Cannot create directory")):
+        with patch(
+            "mmrelay.db_utils.os.makedirs",
+            side_effect=OSError("Cannot create directory"),
+        ):
             # Should handle the error gracefully
             result = get_db_path()
             assert isinstance(result, str)

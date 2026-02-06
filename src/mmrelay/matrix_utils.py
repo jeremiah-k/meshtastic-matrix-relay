@@ -2328,7 +2328,7 @@ async def login_matrix_bot(
         config_for_paths: dict[str, Any] | None = None
         e2ee_enabled = False
         try:
-            config_for_paths = load_config()
+            config_for_paths = await asyncio.to_thread(load_config)
         except (OSError, ValueError, KeyError, TypeError, RuntimeError) as e:
             logger.debug("Could not load config for credentials path: %s", e)
 
@@ -2350,7 +2350,7 @@ async def login_matrix_bot(
 
                 def _load_existing_creds(path: str) -> dict[str, Any]:
                     with open(path, "r", encoding="utf-8") as f:
-                        return json.load(f)
+                        return cast(dict[str, Any], json.load(f))
 
                 existing_creds = await asyncio.to_thread(
                     _load_existing_creds, credentials_path
@@ -2380,7 +2380,7 @@ async def login_matrix_bot(
         # Get the E2EE store path only if E2EE is enabled
         store_path = None
         if e2ee_enabled:
-            store_path = str(get_e2ee_store_dir())
+            store_path = str(await asyncio.to_thread(get_e2ee_store_dir))
             await asyncio.to_thread(os.makedirs, store_path, exist_ok=True)
             logger.debug(f"Using E2EE store path: {store_path}")
         else:

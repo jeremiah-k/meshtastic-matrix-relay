@@ -29,11 +29,11 @@ from mmrelay.paths import (
 from mmrelay.paths import get_e2ee_store_dir as get_unified_store_dir
 from mmrelay.paths import (
     get_home_dir,
+    get_legacy_dirs,
 )
 from mmrelay.paths import get_logs_dir as get_unified_logs_dir
 from mmrelay.paths import get_plugin_data_dir as get_unified_plugin_data_dir
 from mmrelay.paths import (
-    get_legacy_dirs,
     get_plugins_dir,
     is_deprecation_window_active,
 )

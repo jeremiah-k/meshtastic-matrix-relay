@@ -3,6 +3,7 @@ Tests for Matrix authentication discovery path correctness and resilience.
 """
 
 import asyncio
+import secrets
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -22,19 +23,21 @@ def mock_client():
 
 
 @pytest.mark.asyncio
-async def test_whoami_discovers_missing_device_id(mock_client):
+async def test_whoami_discovers_missing_device_id(mock_client, tmp_path):
     """Test that whoami is called to discover missing device_id and credentials are updated."""
+    access_token = secrets.token_hex(16)
+    credentials_path = str(tmp_path / "credentials.json")
     auth_info = MatrixAuthInfo(
         homeserver="https://matrix.org",
-        access_token="test_token",
+        access_token=access_token,
         user_id="@test:matrix.org",
         device_id=None,  # Missing device_id
         credentials={
             "homeserver": "https://matrix.org",
             "user_id": "@test:matrix.org",
-            "access_token": "test_token",
+            "access_token": access_token,
         },
-        credentials_path="/tmp/credentials.json",
+        credentials_path=credentials_path,
     )
 
     # Mock whoami response
@@ -61,24 +64,26 @@ async def test_whoami_discovers_missing_device_id(mock_client):
             mock_client.restore_login.assert_called_once_with(
                 user_id="@test:matrix.org",
                 device_id="DISCOVERED_DEVICE",
-                access_token="test_token",
+                access_token=access_token,
             )
 
 
 @pytest.mark.asyncio
-async def test_user_id_mismatch_handles_gracefully(mock_client):
+async def test_user_id_mismatch_handles_gracefully(mock_client, tmp_path):
     """Test that user_id mismatch between credentials and whoami is handled by preferring whoami."""
+    access_token = secrets.token_hex(16)
+    credentials_path = str(tmp_path / "credentials.json")
     auth_info = MatrixAuthInfo(
         homeserver="https://matrix.org",
-        access_token="test_token",
+        access_token=access_token,
         user_id="@wrong:matrix.org",  # Mismatching user_id
         device_id=None,
         credentials={
             "homeserver": "https://matrix.org",
             "user_id": "@wrong:matrix.org",
-            "access_token": "test_token",
+            "access_token": access_token,
         },
-        credentials_path="/tmp/credentials.json",
+        credentials_path=credentials_path,
     )
 
     mock_whoami_resp = MagicMock()
@@ -106,19 +111,21 @@ async def test_user_id_mismatch_handles_gracefully(mock_client):
 
 
 @pytest.mark.asyncio
-async def test_whoami_failure_handles_gracefully(mock_client):
+async def test_whoami_failure_handles_gracefully(mock_client, tmp_path):
     """Test that whoami failure is handled gracefully with a warning."""
+    access_token = secrets.token_hex(16)
+    credentials_path = str(tmp_path / "credentials.json")
     auth_info = MatrixAuthInfo(
         homeserver="https://matrix.org",
-        access_token="test_token",
+        access_token=access_token,
         user_id="@test:matrix.org",
         device_id=None,
         credentials={
             "homeserver": "https://matrix.org",
             "user_id": "@test:matrix.org",
-            "access_token": "test_token",
+            "access_token": access_token,
         },
-        credentials_path="/tmp/credentials.json",
+        credentials_path=credentials_path,
     )
 
     # Mock whoami failure
@@ -139,9 +146,10 @@ async def test_whoami_failure_handles_gracefully(mock_client):
 @pytest.mark.asyncio
 async def test_no_credentials_whoami_discovers_user_id(mock_client):
     """Test that when no credentials exist, whoami is used to discover user_id from config access_token."""
+    access_token = secrets.token_hex(16)
     auth_info = MatrixAuthInfo(
         homeserver="https://matrix.org",
-        access_token="test_token",
+        access_token=access_token,
         user_id="",  # Unknown user_id
         device_id=None,
         credentials=None,
