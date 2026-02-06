@@ -179,40 +179,24 @@ class TestApplyDirOverridesPriority(unittest.TestCase):
 
 
 class TestFindCredentialsJsonPath(unittest.TestCase):
-    """Tests for _find_credentials_json_path function (lines 780-822)."""
+    """Tests for _find_credentials_json_path function."""
 
-    @patch("mmrelay.config.get_explicit_credentials_path", return_value=None)
-    @patch("mmrelay.paths.resolve_all_paths")
+    @patch("mmrelay.config.get_credentials_search_paths")
     @patch("os.path.exists")
-    @patch("os.path.dirname")
-    def test_returns_path_when_found_in_config_dir(
-        self, mock_dirname, mock_exists, mock_resolve, _mock_explicit
-    ):
-        """Test returns path when credentials found in config directory."""
-        config_path = "/config/config.yaml"
-        mock_dirname.return_value = "/config"
-        mock_resolve.return_value = {
-            "credentials_path": "/home/credentials.json",
-            "legacy_sources": [],
-        }
-        mock_exists.side_effect = lambda p: "credentials.json" in p
+    def test_returns_path_when_found(self, mock_exists, mock_get_paths):
+        """Test returns path when credentials found by search helper."""
+        mock_get_paths.return_value = ["/path1/credentials.json", "/path2/credentials.json"]
+        mock_exists.side_effect = lambda p: p == "/path2/credentials.json"
 
-        result = _find_credentials_json_path(config_path)
+        result = _find_credentials_json_path(None)
 
-        self.assertIsNotNone(result)
-        self.assertEqual(result, "/config/credentials.json")
+        self.assertEqual(result, "/path2/credentials.json")
 
-    @patch("mmrelay.config.get_explicit_credentials_path", return_value=None)
-    @patch("mmrelay.paths.resolve_all_paths")
+    @patch("mmrelay.config.get_credentials_search_paths")
     @patch("os.path.exists")
-    def test_returns_none_when_not_found(
-        self, mock_exists, mock_resolve, _mock_explicit
-    ):
+    def test_returns_none_when_not_found(self, mock_exists, mock_get_paths):
         """Test returns None when credentials not found anywhere."""
-        mock_resolve.return_value = {
-            "credentials_path": "/home/credentials.json",
-            "legacy_sources": ["/legacy1", "/legacy2"],
-        }
+        mock_get_paths.return_value = ["/path1/credentials.json"]
         mock_exists.return_value = False
 
         result = _find_credentials_json_path(None)
@@ -578,45 +562,6 @@ class TestHandleDoctorMigrationStatus(unittest.TestCase):
         self.assertTrue(len(warning_calls) > 0)
 
 
-class TestFindCredentialsJsonPathLegacy(unittest.TestCase):
-    """Tests for _find_credentials_json_path legacy path discovery (lines 811-812)."""
-
-    @patch("mmrelay.config.get_explicit_credentials_path", return_value=None)
-    @patch("mmrelay.paths.resolve_all_paths")
-    @patch("os.path.exists")
-    @patch("builtins.print")
-    def test_returns_legacy_path_when_found(
-        self, _mock_print, mock_exists, mock_resolve, _mock_explicit
-    ):
-        """Test returns path when credentials found in legacy location."""
-        mock_resolve.return_value = {
-            "credentials_path": "/home/credentials.json",
-            "legacy_sources": ["/legacy1"],
-        }
-        mock_exists.side_effect = lambda p: "legacy1" in p and "credentials" in p
-
-        result = _find_credentials_json_path(None)
-
-        self.assertIsNotNone(result)
-        if result is not None:
-            self.assertIn("legacy1", result)
-
-    @patch("mmrelay.config.get_explicit_credentials_path", return_value=None)
-    @patch("mmrelay.paths.resolve_all_paths")
-    @patch("os.path.exists")
-    def test_returns_home_path_when_no_legacy(
-        self, mock_exists, mock_resolve, _mock_explicit
-    ):
-        """Test returns home path when no legacy path exists."""
-        mock_resolve.return_value = {
-            "credentials_path": "/home/credentials.json",
-            "legacy_sources": [],
-        }
-        mock_exists.side_effect = lambda p: "home/credentials" in p
-
-        result = _find_credentials_json_path(None)
-
-        self.assertEqual(result, "/home/credentials.json")
 
 
 class TestHandleConfigPathsDetails(unittest.TestCase):

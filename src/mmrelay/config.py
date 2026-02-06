@@ -197,8 +197,16 @@ def get_credentials_search_paths(
         else:
             _add(expanded_path)
 
+    if config_paths:
+        for config_path in config_paths:
+            if not config_path:
+                continue
+            config_dir = os.path.dirname(os.path.abspath(config_path))
+            _add(os.path.join(config_dir, "credentials.json"))
+            _add(os.path.join(config_dir, MATRIX_DIRNAME, "credentials.json"))
+
     if include_base_data:
-        # Prefer v1.3 unified HOME locations before config-adjacent legacy paths.
+        # Prefer v1.3 unified HOME locations before compatibility/legacy fallbacks.
         _add(str(get_credentials_path()))
         # Compatibility fallback for pre-1.3 credentials location.
         _add(os.path.join(str(get_home_dir()), CREDENTIALS_FILENAME))
@@ -207,14 +215,6 @@ def get_credentials_search_paths(
             for legacy_dir in get_legacy_dirs():
                 _add(os.path.join(legacy_dir, "credentials.json"))
                 _add(os.path.join(legacy_dir, MATRIX_DIRNAME, "credentials.json"))
-
-    if config_paths:
-        for config_path in config_paths:
-            if not config_path:
-                continue
-            config_dir = os.path.dirname(os.path.abspath(config_path))
-            _add(os.path.join(config_dir, "credentials.json"))
-            _add(os.path.join(config_dir, MATRIX_DIRNAME, "credentials.json"))
 
     return candidate_paths
 
@@ -1226,6 +1226,10 @@ def load_config(
             except (yaml.YAMLError, PermissionError, OSError):
                 logger.exception(f"Error loading config file {path}")
                 continue  # Try the next config path
+        elif os.path.isdir(path):
+            logger.warning(
+                f"Candidate configuration path is a directory, skipping: {path}"
+            )
 
     # No config file found - try to use environment variables only
     logger.warning("Configuration file not found in any of the following locations:")

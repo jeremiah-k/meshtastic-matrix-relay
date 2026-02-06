@@ -1103,6 +1103,11 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
         if os.path.isfile(path):
             config_path = path
             print(f"Found configuration file at: {config_path}")
+        elif os.path.isdir(path):
+            print(f"Warning: Configuration path is a directory, skipping: {path}")
+            continue
+
+        if config_path and os.path.isfile(config_path):
             try:
                 with open(config_path, "r", encoding="utf-8") as f:
                     config_content = f.read()
@@ -2524,6 +2529,12 @@ def generate_sample_config() -> bool:
         if os.path.isfile(path):
             existing_config = path
             break
+        elif os.path.isdir(path):
+            print(f"Error: Configuration path is a directory: {path}")
+            print(
+                "Please remove the directory or specify a different location with --config"
+            )
+            return False
 
     if existing_config:
         print(f"A config file already exists at: {existing_config}")

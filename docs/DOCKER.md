@@ -181,8 +181,8 @@ The `credentials.json` file is automatically available at `/data/matrix/credenti
 
 MMRelay checks for authentication in this order:
 
-1. **`credentials.json`** (from `mmrelay auth login`) - recommended
-2. **`config.yaml` matrix section (password)** - fallback; password in config file automatically creates credentials.json
+1. **`matrix/credentials.json`** (from `mmrelay auth login`) - recommended
+2. **`config.yaml` matrix section (password)** - fallback; password in config file automatically creates `matrix/credentials.json`
 
 > **Note**: For security and full functionality, use `mmrelay auth login`. The password-based method in `config.yaml` is available as a fallback option.
 

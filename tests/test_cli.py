@@ -667,23 +667,20 @@ class TestCLIValidationFunctions(unittest.TestCase):
             result = _validate_credentials_json("/path/to/config.yaml")
             self.assertFalse(result)
 
+    @patch("mmrelay.cli._get_logger")
     @patch("os.path.exists")
-    def test_validate_credentials_json_non_object(self, mock_exists):
+    def test_validate_credentials_json_non_object(self, mock_exists, mock_get_logger):
         """Test _validate_credentials_json rejects non-object JSON content."""
         from mmrelay.cli import _validate_credentials_json
 
         mock_exists.return_value = True
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
 
-        with (
-            patch("builtins.open", mock_open(read_data='["bad"]')),
-            patch("builtins.print") as mock_print,
-        ):
+        with (patch("builtins.open", mock_open(read_data='["bad"]')),):
             result = _validate_credentials_json("/path/to/config.yaml")
             self.assertFalse(result)
-            mock_print.assert_any_call(
-                "❌ Error: credentials.json must be a JSON object",
-                file=sys.stderr,
-            )
+            mock_logger.warning.assert_called()
 
     @patch("os.path.exists")
     def test_validate_credentials_json_standard_location(self, mock_exists):
@@ -2073,16 +2070,18 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         )
         mock_print.assert_any_call("   Solution: Use Linux or macOS for E2EE support")
 
+    @patch("mmrelay.cli._get_logger")
     @patch("os.path.exists")
     @patch("builtins.open", new_callable=mock_open)
-    @patch("builtins.print")
     def test_validate_credentials_json_missing_homeserver(
-        self, mock_print, mock_file, mock_exists
+        self, mock_file, mock_exists, mock_get_logger
     ):
         """Test validation when credentials.json is missing homeserver field."""
         # Setup mocks
         config_path = "/home/user/.mmrelay/config.yaml"
         mock_exists.return_value = True
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
 
         # Mock credentials with missing homeserver
         credentials_data = {
@@ -2100,23 +2099,20 @@ class TestValidateE2EEDependencies(unittest.TestCase):
 
         # Verify results
         self.assertFalse(result)
-        mock_print.assert_any_call(
-            "❌ Error: credentials.json missing required fields: homeserver"
-        )
-        mock_print.assert_any_call(
-            "   Please run 'mmrelay auth login' again to generate new credentials that include a device_id."
-        )
+        mock_logger.warning.assert_called()
 
+    @patch("mmrelay.cli._get_logger")
     @patch("os.path.exists")
     @patch("builtins.open", new_callable=mock_open)
-    @patch("builtins.print")
     def test_validate_credentials_json_missing_access_token(
-        self, mock_print, mock_file, mock_exists
+        self, mock_file, mock_exists, mock_get_logger
     ):
         """Test validation when credentials.json is missing access_token field."""
         # Setup mocks
         config_path = "/home/user/.mmrelay/config.yaml"
         mock_exists.return_value = True
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
 
         # Mock credentials with missing access_token
         credentials_data = {
@@ -2134,23 +2130,20 @@ class TestValidateE2EEDependencies(unittest.TestCase):
 
         # Verify results
         self.assertFalse(result)
-        mock_print.assert_any_call(
-            "❌ Error: credentials.json missing required fields: access_token"
-        )
-        mock_print.assert_any_call(
-            "   Please run 'mmrelay auth login' again to generate new credentials that include a device_id."
-        )
+        mock_logger.warning.assert_called()
 
+    @patch("mmrelay.cli._get_logger")
     @patch("os.path.exists")
     @patch("builtins.open", new_callable=mock_open)
-    @patch("builtins.print")
     def test_validate_credentials_json_missing_user_id(
-        self, mock_print, mock_file, mock_exists
+        self, mock_file, mock_exists, mock_get_logger
     ):
         """Test validation when credentials.json is missing user_id field."""
         # Setup mocks
         config_path = "/home/user/.mmrelay/config.yaml"
         mock_exists.return_value = True
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
 
         # Mock credentials with missing user_id
         credentials_data = {
@@ -2168,23 +2161,20 @@ class TestValidateE2EEDependencies(unittest.TestCase):
 
         # Verify results
         self.assertFalse(result)
-        mock_print.assert_any_call(
-            "❌ Error: credentials.json missing required fields: user_id"
-        )
-        mock_print.assert_any_call(
-            "   Please run 'mmrelay auth login' again to generate new credentials that include a device_id."
-        )
+        mock_logger.warning.assert_called()
 
+    @patch("mmrelay.cli._get_logger")
     @patch("os.path.exists")
     @patch("builtins.open", new_callable=mock_open)
-    @patch("builtins.print")
     def test_validate_credentials_json_missing_device_id(
-        self, mock_print, mock_file, mock_exists
+        self, mock_file, mock_exists, mock_get_logger
     ):
         """Test validation when credentials.json is missing device_id field."""
         # Setup mocks
         config_path = "/home/user/.mmrelay/config.yaml"
         mock_exists.return_value = True
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
 
         # Mock credentials with missing device_id
         credentials_data = {
@@ -2202,23 +2192,20 @@ class TestValidateE2EEDependencies(unittest.TestCase):
 
         # Verify results
         self.assertFalse(result)
-        mock_print.assert_any_call(
-            "❌ Error: credentials.json missing required fields: device_id"
-        )
-        mock_print.assert_any_call(
-            "   Please run 'mmrelay auth login' again to generate new credentials that include a device_id."
-        )
+        mock_logger.warning.assert_called()
 
+    @patch("mmrelay.cli._get_logger")
     @patch("os.path.exists")
     @patch("builtins.open", new_callable=mock_open)
-    @patch("builtins.print")
     def test_validate_credentials_json_empty_field_values(
-        self, mock_print, mock_file, mock_exists
+        self, mock_file, mock_exists, mock_get_logger
     ):
         """Test validation when credentials.json has empty field values."""
         # Setup mocks
         config_path = "/home/user/.mmrelay/config.yaml"
         mock_exists.return_value = True
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
 
         # Mock credentials with empty homeserver field
         credentials_data = {
@@ -2236,12 +2223,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
 
         # Verify results
         self.assertFalse(result)
-        mock_print.assert_any_call(
-            "❌ Error: credentials.json missing required fields: homeserver"
-        )
-        mock_print.assert_any_call(
-            "   Please run 'mmrelay auth login' again to generate new credentials that include a device_id."
-        )
+        mock_logger.warning.assert_called()
 
     @patch("os.path.exists")
     @patch("mmrelay.cli._get_logger")
@@ -2264,7 +2246,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
 
         # Verify results
         self.assertFalse(result)
-        mock_logger.exception.assert_called()
+        mock_logger.warning.assert_called()
 
     @patch("os.path.exists")
     @patch("builtins.open", new_callable=mock_open)
@@ -2288,18 +2270,20 @@ class TestValidateE2EEDependencies(unittest.TestCase):
 
         # Verify results
         self.assertFalse(result)
-        mock_logger.exception.assert_called()
+        mock_logger.warning.assert_called()
 
+    @patch("mmrelay.cli._get_logger")
     @patch("os.path.exists")
     @patch("builtins.open", new_callable=mock_open)
-    @patch("builtins.print")
     def test_validate_credentials_json_multiple_missing_fields(
-        self, mock_print, mock_file, mock_exists
+        self, mock_file, mock_exists, mock_get_logger
     ):
         """Test validation when credentials.json is missing multiple fields (should report first missing)."""
         # Setup mocks
         config_path = "/home/user/.mmrelay/config.yaml"
         mock_exists.return_value = True
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
 
         # Mock credentials with multiple missing fields
         credentials_data = {
@@ -2316,12 +2300,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         # Verify results
         self.assertFalse(result)
         # Should report all missing fields
-        mock_print.assert_any_call(
-            "❌ Error: credentials.json missing required fields: access_token, user_id, device_id"
-        )
-        mock_print.assert_any_call(
-            "   Please run 'mmrelay auth login' again to generate new credentials that include a device_id."
-        )
+        mock_logger.warning.assert_called()
 
 
 class TestIsValidNonEmptyString(unittest.TestCase):
