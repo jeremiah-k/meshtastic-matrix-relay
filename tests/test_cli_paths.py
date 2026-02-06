@@ -20,9 +20,9 @@ def test_handle_paths_command_basic(capsys, monkeypatch, tmp_path):
         return_value={
             "home": str(home),
             "home_source": "env",
-            "credentials_path": str(home / "credentials.json"),
+            "credentials_path": str(home / "matrix" / "credentials.json"),
             "database_dir": str(home / "database"),
-            "store_dir": str(home / "store"),
+            "store_dir": str(home / "matrix" / "store"),
             "logs_dir": str(home / "logs"),
             "log_file": str(home / "logs" / "mmrelay.log"),
             "plugins_dir": str(home / "plugins"),
@@ -54,9 +54,9 @@ def test_handle_paths_command_with_legacy(capsys, monkeypatch, tmp_path):
         return_value={
             "home": str(home),
             "home_source": "env",
-            "credentials_path": str(home / "credentials.json"),
+            "credentials_path": str(home / "matrix" / "credentials.json"),
             "database_dir": str(home / "database"),
-            "store_dir": str(home / "store"),
+            "store_dir": str(home / "matrix" / "store"),
             "logs_dir": str(home / "logs"),
             "log_file": str(home / "logs" / "mmrelay.log"),
             "plugins_dir": str(home / "plugins"),

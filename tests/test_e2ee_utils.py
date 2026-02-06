@@ -78,7 +78,7 @@ def test_credentials_found_in_legacy_location(
 
         # Mock paths_info with legacy sources
         mock_resolve_all_paths.return_value = {
-            "credentials_path": "/primary/credentials.json",
+            "credentials_path": "/primary/matrix/credentials.json",
             "legacy_sources": ["/legacy1", "/legacy2", "/legacy3"],
             "legacy_active": True,
         }
@@ -156,7 +156,7 @@ def test_credentials_not_found_in_legacy_locations(
 
         # Mock paths_info with legacy sources
         mock_resolve_all_paths.return_value = {
-            "credentials_path": "/primary/credentials.json",
+            "credentials_path": "/primary/matrix/credentials.json",
             "legacy_sources": ["/legacy1", "/legacy2"],
             "legacy_active": True,
         }
@@ -214,7 +214,7 @@ def test_credentials_in_legacy_during_deprecation_window(
 
         # Mock paths_info with legacy sources
         mock_resolve_all_paths.return_value = {
-            "credentials_path": "/primary/credentials.json",
+            "credentials_path": "/primary/matrix/credentials.json",
             "legacy_sources": ["/legacy1", "/legacy2"],
         }
 
@@ -279,7 +279,7 @@ def test_no_credentials_during_deprecation_window(
 
         # Mock paths_info with legacy sources
         mock_resolve_all_paths.return_value = {
-            "credentials_path": "/primary/credentials.json",
+            "credentials_path": "/primary/matrix/credentials.json",
             "legacy_sources": ["/legacy1", "/legacy2"],
         }
 
@@ -331,7 +331,7 @@ def test_deprecation_window_not_active(
 
         # Mock paths_info with legacy sources (should not be checked)
         mock_resolve_all_paths.return_value = {
-            "credentials_path": "/primary/credentials.json",
+            "credentials_path": "/primary/matrix/credentials.json",
             "legacy_sources": ["/legacy1", "/legacy2"],
         }
 
@@ -346,5 +346,5 @@ def test_deprecation_window_not_active(
 
         calls = mock_exists.call_args_list
         paths_checked = [call[0][0] for call in calls]
-        assert "/primary/credentials.json" in paths_checked
+        assert "/primary/matrix/credentials.json" in paths_checked
         assert not any("legacy" in path for path in paths_checked)

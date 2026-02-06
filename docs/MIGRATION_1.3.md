@@ -12,6 +12,24 @@ MMRelay now uses a single MMRELAY_HOME root for all runtime state:
 - E2EE store
 - Plugins
 
+## New Directory Structure
+
+After migration, your MMRELAY_HOME follows this layout:
+
+```text
+~/.mmrelay/  (or /data in containers)
+├── config.yaml
+├── matrix/
+│   ├── credentials.json   # Matrix authentication
+│   └── store/             # E2EE encryption keys
+├── database/
+│   └── meshtastic.sqlite
+├── logs/
+└── plugins/
+    ├── custom/
+    └── community/
+```
+
 For containers, the canonical model remains:
 
 - `MMRELAY_HOME=/data`
