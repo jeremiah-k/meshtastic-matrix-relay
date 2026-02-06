@@ -9,6 +9,7 @@ services:
       - com.centurylinklabs.watchtower.enable=true # Enables automatic updates via Watchtower (if enabled, below)
     environment:
       - MMRELAY_HOME=/data
+      - MMRELAY_READY_FILE=/tmp/mmrelay-ready
       - TZ=UTC # Set timezone (PYTHONUNBUFFERED and MPLCONFIGDIR are set in Dockerfile)
 
     volumes:
@@ -32,6 +33,14 @@ services:
     # privileged: true # Alternative if apparmor=unconfined is not acceptable
 
     # Tip: For correct permissions and paths, ensure UID, GID, and MMRELAY_HOST_HOME are set in a .env file or exported
+
+    # Lightweight readiness check (same ready-file concept as docs/docker-compose.yml)
+    healthcheck:
+      test: [CMD-SHELL, test -f /tmp/mmrelay-ready]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
     # Optional: Watchtower for automatic updates (Recommended)
     # Uncomment to check for updates daily at 2 AM

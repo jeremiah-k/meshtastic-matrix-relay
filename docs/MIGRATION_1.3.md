@@ -35,6 +35,41 @@ If you want legacy locations cleaned up after migration, use `mmrelay migrate --
 If you need to overwrite existing target files without creating backups, use
 `mmrelay migrate --force` (only after confirming your own external backup).
 
+## Deployment-Specific Migration Quick Reference
+
+### Local / systemd / venv installs
+
+1. Upgrade package to 1.3.0.
+2. Run:
+   - `mmrelay migrate --dry-run`
+   - `mmrelay migrate`
+   - `mmrelay verify-migration`
+
+### Docker Compose installs
+
+1. Update compose to 1.3 model:
+   - `MMRELAY_HOME=/data`
+   - one persistent host mount to `/data`
+   - config mounted at `/app/config.yaml`
+   - reference examples:
+     - prebuilt image flow: [`src/mmrelay/tools/sample-docker-compose-prebuilt.yaml`](../src/mmrelay/tools/sample-docker-compose-prebuilt.yaml)
+     - local build flow: [`src/mmrelay/tools/sample-docker-compose.yaml`](../src/mmrelay/tools/sample-docker-compose.yaml)
+     - environment template: [`src/mmrelay/tools/sample.env`](../src/mmrelay/tools/sample.env)
+2. Ensure `.env` host path values are valid absolute paths.
+3. Run migration inside container:
+   - `docker compose exec mmrelay mmrelay migrate --dry-run`
+   - `docker compose exec mmrelay mmrelay migrate`
+   - `docker compose exec mmrelay mmrelay verify-migration`
+
+### Kubernetes / Helm installs
+
+1. Keep one PVC mounted at `/data`.
+2. Keep config mounted at `/app/config.yaml`.
+3. Deploy upgraded manifests/chart and verify in pod:
+   - `kubectl exec -n mmrelay <pod> -- mmrelay migrate --dry-run`
+   - `kubectl exec -n mmrelay <pod> -- mmrelay migrate`
+   - `kubectl exec -n mmrelay <pod> -- mmrelay verify-migration`
+
 ### Migration Command Flags
 
 - `--dry-run`: Preview migration actions without changing files.

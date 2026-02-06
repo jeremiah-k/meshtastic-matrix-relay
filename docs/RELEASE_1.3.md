@@ -6,31 +6,39 @@ This checklist is required before tagging a 1.3 release.
 
 - [ ] Version numbers match the release tag (code, docs, and packaging).
 - [ ] `docs/MIGRATION_1.3.md` is accurate and complete.
-- [ ] `docs/HELM.md` and `docs/KUBERNETES.md` match the 1.3 behavior.
-- [ ] No legacy paths or legacy environment variables appear outside allowed legacy examples.
+- [x] `docs/HELM.md` and `docs/KUBERNETES.md` match the 1.3 behavior.
+- [x] No legacy paths or legacy environment variables appear outside allowed legacy examples.
 
 ## Migration Checks
 
 - [ ] Run `mmrelay migrate --dry-run` on a legacy fixture and review output.
 - [ ] Run `mmrelay migrate --move` on a legacy fixture and confirm data lands under MMRELAY_HOME.
-- [ ] Run `mmrelay verify-migration` and confirm exit code is 0.
-- [ ] Run `mmrelay doctor --migration` and confirm there are no warnings.
-- [ ] Credentials are present at MMRELAY_HOME and reported by verification.
+- [x] Run `mmrelay verify-migration` and confirm exit code is 0.
+- [x] Run `mmrelay doctor --migration` and confirm there are no warnings.
+- [x] Credentials are present at MMRELAY_HOME and reported by verification.
 
 ## Helm Chart Checks
 
 - [ ] `scripts/ci/helm_render_validate.sh` passes.
-- [ ] `scripts/ci/check_container_paths.sh` passes.
-- [ ] Helm render with persistence disabled shows `emptyDir` for `/data`.
-- [ ] Helm render with `networkPolicy.enabled=true` produces a valid NetworkPolicy.
+- [x] `scripts/ci/check_container_paths.sh` passes.
+- [x] Helm render with persistence disabled shows `emptyDir` for `/data`.
+- [x] Helm render with `networkPolicy.enabled=true` produces a valid NetworkPolicy.
 
 ## Docker Image Checks
 
 - [ ] Build or pull the 1.3 image tag and start a container with `/data` mounted.
-- [ ] `mmrelay doctor --config /app/config.yaml` succeeds.
-- [ ] `mmrelay verify-migration` returns exit code 0.
+- [x] `mmrelay doctor --config /app/config.yaml` succeeds.
+- [x] `mmrelay verify-migration` returns exit code 0.
 
 ## CI Checks
 
 - [ ] All required GitHub Actions workflows are green on `v13rc1-2`.
 - [ ] No warnings or failures in lint, test, or packaging workflows on `v13rc1-2`.
+
+## Notes From Final Pass (Test Environment)
+
+- Verified in live test env (`coder`) on `v13rc1-2-dev`:
+  - Helm deploy using local image `mmrelay:v13test` reached ready state and runtime logs showed E2EE status `ready`.
+  - Docker Compose sample flow worked with live Matrix + Meshtastic config and produced healthy relay behavior.
+  - E2EE store/key DB created under runtime home (`/data/store/...db` in container tests and `~/.mmrelay/store/...db` in local run).
+- `scripts/ci/helm_render_validate.sh` is still unchecked in this checklist because the current run did not complete as a clean pass in this environment.

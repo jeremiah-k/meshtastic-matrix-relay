@@ -15,6 +15,11 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 
 - **[Advanced Configuration](ADVANCED_CONFIGURATION.md)** - Advanced features like message prefixes, debug logging, environment variables, and plugins
 
+## Release-Specific Documents
+
+- **[What's New in 1.3.0](WHATS_NEW_1.3.md)** - Short release summary and migration TL;DR
+- **[Release Checklist for 1.3](RELEASE_1.3.md)** - Release verification checklist/status tracking
+
 ## Docker Compose Quick Start
 
 A minimal Docker Compose example is available at `docs/docker-compose.yml`. This provides the fastest way to run MMRelay with persistent data using the unified MMRELAY_HOME model.
@@ -34,7 +39,7 @@ cp docs/docker-compose.yml .
 # Option A: if you cloned this repository
 cp src/mmrelay/tools/sample_config.yaml config.yaml
 # Option B: if you only copied docker-compose.yml
-curl -fsSL https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/v13rc1-2/src/mmrelay/tools/sample_config.yaml -o config.yaml
+curl -fsSL https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample_config.yaml -o config.yaml
 # Edit config.yaml with your settings
 
 # 4. Start the service
@@ -74,14 +79,22 @@ docs/
 ├── README.md              # This file - documentation index
 ├── INSTRUCTIONS.md        # Main installation and setup guide
 ├── MIGRATION_1.3.md      # Migration guide for upgrading from older versions
+├── RELEASE_1.3.md         # 1.3 release checklist / verification tracking
+├── WHATS_NEW_1.3.md       # 1.3 release summary
 ├── E2EE.md               # End-to-End Encryption guide
 ├── DOCKER.md             # Docker deployment guide
 ├── docker-compose.yml    # Minimal Docker Compose quick-start example
+├── KUBERNETES.md         # Static manifest deployment guide
 ├── HELM.md               # Helm chart deployment guide
 ├── ADVANCED_CONFIGURATION.md # Advanced configuration options
 └── dev/                  # Developer documentation
-    ├── CONSTANTS.md      # Configuration constants reference
-    └── E2EE_IMPLEMENTATION_NOTES.md  # Technical implementation details
+    ├── CONSTANTS.md
+    ├── DATA_LAYOUT_MIGRATION.md
+    ├── E2EE_IMPLEMENTATION_NOTES.md
+    ├── INNO_SETUP_GUIDE.md
+    ├── TESTING_GUIDE.md
+    ├── V1_3_DIRECTORY_REDESIGN.md
+    └── V1_3_MIGRATION_IMPROVEMENTS_PLAN.md
 ```
 
 ## Getting Help

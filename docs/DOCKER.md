@@ -129,7 +129,7 @@ If you prefer not to use Make commands:
 mkdir -p ~/.mmrelay
 cp src/mmrelay/tools/sample_config.yaml ~/.mmrelay/config.yaml
 nano ~/.mmrelay/config.yaml  # Edit your settings
-cp src/mmrelay/tools/sample-docker-compose-prebuilt.yaml docker-compose.yaml
+cp src/mmrelay/tools/sample-docker-compose.yaml docker-compose.yaml
 
 # Build and start:
 docker compose build
