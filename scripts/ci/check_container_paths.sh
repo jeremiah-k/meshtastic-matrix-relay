@@ -169,8 +169,8 @@ check_doc_files() {
 					for RANGE in "${RANGE_ARRAY[@]}"; do
 						local RANGE_START
 						local RANGE_END
-						RANGE_START=$(echo "${RANGE}" | cut -d',' -f1)
-						RANGE_END=$(echo "${RANGE}" | cut -d',' -f2)
+						RANGE_START="${RANGE%%,*}"
+						RANGE_END="${RANGE##*,}"
 
 						if [[ ${MATCH_LINE} -ge ${RANGE_START} ]] && [[ ${MATCH_LINE} -le ${RANGE_END} ]]; then
 							ALLOWED=true

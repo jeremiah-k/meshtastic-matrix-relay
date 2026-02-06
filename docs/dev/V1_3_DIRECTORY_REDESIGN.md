@@ -1194,90 +1194,29 @@ args:
 
 ---
 
-## Open Questions & Decisions Needed
+## Resolved Decisions (v13rc1-2)
 
-### Questions for User
-
-1. **Migration timing**: Migration is explicit; users run `mmrelay migrate` (optionally `--dry-run`).
-2. **Legacy config**: Keep `config.yaml` at old location or move to new?
-3. **Partial new layout**: Should we support migration from v1.2.10's partial layout?
-4. **Backups**: Should we keep backups of migrated files by default?
-5. **Rollback**: Should failed migration prompt for rollback or manual fix?
-
-### Design Decisions
-
-1. **Environment variable naming**: `MMRELAY_HOME` vs `MMRELAY_DATA_DIR`?
-   - Recommendation: `MMRELAY_HOME` (matches `--home` CLI arg)
-
-2. **Database subdirectory**: Should database be in `database/` subdirectory or root?
-   - Recommendation: `database/` subdirectory for clarity
-
-3. **Logs handling**: Should logs be in `logs/` subdirectory or allow flexible paths?
-   - Recommendation: Default to `logs/`, override via `MMRELAY_LOG_PATH`
-
-4. **Plugin data location**: Should plugins store data in `plugins/{custom|community}/{name}/data/` or `plugins/data/{name}/`?
-   - Recommendation: `plugins/{custom|community}/{name}/data/` (unified with discovery)
-
-5. **Backward compatibility window**: How long to support old env vars?
-   - Recommendation: Deprecate in v1.3, remove in v1.4
+1. **Migration timing**: Explicit user action via `mmrelay migrate` (with `--dry-run` preview).
+2. **Legacy config handling**: `config.yaml` migration is implemented with backup behavior and `--force` override.
+3. **Partial new layout support**: Supported (v1.2.10+ hybrid layouts are included in migration/verification).
+4. **Backup strategy**: Backups are created by default; `--force` allows overwrite without backup.
+5. **Rollback strategy**: Automatic rollback is attempted on migration failure.
+6. **Primary home variable**: `MMRELAY_HOME` is the canonical runtime root.
+7. **Database layout**: Uses `database/` subdirectory under `MMRELAY_HOME`.
+8. **Logs layout**: Uses `logs/` by default, with override support.
+9. **Plugin data layout**: Filesystem plugin data path remains `plugins/{custom|community}/{name}/data/`, while plugin runtime state primarily uses database-backed storage.
+10. **Compatibility window**: Legacy env/paths remain in deprecation flow for v1.3 and are planned for removal in v1.4.
 
 ---
 
-## Implementation Priority
+## Implementation Status (v13rc1-2)
 
-### Phase 1: Foundation (Week 1)
-
-1. [ ] Create `src/mmrelay/paths.py` module
-2. [ ] Write comprehensive unit tests for paths module
-3. [ ] Create `src/mmrelay/migrate.py` module
-4. [ ] Write comprehensive unit tests for migration module
-5. [ ] Update constants if needed
-
-### Phase 2: Integration (Week 2-3)
-
-1. [ ] Refactor `src/mmrelay/config.py` to use new paths module
-2. [ ] Refactor `src/mmrelay/cli.py` to add `--home` and migration commands
-3. [ ] Update `src/mmrelay/plugin_loader.py` for new plugin paths
-4. [ ] Update `src/mmrelay/db_utils.py` to use new database path
-5. [ ] Update `src/mmrelay/main.py` for migration check
-
-### Phase 3: Documentation (Week 3)
-
-1. [ ] Update `docs/DIRECTORY_STRUCTURE.md` with plugin data storage findings
-2. [ ] Write `docs/MIGRATION_GUIDE.md`
-3. [ ] Update all existing documentation files
-4. [ ] Update all sample configuration files
-5. [ ] Update README.md
-6. [ ] Update WHATS_NEW_1.3.md with breaking changes
-
-### Phase 4: Deployment (Week 4)
-
-1. [ ] Update Dockerfile
-2. [ ] Update docker-compose.yaml
-3. [ ] Update K8s manifests
-4. [ ] Create sample-docker-compose.yaml
-5. [ ] Update Makefile
-
-### Phase 5: Testing (Week 5-6)
-
-1. [ ] Run unit tests and achieve coverage target
-2. [ ] Test explicit migration flow via `mmrelay migrate` on first run
-3. [ ] Test deprecation warnings for old env vars
-4. [ ] Test in Docker environment (old env vars still work)
-5. [ ] Test in K8s environment (old env vars still work)
-6. [ ] Test on all platforms (Linux/macOS/Windows)
-7. [ ] Test migration rollback functionality
-8. [ ] Test Docker compose env var precedence
-9. [ ] Test plugin data storage (database still works)
-10. [ ] Fix any bugs found
-
-### Phase 6: Release (Week 7)
-
-1. [ ] Final code review
-2. [ ] Update CHANGELOG.md
-3. [ ] Tag v1.3.0
-4. [ ] Create release notes
-5. [ ] Release to production
+- [x] Phase 1 Foundation: `paths.py` and `migrate.py` implemented with coverage.
+- [x] Phase 2 Integration: `config.py`, `cli.py`, `plugin_loader.py`, `db_utils.py`, and `main.py` integrated with unified home layout and migration flow.
+- [x] Phase 3 Documentation: migration, helm, docker, and developer docs updated for v1.3 behavior.
+- [x] Phase 4 Deployment: Docker/Helm/K8s assets updated to the v1.3 directory model.
+- [ ] Phase 5 Testing: final pre-release validation remains tracked in `docs/RELEASE_1.3.md`.
+- [ ] Phase 6 Release: release execution checklist remains tracked in `docs/RELEASE_1.3.md`.
 
 ---
 

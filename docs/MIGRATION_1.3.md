@@ -32,6 +32,14 @@ For containers, the canonical model remains:
 4. Start MMRelay.
 
 If you want legacy locations cleaned up after migration, use `mmrelay migrate --move`.
+If you need to overwrite existing target files without creating backups, use
+`mmrelay migrate --force` (only after confirming your own external backup).
+
+### Migration Command Flags
+
+- `--dry-run`: Preview migration actions without changing files.
+- `--move`: Move files instead of copy (removes legacy files after successful migration).
+- `--force`: Allow overwriting existing files without backup.
 
 ## After Upgrading
 
