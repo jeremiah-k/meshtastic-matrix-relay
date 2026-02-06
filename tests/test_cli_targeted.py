@@ -779,8 +779,8 @@ class TestHandleMigrateCommandDetailed(unittest.TestCase):
         result = handle_migrate_command(self.args)
 
         self.assertEqual(result, 0)
-        move_calls = [c for c in mock_print.call_args_list if "Action: MOVE" in str(c)]
-        copy_calls = [c for c in mock_print.call_args_list if "Action: COPY" in str(c)]
+        move_calls = [c for c in mock_print.call_args_list if "action: MOVE" in str(c)]
+        copy_calls = [c for c in mock_print.call_args_list if "action: COPY" in str(c)]
         self.assertTrue(len(move_calls) > 0)
         self.assertTrue(len(copy_calls) > 0)
 
