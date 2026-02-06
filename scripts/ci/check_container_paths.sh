@@ -243,7 +243,8 @@ selftest() {
 	# Capture output to verify error count
 	local TEST_OUTPUT_FILE
 	TEST_OUTPUT_FILE=$(mktemp)
-	check_doc_files >"${TEST_OUTPUT_FILE}" 2>&1 || true
+	check_doc_files >"${TEST_OUTPUT_FILE}" 2>&1
+	: # Ignore return value intentionally
 
 	# We expect 2 errors:
 	# 1. --base-dir on line 12
