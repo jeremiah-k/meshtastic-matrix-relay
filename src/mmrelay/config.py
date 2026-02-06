@@ -13,6 +13,7 @@ import yaml
 from yaml.loader import SafeLoader
 
 import mmrelay.paths as paths_module
+from mmrelay.constants.app import CREDENTIALS_FILENAME, MATRIX_DIRNAME
 
 # Import application constants
 from mmrelay.constants.config import (
@@ -202,13 +203,17 @@ def get_credentials_search_paths(
                 continue
             config_dir = os.path.dirname(os.path.abspath(config_path))
             _add(os.path.join(config_dir, "credentials.json"))
+            _add(os.path.join(config_dir, MATRIX_DIRNAME, "credentials.json"))
 
     if include_base_data:
         _add(str(get_credentials_path()))
+        # Compatibility fallback for pre-1.3 credentials location.
+        _add(os.path.join(str(get_home_dir()), CREDENTIALS_FILENAME))
 
         if is_deprecation_window_active():
             for legacy_dir in get_legacy_dirs():
                 _add(os.path.join(legacy_dir, "credentials.json"))
+                _add(os.path.join(legacy_dir, MATRIX_DIRNAME, "credentials.json"))
 
     return candidate_paths
 
@@ -380,18 +385,18 @@ def get_e2ee_store_dir() -> str:
         # (even if it won't be used for E2EE)
         base = str(get_home_dir())
         if sys.platform == "win32":
-            store_dir = ntpath.join(base, "store")
+            store_dir = ntpath.join(base, MATRIX_DIRNAME, "store")
         else:
-            store_dir = os.path.join(base, "store")
+            store_dir = os.path.join(base, MATRIX_DIRNAME, "store")
         logger.warning("E2EE store not officially supported on this platform: %s", e)
         return store_dir
     except (OSError, PermissionError) as e:
         # Fallback for permission errors - log and return a home-based path
         base = str(get_home_dir())
         if sys.platform == "win32":
-            store_dir = ntpath.join(base, "store")
+            store_dir = ntpath.join(base, MATRIX_DIRNAME, "store")
         else:
-            store_dir = os.path.join(base, "store")
+            store_dir = os.path.join(base, MATRIX_DIRNAME, "store")
         logger.warning("Could not create E2EE store directory: %s", e)
         return store_dir
     else:
@@ -760,6 +765,10 @@ def load_credentials() -> dict[str, Any] | None:
             if is_deprecation_window_active()
             else set()
         )
+        primary_credentials_path = os.path.abspath(str(get_credentials_path()))
+        legacy_home_credentials = os.path.abspath(
+            os.path.join(str(get_home_dir()), CREDENTIALS_FILENAME)
+        )
         for credentials_path in candidate_paths:
             if not os.path.exists(credentials_path):
                 continue
@@ -777,6 +786,15 @@ def load_credentials() -> dict[str, Any] | None:
                     "Credentials found in legacy location: %s. "
                     "Please run 'mmrelay migrate' to move to new unified structure. "
                     "Support for legacy credentials will be removed in v1.4.",
+                    credentials_path,
+                )
+            elif (
+                os.path.abspath(credentials_path) == legacy_home_credentials
+                and os.path.abspath(credentials_path) != primary_credentials_path
+            ):
+                _get_config_logger().warning(
+                    "Credentials found in legacy location: %s. "
+                    "Please run 'mmrelay migrate' to move to new unified structure.",
                     credentials_path,
                 )
             logger.debug("Successfully loaded credentials from %s", credentials_path)
@@ -1241,7 +1259,7 @@ def _resolve_credentials_path(
                 or (os.path.altsep and candidate.endswith(os.path.altsep))
             )
         if path_is_dir:
-            candidate = os.path.join(candidate, "credentials.json")
+            candidate = os.path.join(candidate, CREDENTIALS_FILENAME)
         config_dir = os.path.dirname(candidate)
         if not config_dir:
             config_dir = str(get_home_dir())
@@ -1249,7 +1267,8 @@ def _resolve_credentials_path(
         return candidate, config_dir
 
     base_dir = str(get_home_dir())
-    return os.path.join(base_dir, "credentials.json"), base_dir
+    matrix_dir = os.path.join(base_dir, MATRIX_DIRNAME)
+    return os.path.join(matrix_dir, CREDENTIALS_FILENAME), matrix_dir
 
 
 def validate_yaml_syntax(

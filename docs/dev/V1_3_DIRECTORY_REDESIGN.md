@@ -173,10 +173,10 @@ database: delete_plugin_data(plugin_name, meshtastic_id)       # Delete from SQL
 | File Type           | v1.3 Path                                     | Notes                                                        |
 | ------------------- | --------------------------------------------- | ------------------------------------------------------------ |
 | Config              | `$MMRELAY_HOME/config.yaml` or user-specified | Read-only search in multiple locations                       |
-| Credentials         | `$MMRELAY_HOME/credentials.json`              | One location, no fallbacks                                   |
+| Credentials         | `$MMRELAY_HOME/matrix/credentials.json`       | One location, no fallbacks                                   |
 | Database            | `$MMRELAY_HOME/database/meshtastic.sqlite`    | Single location; migration is explicit via `mmrelay migrate` |
 | Logs                | `$MMRELAY_HOME/logs/mmrelay.log`              | Default, overrideable via env var                            |
-| E2EE Store          | `$MMRELAY_HOME/store/`                        | Unix/macOS only                                              |
+| E2EE Store          | `$MMRELAY_HOME/matrix/store/`                 | Unix/macOS only                                              |
 | Plugins (custom)    | `$MMRELAY_HOME/plugins/custom/<name>`         | User-installed plugins                                       |
 | Plugins (community) | `$MMRELAY_HOME/plugins/community/<name>`      | Third-party plugins                                          |
 
@@ -202,12 +202,12 @@ Run the migration command after upgrade (use `mmrelay migrate --dry-run` to prev
 ```text
 Old                          →  New (v1.3)
 ---------------------------------------------------------
-~/.mmrelay/credentials.json  →  $MMRELAY_HOME/credentials.json
+~/.mmrelay/credentials.json  →  $MMRELAY_HOME/matrix/credentials.json
 ~/.mmrelay/meshtastic.sqlite →  $MMRELAY_HOME/database/meshtastic.sqlite
 ~/.mmrelay/meshtastic.sqlite-wal →  $MMRELAY_HOME/database/meshtastic.sqlite-wal
 ~/.mmrelay/meshtastic.sqlite-shm →  $MMRELAY_HOME/database/meshtastic.sqlite-shm
 ~/.mmrelay/logs/              →  $MMRELAY_HOME/logs/
-~/.mmrelay/store/              →  $MMRELAY_HOME/store/
+~/.mmrelay/store/              →  $MMRELAY_HOME/matrix/store/
 ~/.mmrelay/plugins/custom/    →  $MMRELAY_HOME/plugins/custom/
 ~/.mmrelay/plugins/community/ →  $MMRELAY_HOME/plugins/community/
 ```
@@ -239,11 +239,11 @@ Migration Rules:
 Old                          →  New (v1.3)
 ---------------------------------------------------------
 ~/.mmrelay/config.yaml        →  $MMRELAY_HOME/config.yaml (or keep)
-~/.mmrelay/credentials.json    →  $MMRELAY_HOME/credentials.json
+~/.mmrelay/credentials.json    →  $MMRELAY_HOME/matrix/credentials.json
 ~/.mmrelay/meshtastic.sqlite    →  $MMRELAY_HOME/database/meshtastic.sqlite
 ~/.mmrelay/data/meshtastic.sqlite →  $MMRELAY_HOME/database/meshtastic.sqlite
 ~/.mmrelay/logs/              →  $MMRELAY_HOME/logs/
-~/.mmrelay/store/              →  $MMRELAY_HOME/store/
+~/.mmrelay/store/              →  $MMRELAY_HOME/matrix/store/
 ~/.mmrelay/plugins/            →  $MMRELAY_HOME/plugins/
 ~/.mmrelay/data/plugins/        →  $MMRELAY_HOME/plugins/
 ```
@@ -345,7 +345,7 @@ def get_credentials_path() -> Path:
     Returns:
         Path: Location of credentials.json
     """
-    return get_home_dir() / "credentials.json"
+    return get_home_dir() / "matrix" / "credentials.json"
 
 
 def get_database_dir() -> Path:

@@ -220,7 +220,7 @@ On first startup, MMRelay will:
 
 1. Read Matrix credentials from environment variables
 2. Log into Matrix
-3. Create `/data/credentials.json` on the PVC
+3. Create `/data/matrix/credentials.json` on the PVC
 4. Use existing `credentials.json` on subsequent restarts
 
 ### Persistence
@@ -433,10 +433,10 @@ The chart uses fixed runtime paths (consistent with container design):
 
 All persistent data lives under `/data`:
 
-- `/data/credentials.json` - Matrix authentication
+- `/data/matrix/credentials.json` - Matrix authentication
 - `/data/database/meshtastic.sqlite` - SQLite database
 - `/data/logs/` - Application logs
-- `/data/store/` - E2EE encryption keys (if enabled)
+- `/data/matrix/store/` - E2EE encryption keys (if enabled)
 - `/data/plugins/custom/` - Custom plugins
 - `/data/plugins/community/` - Community plugins
 
@@ -507,7 +507,7 @@ kubectl logs -n mmrelay <pod-name> --tail=50
 ### Credentials Issues
 
 ```bash
-kubectl exec -n mmrelay <pod-name> -- ls -l /data/credentials.json
+kubectl exec -n mmrelay <pod-name> -- ls -l /data/matrix/credentials.json
 kubectl exec -n mmrelay <pod-name> -- cat /app/config.yaml
 ```
 

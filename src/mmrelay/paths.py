@@ -23,7 +23,13 @@ from typing import Any
 
 import platformdirs
 
-from mmrelay.constants.app import APP_AUTHOR, APP_NAME
+from mmrelay.constants.app import (
+    APP_AUTHOR,
+    APP_NAME,
+    CREDENTIALS_FILENAME,
+    MATRIX_DIRNAME,
+    STORE_DIRNAME,
+)
 from mmrelay.log_utils import get_logger
 
 
@@ -216,7 +222,17 @@ def get_credentials_path() -> Path:
         Path: Path to the credentials.json file located in the resolved application home directory.
     """
     home = get_home_dir()
-    return home / "credentials.json"
+    return home / MATRIX_DIRNAME / CREDENTIALS_FILENAME
+
+
+def get_matrix_dir() -> Path:
+    """
+    Resolve the directory used for Matrix-specific runtime artifacts.
+
+    Returns:
+        Path: Path to the Matrix directory under the resolved application home.
+    """
+    return get_home_dir() / MATRIX_DIRNAME
 
 
 def get_database_dir() -> Path:
@@ -281,8 +297,7 @@ def get_e2ee_store_dir() -> Path:
     if sys.platform == "win32":
         raise E2EENotSupportedError()
 
-    home = get_home_dir()
-    return home / "store"
+    return get_matrix_dir() / STORE_DIRNAME
 
 
 def get_plugins_dir() -> Path:
@@ -438,6 +453,7 @@ def ensure_directories(*, create_missing: bool = True) -> None:
 
     raw_dirs = [
         get_home_dir(),
+        get_matrix_dir(),
         get_database_dir(),
         get_logs_dir(),
         get_e2ee_store_dir() if sys.platform != "win32" else None,
@@ -585,9 +601,12 @@ def get_legacy_dirs() -> list[Path]:
         candidates = [
             root / "config.yaml",
             root / "credentials.json",
+            root / "matrix" / "credentials.json",
             root / "meshtastic.sqlite",
             root / "data" / "meshtastic.sqlite",
             root / "database" / "meshtastic.sqlite",
+            root / "store",
+            root / "matrix" / "store",
         ]
         return any(candidate.exists() for candidate in candidates)
 
@@ -670,6 +689,7 @@ def resolve_all_paths() -> dict[str, Any]:
 
     return {
         "home": str(home),
+        "matrix_dir": str(get_matrix_dir()),
         "legacy_sources": [str(d) for d in legacy_dirs],
         "credentials_path": str(get_credentials_path()),
         "database_dir": str(get_database_dir()),
@@ -715,6 +735,7 @@ def get_diagnostics() -> dict[str, Any]:
     resolved = resolve_all_paths()
     compat_diagnostics = {
         "home_dir": resolved["home"],
+        "matrix_dir": resolved["matrix_dir"],
         "credentials_path": resolved["credentials_path"],
         "database_dir": resolved["database_dir"],
         "database_path": str(Path(resolved["database_dir"]) / "meshtastic.sqlite"),

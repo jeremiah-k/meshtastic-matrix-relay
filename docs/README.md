@@ -60,12 +60,12 @@ For full Docker documentation, see [DOCKER.md](DOCKER.md).
 
 ## File Locations
 
-| File          | Purpose               | Location                      |
-| ------------- | --------------------- | ----------------------------- |
-| Configuration | Main settings         | `~/.mmrelay/config.yaml`      |
-| Credentials   | Matrix authentication | `~/.mmrelay/credentials.json` |
-| E2EE Store    | Encryption keys       | `~/.mmrelay/store/`           |
-| Logs          | Application logs      | `~/.mmrelay/logs/`            |
+| File          | Purpose               | Location                             |
+| ------------- | --------------------- | ------------------------------------ |
+| Configuration | Main settings         | `~/.mmrelay/config.yaml`             |
+| Credentials   | Matrix authentication | `~/.mmrelay/matrix/credentials.json` |
+| E2EE Store    | Encryption keys       | `~/.mmrelay/matrix/store/`           |
+| Logs          | Application logs      | `~/.mmrelay/logs/`                   |
 
 ## Developer Documentation
 

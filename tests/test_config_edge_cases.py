@@ -405,9 +405,10 @@ class TestConfigEdgeCases(unittest.TestCase):
         ):
             result = get_e2ee_store_dir()
 
-            # Should use home/store on Windows fallback
+            # Should use home/matrix/store on Windows fallback
             expected = ntpath.join(
                 str(Path("C:\\mmrelay").expanduser().absolute()),
+                "matrix",
                 "store",
             )
             self.assertEqual(result, expected)

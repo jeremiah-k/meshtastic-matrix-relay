@@ -173,7 +173,7 @@ spec:
               readOnly: true
             {{- if .Values.credentials.enabled }}
             - name: credentials
-              mountPath: {{ .Values.mmrelayHome }}/credentials.json
+              mountPath: {{ .Values.mmrelayHome }}/matrix/credentials.json
               subPath: {{ .Values.credentials.key }}
               readOnly: true
             {{- end }}

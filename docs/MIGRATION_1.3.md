@@ -116,7 +116,7 @@ If the `mmrelay migrate` command fails during its execution, it will attempt to 
 A successful automatic rollback ensures that:
 
 - Files and directories are restored to their pre-migration state.
-- Newly created directories (like `logs/` or `store/`) that did not exist before are removed to leave no residue.
+- Newly created directories (like `logs/` or `matrix/store/`) that did not exist before are removed to leave no residue.
 - The migration state is cleared, allowing you to retry after resolving the issue.
 
 ## How to Roll Back Safely (Manual)

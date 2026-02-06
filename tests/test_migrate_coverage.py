@@ -279,7 +279,9 @@ class TestVerifyMigration:
         """Test store not applicable and warning output."""
         home = tmp_path / "home"
         home.mkdir()
-        (home / "credentials.json").write_text("creds")
+        matrix_dir = home / "matrix"
+        matrix_dir.mkdir()
+        (matrix_dir / "credentials.json").write_text("creds")
         database_dir = home / "database"
         database_dir.mkdir()
         logs_dir = home / "logs"
@@ -295,7 +297,7 @@ class TestVerifyMigration:
 
         paths_info = {
             "home": str(home),
-            "credentials_path": str(home / "credentials.json"),
+            "credentials_path": str(matrix_dir / "credentials.json"),
             "database_dir": str(database_dir),
             "logs_dir": str(logs_dir),
             "plugins_dir": str(plugins_dir),
@@ -324,7 +326,9 @@ class TestVerifyMigration:
         """Test store directory resolution when applicable and no legacy data."""
         home = tmp_path / "home"
         home.mkdir()
-        (home / "credentials.json").write_text("creds")
+        matrix_dir = home / "matrix"
+        matrix_dir.mkdir()
+        (matrix_dir / "credentials.json").write_text("creds")
         database_dir = home / "database"
         database_dir.mkdir()
         (database_dir / "meshtastic.sqlite").write_text("db")
@@ -332,12 +336,12 @@ class TestVerifyMigration:
         logs_dir.mkdir()
         plugins_dir = home / "plugins"
         plugins_dir.mkdir()
-        store_dir = home / "store"
+        store_dir = matrix_dir / "store"
         store_dir.mkdir()
 
         paths_info = {
             "home": str(home),
-            "credentials_path": str(home / "credentials.json"),
+            "credentials_path": str(matrix_dir / "credentials.json"),
             "database_dir": str(database_dir),
             "logs_dir": str(logs_dir),
             "plugins_dir": str(plugins_dir),
@@ -369,7 +373,8 @@ class TestVerifyMigration:
         logs_dir.mkdir()
         plugins_dir = home / "plugins"
         plugins_dir.mkdir()
-        store_dir = home / "store"
+        store_dir = home / "matrix" / "store"
+        store_dir.parent.mkdir(parents=True, exist_ok=True)
         store_dir.mkdir()
 
         legacy_root = tmp_path / "legacy"
@@ -380,7 +385,7 @@ class TestVerifyMigration:
 
         paths_info = {
             "home": str(home),
-            "credentials_path": str(home / "credentials.json"),
+            "credentials_path": str(home / "matrix" / "credentials.json"),
             "database_dir": str(database_dir),
             "logs_dir": str(logs_dir),
             "plugins_dir": str(plugins_dir),
@@ -393,7 +398,10 @@ class TestVerifyMigration:
         report = verify_migration()
         assert any("Found legacy data at" in warning for warning in report["warnings"])
         assert any("Missing credentials.json" in error for error in report["errors"])
-        assert any("Legacy data exists outside" in error for error in report["errors"])
+        assert any(
+            "Legacy data exists and migration is still required" in error
+            for error in report["errors"]
+        )
         assert any("Split roots detected" in error for error in report["errors"])
         assert any("outside MMRELAY_HOME" in error for error in report["errors"])
 
@@ -407,7 +415,7 @@ class TestVerifyMigration:
                 {
                     "key": "credentials",
                     "label": "credentials.json",
-                    "path": "/tmp/home/credentials.json",
+                    "path": "/tmp/home/matrix/credentials.json",
                     "exists": True,
                     "inside_home": True,
                     "not_applicable": False,
@@ -631,7 +639,8 @@ class TestMigrateCredentialsEdgeCases:
 
         new_home = tmp_path / "home"
         new_home.mkdir()
-        new_creds = new_home / "credentials.json"
+        new_creds = new_home / "matrix" / "credentials.json"
+        new_creds.parent.mkdir(parents=True, exist_ok=True)
         new_creds.mkdir()
 
         result = migrate_credentials(
@@ -653,7 +662,8 @@ class TestMigrateCredentialsEdgeCases:
 
         new_home = tmp_path / "home"
         new_home.mkdir()
-        new_creds = new_home / "credentials.json"
+        new_creds = new_home / "matrix" / "credentials.json"
+        new_creds.parent.mkdir(parents=True, exist_ok=True)
         new_creds.write_text("old")
 
         result = migrate_credentials(
@@ -672,7 +682,8 @@ class TestMigrateCredentialsEdgeCases:
 
         new_home = tmp_path / "home"
         new_home.mkdir()
-        new_creds = new_home / "credentials.json"
+        new_creds = new_home / "matrix" / "credentials.json"
+        new_creds.parent.mkdir(parents=True, exist_ok=True)
         new_creds.write_text("old-creds")
 
         original_copy2 = shutil.copy2
@@ -1190,7 +1201,8 @@ class TestMigrateStoreEdgeCases:
         """Test handling of directory backup failure."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
-        new_store_dir = new_home / "store"
+        new_store_dir = new_home / "matrix" / "store"
+        new_store_dir.parent.mkdir(parents=True)
         new_store_dir.mkdir()
         (new_store_dir / "file").write_text("data")
 
@@ -1213,7 +1225,8 @@ class TestMigrateStoreEdgeCases:
         """Test that move operation removes existing directory."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
-        new_store_dir = new_home / "store"
+        new_store_dir = new_home / "matrix" / "store"
+        new_store_dir.parent.mkdir(parents=True)
         new_store_dir.mkdir()
         (new_store_dir / "old_file").write_text("old")
 
@@ -1239,7 +1252,8 @@ class TestMigrateStoreEdgeCases:
         """Test that copy operation removes existing directory."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
-        new_store_dir = new_home / "store"
+        new_store_dir = new_home / "matrix" / "store"
+        new_store_dir.parent.mkdir(parents=True)
         new_store_dir.mkdir()
         (new_store_dir / "old_file").write_text("old")
 
@@ -1887,7 +1901,8 @@ class TestRollbackMigration:
         state_file.write_text("1.3")
 
         # Create backup credentials
-        backup_dir = home
+        backup_dir = home / "matrix"
+        backup_dir.mkdir(parents=True, exist_ok=True)
         backup_creds = backup_dir / "credentials.json.bak.20240101_120000"
         backup_creds.write_text('{"backup": true}')
 
@@ -1896,7 +1911,7 @@ class TestRollbackMigration:
         assert result["success"] is True
         assert result["restored_count"] >= 1
         # Check that credentials were restored
-        creds = home / "credentials.json"
+        creds = home / "matrix" / "credentials.json"
         assert creds.exists()
         assert creds.read_text() == '{"backup": true}'
 
@@ -1940,7 +1955,9 @@ class TestRollbackMigration:
         state_file.write_text("1.3")
 
         # Create backup credentials
-        backup_creds = home / "credentials.json.bak.20240101_120000"
+        matrix_dir = home / "matrix"
+        matrix_dir.mkdir(parents=True, exist_ok=True)
+        backup_creds = matrix_dir / "credentials.json.bak.20240101_120000"
         backup_creds.write_text('{"backup": true}')
 
         # Mock copy2 to fail
@@ -2025,18 +2042,20 @@ class TestRollbackMigration:
         state_file.write_text("1.3")
 
         # Create multiple backups with different timestamps
-        backup1 = home / "credentials.json.bak.20240101_120000"
+        matrix_dir = home / "matrix"
+        matrix_dir.mkdir(parents=True, exist_ok=True)
+        backup1 = matrix_dir / "credentials.json.bak.20240101_120000"
         backup1.write_text("backup1")
-        backup2 = home / "credentials.json.bak.20240102_130000"
+        backup2 = matrix_dir / "credentials.json.bak.20240102_130000"
         backup2.write_text("backup2")  # More recent
-        backup3 = home / "credentials.json.bak.20240101_110000"
+        backup3 = matrix_dir / "credentials.json.bak.20240101_110000"
         backup3.write_text("backup3")
 
         result = rollback_migration()
 
         assert result["success"] is True
         # Should restore most recent (backup2)
-        creds = home / "credentials.json"
+        creds = home / "matrix" / "credentials.json"
         assert creds.read_text() == "backup2"
 
     def test_rollback_migration_uses_completed_steps_from_state(

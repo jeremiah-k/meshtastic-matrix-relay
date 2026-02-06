@@ -34,8 +34,8 @@ matrix:
   # E2EE Configuration
   e2ee:
     enabled: true
-    # Optional: Custom store path (default: ~/.mmrelay/store)
-    # store_path: ~/.mmrelay/store
+    # Optional: Custom store path (default: ~/.mmrelay/matrix/store)
+    # store_path: ~/.mmrelay/matrix/store
 ```
 
 ### 3. Set Up Authentication
@@ -50,7 +50,7 @@ This interactive command will:
 
 - Prompt for your Matrix homeserver, username, and password
 - Create secure credentials with E2EE support
-- Save authentication details to `~/.mmrelay/credentials.json`
+- Save authentication details to `~/.mmrelay/matrix/credentials.json`
 - Set up encryption keys for secure communication
 
 ### 4. Start MMRelay
@@ -88,8 +88,8 @@ mmrelay auth login
 1. **Interactive Setup**: Prompts for Matrix homeserver, username, and password
 2. **Secure Login**: Creates a new Matrix session with encryption enabled
 3. **Device Registration**: Generates a unique, persistent device ID for MMRelay
-4. **Credential Storage**: Saves authentication details to `~/.mmrelay/credentials.json`
-5. **Key Setup**: Initializes encryption key storage in `~/.mmrelay/store/`
+4. **Credential Storage**: Saves authentication details to `~/.mmrelay/matrix/credentials.json`
+5. **Key Setup**: Initializes encryption key storage in `~/.mmrelay/matrix/store/`
 
 ### Example Session
 
@@ -103,8 +103,8 @@ Matrix password: [password hidden]
 
 ✅ Login successful!
 ✅ Device ID: MMRELAY_ABC123DEF
-✅ Credentials saved to ~/.mmrelay/credentials.json
-✅ E2EE store initialized at ~/.mmrelay/store/
+✅ Credentials saved to ~/.mmrelay/matrix/credentials.json
+✅ E2EE store initialized at ~/.mmrelay/matrix/store/
 
 You can now start MMRelay with: mmrelay
 ```
@@ -121,15 +121,15 @@ This command will:
 
 - Verify your Matrix password for security
 - Log out from the Matrix server (invalidating access tokens)
-- Remove `~/.mmrelay/credentials.json`
-- Clear the E2EE store directory (`~/.mmrelay/store/`)
+- Remove `~/.mmrelay/matrix/credentials.json`
+- Clear the E2EE store directory (`~/.mmrelay/matrix/store/`)
 - Provide confirmation of all cleanup actions
 
 After logout, you'll need to run `mmrelay auth login` again to re-authenticate.
 
 ### Files Created
 
-**`~/.mmrelay/credentials.json`** - Contains your Matrix session:
+**`~/.mmrelay/matrix/credentials.json`** - Contains your Matrix session:
 
 ```json
 {
@@ -140,7 +140,7 @@ After logout, you'll need to run `mmrelay auth login` again to re-authenticate.
 }
 ```
 
-**`~/.mmrelay/store/`** - Directory containing encryption keys and device information (multiple database files).
+**`~/.mmrelay/matrix/store/`** - Directory containing encryption keys and device information (multiple database files).
 
 ## How It Works
 
@@ -157,7 +157,7 @@ MMRelay automatically detects room encryption status:
 MMRelay manages encryption devices automatically:
 
 - **Consistent Device ID**: Maintains the same device identity across restarts
-- **Key Storage**: Encryption keys are stored securely in `~/.mmrelay/store/`
+- **Key Storage**: Encryption keys are stored securely in `~/.mmrelay/matrix/store/`
 - **Automatic Key Sharing**: When the bot sees an encrypted message it can't read, it automatically requests the necessary keys from other clients in the room.
 - **Device Trust**: Uses `ignore_unverified_devices=True` for reliable operation
 - **Key Upload**: Automatically uploads encryption keys when needed
@@ -181,8 +181,8 @@ MMRelay manages encryption devices automatically:
 ### Configuration Files
 
 - **Main Config**: `~/.mmrelay/config.yaml`
-- **E2EE Credentials**: `~/.mmrelay/credentials.json`
-- **Encryption Store**: `~/.mmrelay/store/` (directory)
+- **E2EE Credentials**: `~/.mmrelay/matrix/credentials.json`
+- **Encryption Store**: `~/.mmrelay/matrix/store/` (directory)
 
 ### Credentials File Format
 
@@ -256,7 +256,7 @@ pip install -e '.[e2e]'
 Look for these log messages when MMRelay starts:
 
 ```bash
-INFO Matrix: Found credentials at ~/.mmrelay/credentials.json
+INFO Matrix: Found credentials at ~/.mmrelay/matrix/credentials.json
 INFO Matrix: Using device ID: YOUR_DEVICE_ID
 INFO Matrix: Setting up End-to-End Encryption...
 INFO Matrix: Encryption keys uploaded successfully
@@ -277,7 +277,7 @@ If messages from MMRelay show as unencrypted in encrypted rooms, check your MMRe
 
 ### Key Storage
 
-- Encryption keys are stored in `~/.mmrelay/store/`
+- Encryption keys are stored in `~/.mmrelay/matrix/store/`
 - This directory should be backed up to preserve encryption history
 - Protect this directory with appropriate file permissions
 - Consider encrypting the filesystem where this directory is stored
@@ -332,7 +332,7 @@ mmrelay auth login
 
 ```yaml
 volumes:
-  - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay:/data # Includes credentials.json and E2EE store
+  - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay:/data # Includes matrix/credentials.json and matrix/store
 ```
 
 ### Configuration

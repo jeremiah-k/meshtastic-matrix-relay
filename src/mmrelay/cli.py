@@ -785,7 +785,11 @@ def _find_credentials_json_path(
     Returns:
         str | None: Absolute path to the discovered credentials.json, or `None` if no credentials file is found.
     """
-    from mmrelay.config import get_explicit_credentials_path, relay_config
+    from mmrelay.config import (
+        InvalidCredentialsPathTypeError,
+        get_explicit_credentials_path,
+        relay_config,
+    )
     from mmrelay.paths import resolve_all_paths
 
     def _normalize_path(path: str) -> str:
@@ -800,7 +804,10 @@ def _find_credentials_json_path(
         """
         return os.path.abspath(os.path.expanduser(path))
 
-    explicit_path = get_explicit_credentials_path(config or relay_config)
+    try:
+        explicit_path = get_explicit_credentials_path(config or relay_config)
+    except InvalidCredentialsPathTypeError:
+        explicit_path = None
     if explicit_path:
         raw_explicit = explicit_path
         explicit_path = _normalize_path(explicit_path)
@@ -817,9 +824,13 @@ def _find_credentials_json_path(
 
     if config_path:
         config_dir = os.path.dirname(_normalize_path(config_path))
-        candidate = _normalize_path(os.path.join(config_dir, "credentials.json"))
-        if os.path.exists(candidate):
-            return candidate
+        config_candidates = [
+            _normalize_path(os.path.join(config_dir, "credentials.json")),
+            _normalize_path(os.path.join(config_dir, "matrix", "credentials.json")),
+        ]
+        for candidate in config_candidates:
+            if os.path.exists(candidate):
+                return candidate
 
     p = resolve_all_paths()
     home_cred = p["credentials_path"]
@@ -827,18 +838,32 @@ def _find_credentials_json_path(
         home_cred = _normalize_path(home_cred)
         if os.path.exists(home_cred):
             return home_cred
+    home_root = p.get("home")
+    if isinstance(home_root, str):
+        legacy_home_cred = _normalize_path(os.path.join(home_root, "credentials.json"))
+        if os.path.exists(legacy_home_cred):
+            print(
+                f"INFO: Found legacy credentials at: {legacy_home_cred}\n"
+                f"   Run 'mmrelay migrate --dry-run' (or 'mmrelay service migrate --dry-run') to preview migration to HOME.",
+                file=sys.stderr,
+            )
+            return legacy_home_cred
 
     for legacy_root in p["legacy_sources"]:
         if not isinstance(legacy_root, str):
             continue
-        legacy_cred = _normalize_path(os.path.join(legacy_root, "credentials.json"))
-        if os.path.exists(legacy_cred):
-            print(
-                f"INFO: Found legacy credentials at: {legacy_cred}\n"
-                f"   Run 'mmrelay migrate --dry-run' (or 'mmrelay service migrate --dry-run') to preview migration to HOME.",
-                file=sys.stderr,
-            )
-            return legacy_cred
+        legacy_candidates = [
+            _normalize_path(os.path.join(legacy_root, "credentials.json")),
+            _normalize_path(os.path.join(legacy_root, "matrix", "credentials.json")),
+        ]
+        for legacy_cred in legacy_candidates:
+            if os.path.exists(legacy_cred):
+                print(
+                    f"INFO: Found legacy credentials at: {legacy_cred}\n"
+                    f"   Run 'mmrelay migrate --dry-run' (or 'mmrelay service migrate --dry-run') to preview migration to HOME.",
+                    file=sys.stderr,
+                )
+                return legacy_cred
 
     return None
 

@@ -40,5 +40,5 @@ This checklist is required before tagging a 1.3 release.
 - Verified in live test env (`coder`) on `v13rc1-2-dev`:
   - Helm deploy using local image `mmrelay:v13test` reached ready state and runtime logs showed E2EE status `ready`.
   - Docker Compose sample flow worked with live Matrix + Meshtastic config and produced healthy relay behavior.
-  - E2EE store/key DB created under runtime home (`/data/store/...db` in container tests and `~/.mmrelay/store/...db` in local run).
+  - E2EE store/key DB created under runtime home (`/data/matrix/store/...db` in container tests and `~/.mmrelay/matrix/store/...db` in local run).
 - `scripts/ci/helm_render_validate.sh` is still unchecked in this checklist because the current run did not complete as a clean pass in this environment.

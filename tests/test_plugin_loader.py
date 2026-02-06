@@ -3242,9 +3242,6 @@ class TestDependencyInstallation(BaseGitTest):
         pl._global_scheduler_thread = None
         pl._global_scheduler_stop_event = None
 
-        # Ensure mock_schedule is truthy so the function doesn't return early
-        mock_schedule.__bool__ = lambda: True
-
         mock_event = MagicMock()
         mock_threading.Event.return_value = mock_event
         mock_thread = MagicMock()

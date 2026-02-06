@@ -104,7 +104,7 @@ For users who prefer web-based Docker management:
          - MPLCONFIGDIR=/tmp/matplotlib
        volumes:
          - /home/yourusername/.mmrelay/config.yaml:/app/config.yaml:ro,Z
-         - /home/yourusername/.mmrelay:/data:Z # credentials.json, E2EE store, logs, DB, plugins
+         - /home/yourusername/.mmrelay:/data:Z # matrix/credentials.json, matrix/store, logs, DB, plugins
    ```
 
    Replace `/home/yourusername` with your actual home directory.
@@ -168,14 +168,14 @@ Run this on your host system (not in Docker):
 mmrelay auth login
 ```
 
-This creates `~/.mmrelay/credentials.json` with:
+This creates `~/.mmrelay/matrix/credentials.json` with:
 
 - E2EE support for encrypted rooms
 - Persistent device identity (no "new device" notifications)
 - Automatic token refresh and key management
 - Matrix 2.0 / MAS (Authentication Service) compatibility
 
-The `credentials.json` file is automatically available at `/data/credentials.json` in the container.
+The `credentials.json` file is automatically available at `/data/matrix/credentials.json` in the container.
 
 ### Authentication Precedence
 
@@ -304,7 +304,7 @@ services:
 Uses the same directories as standalone installation:
 
 - **Config**: `~/.mmrelay/config.yaml` (mounted read-only to `/app/config.yaml`)
-- **Data Directory**: `~/.mmrelay/` (mounted to `/data`). This directory on your host will contain subdirectories for the database (`database/meshtastic.sqlite`), logs (`logs/`), plugins (`plugins/custom/` and `plugins/community/`), E2EE store (`store/`), and credentials (`credentials.json`).
+- **Data Directory**: `~/.mmrelay/` (mounted to `/data`). This directory on your host will contain subdirectories for the database (`database/meshtastic.sqlite`), logs (`logs/`), plugins (`plugins/custom/` and `plugins/community/`), and matrix auth/E2EE data (`matrix/credentials.json`, `matrix/store/`).
 
 **Volume Mounting Explanation:**
 The Docker compose files mount `~/.mmrelay/` to `/data` for persistent data and separately bind-mount `config.yaml` to `/app/config.yaml` (read-only). This dual-mounting pattern ensures the container can find the config file at its expected canonical path, while keeping all other data in a single directory. On SELinux systems, add `:Z` to volume options to label mounts correctly, e.g., `/app/config.yaml:ro,Z` and `/data:Z`.
@@ -511,17 +511,17 @@ docker compose logs mmrelay | grep -i e2ee
 Look for messages like:
 
 - "End-to-End Encryption (E2EE) is enabled"
-- "Using credentials from ~/.mmrelay/credentials.json"
+- "Using credentials from ~/.mmrelay/matrix/credentials.json"
 - "Found X encrypted rooms out of Y total rooms"
 
 ## Data Directory Structure
 
 The unified `MMRELAY_HOME` model is now the default. All runtime state lives under `/data` inside the container:
 
-- `credentials.json` - Matrix authentication credentials (auto-created)
+- `matrix/credentials.json` - Matrix authentication credentials (auto-created)
 - `database/meshtastic.sqlite` - SQLite database for node information
 - `logs/` - Application logs
-- `store/` - E2EE encryption store (if enabled)
+- `matrix/store/` - E2EE encryption store (if enabled)
 - `plugins/custom/` - Custom plugins
 - `plugins/community/` - Community plugins
 

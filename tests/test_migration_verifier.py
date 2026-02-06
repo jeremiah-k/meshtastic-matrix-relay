@@ -46,7 +46,7 @@ def test_verify_migration_after_move(tmp_path, monkeypatch):
     assert verification["ok"] is True
     assert verification["legacy_data_found"] is False
     assert verification["credentials_missing"] is False
-    assert (new_home / "credentials.json").exists()
+    assert (new_home / "matrix" / "credentials.json").exists()
 
 
 def test_verify_migration_missing_credentials(tmp_path, monkeypatch):
@@ -69,7 +69,8 @@ def test_verify_migration_missing_credentials(tmp_path, monkeypatch):
 def test_verify_migration_cli_exit_code_clean(tmp_path, monkeypatch):
     home = tmp_path / "home"
     home.mkdir()
-    (home / "credentials.json").write_text("{}", encoding="utf-8")
+    (home / "matrix").mkdir()
+    (home / "matrix" / "credentials.json").write_text("{}", encoding="utf-8")
 
     monkeypatch.setenv("MMRELAY_HOME", str(home))
     monkeypatch.setattr(paths_module, "_home_override", None)
@@ -110,7 +111,8 @@ def test_verify_migration_split_roots(tmp_path, monkeypatch):
 
     home = tmp_path / "home"
     home.mkdir()
-    (home / "credentials.json").write_text("{}", encoding="utf-8")
+    (home / "matrix").mkdir()
+    (home / "matrix" / "credentials.json").write_text("{}", encoding="utf-8")
 
     monkeypatch.setenv("MMRELAY_HOME", str(home))
     monkeypatch.setattr(paths_module, "_home_override", None)
@@ -129,7 +131,8 @@ def test_verify_migration_split_roots(tmp_path, monkeypatch):
 def test_doctor_migration_exit_codes(tmp_path, monkeypatch):
     home = tmp_path / "home"
     home.mkdir()
-    (home / "credentials.json").write_text("{}", encoding="utf-8")
+    (home / "matrix").mkdir()
+    (home / "matrix" / "credentials.json").write_text("{}", encoding="utf-8")
 
     legacy_root = tmp_path / "legacy"
     legacy_root.mkdir()
@@ -153,7 +156,8 @@ def test_doctor_migration_exit_codes(tmp_path, monkeypatch):
 def test_verify_migration_plugins_outside_home(tmp_path, monkeypatch):
     home = tmp_path / "home"
     home.mkdir()
-    (home / "credentials.json").write_text("{}", encoding="utf-8")
+    (home / "matrix").mkdir()
+    (home / "matrix" / "credentials.json").write_text("{}", encoding="utf-8")
 
     outside_plugins = tmp_path / "plugins"
     outside_plugins.mkdir()
@@ -161,10 +165,12 @@ def test_verify_migration_plugins_outside_home(tmp_path, monkeypatch):
     paths_payload = {
         "home": str(home),
         "legacy_sources": [],
-        "credentials_path": str(home / "credentials.json"),
+        "credentials_path": str(home / "matrix" / "credentials.json"),
         "database_dir": str(home / "database"),
         "store_dir": (
-            "N/A (Windows)" if sys.platform == "win32" else str(home / "store")
+            "N/A (Windows)"
+            if sys.platform == "win32"
+            else str(home / "matrix" / "store")
         ),
         "logs_dir": str(home / "logs"),
         "plugins_dir": str(outside_plugins),

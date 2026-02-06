@@ -617,7 +617,7 @@ class TestMigrateCredentials:
 
         assert result["success"] is True
         assert result["dry_run"] is True
-        assert not (new_home / "credentials.json").exists()
+        assert not (new_home / "matrix" / "credentials.json").exists()
 
     def test_copy_credentials(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -634,9 +634,11 @@ class TestMigrateCredentials:
 
         assert result["success"] is True
         assert result["action"] == "copy"
-        assert (new_home / "credentials.json").exists()
+        assert (new_home / "matrix" / "credentials.json").exists()
         assert creds.exists()  # Original still there
-        assert (new_home / "credentials.json").read_text() == creds.read_text()
+        assert (
+            new_home / "matrix" / "credentials.json"
+        ).read_text() == creds.read_text()
 
     def test_move_credentials(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -653,7 +655,7 @@ class TestMigrateCredentials:
 
         assert result["success"] is True
         assert result["action"] == "move"
-        assert (new_home / "credentials.json").exists()
+        assert (new_home / "matrix" / "credentials.json").exists()
         assert not creds.exists()  # Original moved
 
     def test_backup_existing_credentials(
@@ -666,14 +668,16 @@ class TestMigrateCredentials:
         creds.write_text('{"token": "new"}')
         new_home = tmp_path / "home"
         new_home.mkdir()
-        existing_creds = new_home / "credentials.json"
+        matrix_dir = new_home / "matrix"
+        matrix_dir.mkdir()
+        existing_creds = matrix_dir / "credentials.json"
         existing_creds.write_text('{"token": "old"}')
 
         result = migrate_credentials([legacy_root], new_home, move=False)
 
         assert result["success"] is True
         # Backup should be created
-        backups = list(new_home.glob("credentials.json.bak.*"))
+        backups = list((new_home / "matrix").glob("credentials.json.bak.*"))
         assert len(backups) == 1
 
     def test_force_no_backup(
@@ -686,14 +690,16 @@ class TestMigrateCredentials:
         creds.write_text('{"token": "new"}')
         new_home = tmp_path / "home"
         new_home.mkdir()
-        existing_creds = new_home / "credentials.json"
+        matrix_dir = new_home / "matrix"
+        matrix_dir.mkdir()
+        existing_creds = matrix_dir / "credentials.json"
         existing_creds.write_text('{"token": "old"}')
 
         result = migrate_credentials([legacy_root], new_home, force=True, move=False)
 
         assert result["success"] is True
         # No backup should be created
-        backups = list(new_home.glob("credentials.json.bak.*"))
+        backups = list((new_home / "matrix").glob("credentials.json.bak.*"))
         assert len(backups) == 0
 
     def test_copy_oserror(
@@ -723,7 +729,9 @@ class TestMigrateCredentials:
         creds.write_text('{"token": "new"}')
         new_home = tmp_path / "home"
         new_home.mkdir()
-        existing_creds = new_home / "credentials.json"
+        matrix_dir = new_home / "matrix"
+        matrix_dir.mkdir()
+        existing_creds = matrix_dir / "credentials.json"
         existing_creds.write_text('{"token": "old"}')
 
         def mock_copy_oserror(src, dst, *args, **kwargs):
@@ -1176,7 +1184,7 @@ class TestMigrateStore:
 
         assert result["success"] is True
         assert result["dry_run"] is True
-        assert not (new_home / "store").exists()
+        assert not (new_home / "matrix" / "store").exists()
 
     def test_copy_store_directory(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1198,8 +1206,8 @@ class TestMigrateStore:
 
         assert result["success"] is True
         assert result["action"] == "copy"
-        assert (new_home / "store" / "store.db").exists()
-        assert (new_home / "store" / "keys").exists()
+        assert (new_home / "matrix" / "store" / "store.db").exists()
+        assert (new_home / "matrix" / "store" / "keys").exists()
 
     def test_move_store_directory(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1220,7 +1228,7 @@ class TestMigrateStore:
 
         assert result["success"] is True
         assert result["action"] == "move"
-        assert (new_home / "store" / "store.db").exists()
+        assert (new_home / "matrix" / "store" / "store.db").exists()
         assert not store_dir.exists()
 
 
@@ -1456,7 +1464,9 @@ class TestIsMigrationNeeded:
 
         monkeypatch.setattr(migrate_module, "get_home_dir", lambda: home)
         monkeypatch.setattr(
-            migrate_module, "resolve_all_paths", lambda: {"legacy_sources": []}
+            migrate_module,
+            "resolve_all_paths",
+            lambda: {"home": str(home), "legacy_sources": []},
         )
 
         result = is_migration_needed()
@@ -1474,7 +1484,7 @@ class TestIsMigrationNeeded:
         monkeypatch.setattr(
             migrate_module,
             "resolve_all_paths",
-            lambda: {"legacy_sources": [str(tmp_path / "legacy")]},
+            lambda: {"home": str(home), "legacy_sources": [str(tmp_path / "legacy")]},
         )
 
         result = is_migration_needed()
@@ -1490,7 +1500,9 @@ class TestIsMigrationNeeded:
 
         monkeypatch.setattr(migrate_module, "get_home_dir", lambda: home)
         monkeypatch.setattr(
-            migrate_module, "resolve_all_paths", lambda: {"legacy_sources": []}
+            migrate_module,
+            "resolve_all_paths",
+            lambda: {"home": str(home), "legacy_sources": []},
         )
 
         result = is_migration_needed()
@@ -1529,7 +1541,8 @@ class TestPerformMigration:
         """Test returns success when no legacy installation."""
         new_home = tmp_path / "home"
         new_home.mkdir()
-        (new_home / "credentials.json").write_text("{}")
+        (new_home / "matrix").mkdir()
+        (new_home / "matrix" / "credentials.json").write_text("{}")
 
         monkeypatch.setenv("MMRELAY_HOME", str(new_home))
         monkeypatch.setattr(
@@ -1619,9 +1632,11 @@ class TestRollbackMigration:
         """Test restores credentials from backup."""
         new_home = tmp_path / "home"
         new_home.mkdir()
-        creds = new_home / "credentials.json"
+        matrix_dir = new_home / "matrix"
+        matrix_dir.mkdir()
+        creds = matrix_dir / "credentials.json"
         creds.write_text('{"token": "new"}')
-        backup = new_home / "credentials.json.bak.20230101_120000"
+        backup = matrix_dir / "credentials.json.bak.20230101_120000"
         backup.write_text('{"token": "backup"}')
 
         monkeypatch.setattr(migrate_module, "get_home_dir", lambda: new_home)
@@ -1716,11 +1731,13 @@ class TestRollbackMigration:
 
         new_home = tmp_path / "home"
         new_home.mkdir()
-        store_dir = new_home / "store"
+        matrix_dir = new_home / "matrix"
+        matrix_dir.mkdir()
+        store_dir = matrix_dir / "store"
         store_dir.mkdir()
         (store_dir / "current.db").write_text("current")
 
-        backup_dir = new_home / "store.bak.20230101_120000"
+        backup_dir = matrix_dir / "store.bak.20230101_120000"
         backup_dir.mkdir()
         (backup_dir / "restored.db").write_text("restored")
 
@@ -1766,12 +1783,14 @@ class TestRollbackMigration:
         """Test handles multiple backup files and restores the most recent one."""
         new_home = tmp_path / "home"
         new_home.mkdir()
-        creds = new_home / "credentials.json"
+        matrix_dir = new_home / "matrix"
+        matrix_dir.mkdir()
+        creds = matrix_dir / "credentials.json"
         creds.write_text('{"token": "new"}')
-        (new_home / "credentials.json.bak.20230101_120000").write_text(
+        (matrix_dir / "credentials.json.bak.20230101_120000").write_text(
             '{"token": "old1"}'
         )
-        (new_home / "credentials.json.bak.20230102_120000").write_text(
+        (matrix_dir / "credentials.json.bak.20230102_120000").write_text(
             '{"token": "old2"}'
         )
 
@@ -1796,7 +1815,9 @@ class TestRollbackMigration:
         new_home.mkdir()
         state_file = new_home / "migration_completed.flag"
         state_file.write_text("1.3")
-        backup = new_home / "credentials.json.bak.20230101_120000"
+        matrix_dir = new_home / "matrix"
+        matrix_dir.mkdir()
+        backup = matrix_dir / "credentials.json.bak.20230101_120000"
         backup.write_text('{"token": "backup"}')
 
         monkeypatch.setattr(migrate_module, "get_home_dir", lambda: new_home)
@@ -1851,7 +1872,8 @@ class TestAutomaticRollback:
             lambda: {"home": str(new_home), "legacy_sources": [str(legacy_root)]},
         )
 
-        creds_backup = new_home / "credentials.json.bak.20230101_120000"
+        matrix_dir = new_home / "matrix"
+        creds_backup = matrix_dir / "credentials.json.bak.20230101_120000"
         creds_backup.parent.mkdir(parents=True, exist_ok=True)
         creds_backup.write_text('{"token": "backup"}')
 
@@ -1897,7 +1919,8 @@ class TestAutomaticRollback:
             lambda: {"home": str(new_home), "legacy_sources": [str(legacy_root)]},
         )
 
-        backup = new_home / "credentials.json.bak.20230101_120000"
+        matrix_dir = new_home / "matrix"
+        backup = matrix_dir / "credentials.json.bak.20230101_120000"
         backup.parent.mkdir(parents=True, exist_ok=True)
         backup.write_text('{"token": "backup"}')
 
@@ -1941,9 +1964,11 @@ class TestAutomaticRollback:
         new_home = tmp_path / "home"
         new_home.mkdir()
 
-        creds = new_home / "credentials.json"
+        matrix_dir = new_home / "matrix"
+        matrix_dir.mkdir()
+        creds = matrix_dir / "credentials.json"
         creds.write_text('{"token": "new"}')
-        creds_backup = new_home / "credentials.json.bak.20230101_120000"
+        creds_backup = matrix_dir / "credentials.json.bak.20230101_120000"
         creds_backup.write_text('{"token": "backup"}')
 
         monkeypatch.setattr(migrate_module, "get_home_dir", lambda: new_home)

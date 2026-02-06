@@ -74,7 +74,7 @@ mmrelay auth login
 This interactive command will:
 
 - Prompt for your Matrix homeserver, username, and password
-- Create secure credentials and save to `~/.mmrelay/credentials.json`
+- Create secure credentials and save to `~/.mmrelay/matrix/credentials.json`
 - Set up encryption keys for secure communication (Linux/macOS)
 - Works for regular Matrix communication on all platforms
 - **Use modern OIDC authentication** compatible with Matrix 2.0 and MAS (Matrix Authentication Service)

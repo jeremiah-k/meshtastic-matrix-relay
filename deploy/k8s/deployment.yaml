@@ -148,7 +148,7 @@ spec:
             # Optional: Mount credentials.json from Secret (recommended)
             # Uncomment following volumeMount and corresponding volume
             # - name: credentials
-            #   mountPath: /data/credentials.json
+            #   mountPath: /data/matrix/credentials.json
             #   subPath: credentials.json
             #   readOnly: true
             - name: data

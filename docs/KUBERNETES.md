@@ -124,7 +124,7 @@ The deployment mounts a Secret named `mmrelay-config` with one key:
 Authentication secrets are provided separately using environment variables
 via the optional `mmrelay-matrix-auth` Secret (see example above). On first
 startup, MMRelay will log in with the provided credentials and create
-`/data/credentials.json` on the persistent volume.
+`/data/matrix/credentials.json` on the persistent volume.
 
 This keeps sensitive data out of the manifests so you can publish the manifests without exposing secrets. If you use an external secrets manager (External Secrets, Sealed Secrets, Vault, etc.), create the same Secret name/keys.
 
@@ -181,7 +181,7 @@ mmrelay auth login
 
 # Option 2: Copy existing credentials from another deployment
 # Ensure the Matrix homeserver and bot user match your config.yaml
-cp ~/.mmrelay/credentials.json ./credentials.json
+cp ~/.mmrelay/matrix/credentials.json ./credentials.json
 ```
 
 Create the Secret:
@@ -243,7 +243,7 @@ The default deployment includes an optional `mmrelay-matrix-auth` Secret for boo
 
 1. Reads Matrix credentials from environment variables
 2. Logs into Matrix
-3. Creates `/data/credentials.json` on the PVC
+3. Creates `/data/matrix/credentials.json` on the PVC
 4. On subsequent restarts, uses the existing credentials.json
 
 This is useful for:
@@ -257,10 +257,10 @@ Note: Once credentials.json exists, the environment variables are no longer need
 
 The deployment uses `/data` as the base directory for all persistent data:
 
-- **Credentials**: `/data/credentials.json` (auto-created on first login)
+- **Credentials**: `/data/matrix/credentials.json` (auto-created on first login)
 - **Logs**: `/data/logs/`
 - **Database**: `/data/database/meshtastic.sqlite`
-- **E2EE store**: `/data/store/` (if encryption is enabled)
+- **E2EE store**: `/data/matrix/store/` (if encryption is enabled)
 - **Plugins (custom)**: `/data/plugins/custom/`
 - **Plugins (community)**: `/data/plugins/community/`
 
@@ -276,11 +276,12 @@ All MMRelay runtime state lives under `/data` inside the container:
 
 ```text
 /data/
-├── credentials.json      # Matrix authentication credentials
+├── matrix/
+│   ├── credentials.json   # Matrix authentication credentials
+│   └── store/             # E2EE encryption keys (if enabled)
 ├── database/
 │   └── meshtastic.sqlite  # SQLite database (nodes, messages, state)
 ├── logs/                  # Application logs
-├── store/                 # E2EE encryption keys (if enabled)
 └── plugins/               # Custom and community plugins
     ├── custom/
     └── community/

@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Literal, Optional, TypedDict
 from mmrelay.cli_utils import get_command
 from mmrelay.constants.app import (
     CREDENTIALS_FILENAME,
+    MATRIX_DIRNAME,
     PACKAGE_NAME_E2E,
     PYTHON_OLM_PACKAGE,
     WINDOWS_PLATFORM,
@@ -110,13 +111,21 @@ def get_e2ee_status(
         primary_credentials_path = paths_info["credentials_path"]
         status["credentials_available"] = os.path.exists(primary_credentials_path)
 
+        # Compatibility fallback for pre-1.3 same-home credentials location.
+        if not status["credentials_available"]:
+            home_root = paths_info.get("home")
+            if isinstance(home_root, str):
+                legacy_same_home_path = os.path.join(home_root, CREDENTIALS_FILENAME)
+                status["credentials_available"] = os.path.exists(legacy_same_home_path)
+
         # If not found in HOME, search legacy locations (during deprecation window)
         if not status["credentials_available"] and is_deprecation_window_active():
             for legacy_root in paths_info.get("legacy_sources", []):
-                legacy_credentials_path = os.path.join(
-                    legacy_root, CREDENTIALS_FILENAME
+                legacy_candidates = (
+                    os.path.join(legacy_root, CREDENTIALS_FILENAME),
+                    os.path.join(legacy_root, MATRIX_DIRNAME, CREDENTIALS_FILENAME),
                 )
-                if os.path.exists(legacy_credentials_path):
+                if any(os.path.exists(path) for path in legacy_candidates):
                     status["credentials_available"] = True
                     break
 
@@ -156,9 +165,11 @@ def _check_credentials_available(config_path: str) -> bool:
     """
     # Check config directory first
     config_dir = os.path.dirname(config_path)
-    config_credentials_path = os.path.join(config_dir, CREDENTIALS_FILENAME)
-
-    if os.path.exists(config_credentials_path):
+    config_candidates = (
+        os.path.join(config_dir, CREDENTIALS_FILENAME),
+        os.path.join(config_dir, MATRIX_DIRNAME, CREDENTIALS_FILENAME),
+    )
+    if any(os.path.exists(path) for path in config_candidates):
         return True
 
     # Check HOME location (primary)
@@ -168,12 +179,22 @@ def _check_credentials_available(config_path: str) -> bool:
     if os.path.exists(primary_credentials_path):
         return True
 
+    # Compatibility fallback for pre-1.3 same-home credentials location.
+    home_root = paths_info.get("home")
+    if isinstance(home_root, str):
+        legacy_same_home_path = os.path.join(home_root, CREDENTIALS_FILENAME)
+        if os.path.exists(legacy_same_home_path):
+            return True
+
     # Check legacy sources during deprecation window
 
     if is_deprecation_window_active():
         for legacy_root in paths_info.get("legacy_sources", []):
-            legacy_credentials_path = os.path.join(legacy_root, CREDENTIALS_FILENAME)
-            if os.path.exists(legacy_credentials_path):
+            legacy_candidates = (
+                os.path.join(legacy_root, CREDENTIALS_FILENAME),
+                os.path.join(legacy_root, MATRIX_DIRNAME, CREDENTIALS_FILENAME),
+            )
+            if any(os.path.exists(path) for path in legacy_candidates):
                 return True
 
     # No credentials found

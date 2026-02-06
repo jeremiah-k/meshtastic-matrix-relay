@@ -14,22 +14,22 @@ Migration rules:
 Migration paths (v1.2.x → v1.3):
 
 Legacy Layout (v1.2.9 and earlier):
-  ~/.mmrelay/credentials.json  →  $MMRELAY_HOME/credentials.json
+  ~/.mmrelay/credentials.json  →  $MMRELAY_HOME/matrix/credentials.json
   ~/.mmrelay/meshtastic.sqlite →  $MMRELAY_HOME/database/meshtastic.sqlite
   ~/.mmrelay/meshtastic.sqlite-wal →  $MMRELAY_HOME/database/meshtastic.sqlite-wal
   ~/.mmrelay/meshtastic.sqlite-shm →  $MMRELAY_HOME/database/meshtastic.sqlite-shm
   ~/.mmrelay/logs/              →  $MMRELAY_HOME/logs/
-  ~/.mmrelay/store/              →  $MMRELAY_HOME/store/
+  ~/.mmrelay/store/              →  $MMRELAY_HOME/matrix/store/
   ~/.mmrelay/plugins/custom/    →  $MMRELAY_HOME/plugins/custom/
   ~/.mmrelay/plugins/community/ →  $MMRELAY_HOME/plugins/community/
 
 Partial New Layout (v1.2.10-1.2.11):
   ~/.mmrelay/config.yaml        →  $MMRELAY_HOME/config.yaml (or keep)
-  ~/.mmrelay/credentials.json    →  $MMRELAY_HOME/credentials.json
+  ~/.mmrelay/credentials.json    →  $MMRELAY_HOME/matrix/credentials.json
   ~/.mmrelay/meshtastic.sqlite    →  $MMRELAY_HOME/database/meshtastic.sqlite
   ~/.mmrelay/data/meshtastic.sqlite →  $MMRELAY_HOME/database/meshtastic.sqlite (merge)
   ~/.mmrelay/logs/              →  $MMRELAY_HOME/logs/
-  ~/.mmrelay/store/              →  $MMRELAY_HOME/store/
+  ~/.mmrelay/store/              →  $MMRELAY_HOME/matrix/store/
   ~/.mmrelay/plugins/custom/    →  $MMRELAY_HOME/plugins/custom/
   ~/.mmrelay/plugins/community/ →  $MMRELAY_HOME/plugins/community/
 
@@ -53,6 +53,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
+from mmrelay.constants.app import CREDENTIALS_FILENAME, MATRIX_DIRNAME, STORE_DIRNAME
 from mmrelay.log_utils import get_logger
 from mmrelay.paths import get_home_dir, resolve_all_paths
 
@@ -330,6 +331,22 @@ def verify_migration() -> dict[str, Any]:
         if findings:
             legacy_findings.append({"root": str(legacy_path), "items": findings})
 
+    # Also detect legacy artifacts still present in HOME itself (v1.2 layout).
+    same_home_legacy_items: list[dict[str, str]] = []
+    legacy_home_credentials = home / CREDENTIALS_FILENAME
+    if legacy_home_credentials.exists() and legacy_home_credentials != credentials_path:
+        same_home_legacy_items.append(
+            {"type": "credentials", "path": str(legacy_home_credentials)}
+        )
+    if store_dir is not None:
+        legacy_home_store = home / STORE_DIRNAME
+        if legacy_home_store.exists() and legacy_home_store != store_dir:
+            same_home_legacy_items.append(
+                {"type": "e2ee_store", "path": str(legacy_home_store)}
+            )
+    if same_home_legacy_items:
+        legacy_findings.append({"root": str(home), "items": same_home_legacy_items})
+
     credentials_missing = not credentials_path.exists()
     legacy_data_found = len(legacy_findings) > 0
     home_has_data = any(item["exists"] for item in artifact_statuses)
@@ -349,7 +366,7 @@ def verify_migration() -> dict[str, Any]:
     if credentials_missing:
         errors.append("Missing credentials.json in MMRELAY_HOME")
     if legacy_data_found:
-        errors.append("Legacy data exists outside MMRELAY_HOME")
+        errors.append("Legacy data exists and migration is still required")
     if split_roots:
         errors.append("Split roots detected (data exists in HOME and legacy locations)")
     for artifact in artifact_statuses:
@@ -646,11 +663,11 @@ def migrate_credentials(
     move: bool = False,
 ) -> dict[str, Any]:
     """
-    Migrate the first discovered legacy credentials.json into the new home directory.
+    Migrate the first discovered legacy credentials.json into the new HOME matrix directory.
 
     Parameters:
-        legacy_roots (list[Path]): Directories to scan, searched in order, for credentials.json.
-        new_home (Path): Destination home directory where credentials.json will be placed.
+        legacy_roots (list[Path]): Directories to scan, searched in order, for legacy credentials files.
+        new_home (Path): Destination home directory where matrix/credentials.json will be placed.
         dry_run (bool): If True, report intended action without modifying files.
         force (bool): If True, overwrite existing destination without creating a backup.
         move (bool): If True, move the file instead of copying it.
@@ -660,10 +677,17 @@ def migrate_credentials(
         `old_path`, `new_path`, `action` ("move" or "copy"), `dry_run`, and an `error`
         message on failure.
     """
+    new_creds = new_home / MATRIX_DIRNAME / CREDENTIALS_FILENAME
     old_creds: Path | None = None
 
-    for legacy_root in legacy_roots:
-        candidate = legacy_root / "credentials.json"
+    roots_to_scan = list(legacy_roots)
+    if new_home not in roots_to_scan:
+        roots_to_scan.append(new_home)
+
+    for legacy_root in roots_to_scan:
+        candidate = legacy_root / CREDENTIALS_FILENAME
+        if candidate == new_creds:
+            continue
         if candidate.exists():
             old_creds = candidate
             logger.info("Found credentials.json in legacy root: %s", old_creds)
@@ -674,8 +698,6 @@ def migrate_credentials(
             "success": True,
             "message": "No credentials file found in legacy locations",
         }
-
-    new_creds = new_home / "credentials.json"
 
     if dry_run:
         logger.info(
@@ -707,6 +729,7 @@ def migrate_credentials(
             }
 
     try:
+        new_creds.parent.mkdir(parents=True, exist_ok=True)
         if move:
             if new_creds.exists():
                 if new_creds.is_dir():
@@ -1159,13 +1182,13 @@ def migrate_store(
     move: bool = False,
 ) -> dict[str, Any]:
     """
-    Migrate the E2EE store directory from legacy roots into the new home's `store` directory.
+    Migrate the E2EE store directory from legacy roots into the new home's `matrix/store` directory.
 
     If the current platform is Windows, the function skips migration and returns success because E2EE is not supported. It searches legacy_roots for the first existing `store` directory and either copies or moves it to `new_home/store`. If a destination exists and `force` is False, a timestamped backup is created before overwriting. When `dry_run` is True, no filesystem changes are made and the function reports the intended action.
 
     Parameters:
         legacy_roots (list[Path]): Directories to scan for a legacy `store` directory.
-        new_home (Path): Target home directory where `store` will be placed.
+        new_home (Path): Target home directory where `matrix/store` will be placed.
         dry_run (bool): If True, only report intended actions without modifying files.
         force (bool): If True, overwrite existing destination without creating a backup.
         move (bool): If True, move the directory instead of copying it.
@@ -1186,10 +1209,17 @@ def migrate_store(
             "message": "E2EE not supported on Windows, skipping store migration",
         }
 
+    new_store_dir = new_home / MATRIX_DIRNAME / STORE_DIRNAME
     old_store_dir: Path | None = None
 
-    for legacy_root in legacy_roots:
-        candidate = legacy_root / "store"
+    roots_to_scan = list(legacy_roots)
+    if new_home not in roots_to_scan:
+        roots_to_scan.append(new_home)
+
+    for legacy_root in roots_to_scan:
+        candidate = legacy_root / STORE_DIRNAME
+        if candidate == new_store_dir:
+            continue
         if candidate.exists():
             old_store_dir = candidate
             logger.info("Found store directory in legacy root: %s", old_store_dir)
@@ -1200,8 +1230,6 @@ def migrate_store(
             "success": True,
             "message": "No E2EE store directory found in legacy locations",
         }
-
-    new_store_dir = new_home / "store"
 
     if dry_run:
         logger.info(
@@ -1215,7 +1243,7 @@ def migrate_store(
             "dry_run": True,
         }
 
-    new_home.mkdir(parents=True, exist_ok=True)
+    new_store_dir.parent.mkdir(parents=True, exist_ok=True)
 
     backup_error: str | None = None
     if new_store_dir.exists() and not force:
@@ -1681,7 +1709,24 @@ def is_migration_needed() -> bool:
     if _is_migration_completed():
         return False
     paths_info = resolve_all_paths()
-    return len(paths_info["legacy_sources"]) > 0
+    if len(paths_info["legacy_sources"]) > 0:
+        return True
+
+    home = Path(paths_info["home"])
+    legacy_same_home_credentials = home / CREDENTIALS_FILENAME
+    if legacy_same_home_credentials.exists():
+        return True
+
+    store_dir_value = paths_info.get("store_dir")
+    if isinstance(store_dir_value, str) and not store_dir_value.startswith("N/A"):
+        legacy_same_home_store = home / STORE_DIRNAME
+        if legacy_same_home_store.exists() and (
+            legacy_same_home_store.absolute()
+            != Path(store_dir_value).expanduser().absolute()
+        ):
+            return True
+
+    return False
 
 
 def perform_migration(
@@ -2078,7 +2123,9 @@ def rollback_migration(completed_steps: list[str] | None = None) -> dict[str, An
             if sys.platform == "win32":
                 logger.info("Skipping store rollback on Windows")
                 continue
-            restore_dir("store.bak.*", new_home / "store", "store")
+            restore_dir(
+                "store.bak.*", new_home / MATRIX_DIRNAME / STORE_DIRNAME, "store"
+            )
         elif step == "logs":
             restore_dir("logs.bak.*", new_home / "logs", "logs")
         elif step == "database":
@@ -2093,7 +2140,10 @@ def rollback_migration(completed_steps: list[str] | None = None) -> dict[str, An
         elif step == "config":
             restore_file("config.yaml.bak.*", new_home / "config.yaml")
         elif step == "credentials":
-            restore_file("credentials.json.bak.*", new_home / "credentials.json")
+            restore_file(
+                "credentials.json.bak.*",
+                new_home / MATRIX_DIRNAME / CREDENTIALS_FILENAME,
+            )
         elif step == "gpxtracker":
             # No-op by design: the 'plugins' rollback step (which runs after this step in
             # reverse order) restores the entire plugins directory, effectively removing
