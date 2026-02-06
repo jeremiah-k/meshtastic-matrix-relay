@@ -2104,36 +2104,75 @@ def handle_migrate_command(args: argparse.Namespace) -> int:
     """
     try:
         from mmrelay.migrate import perform_migration
+        from mmrelay.paths import resolve_all_paths
 
         dry_run = getattr(args, "dry_run", False)
         force = getattr(args, "force", False)
         move = getattr(args, "move", False)
+        paths_info = resolve_all_paths()
+        legacy_sources = paths_info.get("legacy_sources", [])
+
+        print("MMRelay Migration")
+        print("=================")
+        print(f"Mode: {'DRY RUN' if dry_run else 'APPLY'}")
+        print(f"Action: {'MOVE' if move else 'COPY'}")
+        print(f"Force overwrite: {'yes' if force else 'no'}")
+        print(f"MMRELAY_HOME: {paths_info.get('home')}")
+        if legacy_sources:
+            print("Legacy sources detected:")
+            for source in legacy_sources:
+                print(f"  - {source}")
+        else:
+            print("Legacy sources detected: none")
+        print()
 
         result = perform_migration(dry_run=dry_run, force=force, move=move)
 
         if result.get("ok", result.get("success")):
-            print("✅ Migration completed successfully")
+            print(
+                "✅ Dry-run completed successfully"
+                if dry_run
+                else "✅ Migration completed successfully"
+            )
+            migrated_steps = 0
             for migration in result.get("migrations", []):
                 mtype = migration.get("type", "unknown")
-                status_icon = (
-                    "✅"
-                    if migration.get("result", {}).get(
-                        "ok", migration.get("result", {}).get("success")
-                    )
-                    else "❌"
+                mresult = migration.get("result", {})
+                ok = mresult.get("ok", mresult.get("success"))
+                if ok:
+                    migrated_steps += 1
+                status_icon = "✅" if ok else "❌"
+                message = (
+                    mresult.get("message")
+                    or mresult.get("error")
+                    or "No additional details"
                 )
-                print(
-                    f"  {status_icon} {mtype}: {migration.get('result', {}).get('message', 'No details')}"
-                )
+                print(f"  {status_icon} {mtype}: {message}")
 
-                if migration.get("result", {}).get("dry_run"):
-                    print("   [DRY RUN] No changes were made")
-                if migration.get("result", {}).get("action") == "move":
-                    print("   Action: MOVE")
-                elif migration.get("result", {}).get("action") == "copy":
-                    print("   Action: COPY")
-                elif migration.get("result", {}).get("action") == "skip":
-                    print("   Action: SKIP")
+                old_path = mresult.get("old_path")
+                if old_path:
+                    print(f"     from: {old_path}")
+                new_path = mresult.get("new_path")
+                if new_path:
+                    print(f"       to: {new_path}")
+                action = mresult.get("action")
+                if action:
+                    print(f"   action: {str(action).upper()}")
+                migrated_count = mresult.get("migrated_count")
+                if isinstance(migrated_count, int):
+                    print(f"    files: {migrated_count}")
+                migrated_types = mresult.get("migrated_types")
+                if isinstance(migrated_types, list) and migrated_types:
+                    print(f"    types: {', '.join(str(t) for t in migrated_types)}")
+                if mresult.get("dry_run"):
+                    print("     note: no changes were made")
+
+            print(
+                f"\nSummary: {migrated_steps}/{len(result.get('migrations', []))} steps succeeded"
+            )
+            if dry_run:
+                print("Next step: run `mmrelay migrate` to apply changes.")
+            print("Verification: run `mmrelay verify-migration`.")
             return 0
         else:
             print(f"❌ Migration failed: {result.get('error', 'Unknown error')}")

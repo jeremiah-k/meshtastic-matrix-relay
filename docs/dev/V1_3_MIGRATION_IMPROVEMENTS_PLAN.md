@@ -329,6 +329,9 @@ This document outlines systematic improvements to the MMRelay v1.3 migration sys
 
 ## Success Criteria
 
+Historical note: this planning checklist has been validated through implementation and
+release verification work tracked in `docs/RELEASE_1.3.md`.
+
 - [ ] All 3 high-priority findings (#1, #2, #3) are implemented
 - [ ] All new functions have comprehensive test coverage
 - [ ] No warnings in test suite execution

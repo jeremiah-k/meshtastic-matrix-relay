@@ -47,6 +47,7 @@ logger = get_logger(name="Plugins")
 
 sorted_active_plugins: list[Any] = []
 plugins_loaded = False
+_last_logged_plugin_roots: tuple[str | None, tuple[str, ...]] | None = None
 
 
 class ValidationResult(NamedTuple):
@@ -160,11 +161,18 @@ def _get_plugin_root_dirs() -> list[str]:
 
     primary_root = roots[0] if roots else None
     legacy_roots = roots[1:] if len(roots) > 1 else []
-    logger.info(
-        "Plugin roots: primary=%s, legacy=%s",
-        str(primary_root) if primary_root else "none",
-        legacy_roots,
+    global _last_logged_plugin_roots
+    root_snapshot = (
+        str(primary_root) if primary_root else None,
+        tuple(legacy_roots),
     )
+    if _last_logged_plugin_roots != root_snapshot:
+        logger.info(
+            "Plugin roots: primary=%s, legacy=%s",
+            str(primary_root) if primary_root else "none",
+            legacy_roots if legacy_roots else [],
+        )
+        _last_logged_plugin_roots = root_snapshot
 
     return roots
 

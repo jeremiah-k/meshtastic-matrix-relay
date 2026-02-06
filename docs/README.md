@@ -49,12 +49,12 @@ docker compose up -d
 docker compose logs -f
 
 # 6. Verify configuration
-docker compose exec mmrelay python -m mmrelay doctor
+docker compose exec mmrelay mmrelay doctor
 ```
 
 **Data Location:** All persistent data (credentials, database, logs, plugins, E2EE store) lives in the `./mmrelay-data` directory that Docker Compose creates automatically.
 
-**Migration:** If upgrading from an old layout, run `docker compose exec mmrelay python -m mmrelay migrate --dry-run` first, then `docker compose exec mmrelay python -m mmrelay migrate` to migrate.
+**Migration:** If upgrading from an old layout, run `docker compose exec mmrelay mmrelay migrate --dry-run` first, then `docker compose exec mmrelay mmrelay migrate` to migrate.
 
 For full Docker documentation, see [DOCKER.md](DOCKER.md).
 

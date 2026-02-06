@@ -282,7 +282,7 @@ def get_explicit_credentials_path(config: Mapping[str, Any] | None) -> str | Non
         credentials_path = matrix_section.get("credentials_path")
         if credentials_path is not None and not isinstance(credentials_path, str):
             raise InvalidCredentialsPathTypeError()
-        return credentials_path
+        return credentials_path or None
     return None
 
 
@@ -383,8 +383,6 @@ def get_e2ee_store_dir() -> str:
             store_dir = os.path.join(base, "store")
         logger.warning("E2EE store not officially supported on this platform: %s", e)
         return store_dir
-    except RuntimeError:
-        raise
     except (OSError, PermissionError) as e:
         # Fallback for permission errors - log and return a home-based path
         base = str(get_home_dir())

@@ -304,7 +304,7 @@ services:
 Uses the same directories as standalone installation:
 
 - **Config**: `~/.mmrelay/config.yaml` (mounted read-only to `/app/config.yaml`)
-- **Data Directory**: `~/.mmrelay/` (mounted to `/data`). This directory on your host will contain subdirectories for the database (`meshtastic.sqlite`), logs (`logs/`), plugins (`plugins/custom/` and `plugins/community/`), E2EE store (`store/`), and credentials (`credentials.json`).
+- **Data Directory**: `~/.mmrelay/` (mounted to `/data`). This directory on your host will contain subdirectories for the database (`database/meshtastic.sqlite`), logs (`logs/`), plugins (`plugins/custom/` and `plugins/community/`), E2EE store (`store/`), and credentials (`credentials.json`).
 
 **Volume Mounting Explanation:**
 The Docker compose files mount `~/.mmrelay/` to `/data` for persistent data and separately bind-mount `config.yaml` to `/app/config.yaml` (read-only). This dual-mounting pattern ensures the container can find the config file at its expected canonical path, while keeping all other data in a single directory. On SELinux systems, add `:Z` to volume options to label mounts correctly, e.g., `/app/config.yaml:ro,Z` and `/data:Z`.

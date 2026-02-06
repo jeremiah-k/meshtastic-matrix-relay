@@ -72,6 +72,8 @@ from mmrelay.cli_utils import (
     msg_retry_auth_login,
 )
 from mmrelay.config import (
+    InvalidCredentialsPathTypeError,
+    async_load_credentials,
     get_e2ee_store_dir,
     get_explicit_credentials_path,
     get_meshtastic_config_value,
@@ -120,16 +122,6 @@ from mmrelay.meshtastic_utils import connect_meshtastic, send_text_reply
 # Import meshtastic protobuf for port numbers when needed
 from mmrelay.message_queue import get_message_queue, queue_message
 from mmrelay.paths import get_credentials_path
-
-# Avoid mypy attr-defined complaints when config symbols move across refactors.
-_config_any = cast(Any, config_module)
-async_load_credentials = cast(
-    Callable[[], Awaitable[dict[str, Any] | None]],
-    _config_any.async_load_credentials,
-)
-InvalidCredentialsPathTypeError = cast(
-    type[Exception], _config_any.InvalidCredentialsPathTypeError
-)
 
 # Import nio exception types with error handling for test environments.
 # matrix-nio is not marked py.typed in our env; keep import-untyped for mypy --strict.
@@ -2323,10 +2315,11 @@ async def connect_matrix(
             bot_user_id,
             e2ee_enabled,
         )
-        return matrix_client
     except BaseException:
         await _close_matrix_client_after_failure(matrix_client, "connect_matrix setup")
         raise
+    else:
+        return matrix_client
 
 
 async def login_matrix_bot(
@@ -2349,8 +2342,6 @@ async def login_matrix_bot(
     Returns:
         bool: `True` if login succeeded and credentials were saved, `False` otherwise.
     """
-    import json  # Local import to avoid Pyright false positive in nested scope
-
     client = None  # Initialize to avoid unbound variable errors
     try:
         # Optionally enable verbose nio/aiohttp debug logging
@@ -2511,17 +2502,23 @@ async def login_matrix_bot(
         existing_device_id = None
         credentials_path = None
         try:
-            explicit_path = get_explicit_credentials_path(config_for_paths)
-            if explicit_path:
-                credentials_path = os.path.expanduser(explicit_path)
+            credentials_path = await asyncio.to_thread(
+                _resolve_credentials_save_path, config_for_paths
+            )
+
+            if credentials_path:
+                path_exists = await asyncio.to_thread(
+                    lambda path: os.path.exists(path), credentials_path
+                )
             else:
-                from mmrelay.paths import resolve_all_paths
-
-                credentials_path = resolve_all_paths()["credentials_path"]
-
-            if credentials_path and await asyncio.to_thread(
-                os.path.exists, credentials_path
-            ):
+                path_exists = False
+            if path_exists:
+                cred_path = credentials_path
+                if cred_path is None:
+                    logger.debug(
+                        "Credentials path unexpectedly None after exists check"
+                    )
+                    raise TypeError("credentials path missing")
 
                 def _load_existing_creds(path: str) -> dict[str, Any]:
                     """
@@ -2537,11 +2534,11 @@ async def login_matrix_bot(
                         return cast(dict[str, Any], json.load(f))
 
                 existing_creds = await asyncio.to_thread(
-                    _load_existing_creds, credentials_path
+                    _load_existing_creds, cred_path
                 )
                 if (
                     "device_id" in existing_creds
-                    and existing_creds["user_id"] == username
+                    and existing_creds.get("user_id") == username
                 ):
                     existing_device_id = existing_creds["device_id"]
                     logger.info(f"Reusing existing device_id: {existing_device_id}")
@@ -2632,8 +2629,6 @@ async def login_matrix_bot(
                 logger.debug(f"  data length: {len(data) if data else 0}")
 
                 # Parse the JSON to see the structure (without logging the password)
-                import json
-
                 parsed_data = json.loads(data)
                 safe_data = {
                     k: (v if k != "password" else f"[{len(v)} chars]")
@@ -2774,13 +2769,13 @@ async def login_matrix_bot(
             }
 
             # save_credentials() now uses unified HOME location
-            explicit_path = get_explicit_credentials_path(config_for_paths)
-            if explicit_path:
-                credentials_path = os.path.expanduser(explicit_path)
-            else:
-                from mmrelay.paths import resolve_all_paths
-
-                credentials_path = resolve_all_paths()["credentials_path"]
+            credentials_path = await asyncio.to_thread(
+                _resolve_credentials_save_path, config_for_paths
+            )
+            if not credentials_path:
+                logger.error("Could not resolve credentials save path")
+                await client.close()
+                return False
             await asyncio.to_thread(
                 save_credentials, credentials, credentials_path=credentials_path
             )
