@@ -1480,28 +1480,28 @@ class TestConfigUncoveredLines(unittest.TestCase):
     @patch("mmrelay.config.os.makedirs", side_effect=OSError("Permission denied"))
     def test_save_credentials_windows_error_guidance(self, _mock_mkdir, _mock_base):
         """Test save_credentials Windows error guidance (lines 701-704)."""
-        log_error = []
+        log_warning = []
 
-        def mock_error(*args, **_kwargs):
+        def mock_warning(*args, **_kwargs):
             """
-            Record the first positional argument as an error message in the shared `log_error` list.
+            Record the first positional argument as a warning message in the shared `log_warning` list.
 
             Parameters:
-                *args: Positional arguments; the first element is treated as the error message to record.
+                *args: Positional arguments; the first element is treated as the warning message to record.
                 **_kwargs: Ignored.
             """
-            log_error.append(args[0])
+            log_warning.append(args[0])
 
         with (
             patch("sys.platform", "win32"),
-            patch.object(mmrelay.config.logger, "error", side_effect=mock_error),
+            patch.object(mmrelay.config.logger, "warning", side_effect=mock_warning),
         ):
             with self.assertRaises(OSError):
                 save_credentials({"access_token": "test"})
             self.assertTrue(
                 any(
                     "On Windows, ensure the application has write permissions" in msg
-                    for msg in log_error
+                    for msg in log_warning
                 )
             )
 
