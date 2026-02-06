@@ -1197,10 +1197,10 @@ async def async_store_message_map(
 
 async def async_prune_message_map(msgs_to_keep: int) -> None:
     """
-    Prune the message_map table to keep only the most recent entries.
-
+    Prune message_map to retain only the most recent msgs_to_keep rows.
+    
     Parameters:
-        msgs_to_keep (int): Number of most recent message_map rows to retain; older rows will be deleted.
+        msgs_to_keep (int): Number of most recent rows to retain; older rows will be deleted.
     """
     manager = await asyncio.to_thread(_get_db_manager)
 

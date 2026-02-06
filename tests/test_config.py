@@ -1223,20 +1223,20 @@ class TestLoadConfigUncoveredLines(unittest.TestCase):
                 name, globals=None, locals=None, fromlist=(), level=0
             ):
                 """
-                Simulate an ImportError for the mmrelay.cli_utils module (and its alias "cli_utils") while performing normal imports otherwise.
-
+                Raise ImportError for the modules "mmrelay.cli_utils" or "cli_utils" and delegate all other imports to the original importer.
+                
                 Parameters:
-                    name (str): The fully qualified module name to import; if it equals "mmrelay.cli_utils" or "cli_utils", an ImportError is raised.
-                    globals (dict): Passed through to the underlying import mechanism.
-                    locals (dict): Passed through to the underlying import mechanism.
-                    fromlist (tuple): Passed through to the underlying import mechanism.
-                    level (int): Passed through to the underlying import mechanism.
-
+                    name (str): Module name to import; if it equals "mmrelay.cli_utils" or "cli_utils", ImportError is raised.
+                    globals (dict): Forwarded to the underlying import mechanism.
+                    locals (dict): Forwarded to the underlying import mechanism.
+                    fromlist (tuple): Forwarded to the underlying import mechanism.
+                    level (int): Forwarded to the underlying import mechanism.
+                
                 Returns:
-                    module: The imported module object for successful imports.
-
+                    module: The module object returned by the original import for successful imports.
+                
                 Raises:
-                    ImportError: When `name` is "mmrelay.cli_utils" or "cli_utils".
+                    ImportError: If `name` is "mmrelay.cli_utils" or "cli_utils".
                 """
                 if name in ("mmrelay.cli_utils", "cli_utils"):
                     raise ImportError

@@ -21,10 +21,18 @@ from mmrelay.e2ee_utils import (
 @pytest.fixture
 def e2ee_test_config():
     """
-    Fixture that provides a baseline config and temporary directory for E2EE tests.
-
+    Provide a temporary directory, file paths, and a baseline Matrix E2EE configuration for tests.
+    
     Yields:
         tuple: (temp_dir, config_path, credentials_path, base_config)
+            - temp_dir (str): Path to the temporary directory created for the test.
+            - config_path (str): Path within temp_dir for the config file (config.yaml).
+            - credentials_path (str): Path within temp_dir for the credentials file (credentials.json).
+            - base_config (dict): Minimal configuration dict with E2EE enabled, a meshtastic meshnet_name,
+              and one example matrix room mapping.
+    
+    Notes:
+        The temporary directory is removed after the fixture is finished.
     """
     # Create temporary directory
     temp_dir = tempfile.mkdtemp()
@@ -78,16 +86,13 @@ def test_credentials_found_in_legacy_location(
         # Mock os.path.exists to find credentials in second legacy location
         def exists_side_effect(path):
             """
-            Simulate filesystem existence checks for credential file paths used by tests.
-
+            Simulate os.path.exists responses for test credential paths, returning True only for the legacy2 credentials file.
+            
             Parameters:
-                path (str): Filesystem path to evaluate. The function looks for "credentials.json"
-                        and substrings "primary", "legacy1", "legacy2", or "legacy3" to determine
-                        the simulated result.
-
+                path (str): Path to check; the function looks for "credentials.json" and the substrings "primary", "legacy1", "legacy2", or "legacy3" to decide the simulated result.
+            
             Returns:
-                    bool: `True` if the path refers to a credentials file in the second legacy
-                    location ("legacy2"), `False` otherwise.
+                bool: True if the path refers to the credentials file in "legacy2", False otherwise.
             """
             if "credentials.json" in path:
                 # Primary location doesn't have it
@@ -158,7 +163,12 @@ def test_credentials_not_found_in_legacy_locations(
 
         # Mock os.path.exists to return False for all credential paths
         def exists_side_effect(_path):
-            """Return False for every input path to indicate the file does not exist."""
+            """
+            Always indicate that the given filesystem path does not exist.
+            
+            Returns:
+                False for any input path.
+            """
             return False
 
         mock_exists.side_effect = exists_side_effect
@@ -211,13 +221,13 @@ def test_credentials_in_legacy_during_deprecation_window(
         # Mock os.path.exists to find credentials in second legacy location
         def exists_side_effect(path):
             """
-            Simulate os.path.exists for test cases by reporting existence only for the second legacy credentials path.
-
+            Simulate os.path.exists for tests by returning True only for the second legacy credentials path.
+            
             Parameters:
                 path (str): Filesystem path to check.
-
+            
             Returns:
-                True if `path` contains "credentials.json" and "legacy2", `False` otherwise.
+                bool: True if `path` contains "credentials.json" and "legacy2", False otherwise.
             """
             if "credentials.json" in path:
                 # Primary doesn't have it
@@ -275,7 +285,12 @@ def test_no_credentials_during_deprecation_window(
 
         # Mock os.path.exists to return False for all credential paths
         def exists_side_effect(_path):
-            """Return False for every input path to indicate the file does not exist."""
+            """
+            Always indicate that the given filesystem path does not exist.
+            
+            Returns:
+                False for any input path.
+            """
             return False
 
         mock_exists.side_effect = exists_side_effect

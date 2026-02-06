@@ -451,16 +451,13 @@ def _e2ee_dependencies_available() -> bool:
 
 def _validate_e2ee_dependencies() -> bool:
     """
-    Check whether end-to-end encryption (E2EE) is usable on the current platform.
-
+    Determine whether E2EE is supported on this platform and the required libraries are available.
+    
+    Performs only local checks (platform and importability) and prints user-facing messages when
+    E2EE is not supported or dependencies are missing.
+    
     Returns:
-        bool: True if the platform is supported and required E2EE libraries can be imported;
-        False otherwise.
-
-    Notes:
-        - This function performs only local checks (platform and importability) and does not perform
-          network I/O.
-        - It emits user-facing messages to indicate missing platform support or missing dependencies.
+        `True` if the current platform supports E2EE and the required E2EE libraries can be imported, `False` otherwise.
     """
     if sys.platform == WINDOWS_PLATFORM:
         print("❌ Error: E2EE is not supported on Windows")
@@ -483,16 +480,16 @@ def _validate_credentials_json(
     config_path: str, config: Mapping[str, Any] | None = None
 ) -> bool:
     """
-    Check for a Matrix credentials.json next to the provided config and validate required fields.
-
-    Ensures a credentials.json can be located relative to config_path and that it contains non-empty string values for "homeserver", "access_token", "user_id", and "device_id". On validation failure this function prints a concise error message and guidance to run the authentication login flow.
-
+    Validate a Matrix credentials.json located relative to the given configuration.
+    
+    Searches for a credentials.json file (honoring an explicit credentials_path in `config` when present) and verifies it contains non-empty string values for "homeserver", "access_token", "user_id", and "device_id". On validation failure this function prints concise, user-facing error messages and guidance to run the authentication login flow.
+    
     Parameters:
-        config_path (str): Path to the configuration file used to determine where to look for credentials.json.
-        config (Mapping[str, Any] | None): Parsed configuration to honor explicit credentials_path values.
-
+        config_path (str): Path to the configuration file used to locate credentials.json.
+        config (Mapping[str, Any] | None): Parsed configuration to honor an explicit credentials_path, if provided.
+    
     Returns:
-        bool: `True` if credentials.json exists and contains non-empty "homeserver", "access_token", "user_id", and "device_id"; `False` otherwise.
+        bool: `True` if a valid credentials.json was found with the required non-empty fields; `False` otherwise.
     """
     import json
 
@@ -620,29 +617,24 @@ def _validate_e2ee_config(
     _config: dict[str, Any], matrix_section: Mapping[str, Any] | None, config_path: str
 ) -> bool:
     """
-    Validate end-to-end encryption (E2EE) configuration and Matrix authentication readiness.
-
-    Performs authentication checks for the provided configuration source (credentials.json adjacent to
-    config_path or in-config credentials). If no `matrix_section` is present, validation succeeds. When
-    E2EE/encryption is enabled in the matrix configuration, verifies platform support and required
-    dependencies, and reports the configured store path (prints a note if the store directory does not
-    exist).
-
+    Validate E2EE settings and Matrix authentication readiness for a configuration file.
+    
+    Performs authentication checks (credentials.json, password, or access_token) and, if E2EE is enabled,
+    verifies platform support and required native dependencies. If a configured E2EE store path does not
+    exist, prints an informational note about its creation.
+    
     Parameters:
-        _config (dict[str, Any]): Full parsed configuration (kept for caller compatibility; not used
-            for most checks).
-        matrix_section (Mapping[str, Any] | None): The "matrix" subsection of the parsed config, or
-            None if absent.
-        config_path (str): Path to the active configuration file, used to locate adjacent authentication
-            artifacts (for example, credentials.json).
-
+        _config (dict[str, Any]): Full parsed configuration (kept for caller compatibility; not used by most checks).
+        matrix_section (Mapping[str, Any] | None): The "matrix" subsection of the parsed config, or None if absent.
+        config_path (str): Path to the active configuration file; used to locate adjacent authentication artifacts
+            such as credentials.json.
+    
     Returns:
-        bool: `True` if authentication and any enabled E2EE settings are valid (or if E2EE is not
-        configured), `False` otherwise.
-
-    Side effects:
-        Prints informational and error messages describing authentication status, dependency checks,
-        and E2EE store-path notes.
+        bool: `True` if authentication is usable and any enabled E2EE settings are valid (or if E2EE is not configured),
+        `False` otherwise.
+    
+    Notes:
+        This function prints user-facing status and guidance messages to stdout.
     """
     # First validate authentication
     if not _validate_matrix_authentication(config_path, matrix_section, _config):
@@ -680,35 +672,27 @@ def _validate_e2ee_config(
 
 def _analyze_e2ee_setup(config: dict[str, Any], config_path: str) -> dict[str, Any]:
     """
-    Analyze local E2EE readiness without contacting Matrix.
-
-    Performs an offline inspection of the environment and configuration to determine
-    whether end-to-end encryption (E2EE) can be used. Checks platform support
-    (Windows is considered unsupported), presence of required Python dependencies
-    (olm and selected nio components), whether E2EE is enabled in the provided
-    config, and whether a credentials.json is available adjacent to the supplied
-    config_path or in the standard base directory.
-
+    Analyze local end-to-end encryption (E2EE) readiness without contacting Matrix.
+    
+    Performs an offline inspection of the environment and provided configuration to
+    determine whether E2EE can be used. The check includes platform support,
+    presence of required E2EE dependencies, whether E2EE is enabled in the
+    configuration, and whether a usable credentials.json can be located.
+    
     Parameters:
-        config (dict): Parsed configuration (typically from config.yaml). Only the
-            "matrix" section is consulted to detect E2EE/encryption enablement.
-        config_path (str): Path to the configuration file used to locate a
-            credentials.json sibling; also used to resolve an alternate standard
-            credentials location.
-
+        config (dict): Parsed configuration (usually from config.yaml); the
+            "matrix" section is consulted for E2EE/encryption enablement.
+        config_path (str): Path to the configuration file; used to locate a
+            credentials.json sibling or other standard credential locations.
+    
     Returns:
-        dict: Analysis summary with these keys:
+        dict: Analysis summary with the following keys:
           - config_enabled (bool): True if E2EE/encryption is enabled in config.
-          - dependencies_available (bool): True if required E2EE packages are
-            importable.
-          - credentials_available (bool): True if a usable credentials.json was
-            found.
-          - platform_supported (bool): False on unsupported platforms (Windows).
-          - overall_status (str): One of "ready", "disabled", "not_supported",
-            "incomplete", or "unknown" describing the combined readiness.
-          - recommendations (list): Human-actionable strings suggesting fixes or
-            next steps (e.g., enable E2EE in config, install dependencies, run
-            auth login).
+          - dependencies_available (bool): True if required E2EE packages are importable.
+          - credentials_available (bool): True if a usable credentials.json was found.
+          - platform_supported (bool): False when the current platform does not support E2EE (e.g., Windows).
+          - overall_status (str): One of "ready", "disabled", "not_supported", "incomplete", or "unknown".
+          - recommendations (list[str]): Human-actionable suggestions to resolve gaps (e.g., enable E2EE, install dependencies, run auth login).
     """
     analysis: dict[str, Any] = {
         "config_enabled": False,
@@ -798,6 +782,15 @@ def _find_credentials_json_path(
     from mmrelay.paths import resolve_all_paths
 
     def _normalize_path(path: str) -> str:
+        """
+        Normalize a filesystem path by expanding a leading `~` and resolving it to an absolute path.
+        
+        Parameters:
+        	path (str): A filesystem path, which may be relative or contain a user-home shorthand.
+        
+        Returns:
+        	A string containing the absolute, user-expanded path.
+        """
         return os.path.abspath(os.path.expanduser(path))
 
     explicit_path = get_explicit_credentials_path(config or relay_config)
@@ -837,20 +830,19 @@ def _find_credentials_json_path(
 def _print_unified_e2ee_analysis(e2ee_status: E2EEStatus) -> None:
     """
     Print a concise, user-facing analysis of end-to-end encryption (E2EE) readiness.
-
-    Given an E2EE status dictionary, prints platform support, dependency availability,
-    configuration state, credentials presence, and an overall readiness summary. If
-    the overall status is not "ready", prints actionable fix instructions obtained
-    from get_e2ee_fix_instructions().
-
+    
+    Given an E2EE status mapping, prints platform support, dependency availability,
+    configuration state, credentials presence, an overall readiness line, and
+    actionable fix instructions when the status is not ready.
+    
     Parameters:
-        e2ee_status (E2EEStatus): A status mapping containing at least the following keys:
-            - platform_supported (bool): whether the current OS/platform supports E2EE.
-            - dependencies_installed or dependencies_available (bool): whether required E2EE
-              Python packages and runtime dependencies are present.
-            - enabled or config_enabled (bool): whether E2EE is enabled in the configuration.
-            - credentials_available (bool): whether a usable credentials.json is present.
-            - overall_status (str): high-level status such as "ready", "disabled", or "incomplete".
+        e2ee_status (E2EEStatus): Mapping with keys used to determine readiness, commonly:
+            - platform_supported (bool): True when the OS/platform supports E2EE.
+            - dependencies_installed or dependencies_available (bool): True when required
+              E2EE packages/runtime are present.
+            - enabled or config_enabled (bool): True when E2EE is enabled in config.
+            - credentials_available (bool): True when a usable credentials.json is present.
+            - overall_status (str): High-level status such as "ready", "disabled", or "incomplete".
     """
     print("\n🔐 E2EE Configuration Analysis:")
 
@@ -1598,12 +1590,12 @@ def main() -> int:
 
 def handle_subcommand(args: argparse.Namespace) -> int:
     """
-    Dispatches selected CLI subcommand to its handler.
-
-    Supports "config", "auth", "service", "paths", and "migrate" grouped subcommands and delegates execution to corresponding handler.
-
+    Dispatch a top-level CLI subcommand to its handler.
+    
+    Supported commands: config, auth, service, paths, doctor, verify-migration, migrate.
+    
     Returns:
-        Exit code returned by invoked handler; `1` if command is unknown.
+        Exit code returned by the invoked handler; `1` if the command is unknown.
     """
     if args.command == "config":
         return handle_config_command(args)
@@ -1776,10 +1768,13 @@ def handle_verify_migration_command(_args: argparse.Namespace) -> int:
 
 def handle_doctor_command(args: argparse.Namespace) -> int:
     """
-    Print a diagnostic summary of resolved HOME, runtime artifact locations, legacy sources, environment variables, CLI overrides, and migration status; optionally run migration verification.
-
-    When invoked, this command prints human-readable information about the current path resolution and any detected legacy data, and it will print migration recommendations. If the `migration` attribute on `args` is true, performs a verification step and reports warnings/errors.
-
+    Print a diagnostic summary of resolved runtime paths, legacy sources, environment variables, CLI overrides, and migration status.
+    
+    If the provided args has a boolean attribute `migration` set to True, run migration verification and include its warnings/errors in the output.
+    
+    Parameters:
+        args (argparse.Namespace): Parsed CLI arguments; may include `migration` (bool) to enable migration verification.
+    
     Returns:
         int: 0 on success, 1 if migration verification reported errors.
     """

@@ -83,25 +83,44 @@ class MigrationError(Exception):
 
     @classmethod
     def verification_failed(cls, detail: str) -> "MigrationError":
-        """Create error for database verification failure."""
+        """
+        Create a MigrationError representing a database verification failure.
+        
+        Parameters:
+            detail (str): Human-readable detail describing the verification failure.
+        
+        Returns:
+            MigrationError: Instance with a message indicating the database verification failure and the provided detail.
+        """
         return cls(f"Database verification failed: {detail}")
 
     @classmethod
     def step_failed(cls, step: str, detail: str) -> "MigrationError":
-        """Create error for migration step failure."""
+        """
+        Create a MigrationError representing a failure of a specific migration step.
+        
+        Parameters:
+            step (str): Name of the migration step that failed.
+            detail (str): Human-readable detail describing the failure.
+        
+        Returns:
+            MigrationError: Error instance with message "<step> migration failed: <detail>".
+        """
         return cls(f"{step} migration failed: {detail}")
 
 
 def _path_is_within_home(path: Path, home: Path) -> bool:
     """
-    Check whether a path is the same as or located inside the given home directory.
-
+    Determine whether a given path is the same as or located inside the specified home directory.
+    
+    The comparison is performed on resolved absolute locations of both `path` and `home`, with a best-effort resolution if exact resolution fails.
+    
     Parameters:
-        path (Path): Path to test. The function resolves the path (uses Path.resolve(), falling back to Path.absolute() on OSError).
-        home (Path): Home directory to check against. The function resolves this path similarly.
-
+        path (Path): Path to test.
+        home (Path): Directory to treat as the home/root.
+    
     Returns:
-        bool: `True` if `path` equals `home` or is contained within `home`, `False` otherwise.
+        bool: `True` if `path` equals `home` or is located within `home`, `False` otherwise.
     """
     try:
         resolved_path = path.resolve()
@@ -118,10 +137,10 @@ def _path_is_within_home(path: Path, home: Path) -> bool:
 
 def _dir_has_entries(path: Path) -> bool:
     """
-    Check whether the given path is an existing directory that contains at least one entry.
-
+    Return whether `path` exists, is a directory, and contains at least one entry.
+    
     Returns:
-        True if the path exists, is a directory, and contains at least one entry; False otherwise.
+        `True` if the path exists, is a directory, and has at least one entry; `False` otherwise.
     """
     if not path.exists() or not path.is_dir():
         return False
@@ -134,16 +153,16 @@ def _dir_has_entries(path: Path) -> bool:
 def _find_legacy_data(legacy_root: Path) -> list[dict[str, str]]:
     """
     Locate known legacy MMRelay artifacts under a legacy root directory.
-
-    Scans the provided legacy_root for commonly migrated items and reports each finding as a mapping with keys `"type"` and `"path"`. Reported types include: `credentials`, `config`, `database`, `logs`, `e2ee_store`, and `plugins`. Duplicate paths are suppressed.
-
+    
+    Scans legacy_root for common legacy items (credentials, config, database files and sidecars, logs, e2ee_store, and plugins) and returns a list of discovered artifacts. Each finding is a dict with keys "type" (one of: "credentials", "config", "database", "logs", "e2ee_store", "plugins") and "path" (string path to the artifact). Duplicate paths are suppressed.
+    
     Parameters:
         legacy_root (Path): Root directory to scan for legacy artifacts.
-
+    
     Returns:
-        list[dict[str, str]]: A list of findings where each entry is a dict with:
-            - `type`: artifact type (see above)
-            - `path`: string path to the discovered artifact
+        list[dict[str, str]]: List of findings; each entry contains:
+            - "type": artifact category
+            - "path": filesystem path to the discovered artifact as a string
     """
     findings: list[dict[str, str]] = []
     seen_paths: set[str] = set()
@@ -412,19 +431,26 @@ def print_migration_verification(report: dict[str, Any]) -> None:
 
 
 def _get_migration_state_path() -> Path:
-    """Get path to migration state file."""
+    """
+    Locate the migration state file path inside MMRELAY_HOME.
+    
+    Returns:
+        Path: Path to the migration state file (MMRELAY_HOME/<MIGRATION_STATE_FILE>).
+    """
     return get_home_dir() / MIGRATION_STATE_FILE
 
 
 def _read_migration_state() -> dict[str, Any] | None:
     """
-    Read the persisted migration state from MMRELAY_HOME and return it as a dictionary.
-
-    The function looks for the migration state file and, if present and readable, returns a dict describing the saved state (for example: `{"version": "1.3", "status": "completed", "timestamp": "...", "completed_steps": [...], "error": "..."}`). Legacy state files that contain only a version string are treated as a completed state and normalized to `{"version": <string>, "status": "completed"}`.
-
+    Load and normalize the persisted migration state from MMRELAY_HOME.
+    
+    If the migration state file contains a JSON object, that object is returned unchanged.
+    If the file contains only a version string (current or legacy format), it is normalized to
+    {"version": <string>, "status": "completed"}.
+    
     Returns:
-        dict: Migration state dictionary when a valid state file is present and parseable.
-        None: If no state file exists, the file cannot be read, or its content is not a recognized format.
+        dict: The migration state dictionary when present and parseable.
+        None: If the state file is missing, unreadable, or contains an unexpected format.
     """
     state_path = _get_migration_state_path()
     if not state_path.exists():
@@ -455,12 +481,12 @@ def _write_migration_state(
     *, status: str, completed_steps: list[str] | None = None, error: str | None = None
 ) -> None:
     """
-    Record the current migration state to the migration state file inside MMRELAY_HOME.
-
-    Writes a JSON payload containing "version", "status", and "timestamp"; includes "completed_steps" and "error" when provided. The file path is determined by _get_migration_state_path(). I/O errors are caught and logged; the function does not raise on write failure.
-
+    Record the migration state in the MMRELAY_HOME migration state file.
+    
+    Writes a JSON object with keys "version", "status", and "timestamp"; if provided, includes "completed_steps" and "error". I/O errors are caught and logged and the function does not raise on write failure.
+    
     Parameters:
-        status (str): Current migration status (e.g., "in-progress", "completed", "failed").
+        status (str): Current migration status, e.g. "in-progress", "completed", or "failed".
         completed_steps (list[str] | None): Ordered list of migration step names that have completed, if any.
         error (str | None): Error message to record when the migration failed, if any.
     """
@@ -1469,27 +1495,27 @@ def migrate_gpxtracker(
     move: bool = False,
 ) -> dict[str, Any]:
     """
-    Migrate GPX files used by the community gpxtracker plugin into the new plugins/community/gpxtracker/data location.
-
-    Scans legacy roots for a `gpx_directory` setting in legacy config.yaml files and copies any `*.gpx` files found into `new_home/plugins/community/gpxtracker/data`, creating per-file timestamped names. Creates backups of existing destination files unless `force` is True. Operates in dry-run mode if requested.
-
+    Migrate GPX files for the community gpxtracker plugin into the new plugins/community/gpxtracker/data directory.
+    
+    Scans legacy roots for a `community-plugins.gpxtracker.gpx_directory` setting in `config.yaml` and copies any `*.gpx` files found into `new_home/plugins/community/gpxtracker/data`, appending a per-file timestamp to each destination filename. Creates the destination directory if needed. If a destination file exists and `force` is False, a timestamped backup is created before copying. The function always copies files (the `move` flag is ignored for rollback safety). When `dry_run` is True, no filesystem changes are made and the planned actions are reported.
+    
     Parameters:
-        legacy_roots (list[Path]): Legacy directories to scan for a `config.yaml` containing `community-plugins.gpxtracker.gpx_directory`.
-        new_home (Path): Destination MMRELAY_HOME root where plugin data should be placed.
-        dry_run (bool): If True, report planned actions without making filesystem changes.
+        legacy_roots (list[Path]): Directories to scan for legacy `config.yaml` entries.
+        new_home (Path): Destination MMRELAY_HOME root for plugin data.
+        dry_run (bool): If True, report actions without making changes.
         force (bool): If True, overwrite existing destination files without creating backups.
-        move (bool): If True, move files instead of copying them. This is ignored for
-            gpxtracker migrations, which always copy for rollback safety.
-
+        move (bool): Accepted but ignored; migration is copy-only for rollback safety.
+    
     Returns:
-        dict: Result summary. Typical keys:
-            - `success` (bool): `True` on success, `False` on failure.
-            - `migrated_count` (int): Number of GPX files migrated (when `success` is True).
-            - `old_path` (str): Source GPX directory path that was scanned.
+        dict: Summary of the migration outcome. Common keys:
+            - `success` (bool): True on success, False on failure.
+            - `migrated_count` (int): Number of GPX files copied (when successful).
+            - `old_path` (str): Source GPX directory that was scanned.
             - `new_path` (str): Destination data directory path.
-            - `action` (str): `"move"` or `"copy"`.
-            - `dry_run` (bool): Present when dry-run was requested.
-            - `error` (str): Present on failure with an error message.
+            - `action` (str): `"copy"`.
+            - `dry_run` (bool): Present when a dry run was requested.
+            - `message` (str): Informational message when skipping migration.
+            - `error` (str): Error details when `success` is False.
     """
     old_gpx_dir: Path | None = None
 
@@ -1720,13 +1746,13 @@ def perform_migration(
 
     def _record_step(step_name: str, result: dict[str, Any]) -> None:
         """
-        Record a migration step result into the overall report.
-
-        Appends an entry with the step type and its result to the enclosing `report["migrations"]` list and updates `report["completed_steps"]` to a snapshot of `completed_steps`. This function mutates the shared `report` object.
-
+        Record a migration step's result into the shared migration report.
+        
+        Appends an entry {"type": step_name, "result": result} to the module-level `report["migrations"]` list and updates `report["completed_steps"]` to a snapshot of the current `completed_steps`. This function mutates the shared `report` object.
+        
         Parameters:
             step_name (str): Identifier for the migration step (e.g., "credentials", "database").
-            result (dict[str, Any]): Result details produced by the step, including keys like `success`, `action`, `old_path`, `new_path`, and optional `error`.
+            result (dict[str, Any]): Result details produced by the step (e.g., `success`, `action`, `old_path`, `new_path`, `error`).
         """
         report["migrations"].append({"type": step_name, "result": result})
         report["completed_steps"] = list(completed_steps)
@@ -1738,21 +1764,21 @@ def perform_migration(
         **kwargs: Any,
     ) -> dict[str, Any]:
         """
-        Execute a migration step, record its result, update progress state, and raise on failure.
-
-        Calls the provided step function with the given arguments, records the returned result via _record_step, appends the step to the in-memory completed_steps and report, and persists an "in_progress" migration state when not running a dry run.
-
+        Run a named migration step, record its outcome, update in-memory progress, and persist an in-progress migration state.
+        
+        Calls the provided step function with the given arguments and records its returned result. On successful result, the step name is appended to the in-memory completed steps and the in-progress state is persisted (unless running a dry run). On failure, a MigrationError is raised.
+        
         Parameters:
             step_name (str): Logical name of the migration step.
-            func (callable): Function implementing the migration step; must return a dict-like result.
+            func (Callable[..., dict[str, Any]]): Function that performs the step and returns a dict-like result.
             *args: Positional arguments forwarded to `func`.
             **kwargs: Keyword arguments forwarded to `func`.
-
+        
         Returns:
             dict[str, Any]: The result returned by `func`.
-
+        
         Raises:
-            MigrationError: If the step result indicates failure (result["success"] is False or falsy). The exception message includes the step name and an error detail extracted from `result["error"]` or `result["message"]`.
+            MigrationError: If the step result indicates failure (i.e., the returned result has a falsy `success` value). The exception includes the step name and an error detail.
         """
         result = func(*args, **kwargs)
         _record_step(step_name, result)
@@ -1984,11 +2010,12 @@ def rollback_migration(completed_steps: list[str] | None = None) -> dict[str, An
 
     def restore_file(backup_glob: str, dest_path: Path) -> None:
         """
-        Restore the most recent backup matching a glob pattern into the given destination path.
-
-        Finds backup files in the destination directory using `backup_glob`, copies the newest match to `dest_path`, increments the enclosing scope's `restored_count` on success, and records any I/O errors into `rollback_errors`.
+        Restore the newest backup matching a glob pattern into the specified destination path.
+        
+        Searches dest_path.parent for files matching backup_glob, copies the most recent match over dest_path, increments the enclosing scope's restored_count on success, and appends any I/O error messages to the enclosing scope's rollback_errors.
+        
         Parameters:
-            backup_glob (str): Glob pattern (applied in `dest_path.parent`) used to locate backup files.
+            backup_glob (str): Glob pattern (applied in dest_path.parent) used to locate backup files.
             dest_path (Path): Target file path to restore into; the parent directory is searched for backups.
         """
         nonlocal restored_count
@@ -2009,14 +2036,14 @@ def rollback_migration(completed_steps: list[str] | None = None) -> dict[str, An
 
     def restore_dir(backup_glob: str, dest_dir: Path, label: str) -> None:
         """
-        Restore the destination directory from the most recent backup matching `backup_glob`.
-
-        Attempts to remove `dest_dir` if it exists and then restores from the newest matching backup directory. If the backup directory is empty (indicating a "pre-migration empty" state), the destination is left removed to leave no residue. On success increments the enclosing `restored_count`. On failure records a descriptive error into the enclosing `rollback_errors` list and does not raise.
-
+        Restore a destination directory from the most recent matching backup.
+        
+        If a matching backup is found the function removes `dest_dir` (if present) and restores the newest backup directory into its place. If the chosen backup is empty, the destination remains removed to leave no residue. On success the enclosing `restored_count` is incremented; on failure a descriptive message is appended to the enclosing `rollback_errors` list and the function returns without raising.
+        
         Parameters:
-            backup_glob (str): Glob pattern (applied to `dest_dir.parent`) used to find backup directories.
-            dest_dir (Path): Target directory to restore into.
-            label (str): Human-readable label used in log messages and error records.
+        	backup_glob (str): Glob pattern (applied to `dest_dir.parent`) used to locate backup directories.
+        	dest_dir (Path): Path to the directory to restore into.
+        	label (str): Human-readable label used in log messages and error records.
         """
         nonlocal restored_count
         backups = sorted(dest_dir.parent.glob(backup_glob), reverse=True)

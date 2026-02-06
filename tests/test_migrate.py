@@ -72,11 +72,8 @@ class TestPathIsWithinHome:
 
         def mock_resolve_oserror(_self):
             """
-            Replacement for Path.resolve that simulates a resolution failure by always raising OSError.
-
-            Parameters:
-                _self: Ignored; the bound instance for which resolve would normally run.
-
+            Simulate a Path.resolve failure by always raising OSError.
+            
             Raises:
                 OSError: Always raised with the message "Mock error".
             """
@@ -99,11 +96,8 @@ class TestPathIsWithinHome:
 
         def mock_resolve_oserror(_self):
             """
-            Replacement for Path.resolve that simulates a resolution failure by always raising OSError.
-
-            Parameters:
-                _self: Ignored; the bound instance for which resolve would normally run.
-
+            Simulate a Path.resolve failure by always raising OSError.
+            
             Raises:
                 OSError: Always raised with the message "Mock error".
             """
@@ -468,6 +462,14 @@ class TestMigrationStateFunctions:
         monkeypatch.setattr(migrate_module, "get_home_dir", lambda: test_home)
 
         def mock_write(*args, **kwargs):
+            """
+            Simulate a failing write operation by always raising an OSError.
+            
+            Accepts any positional and keyword arguments and ignores them; calling this function will raise an OSError with the message "Mock write error".
+            
+            Raises:
+                OSError: Always raised to simulate a write failure.
+            """
             raise OSError("Mock write error")
 
         with patch.object(Path, "write_text", side_effect=mock_write):
@@ -1444,7 +1446,9 @@ class TestIsMigrationNeeded:
     def test_migration_completed(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Test returns False when migration already completed."""
+        """
+        Verify that is_migration_needed returns False when a migration completion state file with the current version exists in the home directory.
+        """
         home = tmp_path / "home"
         home.mkdir()
         state_file = home / "migration_completed.flag"
@@ -1852,6 +1856,12 @@ class TestAutomaticRollback:
         creds_backup.write_text('{"token": "backup"}')
 
         def failing_migrate_database(*args, **kwargs):
+            """
+            Simulates a database migration failure by always raising sqlite3.DatabaseError.
+            
+            Raises:
+                sqlite3.DatabaseError: Always raised to simulate a failing database operation during migration.
+            """
             raise sqlite3.DatabaseError("Simulated database failure")
 
         monkeypatch.setattr(
@@ -1892,6 +1902,12 @@ class TestAutomaticRollback:
         backup.write_text('{"token": "backup"}')
 
         def failing_migrate_database(*args, **kwargs):
+            """
+            Simulates a database migration failure by always raising sqlite3.DatabaseError.
+            
+            Raises:
+                sqlite3.DatabaseError: Always raised to simulate a failing database operation during migration.
+            """
             raise sqlite3.DatabaseError("Simulated database failure")
 
         monkeypatch.setattr(

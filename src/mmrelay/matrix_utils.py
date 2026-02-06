@@ -193,6 +193,9 @@ class MissingMatrixRoomsError(ValueError):
     """Raised when matrix_rooms configuration is missing."""
 
     def __init__(self) -> None:
+        """
+        Exception raised when the Matrix rooms configuration is missing.
+        """
         super().__init__("Missing required matrix_rooms configuration")
 
 
@@ -200,6 +203,11 @@ class MatrixSyncTimeoutError(ConnectionError):
     """Raised when initial Matrix sync times out."""
 
     def __init__(self) -> None:
+        """
+        Initialize the MatrixSyncTimeoutError used when the initial Matrix sync operation times out.
+        
+        The exception's message is set to "Matrix sync timed out".
+        """
         super().__init__("Matrix sync timed out")
 
 
@@ -207,6 +215,11 @@ class MatrixSyncFailedError(ConnectionError):
     """Raised when Matrix sync fails."""
 
     def __init__(self) -> None:
+        """
+        Initialize the MatrixSyncFailedError with a default error message.
+        
+        The exception message is set to "Matrix sync failed".
+        """
         super().__init__("Matrix sync failed")
 
 
@@ -214,6 +227,16 @@ class MatrixSyncFailedDetailsError(ConnectionError):
     """Raised when Matrix sync fails with detailed error info."""
 
     def __init__(self, error_type: str, error_details: str) -> None:
+        """
+        Initialize the exception with a Matrix sync error type and detailed message.
+        
+        Parameters:
+            error_type (str): Short identifier of the sync error (used in the exception message).
+            error_details (str): Detailed, human-readable information about the sync failure.
+        
+        Notes:
+            The exception message is formatted as: "Matrix sync failed: {error_type} - {error_details}" and the provided values are attached to the instance.
+        """
         super().__init__(f"Matrix sync failed: {error_type} - {error_details}")
 
 
@@ -1298,13 +1321,18 @@ class MatrixAuthInfo:
 
 def _resolve_credentials_save_path(config_data: dict[str, Any] | None) -> str | None:
     """
-    Determine the filesystem path where credentials should be saved.
-
-    Attempts to resolve an explicit credentials path from configuration or falls back to the
-    canonical credentials path; expands a leading `~` to the user home when present.
-
+    Resolve the filesystem path to save Matrix credentials.
+    
+    Checks for an explicit credentials path in `config_data` and returns it with `~` expanded;
+    if none is provided, returns the canonical credentials path. Returns `None` when the path
+    cannot be resolved due to invalid types or filesystem errors.
+    
+    Parameters:
+        config_data (dict[str, Any] | None): Configuration data that may contain an explicit
+            credentials path; may be None.
+    
     Returns:
-        The absolute path to use for saving credentials, or `None` if the path cannot be resolved.
+        str | None: Absolute path to use for saving credentials, or `None` if resolution fails.
     """
     try:
         explicit_path = get_explicit_credentials_path(config_data)
@@ -1317,7 +1345,15 @@ def _resolve_credentials_save_path(config_data: dict[str, Any] | None) -> str | 
 
 
 def _missing_credentials_keys(credentials: dict[str, Any]) -> list[str]:
-    """Return required credentials keys missing from the provided mapping."""
+    """
+    Identify which required credential keys are missing from the provided mapping.
+    
+    Parameters:
+        credentials (dict[str, Any]): Mapping containing credential keys and their values.
+    
+    Returns:
+        list[str]: List of required keys that are not present in `credentials`.
+    """
     return [
         key
         for key in ("homeserver", "access_token", "user_id")
@@ -1330,10 +1366,16 @@ async def _resolve_and_load_credentials(
     matrix_section: Any,
 ) -> MatrixAuthInfo | None:
     """
-    Resolve Matrix auth info from credentials, auto-login, or config.
-
+    Resolve Matrix authentication information from stored credentials, automatic login, or the provided config.
+    
+    Attempts to load credentials.json; if present and valid, returns its auth info. If no valid credentials are available and the matrix section contains a password, performs automatic login to create credentials. If neither credentials nor an acceptable matrix section are available, returns None.
+    
+    Parameters:
+        config_data (dict[str, Any] | None): Full application configuration (may be None when running interactive flows).
+        matrix_section (Any): The value of the `matrix` section from the configuration (expected to be a mapping when present).
+    
     Returns:
-        MatrixAuthInfo | None: Auth info when available, otherwise None.
+        MatrixAuthInfo | None: A MatrixAuthInfo instance containing homeserver, access token, user id, optional device id, original credentials dict and credentials path when available; otherwise `None` when authentication cannot be resolved.
     """
     credentials: dict[str, Any] | None = None
     e2ee_device_id: Optional[str] = None
@@ -1509,7 +1551,17 @@ async def _configure_e2ee(
     matrix_section: Any,
     e2ee_device_id: Optional[str],
 ) -> tuple[bool, str | None]:
-    """Determine E2EE enablement and store path."""
+    """
+    Determine whether end-to-end encryption (E2EE) should be enabled and compute the filesystem path to use for the E2EE store.
+    
+    Parameters:
+        config_data (dict[str, Any]): Full application configuration used to detect whether E2EE is enabled.
+        matrix_section (Any): The matrix configuration subsection; when a dict, its "encryption" or "e2ee" keys may provide a `store_path` override.
+        e2ee_device_id (Optional[str]): Device ID restored from credentials, if any; used only to decide whether a device id must be retrieved later.
+    
+    Returns:
+        tuple[bool, str | None]: A pair where the first element is `True` if E2EE is enabled and all runtime dependencies are available (otherwise `False`), and the second element is the resolved E2EE store directory path or `None` if not applicable.
+    """
     e2ee_enabled = False
     e2ee_store_path = None
     try:
@@ -1627,7 +1679,20 @@ def _initialize_matrix_client(
     e2ee_store_path: str | None,
     ssl_context: ssl.SSLContext | None,
 ) -> AsyncClient:
-    """Initialize AsyncClient with the unified configuration."""
+    """
+    Create and configure a nio AsyncClient for the specified Matrix account.
+    
+    Parameters:
+        homeserver (str): The Matrix homeserver URL or server name to connect to.
+        user_id (str): The full Matrix user ID (MXID) to use for the client.
+        device_id (Optional[str]): Device identifier to restore an existing device session; if None a new device may be created.
+        e2ee_enabled (bool): Whether end-to-end encryption should be enabled for the client.
+        e2ee_store_path (str | None): Filesystem path to use as the client's store when E2EE is enabled; ignored if `e2ee_enabled` is False.
+        ssl_context (ssl.SSLContext | None): Optional SSL context to use for HTTPS connections.
+    
+    Returns:
+        AsyncClient: A configured AsyncClient instance ready for login and synchronization.
+    """
     client_config = AsyncClientConfig(
         max_limit_exceeded=0,
         max_timeouts=0,
@@ -1652,7 +1717,17 @@ async def _perform_matrix_login(
     client: AsyncClient,
     auth_info: MatrixAuthInfo,
 ) -> Optional[str]:
-    """Restore or configure Matrix login session."""
+    """
+    Configure or restore the client's Matrix login session and discover a device ID for E2EE when needed.
+    
+    This updates the provided AsyncClient's authentication state (access_token, user_id, device_id) and, when available, restores the session using restore_login. If credentials are present but missing a device_id, the function calls whoami to discover and persist the device_id and user_id into auth_info.credentials (saved to auth_info.credentials_path) when possible. Warnings are logged when discovery or persistence fails.
+    
+    Parameters:
+        auth_info (MatrixAuthInfo): Auth information and optional loaded credentials; `credentials` and `credentials_path` may be updated with discovered values.
+    
+    Returns:
+        Optional[str]: The E2EE device_id that was restored or discovered, or `None` if no device_id is available.
+    """
     e2ee_device_id = auth_info.device_id
     user_id = auth_info.user_id
     access_token = auth_info.access_token
@@ -1767,6 +1842,15 @@ async def _maybe_upload_e2ee_keys(client: AsyncClient) -> None:
 async def _close_matrix_client_after_failure(
     client: AsyncClient | None, context: str
 ) -> None:
+    """
+    Close the given Matrix AsyncClient after an error and clear the module-global client reference if it matches.
+    
+    If `client` is None this is a no-op. The function awaits client.close(), re-raises asyncio.CancelledError, and suppresses common nio/network exceptions while logging them at debug level using `context` to describe why the close was performed. If the module-level `matrix_client` is the same object as `client`, it is set to None after closing.
+    
+    Parameters:
+        client (AsyncClient | None): The Matrix client instance to close; may be None.
+        context (str): Short description of the failure context used in debug logging.
+    """
     global matrix_client
     if not client:
         return
@@ -1786,7 +1870,18 @@ async def _close_matrix_client_after_failure(
 async def _perform_initial_sync(
     client: AsyncClient, matrix_homeserver: str
 ) -> Any | None:
-    """Perform initial sync and handle server quirks."""
+    """
+    Perform the initial Matrix sync and handle homeserver quirks (timeouts, invalid invite payloads, and communication errors).
+    
+    This attempts a full-state sync and on schema validation failures retries with an "invite-safe" filter; for certain malformed invite_state payloads it will retry while treating invalid invite_state events as empty. On retry it records the applied sync filter on the client to disable invite handling for subsequent syncs.
+    
+    Returns:
+        The sync response object when successful, or `None` if no response was obtained.
+    
+    Raises:
+        MatrixSyncTimeoutError: if the initial sync times out.
+        MatrixSyncFailedError: if the sync fails due to communication or validation errors.
+    """
     invite_safe_filter: dict[str, Any] = {"room": {"invite": {"limit": 0}}}
     sync_response: Any | None = None
 
@@ -1850,6 +1945,11 @@ async def _perform_initial_sync(
             async def _sync_ignore_invalid_invites() -> Any:
                 """
                 Perform a Matrix sync using an invite-safe filter while treating malformed or schema-invalid invite_state payloads as empty.
+                
+                Temporarily patches nio.responses.SyncResponse._get_invite_state to ignore invite_state values that are not dicts or that fail JSON Schema validation, runs a sync with the invite-safe filter and configured timeouts, and restores the original method after completion.
+                
+                Returns:
+                    The sync response object returned by the Matrix client (typically a `nio.responses.SyncResponse`).
                 """
                 import nio.responses as nio_responses
 
@@ -1861,6 +1961,15 @@ async def _perform_initial_sync(
                 )
 
                 def _safe_get_invite_state(invite_state_dict: Any) -> list[Any]:
+                    """
+                    Return invite-state events extracted from an invite payload or an empty list when the payload is invalid or cannot be processed.
+                    
+                    Parameters:
+                        invite_state_dict (Any): The invite-state payload to inspect; expected to be a dict containing an "events" key.
+                    
+                    Returns:
+                        list[Any]: The extracted invite-state events when available and successfully processed, or an empty list otherwise.
+                    """
                     if (
                         not isinstance(invite_state_dict, dict)
                         or "events" not in invite_state_dict
@@ -1956,7 +2065,29 @@ async def _post_sync_setup(
     bot_user_id: str,
     e2ee_enabled: bool,
 ) -> None:
-    """Handle post-sync room setup, E2EE status, and display name resolution."""
+    """
+    Perform post-initial-sync setup: resolve room aliases, evaluate E2EE/encryption status, display resolved room mappings, and determine the bot's display name.
+    
+    This function will:
+    - Inspect the sync response and raise MatrixSyncFailedDetailsError if the initial sync returned a SyncError.
+    - Resolve configured room aliases in-place within the provided matrix_rooms mapping using the Matrix client.
+    - Log and display per-room and overall encryption (E2EE) status and emit any encryption-related warnings.
+    - If E2EE is enabled, wait briefly to allow keys to be shared before continuing.
+    - Attempt to fetch and store the bot's display name (updates the module-level bot_user_name).
+    - Set client.e2ee_enabled to reflect the active E2EE setting.
+    
+    Parameters:
+        client: The connected AsyncClient used for alias resolution and display-name lookup.
+        sync_response: The result of the initial sync operation; if it is a SyncError the function aborts.
+        config_data: Configuration data used to evaluate E2EE settings and display mapping output.
+        matrix_rooms: The configured mapping of rooms/aliases; aliases found here will be resolved in-place.
+        matrix_homeserver: Homeserver URL used for diagnostic logging when sync errors occur.
+        bot_user_id: The bot's Matrix user ID used to fetch the display name.
+        e2ee_enabled: True if end-to-end encryption is intended to be enabled for this client.
+    
+    Raises:
+        MatrixSyncFailedDetailsError: If the provided sync_response is a SyncError; error details will be included.
+    """
     global bot_user_name
 
     if isinstance(sync_response, SyncError):
@@ -1987,6 +2118,15 @@ async def _post_sync_setup(
     e2ee_status = get_e2ee_status(config_data or {}, config_module.config_path)
 
     async def _resolve_alias(alias: str) -> str | None:
+        """
+        Resolve a Matrix room alias to its canonical room ID.
+        
+        Parameters:
+            alias (str): A Matrix room alias (for example, "#room:server") to resolve.
+        
+        Returns:
+            str | None: The canonical Matrix room ID (for example, "!roomid:server") if resolution succeeds, `None` if the client is unavailable or the alias could not be resolved.
+        """
         if not client:
             logger.warning(
                 f"Cannot resolve alias {alias}: Matrix client is not available"
@@ -2057,19 +2197,22 @@ async def connect_matrix(
     passed_config: dict[str, Any] | None = None,
 ) -> AsyncClient | None:
     """
-    Initialize and configure a Matrix AsyncClient using available credentials and configuration.
-
-    Attempts to authenticate (via credentials.json, automatic login, or config), enable end-to-end encryption when configured, perform an initial sync to populate room state, and return a ready-to-use AsyncClient.
-
+    Create and return a configured Matrix AsyncClient ready for use.
+    
+    Attempts to load or obtain credentials (credentials file, automatic login, or config), configure end-to-end encryption when enabled, perform login, and run an initial sync so the client has populated room state.
+    
     Parameters:
         passed_config (dict[str, Any] | None): Optional configuration override for this connection attempt; when provided it is used instead of the module-level config for this call.
-
+    
     Returns:
-        AsyncClient | None: A configured and initialized Matrix AsyncClient on success, or `None` if connection or credential setup failed.
-
+        AsyncClient: A configured and initialized AsyncClient on success.
+        None: If credentials, configuration, or connection setup failed and no client could be created.
+    
     Raises:
-        ValueError: If the required top-level "matrix_rooms" configuration is missing.
-        ConnectionError: If the initial Matrix sync fails or times out.
+        MissingMatrixRoomsError: If the required top-level "matrix_rooms" configuration is missing.
+        MatrixSyncTimeoutError: If the initial Matrix sync times out.
+        MatrixSyncFailedError: If the initial Matrix sync fails.
+        MatrixSyncFailedDetailsError: If the initial Matrix sync fails with detailed error information.
     """
     global matrix_client, bot_user_name, matrix_homeserver, matrix_rooms, matrix_access_token, bot_user_id, config
 
@@ -2172,12 +2315,15 @@ async def login_matrix_bot(
 ) -> bool:
     """
     Authenticate the bot with a Matrix homeserver and persist the resulting session credentials.
-
-    If any of homeserver, username, or password are None, the function will prompt interactively for them. On success the acquired credentials (homeserver, user_id, access_token, device_id) are saved to the configured credentials path.
-
+    
+    Prompts interactively for any of homeserver, username, or password that are not provided. Performs server discovery, logs in, optionally reuses an existing device_id, and saves credentials (homeserver, user_id, access_token, device_id) to the configured credentials path on success.
+    
     Parameters:
+        homeserver (str | None): URL of the Matrix homeserver (e.g., "https://matrix.org"); if None, the caller will be prompted.
+        username (str | None): Bot username (localpart or full MXID); if None, the caller will be prompted.
+        password (str | None): Password for the account; if None, the caller will be prompted.
         logout_others (bool | None): If True, attempt to log out other sessions; if False, do not; if None and running interactively, the user will be prompted (treated as False in non-interactive calls).
-
+    
     Returns:
         bool: `True` if login succeeded and credentials were saved, `False` otherwise.
     """
@@ -2356,6 +2502,15 @@ async def login_matrix_bot(
             ):
 
                 def _load_existing_creds(path: str) -> dict[str, Any]:
+                    """
+                    Read and parse a JSON credentials file into a dictionary.
+                    
+                    Parameters:
+                        path (str): Filesystem path to a JSON credentials file.
+                    
+                    Returns:
+                        dict[str, Any]: The parsed JSON object as a dictionary.
+                    """
                     with open(path, "r", encoding="utf-8") as f:
                         return cast(dict[str, Any], json.load(f))
 

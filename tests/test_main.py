@@ -1731,12 +1731,12 @@ class TestMainAsyncFunction(unittest.TestCase):
 
     def _reset_global_state(self):
         """
-        Reset module-level globals across mmrelay submodules to ensure test isolation.
-
-        Clears or restores defaults for runtime-set global state in mmrelay.meshtastic_utils,
-        mmrelay.matrix_utils, mmrelay.main, mmrelay.plugin_loader, and mmrelay.message_queue
-        so tests do not leak state between runs. May shut down executors and call cleanup
-        helpers (for example, message queue stop) where present.
+        Reset module-level global state in mmrelay submodules to a clean default for tests.
+        
+        This restores or clears runtime-set globals in mmrelay.meshtastic_utils, mmrelay.matrix_utils,
+        mmrelay.main, mmrelay.plugin_loader, and mmrelay.message_queue so tests do not leak state
+        between runs. The reset may shut down internal executors and invoke available cleanup helpers
+        (e.g., message queue stop) to ensure resources are released and tests remain isolated.
         """
 
         # Reset meshtastic_utils globals

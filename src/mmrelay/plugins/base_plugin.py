@@ -53,7 +53,18 @@ class _PluginDataDirGetter(Protocol):
         *,
         subdir: str | None = None,
         plugin_type: str | None = None,
-    ) -> str: ...
+    ) -> str: """
+        Resolve the filesystem path for a plugin's data directory.
+        
+        Parameters:
+            plugin_name (str | None): Plugin identifier to resolve the directory for. If omitted, resolve the caller's or default plugin directory according to implementation.
+            subdir (str | None): Optional subdirectory name inside the plugin data directory to return.
+            plugin_type (str | None): Optional plugin type hint (e.g., "core", "community", "custom") used to select the correct base data directory.
+        
+        Returns:
+            str: Absolute filesystem path to the requested plugin data directory or subdirectory.
+        """
+        ...
 
 
 get_plugin_data_dir = resolve_plugin_data_dir
@@ -688,13 +699,13 @@ class BasePlugin(ABC):
 
     def get_plugin_data_dir(self, subdir: str | None = None) -> str:
         """
-        Get the filesystem path for this plugin's data directory, creating it if missing.
-
+        Return the absolute filesystem path for this plugin's data directory, optionally for a named subdirectory; ensures the directory exists and accounts for the plugin's configured type.
+        
         Parameters:
-                subdir (str | None): Optional subdirectory name inside the plugin data directory to create and return. If None, the top-level plugin data directory path is returned.
-
+            subdir (str | None): Optional subdirectory name inside the plugin data directory to return. If None, the top-level plugin data directory is returned.
+        
         Returns:
-                plugin_path (str): Absolute path to the plugin's data directory or the requested subdirectory.
+            str: Absolute path to the plugin's data directory or the requested subdirectory.
         """
         # Get the plugin-specific data directory
         plugin_name = self._require_plugin_name()

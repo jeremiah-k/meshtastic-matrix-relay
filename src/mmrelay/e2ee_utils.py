@@ -37,24 +37,22 @@ def get_e2ee_status(
     config: Dict[str, Any], config_path: Optional[str] = None
 ) -> E2EEStatus:
     """
-    Consolidates E2EE readiness by inspecting platform support, required crypto dependencies, configuration, and presence of Matrix credentials.
-
+    Consolidates End-to-End Encryption (E2EE) readiness by checking platform support, required crypto dependencies, configuration flags, and presence of Matrix credentials.
+    
     Parameters:
         config (Dict[str, Any]): Parsed application configuration; used to read `matrix.e2ee.enabled` and legacy `matrix.encryption.enabled`.
-        config_path (Optional[str]): Path to the config file; when provided the config directory is checked
-            first, then the standard credentials locations are probed (primary HOME location first, then legacy
-            sources). When omitted, only the standard credentials locations are probed.
-
+        config_path (Optional[str]): Path to the application config file. When provided, credentials are first searched next to this config directory and then in standard locations; when omitted, only the standard credentials locations are probed.
+    
     Returns:
-        E2EEStatus: A dict with the following keys:
+        E2EEStatus: Dictionary describing E2EE readiness with these keys:
           - enabled (bool): E2EE enabled in configuration.
           - available (bool): Platform and dependencies allow E2EE.
           - configured (bool): Authentication/credentials are present.
-          - platform_supported (bool): True unless running on unsupported platforms (e.g., Windows/msys/cygwin).
+          - platform_supported (bool): False when running on unsupported platforms (e.g., Windows/msys/cygwin).
           - dependencies_installed (bool): True if required olm/nio components are importable.
-          - credentials_available (bool): True if `credentials.json` is discovered in any searched location.
+          - credentials_available (bool): True if a Matrix `credentials.json` file was discovered in searched locations.
           - overall_status (str): One of "ready", "disabled", "unavailable", or "incomplete".
-          - issues (List[str]): Human-readable issues found that prevent full E2EE readiness.
+          - issues (List[str]): Human-readable issues that prevent full E2EE readiness.
     """
     status: E2EEStatus = {
         "enabled": False,

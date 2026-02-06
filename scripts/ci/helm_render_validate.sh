@@ -41,7 +41,7 @@ else
 	echo -e "${YELLOW}Helm container not available, skipping Helm render; performing YAML validation only${NC}"
 fi
 
-# cleanup removes the directory referenced by RENDER_DIR if it exists.
+# cleanup removes the temporary Helm render directory referenced by RENDER_DIR if it exists.
 cleanup() {
 	if [[ -d ${RENDER_DIR} ]]; then
 		rm -rf "${RENDER_DIR}"
@@ -52,7 +52,7 @@ trap cleanup EXIT
 mkdir -p "${RENDER_DIR}"
 
 # helm_in_container runs the configured Helm container image, mounting the current working directory at /workdir and forwarding all arguments to the containerized Helm command.
-# If CONTAINER_CMD is empty (no container runtime available) it prints an error and returns 1.
+# helm_in_container runs Helm inside the configured container image using the detected container runtime and forwards all provided Helm arguments.
 helm_in_container() {
 	if [[ -z ${CONTAINER_CMD} ]]; then
 		echo -e "${RED}ERROR: Helm container unavailable${NC}"
@@ -67,7 +67,7 @@ helm_in_container() {
 		"$@"
 }
 
-# detect_validator locates `kubeconform` or `kube-linter` (including ~/bin/kube-linter-linux), sets `KUBECONFORM_BIN` or `KUBE_LINTER_BIN` accordingly, and prints which validator will be used or that it will fall back to YAML-parse-only.
+# detect_validator locates kubeconform or kube-linter (including $HOME/bin/kube-linter-linux), sets KUBECONFORM_BIN or KUBE_LINTER_BIN accordingly, and prints which validator will be used or that it will fall back to YAML parse only.
 detect_validator() {
 	if [[ -z ${KUBECONFORM_BIN} ]] && command -v kubeconform &>/dev/null; then
 		KUBECONFORM_BIN="$(command -v kubeconform)"
@@ -95,7 +95,7 @@ detect_validator() {
 	return 0
 }
 
-# validate_manifest validates a rendered Kubernetes manifest file using kubeconform if available, otherwise kube-linter, and falls back to a PyYAML-based syntax and apiVersion/kind check.
+# validate_manifest validates a rendered Kubernetes manifest file by running kubeconform if available, falling back to kube-linter, and finally to a PyYAML parse that ensures each document includes `apiVersion` and `kind`; it returns a non-zero status on validation failure.
 validate_manifest() {
 	local output_file="$1"
 
@@ -175,7 +175,7 @@ validate_pre_rendered_samples() {
 	return 0
 }
 
-# render_and_validate renders the mmrelay Helm chart variant identified by name into RENDER_DIR/<name>.yaml and validates the rendered manifest, printing errors and returning a non-zero status if rendering or validation fails.
+# render_and_validate renders the Helm chart variant named by the first argument into RENDER_DIR/<name>.yaml, validates the rendered manifest, prints error and rendered output on failure, and returns non-zero if rendering or validation fail.
 render_and_validate() {
 	local name="$1"
 	shift
@@ -211,7 +211,7 @@ render_and_validate() {
 	echo -e "${GREEN}✓ Validated ${name}${NC}"
 }
 
-# test_expected_failure tests that rendering the mmrelay Helm chart with the given scenario name and any additional Helm value overrides fails as expected and that the error output contains the word "empty" indicating empty data.
+# test_expected_failure tests that rendering the mmrelay Helm chart with the given scenario name and optional Helm value overrides fails as expected; it saves Helm output to the render directory, returns success when rendering fails (and reports whether the failure message contains "empty", "required", or "missing"), and returns failure if rendering unexpectedly succeeds.
 test_expected_failure() {
 	local name="$1"
 	shift
