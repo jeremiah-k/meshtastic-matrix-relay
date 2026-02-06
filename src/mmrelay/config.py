@@ -6,6 +6,7 @@ import os
 import re
 import sys
 import warnings
+from collections.abc import Mapping as MappingABC
 from typing import TYPE_CHECKING, Any, Iterable, Mapping, cast
 
 import yaml
@@ -269,7 +270,7 @@ def get_explicit_credentials_path(config: Mapping[str, Any] | None) -> str | Non
     env_path = os.getenv("MMRELAY_CREDENTIALS_PATH")
     if env_path:
         return env_path
-    if not isinstance(config, dict):
+    if not isinstance(config, MappingABC):
         return None
     explicit_path = config.get("credentials_path")
     if explicit_path:
