@@ -17,10 +17,10 @@ from types import ModuleType
 from typing import Any, Iterator, NamedTuple, NoReturn
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
+import mmrelay.paths as paths_module
 from mmrelay.config import (
     get_app_path,
 )
-from mmrelay.paths import get_home_dir, get_legacy_dirs
 from mmrelay.constants.plugins import (
     COMMIT_HASH_PATTERN,
     DEFAULT_ALLOWED_COMMUNITY_HOSTS,
@@ -139,7 +139,7 @@ def _get_plugin_root_dirs() -> list[str]:
     seen: set[str] = set()
 
     try:
-        home_dir = str(get_home_dir())
+        home_dir = str(paths_module.get_home_dir())
         if home_dir:
             home_plugins = os.path.join(home_dir, "plugins")
             if home_plugins not in seen:
@@ -150,7 +150,7 @@ def _get_plugin_root_dirs() -> list[str]:
         logger.warning("Could not determine primary plugin root: %s", e)
 
     try:
-        legacy_dirs_list = get_legacy_dirs()
+        legacy_dirs_list = paths_module.get_legacy_dirs()
     except (OSError, RuntimeError, ValueError) as e:
         logger.warning("Could not determine legacy plugin roots: %s", e)
         legacy_dirs_list = []
@@ -176,7 +176,7 @@ def _get_plugin_root_dirs() -> list[str]:
 def _get_legacy_plugin_roots() -> set[str]:
     """Return the set of legacy plugin root directories (legacy_root/plugins)."""
     try:
-        legacy_dirs = get_legacy_dirs()
+        legacy_dirs = paths_module.get_legacy_dirs()
     except (OSError, RuntimeError, ValueError) as e:
         logger.warning("Could not determine legacy plugin roots: %s", e)
         return set()
