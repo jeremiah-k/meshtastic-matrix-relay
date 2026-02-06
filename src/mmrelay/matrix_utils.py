@@ -2510,7 +2510,7 @@ async def login_matrix_bot(
                 path_exists = await asyncio.to_thread(os.path.exists, credentials_path)
             else:
                 path_exists = False
-            if path_exists:
+            if path_exists and credentials_path is not None:
 
                 def _load_existing_creds(path: str) -> dict[str, Any]:
                     """
@@ -2790,8 +2790,19 @@ async def login_matrix_bot(
                 logger.error(f"Error message: {error_message}")
                 logger.error(f"HTTP status code: {status_code}")
 
+                numeric_status: int | None = None
+                try:
+                    numeric_status = int(status_code)
+                except (TypeError, ValueError):
+                    numeric_status = None
+                status_text = str(status_code).strip().upper()
+
                 # Provide specific troubleshooting guidance
-                if status_code == 401 or "M_FORBIDDEN" in str(error_message):
+                if (
+                    numeric_status == 401
+                    or status_text == "M_FORBIDDEN"
+                    or "M_FORBIDDEN" in str(error_message).upper()
+                ):
                     logger.error(
                         "Authentication failed - invalid username or password."
                     )
@@ -2802,15 +2813,15 @@ async def login_matrix_bot(
                     logger.error(
                         "4. Use 'mmrelay auth login' to set up new credentials"
                     )
-                elif status_code == 404:
+                elif numeric_status == 404:
                     logger.error("User not found or homeserver not found.")
                     logger.error(
                         f"Check that the homeserver URL is correct: {homeserver}"
                     )
-                elif status_code == 429:
+                elif numeric_status == 429:
                     logger.error("Rate limited - too many login attempts.")
                     logger.error("Wait a few minutes before trying again.")
-                elif status_code and int(status_code) >= 500:
+                elif numeric_status is not None and numeric_status >= 500:
                     logger.error(
                         "Matrix server error - the server is experiencing issues."
                     )

@@ -5690,6 +5690,11 @@ async def test_login_matrix_bot_login_exception_guidance(
             "server error",
             "Matrix server error - the server is experiencing issues.",
         ),
+        (
+            "M_FORBIDDEN",
+            "Invalid username or password",
+            "Authentication failed - invalid username or password.",
+        ),
         (418, "teapot", "Login failed for unknown reason."),
     ],
 )

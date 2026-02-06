@@ -98,6 +98,10 @@ spec:
               value: "1"
             - name: MPLCONFIGDIR
               value: /tmp/matplotlib
+            {{- if .Values.credentials.enabled }}
+            - name: MMRELAY_CREDENTIALS_PATH
+              value: /app/credentials/{{ .Values.credentials.key }}
+            {{- end }}
             {{- if .Values.matrixAuth.enabled }}
             - name: MMRELAY_MATRIX_HOMESERVER
               valueFrom:
@@ -173,8 +177,7 @@ spec:
               readOnly: true
             {{- if .Values.credentials.enabled }}
             - name: credentials
-              mountPath: {{ .Values.mmrelayHome }}/matrix/credentials.json
-              subPath: {{ .Values.credentials.key }}
+              mountPath: /app/credentials
               readOnly: true
             {{- end }}
             - name: data
