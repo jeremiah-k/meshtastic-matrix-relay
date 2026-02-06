@@ -73,7 +73,7 @@ class TestPathIsWithinHome:
         def mock_resolve_oserror(_self):
             """
             Simulate a Path.resolve failure by always raising OSError.
-            
+
             Raises:
                 OSError: Always raised with the message "Mock error".
             """
@@ -97,7 +97,7 @@ class TestPathIsWithinHome:
         def mock_resolve_oserror(_self):
             """
             Simulate a Path.resolve failure by always raising OSError.
-            
+
             Raises:
                 OSError: Always raised with the message "Mock error".
             """
@@ -464,9 +464,9 @@ class TestMigrationStateFunctions:
         def mock_write(*args, **kwargs):
             """
             Simulate a failing write operation by always raising an OSError.
-            
+
             Accepts any positional and keyword arguments and ignores them; calling this function will raise an OSError with the message "Mock write error".
-            
+
             Raises:
                 OSError: Always raised to simulate a write failure.
             """
@@ -1858,7 +1858,7 @@ class TestAutomaticRollback:
         def failing_migrate_database(*args, **kwargs):
             """
             Simulates a database migration failure by always raising sqlite3.DatabaseError.
-            
+
             Raises:
                 sqlite3.DatabaseError: Always raised to simulate a failing database operation during migration.
             """
@@ -1904,7 +1904,7 @@ class TestAutomaticRollback:
         def failing_migrate_database(*args, **kwargs):
             """
             Simulates a database migration failure by always raising sqlite3.DatabaseError.
-            
+
             Raises:
                 sqlite3.DatabaseError: Always raised to simulate a failing database operation during migration.
             """

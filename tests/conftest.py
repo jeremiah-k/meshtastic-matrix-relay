@@ -613,7 +613,7 @@ ensure_builtins_not_mocked()
 def reset_path_overrides():
     """
     Autouse pytest fixture that resets CLI and programmatic path overrides before and after each test.
-    
+
     Ensures CLI overrides (--home, --base-dir, --data-dir) and any programmatic overrides managed by mmrelay.paths are cleared so they do not leak between tests.
     """
     import mmrelay.paths
@@ -874,9 +874,9 @@ def test_config():
 def clean_migration_home(tmp_path: Path) -> Generator[Path, None, None]:
     """
     Create and yield a clean temporary home directory for migration tests.
-    
+
     Creates tmp_path / "clean_migration_home", removes migration_completed.flag if present so tests start without prior migration state, and yields the directory path.
-    
+
     Yields:
         Path: Path to the created clean home directory.
     """

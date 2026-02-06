@@ -452,10 +452,10 @@ def _e2ee_dependencies_available() -> bool:
 def _validate_e2ee_dependencies() -> bool:
     """
     Determine whether E2EE is supported on this platform and the required libraries are available.
-    
+
     Performs only local checks (platform and importability) and prints user-facing messages when
     E2EE is not supported or dependencies are missing.
-    
+
     Returns:
         `True` if the current platform supports E2EE and the required E2EE libraries can be imported, `False` otherwise.
     """
@@ -481,13 +481,13 @@ def _validate_credentials_json(
 ) -> bool:
     """
     Validate a Matrix credentials.json located relative to the given configuration.
-    
+
     Searches for a credentials.json file (honoring an explicit credentials_path in `config` when present) and verifies it contains non-empty string values for "homeserver", "access_token", "user_id", and "device_id". On validation failure this function prints concise, user-facing error messages and guidance to run the authentication login flow.
-    
+
     Parameters:
         config_path (str): Path to the configuration file used to locate credentials.json.
         config (Mapping[str, Any] | None): Parsed configuration to honor an explicit credentials_path, if provided.
-    
+
     Returns:
         bool: `True` if a valid credentials.json was found with the required non-empty fields; `False` otherwise.
     """
@@ -618,21 +618,21 @@ def _validate_e2ee_config(
 ) -> bool:
     """
     Validate E2EE settings and Matrix authentication readiness for a configuration file.
-    
+
     Performs authentication checks (credentials.json, password, or access_token) and, if E2EE is enabled,
     verifies platform support and required native dependencies. If a configured E2EE store path does not
     exist, prints an informational note about its creation.
-    
+
     Parameters:
         _config (dict[str, Any]): Full parsed configuration (kept for caller compatibility; not used by most checks).
         matrix_section (Mapping[str, Any] | None): The "matrix" subsection of the parsed config, or None if absent.
         config_path (str): Path to the active configuration file; used to locate adjacent authentication artifacts
             such as credentials.json.
-    
+
     Returns:
         bool: `True` if authentication is usable and any enabled E2EE settings are valid (or if E2EE is not configured),
         `False` otherwise.
-    
+
     Notes:
         This function prints user-facing status and guidance messages to stdout.
     """
@@ -673,18 +673,18 @@ def _validate_e2ee_config(
 def _analyze_e2ee_setup(config: dict[str, Any], config_path: str) -> dict[str, Any]:
     """
     Analyze local end-to-end encryption (E2EE) readiness without contacting Matrix.
-    
+
     Performs an offline inspection of the environment and provided configuration to
     determine whether E2EE can be used. The check includes platform support,
     presence of required E2EE dependencies, whether E2EE is enabled in the
     configuration, and whether a usable credentials.json can be located.
-    
+
     Parameters:
         config (dict): Parsed configuration (usually from config.yaml); the
             "matrix" section is consulted for E2EE/encryption enablement.
         config_path (str): Path to the configuration file; used to locate a
             credentials.json sibling or other standard credential locations.
-    
+
     Returns:
         dict: Analysis summary with the following keys:
           - config_enabled (bool): True if E2EE/encryption is enabled in config.
@@ -784,12 +784,12 @@ def _find_credentials_json_path(
     def _normalize_path(path: str) -> str:
         """
         Normalize a filesystem path by expanding a leading `~` and resolving it to an absolute path.
-        
+
         Parameters:
-        	path (str): A filesystem path, which may be relative or contain a user-home shorthand.
-        
+                path (str): A filesystem path, which may be relative or contain a user-home shorthand.
+
         Returns:
-        	A string containing the absolute, user-expanded path.
+                A string containing the absolute, user-expanded path.
         """
         return os.path.abspath(os.path.expanduser(path))
 
@@ -830,11 +830,11 @@ def _find_credentials_json_path(
 def _print_unified_e2ee_analysis(e2ee_status: E2EEStatus) -> None:
     """
     Print a concise, user-facing analysis of end-to-end encryption (E2EE) readiness.
-    
+
     Given an E2EE status mapping, prints platform support, dependency availability,
     configuration state, credentials presence, an overall readiness line, and
     actionable fix instructions when the status is not ready.
-    
+
     Parameters:
         e2ee_status (E2EEStatus): Mapping with keys used to determine readiness, commonly:
             - platform_supported (bool): True when the OS/platform supports E2EE.
@@ -1591,9 +1591,9 @@ def main() -> int:
 def handle_subcommand(args: argparse.Namespace) -> int:
     """
     Dispatch a top-level CLI subcommand to its handler.
-    
+
     Supported commands: config, auth, service, paths, doctor, verify-migration, migrate.
-    
+
     Returns:
         Exit code returned by the invoked handler; `1` if the command is unknown.
     """
@@ -1769,12 +1769,12 @@ def handle_verify_migration_command(_args: argparse.Namespace) -> int:
 def handle_doctor_command(args: argparse.Namespace) -> int:
     """
     Print a diagnostic summary of resolved runtime paths, legacy sources, environment variables, CLI overrides, and migration status.
-    
+
     If the provided args has a boolean attribute `migration` set to True, run migration verification and include its warnings/errors in the output.
-    
+
     Parameters:
         args (argparse.Namespace): Parsed CLI arguments; may include `migration` (bool) to enable migration verification.
-    
+
     Returns:
         int: 0 on success, 1 if migration verification reported errors.
     """

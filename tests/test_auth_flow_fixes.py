@@ -104,7 +104,7 @@ class TestAuthFlowFixes(unittest.TestCase):
     def test_credentials_loading_with_debug_info(self):
         """
         Verify that load_credentials returns None and emits debug information about the config directory when running on Windows and the credentials file is missing.
-        
+
         The test simulates a Windows environment with the home/config directory present but without a credentials.json file. It asserts that:
         - load_credentials() returns None,
         - os.listdir was called for the configuration directory,
@@ -121,10 +121,10 @@ class TestAuthFlowFixes(unittest.TestCase):
                 def mock_exists(path):
                     """
                     Simulate filesystem existence checks for the test environment.
-                    
+
                     Parameters:
                         path (str): Path to check; compared against the test-scoped `credentials_path` and `config_dir` variables.
-                    
+
                     Returns:
                         bool: `True` if `path` equals `config_dir`, `False` otherwise (`credentials_path` is treated as not existing).
                     """

@@ -423,7 +423,7 @@ class TestDbUtils(unittest.TestCase):
         async def exercise():
             """
             Store two message-map entries and prune the message map to keep only the most recent entry.
-            
+
             Inserts two distinct message-map rows and then trims the table so only the newest row remains.
             """
             await async_store_message_map(
@@ -550,7 +550,7 @@ class TestDbUtils(unittest.TestCase):
     def test_get_db_path_data_directory_creation_error(self):
         """
         Verify get_db_path returns a default meshtastic.sqlite path and logs a warning when creating the default data directory fails.
-        
+
         Mocks resolve_all_paths to point to a non-existent data directory and forces os.makedirs to raise PermissionError; asserts the returned path ends with "meshtastic.sqlite" and that a single warning was logged.
         """
         # Clear cache and remove any database config to force default path

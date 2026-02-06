@@ -127,7 +127,7 @@ def _is_path_contained(root: str, child: str) -> bool:
 def _get_plugin_root_dirs() -> list[str]:
     """
     Compute an ordered list of candidate plugin root directories, preferring the user's HOME/plugins and including existing legacy plugin directories when present.
-    
+
     Returns:
         list[str]: Ordered list of filesystem paths to plugin root directories.
     """
@@ -172,9 +172,9 @@ def _get_plugin_root_dirs() -> list[str]:
 def _get_legacy_plugin_roots() -> set[str]:
     """
     Compute the legacy plugin root directories located under known legacy bases.
-    
+
     If discovery of legacy bases fails, an empty set is returned and a warning is logged.
-    
+
     Returns:
         A set of path strings for legacy "plugins" directories; empty if discovery fails or none are found.
     """

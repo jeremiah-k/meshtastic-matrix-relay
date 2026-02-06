@@ -46,7 +46,7 @@ from mmrelay.db_utils import (
 def reset_db_utils_state() -> None:
     """
     Reset cached database state before each test and restore it afterward.
-    
+
     This fixture clears the database path cache, resets the internal DB manager, and clears the module-level config prior to a test and repeats the cleanup after the test completes.
     """
     clear_db_path_cache()
@@ -201,7 +201,9 @@ class TestDBUtilsEdgeCases:
         """
         with patch("mmrelay.db_utils._get_db_manager") as mock_get_manager:
             mock_manager = MagicMock()
-            mock_manager.run_sync.side_effect = sqlite3.OperationalError("disk I/O error")
+            mock_manager.run_sync.side_effect = sqlite3.OperationalError(
+                "disk I/O error"
+            )
             mock_get_manager.return_value = mock_manager
 
             # Should handle disk full error gracefully
@@ -354,7 +356,7 @@ class TestDBUtilsEdgeCases:
             def side_effect_clear_cache(*_args, **_kwargs):
                 """
                 Clear the module's cached database path and return a test path-resolution mapping.
-                
+
                 Returns:
                     dict: A mapping containing `database_dir` set to the test directory path and `legacy_sources` as an empty list.
                 """
@@ -534,16 +536,16 @@ class TestDBUtilsEdgeCases:
             def mock_move(src, dst):
                 """
                 Simulate shutil.move behavior for tests: succeed on the first call, raise an error on the second, and succeed for subsequent calls.
-                
+
                 Used to model a successful main-database move, a failing sidecar move (to trigger rollback logic), and rollback moves that succeed.
-                
+
                 Parameters:
                     src (str): Source path to move.
                     dst (str): Destination path to move to.
-                
+
                 Returns:
                     The value returned by shutil.move when the operation succeeds (typically the destination path).
-                
+
                 Raises:
                     OSError: On the second invocation to simulate a sidecar move failure with message "Sidecar move failed".
                 """
@@ -599,14 +601,14 @@ class TestDBUtilsEdgeCases:
             def mock_move(src, dst):
                 """
                 Simulate shutil.move for tests by performing a successful main move, failing the first sidecar move, then performing a rollback on third call; any further calls raise.
-                
+
                 Parameters:
                     src (str | pathlib.Path): Source path to move.
                     dst (str | pathlib.Path): Destination path to move.
-                
+
                 Returns:
                     The value returned by the underlying real_shutil_move when a move is performed.
-                
+
                 Raises:
                     OSError: Simulated sidecar move failure on the second call.
                     RuntimeError: If called more times than the simulated sequence.
@@ -673,19 +675,19 @@ class TestDBUtilsEdgeCases:
             def mock_move(src, dst):
                 """
                 Test helper that simulates shutil.move with deterministic outcomes based on invocation order.
-                
+
                 On the first invocation it performs a real move via `real_shutil_move` and returns its result;
                 on the second invocation it raises an `OSError` with message "Sidecar move failed";
                 on the third invocation it raises a `PermissionError` with message "Rollback failed - access denied";
                 on any subsequent invocation it raises a `RuntimeError` indicating an unexpected call number.
-                
+
                 Parameters:
                     src (str): Source path to move.
                     dst (str): Destination path.
-                
+
                 Returns:
                     The value returned by `real_shutil_move(src, dst)` on the first call.
-                
+
                 Raises:
                     OSError: On the second call to simulate a sidecar move failure.
                     PermissionError: On the third call to simulate a rollback failure.
@@ -780,16 +782,16 @@ class TestDBUtilsEdgeCases:
             def mock_move(src, dst):
                 """
                 Simulate a sequence of file moves for tests, producing two successful moves, a controlled OSError on the third call, then successful rollbacks on subsequent calls.
-                
+
                 The function increments an external call counter on each invocation and dispatches behavior by call number:
                 - Calls 1 and 2: perform and return the real shutil.move result.
                 - Call 3: raise OSError("SHM sidecar move failed").
                 - Calls 4 and 5: perform and return the real shutil.move result (simulating rollback).
                 - Any further calls: raise RuntimeError indicating an unexpected call.
-                
+
                 Returns:
                     The value returned by the real shutil.move for successful calls.
-                
+
                 Raises:
                     OSError: on the simulated sidecar move failure (third call).
                     RuntimeError: if invoked more times than the scenario models.
@@ -885,14 +887,14 @@ class TestDBUtilsEdgeCases:
             def mock_move(src, dst):
                 """
                 Mock `shutil.move` that enforces a predefined sequence of successful moves and failures to exercise migration and rollback paths.
-                
+
                 Parameters:
                     src (str): Source path passed to the move operation.
                     dst (str): Destination path passed to the move operation.
-                
+
                 Returns:
                     The return value of the underlying real move operation when a simulated move succeeds.
-                
+
                 Raises:
                     OSError: Simulated failure for the second sidecar move (third call).
                     PermissionError: Simulated rollback failure for the first sidecar (fifth call).

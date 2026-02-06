@@ -1198,7 +1198,7 @@ async def async_store_message_map(
 async def async_prune_message_map(msgs_to_keep: int) -> None:
     """
     Prune message_map to retain only the most recent msgs_to_keep rows.
-    
+
     Parameters:
         msgs_to_keep (int): Number of most recent rows to retain; older rows will be deleted.
     """

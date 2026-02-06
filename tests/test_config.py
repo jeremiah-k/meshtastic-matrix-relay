@@ -1224,17 +1224,17 @@ class TestLoadConfigUncoveredLines(unittest.TestCase):
             ):
                 """
                 Raise ImportError for the modules "mmrelay.cli_utils" or "cli_utils" and delegate all other imports to the original importer.
-                
+
                 Parameters:
                     name (str): Module name to import; if it equals "mmrelay.cli_utils" or "cli_utils", ImportError is raised.
                     globals (dict): Forwarded to the underlying import mechanism.
                     locals (dict): Forwarded to the underlying import mechanism.
                     fromlist (tuple): Forwarded to the underlying import mechanism.
                     level (int): Forwarded to the underlying import mechanism.
-                
+
                 Returns:
                     module: The module object returned by the original import for successful imports.
-                
+
                 Raises:
                     ImportError: If `name` is "mmrelay.cli_utils" or "cli_utils".
                 """

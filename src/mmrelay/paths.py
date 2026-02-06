@@ -33,7 +33,7 @@ class E2EENotSupportedError(RuntimeError):
     def __init__(self) -> None:
         """
         Initialize the exception indicating E2EE is unsupported on Windows.
-        
+
         The exception message is set to "E2EE not supported on Windows".
         """
         super().__init__("E2EE not supported on Windows")
@@ -45,7 +45,7 @@ class UnknownPluginTypeError(ValueError):
     def __init__(self, plugin_type: str | None) -> None:
         """
         Initialize the exception with the unrecognized plugin_type.
-        
+
         Parameters:
             plugin_type (str | None): The plugin type value that was not recognized; included in the exception message.
         """
@@ -73,7 +73,7 @@ def set_home_override(path: str, *, source: str | None = None) -> None:
 def reset_home_override() -> None:
     """
     Clear any CLI-provided home directory override and its recorded source.
-    
+
     After calling this, path resolution will no longer use a previously set CLI override.
     """
     global _home_override, _home_override_source
@@ -84,13 +84,13 @@ def reset_home_override() -> None:
 def get_home_dir() -> Path:
     """
     Determine the application home directory according to CLI override, environment variables, and platform defaults.
-    
+
     Resolution order:
     1. CLI override set via set_home_override()
     2. MMRELAY_HOME environment variable
     3. Legacy environment variables MMRELAY_BASE_DIR and MMRELAY_DATA_DIR (considered only during the deprecation window; warnings are emitted when used)
     4. Platform defaults: ~/.mmrelay on Linux/macOS, and the OS user data directory on Windows
-    
+
     Returns:
         Path: Resolved application home directory.
     """
@@ -222,7 +222,7 @@ def get_credentials_path() -> Path:
 def get_database_dir() -> Path:
     """
     Get the application's database directory.
-    
+
     Returns:
         Path: Path to the `database` directory inside the resolved application home.
     """
@@ -243,7 +243,7 @@ def get_database_path() -> Path:
 def get_logs_dir() -> Path:
     """
     Locate the application's logs directory under the resolved home.
-    
+
     Returns:
         Path: Path to the logs directory (home / "logs").
     """
@@ -299,7 +299,7 @@ def get_plugins_dir() -> Path:
 def get_custom_plugins_dir() -> Path:
     """
     Get the application's custom plugins directory path.
-    
+
     Returns:
         Path: Path to the `plugins/custom` directory inside the application home.
     """
@@ -309,7 +309,7 @@ def get_custom_plugins_dir() -> Path:
 def get_community_plugins_dir() -> Path:
     """
     Locate the community plugins directory inside the application's plugins folder.
-    
+
     Returns:
         Path: The path to the community plugins directory.
     """
@@ -319,7 +319,7 @@ def get_community_plugins_dir() -> Path:
 def get_core_plugins_dir() -> Path:
     """
     Get the path to the core plugins directory under the application's plugins root.
-    
+
     Returns:
         Path: Path to the core plugins directory (MMRELAY_HOME/plugins/core).
     """
@@ -329,13 +329,13 @@ def get_core_plugins_dir() -> Path:
 def _normalize_plugin_type(plugin_type: str | None) -> str | None:
     """
     Normalize a plugin type identifier to one of the canonical values used by the resolver.
-    
+
     Parameters:
         plugin_type (str | None): The plugin type name (case-insensitive) to normalize, or `None` to indicate no type.
-    
+
     Returns:
         str | None: The canonical plugin type: `'custom'`, `'community'`, or `'core'`; or `None` if `plugin_type` is `None`.
-    
+
     Raises:
         UnknownPluginTypeError: If `plugin_type` is not `None` and does not match one of the accepted types.
     """
@@ -350,13 +350,13 @@ def _normalize_plugin_type(plugin_type: str | None) -> str | None:
 def get_plugin_code_dir(plugin_name: str, plugin_type: str | None = None) -> Path:
     """
     Locate the Tier 1 code directory for a plugin.
-    
+
     If `plugin_type` is provided it selects the corresponding plugin root; if omitted the function checks the custom then community plugin roots and falls back to the bundled core plugins path.
-    
+
     Parameters:
         plugin_name (str): Plugin directory name.
         plugin_type (str | None): One of "custom", "community", or "core". If None, the function will search custom then community and finally use the bundled core location.
-    
+
     Returns:
         Path: Filesystem path to the plugin's code directory.
     """
@@ -415,10 +415,10 @@ def get_plugin_data_dir(
 def get_plugin_database_path(plugin_name: str) -> Path:
     """
     Get the filesystem path to a plugin-specific database file used for diagnostics.
-    
+
     Parameters:
         plugin_name (str): Plugin identifier used to compose the filename.
-    
+
     Returns:
         Path: Path to the plugin database file (home/database/plugin_data_{plugin_name}).
     """
@@ -430,7 +430,7 @@ def get_plugin_database_path(plugin_name: str) -> Path:
 def ensure_directories(*, create_missing: bool = True) -> None:
     """
     Ensure the MMRelay filesystem layout exists by creating or reporting missing directories.
-    
+
     When `create_missing` is True, create any required directories if they do not exist; when False, do not modify the filesystem and report each missing directory. The set of checked directories excludes the E2EE store on Windows.
     Parameters:
         create_missing (bool): If True, create missing directories; if False, only report missing ones.
@@ -511,9 +511,9 @@ def is_deprecation_window_active() -> bool:
 def get_legacy_dirs() -> list[Path]:
     """
     List existing legacy MMRelay data directories that are distinct from the current application home.
-    
+
     Searches common legacy locations in priority order (default legacy home ~/.mmrelay, platform-specific user data dir, MMRELAY_BASE_DIR, MMRELAY_DATA_DIR, and common Docker mounts) and returns those that exist on disk, differ from the resolved current home, and are de-duplicated. This function does not create or modify any files or directories.
-    
+
     Returns:
         list[Path]: Ordered list of detected legacy directory paths (highest-to-lowest detection priority), excluding the current home.
     """
@@ -572,13 +572,13 @@ def get_legacy_dirs() -> list[Path]:
     def _has_mmrelay_artifacts(root: Path) -> bool:
         """
         Detects whether a directory contains indicators of an MMRelay data store.
-        
+
         Performs lightweight existence checks for common MMRelay artifacts (config, credentials,
         or known database file locations) to avoid false positives.
-        
+
         Parameters:
             root (Path): Directory to inspect for MMRelay artifacts.
-        
+
         Returns:
             True if any known MMRelay artifact is present in `root`, False otherwise.
         """
@@ -691,9 +691,9 @@ def resolve_all_paths() -> dict[str, Any]:
 def get_diagnostics() -> dict[str, Any]:
     """
     Produce a diagnostic snapshot of resolved application paths and environment state.
-    
+
     The returned dictionary contains the primary resolved paths, detected environment variables, CLI override/source information, and whether the legacy deprecation window is active.
-    
+
     Returns:
         diagnostics (dict): Mapping with these keys:
             - "home_dir": Resolved application home directory (string).

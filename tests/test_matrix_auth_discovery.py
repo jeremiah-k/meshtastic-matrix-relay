@@ -15,9 +15,9 @@ from mmrelay.matrix_utils import MatrixAuthInfo, _perform_matrix_login
 def mock_client():
     """
     Create a preconfigured MagicMock that simulates a Matrix client for tests.
-    
+
     The mock has attributes `access_token`, `user_id`, and `device_id` set to None, a `restore_login` MagicMock, and an asynchronous `whoami` AsyncMock suitable for awaiting.
-    
+
     Returns:
         MagicMock: A mock client with the attributes `access_token`, `user_id`, `device_id`, `restore_login`, and `whoami`.
     """

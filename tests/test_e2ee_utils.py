@@ -22,7 +22,7 @@ from mmrelay.e2ee_utils import (
 def e2ee_test_config():
     """
     Provide a temporary directory, file paths, and a baseline Matrix E2EE configuration for tests.
-    
+
     Yields:
         tuple: (temp_dir, config_path, credentials_path, base_config)
             - temp_dir (str): Path to the temporary directory created for the test.
@@ -30,7 +30,7 @@ def e2ee_test_config():
             - credentials_path (str): Path within temp_dir for the credentials file (credentials.json).
             - base_config (dict): Minimal configuration dict with E2EE enabled, a meshtastic meshnet_name,
               and one example matrix room mapping.
-    
+
     Notes:
         The temporary directory is removed after the fixture is finished.
     """
@@ -87,10 +87,10 @@ def test_credentials_found_in_legacy_location(
         def exists_side_effect(path):
             """
             Simulate os.path.exists responses for test credential paths, returning True only for the legacy2 credentials file.
-            
+
             Parameters:
                 path (str): Path to check; the function looks for "credentials.json" and the substrings "primary", "legacy1", "legacy2", or "legacy3" to decide the simulated result.
-            
+
             Returns:
                 bool: True if the path refers to the credentials file in "legacy2", False otherwise.
             """
@@ -165,7 +165,7 @@ def test_credentials_not_found_in_legacy_locations(
         def exists_side_effect(_path):
             """
             Always indicate that the given filesystem path does not exist.
-            
+
             Returns:
                 False for any input path.
             """
@@ -222,10 +222,10 @@ def test_credentials_in_legacy_during_deprecation_window(
         def exists_side_effect(path):
             """
             Simulate os.path.exists for tests by returning True only for the second legacy credentials path.
-            
+
             Parameters:
                 path (str): Filesystem path to check.
-            
+
             Returns:
                 bool: True if `path` contains "credentials.json" and "legacy2", False otherwise.
             """
@@ -287,7 +287,7 @@ def test_no_credentials_during_deprecation_window(
         def exists_side_effect(_path):
             """
             Always indicate that the given filesystem path does not exist.
-            
+
             Returns:
                 False for any input path.
             """

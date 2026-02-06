@@ -22,14 +22,18 @@ from mmrelay.constants.config import (
 )
 
 # Import new path resolution system
+from mmrelay.paths import get_config_paths as get_unified_config_paths
 from mmrelay.paths import (
-    get_config_paths as get_unified_config_paths,
     get_credentials_path,
-    get_e2ee_store_dir as get_unified_store_dir,
+)
+from mmrelay.paths import get_e2ee_store_dir as get_unified_store_dir
+from mmrelay.paths import (
     get_home_dir,
     get_legacy_dirs,
-    get_logs_dir as get_unified_logs_dir,
-    get_plugin_data_dir as get_unified_plugin_data_dir,
+)
+from mmrelay.paths import get_logs_dir as get_unified_logs_dir
+from mmrelay.paths import get_plugin_data_dir as get_unified_plugin_data_dir
+from mmrelay.paths import (
     get_plugins_dir,
     is_deprecation_window_active,
 )
@@ -105,7 +109,7 @@ def get_base_dir() -> str:
 def get_app_path() -> str:
     """
     Determine the application's base directory, accounting for frozen (bundled) executables.
-    
+
     Returns:
         The path to the application's base directory: the directory containing the frozen executable when running from a bundle, or the directory containing this source file otherwise.
     """
@@ -165,9 +169,9 @@ def get_credentials_search_paths(
     def _add(path: str | None) -> None:
         """
         Add a non-empty, previously unseen path to the candidate_paths collection.
-        
+
         If `path` is None, empty, or already present in `seen`, the function has no effect; otherwise it appends `path` to `candidate_paths` and records it in `seen`.
-        
+
         Parameters:
             path: Path string to add; ignored if `None` or already added.
         """
@@ -217,12 +221,12 @@ def get_candidate_credentials_paths(
 ) -> list[str]:
     """
     Provide a backwards-compatible alias that builds an ordered list of candidate filesystem paths to search for a credentials.json file.
-    
+
     Parameters:
         explicit_path (str | None): An explicit credentials path to prefer if provided.
         config_paths (Iterable[str] | None): Iterable of config file paths to derive candidate credentials locations from.
         include_base_data (bool): If True, include the unified base data directory's credentials path in candidates.
-    
+
     Returns:
         list[str]: Prioritized candidate absolute paths to search for a credentials.json file.
     """
@@ -239,7 +243,7 @@ class InvalidCredentialsPathTypeError(TypeError):
     def __init__(self) -> None:
         """
         Initialize the exception raised when a provided `credentials_path` value is not a string.
-        
+
         The exception message is set to: "credentials_path must be a string".
         """
         super().__init__("credentials_path must be a string")
@@ -248,17 +252,17 @@ class InvalidCredentialsPathTypeError(TypeError):
 def get_explicit_credentials_path(config: Mapping[str, Any] | None) -> str | None:
     """
     Get the explicitly configured credentials path, if present.
-    
+
     Checks the `MMRELAY_CREDENTIALS_PATH` environment variable first, then the top-level
     `credentials_path` key in `config`, and finally `config["matrix"]["credentials_path"]`.
     If a configured value is present it must be a string.
-    
+
     Parameters:
         config (Mapping[str, Any] | None): Optional configuration mapping to consult.
-    
+
     Returns:
         str | None: The configured credentials path string, or `None` if not set.
-    
+
     Raises:
         InvalidCredentialsPathTypeError: If a found `credentials_path` value exists but is not a string.
     """
@@ -284,12 +288,12 @@ def get_explicit_credentials_path(config: Mapping[str, Any] | None) -> str | Non
 def get_data_dir(*, create: bool = True) -> str:
     """
     Return the application's data directory path.
-    
+
     Deprecated: use `get_home_dir()` from mmrelay.paths instead. If `create` is True, the directory will be created if it does not exist.
-    
+
     Parameters:
         create (bool): If True, ensure the returned directory exists by creating it when necessary.
-    
+
     Returns:
         str: Absolute path to the data directory.
     """
@@ -308,14 +312,14 @@ def get_plugin_data_dir(
 ) -> str:
     """
     Resolve the application's plugins data directory or a plugin-specific data directory.
-    
+
     Ensures the top-level plugins directory exists; when `plugin_name` is provided, ensures and returns the plugin's data directory (optionally the named `subdir`) and will infer `plugin_type` from the global `relay_config` if not supplied.
-    
+
     Parameters:
         plugin_name (str | None): Optional plugin identifier to return a plugin-specific directory.
         subdir (str | None): Optional subdirectory name inside the plugin's data directory.
         plugin_type (str | None): Optional plugin category; expected values include `"custom"`, `"community"`, or `"core"`. If omitted, the function attempts to infer the type from `relay_config`.
-    
+
     Returns:
         str: Absolute path to the resolved plugins directory or the plugin-specific data directory.
     """
@@ -344,7 +348,7 @@ def get_plugin_data_dir(
 def get_log_dir() -> str:
     """
     Return the application's log directory, creating it if missing.
-    
+
     Returns:
         Absolute path to the log directory as a string; the directory is guaranteed to exist.
     """
@@ -356,12 +360,12 @@ def get_log_dir() -> str:
 def get_e2ee_store_dir() -> str:
     """
     Return the absolute path to the application's E2EE data store directory, creating it when possible.
-    
+
     If the unified store resolver signals the platform does not support E2EE, this function returns a legacy store path under the user's home directory and logs a warning. If directory creation fails due to filesystem permissions or other OS errors, it returns the same home-based fallback path and logs a warning instead of failing. If the unified resolver raises a RuntimeError for reasons other than platform support, that RuntimeError is propagated.
-    
+
     Returns:
         The absolute path to the E2EE store directory as a string.
-    
+
     Raises:
         RuntimeError: If the unified store resolver raises a RuntimeError that should not be handled as a platform-unsupported condition.
     """
@@ -396,16 +400,16 @@ def get_e2ee_store_dir() -> str:
 def _convert_env_bool(value: str, var_name: str) -> bool:
     """
     Parse an environment-variable string into a boolean.
-    
+
     Accepts (case-insensitive) true values: "true", "1", "yes", "on"; false values: "false", "0", "no", "off".
-    
+
     Parameters:
         value (str): The environment variable value to convert.
         var_name (str): Name of the environment variable — included in the ValueError message if parsing fails.
-    
+
     Returns:
         `True` if `value` represents a true value, `False` if it represents a false value.
-    
+
     Raises:
         ValueError: If `value` is not a recognized boolean representation; the error message includes `var_name`.
     """
@@ -797,7 +801,7 @@ def load_credentials() -> dict[str, Any] | None:
 async def async_load_credentials() -> dict[str, Any] | None:
     """
     Load Matrix credentials using a background thread.
-    
+
     Returns:
         dict[str, Any] | None: Parsed credentials mapping if a readable, valid credentials file is found; `None` otherwise.
     """
@@ -809,13 +813,13 @@ def save_credentials(
 ) -> None:
     """
     Persist the given credentials mapping to the resolved credentials.json file.
-    
+
     Resolves the target path from the explicit `credentials_path` argument, an explicit path from configuration, or the unified credentials path; if the resolved target refers to a directory the filename "credentials.json" is appended. The function creates the target directory if missing, writes the credentials as pretty-printed JSON (indent=2), and on Unix-like systems sets file permissions to owner read/write (0o600). I/O and permission failures are logged and re-raised.
-    
+
     Parameters:
         credentials (dict): JSON-serializable mapping of credentials to persist.
         credentials_path (str | None): Optional file path or directory to write to; when omitted the function uses a configured or unified credentials path.
-    
+
     Raises:
         OSError: If creating directories or writing the file fails.
         PermissionError: If permission is denied when creating directories or writing the file.
