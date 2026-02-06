@@ -955,6 +955,16 @@ class TestCredentials(unittest.TestCase):
         self.assertEqual(result, {"user_id": "test", "access_token": "token"})
 
     @patch("mmrelay.config.os.path.exists", return_value=True)
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("mmrelay.config.json.load", return_value=["not", "an", "object"])
+    def test_load_credentials_non_object(
+        self, _mock_json_load, _mock_open, _mock_exists
+    ):
+        """Test credential loading rejects non-object JSON payloads."""
+        result = load_credentials()
+        self.assertIsNone(result)
+
+    @patch("mmrelay.config.os.path.exists", return_value=True)
     @patch("builtins.open", side_effect=OSError("Permission denied"))
     def test_load_credentials_os_error(self, _mock_open, _mock_exists):
         """Test credential loading with an OSError."""

@@ -2507,9 +2507,7 @@ async def login_matrix_bot(
             )
 
             if credentials_path:
-                path_exists = await asyncio.to_thread(
-                    lambda path: os.path.exists(path), credentials_path
-                )
+                path_exists = await asyncio.to_thread(os.path.exists, credentials_path)
             else:
                 path_exists = False
             if path_exists:
@@ -2518,30 +2516,30 @@ async def login_matrix_bot(
                     logger.debug(
                         "Credentials path unexpectedly None after exists check"
                     )
-                    raise TypeError("credentials path missing")
+                else:
 
-                def _load_existing_creds(path: str) -> dict[str, Any]:
-                    """
-                    Read and parse a JSON credentials file into a dictionary.
+                    def _load_existing_creds(path: str) -> dict[str, Any]:
+                        """
+                        Read and parse a JSON credentials file into a dictionary.
 
-                    Parameters:
-                        path (str): Filesystem path to a JSON credentials file.
+                        Parameters:
+                            path (str): Filesystem path to a JSON credentials file.
 
-                    Returns:
-                        dict[str, Any]: The parsed JSON object as a dictionary.
-                    """
-                    with open(path, "r", encoding="utf-8") as f:
-                        return cast(dict[str, Any], json.load(f))
+                        Returns:
+                            dict[str, Any]: The parsed JSON object as a dictionary.
+                        """
+                        with open(path, "r", encoding="utf-8") as f:
+                            return cast(dict[str, Any], json.load(f))
 
-                existing_creds = await asyncio.to_thread(
-                    _load_existing_creds, cred_path
-                )
-                if (
-                    "device_id" in existing_creds
-                    and existing_creds.get("user_id") == username
-                ):
-                    existing_device_id = existing_creds["device_id"]
-                    logger.info(f"Reusing existing device_id: {existing_device_id}")
+                    existing_creds = await asyncio.to_thread(
+                        _load_existing_creds, cred_path
+                    )
+                    if (
+                        "device_id" in existing_creds
+                        and existing_creds.get("user_id") == username
+                    ):
+                        existing_device_id = existing_creds["device_id"]
+                        logger.info(f"Reusing existing device_id: {existing_device_id}")
         except (OSError, JSONDecodeError, KeyError, TypeError) as e:
             logger.debug(f"Could not load existing credentials: {e}")
 

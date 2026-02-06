@@ -668,6 +668,24 @@ class TestCLIValidationFunctions(unittest.TestCase):
             self.assertFalse(result)
 
     @patch("os.path.exists")
+    def test_validate_credentials_json_non_object(self, mock_exists):
+        """Test _validate_credentials_json rejects non-object JSON content."""
+        from mmrelay.cli import _validate_credentials_json
+
+        mock_exists.return_value = True
+
+        with (
+            patch("builtins.open", mock_open(read_data='["bad"]')),
+            patch("builtins.print") as mock_print,
+        ):
+            result = _validate_credentials_json("/path/to/config.yaml")
+            self.assertFalse(result)
+            mock_print.assert_any_call(
+                "❌ Error: credentials.json must be a JSON object",
+                file=sys.stderr,
+            )
+
+    @patch("os.path.exists")
     def test_validate_credentials_json_standard_location(self, mock_exists):
         """Test _validate_credentials_json when credentials.json exists in standard location."""
         from mmrelay.cli import _validate_credentials_json

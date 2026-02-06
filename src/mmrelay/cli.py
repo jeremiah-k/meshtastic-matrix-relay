@@ -502,6 +502,13 @@ def _validate_credentials_json(
         # Load and validate credentials
         with open(credentials_path, "r", encoding="utf-8") as f:
             credentials = json.load(f)
+        if not isinstance(credentials, dict):
+            print(
+                "❌ Error: credentials.json must be a JSON object",
+                file=sys.stderr,
+            )
+            print(f"   {msg_run_auth_login()}", file=sys.stderr)
+            return False
 
         # Check for required fields
         required_fields = ["homeserver", "access_token", "user_id", "device_id"]

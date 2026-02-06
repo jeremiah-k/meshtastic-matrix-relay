@@ -330,9 +330,11 @@ def get_plugin_data_dir(
     # If a plugin name is provided, create and return a plugin-specific directory
     if plugin_name:
         if plugin_type is None and isinstance(relay_config, dict):
-            if plugin_name in relay_config.get("community-plugins", {}):
+            community_plugins = relay_config.get("community-plugins") or {}
+            custom_plugins = relay_config.get("custom-plugins") or {}
+            if isinstance(community_plugins, dict) and plugin_name in community_plugins:
                 plugin_type = "community"
-            elif plugin_name in relay_config.get("custom-plugins", {}):
+            elif isinstance(custom_plugins, dict) and plugin_name in custom_plugins:
                 plugin_type = "custom"
             else:
                 plugin_type = "core"
@@ -762,7 +764,13 @@ def load_credentials() -> dict[str, Any] | None:
             if not os.path.exists(credentials_path):
                 continue
             with open(credentials_path, "r", encoding="utf-8") as f:
-                credentials = cast(dict[str, Any], json.load(f))
+                loaded = json.load(f)
+            if not isinstance(loaded, dict):
+                logger.error(
+                    "credentials.json must be a JSON object: %s", credentials_path
+                )
+                continue
+            credentials = cast(dict[str, Any], loaded)
             creds_dir = os.path.abspath(os.path.dirname(credentials_path))
             if creds_dir in legacy_dirs:
                 _get_config_logger().warning(
@@ -1225,7 +1233,7 @@ def _resolve_credentials_path(
                 candidate = matrix_config.get("credentials_path")
 
     if candidate:
-        candidate = os.path.expanduser(candidate)
+        candidate = os.path.abspath(os.path.expanduser(candidate))
         path_is_dir = os.path.isdir(candidate)
         if not path_is_dir:
             path_is_dir = bool(
