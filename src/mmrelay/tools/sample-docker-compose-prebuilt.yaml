@@ -4,7 +4,7 @@ services:
     container_name: meshtastic-matrix-relay
     restart: unless-stopped
     stop_grace_period: 30s
-    user: "${UID:-1000}:${GID:-1000}"
+    user: ${UID:-1000}:${GID:-1000}
     labels:
       - com.centurylinklabs.watchtower.enable=true # Enables automatic updates via Watchtower (if enabled, below)
     environment:

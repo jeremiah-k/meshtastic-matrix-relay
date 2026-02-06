@@ -1509,7 +1509,20 @@ async def _resolve_and_load_credentials(
 
     matrix_access_token = matrix_section.get("access_token")
     if not isinstance(matrix_access_token, str) or not matrix_access_token.strip():
-        logger.error("Matrix section is missing required field: access_token")
+        auth_keys = ("access_token", "password", "homeserver", "bot_user_id", "user_id")
+        present_auth_keys = [
+            key
+            for key in auth_keys
+            if isinstance(matrix_section.get(key), str)
+            and matrix_section.get(key).strip()
+        ]
+        if present_auth_keys:
+            logger.error("Matrix section is missing required field: access_token")
+        else:
+            logger.error(
+                "Matrix section contains non-auth settings only (for example E2EE options), "
+                "and no credentials.json was found."
+            )
         logger.error(msg_require_auth_login())
         return None
 
@@ -2510,7 +2523,8 @@ async def login_matrix_bot(
                 path_exists = await asyncio.to_thread(os.path.exists, credentials_path)
             else:
                 path_exists = False
-            if path_exists and credentials_path is not None:
+            existing_credentials_path = credentials_path if path_exists else None
+            if existing_credentials_path is not None:
 
                 def _load_existing_creds(path: str) -> dict[str, Any]:
                     """
@@ -2526,7 +2540,7 @@ async def login_matrix_bot(
                         return cast(dict[str, Any], json.load(f))
 
                 existing_creds = await asyncio.to_thread(
-                    _load_existing_creds, credentials_path
+                    _load_existing_creds, existing_credentials_path
                 )
                 if (
                     "device_id" in existing_creds
