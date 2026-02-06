@@ -238,6 +238,8 @@ class MatrixSyncFailedDetailsError(ConnectionError):
             The exception message is formatted as: "Matrix sync failed: {error_type} - {error_details}" and the provided values are attached to the instance.
         """
         super().__init__(f"Matrix sync failed: {error_type} - {error_details}")
+        self.error_type = error_type
+        self.error_details = error_details
 
 
 _MIME_TYPE_MAP: Dict[str, str] = {
@@ -1622,7 +1624,9 @@ async def _configure_e2ee(
                         if isinstance(store_override, str) and store_override:
                             e2ee_store_path = os.path.expanduser(store_override)
                         else:
-                            e2ee_store_path = str(get_e2ee_store_dir())
+                            e2ee_store_path = str(
+                                await asyncio.to_thread(get_e2ee_store_dir)
+                            )
 
                         try:
                             await asyncio.to_thread(
@@ -1793,9 +1797,18 @@ async def _perform_matrix_login(
                             device_id=e2ee_device_id,
                             access_token=access_token,
                         )
-                    logger.info(
-                        f"Restored login session for {user_id} with device {e2ee_device_id}"
-                    )
+                        logger.info(
+                            "Restored login session for %s with device %s",
+                            user_id,
+                            e2ee_device_id,
+                        )
+                    else:
+                        logger.warning(
+                            "Credentials updated but cannot restore full login session "
+                            "(device_id=%s, user_id=%s)",
+                            e2ee_device_id,
+                            user_id,
+                        )
                 else:
                     logger.warning("whoami response did not contain device_id")
             except NIO_COMM_EXCEPTIONS as e:
@@ -2280,31 +2293,37 @@ async def connect_matrix(
         ssl_context=ssl_context,
     )
 
-    await _perform_matrix_login(matrix_client, auth_info)
-    if not bot_user_id:
-        resolved_user_id = matrix_client.user_id
-        if isinstance(resolved_user_id, str) and resolved_user_id:
-            bot_user_id = resolved_user_id
-            globals()["bot_user_id"] = resolved_user_id
-        else:
-            logger.error("Matrix user ID is missing or invalid.")
-            return None
+    try:
+        await _perform_matrix_login(matrix_client, auth_info)
+        if not bot_user_id:
+            resolved_user_id = matrix_client.user_id
+            if isinstance(resolved_user_id, str) and resolved_user_id:
+                bot_user_id = resolved_user_id
+            else:
+                logger.error("Matrix user ID is missing or invalid.")
+                await _close_matrix_client_after_failure(
+                    matrix_client, "connect_matrix setup"
+                )
+                return None
 
-    if e2ee_enabled:
-        await _maybe_upload_e2ee_keys(matrix_client)
+        if e2ee_enabled:
+            await _maybe_upload_e2ee_keys(matrix_client)
 
-    logger.debug("Performing initial sync to initialize rooms...")
-    sync_response = await _perform_initial_sync(matrix_client, matrix_homeserver)
-    await _post_sync_setup(
-        matrix_client,
-        sync_response,
-        config,
-        matrix_rooms,
-        matrix_homeserver,
-        bot_user_id,
-        e2ee_enabled,
-    )
-    return matrix_client
+        logger.debug("Performing initial sync to initialize rooms...")
+        sync_response = await _perform_initial_sync(matrix_client, matrix_homeserver)
+        await _post_sync_setup(
+            matrix_client,
+            sync_response,
+            config,
+            matrix_rooms,
+            matrix_homeserver,
+            bot_user_id,
+            e2ee_enabled,
+        )
+        return matrix_client
+    except BaseException:
+        await _close_matrix_client_after_failure(matrix_client, "connect_matrix setup")
+        raise
 
 
 async def login_matrix_bot(

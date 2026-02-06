@@ -128,6 +128,7 @@ class TestAuthFlowFixes(unittest.TestCase):
                     Returns:
                         bool: `True` if `path` equals `config_dir`, `False` otherwise (`credentials_path` is treated as not existing).
                     """
+                    path = os.fspath(path)
                     if path == credentials_path:
                         return False  # credentials.json doesn't exist
                     elif path == config_dir:

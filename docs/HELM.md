@@ -82,9 +82,9 @@ image:
 **Pin by tag:**
 
 ```bash
-  helm upgrade mmrelay ./deploy/helm/mmrelay \
-    --set image.tag=1.3.0 \
-    --namespace mmrelay
+helm upgrade mmrelay ./deploy/helm/mmrelay \
+  --set image.tag=1.3.0 \
+  --namespace mmrelay
 ```
 
 **Pin by digest (recommended for production):**

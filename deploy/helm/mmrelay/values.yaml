@@ -146,6 +146,9 @@ networkPolicy:
   # egress: []
 
 # Horizontal Pod Autoscaler (disabled by default)
+# WARNING: Meshtastic devices allow only one active client connection at a time.
+# Do not scale replicas for a single device deployment without a topology that
+# guarantees only one relay instance connects to each device.
 autoscaling:
   enabled: false
   minReplicas: 1

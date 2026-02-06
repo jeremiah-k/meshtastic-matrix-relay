@@ -795,7 +795,16 @@ def _find_credentials_json_path(
 
     explicit_path = get_explicit_credentials_path(config or relay_config)
     if explicit_path:
+        raw_explicit = explicit_path
         explicit_path = _normalize_path(explicit_path)
+        if (
+            os.path.isdir(explicit_path)
+            or raw_explicit.endswith(os.path.sep)
+            or (os.path.altsep and raw_explicit.endswith(os.path.altsep))
+        ):
+            explicit_path = _normalize_path(
+                os.path.join(explicit_path, "credentials.json")
+            )
         if os.path.exists(explicit_path):
             return explicit_path
 

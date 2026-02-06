@@ -1307,11 +1307,13 @@ class TestAuthLogout(unittest.TestCase):
         )
         mock_asyncio_run.assert_called_once()
 
+    @patch("asyncio.run")
     @patch("mmrelay.cli_utils.logout_matrix_bot", new=MagicMock(return_value=False))
     @patch("builtins.print")
-    def test_handle_auth_logout_failure(self, mock_print):
+    def test_handle_auth_logout_failure(self, mock_print, mock_asyncio_run):
         """Test logout failure returns exit code 1."""
-        # ASYNC MOCK FIX: Use return_value directly, not AsyncMock
+        # ASYNC MOCK FIX: Mock asyncio.run instead of the async function directly
+        mock_asyncio_run.return_value = False
         self.mock_args.password = "test_password"
         self.mock_args.yes = True
 
@@ -1320,6 +1322,7 @@ class TestAuthLogout(unittest.TestCase):
 
         # Verify results
         self.assertEqual(result, 1)
+        mock_asyncio_run.assert_called_once()
 
     @patch("asyncio.run")
     @patch("mmrelay.cli_utils.logout_matrix_bot", new=MagicMock(return_value=True))

@@ -31,7 +31,10 @@ cp docs/docker-compose.yml .
 #    (See https://github.com/jeremiah-k/meshtastic-matrix-relay/pkgs/container/mmrelay for available tags)
 
 # 3. Create your config.yaml (or use sample)
+# Option A: if you cloned this repository
 cp src/mmrelay/tools/sample_config.yaml config.yaml
+# Option B: if you only copied docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/v13rc1-2/src/mmrelay/tools/sample_config.yaml -o config.yaml
 # Edit config.yaml with your settings
 
 # 4. Start the service
@@ -70,9 +73,11 @@ For full Docker documentation, see [DOCKER.md](DOCKER.md).
 docs/
 ├── README.md              # This file - documentation index
 ├── INSTRUCTIONS.md        # Main installation and setup guide
-├── MIGRATION_1.3.md     # Migration guide for upgrading from older versions
+├── MIGRATION_1.3.md      # Migration guide for upgrading from older versions
 ├── E2EE.md               # End-to-End Encryption guide
 ├── DOCKER.md             # Docker deployment guide
+├── docker-compose.yml    # Minimal Docker Compose quick-start example
+├── HELM.md               # Helm chart deployment guide
 ├── ADVANCED_CONFIGURATION.md # Advanced configuration options
 └── dev/                  # Developer documentation
     ├── CONSTANTS.md      # Configuration constants reference

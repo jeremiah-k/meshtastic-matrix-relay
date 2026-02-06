@@ -22,6 +22,14 @@ services:
       - --config
       - /app/config.yaml
 
+    # Lightweight health check using the same ready-file concept as Helm.
+    healthcheck:
+      test: [CMD, test, -f, /run/mmrelay/ready]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
     # Optional: Resource limits
     # deploy:
     #   resources:

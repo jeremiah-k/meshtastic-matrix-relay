@@ -5211,7 +5211,7 @@ async def test_connect_matrix_legacy_config(
 
 @patch("mmrelay.matrix_utils.save_credentials")
 @patch("mmrelay.matrix_utils.AsyncClient")
-@patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
+@patch("mmrelay.cli_utils._create_ssl_context", return_value=None)
 async def test_login_matrix_bot_reuses_existing_device_id(
     _mock_ssl_context, mock_async_client, _mock_save_credentials, tmp_path
 ):

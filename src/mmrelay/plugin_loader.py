@@ -2375,12 +2375,10 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                     )
                     continue
 
-                # Use internal validated version to skip redundant validation
-                success = _clone_or_update_repo_validated(
+                # Call public helper so tests and integrations can patch this seam.
+                success = clone_or_update_repo(
                     validation_result.repo_url,
-                    validation_result.ref_type,
-                    validation_result.ref_value,
-                    repo_name,
+                    ref,
                     community_plugins_dir,
                 )
                 if not success:

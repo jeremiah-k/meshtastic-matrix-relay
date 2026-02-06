@@ -41,7 +41,7 @@ chmod 600 ~/.mmrelay/config.yaml
 nano ~/.mmrelay/config.yaml
 
 # Set up environment and get docker-compose file
-grep -q '^MMRELAY_HOST_HOME=' .env 2>/dev/null || echo 'MMRELAY_HOST_HOME=$HOME' >> .env
+grep -q '^MMRELAY_HOST_HOME=' .env 2>/dev/null || echo "MMRELAY_HOST_HOME=${HOME}" >> .env
 grep -q '^UID=' .env 2>/dev/null || echo "UID=$(id -u)" >> .env
 grep -q '^GID=' .env 2>/dev/null || echo "GID=$(id -g)" >> .env
 curl -o docker-compose.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample-docker-compose-prebuilt.yaml
@@ -486,7 +486,7 @@ services:
 
 ```bash
 # The following commands set up your environment to prevent permission issues
-grep -q '^MMRELAY_HOST_HOME=' .env 2>/dev/null || echo 'MMRELAY_HOST_HOME=$HOME' >> .env
+grep -q '^MMRELAY_HOST_HOME=' .env 2>/dev/null || echo "MMRELAY_HOST_HOME=${HOME}" >> .env
 grep -q '^UID=' .env 2>/dev/null || echo "UID=$(id -u)" >> .env
 grep -q '^GID=' .env 2>/dev/null || echo "GID=$(id -g)" >> .env
 docker compose up -d

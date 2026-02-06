@@ -401,6 +401,7 @@ class TestConfigEdgeCases(unittest.TestCase):
             patch("mmrelay.config.sys.platform", "win32"),
             patch("mmrelay.paths.sys.platform", "win32"),
             patch.dict(os.environ, {"MMRELAY_HOME": "C:\\mmrelay"}, clear=True),
+            patch("mmrelay.config.os.makedirs"),
         ):
             result = get_e2ee_store_dir()
 

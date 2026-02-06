@@ -254,7 +254,7 @@ selftest() {
 
 	if [[ ${ERROR_FOUND} -eq 1 ]] && [[ ${ERROR_COUNT} -eq 2 ]]; then
 		echo "✓ Self-test PASSED: Correctly detected forbidden patterns outside allowed blocks (Count: ${ERROR_COUNT})"
-		rm -f "${TEST_FILE}"
+		rm -f "${TEST_FILE}" "${TEST_OUTPUT_FILE}"
 		PATTERNS=("${OLD_PATTERNS[@]}")
 		DOC_FILES=("${OLD_DOC_FILES[@]}")
 		ERROR_FOUND=${OLD_ERROR_FOUND}

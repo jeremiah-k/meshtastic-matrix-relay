@@ -32,5 +32,5 @@ This checklist is required before tagging a 1.3 release.
 
 ## CI Checks
 
-- [ ] All required GitHub Actions workflows are green on `maint-21-2`.
-- [ ] No warnings or failures in lint, test, or packaging workflows.
+- [ ] All required GitHub Actions workflows are green on `v13rc1-2`.
+- [ ] No warnings or failures in lint, test, or packaging workflows on `v13rc1-2`.

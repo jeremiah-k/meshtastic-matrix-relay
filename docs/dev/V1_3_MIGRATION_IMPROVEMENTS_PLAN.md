@@ -350,4 +350,4 @@ This document outlines systematic improvements to the MMRelay v1.3 migration sys
 
 **Document Version**: 1.2
 **Last Updated**: 2026-02-05
-**Audit Reference**: MMRELAY_V13_MIGRATION_AUDIT.md
+**Audit Reference**: ../MIGRATION_1.3.md

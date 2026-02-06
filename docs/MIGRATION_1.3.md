@@ -141,7 +141,7 @@ export MMRELAY_CREDENTIALS_PATH=/opt/mmrelay/credentials.json
 ```yaml
 services:
   mmrelay:
-    image: ghcr.io/jeremiah-k/mmrelay:1.3.0
+    image: ghcr.io/jeremiah-k/mmrelay:1.2.9
     environment:
       - MMRELAY_BASE_DIR=/app/data
       - MMRELAY_CREDENTIALS_PATH=/app/data/credentials.json
