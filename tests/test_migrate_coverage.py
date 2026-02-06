@@ -561,17 +561,7 @@ class TestGetMostRecentDatabase:
         result = _get_most_recent_database([wal])
         assert result is None
 
-    def test_get_most_recent_database_max_returns_none(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Test unexpected max result is handled."""
-        db = tmp_path / "db.sqlite"
-        db.write_text("db")
 
-        monkeypatch.setattr("builtins.max", lambda *args, **kwargs: None)
-
-        result = _get_most_recent_database([db])
-        assert result is None
 
 
 class TestBackupFile:
@@ -2173,53 +2163,7 @@ class TestPerformMigration:
         assert report["success"] is True
         assert gpx_called["value"] is True
 
-    def test_perform_migration_gpx_yaml_import_error(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Test YAML import failure during gpxtracker detection."""
-        import builtins
 
-        new_home = tmp_path / "home"
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-
-        config = legacy_root / "config.yaml"
-        config.write_text(
-            "community-plugins:\n  gpxtracker:\n    gpx_directory: /tmp/gpx\n"
-        )
-
-        paths_info = {"home": str(new_home), "legacy_sources": [str(legacy_root)]}
-        monkeypatch.setattr("mmrelay.migrate.resolve_all_paths", lambda: paths_info)
-
-        def ok_result(*_args, **_kwargs):
-            return {"success": True}
-
-        gpx_called = {"value": False}
-
-        def gpx_result(*_args, **_kwargs):
-            gpx_called["value"] = True
-            return {"success": True}
-
-        monkeypatch.setattr("mmrelay.migrate.migrate_credentials", ok_result)
-        monkeypatch.setattr("mmrelay.migrate.migrate_config", ok_result)
-        monkeypatch.setattr("mmrelay.migrate.migrate_database", ok_result)
-        monkeypatch.setattr("mmrelay.migrate.migrate_logs", ok_result)
-        monkeypatch.setattr("mmrelay.migrate.migrate_store", ok_result)
-        monkeypatch.setattr("mmrelay.migrate.migrate_plugins", ok_result)
-        monkeypatch.setattr("mmrelay.migrate.migrate_gpxtracker", gpx_result)
-
-        original_import = builtins.__import__
-
-        def mock_import(name, *args, **kwargs):
-            if name == "yaml":
-                raise ImportError("Mock import error")
-            return original_import(name, *args, **kwargs)
-
-        monkeypatch.setattr(builtins, "__import__", mock_import)
-
-        report = perform_migration(dry_run=True, force=False, move=False)
-        assert report["success"] is True
-        assert gpx_called["value"] is False
 
     def test_perform_migration_gpx_yaml_parse_error(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

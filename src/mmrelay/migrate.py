@@ -1937,6 +1937,16 @@ def perform_migration(
             )
             report["rollback"] = rollback_migration(completed_steps=completed_steps)
         return report
+    except (OSError, IOError, sqlite3.DatabaseError) as exc:
+        report["success"] = False
+        report["error"] = str(exc)
+        report["message"] = "Migration failed"
+        if not dry_run:
+            _write_migration_state(
+                status="failed", completed_steps=completed_steps, error=str(exc)
+            )
+            report["rollback"] = rollback_migration(completed_steps=completed_steps)
+        return report
     except Exception as exc:
         logger.exception("Unexpected error during migration")
         report["success"] = False

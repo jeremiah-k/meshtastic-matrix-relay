@@ -968,8 +968,15 @@ def _get_logger() -> "logging.Logger":
 
 # Proxy for backward compatibility and tests
 class _LoggerProxy:
+    """Proxy for the configuration logger to avoid circular imports during startup."""
+
     def __getattr__(self, name: str) -> Any:
+        """Forward attribute access to the real logger."""
         return getattr(_get_logger(), name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        """Allow setting attributes (needed for mock.patch)."""
+        self.__dict__[name] = value
 
 
 logger: Any = _LoggerProxy()
