@@ -224,6 +224,12 @@ The `credentials.json` file contains:
 pipx install 'mmrelay[e2e]'
 ```
 
+If running from a local checkout (editable install), use:
+
+```bash
+pip install -e '.[e2e]'
+```
+
 #### "Failed to decrypt event" error in logs
 
 **Problem**: You see `ERROR Matrix: Failed to decrypt event...` in your logs.

@@ -1667,7 +1667,10 @@ async def _configure_e2ee(
                     logger.warning(
                         "E2EE is enabled in config but python-olm is not installed."
                     )
-                    logger.warning("Install 'mmrelay[e2e]' to use E2EE features.")
+                    logger.warning(
+                        "Install E2EE extras: pip install 'mmrelay[e2e]' "
+                        "(or from source: pip install -e '.[e2e]')."
+                    )
                     e2ee_enabled = False
     except (KeyError, TypeError):
         logger.debug("E2EE configuration not found or malformed, E2EE disabled")
