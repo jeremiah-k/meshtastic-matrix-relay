@@ -64,9 +64,6 @@ spec:
           imagePullPolicy: IfNotPresent
           command:
             - mmrelay
-          args:
-            - --config
-            - /app/config.yaml
           env:
             - name: TZ
               value: UTC
@@ -133,17 +130,17 @@ spec:
                 command:
                   - sh
                   - -c
-                  - mmrelay shutdown || true; sleep 5
+                  - sleep 5
           volumeMounts:
             # Pattern A (default): Secret-based config injection
             - name: config
-              mountPath: /app/config.yaml
+              mountPath: /data/config.yaml
               subPath: config.yaml
               readOnly: true
             # Pattern B (alternative): ConfigMap-based config injection
             # Uncomment following volumeMount and corresponding volume
             # - name: config
-            #   mountPath: /app/config.yaml
+            #   mountPath: /data/config.yaml
             #   subPath: config.yaml
             #   readOnly: true
             # Optional: Mount credentials.json from Secret (recommended)

@@ -166,9 +166,9 @@ clean:
 # Run diagnostics inside the container
 doctor:
 	@echo "Running diagnostics inside container..."
-	$(DOCKER_COMPOSE) exec -T mmrelay mmrelay doctor --config /app/config.yaml
+	$(DOCKER_COMPOSE) exec -T mmrelay mmrelay doctor
 
 # Show runtime paths inside the container
 paths:
 	@echo "Showing runtime paths inside container..."
-	$(DOCKER_COMPOSE) exec -T mmrelay mmrelay paths --config /app/config.yaml
+	$(DOCKER_COMPOSE) exec -T mmrelay mmrelay paths

@@ -87,9 +87,6 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command:
             - mmrelay
-          args:
-            - --config
-            - {{ .Values.configPath }}
           env:
             - name: MMRELAY_HOME
               value: {{ .Values.mmrelayHome | quote }}
@@ -153,8 +150,6 @@ spec:
               command:
                 - mmrelay
                 - doctor
-                - --config
-                - {{ .Values.configPath }}
             initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
             timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
@@ -167,7 +162,7 @@ spec:
                 command:
                   - sh
                   - -c
-                  - "mmrelay shutdown --config {{ .Values.configPath }} || true; sleep {{ .Values.lifecycle.preStopSleepSeconds }}"
+                  - "sleep {{ .Values.lifecycle.preStopSleepSeconds }} || true"
           {{- end }}
           volumeMounts:
             - name: config

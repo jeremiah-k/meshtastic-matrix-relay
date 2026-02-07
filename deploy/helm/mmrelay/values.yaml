@@ -12,7 +12,7 @@ image:
 
 # Runtime paths (fixed by container design)
 mmrelayHome: /data
-configPath: /app/config.yaml
+configPath: /data/config.yaml
 readyFile: /run/mmrelay/ready
 
 # Config injection

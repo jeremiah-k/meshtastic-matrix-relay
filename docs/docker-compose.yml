@@ -11,17 +11,12 @@ services:
       - TZ=UTC
 
     volumes:
-      # Persistent data directory (credentials, database, logs, plugins, E2EE store)
+      # Persistent data directory (config, credentials, database, logs, plugins, E2EE store)
       - ./mmrelay-data:/data
 
-      # Configuration file (read-only, binds from current directory)
-      - ./config.yaml:/app/config.yaml:ro
-
-    # Command uses only --config; MMRELAY_HOME drives all other paths
+    # Default command implicitly uses /data/config.yaml
     command:
       - mmrelay
-      - --config
-      - /app/config.yaml
 
     # Lightweight health check using the same ready-file concept as Helm.
     healthcheck:

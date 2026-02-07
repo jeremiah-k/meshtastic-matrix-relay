@@ -6,11 +6,11 @@ This guide helps you upgrade from any legacy layout to the v1.3 unified HOME mod
 
 MMRelay now uses a single MMRELAY_HOME root for all runtime state:
 
-- Credentials
-- Database
-- Logs
-- E2EE store
-- Plugins
+- Credentials (moved to `matrix/` subdirectory)
+- Database (moved to `database/` subdirectory)
+- Logs (moved to `logs/` subdirectory)
+- E2EE store (moved to `matrix/store/` subdirectory)
+- Plugins (moved to `plugins/` subdirectory)
 
 ## New Directory Structure
 
@@ -18,22 +18,26 @@ After migration, your MMRELAY_HOME follows this layout:
 
 ```text
 ~/.mmrelay/  (or /data in containers)
-├── config.yaml
-├── matrix/
-│   ├── credentials.json   # Matrix authentication
-│   └── store/             # E2EE encryption keys
+├── config.yaml              # User configuration (optional, can be elsewhere)
+├── matrix/                  # Matrix runtime artifacts
+│   ├── credentials.json    # Matrix authentication credentials
+│   └── store/              # E2EE encryption keys (Unix/macOS only)
 ├── database/
-│   └── meshtastic.sqlite
+│   └── meshtastic.sqlite  # SQLite database (with -wal, -shm)
 ├── logs/
+│   └── mmrelay.log          # Application logs
 └── plugins/
-    ├── custom/
-    └── community/
+    ├── core/              # Built-in plugins (read-only, in package)
+    ├── custom/            # User plugins
+    │   └── <plugin-name>/
+    └── community/         # Third-party plugins
+        └── <plugin-name>/
 ```
 
 For containers, the canonical model remains:
 
 - `MMRELAY_HOME=/data`
-- Config mounted at `/app/config.yaml`
+- Config mounted at `/data/config.yaml`
 
 ## Before Upgrading
 
@@ -133,7 +137,7 @@ If you need to manually undo a successful migration:
 ## Kubernetes-Specific Notes
 
 1. Keep one PVC mounted at `/data`.
-2. Keep config mounted at `/app/config.yaml`.
+2. Keep config mounted at `/data/config.yaml`.
 3. Deploy upgraded manifests/chart and verify in pod:
    - `kubectl exec -n mmrelay <pod> -- mmrelay migrate --dry-run`
    - `kubectl exec -n mmrelay <pod> -- mmrelay migrate`
@@ -146,7 +150,7 @@ If verification fails, stop the rollout and restore your previous image and back
 1. Update compose to 1.3 model:
    - `MMRELAY_HOME=/data`
    - Use a single bind mount or volume at `/data`
-   - config mounted at `/app/config.yaml`
+   - config mounted at `/data/config.yaml`
    - reference examples:
      - prebuilt image flow: [`src/mmrelay/tools/sample-docker-compose-prebuilt.yaml`](../src/mmrelay/tools/sample-docker-compose-prebuilt.yaml)
      - local build flow: [`src/mmrelay/tools/sample-docker-compose.yaml`](../src/mmrelay/tools/sample-docker-compose.yaml)

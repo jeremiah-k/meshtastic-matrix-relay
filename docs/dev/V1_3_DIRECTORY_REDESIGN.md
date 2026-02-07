@@ -396,18 +396,20 @@ def get_log_file() -> Path:
 
 def get_e2ee_store_dir() -> Path:
     """
-    Get E2EE store directory.
+    Directory for storing end-to-end encryption (E2EE) keys.
 
-    On Windows, returns a fallback path under the home directory and logs a warning.
-    If the directory cannot be created, returns the same fallback path and logs a warning.
+    Only available on Unix-like platforms; calling this on Windows raises an error.
 
     Returns:
-        Path: E2EE store directory
+        Path: Path to E2EE key store directory.
+
+    Raises:
+        E2EENotSupportedError: If invoked on Windows (E2EE is not supported on Windows).
     """
     if sys.platform == "win32":
-        # Logs a warning and returns a fallback path on Windows.
-        return get_home_dir() / "matrix" / "store"
-    return get_home_dir() / "matrix" / "store"
+        raise E2EENotSupportedError()
+
+    return get_matrix_dir() / "store"
 
 
 def get_plugins_dir() -> Path:
@@ -587,6 +589,7 @@ def migrate_credentials(legacy_info: dict[str, Any], new_home: Path) -> bool:
         return False
 
     new_path = new_home / "matrix" / "credentials.json"
+    new_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Backup existing new credentials if present
     if new_path.exists():
@@ -950,14 +953,14 @@ ENV MMRELAY_BASE_DIR=/data
 # NEW (replace with):
 ENV MMRELAY_HOME=/data
 
-# Update CMD:
-CMD ["mmrelay", "--config", "/app/config.yaml", "--home", "/data"]
+# Update CMD (implicitly uses /data/config.yaml and /data HOME):
+CMD ["mmrelay"]
 ```
 
 **Rationale**:
 
-- Single environment variable for all data
-- Clear separation: `/app/config.yaml` (from ConfigMap) vs `/data` (from PVC)
+- Single environment variable (`MMRELAY_HOME`) for all data
+- Configuration (`config.yaml`) lives alongside data in `/data`
 - No confusion about which variable to use
 
 ### Step 6: Update K8s Configuration
@@ -981,12 +984,8 @@ env:
   - name: MMRELAY_LOG_PATH
     value: /data/logs/mmrelay.log
 
-# Update args:
-args:
-  - --config
-  - /app/config.yaml
-  - --home
-  - /data
+# Remove redundant args (uses MMRELAY_HOME environment variable instead):
+args: []
 ```
 
 **Rationale**:

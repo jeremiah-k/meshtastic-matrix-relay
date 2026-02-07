@@ -31,7 +31,7 @@ store.
 - Update `docker-compose.yml` to 1.3 model:
   - `MMRELAY_HOME=/data`
   - mount one persistent host path to `/data`
-  - mount config at `/app/config.yaml`
+  - mount config at `/data/config.yaml`
   - if using healthcheck, set `MMRELAY_READY_FILE` and check the same path
 - Ensure `.env` host-path variables are valid absolute paths on your machine.
 - Run migration in container:
@@ -41,7 +41,7 @@ store.
 ### Kubernetes/Helm users
 
 - Keep one persistent volume mounted at `/data`.
-- Keep config mounted at `/app/config.yaml`.
+- Keep config mounted at `/data/config.yaml`.
 - Deploy 1.3 chart/manifests, then verify inside pod:
   - `kubectl exec -n mmrelay <pod> -- mmrelay verify-migration`
 

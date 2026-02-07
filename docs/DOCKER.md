@@ -103,8 +103,7 @@ For users who prefer web-based Docker management:
          - PYTHONUNBUFFERED=1
          - MPLCONFIGDIR=/tmp/matplotlib
        volumes:
-         - /home/yourusername/.mmrelay/config.yaml:/app/config.yaml:ro,Z
-         - /home/yourusername/.mmrelay:/data:Z # matrix/credentials.json, matrix/store, logs, DB, plugins
+         - /home/yourusername/.mmrelay:/data:Z # config.yaml, matrix/, logs/, database/, plugins/
    ```
 
    Replace `/home/yourusername` with your actual home directory.
@@ -303,11 +302,10 @@ services:
 
 Uses the same directories as standalone installation:
 
-- **Config**: `~/.mmrelay/config.yaml` (mounted read-only to `/app/config.yaml`)
-- **Data Directory**: `~/.mmrelay/` (mounted to `/data`). This directory on your host will contain subdirectories for the database (`database/meshtastic.sqlite`), logs (`logs/`), plugins (`plugins/custom/` and `plugins/community/`), and matrix auth/E2EE data (`matrix/credentials.json`, `matrix/store/`).
+- **Home Directory**: `~/.mmrelay/` (mounted to `/data`). This directory on your host contains the configuration (`config.yaml`), and subdirectories for the database (`database/meshtastic.sqlite`), logs (`logs/`), plugins (`plugins/custom/` and `plugins/community/`), and matrix auth/E2EE data (`matrix/credentials.json`, `matrix/store/`).
 
 **Volume Mounting Explanation:**
-The Docker compose files mount `~/.mmrelay/` to `/data` for persistent data and separately bind-mount `config.yaml` to `/app/config.yaml` (read-only). This dual-mounting pattern ensures the container can find the config file at its expected canonical path, while keeping all other data in a single directory. On SELinux systems, add `:Z` to volume options to label mounts correctly, e.g., `/app/config.yaml:ro,Z` and `/data:Z`.
+The Docker compose files mount `~/.mmrelay/` to `/data`. This ensures that all persistent application data, including configuration, stays together in a single directory. On SELinux systems, add `:Z` to volume options to label mounts correctly, e.g., `/data:Z`.
 
 This means your Docker and standalone installations share the same data!
 
@@ -336,7 +334,7 @@ The Docker image includes a built-in health check that supports two modes:
 
 **Default mode (no MMRELAY_READY_FILE):**
 
-- Runs `mmrelay doctor --config /app/config.yaml` to verify runtime HOME validity and no legacy paths
+- Runs `mmrelay doctor` to verify runtime HOME validity and no legacy paths
 - Suitable for standalone deployments where you want deeper health checks
 
 **Recommended mode (MMRELAY_READY_FILE set):**
@@ -401,7 +399,7 @@ The Docker image includes a built-in health check that supports two modes:
 - Verify config syntax (host):
   `mmrelay config check --config ~/.mmrelay/config.yaml`
 - Verify config syntax (container):
-  `docker compose exec mmrelay mmrelay config check --config /app/config.yaml`
+  `docker compose exec mmrelay mmrelay config check`
 - Ensure all required config fields are set
 
 **Connection issues:**
@@ -475,10 +473,8 @@ services:
     volumes:
       # Use MMRELAY_HOST_HOME for host paths (not MMRELAY_HOME to avoid conflict)
       # For SELinux systems (RHEL/CentOS/Fedora), add :Z flag to prevent permission denied errors
-      - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro,Z
       - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay:/data:Z
       # For non-SELinux systems, you can use:
-      # - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
       # - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay:/data
 ```
 

@@ -75,8 +75,9 @@ USER mmrelay
 
 # Health check - uses ready-file when MMRELAY_READY_FILE is set, otherwise runs doctor
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD sh -c 'if [ -n "$MMRELAY_READY_FILE" ]; then test -f "$MMRELAY_READY_FILE"; else mmrelay doctor --config /app/config.yaml; fi'
+    CMD sh -c 'if [ -n "$MMRELAY_READY_FILE" ]; then test -f "$MMRELAY_READY_FILE"; else mmrelay doctor; fi'
 
-# Default command - uses config.yaml from volume mount
-# MMRELAY_HOME is set via ENV, so legacy flags are not needed
-CMD ["mmrelay", "--config", "/app/config.yaml"]
+# Default command
+# MMRELAY_HOME is set via ENV, so runtime paths resolve under /data by default.
+# mmrelay will automatically search for config.yaml in /data then in the current directory (/app).
+CMD ["mmrelay"]

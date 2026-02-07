@@ -923,22 +923,6 @@ def migrate_database(
             "message": "No database files found in legacy location",
         }
 
-    def get_base_path(path: Path) -> Path:
-        """
-        Normalize a database-related Path to its main database file.
-
-        If `path` points to a SQLite WAL or SHM sidecar (file name ending in `-wal` or `-shm`), return a Path with that suffix removed; otherwise return `path` unmodified.
-
-        Parameters:
-            path (Path): A filesystem path that may reference a main database file or a WAL/SHM sidecar.
-
-        Returns:
-            Path: The main database file Path for a sidecar input, or the original Path if no sidecar suffix is present.
-        """
-        if path.name.endswith("-wal") or path.name.endswith("-shm"):
-            return path.with_name(path.name[:-4])
-        return path
-
     most_recent = _get_most_recent_database(candidates)
     if not most_recent:
         return {
@@ -997,7 +981,7 @@ def migrate_database(
     logger.info("Database files copied successfully")
 
     # Verify database integrity if main database file was copied/moved
-    if not dry_run and not most_recent.name.endswith(("-wal", "-shm")):
+    if not most_recent.name.endswith(("-wal", "-shm")):
         main_db = new_db_dir / most_recent.name
         try:
             db_uri = f"{main_db.resolve().as_uri()}?mode=ro"

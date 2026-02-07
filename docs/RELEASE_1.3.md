@@ -27,7 +27,7 @@ This checklist is required before tagging a 1.3 release.
 ## Docker Image Checks
 
 - [ ] Build or pull the 1.3 image tag and start a container with `/data` mounted.
-- [x] `mmrelay doctor --config /app/config.yaml` succeeds.
+- [x] `mmrelay doctor` succeeds.
 - [x] `mmrelay verify-migration` returns exit code 0.
 
 ## CI Checks

@@ -69,7 +69,7 @@ class TestPathResolutionEnvVars(unittest.TestCase):
             },
             clear=True,
         ):
-            with patch("mmrelay.paths._logger") as mock_logger:
+            with patch("mmrelay.paths.logger") as mock_logger:
                 result = get_home_dir()
 
                 self.assertEqual(
@@ -94,7 +94,7 @@ class TestPathResolutionEnvVars(unittest.TestCase):
             },
             clear=True,
         ):
-            with patch("mmrelay.paths._logger") as mock_logger:
+            with patch("mmrelay.paths.logger") as mock_logger:
                 result = get_home_dir()
 
                 self.assertEqual(
@@ -111,7 +111,7 @@ class TestPathResolutionEnvVars(unittest.TestCase):
     def test_only_base_dir_set(self):
         """Test only MMRELAY_BASE_DIR set (lines 107-113)."""
         with patch.dict(os.environ, {"MMRELAY_BASE_DIR": "/base"}, clear=True):
-            with patch("mmrelay.paths._logger") as mock_logger:
+            with patch("mmrelay.paths.logger") as mock_logger:
                 result = get_home_dir()
 
                 self.assertEqual(
@@ -129,7 +129,7 @@ class TestPathResolutionEnvVars(unittest.TestCase):
     def test_only_data_dir_set(self):
         """Test only MMRELAY_DATA_DIR set (lines 115-121)."""
         with patch.dict(os.environ, {"MMRELAY_DATA_DIR": "/data"}, clear=True):
-            with patch("mmrelay.paths._logger") as mock_logger:
+            with patch("mmrelay.paths.logger") as mock_logger:
                 result = get_home_dir()
 
                 self.assertEqual(
@@ -442,7 +442,7 @@ class TestPathDirectoryCreation(unittest.TestCase):
                 patch.dict(os.environ, {"MMRELAY_HOME": temp_dir}, clear=True),
                 patch("mmrelay.paths.sys.platform", "linux"),
                 patch.object(Path, "mkdir", side_effect=OSError("Permission denied")),
-                patch("mmrelay.paths._logger") as mock_logger,
+                patch("mmrelay.paths.logger") as mock_logger,
             ):
                 ensure_directories(create_missing=True)
 

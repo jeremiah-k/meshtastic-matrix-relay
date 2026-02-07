@@ -58,7 +58,6 @@ from mmrelay.tools import get_sample_config_path
 
 # Lazy-initialized logger to avoid circular imports and filesystem access during import
 _logger: logging.Logger | None = None
-logger: logging.Logger | None = None
 
 
 def _get_logger() -> logging.Logger:
@@ -74,12 +73,16 @@ def _get_logger() -> logging.Logger:
     global _logger
     if _logger is None:
         _logger = get_logger(__name__)
-    global logger
-    if logger is None:
-        logger = _logger
     if _logger is None:
         raise RuntimeError("Logger must be initialized")
     return _logger
+
+
+def __getattr__(name: str) -> Any:
+    """Handle lazy loading of the module-level logger."""
+    if name == "logger":
+        return _get_logger()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 # =============================================================================
@@ -1106,8 +1109,10 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
         elif os.path.isdir(path):
             print(f"Warning: Configuration path is a directory, skipping: {path}")
             continue
+        else:
+            continue
 
-        if config_path and os.path.isfile(config_path):
+        if config_path:
             try:
                 with open(config_path, "r", encoding="utf-8") as f:
                     config_content = f.read()
@@ -1499,8 +1504,15 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                 config_path = None
                 continue
             except Exception as e:
-                print(f"Error checking configuration: {e}", file=sys.stderr)
+                _get_logger().debug("Unexpected error checking config", exc_info=True)
+                print(
+                    f"Error checking configuration: {e.__class__.__name__}: {e}",
+                    file=sys.stderr,
+                )
                 return False
+
+        # Reset config_path if we're continuing to the next iteration
+        config_path = None
 
     print("Error: No configuration file found in any of the following locations:")
     for path in config_paths:
@@ -1754,9 +1766,7 @@ def handle_paths_command(_args: argparse.Namespace) -> int:
             f"   Legacy directories found: {', '.join(str(d) for d in paths_info['legacy_sources'])}"
         )
         print("   Migration will scan all legacy roots for data to migrate")
-        print(
-            "   💡 Run 'mmrelay service migrate --dry-run' to see what would be moved"
-        )
+        print("   💡 Run 'mmrelay migrate --dry-run' to see what would be moved")
         print("   💡 Run 'mmrelay migrate' to migrate data to new structure")
 
     return 0

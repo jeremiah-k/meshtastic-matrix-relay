@@ -1384,7 +1384,7 @@ async def _resolve_and_load_credentials(
         credentials = None
 
     if credentials is None:
-        candidate_path = _resolve_credentials_save_path(config_data)
+        candidate_path = await asyncio.to_thread(_resolve_credentials_save_path, config_data)
         if candidate_path and await asyncio.to_thread(os.path.isfile, candidate_path):  # type: ignore[arg-type]
             logger.warning("Ignoring invalid credentials file: %s", candidate_path)
 
@@ -1397,7 +1397,7 @@ async def _resolve_and_load_credentials(
             )
             credentials = None
         else:
-            credentials_path = _resolve_credentials_save_path(config_data)
+            credentials_path = await asyncio.to_thread(_resolve_credentials_save_path, config_data)
             matrix_homeserver = credentials["homeserver"]
             matrix_access_token = credentials["access_token"]
             bot_user_id = credentials["user_id"]
@@ -1461,7 +1461,7 @@ async def _resolve_and_load_credentials(
                     )
                     return None
 
-                credentials_path = _resolve_credentials_save_path(config_data)
+                credentials_path = await asyncio.to_thread(_resolve_credentials_save_path, config_data)
                 matrix_homeserver = credentials["homeserver"]
                 matrix_access_token = credentials["access_token"]
                 bot_user_id = credentials["user_id"]
@@ -1819,7 +1819,12 @@ async def _perform_matrix_login(
                             user_id,
                         )
                 else:
-                    logger.warning("whoami response did not contain device_id")
+                    if not getattr(whoami_response, "device_id", None):
+                        logger.warning("whoami response did not contain device_id")
+                    else:
+                        logger.debug(
+                            "whoami confirmed existing device_id and user_id; no credential updates needed"
+                        )
             except NIO_COMM_EXCEPTIONS as e:
                 logger.warning(f"Failed to discover device_id via whoami: {e}")
                 logger.warning("E2EE may not work properly without a device_id")
@@ -1835,6 +1840,7 @@ async def _perform_matrix_login(
                 if discovered_user_id:
                     client.user_id = discovered_user_id
                     user_id = discovered_user_id
+                    auth_info.user_id = user_id
                     logger.debug(
                         "Discovered user_id via whoami: %s", discovered_user_id
                     )
@@ -3566,8 +3572,6 @@ async def send_reply_to_meshtastic(
             else:
                 meshtastic_logger.error("Failed to relay reply message to Meshtastic")
                 return False
-
-        # Message mapping is now handled automatically by the queue system
 
     except Exception:  # noqa: BLE001 - error boundary for Meshtastic send path
         # Keep the bridge alive for unexpected Meshtastic send errors

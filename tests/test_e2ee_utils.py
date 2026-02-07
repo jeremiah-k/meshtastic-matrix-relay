@@ -7,6 +7,7 @@ This module tests lines 115-122 and 172-182 of e2ee_utils.py:
 """
 
 import os
+import shutil
 import tempfile
 from unittest.mock import MagicMock, patch
 
@@ -49,8 +50,6 @@ def e2ee_test_config():
     yield temp_dir, config_path, credentials_path, base_config
 
     # Cleanup
-    import shutil
-
     shutil.rmtree(temp_dir, ignore_errors=True)
 
 
@@ -206,56 +205,52 @@ def test_credentials_in_legacy_during_deprecation_window(
     """
     _temp_dir, config_path, _credentials_path, _base_config = e2ee_test_config
 
-    # Mock dependencies as installed
-    with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
-        mock_import.side_effect = lambda _: MagicMock()
+    # Mock deprecation window as active
+    mock_deprecation_active.return_value = True
 
-        # Mock deprecation window as active
-        mock_deprecation_active.return_value = True
+    # Mock paths_info with legacy sources
+    mock_resolve_all_paths.return_value = {
+        "credentials_path": "/primary/matrix/credentials.json",
+        "legacy_sources": ["/legacy1", "/legacy2"],
+    }
 
-        # Mock paths_info with legacy sources
-        mock_resolve_all_paths.return_value = {
-            "credentials_path": "/primary/matrix/credentials.json",
-            "legacy_sources": ["/legacy1", "/legacy2"],
-        }
+    # Mock os.path.exists to find credentials in second legacy location
+    def exists_side_effect(path):
+        """
+        Simulate os.path.exists for tests by returning True only for the second legacy credentials path.
 
-        # Mock os.path.exists to find credentials in second legacy location
-        def exists_side_effect(path):
-            """
-            Simulate os.path.exists for tests by returning True only for the second legacy credentials path.
+        Parameters:
+            path (str): Filesystem path to check.
 
-            Parameters:
-                path (str): Filesystem path to check.
+        Returns:
+            bool: True if `path` contains "credentials.json" and "legacy2", False otherwise.
+        """
+        if "credentials.json" in path:
+            # Primary doesn't have it
+            if "primary" in path:
+                return False
+            # First legacy doesn't have it
+            elif "legacy1" in path:
+                return False
+            # Second legacy has it
+            elif "legacy2" in path:
+                return True
+        return False
 
-            Returns:
-                bool: True if `path` contains "credentials.json" and "legacy2", False otherwise.
-            """
-            if "credentials.json" in path:
-                # Primary doesn't have it
-                if "primary" in path:
-                    return False
-                # First legacy doesn't have it
-                elif "legacy1" in path:
-                    return False
-                # Second legacy has it
-                elif "legacy2" in path:
-                    return True
-            return False
+    mock_exists.side_effect = exists_side_effect
 
-        mock_exists.side_effect = exists_side_effect
+    # Import and test _check_credentials_available
+    result = _check_credentials_available(config_path)
 
-        # Import and test _check_credentials_available
-        result = _check_credentials_available(config_path)
+    # Verify credentials were found
+    assert result is True
 
-        # Verify credentials were found
-        assert result is True
-
-        # Verify all locations were checked up to match
-        calls = mock_exists.call_args_list
-        paths_checked = [call[0][0] for call in calls]
-        # Should have checked primary, legacy1, and legacy2
-        assert len(paths_checked) >= 3
-        assert "/primary/matrix/credentials.json" in paths_checked
+    # Verify all locations were checked up to match
+    calls = mock_exists.call_args_list
+    paths_checked = [call[0][0] for call in calls]
+    # Should have checked primary, legacy1, and legacy2
+    assert len(paths_checked) >= 3
+    assert "/primary/matrix/credentials.json" in paths_checked
 
 
 @patch("sys.platform", "linux")
@@ -272,43 +267,39 @@ def test_no_credentials_during_deprecation_window(
     """
     _temp_dir, config_path, _credentials_path, _base_config = e2ee_test_config
 
-    # Mock dependencies as installed
-    with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
-        mock_import.side_effect = lambda _: MagicMock()
+    # Mock deprecation window as active
+    mock_deprecation_active.return_value = True
 
-        # Mock deprecation window as active
-        mock_deprecation_active.return_value = True
+    # Mock paths_info with legacy sources
+    mock_resolve_all_paths.return_value = {
+        "credentials_path": "/primary/matrix/credentials.json",
+        "legacy_sources": ["/legacy1", "/legacy2"],
+    }
 
-        # Mock paths_info with legacy sources
-        mock_resolve_all_paths.return_value = {
-            "credentials_path": "/primary/matrix/credentials.json",
-            "legacy_sources": ["/legacy1", "/legacy2"],
-        }
+    # Mock os.path.exists to return False for all credential paths
+    def exists_side_effect(_path):
+        """
+        Always indicate that the given filesystem path does not exist.
 
-        # Mock os.path.exists to return False for all credential paths
-        def exists_side_effect(_path):
-            """
-            Always indicate that the given filesystem path does not exist.
+        Returns:
+            False for any input path.
+        """
+        return False
 
-            Returns:
-                False for any input path.
-            """
-            return False
+    mock_exists.side_effect = exists_side_effect
 
-        mock_exists.side_effect = exists_side_effect
+    # Import and test _check_credentials_available
+    result = _check_credentials_available(config_path)
 
-        # Import and test _check_credentials_available
-        result = _check_credentials_available(config_path)
+    # Verify credentials were not found
+    assert result is False
 
-        # Verify credentials were not found
-        assert result is False
-
-        # Verify all locations were checked
-        calls = mock_exists.call_args_list
-        paths_checked = [call[0][0] for call in calls]
-        # Should have checked primary and both legacy locations
-        assert len(paths_checked) >= 3
-        assert "/primary/matrix/credentials.json" in paths_checked
+    # Verify all locations were checked
+    calls = mock_exists.call_args_list
+    paths_checked = [call[0][0] for call in calls]
+    # Should have checked primary and both legacy locations
+    assert len(paths_checked) >= 3
+    assert "/primary/matrix/credentials.json" in paths_checked
 
 
 @patch("sys.platform", "linux")
@@ -325,29 +316,25 @@ def test_deprecation_window_not_active(
     """
     _temp_dir, config_path, _credentials_path, _base_config = e2ee_test_config
 
-    # Mock dependencies as installed
-    with patch("mmrelay.e2ee_utils.importlib.import_module") as mock_import:
-        mock_import.side_effect = lambda _: MagicMock()
+    # Mock deprecation window as inactive
+    mock_deprecation_active.return_value = False
 
-        # Mock deprecation window as inactive
-        mock_deprecation_active.return_value = False
+    # Mock paths_info with legacy sources (should not be checked)
+    mock_resolve_all_paths.return_value = {
+        "credentials_path": "/primary/matrix/credentials.json",
+        "legacy_sources": ["/legacy1", "/legacy2"],
+    }
 
-        # Mock paths_info with legacy sources (should not be checked)
-        mock_resolve_all_paths.return_value = {
-            "credentials_path": "/primary/matrix/credentials.json",
-            "legacy_sources": ["/legacy1", "/legacy2"],
-        }
+    # Mock os.path.exists to return False for all paths
+    mock_exists.return_value = False
 
-        # Mock os.path.exists to return False for all paths
-        mock_exists.return_value = False
+    # Import and test _check_credentials_available
+    result = _check_credentials_available(config_path)
 
-        # Import and test _check_credentials_available
-        result = _check_credentials_available(config_path)
+    # Verify credentials were not found
+    assert result is False
 
-        # Verify credentials were not found
-        assert result is False
-
-        calls = mock_exists.call_args_list
-        paths_checked = [call[0][0] for call in calls]
-        assert "/primary/matrix/credentials.json" in paths_checked
-        assert not any("legacy" in path for path in paths_checked)
+    calls = mock_exists.call_args_list
+    paths_checked = [call[0][0] for call in calls]
+    assert "/primary/matrix/credentials.json" in paths_checked
+    assert not any("legacy" in path for path in paths_checked)

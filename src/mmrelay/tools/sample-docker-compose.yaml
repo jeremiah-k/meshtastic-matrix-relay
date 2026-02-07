@@ -15,12 +15,9 @@ services:
       # Run 'make config' to set up the files
       # Use MMRELAY_HOST_HOME (not MMRELAY_HOME) for host paths to avoid conflict with container env
       # For non-SELinux systems (most common):
-      # Note: /app/config.yaml is the authoritative config path inside the container.
-      # /data/config.yaml is also visible but should not be modified.
-      - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
+      # Note: All runtime state lives in /data.
       - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay:/data
       # For SELinux systems (RHEL/CentOS/Fedora), add :Z flag to prevent permission denied errors:
-      # - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro,Z
       # - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay:/data:Z
 
       # For BLE connections, uncomment these lines (Linux only):

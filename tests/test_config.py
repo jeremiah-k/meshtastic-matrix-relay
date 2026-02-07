@@ -1322,7 +1322,7 @@ class TestGetMeshtasticConfigValueUncoveredLines(unittest.TestCase):
         self.assertEqual(config["bot_user_id"], "@bot:example.org")
         self.assertEqual(config["password"], "test_password")
 
-    @patch.dict(os.environ, {})
+    @patch.dict(os.environ, {}, clear=True)
     def test_load_matrix_config_from_env_empty(self):
         """Test that Matrix config returns None when no env vars are set."""
         config = load_matrix_config_from_env()
@@ -1522,11 +1522,14 @@ class TestConfigUncoveredLines(unittest.TestCase):
         self.assertEqual(config, {})
 
 
+_real_import = __import__
+
+
 def _cli_utils_import_blocker(name, globals=None, locals=None, fromlist=(), level=0):
     """Raise ImportError for cli_utils imports, delegate everything else."""
     if name in ("mmrelay.cli_utils", "cli_utils"):
         raise ImportError
-    return __import__(name, globals, locals, fromlist, level)
+    return _real_import(name, globals, locals, fromlist, level)
 
 
 if __name__ == "__main__":

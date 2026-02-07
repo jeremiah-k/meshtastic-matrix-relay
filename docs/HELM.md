@@ -2,7 +2,7 @@
 
 This guide covers deploying MMRelay using the Helm chart in `deploy/helm/mmrelay/`.
 
-> **Note**: The Helm chart is a thin renderer of the static manifests in `deploy/k8s/`. It does **not** change the runtime model. Both use MMRELAY_HOME=/data, a single persistent root at `/data`, config mounted at `/app/config.yaml`, and the same probes/lifecycle behavior.
+> **Note**: The Helm chart is a thin renderer of the static manifests in `deploy/k8s/`. It does **not** change the runtime model. Both use MMRELAY_HOME=/data, a single persistent root at `/data`, config mounted at `/data/config.yaml`, and the same probes/lifecycle behavior.
 
 ## Prerequisites
 
@@ -301,7 +301,7 @@ probes:
 
 - **Readiness**: Checks for ready file at `/run/mmrelay/ready` (cheap, fast)
 - **Startup**: Allows up to 5 minutes for initialization (60 failures × 5s = 300s)
-- **Liveness**: Runs `mmrelay doctor --config /app/config.yaml` for deeper health checks
+- **Liveness**: Runs `mmrelay doctor` for deeper health checks
 
 ### Lifecycle Hooks
 
@@ -312,10 +312,10 @@ lifecycle:
   terminationGracePeriodSeconds: 30
 ```
 
-The preStop hook gracefully shuts down MMRelay:
+The preStop hook allows for a graceful shutdown period:
 
 ```bash
-mmrelay shutdown --config /app/config.yaml || true; sleep 5
+sleep 5
 ```
 
 ### Resources
@@ -426,7 +426,7 @@ autoscaling:
 The chart uses fixed runtime paths (consistent with container design):
 
 - **MMRELAY_HOME**: `/data` (PVC mount)
-- **Config Path**: `/app/config.yaml` (from Secret/ConfigMap)
+- **Config Path**: `/data/config.yaml` (from Secret/ConfigMap)
 - **Ready File**: `/run/mmrelay/ready` (for probes)
 - **Tmp**: `/tmp` (emptyDir)
 - **Run**: `/run/mmrelay` (emptyDir)
@@ -446,7 +446,7 @@ Verify your deployment inside the pod:
 
 ```bash
 POD_NAME=$(kubectl get pods -n mmrelay -l app.kubernetes.io/name=mmrelay -o jsonpath='{.items[0].metadata.name}')
-kubectl exec -n mmrelay $POD_NAME -- mmrelay doctor --config /app/config.yaml
+kubectl exec -n mmrelay $POD_NAME -- mmrelay doctor
 ```
 
 Expected output:
@@ -508,7 +508,7 @@ kubectl logs -n mmrelay <pod-name> --tail=50
 
 ```bash
 kubectl exec -n mmrelay <pod-name> -- ls -l /data/matrix/credentials.json
-kubectl exec -n mmrelay <pod-name> -- cat /app/config.yaml
+kubectl exec -n mmrelay <pod-name> -- cat /data/config.yaml
 ```
 
 If credentials don't exist, enable bootstrap mode or provide credentials via Secret.
@@ -517,7 +517,7 @@ If credentials don't exist, enable bootstrap mode or provide credentials via Sec
 
 ```bash
 kubectl exec -n mmrelay <pod-name> -- ls -l /data/database/meshtastic.sqlite
-kubectl exec -n mmrelay <pod-name> -- mmrelay doctor --config /app/config.yaml
+kubectl exec -n mmrelay <pod-name> -- mmrelay doctor
 ```
 
 ### View Rendered Manifests

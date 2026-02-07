@@ -59,7 +59,7 @@ class UnknownPluginTypeError(ValueError):
 
 
 # Module-level logger
-_logger = get_logger("paths")
+logger = get_logger("paths")
 
 # Global override set from CLI arguments
 _home_override: str | None = None
@@ -118,7 +118,7 @@ def get_home_dir() -> Path:
         if os.getenv("MMRELAY_DATA_DIR"):
             legacy_vars.append("MMRELAY_DATA_DIR")
         if legacy_vars:
-            _logger.warning(
+            logger.warning(
                 "MMRELAY_HOME is set; ignoring legacy environment variable(s): %s. "
                 "Support will be removed in v1.4.",
                 ", ".join(legacy_vars),
@@ -130,7 +130,7 @@ def get_home_dir() -> Path:
     env_data_dir = os.getenv("MMRELAY_DATA_DIR")
 
     if env_base_dir and env_data_dir:
-        _logger.warning(
+        logger.warning(
             "Both MMRELAY_BASE_DIR and MMRELAY_DATA_DIR are set. "
             "Preferring MMRELAY_BASE_DIR and ignoring MMRELAY_DATA_DIR. "
             "Support will be removed in v1.4."
@@ -138,7 +138,7 @@ def get_home_dir() -> Path:
         return Path(env_base_dir).expanduser().absolute()
 
     if env_base_dir:
-        _logger.warning(
+        logger.warning(
             "Deprecated environment variable MMRELAY_BASE_DIR is set. "
             "Use MMRELAY_HOME instead. "
             "Support will be removed in v1.4."
@@ -146,7 +146,7 @@ def get_home_dir() -> Path:
         return Path(env_base_dir).expanduser().absolute()
 
     if env_data_dir:
-        _logger.warning(
+        logger.warning(
             "Deprecated environment variable MMRELAY_DATA_DIR is set. "
             "Use MMRELAY_HOME instead. "
             "Support will be removed in v1.4."
@@ -472,12 +472,12 @@ def ensure_directories(*, create_missing: bool = True) -> None:
         if create_missing:
             try:
                 dir_path.mkdir(parents=True, exist_ok=True)
-                _logger.debug("Created directory: %s", dir_path)
+                logger.debug("Created directory: %s", dir_path)
             except OSError:
-                _logger.exception("Failed to create directory %s", dir_path)
+                logger.exception("Failed to create directory %s", dir_path)
         else:
             if not dir_path.exists():
-                _logger.warning("Directory missing: %s", dir_path)
+                logger.warning("Directory missing: %s", dir_path)
 
 
 def get_legacy_env_vars() -> list[str]:
@@ -513,7 +513,7 @@ def is_deprecation_window_active() -> bool:
     if not new_home_set:
         legacy_vars = get_legacy_env_vars()
         if legacy_vars:
-            _logger.warning(
+            logger.warning(
                 "Deprecated environment variable(s) detected: %s. "
                 "Use MMRELAY_HOME instead. "
                 "Support will be removed in v1.4.",

@@ -527,7 +527,7 @@ These are **not** persistent and should not be backed up.
 The PVC is the **single source of truth** for persistent data:
 
 - `/data` (PVC): **Authoritative** - persistent, backed up
-- `/app/config.yaml`: **Not persistent** - injected from Secret/ConfigMap, not backed up
+- /data/config.yaml: Not persistent - injected from Secret/ConfigMap, not backed up (unless it is manually copied to the PVC)
 - `/run/mmrelay`: **Not persistent** - recreated on each pod start
 - `/tmp`: **Not persistent** - temporary storage
 
@@ -598,7 +598,7 @@ If a pod is not ready or keeps restarting:
 4. Verify the config Secret is mounted:
 
    ```bash
-   kubectl exec -n mmrelay <pod-name> -- cat /app/config.yaml
+   kubectl exec -n mmrelay <pod-name> -- cat /data/config.yaml
    ```
 
 5. Check the persistent volume claim status:

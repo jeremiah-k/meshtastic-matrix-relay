@@ -17,10 +17,8 @@ services:
       # See docs/DOCKER.md for setup instructions
       # Use MMRELAY_HOST_HOME (not MMRELAY_HOME) for host paths to avoid conflict with container env
       # For non-SELinux systems (most common):
-      - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
       - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay:/data
       # For SELinux systems (RHEL/CentOS/Fedora), add :Z flag to prevent permission denied errors:
-      # - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro,Z
       # - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay:/data:Z
 
       # For BLE connections, uncomment this line (Linux only):
