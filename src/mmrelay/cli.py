@@ -373,22 +373,22 @@ def parse_arguments() -> argparse.Namespace:
         help="Install systemd user service",
         description="Install or update systemd user service for MMRelay",
     )
-    migrate_parser = service_subparsers.add_parser(
+    service_migrate_parser = service_subparsers.add_parser(
         "migrate",
         help="Migrate data from legacy directory structure",
         description="Migrate data from v1.2.x to v1.3 unified layout with safe defaults",
     )
-    migrate_parser.add_argument(
+    service_migrate_parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Preview migration without making changes",
     )
-    migrate_parser.add_argument(
+    service_migrate_parser.add_argument(
         "--move",
         action="store_true",
         help="Use MOVE operation instead of COPY (requires --force or manual confirmation)",
     )
-    migrate_parser.add_argument(
+    service_migrate_parser.add_argument(
         "--force",
         action="store_true",
         help="Allow overwriting existing files without backup",
@@ -534,7 +534,7 @@ def _validate_credentials_json(
         missing_fields = [
             field
             for field in required_fields
-            if not _is_valid_non_empty_string((credentials or {}).get(field))
+            if not _is_valid_non_empty_string(credentials.get(field))
         ]
         if missing_fields:
             _get_logger().warning(
@@ -1496,6 +1496,8 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                     f"Error checking configuration: {e.__class__.__name__}: {e}",
                     file=sys.stderr,
                 )
+                config_path = None
+                continue
             except Exception as e:
                 print(f"Error checking configuration: {e}", file=sys.stderr)
                 return False
@@ -1566,7 +1568,7 @@ def main() -> int:
             print(f"Error importing main module: {e}")
             return 1
 
-    except (OSError, PermissionError, KeyboardInterrupt) as e:
+    except (OSError, KeyboardInterrupt) as e:
         # Handle common system-level errors
         print(f"System error: {e.__class__.__name__}: {e}", file=sys.stderr)
         return 1
@@ -1666,6 +1668,58 @@ def handle_auth_command(args: argparse.Namespace) -> int:
         return handle_auth_login(args)
 
 
+def _print_path_summary(paths_info: dict[str, Any]) -> None:
+    """
+    Print a formatted summary of MMRelay path configuration.
+
+    Used by handle_paths_command and handle_doctor_command to provide a
+    consistent diagnostic view of the directory structure.
+
+    Parameters:
+        paths_info (dict): Path information from resolve_all_paths().
+    """
+    # Print HOME information
+    print("\n📍 HOME Directory:")
+    print(f"   Location: {paths_info['home']}")
+    print(f"   Source: {paths_info['home_source']}")
+
+    # Print runtime artifact paths
+    print("\n📁 Runtime Artifacts (all in HOME):")
+    print(f"   Credentials: {paths_info['credentials_path']}")
+    print(f"   Database: {paths_info['database_dir']}")
+    print(f"   Store (E2EE): {paths_info['store_dir']}")
+    print(f"   Logs: {paths_info['logs_dir']}")
+    if "log_file" in paths_info:
+        print(f"   Log File: {paths_info['log_file']}")
+
+    # Print plugin paths
+    print("\n📦 Plugins:")
+    print(f"   Plugins: {paths_info['plugins_dir']}")
+    if "custom_plugins_dir" in paths_info:
+        print(f"   Custom: {paths_info['custom_plugins_dir']}")
+    if "community_plugins_dir" in paths_info:
+        print(f"   Community: {paths_info['community_plugins_dir']}")
+
+    # Print legacy sources
+    print("\n📋 Legacy Sources (read-only):")
+    if paths_info.get("legacy_sources"):
+        for legacy_dir in paths_info["legacy_sources"]:
+            print(f"   - {legacy_dir}")
+    else:
+        print("   (none detected)")
+
+    # Print environment variables
+    print("\n🔧 Environment Variables:")
+    if paths_info.get("env_vars_detected"):
+        for var_name, var_value in paths_info["env_vars_detected"].items():
+            print(f"   {var_name}={var_value}")
+    else:
+        print("   (none detected)")
+
+    # Print CLI override
+    print(f"\n⚙️  CLI Override: {paths_info.get('cli_override', 'None')}")
+
+
 def handle_paths_command(_args: argparse.Namespace) -> int:
     """
     Display all path configuration and diagnostics.
@@ -1686,43 +1740,8 @@ def handle_paths_command(_args: argparse.Namespace) -> int:
     print("MMRelay Path Configuration (mmrelay paths)")
     print("=" * 60)
 
-    # Print HOME information
-    print("\n📍 HOME Directory:")
-    print(f"   Location: {paths_info['home']}")
-    print(f"   Source: {paths_info['home_source']}")
-
-    # Print runtime artifact paths
-    print("\n📁 Runtime Artifacts (all in HOME):")
-    print(f"   Credentials: {paths_info['credentials_path']}")
-    print(f"   Database: {paths_info['database_dir']}")
-    print(f"   Store (E2EE): {paths_info['store_dir']}")
-    print(f"   Logs: {paths_info['logs_dir']}")
-    print(f"   Log File: {paths_info['log_file']}")
-
-    # Print plugin paths
-    print("\n📦 Plugins:")
-    print(f"   Plugins: {paths_info['plugins_dir']}")
-    print(f"   Custom: {paths_info['custom_plugins_dir']}")
-    print(f"   Community: {paths_info['community_plugins_dir']}")
-
-    # Print legacy sources
-    print("\n📋 Legacy Sources (read-only):")
-    if paths_info.get("legacy_sources"):
-        for legacy_dir in paths_info["legacy_sources"]:
-            print(f"   - {legacy_dir}")
-    else:
-        print("   (none detected)")
-
-    # Print environment variables
-    print("\n🔧 Environment Variables:")
-    if paths_info.get("env_vars_detected"):
-        for var_name, var_value in paths_info["env_vars_detected"].items():
-            print(f"   {var_name}={var_value}")
-    else:
-        print("   (none detected)")
-
-    # Print CLI override
-    print(f"\n⚙️  CLI Override: {paths_info.get('cli_override', 'None')}")
+    # Print shared summary
+    _print_path_summary(paths_info)
 
     # Print plugin roots searched
     print("\n   Plugin Roots Searched:")
@@ -1786,37 +1805,8 @@ def handle_doctor_command(args: argparse.Namespace) -> int:
     print("MMRelay Path Diagnostics (mmrelay doctor)")
     print("=" * 60)
 
-    # Print HOME information
-    print("\n📍 HOME Directory:")
-    print(f"   Location: {paths_info['home']}")
-    print(f"   Source: {paths_info['home_source']}")
-
-    # Print runtime artifact paths
-    print("\n📁 Runtime Artifacts (all in HOME):")
-    print(f"   Credentials: {paths_info['credentials_path']}")
-    print(f"   Database: {paths_info['database_dir']}")
-    print(f"   Store (E2EE): {paths_info['store_dir']}")
-    print(f"   Logs: {paths_info['logs_dir']}")
-    print(f"   Plugins: {paths_info['plugins_dir']}")
-
-    # Print legacy sources
-    print("\n📋 Legacy Sources (read-only):")
-    if paths_info.get("legacy_sources"):
-        for legacy_dir in paths_info["legacy_sources"]:
-            print(f"   - {legacy_dir}")
-    else:
-        print("   (none detected)")
-
-    # Print environment variables
-    print("\n🔧 Environment Variables:")
-    if paths_info.get("env_vars_detected"):
-        for var_name, var_value in paths_info["env_vars_detected"].items():
-            print(f"   {var_name}={var_value}")
-    else:
-        print("   (none detected)")
-
-    # Print CLI override
-    print(f"\n⚙️  CLI Override: {paths_info.get('cli_override', 'None')}")
+    # Print shared summary
+    _print_path_summary(paths_info)
 
     # Check migration status and print recommendations
     print("\n🔄 Migration Status:")
@@ -1920,7 +1910,7 @@ def handle_auth_login(args: argparse.Namespace) -> int:
                 print("=========================")
         except (OSError, PermissionError, ImportError, ValueError) as e:
             # Fallback if silent checking fails due to config file or import issues
-            _get_logger().debug(f"Failed to silently check E2EE status: {e}")
+            _get_logger().debug("Failed to silently check E2EE status: %s", e)
             print("\nMatrix Bot Authentication")
             print("=========================")
 
@@ -2002,16 +1992,17 @@ def handle_auth_status(args: argparse.Namespace) -> int:
                         "(missing required fields)"
                     )
                     continue
-                print(f"✅ Found credentials.json at: {credentials_path}")
-                print(f"   Homeserver: {credentials.get('homeserver')}")
-                print(f"   User ID: {credentials.get('user_id')}")
-                print(f"   Device ID: {credentials.get('device_id')}")
-                return 0
             except (OSError, json.JSONDecodeError, TypeError, ValueError) as e:
                 print(
                     f"⚠️  Skipping unreadable credentials.json at {credentials_path}: {e}"
                 )
                 continue
+            else:
+                print(f"✅ Found credentials.json at: {credentials_path}")
+                print(f"   Homeserver: {credentials.get('homeserver')}")
+                print(f"   User ID: {credentials.get('user_id')}")
+                print(f"   Device ID: {credentials.get('device_id')}")
+                return 0
 
     print("❌ No credentials.json found")
     print(f"Run '{get_command('auth_login')}' to authenticate")
@@ -2125,7 +2116,7 @@ def handle_migrate_command(args: argparse.Namespace) -> int:
 
         result = perform_migration(dry_run=dry_run, force=force, move=move)
 
-        if result.get("ok", result.get("success")):
+        if result.get("success"):
             print(
                 "✅ Dry-run completed successfully"
                 if dry_run
@@ -2135,10 +2126,10 @@ def handle_migrate_command(args: argparse.Namespace) -> int:
             for migration in result.get("migrations", []):
                 mtype = migration.get("type", "unknown")
                 mresult = migration.get("result", {})
-                ok = mresult.get("ok", mresult.get("success"))
-                if ok:
+                success = mresult.get("success")
+                if success:
                     migrated_steps += 1
-                status_icon = "✅" if ok else "❌"
+                status_icon = "✅" if success else "❌"
                 message = (
                     mresult.get("message")
                     or mresult.get("error")
@@ -2470,7 +2461,6 @@ def handle_cli_commands(args: argparse.Namespace) -> int | None:
     Returns:
         int | None: Exit code (`0` on success, `1` on failure) if a legacy command was handled; `None` if no legacy flag was present.
     """
-    _apply_dir_overrides(args)
     args_dict = vars(args)
 
     # Handle --version

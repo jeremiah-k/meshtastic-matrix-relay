@@ -709,7 +709,7 @@ def migrate_credentials(
             else:
                 shutil.copy2(str(new_creds), str(backup_path))
         except (OSError, IOError) as e:
-            logger.exception("Failed to backup credentials: %s", e)
+            logger.exception("Failed to backup credentials")
             return {
                 "success": False,
                 "error": f"Failed to backup credentials: {e}",
@@ -815,7 +815,7 @@ def migrate_config(
             else:
                 shutil.copy2(str(new_config), str(backup_path))
         except (OSError, IOError) as e:
-            logger.exception("Failed to backup config.yaml: %s", e)
+            logger.exception("Failed to backup config.yaml")
             return {
                 "success": False,
                 "error": str(e),
@@ -976,7 +976,7 @@ def migrate_database(
                 try:
                     shutil.copy2(str(dest), str(backup_path))
                 except (OSError, IOError) as e:
-                    logger.exception("Failed to backup database %s: %s", dest, e)
+                    logger.exception("Failed to backup database %s", dest)
                     return {
                         "success": False,
                         "error": f"Failed to backup database {dest}: {e}",
@@ -1110,7 +1110,7 @@ def migrate_logs(
         try:
             shutil.copytree(str(new_logs_dir), str(backup_path))
         except (OSError, IOError) as e:
-            logger.exception("Failed to backup logs directory: %s", e)
+            logger.exception("Failed to backup logs directory")
             return {
                 "success": False,
                 "error": f"Failed to backup logs directory: {e}",
@@ -1123,7 +1123,7 @@ def migrate_logs(
             backup_path.mkdir(parents=True, exist_ok=True)
             logger.info("Created empty logs backup directory: %s", backup_path)
         except (OSError, IOError) as e:
-            logger.exception("Failed to create logs backup directory: %s", e)
+            logger.exception("Failed to create logs backup directory")
             return {
                 "success": False,
                 "error": f"Failed to create logs backup directory: {e}",
@@ -1248,7 +1248,7 @@ def migrate_store(
         try:
             shutil.copytree(str(new_store_dir), str(backup_path))
         except (OSError, IOError) as e:
-            logger.exception("Failed to backup store directory: %s", e)
+            logger.exception("Failed to backup store directory")
             backup_error = str(e)
     elif not new_store_dir.exists() and not force:
         backup_path = _backup_file(new_store_dir)
@@ -1256,7 +1256,7 @@ def migrate_store(
             backup_path.mkdir(parents=True, exist_ok=True)
             logger.info("Created empty store backup directory: %s", backup_path)
         except (OSError, IOError) as e:
-            logger.exception("Failed to create store backup directory: %s", e)
+            logger.exception("Failed to create store backup directory")
             backup_error = str(e)
 
     if backup_error:
@@ -1764,6 +1764,10 @@ def perform_migration(
     paths_info = resolve_all_paths()
     new_home = Path(paths_info["home"])
     legacy_roots = [Path(legacy_str) for legacy_str in paths_info["legacy_sources"]]
+
+    # If migration is needed but no external legacy roots found, it means same-home legacy data exists
+    if not legacy_roots and is_migration_needed():
+        legacy_roots = [new_home]
 
     if not legacy_roots:
         report["success"] = True

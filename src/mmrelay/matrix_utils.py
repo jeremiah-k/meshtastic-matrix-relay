@@ -1764,11 +1764,12 @@ async def _perform_matrix_login(
 
                 # Verify user_id matching
                 discovered_user_id = getattr(whoami_response, "user_id", None)
-                if discovered_user_id and user_id and discovered_user_id != user_id:
-                    logger.warning(
-                        f"Matrix user_id mismatch: credentials say {user_id} but whoami says {discovered_user_id}. "
-                        "Updating credentials to match whoami."
-                    )
+                if discovered_user_id and discovered_user_id != user_id:
+                    if user_id:
+                        logger.warning(
+                            f"Matrix user_id mismatch: credentials say {user_id} but whoami says {discovered_user_id}. "
+                            "Updating credentials to match whoami."
+                        )
                     user_id = discovered_user_id
                     client.user_id = user_id
                     auth_info.user_id = user_id

@@ -188,6 +188,7 @@ def test_credentials_not_found_in_legacy_locations(
         paths_checked = [call[0][0] for call in calls]
         # Should have checked primary and both legacy locations
         assert len(paths_checked) >= 3
+        assert "/primary/matrix/credentials.json" in paths_checked
 
 
 @patch("sys.platform", "linux")
@@ -254,6 +255,7 @@ def test_credentials_in_legacy_during_deprecation_window(
         paths_checked = [call[0][0] for call in calls]
         # Should have checked primary, legacy1, and legacy2
         assert len(paths_checked) >= 3
+        assert "/primary/matrix/credentials.json" in paths_checked
 
 
 @patch("sys.platform", "linux")
@@ -306,6 +308,7 @@ def test_no_credentials_during_deprecation_window(
         paths_checked = [call[0][0] for call in calls]
         # Should have checked primary and both legacy locations
         assert len(paths_checked) >= 3
+        assert "/primary/matrix/credentials.json" in paths_checked
 
 
 @patch("sys.platform", "linux")

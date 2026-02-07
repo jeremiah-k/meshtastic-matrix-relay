@@ -1243,34 +1243,9 @@ class TestLoadConfigUncoveredLines(unittest.TestCase):
     def test_load_config_import_error_logs_debug(self, _mock_apply_env, _mock_isfile):
         """Test that ImportError from msg_suggest_generate_config logs debug with exc_info."""
         with patch("mmrelay.config.get_config_paths", return_value=["/fake/path.yaml"]):
-            real_import = __import__
-
-            def import_side_effect(
-                name, globals=None, locals=None, fromlist=(), level=0
-            ):
-                """
-                Raise ImportError for the modules "mmrelay.cli_utils" or "cli_utils" and delegate all other imports to the original importer.
-
-                Parameters:
-                    name (str): Module name to import; if it equals "mmrelay.cli_utils" or "cli_utils", ImportError is raised.
-                    globals (dict): Forwarded to the underlying import mechanism.
-                    locals (dict): Forwarded to the underlying import mechanism.
-                    fromlist (tuple): Forwarded to the underlying import mechanism.
-                    level (int): Forwarded to the underlying import mechanism.
-
-                Returns:
-                    module: The module object returned by the original import for successful imports.
-
-                Raises:
-                    ImportError: If `name` is "mmrelay.cli_utils" or "cli_utils".
-                """
-                if name in ("mmrelay.cli_utils", "cli_utils"):
-                    raise ImportError
-                return real_import(name, globals, locals, fromlist, level)
-
             with patch(
                 "builtins.__import__",
-                side_effect=import_side_effect,
+                side_effect=_cli_utils_import_blocker,
             ):
                 config = load_config()
 
@@ -1317,32 +1292,9 @@ class TestGetMeshtasticConfigValueUncoveredLines(unittest.TestCase):
         with patch("mmrelay.config.get_config_paths", return_value=["/fake/path.yaml"]):
             config = {"meshtastic": {}}
 
-        real_import = __import__
-
-        def import_side_effect(name, globals=None, locals=None, fromlist=(), level=0):
-            """
-            Act as a replacement import function that simulates the absence of the mmrelay.cli_utils module by raising ImportError for that name and otherwise delegates to the real import.
-
-            Parameters:
-                name (str): Module name to import.
-                globals: Passed through to the underlying import.
-                locals: Passed through to the underlying import.
-                fromlist (tuple): Passed through to the underlying import.
-                level (int): Import level, passed through to the underlying import.
-
-            Returns:
-                module: The imported module object for names other than "mmrelay.cli_utils" or "cli_utils".
-
-            Raises:
-                ImportError: If `name` is "mmrelay.cli_utils" or "cli_utils".
-            """
-            if name in ("mmrelay.cli_utils", "cli_utils"):
-                raise ImportError
-            return real_import(name, globals, locals, fromlist, level)
-
         with patch(
             "builtins.__import__",
-            side_effect=import_side_effect,
+            side_effect=_cli_utils_import_blocker,
         ):
             with self.assertRaises(KeyError) as cm:
                 get_meshtastic_config_value(config, "connection_type", required=True)
@@ -1568,6 +1520,13 @@ class TestConfigUncoveredLines(unittest.TestCase):
         """Test load_config with empty file (line 958)."""
         config = load_config("/test/empty.yaml")
         self.assertEqual(config, {})
+
+
+def _cli_utils_import_blocker(name, globals=None, locals=None, fromlist=(), level=0):
+    """Raise ImportError for cli_utils imports, delegate everything else."""
+    if name in ("mmrelay.cli_utils", "cli_utils"):
+        raise ImportError
+    return __import__(name, globals, locals, fromlist, level)
 
 
 if __name__ == "__main__":
