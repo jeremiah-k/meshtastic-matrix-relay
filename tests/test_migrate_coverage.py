@@ -779,6 +779,43 @@ class TestMigrateConfigEdgeCases:
         assert result["success"] is False
         assert "Mock copy error" in result["error"]
 
+    def test_migrate_config_already_at_target_move(self, tmp_path: Path) -> None:
+        """Test move doesn't delete config when already at target location."""
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+        config = new_home / "config.yaml"
+        config.write_text("my-config")
+
+        # Config is already in new_home (not a legacy root)
+        result = migrate_config(
+            [new_home], new_home, dry_run=False, force=False, move=True
+        )
+
+        assert result["success"] is True
+        assert result["action"] == "none"
+        assert "already at target" in result["message"]
+        # Verify config still exists and wasn't deleted
+        assert config.exists()
+        assert config.read_text() == "my-config"
+
+    def test_migrate_config_already_at_target_copy(self, tmp_path: Path) -> None:
+        """Test copy when config already at target location (no-op)."""
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+        config = new_home / "config.yaml"
+        config.write_text("my-config")
+
+        result = migrate_config(
+            [new_home], new_home, dry_run=False, force=False, move=False
+        )
+
+        assert result["success"] is True
+        assert result["action"] == "none"
+        assert "already at target" in result["message"]
+        # Verify config still exists
+        assert config.exists()
+        assert config.read_text() == "my-config"
+
 
 class TestMigrateDatabaseEdgeCases:
     """Test migrate_database error paths and edge cases."""

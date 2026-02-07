@@ -831,6 +831,19 @@ def migrate_config(
             }
 
     try:
+        # Don't try to move/copy if source and destination are the same
+        if old_config == new_config:
+            logger.info(
+                "Config already at target location, no migration needed: %s", new_config
+            )
+            return {
+                "success": True,
+                "old_path": str(old_config),
+                "new_path": str(new_config),
+                "action": "none",
+                "message": "Config already at target location",
+            }
+
         if move:
             if new_config.exists():
                 if new_config.is_dir():
