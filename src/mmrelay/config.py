@@ -194,14 +194,6 @@ def get_credentials_search_paths(
             normalized_dir = os.path.normpath(expanded_path)
             _add(os.path.join(normalized_dir, "credentials.json"))
 
-    if config_paths:
-        for config_path in config_paths:
-            if not config_path:
-                continue
-            config_dir = os.path.dirname(os.path.abspath(config_path))
-            _add(os.path.join(config_dir, "credentials.json"))
-            _add(os.path.join(config_dir, MATRIX_DIRNAME, "credentials.json"))
-
     if include_base_data:
         # Unified credentials path has HIGHEST priority (above legacy paths and config-adjacent paths)
         # This ensures new v1.3+ credentials are loaded preferentially

@@ -870,18 +870,44 @@ def test_config():
     }
 
 
+@pytest.fixture(scope="session", autouse=True)
+def isolate_mmrelay_home(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Generator[Path, None, None]:
+    """
+    Isolate MMRELAY_HOME for all tests to prevent leakage into the user's home directory.
+
+    Creates a temporary directory and sets the MMRELAY_HOME environment variable to it.
+    This ensures that any files created by the application (like migration_completed.flag)
+    are confined to this temporary location.
+    """
+    tmp_home = tmp_path_factory.mktemp("mmrelay_test_home")
+    os.environ["MMRELAY_HOME"] = str(tmp_home)
+
+    yield tmp_home
+
+    # Optional: cleanup or verify if needed
+
+
 @pytest.fixture
-def clean_migration_home(tmp_path: Path) -> Generator[Path, None, None]:
+def clean_migration_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Generator[Path, None, None]:
     """
     Create and yield a clean temporary home directory for migration tests.
 
-    Creates tmp_path / "clean_migration_home", removes migration_completed.flag if present so tests start without prior migration state, and yields the directory path.
+    Creates tmp_path / "clean_migration_home", sets MMRELAY_HOME to it,
+    removes migration_completed.flag if present so tests start without prior migration state,
+    and yields the directory path.
 
     Yields:
         Path: Path to the created clean home directory.
     """
     home = tmp_path / "clean_migration_home"
     home.mkdir()
+
+    # Override MMRELAY_HOME for this specific test
+    monkeypatch.setenv("MMRELAY_HOME", str(home))
 
     # Ensure no migration state file exists
     state_file = home / "migration_completed.flag"

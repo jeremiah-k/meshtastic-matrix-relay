@@ -775,10 +775,25 @@ def migrate_config(
             - `dry_run` (bool, optional): Present when the call was a dry run.
             - `message` or `error` (str, optional): Informational message or error details.
     """
+    new_config = new_home / "config.yaml"
     old_config: Path | None = None
 
     for legacy_root in legacy_roots:
         candidate = legacy_root / "config.yaml"
+        if candidate == new_config:
+            if candidate.exists():
+                logger.info(
+                    "Config already at target location, no migration needed: %s",
+                    new_config,
+                )
+                return {
+                    "success": True,
+                    "old_path": str(candidate),
+                    "new_path": str(new_config),
+                    "action": "none",
+                    "message": "Config already at target location",
+                }
+            continue
         if candidate.exists():
             old_config = candidate
             logger.info("Found config.yaml in legacy root: %s", old_config)
@@ -789,8 +804,6 @@ def migrate_config(
             "success": True,
             "message": "No config.yaml found in legacy locations",
         }
-
-    new_config = new_home / "config.yaml"
 
     if dry_run:
         logger.info(
@@ -910,6 +923,20 @@ def migrate_database(
 
     for legacy_root in legacy_roots:
         legacy_db = legacy_root / "meshtastic.sqlite"
+        if legacy_db == new_db_dir / "meshtastic.sqlite":
+            if legacy_db.exists() and len(legacy_roots) == 1:
+                logger.info(
+                    "Database already at target location, no migration needed: %s",
+                    new_db_dir,
+                )
+                return {
+                    "success": True,
+                    "old_path": str(legacy_db),
+                    "new_path": str(new_db_dir),
+                    "action": "none",
+                    "message": "Database already at target location",
+                }
+            continue
         if legacy_db.exists():
             candidates.append(legacy_db)
             for suffix in ["-wal", "-shm"]:
@@ -920,6 +947,8 @@ def migrate_database(
         partial_data_dir = legacy_root / "data"
         if partial_data_dir.exists():
             partial_db = partial_data_dir / "meshtastic.sqlite"
+            if partial_db == new_db_dir / "meshtastic.sqlite":
+                continue
             if partial_db.exists():
                 candidates.append(partial_db)
                 for suffix in ["-wal", "-shm"]:
@@ -930,6 +959,20 @@ def migrate_database(
         legacy_db_dir = legacy_root / "database"
         if legacy_db_dir.exists():
             legacy_db = legacy_db_dir / "meshtastic.sqlite"
+            if legacy_db == new_db_dir / "meshtastic.sqlite":
+                if legacy_db.exists() and len(legacy_roots) == 1:
+                    logger.info(
+                        "Database already at target location, no migration needed: %s",
+                        new_db_dir,
+                    )
+                    return {
+                        "success": True,
+                        "old_path": str(legacy_db),
+                        "new_path": str(new_db_dir),
+                        "action": "none",
+                        "message": "Database already at target location",
+                    }
+                continue
             if legacy_db.exists():
                 candidates.append(legacy_db)
                 for suffix in ["-wal", "-shm"]:
@@ -1096,6 +1139,19 @@ def migrate_logs(
 
     new_logs_dir = new_home / "logs"
 
+    # Add same-path guard
+    if old_logs_dir == new_logs_dir:
+        logger.info(
+            "Logs already at target location, no migration needed: %s", new_logs_dir
+        )
+        return {
+            "success": True,
+            "old_path": str(old_logs_dir),
+            "new_path": str(new_logs_dir),
+            "action": "none",
+            "message": "Logs already at target location",
+        }
+
     if dry_run:
         logger.info(
             "[DRY RUN] Would migrate logs from %s to %s", old_logs_dir, new_logs_dir
@@ -1165,7 +1221,7 @@ def migrate_logs(
             failed_files.append(str(log_file))
 
     result = {
-        "success": True,
+        "success": len(failed_files) == 0,
         "migrated_count": migrated_count,
         "old_path": str(old_logs_dir),
         "new_path": str(new_logs_dir),
@@ -1173,6 +1229,7 @@ def migrate_logs(
     }
     if failed_files:
         result["failed_files"] = failed_files
+        result["error"] = f"Failed to migrate {len(failed_files)} log file(s)"
     return result
 
 
@@ -1421,6 +1478,20 @@ def migrate_plugins(
         }
 
     new_plugins_dir = new_home / "plugins"
+
+    # Add same-path guard
+    if old_plugins_dir == new_plugins_dir:
+        logger.info(
+            "Plugins already at target location, no migration needed: %s",
+            new_plugins_dir,
+        )
+        return {
+            "success": True,
+            "old_path": str(old_plugins_dir),
+            "new_path": str(new_plugins_dir),
+            "action": "none",
+            "message": "Plugins already at target location",
+        }
 
     if dry_run:
         logger.info(

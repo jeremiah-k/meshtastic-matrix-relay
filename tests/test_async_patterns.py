@@ -13,6 +13,7 @@ Tests async patterns including:
 
 import asyncio
 import os
+import secrets
 import sys
 import time
 import unittest
@@ -38,7 +39,7 @@ class TestAsyncPatterns(unittest.TestCase):
         self.config = {
             "matrix": {
                 "homeserver": "https://matrix.org",
-                "access_token": "test_token",
+                "access_token": secrets.token_hex(16),
                 "bot_user_id": "@test:matrix.org",
             },
             "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
@@ -61,7 +62,7 @@ class TestAsyncPatterns(unittest.TestCase):
             # Mock credentials loading to prevent using real credentials
             mock_auth_info = MagicMock()
             mock_auth_info.homeserver = "https://matrix.org"
-            mock_auth_info.access_token = "test_token"
+            mock_auth_info.access_token = secrets.token_hex(16)
             mock_auth_info.user_id = "@test:matrix.org"
             mock_auth_info.device_id = "TESTDEVICE"
             mock_auth_info.credentials_path = None
@@ -69,9 +70,10 @@ class TestAsyncPatterns(unittest.TestCase):
             # Ensure matrix_client is None to avoid early return
             with patch("mmrelay.matrix_utils.matrix_client", None):
                 with patch(
-                    "mmrelay.matrix_utils._resolve_and_load_credentials",
-                    return_value=mock_auth_info,
-                ):
+                    "mmrelay.matrix_utils.async_load_credentials",
+                    new_callable=AsyncMock,
+                ) as mock_load:
+                    mock_load.return_value = mock_auth_info
                     # Mock SSL context creation
                     with patch("ssl.create_default_context") as mock_ssl:
                         mock_ssl.return_value = MagicMock()
@@ -162,7 +164,7 @@ class TestAsyncPatterns(unittest.TestCase):
             # Mock credentials loading to prevent using real credentials
             mock_auth_info = MagicMock()
             mock_auth_info.homeserver = "https://matrix.org"
-            mock_auth_info.access_token = "test_token"
+            mock_auth_info.access_token = secrets.token_hex(16)
             mock_auth_info.user_id = "@test:matrix.org"
             mock_auth_info.device_id = "TESTDEVICE"
             mock_auth_info.credentials_path = None
@@ -170,9 +172,10 @@ class TestAsyncPatterns(unittest.TestCase):
             # Ensure matrix_client is None to avoid early return
             with patch("mmrelay.matrix_utils.matrix_client", None):
                 with patch(
-                    "mmrelay.matrix_utils._resolve_and_load_credentials",
-                    return_value=mock_auth_info,
-                ):
+                    "mmrelay.matrix_utils.async_load_credentials",
+                    new_callable=AsyncMock,
+                ) as mock_load:
+                    mock_load.return_value = mock_auth_info
                     # Mock SSL context creation
                     with patch("ssl.create_default_context") as mock_ssl:
                         mock_ssl.return_value = MagicMock()
@@ -187,7 +190,7 @@ class TestAsyncPatterns(unittest.TestCase):
                                 mock_client.rooms = {}
 
                                 # Make sync take longer than timeout
-                                async def slow_sync(*args, **kwargs):
+                                async def slow_sync(*_args, **_kwargs):
                                     """
                                     Simulates a delayed asynchronous sync operation.
 
@@ -234,7 +237,7 @@ class TestAsyncPatterns(unittest.TestCase):
             # Mock credentials loading to prevent using real credentials
             mock_auth_info = MagicMock()
             mock_auth_info.homeserver = "https://matrix.org"
-            mock_auth_info.access_token = "test_token"
+            mock_auth_info.access_token = secrets.token_hex(16)
             mock_auth_info.user_id = "@test:matrix.org"
             mock_auth_info.device_id = "TESTDEVICE"
             mock_auth_info.credentials_path = None
@@ -245,9 +248,10 @@ class TestAsyncPatterns(unittest.TestCase):
 
                 # Mock Matrix client that raises an exception
                 with patch(
-                    "mmrelay.matrix_utils._resolve_and_load_credentials",
-                    return_value=mock_auth_info,
-                ):
+                    "mmrelay.matrix_utils.async_load_credentials",
+                    new_callable=AsyncMock,
+                ) as mock_load:
+                    mock_load.return_value = mock_auth_info
                     with patch("mmrelay.matrix_utils.AsyncClient") as mock_client_class:
                         mock_client = MagicMock()
                         mock_client.rooms = {}
