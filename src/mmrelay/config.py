@@ -160,7 +160,7 @@ def get_credentials_search_paths(
     Parameters:
         explicit_path (str | None): Optional explicit file or directory path.
         config_paths (Iterable[str] | None): Optional iterable of config file paths.
-        include_base_data (bool): When True, include base/data directory fallbacks.
+        include_base_data (bool): When True, include unified base data directory's credentials path in candidates.
 
     Returns:
         list[str]: Ordered candidate credential file paths.
@@ -175,10 +175,11 @@ def get_credentials_search_paths(
         If `path` is None, empty, or already present in `seen`, the function has no effect; otherwise it appends `path` to `candidate_paths` and records it in `seen`.
 
         Parameters:
-            path: Path string to add; ignored if `None` or already added.
+            path (Path string to add; ignored if `None` or already added.
         """
         if not path or path in seen:
             return
+
         candidate_paths.append(path)
         seen.add(path)
 
@@ -187,15 +188,11 @@ def get_credentials_search_paths(
         expanded_path = _expand_path(raw_path)
         path_is_dir = os.path.isdir(expanded_path)
         if not path_is_dir:
-            path_is_dir = bool(
-                raw_path.endswith(os.path.sep)
-                or (os.path.altsep and raw_path.endswith(os.path.altsep))
-            )
-        if path_is_dir:
+            normalized_path = os.path.normpath(expanded_path)
+            _add(normalized_path)
+        else:
             normalized_dir = os.path.normpath(expanded_path)
             _add(os.path.join(normalized_dir, "credentials.json"))
-        else:
-            _add(expanded_path)
 
     if config_paths:
         for config_path in config_paths:
@@ -206,15 +203,26 @@ def get_credentials_search_paths(
             _add(os.path.join(config_dir, MATRIX_DIRNAME, "credentials.json"))
 
     if include_base_data:
-        # Prefer v1.3 unified HOME locations before compatibility/legacy fallbacks.
+        # Unified credentials path has HIGHEST priority (above legacy paths and config-adjacent paths)
+        # This ensures new v1.3+ credentials are loaded preferentially
         _add(str(get_credentials_path()))
-        # Compatibility fallback for pre-1.3 credentials location.
-        _add(os.path.join(str(get_home_dir()), CREDENTIALS_FILENAME))
 
-        if is_deprecation_window_active():
-            for legacy_dir in get_legacy_dirs():
-                _add(os.path.join(legacy_dir, "credentials.json"))
-                _add(os.path.join(legacy_dir, MATRIX_DIRNAME, "credentials.json"))
+    # Check config file paths
+    if config_paths:
+        for config_path in config_paths:
+            if not config_path:
+                continue
+            config_dir = os.path.dirname(os.path.abspath(config_path))
+            _add(os.path.join(config_dir, "credentials.json"))
+            _add(os.path.join(config_dir, MATRIX_DIRNAME, "credentials.json"))
+
+    # Compatibility fallback for pre-1.3 credentials location (deprecated, lower priority)
+    _add(os.path.join(str(get_home_dir()), CREDENTIALS_FILENAME))
+
+    if is_deprecation_window_active():
+        for legacy_dir in get_legacy_dirs():
+            _add(os.path.join(legacy_dir, "credentials.json"))
+            _add(os.path.join(legacy_dir, MATRIX_DIRNAME, "credentials.json"))
 
     return candidate_paths
 

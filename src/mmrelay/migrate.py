@@ -806,7 +806,14 @@ def migrate_config(
 
     new_home.mkdir(parents=True, exist_ok=True)
 
-    if new_config.exists() and not force:
+    # Only create backup if old_config exists at a different location (actual migration)
+    # Backup is only needed when old_config actually exists (migration happening)
+    if (
+        new_config.exists()
+        and not force
+        and old_config != new_config
+        and old_config.exists()
+    ):
         logger.info("Backing up existing config.yaml: %s", new_config)
         backup_path = _backup_file(new_config)
         try:
