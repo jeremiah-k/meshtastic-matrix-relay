@@ -345,7 +345,7 @@ The Docker image includes a built-in health check that supports two modes:
 
 **How the ready-file mode works:**
 
-- When MMRelay starts successfully, it creates a ready file at the path you set (example: `/tmp/mmrelay/ready` or `/run/mmrelay/ready`)
+- When MMRelay starts successfully, it creates a ready file at the path you set (example: `/tmp/mmrelay-ready`)
 - The health check (`test -f "$MMRELAY_READY_FILE"`) verifies this file exists
 - The file is periodically updated (every 60 seconds by default) to show the application is still responsive
 - If the application crashes or fails to start, the ready file is not created/removed, and the container is marked as unhealthy
@@ -358,10 +358,10 @@ The Docker image includes a built-in health check that supports two modes:
 
 **Configuration (recommended for production):**
 
-- Set `MMRELAY_READY_FILE` to enable ready-file mode (example: `/tmp/mmrelay/ready` or `/run/mmrelay/ready`)
-- Ensure the path is writable; for read-only root filesystems, use a mounted path like `/data/mmrelay/ready`
+- Set `MMRELAY_READY_FILE` to enable ready-file mode (example: `/tmp/mmrelay-ready`)
+- Ensure the path is writable; for read-only root filesystems, use a mounted path like `/data/mmrelay-ready`
 - To customize the heartbeat interval, set `MMRELAY_READY_HEARTBEAT_SECONDS` (default: 60)
-- To enable this in Compose, add `MMRELAY_READY_FILE` to the `environment` section (e.g., `- MMRELAY_READY_FILE=/tmp/mmrelay/ready`)
+- To enable this in Compose, add `MMRELAY_READY_FILE` to the `environment` section (e.g., `- MMRELAY_READY_FILE=/tmp/mmrelay-ready`)
 
 ## Troubleshooting
 

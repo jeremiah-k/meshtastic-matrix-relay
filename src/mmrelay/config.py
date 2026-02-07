@@ -366,6 +366,22 @@ def get_log_dir() -> str:
     return log_dir
 
 
+def _get_fallback_store_dir() -> str:
+    """
+    Produce a home-based fallback path for the Matrix E2EE store.
+
+    Used when the platform does not officially support E2EE (e.g. Windows)
+    or when directory creation in the primary location fails.
+
+    Returns:
+        str: Absolute path to the fallback store directory.
+    """
+    base = str(get_home_dir())
+    if sys.platform == "win32":
+        return ntpath.join(base, MATRIX_DIRNAME, "store")
+    return os.path.join(base, MATRIX_DIRNAME, "store")
+
+
 def get_e2ee_store_dir() -> str:
     """
     Return the absolute path to the application's E2EE data store directory, creating it when possible.
@@ -381,27 +397,16 @@ def get_e2ee_store_dir() -> str:
     try:
         store_dir = str(get_unified_store_dir())
         os.makedirs(store_dir, exist_ok=True)
+        return store_dir
     except paths_module.E2EENotSupportedError as e:
         # Match legacy behavior on Windows: logs warning and returns a path anyway
         # (even if it won't be used for E2EE)
-        base = str(get_home_dir())
-        if sys.platform == "win32":
-            store_dir = ntpath.join(base, MATRIX_DIRNAME, "store")
-        else:
-            store_dir = os.path.join(base, MATRIX_DIRNAME, "store")
         logger.warning("E2EE store not officially supported on this platform: %s", e)
-        return store_dir
+        return _get_fallback_store_dir()
     except (OSError, PermissionError) as e:
         # Fallback for permission errors - log and return a home-based path
-        base = str(get_home_dir())
-        if sys.platform == "win32":
-            store_dir = ntpath.join(base, MATRIX_DIRNAME, "store")
-        else:
-            store_dir = os.path.join(base, MATRIX_DIRNAME, "store")
         logger.warning("Could not create E2EE store directory: %s", e)
-        return store_dir
-    else:
-        return store_dir
+        return _get_fallback_store_dir()
 
 
 def _convert_env_bool(value: str, var_name: str) -> bool:

@@ -60,6 +60,19 @@ from mmrelay.tools import get_sample_config_path
 _logger: logging.Logger | None = None
 
 
+class MissingModuleAttributeError(AttributeError):
+    """Exception raised when an attribute is missing from the module."""
+
+    def __init__(self, name: str) -> None:
+        """
+        Initialize the error with the missing attribute name.
+
+        Parameters:
+            name (str): The name of the missing attribute.
+        """
+        super().__init__(f"module {__name__!r} has no attribute {name!r}")
+
+
 def _get_logger() -> logging.Logger:
     """
     Return the module-level logger, creating it on first access.
@@ -82,7 +95,7 @@ def __getattr__(name: str) -> Any:
     """Handle lazy loading of the module-level logger."""
     if name == "logger":
         return _get_logger()
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    raise MissingModuleAttributeError(name)
 
 
 # =============================================================================
@@ -533,7 +546,7 @@ def _validate_credentials_json(
             )
             continue
 
-        required_fields = ["homeserver", "access_token", "user_id", "device_id"]
+        required_fields = ["homeserver", "access_token", "user_id"]
         missing_fields = [
             field
             for field in required_fields
@@ -546,6 +559,14 @@ def _validate_credentials_json(
                 credentials_path,
             )
             continue
+
+        # Optional device_id for legacy compatibility
+        if not _is_valid_non_empty_string(credentials.get("device_id")):
+            _get_logger().warning(
+                "Credentials file at %s is missing 'device_id'. "
+                "This may cause issues with session tracking.",
+                credentials_path,
+            )
 
         return True
 

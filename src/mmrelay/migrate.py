@@ -1131,6 +1131,8 @@ def migrate_logs(
                 shutil.copy2(str(dest), str(backup_path))
             except (OSError, IOError) as e:
                 logger.warning("Failed to backup log file: %s", e)
+                failed_files.append(str(log_file))
+                continue
         try:
             if move:
                 shutil.move(str(log_file), str(dest))
@@ -1282,6 +1284,79 @@ def migrate_store(
         }
 
 
+def _migrate_plugin_tier(
+    old_dir: Path,
+    new_dir: Path,
+    tier_name: str,
+    move: bool,
+    force: bool,
+    errors: list[str],
+) -> bool:
+    """
+    Migrate a single tier of plugins (e.g. custom or community).
+
+    Searches the source directory for plugin folders and moves or copies each into the destination.
+    Updates the provided errors list with any failure messages.
+
+    Parameters:
+        old_dir (Path): Source directory containing plugin folders.
+        new_dir (Path): Destination directory for the plugin tier.
+        tier_name (str): Label used for logging and error reporting (e.g. "custom").
+        move (bool): If True, move plugins instead of copying.
+        force (bool): If True, overwrite existing destinations without creating backups.
+        errors (list[str]): List to append error messages to.
+
+    Returns:
+        bool: True if any plugins were successfully migrated, False otherwise.
+    """
+    if not old_dir.exists():
+        return False
+    try:
+        new_dir.mkdir(parents=True, exist_ok=True)
+    except (OSError, IOError) as e:
+        logger.warning("Failed to create %s plugins directory: %s", tier_name, e)
+        errors.append(f"{tier_name} dir: {e}")
+        return False
+
+    migrated = False
+    try:
+        for item in old_dir.iterdir():
+            if not item.is_dir():
+                continue
+            dest = new_dir / item.name
+            if dest.exists() and not force:
+                logger.info("Backing up existing %s plugin: %s", tier_name, dest)
+                backup_path = _backup_file(dest)
+                try:
+                    shutil.copytree(str(dest), str(backup_path))
+                except (OSError, IOError) as e:
+                    logger.warning("Failed to backup %s plugin: %s", tier_name, e)
+                    errors.append(f"{tier_name} backup {dest}: {e}")
+                    continue
+            try:
+                if move:
+                    if dest.exists():
+                        shutil.rmtree(str(dest))
+                        logger.debug(
+                            "Removing existing %s plugin for move: %s", tier_name, dest
+                        )
+                    shutil.move(str(item), str(dest))
+                else:
+                    if dest.exists():
+                        shutil.rmtree(str(dest))
+                    shutil.copytree(str(item), str(dest))
+                logger.debug("Migrated %s plugin: %s", tier_name, item)
+                migrated = True
+            except (OSError, IOError) as e:
+                logger.warning("Failed to migrate %s plugin %s: %s", tier_name, item, e)
+                errors.append(f"{tier_name} {item}: {e}")
+        return migrated
+    except (OSError, IOError) as e:
+        logger.warning("Failed to migrate %s plugins: %s", tier_name, e)
+        errors.append(f"{tier_name}: {e}")
+        return False
+
+
 def migrate_plugins(
     legacy_roots: list[Path],
     new_home: Path,
@@ -1367,93 +1442,28 @@ def migrate_plugins(
 
     migrated_types: list[str] = []
 
-    # Migrate custom plugins
+    # Migrate plugin tiers
     old_custom_dir = old_plugins_dir / "custom"
-    if old_custom_dir.exists():
-        new_custom_dir = new_plugins_dir / "custom"
-        try:
-            new_custom_dir.mkdir(parents=True, exist_ok=True)
-        except (OSError, IOError) as e:
-            logger.warning("Failed to create custom plugins directory: %s", e)
-            errors.append(f"custom dir: {e}")
-        try:
-            for item in old_custom_dir.iterdir():
-                if not item.is_dir():
-                    continue
-                dest = new_custom_dir / item.name
-                if dest.exists() and not force:
-                    logger.info("Backing up existing custom plugin: %s", dest)
-                    backup_path = _backup_file(dest)
-                    try:
-                        shutil.copytree(str(dest), str(backup_path))
-                    except (OSError, IOError) as e:
-                        logger.warning("Failed to backup custom plugin: %s", e)
-                        errors.append(f"custom backup {dest}: {e}")
-                        continue
-                try:
-                    if move:
-                        if dest.exists():
-                            shutil.rmtree(str(dest))
-                            logger.debug(
-                                "Removing existing custom plugin for move: %s", dest
-                            )
-                        shutil.move(str(item), str(dest))
-                    else:
-                        if dest.exists():
-                            shutil.rmtree(str(dest))
-                        shutil.copytree(str(item), str(dest))
-                    logger.debug("Migrated custom plugin: %s", item)
-                except (OSError, IOError) as e:
-                    logger.warning("Failed to migrate custom plugin %s: %s", item, e)
-                    errors.append(f"custom {item}: {e}")
-            migrated_types.append("custom")
-        except (OSError, IOError) as e:
-            logger.warning("Failed to migrate custom plugins: %s", e)
-            errors.append(f"custom: {e}")
+    if _migrate_plugin_tier(
+        old_custom_dir,
+        new_plugins_dir / "custom",
+        "custom",
+        move,
+        force,
+        errors,
+    ):
+        migrated_types.append("custom")
 
-    # Migrate community plugins
     old_community_dir = old_plugins_dir / "community"
-    if old_community_dir.exists():
-        new_community_dir = new_plugins_dir / "community"
-        try:
-            new_community_dir.mkdir(parents=True, exist_ok=True)
-        except (OSError, IOError) as e:
-            logger.warning("Failed to create community plugins directory: %s", e)
-            errors.append(f"community dir: {e}")
-        try:
-            for item in old_community_dir.iterdir():
-                if not item.is_dir():
-                    continue
-                dest = new_community_dir / item.name
-                if dest.exists() and not force:
-                    logger.info("Backing up existing community plugin: %s", dest)
-                    backup_path = _backup_file(dest)
-                    try:
-                        shutil.copytree(str(dest), str(backup_path))
-                    except (OSError, IOError) as e:
-                        logger.warning("Failed to backup community plugin: %s", e)
-                        errors.append(f"community backup {dest}: {e}")
-                        continue
-                try:
-                    if move:
-                        if dest.exists():
-                            shutil.rmtree(str(dest))
-                            logger.debug(
-                                "Removing existing community plugin for move: %s", dest
-                            )
-                        shutil.move(str(item), str(dest))
-                    else:
-                        if dest.exists():
-                            shutil.rmtree(str(dest))
-                        shutil.copytree(str(item), str(dest))
-                    logger.debug("Migrated community plugin: %s", item)
-                except (OSError, IOError) as e:
-                    logger.warning("Failed to migrate community plugin %s: %s", item, e)
-                    errors.append(f"community {item}: {e}")
-            migrated_types.append("community")
-        except (OSError, IOError) as e:
-            logger.warning("Failed to migrate community plugins: %s", e)
-            errors.append(f"community: {e}")
+    if _migrate_plugin_tier(
+        old_community_dir,
+        new_plugins_dir / "community",
+        "community",
+        move,
+        force,
+        errors,
+    ):
+        migrated_types.append("community")
 
     failed = len(errors) > 0
 
@@ -1537,7 +1547,9 @@ def migrate_gpxtracker(
             try:
                 import yaml
             except ImportError as e:
-                logger.warning("Failed to import yaml: %s", e)
+                # If yaml is missing, it's missing for the whole process.
+                # Stop scanning and warn the user.
+                logger.warning("Failed to import yaml for GPX tracker detection: %s", e)
                 break
 
             try:
@@ -1915,37 +1927,28 @@ def perform_migration(
             report["message"] = "Dry run complete - no changes made"
 
         report["success"] = True
-    except MigrationError as exc:
-        report["success"] = False
-        report["error"] = str(exc)
-        report["message"] = "Migration failed"
-        if not dry_run:
-            _write_migration_state(
-                status="failed", completed_steps=completed_steps, error=str(exc)
-            )
-            report["rollback"] = rollback_migration(completed_steps=completed_steps)
-        return report
-    except (OSError, IOError, sqlite3.DatabaseError) as exc:
-        report["success"] = False
-        report["error"] = str(exc)
-        report["message"] = "Migration failed"
-        if not dry_run:
-            _write_migration_state(
-                status="failed", completed_steps=completed_steps, error=str(exc)
-            )
-            report["rollback"] = rollback_migration(completed_steps=completed_steps)
-        return report
     except Exception as exc:
-        logger.exception("Unexpected error during migration")
+        # Determine if this is a known/expected migration failure or an unexpected bug
+        unexpected = not isinstance(
+            exc, (MigrationError, OSError, IOError, sqlite3.DatabaseError)
+        )
+        if unexpected:
+            logger.exception("Unexpected error during migration")
+
         report["success"] = False
         report["error"] = str(exc)
         report["message"] = "Migration failed"
+
         if not dry_run:
             _write_migration_state(
                 status="failed", completed_steps=completed_steps, error=str(exc)
             )
             report["rollback"] = rollback_migration(completed_steps=completed_steps)
-        raise
+
+        if unexpected:
+            raise
+
+        return report
 
     logger.info(
         "Migration complete. Summary: %d migrations performed",

@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 import warnings
+from typing import Any, Optional, Tuple
 from unittest.mock import MagicMock, mock_open, patch
 
 # Add src to path for imports
@@ -1525,7 +1526,13 @@ class TestConfigUncoveredLines(unittest.TestCase):
 _real_import = __import__
 
 
-def _cli_utils_import_blocker(name, globals=None, locals=None, fromlist=(), level=0):
+def _cli_utils_import_blocker(
+    name: str,
+    globals: Optional[dict] = None,
+    locals: Optional[dict] = None,
+    fromlist: Tuple[str, ...] = (),
+    level: int = 0,
+) -> Any:
     """Raise ImportError for cli_utils imports, delegate everything else."""
     if name in ("mmrelay.cli_utils", "cli_utils"):
         raise ImportError

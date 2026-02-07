@@ -54,7 +54,7 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if and .Values.initContainer.enabled .Values.persistence.enabled }}
+      {{- if and .Values.initContainer.enabled (or .Values.persistence.enabled .Values.credentials.enabled) }}
       initContainers:
         - name: fix-data-perms
           image: "{{ .Values.initContainer.image.repository }}:{{ .Values.initContainer.image.tag }}{{- if .Values.initContainer.image.digest }}@{{ .Values.initContainer.image.digest }}{{- end }}"

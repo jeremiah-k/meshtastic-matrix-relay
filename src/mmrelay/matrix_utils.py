@@ -2144,7 +2144,9 @@ async def _post_sync_setup(
         get_room_encryption_warnings,
     )
 
-    e2ee_status = get_e2ee_status(config_data or {}, config_module.config_path)
+    e2ee_status = await asyncio.to_thread(
+        get_e2ee_status, config_data or {}, config_module.config_path
+    )
 
     async def _resolve_alias(alias: str) -> str | None:
         """
@@ -2983,7 +2985,7 @@ async def join_matrix_room(matrix_client: AsyncClient, room_id_or_alias: str) ->
         logger.exception(f"Unexpected error joining room '{room_id}'")
 
 
-def _get_e2ee_error_message() -> str:
+async def _get_e2ee_error_message() -> str:
     """
     Provide a short, user-facing explanation for why End-to-End Encryption (E2EE) is not enabled.
 
@@ -2995,7 +2997,9 @@ def _get_e2ee_error_message() -> str:
     from mmrelay.e2ee_utils import get_e2ee_error_message, get_e2ee_status
 
     # Get unified E2EE status
-    e2ee_status = get_e2ee_status(config or {}, config_module.config_path)
+    e2ee_status = await asyncio.to_thread(
+        get_e2ee_status, config or {}, config_module.config_path
+    )
 
     # Return unified error message
     return get_e2ee_error_message(dict(e2ee_status))
@@ -3220,7 +3224,7 @@ async def matrix_relay(
                 and not getattr(matrix_client, "e2ee_enabled", False)
             ):
                 room_name = getattr(room, "display_name", room_id)
-                error_message = _get_e2ee_error_message()
+                error_message = await _get_e2ee_error_message()
                 logger.error(
                     f"🔒 BLOCKED: Cannot send message to encrypted room '{room_name}' ({room_id})"
                 )
