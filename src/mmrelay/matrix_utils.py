@@ -23,7 +23,6 @@ from typing import (
     Generator,
     Optional,
     Tuple,
-    Type,
     cast,
 )
 from urllib.parse import urlparse
