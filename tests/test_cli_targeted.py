@@ -185,7 +185,10 @@ class TestFindCredentialsJsonPath(unittest.TestCase):
     @patch("os.path.exists")
     def test_returns_path_when_found(self, mock_exists, mock_get_paths):
         """Test returns path when credentials found by search helper."""
-        mock_get_paths.return_value = ["/path1/credentials.json", "/path2/credentials.json"]
+        mock_get_paths.return_value = [
+            "/path1/credentials.json",
+            "/path2/credentials.json",
+        ]
         mock_exists.side_effect = lambda p: p == "/path2/credentials.json"
 
         result = _find_credentials_json_path(None)
@@ -566,8 +569,6 @@ class TestHandleDoctorMigrationStatus(unittest.TestCase):
             c for c in mock_print.call_args_list if "No migration needed" in str(c)
         ]
         self.assertTrue(len(warning_calls) > 0)
-
-
 
 
 class TestHandleConfigPathsDetails(unittest.TestCase):

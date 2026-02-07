@@ -562,8 +562,6 @@ class TestGetMostRecentDatabase:
         assert result is None
 
 
-
-
 class TestBackupFile:
     """Test _backup_file function coverage."""
 
@@ -2162,8 +2160,6 @@ class TestPerformMigration:
         report = perform_migration(dry_run=True, force=False, move=False)
         assert report["success"] is True
         assert gpx_called["value"] is True
-
-
 
     def test_perform_migration_gpx_yaml_parse_error(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

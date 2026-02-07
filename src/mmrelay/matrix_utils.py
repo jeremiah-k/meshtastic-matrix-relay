@@ -1385,7 +1385,9 @@ async def _resolve_and_load_credentials(
         credentials = None
 
     if credentials is None:
-        candidate_path = await asyncio.to_thread(_resolve_credentials_save_path, config_data)
+        candidate_path = await asyncio.to_thread(
+            _resolve_credentials_save_path, config_data
+        )
         if candidate_path and await asyncio.to_thread(os.path.isfile, candidate_path):  # type: ignore[arg-type]
             logger.warning("Ignoring invalid credentials file: %s", candidate_path)
     else:
@@ -1465,7 +1467,9 @@ async def _resolve_and_load_credentials(
                     )
                     return None
 
-                credentials_path = await asyncio.to_thread(_resolve_credentials_save_path, config_data)
+                credentials_path = await asyncio.to_thread(
+                    _resolve_credentials_save_path, config_data
+                )
                 matrix_homeserver = credentials["homeserver"]
                 matrix_access_token = credentials["access_token"]
                 bot_user_id = credentials["user_id"]
