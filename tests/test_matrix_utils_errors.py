@@ -1,3 +1,4 @@
+import pytest
 from unittest.mock import MagicMock, patch
 
 from mmrelay.matrix_utils import (
@@ -134,7 +135,8 @@ class TestGetDetailedSyncErrorMessage:
         assert result == "Some error message"
 
 
-def test_get_e2ee_error_message():
+@pytest.mark.asyncio
+async def test_get_e2ee_error_message():
     """Test _get_e2ee_error_message returns appropriate error message."""
     with (
         patch("mmrelay.matrix_utils.config", {"test": "config"}),
@@ -145,7 +147,7 @@ def test_get_e2ee_error_message():
         mock_get_status.return_value = {"status": "test"}
         mock_get_error.return_value = "Test E2EE error message"
 
-        result = _get_e2ee_error_message()
+        result = await _get_e2ee_error_message()
 
         assert result == "Test E2EE error message"
         mock_get_status.assert_called_once_with({"test": "config"}, "/test/path")

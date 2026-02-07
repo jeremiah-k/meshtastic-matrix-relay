@@ -305,9 +305,7 @@ Uses the same directories as standalone installation:
 - **Home Directory**: `~/.mmrelay/` (mounted to `/data`). This directory on your host contains the configuration (`config.yaml`), and subdirectories for the database (`database/meshtastic.sqlite`), logs (`logs/`), plugins (`plugins/custom/` and `plugins/community/`), and matrix auth/E2EE data (`matrix/credentials.json`, `matrix/store/`).
 
 **Volume Mounting Explanation:**
-The Docker compose files mount `~/.mmrelay/` to `/data`. This ensures that all persistent application data, including configuration, stays together in a single directory. On SELinux systems, add `:Z` to volume options to label mounts correctly, e.g., `/data:Z`.
-
-This means your Docker and standalone installations share the same data!
+The Docker compose files mount `~/.mmrelay/` to `/data`. This ensures that all persistent application data, including configuration, stays together in a single directory. On SELinux systems, add `:Z` to volume options to label mounts correctly, e.g., `~/.mmrelay:/data:Z` (the `:Z` label is appended to the container mount portion to correctly label the host-mounted volume).
 
 **Environment Configuration:**
 Docker Compose uses environment variables to set container paths. The sample files set:
@@ -507,7 +505,7 @@ docker compose logs mmrelay | grep -i e2ee
 Look for messages like:
 
 - "End-to-End Encryption (E2EE) is enabled"
-- "Using credentials from ~/.mmrelay/matrix/credentials.json"
+- "Using credentials from /data/matrix/credentials.json"
 - "Found X encrypted rooms out of Y total rooms"
 
 ## Data Directory Structure

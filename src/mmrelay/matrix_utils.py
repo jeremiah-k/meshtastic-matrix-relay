@@ -1340,18 +1340,19 @@ def _resolve_credentials_save_path(config_data: dict[str, Any] | None) -> str | 
 
 def _missing_credentials_keys(credentials: dict[str, Any]) -> list[str]:
     """
-    Identify which required credential keys are missing from the provided mapping.
+    Identify which required credential keys are missing or invalid in the provided mapping.
 
     Parameters:
         credentials (dict[str, Any]): Mapping containing credential keys and their values.
 
     Returns:
-        list[str]: List of required keys that are not present in `credentials`.
+        list[str]: List of required keys that are not present or are empty in `credentials`.
     """
     return [
         key
         for key in ("homeserver", "access_token", "user_id")
-        if key not in credentials
+        if not isinstance(credentials.get(key), str)
+        or not credentials.get(key, "").strip()
     ]
 
 
@@ -1387,6 +1388,8 @@ async def _resolve_and_load_credentials(
         candidate_path = await asyncio.to_thread(_resolve_credentials_save_path, config_data)
         if candidate_path and await asyncio.to_thread(os.path.isfile, candidate_path):  # type: ignore[arg-type]
             logger.warning("Ignoring invalid credentials file: %s", candidate_path)
+    else:
+        candidate_path = None
 
     if credentials:
         missing_keys = _missing_credentials_keys(credentials)
@@ -1397,18 +1400,19 @@ async def _resolve_and_load_credentials(
             )
             credentials = None
         else:
-            credentials_path = await asyncio.to_thread(_resolve_credentials_save_path, config_data)
+            credentials_path = (
+                candidate_path
+                if candidate_path is not None
+                else await asyncio.to_thread(
+                    _resolve_credentials_save_path, config_data
+                )
+            )
             matrix_homeserver = credentials["homeserver"]
             matrix_access_token = credentials["access_token"]
             bot_user_id = credentials["user_id"]
             e2ee_device_id = _get_valid_device_id(credentials.get("device_id"))
 
             logger.debug(f"Using Matrix credentials (device: {e2ee_device_id})")
-
-            if e2ee_device_id is None:
-                logger.warning(
-                    "credentials.json has no valid device_id; proceeding to restore session and discover device_id."
-                )
 
             if isinstance(matrix_section, dict) and "access_token" in matrix_section:
                 logger.info(
@@ -1568,6 +1572,12 @@ async def _configure_e2ee(
     Returns:
         tuple[bool, str | None]: A pair where the first element is `True` if E2EE is enabled and all runtime dependencies are available (otherwise `False`), and the second element is the resolved E2EE store directory path or `None` if not applicable.
     """
+    if not isinstance(config_data, dict):
+        logger.error(
+            f"E2EE setup failed: expected dict for config_data, got {type(config_data).__name__}"
+        )
+        return False, None
+
     e2ee_enabled = False
     e2ee_store_path = None
     try:
@@ -1676,8 +1686,10 @@ async def _configure_e2ee(
                         "(or from source: pip install -e '.[e2e]')."
                     )
                     e2ee_enabled = False
-    except (KeyError, TypeError):
-        logger.debug("E2EE configuration not found or malformed, E2EE disabled")
+    except (KeyError, TypeError) as exc:
+        # Gracefully handle missing or malformed matrix section in config
+        logger.warning(f"Failed to determine E2EE status from config: {exc}")
+        logger.debug("E2EE configuration error details", exc_info=True)
 
     return e2ee_enabled, e2ee_store_path
 

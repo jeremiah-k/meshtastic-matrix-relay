@@ -48,10 +48,10 @@ component_management:
         - src/mmrelay/migrate.py
       statuses:
         - type: project
-          target: 50%
+          target: 70%
           threshold: 3%
         - type: patch
-          target: 50%
+          target: 70%
           threshold: 3%
     - component_id: core_utils
       name: Core Utils

@@ -804,6 +804,11 @@ def load_credentials() -> dict[str, Any] | None:
             if not isinstance(credentials.get(key), str)
             or not credentials.get(key, "").strip()
         ]
+        if not credentials.get("device_id"):
+            logger.warning(
+                "credentials.json is missing 'device_id': %s. This is recommended for v1.3+.",
+                credentials_path,
+            )
         if missing_required:
             logger.warning(
                 "Ignoring credentials.json missing required keys (%s): %s",

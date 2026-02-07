@@ -1524,13 +1524,16 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                 )
                 config_path = None
                 continue
-            except Exception as e:
+            except (yaml.YAMLError, KeyError, TypeError, AttributeError) as e:
                 _get_logger().debug("Unexpected error checking config", exc_info=True)
                 print(
                     f"Error checking configuration: {e.__class__.__name__}: {e}",
                     file=sys.stderr,
                 )
                 return False
+
+        # Reset config_path if we're continuing to the next iteration
+        config_path = None
 
         # Reset config_path if we're continuing to the next iteration
         config_path = None

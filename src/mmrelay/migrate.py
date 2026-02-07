@@ -1355,6 +1355,7 @@ def _migrate_plugin_tier(
         logger.warning("Failed to migrate %s plugins: %s", tier_name, e)
         errors.append(f"{tier_name}: {e}")
         return False
+    return migrated
 
 
 def migrate_plugins(

@@ -46,6 +46,8 @@ spec:
                 - ALL
               add:
                 - CHOWN
+                - FOWNER
+                - DAC_OVERRIDE
           resources:
             requests:
               cpu: 10m

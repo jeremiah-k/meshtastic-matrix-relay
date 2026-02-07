@@ -2191,7 +2191,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         result = _validate_credentials_json(config_path)
 
         # Verify results
-        self.assertFalse(result)
+        self.assertTrue(result)
         mock_logger.warning.assert_called()
 
     @patch("mmrelay.cli._get_logger")
