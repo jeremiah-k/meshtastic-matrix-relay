@@ -168,13 +168,20 @@ except ImportError:  # pragma: no cover - jsonschema is expected in runtime
 if jsonschema is not None:
     from jsonschema.exceptions import ValidationError as _ValidationError
 
-    JSONSCHEMA_VALIDATION_ERROR: Type[BaseException] = _ValidationError
+    JSONSCHEMA_VALIDATION_ERROR: type[Exception] = _ValidationError
 else:
 
     class _JsonSchemaValidationError(Exception):
         """Fallback when jsonschema is unavailable."""
 
     JSONSCHEMA_VALIDATION_ERROR = _JsonSchemaValidationError
+
+# Tuple of exceptions that can be unpacked in except clauses
+SYNC_RETRY_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    asyncio.TimeoutError,
+    *NIO_COMM_EXCEPTIONS,
+    JSONSCHEMA_VALIDATION_ERROR,
+)
 # Exception handling strategy:
 # Catch only expected nio/network/timeouts so programming errors surface during testing.
 
@@ -1405,8 +1412,15 @@ async def _resolve_and_load_credentials(
             credentials_path = (
                 candidate_path
                 if candidate_path is not None
-                else await asyncio.to_thread(
-                    _resolve_credentials_save_path, config_data
+                else cast(
+                    "str | None",
+                    await asyncio.to_thread(
+                        cast(
+                            "Callable[[dict[str, Any] | None], str]",
+                            _resolve_credentials_save_path,
+                        ),
+                        config_data,
+                    ),
                 )
             )
             matrix_homeserver = credentials["homeserver"]
@@ -2004,26 +2018,23 @@ async def _perform_initial_sync(
                     nio_responses.SyncResponse, "_get_invite_state", None
                 )
 
-                def _safe_get_invite_state(invite_state_dict: Any) -> list[Any]:
+                def _safe_get_invite_state(parsed_dict: Any) -> list[Any]:
                     """
                     Return invite-state events extracted from an invite payload or an empty list when the payload is invalid or cannot be processed.
 
                     Parameters:
-                        invite_state_dict (Any): The invite-state payload to inspect; expected to be a dict containing an "events" key.
+                        parsed_dict (Any): The invite-state payload to inspect; expected to be a dict containing an "events" key.
 
                     Returns:
                         list[Any]: The extracted invite-state events when available and successfully processed, or an empty list otherwise.
                     """
-                    if (
-                        not isinstance(invite_state_dict, dict)
-                        or "events" not in invite_state_dict
-                    ):
+                    if not isinstance(parsed_dict, dict) or "events" not in parsed_dict:
                         return []
                     try:
                         if callable(original_callable):
                             return cast(
                                 list[Any],
-                                original_callable(invite_state_dict),
+                                original_callable(parsed_dict),
                             )
                     except JSONSCHEMA_VALIDATION_ERROR:
                         logger.warning(
@@ -2071,11 +2082,7 @@ async def _perform_initial_sync(
                 logger.exception("Invite-ignoring sync retry cancelled")
                 await _close_matrix_client_after_failure(client, "sync cancellation")
                 raise
-            except (
-                asyncio.TimeoutError,
-                *NIO_COMM_EXCEPTIONS,
-                JSONSCHEMA_VALIDATION_ERROR,
-            ):
+            except SYNC_RETRY_EXCEPTIONS:
                 logger.exception("Invite-ignoring sync retry failed")
         except asyncio.TimeoutError:
             logger.exception(
