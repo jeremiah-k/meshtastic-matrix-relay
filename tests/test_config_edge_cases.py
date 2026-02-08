@@ -82,7 +82,6 @@ class TestConfigEdgeCases(unittest.TestCase):
             mock_args.config = "/custom/path/config.yaml"
 
             with patch("mmrelay.config.os.makedirs"):
-
                 paths = get_config_paths(mock_args)
 
             self.assertEqual(paths[0], "/custom/path/config.yaml")
@@ -332,6 +331,59 @@ class TestConfigEdgeCases(unittest.TestCase):
 
                     # Should log error messages
                     mock_logger.error.assert_called()
+
+    def test_load_config_explicit_path_not_found(self):
+        """
+        Test that load_config errors when explicit --config path doesn't exist.
+
+        When a user provides --config with a non-existent file, the function should
+        error immediately rather than silently falling back to other locations.
+        This prevents confusion when the wrong configuration is loaded.
+        """
+        with patch("os.path.isfile", return_value=False):
+            with patch("mmrelay.config.logger") as mock_logger:
+                # Create mock args with explicit config path that doesn't exist
+                mock_args = MagicMock()
+                mock_args.config = "/nonexistent/explicit/config.yaml"
+
+                config = load_config(args=mock_args)
+
+                # Should return empty config (indicating failure)
+                self.assertEqual(config, {})
+
+                # Should log explicit error about missing config file
+                mock_logger.error.assert_any_call(
+                    "Explicit config file not found: /nonexistent/explicit/config.yaml"
+                )
+                mock_logger.error.assert_any_call(
+                    "Please check the path or omit --config to use default search locations."
+                )
+
+    def test_load_config_explicit_path_found(self):
+        """
+        Test that load_config works normally when explicit --config path exists.
+
+        When a user provides --config with a valid file path, it should be loaded
+        successfully without falling back to other locations.
+        """
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".yaml", delete=False
+        ) as temp_file:
+            temp_file.write("matrix:\n  homeserver: https://test.example.com\n")
+            temp_path = temp_file.name
+
+        try:
+            # Create mock args with explicit config path that exists
+            mock_args = MagicMock()
+            mock_args.config = temp_path
+
+            config = load_config(args=mock_args)
+
+            # Should load the config successfully
+            self.assertIn("matrix", config)
+            self.assertEqual(config["matrix"]["homeserver"], "https://test.example.com")
+        finally:
+            os.unlink(temp_path)
 
     def test_get_credentials_search_paths_with_explicit_path(self):
         """Test get_credentials_search_paths with explicit path."""

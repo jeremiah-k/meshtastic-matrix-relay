@@ -1241,6 +1241,17 @@ def load_config(
             logger.exception(f"Error loading config file {config_file}")
             return {}
 
+    # Check if an explicit config path was provided via args but doesn't exist
+    # In this case, we should error rather than silently falling back to other locations
+    if args and hasattr(args, "config") and args.config:
+        explicit_path = args.config
+        if not os.path.isfile(explicit_path):
+            logger.error(f"Explicit config file not found: {explicit_path}")
+            logger.error(
+                "Please check the path or omit --config to use default search locations."
+            )
+            return {}
+
     # Otherwise, search for a config file
     if config_paths is None:
         config_paths = get_config_paths(args)
