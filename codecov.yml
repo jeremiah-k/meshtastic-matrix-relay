@@ -34,6 +34,7 @@ component_management:
       name: Configuration
       paths:
         - src/mmrelay/config.py
+        - src/mmrelay/paths.py
       statuses:
         - type: project
           target: 70%
@@ -41,6 +42,17 @@ component_management:
         - type: patch
           target: 70%
           threshold: 2%
+    - component_id: migration
+      name: Migration
+      paths:
+        - src/mmrelay/migrate.py
+      statuses:
+        - type: project
+          target: 70%
+          threshold: 3%
+        - type: patch
+          target: 70%
+          threshold: 3%
     - component_id: core_utils
       name: Core Utils
       paths:

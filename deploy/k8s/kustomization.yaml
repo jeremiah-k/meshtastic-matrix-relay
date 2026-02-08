@@ -7,4 +7,6 @@ resources:
   - deployment.yaml
 images:
   - name: ghcr.io/jeremiah-k/mmrelay
-    newTag: 1.2.9
+    # NOTE: 'latest' is for development. For production, use an overlay
+    # with a specific tag or digest (e.g., newTag: v1.3.0 or newDigest: sha256:...).
+    newTag: latest

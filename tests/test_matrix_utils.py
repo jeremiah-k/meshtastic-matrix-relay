@@ -7,7 +7,7 @@ import sys
 import types
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, PropertyMock, mock_open, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 from nio import SyncError
@@ -1495,7 +1495,7 @@ def matrix_config():
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils.logger")
 @patch("mmrelay.matrix_utils.login_matrix_bot")
-@patch("mmrelay.matrix_utils.load_credentials")
+@patch("mmrelay.matrix_utils.async_load_credentials", new_callable=AsyncMock)
 async def test_connect_matrix_alias_resolution_exception(
     mock_load_credentials, mock_login_bot, _mock_logger, mock_async_client
 ):
@@ -3055,8 +3055,8 @@ async def test_upload_image_returns_upload_error_on_network_exception():
 
     assert hasattr(result, "message")
     assert hasattr(result, "status_code")
-    assert result.message == "boom"
-    assert result.status_code is None
+    assert result.message == "boom"  # type: ignore[attr-defined]
+    assert result.status_code is None  # type: ignore[attr-defined]
     mock_client.upload.assert_awaited_once()
 
 
@@ -3165,7 +3165,7 @@ async def test_on_room_message_emote_reaction_uses_original_event_id(monkeypatch
 @patch("mmrelay.matrix_utils.os.path.exists")
 @patch("mmrelay.matrix_utils.os.path.isfile")
 @patch("builtins.open")
-@patch("mmrelay.matrix_utils.json.load")
+@patch("mmrelay.config.json.load")
 @patch("mmrelay.matrix_utils.save_credentials")
 @patch("mmrelay.matrix_utils._create_ssl_context")
 @patch("mmrelay.matrix_utils.matrix_client", None)
@@ -3649,7 +3649,7 @@ async def test_connect_matrix_sync_validation_error_retries_with_invite_safe_fil
         call_count[0] += 1
         if call_count[0] == 1:
             # First sync raises ValidationError (caught, triggers invite-safe filter)
-            raise jsonschema.exceptions.ValidationError(
+            raise jsonschema.ValidationError(  # type: ignore[attr-defined]
                 message="Invalid schema",
                 path=(),
                 schema_path=(),
@@ -3739,7 +3739,7 @@ async def test_connect_matrix_sync_validation_error_retry_failure_closes_client(
         """
         call_count["count"] += 1
         if call_count["count"] == 1:
-            raise jsonschema.exceptions.ValidationError(
+            raise jsonschema.ValidationError(  # type: ignore[attr-defined]
                 message="Invalid schema",
                 path=(),
                 schema_path=(),
@@ -3886,7 +3886,9 @@ async def test_connect_matrix_uploads_keys_when_needed(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_connect_matrix_credentials_load_exception_uses_config(monkeypatch):
+async def test_connect_matrix_credentials_load_exception_uses_config(
+    monkeypatch, tmp_path
+):
     """Credential load errors should warn and fall back to config auth."""
     mock_client = MagicMock()
     mock_client.rooms = {}
@@ -3925,10 +3927,18 @@ async def test_connect_matrix_credentials_load_exception_uses_config(monkeypatch
         "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
     }
 
+    candidate_path = tmp_path / "credentials.json"
+    candidate_path.write_text('{"invalid": true}', encoding="utf-8")
+
     with (
-        patch("mmrelay.matrix_utils.os.path.exists", return_value=True),
-        patch("mmrelay.matrix_utils.os.path.isfile", return_value=True),
-        patch("builtins.open", side_effect=OSError("boom")),
+        patch(
+            "mmrelay.config.get_credentials_search_paths",
+            return_value=[str(candidate_path)],
+        ),
+        patch(
+            "mmrelay.matrix_utils.get_credentials_path",
+            return_value=tmp_path / "credentials.json",
+        ),
         patch(
             "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
         ),
@@ -3939,7 +3949,8 @@ async def test_connect_matrix_credentials_load_exception_uses_config(monkeypatch
 
     assert client is mock_client
     assert any(
-        "Ignoring invalid credentials file" in call.args[0]
+        "Ignoring invalid credentials file" in str(call.args[0])
+        or "Ignoring credentials.json missing required keys" in str(call.args[0])
         for call in mock_logger.warning.call_args_list
     )
 
@@ -3960,24 +3971,13 @@ async def test_connect_matrix_explicit_credentials_path_is_used(tmp_path):
     access_value = "token"
     expanded_path = tmp_path / "explicit_credentials.json"
     expanded_path_str = str(expanded_path)
-    credentials_json = (
+    expanded_path.write_text(
         '{"homeserver": "https://matrix.example.org", '
         f'"access_token": "{access_value}", '
         '"user_id": "@bot:example.org", '
-        '"device_id": "DEVICE123"}'
+        '"device_id": "DEVICE123"}',
+        encoding="utf-8",
     )
-
-    def fake_isfile(path):
-        """
-        Check whether the provided path matches the predefined expanded path from the enclosing scope.
-
-        Parameters:
-            path (str): File path to check.
-
-        Returns:
-            bool: `true` if `path` is equal to the captured expanded path string, `false` otherwise.
-        """
-        return path == expanded_path_str
 
     config = {
         "credentials_path": "~/explicit_credentials.json",
@@ -3990,13 +3990,11 @@ async def test_connect_matrix_explicit_credentials_path_is_used(tmp_path):
     }
 
     with (
-        patch("mmrelay.matrix_utils.os.getenv", return_value=None),
+        patch("mmrelay.config.os.getenv", return_value=None),
         patch(
-            "mmrelay.matrix_utils.os.path.expanduser",
+            "mmrelay.config.os.path.expanduser",
             return_value=expanded_path_str,
-        ) as mock_expand,
-        patch("mmrelay.matrix_utils.os.path.isfile", side_effect=fake_isfile),
-        patch("builtins.open", mock_open(read_data=credentials_json)),
+        ) as mock_expanduser,
         patch("mmrelay.matrix_utils.AsyncClient", lambda *_a, **_k: mock_client),
         patch("mmrelay.matrix_utils.matrix_client", None),
         patch("mmrelay.matrix_utils._create_ssl_context", lambda: MagicMock()),
@@ -4017,7 +4015,7 @@ async def test_connect_matrix_explicit_credentials_path_is_used(tmp_path):
         client = await connect_matrix(config)
 
     assert client is mock_client
-    mock_expand.assert_any_call("~/explicit_credentials.json")
+    mock_expanduser.assert_any_call("~/explicit_credentials.json")
     mock_client.restore_login.assert_called_once_with(
         user_id="@bot:example.org",
         device_id="DEVICE123",
@@ -4072,7 +4070,7 @@ async def test_connect_matrix_ignores_config_access_token_when_credentials_prese
         patch("mmrelay.matrix_utils.os.path.isfile", return_value=True),
         patch("builtins.open", new_callable=MagicMock),
         patch(
-            "mmrelay.matrix_utils.json.load",
+            "mmrelay.config.json.load",
             return_value={
                 "homeserver": "https://matrix.example.org",
                 "user_id": "@bot:example.org",
@@ -4109,7 +4107,10 @@ async def test_connect_matrix_auto_login_load_credentials_failure(monkeypatch):
     with (
         patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
         patch("mmrelay.matrix_utils.login_matrix_bot", return_value=True),
-        patch("mmrelay.matrix_utils.load_credentials", return_value=None),
+        patch(
+            "mmrelay.matrix_utils.async_load_credentials",
+            new=AsyncMock(return_value=None),
+        ),
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await connect_matrix(config)
@@ -4177,7 +4178,7 @@ async def test_connect_matrix_missing_required_fields_returns_none():
 
     assert result is None
     assert any(
-        "Matrix section is missing required fields" in call.args[0]
+        "Matrix section is missing required field: access_token" in call.args[0]
         for call in mock_logger.error.call_args_list
     )
 
@@ -4256,7 +4257,7 @@ async def test_connect_matrix_e2ee_windows_disables(monkeypatch):
     ):
         await connect_matrix(config)
 
-    _, kwargs = mx.AsyncClientConfig.call_args
+    _, kwargs = mx.AsyncClientConfig.call_args  # type: ignore[attr-defined]
     assert kwargs["encryption_enabled"] is False
 
 
@@ -4615,7 +4616,7 @@ async def test_connect_matrix_whoami_missing_device_id_warns(monkeypatch):
         patch("mmrelay.matrix_utils.os.path.isfile", return_value=True),
         patch("builtins.open", new_callable=MagicMock),
         patch(
-            "mmrelay.matrix_utils.json.load",
+            "mmrelay.config.json.load",
             return_value={
                 "homeserver": "https://matrix.example.org",
                 "user_id": "@bot:example.org",
@@ -4676,7 +4677,7 @@ async def test_connect_matrix_whoami_failure_warns(monkeypatch):
         patch("mmrelay.matrix_utils.os.path.isfile", return_value=True),
         patch("builtins.open", new_callable=MagicMock),
         patch(
-            "mmrelay.matrix_utils.json.load",
+            "mmrelay.config.json.load",
             return_value={
                 "homeserver": "https://matrix.example.org",
                 "user_id": "@bot:example.org",
@@ -4744,7 +4745,7 @@ async def test_connect_matrix_save_credentials_failure_warns(monkeypatch):
         patch("mmrelay.matrix_utils.os.path.isfile", return_value=True),
         patch("builtins.open", new_callable=MagicMock),
         patch(
-            "mmrelay.matrix_utils.json.load",
+            "mmrelay.config.json.load",
             return_value={
                 "homeserver": "https://matrix.example.org",
                 "user_id": "@bot:example.org",
@@ -4758,8 +4759,8 @@ async def test_connect_matrix_save_credentials_failure_warns(monkeypatch):
         await connect_matrix(config)
 
     assert any(
-        "Failed to persist discovered device_id" in call.args[0]
-        for call in mock_logger.warning.call_args_list
+        "Failed to persist updated session information" in call.args[0]
+        for call in mock_logger.exception.call_args_list
     )
 
 
@@ -4836,8 +4837,8 @@ async def test_connect_matrix_keys_upload_failure_logs(monkeypatch):
         client = await connect_matrix(config)
 
     assert client is mock_client
-    mock_logger.error.assert_any_call(
-        "Consider regenerating credentials with: mmrelay auth login"
+    mock_logger.exception.assert_any_call(
+        "Failed to upload E2EE keys. Consider regenerating credentials with: mmrelay auth login"
     )
 
 
@@ -5156,7 +5157,7 @@ async def test_connect_matrix_e2ee_key_sharing_delay(monkeypatch):
 
 
 @pytest.mark.asyncio
-@patch("mmrelay.matrix_utils.load_credentials")
+@patch("mmrelay.matrix_utils.async_load_credentials", new_callable=AsyncMock)
 @patch("mmrelay.matrix_utils._create_ssl_context")
 @patch("mmrelay.matrix_utils.AsyncClient")
 async def test_connect_matrix_legacy_config(
@@ -5212,7 +5213,7 @@ async def test_connect_matrix_legacy_config(
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.cli_utils._create_ssl_context", return_value=None)
 async def test_login_matrix_bot_reuses_existing_device_id(
-    _mock_ssl_context, mock_async_client, _mock_save_credentials
+    _mock_ssl_context, mock_async_client, _mock_save_credentials, tmp_path
 ):
     """Existing credentials should supply device_id when available."""
     mock_discovery_client = AsyncMock()
@@ -5229,12 +5230,20 @@ async def test_login_matrix_bot_reuses_existing_device_id(
     mock_main_client.whoami.return_value = MagicMock(user_id="@user:matrix.org")
     mock_main_client.close = AsyncMock()
 
+    credentials_path = str(tmp_path / "credentials.json")
+
     with (
-        patch("mmrelay.matrix_utils.get_base_dir", return_value="/tmp"),
+        patch(
+            "mmrelay.paths.resolve_all_paths",
+            return_value={
+                "credentials_path": credentials_path,
+                "legacy_sources": [],
+            },
+        ),
         patch("mmrelay.matrix_utils.os.path.exists", return_value=True),
         patch("builtins.open", new_callable=MagicMock),
         patch(
-            "mmrelay.matrix_utils.json.load",
+            "mmrelay.config.json.load",
             return_value={"user_id": "@user:matrix.org", "device_id": "DEV"},
         ),
         patch(
@@ -5681,6 +5690,11 @@ async def test_login_matrix_bot_login_exception_guidance(
             "server error",
             "Matrix server error - the server is experiencing issues.",
         ),
+        (
+            "M_FORBIDDEN",
+            "Invalid username or password",
+            "Authentication failed - invalid username or password.",
+        ),
         (418, "teapot", "Login failed for unknown reason."),
     ],
 )
@@ -5879,6 +5893,7 @@ async def test_login_matrix_bot_credentials_load_failure_logs_debug(
     _mock_ssl_context,
     mock_async_client,
     _mock_save_credentials,
+    tmp_path,
 ):
     """Credential load errors should be logged and ignored."""
     mock_discovery_client = AsyncMock()
@@ -5895,8 +5910,16 @@ async def test_login_matrix_bot_credentials_load_failure_logs_debug(
     mock_main_client.whoami.return_value = MagicMock(user_id="@user:matrix.org")
     mock_main_client.close = AsyncMock()
 
+    credentials_path = str(tmp_path / "credentials.json")
+
     with (
-        patch("mmrelay.matrix_utils.get_base_dir", return_value="/tmp"),
+        patch(
+            "mmrelay.paths.resolve_all_paths",
+            return_value={
+                "credentials_path": credentials_path,
+                "legacy_sources": [],
+            },
+        ),
         patch("mmrelay.matrix_utils.os.path.exists", return_value=True),
         patch("builtins.open", side_effect=OSError("boom")),
         patch("mmrelay.config.load_config", return_value={}),
@@ -7130,12 +7153,12 @@ def test_matrix_utils_imports_nio_exceptions_when_available(monkeypatch):
     class LogoutError(Exception):
         pass
 
-    exc_mod.LocalProtocolError = LocalProtocolError
-    exc_mod.LocalTransportError = LocalTransportError
-    exc_mod.RemoteProtocolError = RemoteProtocolError
-    exc_mod.RemoteTransportError = RemoteTransportError
-    resp_mod.LoginError = LoginError
-    resp_mod.LogoutError = LogoutError
+    exc_mod.LocalProtocolError = LocalProtocolError  # type: ignore[attr-defined]
+    exc_mod.LocalTransportError = LocalTransportError  # type: ignore[attr-defined]
+    exc_mod.RemoteProtocolError = RemoteProtocolError  # type: ignore[attr-defined]
+    exc_mod.RemoteTransportError = RemoteTransportError  # type: ignore[attr-defined]
+    resp_mod.LoginError = LoginError  # type: ignore[attr-defined]
+    resp_mod.LogoutError = LogoutError  # type: ignore[attr-defined]
 
     monkeypatch.setitem(sys.modules, "nio.exceptions", exc_mod)
     monkeypatch.setitem(sys.modules, "nio.responses", resp_mod)
