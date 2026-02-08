@@ -1274,7 +1274,7 @@ class TestMigratePluginsEdgeCases:
 
         # In v1.3, we create staging_dir before starting backup/migration.
         # We mock the Path.mkdir call specifically for the staging path.
-        staging_dir = new_home / ".migration_staging" / "plugins"
+        new_home / ".migration_staging" / "plugins"
 
         original_mkdir = Path.mkdir
 

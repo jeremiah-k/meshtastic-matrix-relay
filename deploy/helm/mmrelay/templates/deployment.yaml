@@ -38,7 +38,7 @@ spec:
       serviceAccountName: {{ include "mmrelay.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
-        {{- if .Values.seccompProfile }}
+        {{- if and .Values.seccompProfile (not (hasKey .Values.podSecurityContext "seccompProfile")) }}
         seccompProfile:
           {{- toYaml .Values.seccompProfile | nindent 10 }}
         {{- end }}

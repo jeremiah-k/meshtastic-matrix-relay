@@ -2051,10 +2051,11 @@ async def _perform_initial_sync(
                     else:
                         # Descriptor didn't exist in class dict; remove it if we added it.
                         # This avoids leaking the patch if it was shadowing a base class.
-                        try:
-                            del nio_responses.SyncResponse._get_invite_state
-                        except (AttributeError, TypeError):
-                            pass
+                        if "_get_invite_state" in nio_responses.SyncResponse.__dict__:
+                            try:
+                                del nio_responses.SyncResponse._get_invite_state
+                            except (AttributeError, TypeError):
+                                pass
 
             try:
                 sync_response = await _sync_ignore_invalid_invites()
@@ -2564,7 +2565,7 @@ async def login_matrix_bot(
                     try:
                         with open(path, "r", encoding="utf-8") as f:
                             return cast(dict[str, Any], json.load(f))
-                    except Exception:
+                    except (OSError, json.JSONDecodeError, TypeError, ValueError):
                         return None
 
                 existing_creds = await asyncio.to_thread(

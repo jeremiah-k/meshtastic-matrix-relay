@@ -59,14 +59,18 @@ logger = get_logger("Migration")
 
 
 def _get_db_base_path(path: Path) -> Path:
-    """Strip -wal/-shm suffix to get the main database file path."""
-    if path.name.endswith("-wal") or path.name.endswith("-shm"):
-        return path.with_name(path.name[:-4])
+    """Strip SQLite sidecar suffixes to get the main database file path."""
+    name = path.name
+    for suffix in ("-wal", "-shm", "-journal"):
+        if name.endswith(suffix):
+            return path.with_name(name.removesuffix(suffix))
     return path
 
 
 class MigrationError(Exception):
     """Migration-specific error."""
+
+    step: str = ""
 
     @classmethod
     def integrity_check_failed(cls, detail: str) -> "MigrationError":
@@ -99,7 +103,7 @@ class MigrationError(Exception):
             MigrationError: Error instance with message "<step> migration failed: <detail>".
         """
         exc = cls(f"{step} migration failed: {detail}")
-        setattr(exc, "step", step)
+        exc.step = step
         return exc
 
 
@@ -847,7 +851,7 @@ def migrate_database(
             continue
         if legacy_db.exists():
             candidates.append(legacy_db)
-            for suffix in ["-wal", "-shm"]:
+            for suffix in ["-wal", "-shm", "-journal"]:
                 sidecar = legacy_db.with_suffix(f".sqlite{suffix}")
                 if sidecar.exists():
                     candidates.append(sidecar)
@@ -859,7 +863,7 @@ def migrate_database(
                 continue
             if partial_db.exists():
                 candidates.append(partial_db)
-                for suffix in ["-wal", "-shm"]:
+                for suffix in ["-wal", "-shm", "-journal"]:
                     sidecar = partial_db.with_suffix(f".sqlite{suffix}")
                     if sidecar.exists():
                         candidates.append(sidecar)
@@ -958,6 +962,7 @@ def migrate_database(
         # 1. Backup existing database files (ALWAYS)
         for db_path in selected_group:
             dest = new_db_dir / db_path.name
+            # Skip if already at target to avoid self-backup/self-copy
             if db_path.resolve() == dest.resolve():
                 continue
             if dest.exists():
@@ -972,9 +977,13 @@ def migrate_database(
 
         # 2. Copy to staging (using copy-verify-delete pattern)
         for db_path in selected_group:
-            dest = staging_dir / db_path.name
-            logger.debug("Staging database file %s at %s", db_path, dest)
-            shutil.copy2(str(db_path), str(dest))
+            dest = new_db_dir / db_path.name
+            staged = staging_dir / db_path.name
+            # Skip if already at target to avoid self-copy
+            if db_path.resolve() == dest.resolve():
+                continue
+            logger.debug("Staging database file %s at %s", db_path, staged)
+            shutil.copy2(str(db_path), str(staged))
 
         # 3. Verify integrity in staging
         main_db_staged = staging_dir / most_recent.name
@@ -994,12 +1003,19 @@ def migrate_database(
         for db_path in selected_group:
             dest = new_db_dir / db_path.name
             staged = staging_dir / db_path.name
+            # Skip if already at target to avoid self-overwrite
+            if db_path.resolve() == dest.resolve():
+                continue
             if dest.exists():
                 dest.unlink()
             shutil.move(str(staged), str(dest))
 
         # 5. Delete sources after successful move
         for db_path in selected_group:
+            dest = new_db_dir / db_path.name
+            # Skip if already at target to avoid self-deletion
+            if db_path.resolve() == dest.resolve():
+                continue
             try:
                 db_path.unlink()
                 logger.info("Deleted source file after successful move: %s", db_path)
@@ -1255,6 +1271,7 @@ def migrate_store(
     # Proceed with migration
     staging_dir = _get_staging_path(new_home, "store")
     staging_dir.parent.mkdir(parents=True, exist_ok=True)
+    migration_succeeded = False
 
     try:
         # 1. Backup existing destination (ALWAYS)
@@ -1271,6 +1288,7 @@ def migrate_store(
 
         # 3. Finalize: move staging to final destination
         _finalize_move(staging_dir, new_store_dir)
+        migration_succeeded = True
         logger.info("Migrated E2EE store to %s", new_store_dir)
 
         return {
@@ -1283,7 +1301,8 @@ def migrate_store(
         logger.exception("Failed to migrate E2EE store from %s", old_store_dir)
         raise MigrationError.step_failed("store", str(exc)) from exc
     finally:
-        if staging_dir.exists():
+        # Only remove staging if migration succeeded to preserve data on failure
+        if migration_succeeded and staging_dir.exists():
             shutil.rmtree(str(staging_dir), ignore_errors=True)
 
 
@@ -1326,7 +1345,15 @@ def _migrate_plugin_tier(
                 continue
             dest = new_dir / item.name
             if dest.exists():
-                # In staging, we shouldn't have collisions unless staging was dirty
+                if not force:
+                    logger.warning(
+                        "Staging collision for %s plugin %s; use --force to overwrite",
+                        tier_name,
+                        dest,
+                    )
+                    errors.append(f"{tier_name} staged {dest}: exists")
+                    continue
+                # Only remove if force is True
                 if dest.is_dir():
                     shutil.rmtree(str(dest))
                 else:
@@ -1619,7 +1646,6 @@ def migrate_gpxtracker(
         staging_dir.mkdir(parents=True, exist_ok=True)
 
         migrated_count = 0
-        errors: list[str] = []
 
         # 1. Stage GPX files with timestamped names
         for gpx_file in old_gpx_dir.glob("*.gpx"):
@@ -1865,13 +1891,41 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
 
         # Log detailed failure info
         staging_dir = new_home / STAGING_DIRNAME
-        logger.error(
-            "Migration failed during step: %s", getattr(exc, "step", "unknown")
+        staged_note = (
+            f" Staged data may be present in: {staging_dir}"
+            if staging_dir.exists()
+            else ""
         )
-        logger.error("Error details: %s", exc)
-        if staging_dir.exists():
-            logger.error("Staged data may be present in: %s", staging_dir)
-        logger.error("Please resolve the issue and re-run migration.")
+        logger.exception(
+            "Migration failed during step: %s. Error details: %s.%s",
+            getattr(exc, "step", "unknown"),
+            exc,
+            staged_note,
+        )
+
+        # Attempt automatic rollback if steps were completed
+        if completed_steps and not dry_run:
+            logger.info("Attempting automatic rollback of completed steps...")
+            try:
+                rollback_report = rollback_migration(
+                    completed_steps=completed_steps,
+                    migrations=report["migrations"],
+                    new_home=new_home,
+                    legacy_roots=legacy_roots,
+                )
+                report["rollback"] = rollback_report
+                if rollback_report["success"]:
+                    logger.info("Automatic rollback completed successfully")
+                else:
+                    logger.warning(
+                        "Automatic rollback completed with errors: %s",
+                        rollback_report["errors"],
+                    )
+            except Exception as rollback_exc:
+                logger.exception("Automatic rollback failed")
+                report["rollback_error"] = str(rollback_exc)
+        else:
+            logger.error("Please resolve the issue and re-run migration.")
 
         return report
 
@@ -1881,3 +1935,167 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
     )
 
     return report
+
+
+def rollback_migration(
+    completed_steps: list[str],
+    migrations: list[dict[str, Any]],
+    new_home: Path,
+    legacy_roots: list[Path],
+) -> dict[str, Any]:
+    """
+    Rollback completed migration steps to restore pre-migration state.
+
+    Iterates through completed steps in reverse order and attempts to undo
+    each migration action. Restores files from backups where available.
+
+    Parameters:
+        completed_steps: List of step names that were completed before failure.
+        migrations: List of migration results with paths for each step.
+        new_home: Path to the new MMRELAY_HOME directory.
+        legacy_roots: List of legacy root directories.
+
+    Returns:
+        dict: Rollback report with status and details of each rollback action.
+    """
+    rollback_report: dict[str, Any] = {
+        "success": True,
+        "timestamp": datetime.now().isoformat(),
+        "rolled_back_steps": [],
+        "errors": [],
+    }
+
+    logger.info("Starting automatic rollback of migration steps")
+
+    # Process steps in reverse order (last completed first)
+    for step_name in reversed(completed_steps):
+        try:
+            # Find the migration result for this step
+            step_result = None
+            for migration in migrations:
+                if migration.get("type") == step_name:
+                    step_result = migration.get("result", {})
+                    break
+
+            if not step_result:
+                logger.warning(
+                    "No result found for step '%s', skipping rollback", step_name
+                )
+                continue
+
+            old_path = step_result.get("old_path")
+            new_path = step_result.get("new_path")
+            action = step_result.get("action")
+
+            if action == "none" or not old_path or not new_path:
+                logger.debug(
+                    "Step '%s' had no action or missing paths, skipping", step_name
+                )
+                continue
+
+            old_path_obj = Path(old_path)
+            new_path_obj = Path(new_path)
+
+            # Rollback logic based on step type
+            if step_name == "database":
+                # For database, move files back from new to old location
+                if new_path_obj.exists():
+                    # Ensure parent directory exists
+                    old_path_obj.parent.mkdir(parents=True, exist_ok=True)
+                    # Move database files back
+                    if new_path_obj.is_dir():
+                        for db_file in new_path_obj.iterdir():
+                            dest = old_path_obj.parent / db_file.name
+                            if dest.exists():
+                                if dest.is_dir():
+                                    shutil.rmtree(str(dest))
+                                else:
+                                    dest.unlink()
+                            shutil.move(str(db_file), str(dest))
+                        # Remove empty new directory
+                        if not any(new_path_obj.iterdir()):
+                            new_path_obj.rmdir()
+                    else:
+                        if old_path_obj.exists():
+                            old_path_obj.unlink()
+                        shutil.move(str(new_path_obj), str(old_path_obj))
+                    logger.info(
+                        "Rolled back database from %s to %s", new_path, old_path
+                    )
+
+            elif step_name in ("config", "credentials"):
+                # For single files, move back if new exists
+                if new_path_obj.exists():
+                    old_path_obj.parent.mkdir(parents=True, exist_ok=True)
+                    if old_path_obj.exists():
+                        old_path_obj.unlink()
+                    shutil.move(str(new_path_obj), str(old_path_obj))
+                    logger.info(
+                        "Rolled back %s from %s to %s", step_name, new_path, old_path
+                    )
+
+            elif step_name == "store":
+                # For E2EE store (directory)
+                if new_path_obj.exists():
+                    old_path_obj.parent.mkdir(parents=True, exist_ok=True)
+                    if old_path_obj.exists():
+                        shutil.rmtree(str(old_path_obj))
+                    shutil.move(str(new_path_obj), str(old_path_obj))
+                    logger.info(
+                        "Rolled back E2EE store from %s to %s", new_path, old_path
+                    )
+
+            elif step_name == "plugins":
+                # For plugins, we moved directories from old to new
+                # Try to restore by moving back
+                if new_path_obj.exists() and old_path_obj.exists():
+                    # Both exist, can't safely rollback
+                    logger.warning(
+                        "Cannot rollback plugins: both source and destination exist"
+                    )
+                elif new_path_obj.exists():
+                    old_path_obj.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.move(str(new_path_obj), str(old_path_obj))
+                    logger.info("Rolled back plugins from %s to %s", new_path, old_path)
+
+            elif step_name in ("logs", "gpxtracker"):
+                # For logs and gpxtracker, similar to other directories
+                if new_path_obj.exists():
+                    old_path_obj.parent.mkdir(parents=True, exist_ok=True)
+                    if old_path_obj.exists():
+                        if old_path_obj.is_dir():
+                            shutil.rmtree(str(old_path_obj))
+                        else:
+                            old_path_obj.unlink()
+                    shutil.move(str(new_path_obj), str(old_path_obj))
+                    logger.info(
+                        "Rolled back %s from %s to %s", step_name, new_path, old_path
+                    )
+
+            rollback_report["rolled_back_steps"].append(
+                {"step": step_name, "old_path": old_path, "new_path": new_path}
+            )
+
+        except (OSError, IOError, shutil.Error) as e:
+            logger.error("Failed to rollback step '%s': %s", step_name, e)
+            rollback_report["errors"].append({"step": step_name, "error": str(e)})
+            rollback_report["success"] = False
+
+    # Clean up staging directory if rollback succeeded
+    if rollback_report["success"]:
+        staging_dir = new_home / STAGING_DIRNAME
+        if staging_dir.exists():
+            try:
+                shutil.rmtree(str(staging_dir), ignore_errors=True)
+                logger.debug("Cleaned up staging directory after rollback")
+            except (OSError, IOError):
+                pass
+
+    if rollback_report["success"] and not rollback_report["errors"]:
+        logger.info("Rollback completed successfully")
+    else:
+        logger.warning(
+            "Rollback completed with %d errors", len(rollback_report["errors"])
+        )
+
+    return rollback_report

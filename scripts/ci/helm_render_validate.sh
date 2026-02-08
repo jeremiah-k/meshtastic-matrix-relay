@@ -162,7 +162,8 @@ validate_pre_rendered_samples() {
 
 	for file in "${files[@]}"; do
 		echo -e "${YELLOW}Validating sample ${file}...${NC}"
-		local val_log="${RENDER_DIR}/$(basename "${file}")-validate.log"
+		local val_log
+		val_log="${RENDER_DIR}/$(basename "${file}")-validate.log"
 		set +e
 		validate_manifest "${file}" >"${val_log}" 2>&1
 		local validate_status=$?

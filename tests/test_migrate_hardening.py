@@ -1,6 +1,5 @@
 """Tests for migration hardening: staging, already-migrated guards, and backups."""
 
-import shutil
 import sqlite3
 from pathlib import Path
 from unittest.mock import patch
