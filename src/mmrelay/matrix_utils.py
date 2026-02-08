@@ -2559,7 +2559,17 @@ async def login_matrix_bot(
                 path_exists = False
             existing_credentials_path = credentials_path if path_exists else None
             if existing_credentials_path is not None:
-                existing_creds = await async_load_credentials()
+
+                def _load_direct(path: str) -> dict[str, Any] | None:
+                    try:
+                        with open(path, "r", encoding="utf-8") as f:
+                            return cast(dict[str, Any], json.load(f))
+                    except Exception:
+                        return None
+
+                existing_creds = await asyncio.to_thread(
+                    _load_direct, existing_credentials_path
+                )
                 if (
                     existing_creds
                     and "device_id" in existing_creds

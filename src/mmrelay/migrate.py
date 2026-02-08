@@ -98,7 +98,9 @@ class MigrationError(Exception):
         Returns:
             MigrationError: Error instance with message "<step> migration failed: <detail>".
         """
-        return cls(f"{step} migration failed: {detail}")
+        exc = cls(f"{step} migration failed: {detail}")
+        setattr(exc, "step", step)
+        return exc
 
 
 def _path_is_within_home(path: Path, home: Path) -> bool:
@@ -438,20 +440,59 @@ def print_migration_verification(report: dict[str, Any]) -> None:
             print(f"   - {error}")
 
 
+STAGING_DIRNAME = ".migration_staging"
+BACKUP_DIRNAME = ".migration_backups"
+
+
+def _get_staging_path(new_home: Path, unit_name: str) -> Path:
+    """Get the staging path for a migration unit."""
+    return new_home / STAGING_DIRNAME / unit_name
+
+
 def _backup_file(src_path: Path, suffix: str = ".bak") -> Path:
     """
-    Create a timestamped backup filename for the given file by appending a suffix and timestamp.
+    Create a timestamped backup of the given path in a dedicated backup directory.
 
     Parameters:
-        src_path (Path): Original file path to back up (the backup is placed alongside this path).
-        suffix (str): Suffix inserted after the original filename and before the timestamp (default: ".bak").
+        src_path (Path): Original file or directory path to back up.
+        suffix (str): Suffix inserted after the original filename and before the timestamp.
 
     Returns:
-        Path: New backup file path with format "<original_name><suffix>.<YYYYMMDD_HHMMSS>" placed in the same directory as `src_path`.
+        Path: New backup path with format ".migration_backups/<original_name><suffix>.<YYYYMMDD_HHMMSS>".
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_dir = src_path.parent / BACKUP_DIRNAME
+    backup_dir.mkdir(parents=True, exist_ok=True)
     backup_name = f"{src_path.name}{suffix}.{timestamp}"
-    return src_path.with_name(backup_name)
+    return backup_dir / backup_name
+
+
+def _finalize_move(staging_path: Path, dest_path: Path) -> None:
+    """
+    Atomically finalize a staged move by renaming the staging path to the final destination.
+
+    Parameters:
+        staging_path (Path): The path where the unit was staged.
+        dest_path (Path): The final destination path.
+
+    Raises:
+        OSError: If validation or finalization fails.
+    """
+    if not staging_path.exists():
+        raise OSError(f"Staging path does not exist: {staging_path}")
+
+    # Ensure parent of destination exists
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Atomic rename (on POSIX)
+    if dest_path.exists():
+        if dest_path.is_dir():
+            shutil.rmtree(str(dest_path))
+        else:
+            dest_path.unlink()
+
+    shutil.move(str(staging_path), str(dest_path))
+    logger.debug("Finalized move from %s to %s", staging_path, dest_path)
 
 
 def _get_most_recent_database(candidates: list[Path]) -> Path | None:
@@ -529,15 +570,13 @@ def migrate_credentials(
     Migrate the first discovered legacy credentials.json into the new HOME matrix directory.
 
     Parameters:
-        legacy_roots (list[Path]): Directories to scan, searched in order, for legacy credentials files.
+        legacy_roots (list[Path]): Directories to scan for legacy credentials files.
         new_home (Path): Destination home directory where matrix/credentials.json will be placed.
         dry_run (bool): If True, report intended action without modifying files.
-        force (bool): If True, overwrite existing destination without creating a backup.
+        force (bool): If True, overwrite existing destination (backups are always created).
 
     Returns:
-        dict: Migration result containing at minimum a `success` boolean and may include
-        `old_path`, `new_path`, `action` ("move"), `dry_run`, and an `error`
-        message on failure.
+        dict: Migration result.
     """
     new_creds = new_home / MATRIX_DIRNAME / CREDENTIALS_FILENAME
     old_creds: Path | None = None
@@ -567,27 +606,34 @@ def migrate_credentials(
             logger.info("Found credentials.json in legacy root: %s", old_creds)
             break
 
-    if not old_creds or not old_creds.exists():
+    if not old_creds:
+        if new_creds.exists():
+            logger.info("Credentials already migrated to %s", new_creds)
+            return {
+                "success": True,
+                "new_path": str(new_creds),
+                "action": "none",
+                "message": "Already migrated",
+            }
+        logger.info("No credentials file found in legacy locations")
         return {
             "success": True,
             "message": "No credentials file found in legacy locations",
         }
 
-    # Skip if target already exists and not forcing
-    if new_creds.exists():
-        if not force:
-            logger.info(
-                "Credentials already exist at destination, skipping: %s. Use --force to overwrite.",
-                new_creds,
-            )
-            return {
-                "success": True,
-                "old_path": str(old_creds),
-                "new_path": str(new_creds),
-                "action": "none",
-                "message": "Credentials already exist at destination",
-            }
-        logger.info("Force flag set, will backup and overwrite existing credentials.")
+    # If destination exists, require --force and ALWAYS backup
+    if new_creds.exists() and not force:
+        logger.warning(
+            "Credentials already exist at destination, skipping: %s. Use --force to overwrite.",
+            new_creds,
+        )
+        return {
+            "success": True,
+            "old_path": str(old_creds),
+            "new_path": str(new_creds),
+            "action": "none",
+            "message": "Credentials already exist at destination",
+        }
 
     if dry_run:
         logger.info(
@@ -601,47 +647,40 @@ def migrate_credentials(
             "dry_run": True,
         }
 
-    if new_creds.exists():
-        logger.info("Backing up existing credentials: %s", new_creds)
-        backup_path = _backup_file(new_creds)
-        try:
-            if new_creds.is_dir():
-                shutil.copytree(str(new_creds), str(backup_path))
-            else:
-                shutil.copy2(str(new_creds), str(backup_path))
-        except (OSError, IOError) as e:
-            logger.exception("Failed to backup credentials")
-            return {
-                "success": False,
-                "error": f"Failed to backup credentials: {e}",
-                "old_path": str(old_creds),
-                "new_path": str(new_creds),
-            }
+    # Proceed with migration
+    staging_path = _get_staging_path(new_home, "credentials")
+    staging_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
-        new_creds.parent.mkdir(parents=True, exist_ok=True)
+        # 1. Backup destination if it exists (ALWAYS)
         if new_creds.exists():
-            if new_creds.is_dir():
-                shutil.rmtree(str(new_creds))
+            backup_path = _backup_file(new_creds)
+            logger.info("Backing up existing destination to %s", backup_path)
+            shutil.copy2(str(new_creds), str(backup_path))
+
+        # 2. Move to staging
+        if staging_path.exists():
+            if staging_path.is_dir():
+                shutil.rmtree(str(staging_path))
             else:
-                new_creds.unlink()
-            logger.info("Removed existing destination: %s", new_creds)
-        logger.info("Moving credentials from %s to %s", old_creds, new_creds)
-        shutil.move(str(old_creds), str(new_creds))
-        logger.info("Migrated credentials from %s to %s", old_creds, new_creds)
+                staging_path.unlink()
+
+        shutil.move(str(old_creds), str(staging_path))
+        logger.debug("Staged credentials at %s", staging_path)
+
+        # 3. Finalize
+        _finalize_move(staging_path, new_creds)
+        logger.info("Migrated credentials to %s", new_creds)
+
         return {
             "success": True,
             "old_path": str(old_creds),
             "new_path": str(new_creds),
             "action": "move",
         }
-    except (OSError, IOError) as exc:
-        logger.exception("Failed to migrate credentials")
-        return {
-            "success": False,
-            "error": str(exc),
-            "old_path": str(old_creds),
-        }
+    except Exception as exc:
+        logger.exception("Failed to migrate credentials from %s", old_creds)
+        raise MigrationError.step_failed("credentials", str(exc)) from exc
 
 
 def migrate_config(
@@ -653,22 +692,14 @@ def migrate_config(
     """
     Locate and migrate the first legacy `config.yaml` into the new home directory.
 
-    Scans `legacy_roots` for the first existing `config.yaml` and moves it to `new_home/config.yaml`, creating `new_home` if necessary.
-
     Parameters:
         legacy_roots (list[Path]): Directories to search for a legacy `config.yaml`.
         new_home (Path): Destination home directory where `config.yaml` should be placed.
         dry_run (bool): If True, report the intended action without modifying the filesystem.
-        force (bool): If True, overwrite an existing destination without creating a backup.
+        force (bool): If True, overwrite an existing destination (backups are always created).
 
     Returns:
-        dict: Result summary containing at least:
-            - `success` (bool): Whether the migration step succeeded.
-            - `old_path` (str, optional): Path to the discovered legacy config.
-            - `new_path` (str, optional): Destination path in `new_home`.
-            - `action` (str, optional): `"move"`.
-            - `dry_run` (bool, optional): Present when the call was a dry run.
-            - `message` or `error` (str, optional): Informational message or error details.
+        dict: Migration result summary.
     """
     new_config = new_home / "config.yaml"
     old_config: Path | None = None
@@ -694,27 +725,34 @@ def migrate_config(
             logger.info("Found config.yaml in legacy root: %s", old_config)
             break
 
-    if not old_config or not old_config.exists():
+    if not old_config:
+        if new_config.exists():
+            logger.info("Config already migrated to %s", new_config)
+            return {
+                "success": True,
+                "new_path": str(new_config),
+                "action": "none",
+                "message": "Already migrated",
+            }
+        logger.info("No config.yaml found in legacy locations")
         return {
             "success": True,
             "message": "No config.yaml found in legacy locations",
         }
 
-    # Skip if target already exists and not forcing
-    if new_config.exists():
-        if not force:
-            logger.info(
-                "Config already exists at destination, skipping: %s. Use --force to overwrite.",
-                new_config,
-            )
-            return {
-                "success": True,
-                "old_path": str(old_config),
-                "new_path": str(new_config),
-                "action": "none",
-                "message": "Config already exists at destination",
-            }
-        logger.info("Force flag set, will backup and overwrite existing config.")
+    # If destination exists, require --force and ALWAYS backup
+    if new_config.exists() and not force:
+        logger.warning(
+            "Config already exists at destination, skipping: %s. Use --force to overwrite.",
+            new_config,
+        )
+        return {
+            "success": True,
+            "old_path": str(old_config),
+            "new_path": str(new_config),
+            "action": "none",
+            "message": "Config already exists at destination",
+        }
 
     if dry_run:
         logger.info("[DRY RUN] Would move config from %s to %s", old_config, new_config)
@@ -726,50 +764,40 @@ def migrate_config(
             "dry_run": True,
         }
 
-    new_home.mkdir(parents=True, exist_ok=True)
-
-    # Only create backup if old_config exists at a different location (actual migration)
-    # Backup is only needed when old_config actually exists (migration happening)
-    if new_config.exists() and old_config.resolve() != new_config.resolve():
-        logger.info("Backing up existing config.yaml: %s", new_config)
-        backup_path = _backup_file(new_config)
-        try:
-            if new_config.is_dir():
-                shutil.copytree(str(new_config), str(backup_path))
-            else:
-                shutil.copy2(str(new_config), str(backup_path))
-        except (OSError, IOError) as e:
-            logger.exception("Failed to backup config.yaml")
-            return {
-                "success": False,
-                "error": str(e),
-                "old_path": str(old_config),
-                "new_path": str(new_config),
-            }
+    # Proceed with migration
+    staging_path = _get_staging_path(new_home, "config")
+    staging_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
+        # 1. Backup destination if it exists (ALWAYS)
         if new_config.exists():
-            if new_config.is_dir():
-                shutil.rmtree(str(new_config))
+            backup_path = _backup_file(new_config)
+            logger.info("Backing up existing destination to %s", backup_path)
+            shutil.copy2(str(new_config), str(backup_path))
+
+        # 2. Move to staging
+        if staging_path.exists():
+            if staging_path.is_dir():
+                shutil.rmtree(str(staging_path))
             else:
-                new_config.unlink()
-            logger.info("Removed existing destination: %s", new_config)
-        logger.info("Moving config from %s to %s", old_config, new_config)
-        shutil.move(str(old_config), str(new_config))
-        logger.info("Migrated config from %s to %s", old_config, new_config)
+                staging_path.unlink()
+
+        shutil.move(str(old_config), str(staging_path))
+        logger.debug("Staged config at %s", staging_path)
+
+        # 3. Finalize
+        _finalize_move(staging_path, new_config)
+        logger.info("Migrated config to %s", new_config)
+
         return {
             "success": True,
             "old_path": str(old_config),
             "new_path": str(new_config),
             "action": "move",
         }
-    except (OSError, IOError) as exc:
-        logger.exception("Failed to migrate config.yaml")
-        return {
-            "success": False,
-            "error": str(exc),
-            "old_path": str(old_config),
-        }
+    except Exception as exc:
+        logger.exception("Failed to migrate config from %s", old_config)
+        raise MigrationError.step_failed("config", str(exc)) from exc
 
 
 def migrate_database(
@@ -779,18 +807,16 @@ def migrate_database(
     force: bool = False,
 ) -> dict[str, Any]:
     """
-    Migrate the Meshtastic SQLite database (and its WAL/SHM sidecars) from legacy locations into the new home's database directory.
-
-    Scans the provided legacy roots, picks the most recently modified valid database group (main file plus any sidecars), and moves those files into new_home/database. If a destination file exists it is backed up unless `force` is True. Performs a SQLite integrity check on the main database file before deleting sources. Uses copy-then-delete pattern to prevent data loss.
+    Migrate the Meshtastic SQLite database from legacy locations into the new home's database directory.
 
     Parameters:
         legacy_roots (list[Path]): Directories to scan for legacy database files.
-        new_home (Path): Destination MMRELAY home directory where a `database` subdirectory will be created.
+        new_home (Path): Destination MMRELAY home directory.
         dry_run (bool): If True, report planned actions without modifying the filesystem.
-        force (bool): If True, overwrite existing destination files without creating backups.
+        force (bool): If True, overwrite existing destination (backups are always created).
 
     Returns:
-        dict: Result summary including at minimum `success` (bool). On success includes `old_path` (source main DB path), `new_path` (destination database directory), and `action` (`"move"`). May include `dry_run`, `message`, or `error` keys for additional context.
+        dict: Migration result.
     """
     new_db_dir = new_home / "database"
     candidates = []
@@ -855,25 +881,32 @@ def migrate_database(
                         candidates.append(sidecar)
 
     if not candidates:
-        return {
-            "success": True,
-            "message": "No database files found in legacy location",
-        }
-
-    # Skip if target already exists and not forcing
-    if (new_db_dir / "meshtastic.sqlite").exists():
-        if not force:
-            logger.info(
-                "Database already exists at destination, skipping: %s. Use --force to overwrite.",
-                new_db_dir,
-            )
+        if (new_db_dir / "meshtastic.sqlite").exists():
+            logger.info("Database already migrated to %s", new_db_dir)
             return {
                 "success": True,
                 "new_path": str(new_db_dir),
                 "action": "none",
-                "message": "Database already at target location",
+                "message": "Already migrated",
             }
-        logger.info("Force flag set, will backup and overwrite existing database.")
+        logger.info("No database files found in legacy locations")
+        return {
+            "success": True,
+            "message": "No database files found in legacy locations",
+        }
+
+    # Skip if target already exists and not forcing
+    if (new_db_dir / "meshtastic.sqlite").exists() and not force:
+        logger.warning(
+            "Database already exists at destination, skipping: %s. Use --force to overwrite.",
+            new_db_dir,
+        )
+        return {
+            "success": True,
+            "new_path": str(new_db_dir),
+            "action": "none",
+            "message": "Database already at target location",
+        }
 
     if dry_run:
         logger.info("[DRY RUN] Would move database to %s", new_db_dir)
@@ -883,8 +916,6 @@ def migrate_database(
             "action": "move",
             "dry_run": True,
         }
-
-    new_db_dir.mkdir(parents=True, exist_ok=True)
 
     most_recent = _get_most_recent_database(candidates)
     if not most_recent:
@@ -910,90 +941,71 @@ def migrate_database(
         if sidecar.exists() and sidecar not in selected_group:
             selected_group.append(sidecar)
 
-    logger.info("Migrating database from %s to %s", most_recent, new_db_dir)
+    # Proceed with migration
+    staging_dir = _get_staging_path(new_home, "database")
+    staging_dir.mkdir(parents=True, exist_ok=True)
 
-    # Add same-path guard to avoid copying over itself (which raises OSError and could lose data)
-    for db_path in selected_group:
-        dest = new_db_dir / db_path.name
-        if db_path.resolve() == dest.resolve():
-            logger.info("Database file already at target location: %s", db_path)
-            # Integrity check already passed? No, we still need to verify if we want move semantics.
-            # But if it's the same path, we just don't copy it.
-            continue
-
-        if dest.exists():
-            logger.info("Backing up existing database file: %s", dest)
-            backup_path = _backup_file(dest)
-            try:
+    try:
+        # 1. Backup existing database files (ALWAYS)
+        for db_path in selected_group:
+            dest = new_db_dir / db_path.name
+            if db_path.resolve() == dest.resolve():
+                continue
+            if dest.exists():
+                backup_path = _backup_file(dest)
+                logger.info(
+                    "Backing up existing database file %s to %s", dest, backup_path
+                )
                 shutil.copy2(str(dest), str(backup_path))
-            except (OSError, IOError) as e:
-                logger.exception("Failed to backup database %s", dest)
-                return {
-                    "success": False,
-                    "error": f"Failed to backup database {dest}: {e}",
-                }
 
-    for db_path in selected_group:
-        dest = new_db_dir / db_path.name
-        try:
-            logger.info("Copying database file: %s", db_path)
+        # 2. Copy to staging (using copy-verify-delete pattern)
+        for db_path in selected_group:
+            dest = staging_dir / db_path.name
+            logger.debug("Staging database file %s at %s", db_path, dest)
             shutil.copy2(str(db_path), str(dest))
-        except (OSError, IOError):
-            logger.exception("Failed to copy database file %s", db_path)
-            return {
-                "success": False,
-                "error": "Database file migration failed",
-            }
 
-    logger.info("Database files copied successfully")
+        # 3. Verify integrity in staging
+        main_db_staged = staging_dir / most_recent.name
+        if not most_recent.name.endswith(("-wal", "-shm")):
+            try:
+                db_uri = f"{main_db_staged.resolve().as_uri()}?mode=ro"
+                with sqlite3.connect(db_uri, uri=True) as conn:
+                    result = conn.execute("PRAGMA integrity_check").fetchone()
+                if result and result[0] != "ok":
+                    raise MigrationError.integrity_check_failed(result[0])
+                logger.info("Database integrity check passed in staging")
+            except sqlite3.DatabaseError as e:
+                raise MigrationError.verification_failed(str(e)) from e
 
-    # Verify database integrity if main database file was copied/moved
-    if not most_recent.name.endswith(("-wal", "-shm")):
-        main_db = new_db_dir / most_recent.name
-        try:
-            db_uri = f"{main_db.resolve().as_uri()}?mode=ro"
-            with sqlite3.connect(db_uri, uri=True) as conn:
-                result = conn.execute("PRAGMA integrity_check").fetchone()
-            if result and result[0] != "ok":
-                logger.error("Database integrity check failed: %s", result[0])
-                logger.info("Cleaning up failed migration attempt")
-                for db_path in selected_group:
-                    dest = new_db_dir / db_path.name
-                    if dest.exists():
-                        try:
-                            dest.unlink()
-                            logger.debug("Deleted copied file: %s", dest)
-                        except (OSError, IOError):
-                            logger.warning("Failed to delete copied file: %s", dest)
-                raise MigrationError.integrity_check_failed(result[0])
-            logger.info("Database integrity check passed")
-        except sqlite3.DatabaseError as e:
-            logger.exception("Database verification failed")
-            logger.info("Cleaning up failed migration attempt")
-            for db_path in selected_group:
-                dest = new_db_dir / db_path.name
-                if dest.exists():
-                    try:
-                        dest.unlink()
-                        logger.debug("Deleted copied file: %s", dest)
-                    except (OSError, IOError):
-                        logger.warning("Failed to delete copied file: %s", dest)
-            raise MigrationError.verification_failed(str(e)) from e
+        # 4. Finalize: move staging to final
+        new_db_dir.mkdir(parents=True, exist_ok=True)
+        for db_path in selected_group:
+            dest = new_db_dir / db_path.name
+            staged = staging_dir / db_path.name
+            if dest.exists():
+                dest.unlink()
+            shutil.move(str(staged), str(dest))
 
-    # Integrity check passed, delete source files
-    for db_path in selected_group:
-        try:
-            db_path.unlink()
-            logger.info("Deleted source file after successful move: %s", db_path)
-        except (OSError, IOError):
-            logger.warning("Failed to delete source file: %s", db_path)
+        # 5. Delete sources after successful move
+        for db_path in selected_group:
+            try:
+                db_path.unlink()
+                logger.info("Deleted source file after successful move: %s", db_path)
+            except (OSError, IOError):
+                logger.warning("Failed to delete source file: %s", db_path)
 
-    return {
-        "success": True,
-        "old_path": str(most_recent),
-        "new_path": str(new_db_dir),
-        "action": "move",
-    }
+        return {
+            "success": True,
+            "old_path": str(most_recent),
+            "new_path": str(new_db_dir),
+            "action": "move",
+        }
+    except Exception as exc:
+        logger.exception("Failed to migrate database from %s", most_recent)
+        raise MigrationError.step_failed("database", str(exc)) from exc
+    finally:
+        if staging_dir.exists():
+            shutil.rmtree(str(staging_dir), ignore_errors=True)
 
 
 def migrate_logs(
@@ -1005,23 +1017,14 @@ def migrate_logs(
     """
     Migrate log files from the first discovered legacy "logs" directory into the new home's "logs" directory.
 
-    Searches legacy_roots for a "logs" directory and moves each *.log file into new_home/logs, renaming migrated files with a timestamp suffix. Creates backups of existing destination directories or files unless `force` is True. In dry-run mode, reports the intended action without modifying the filesystem.
-
     Parameters:
         legacy_roots (list[Path]): Directories to scan for a legacy "logs" directory.
         new_home (Path): Destination MMRELAY_HOME where logs should be placed.
         dry_run (bool): If True, only report intended actions.
-        force (bool): If True, overwrite existing files/directories without creating backups.
+        force (bool): If True, overwrite existing files/directories (backups are always created).
 
     Returns:
-        dict: Result summary containing keys such as:
-            - "success" (bool): Whether the operation completed without fatal errors.
-            - "migrated_count" (int): Number of log files migrated (present when logs found).
-            - "old_path" (str): Path to the discovered legacy logs directory (when found).
-            - "new_path" (str): Path to the destination logs directory.
-            - "action" (str): "move".
-            - "dry_run" (bool): Present and True when called in dry-run mode.
-            - "message" (str): Informational message when no logs directory was found.
+        dict: Migration result.
     """
     old_logs_dir: Path | None = None
 
@@ -1032,42 +1035,52 @@ def migrate_logs(
             logger.info("Found logs directory in legacy root: %s", old_logs_dir)
             break
 
+    new_logs_dir = new_home / "logs"
+
+    if old_logs_dir:
+        # Add same-path guard
+        if old_logs_dir.resolve() == new_logs_dir.resolve():
+            if _dir_has_entries(old_logs_dir):
+                logger.info(
+                    "Logs already at target location, no migration needed: %s",
+                    new_logs_dir,
+                )
+                return {
+                    "success": True,
+                    "old_path": str(old_logs_dir),
+                    "new_path": str(new_logs_dir),
+                    "action": "none",
+                    "message": "Logs already at target location",
+                }
+
     if not old_logs_dir or not old_logs_dir.exists():
+        if _dir_has_entries(new_logs_dir):
+            logger.info("Logs already migrated to %s", new_logs_dir)
+            return {
+                "success": True,
+                "new_path": str(new_logs_dir),
+                "action": "none",
+                "message": "Already migrated",
+            }
+        logger.info("No logs directory found in legacy locations")
         return {
             "success": True,
             "message": "No logs directory found in legacy locations",
         }
 
-    new_logs_dir = new_home / "logs"
-
-    # Add same-path guard
-    if old_logs_dir.resolve() == new_logs_dir.resolve():
-        logger.info(
-            "Logs already at target location, no migration needed: %s", new_logs_dir
+    # Skip if target already exists and not forcing
+    if new_logs_dir.exists() and not force:
+        logger.warning(
+            "Logs already at target location, no migration needed: %s. Use --force to overwrite.",
+            new_logs_dir,
         )
         return {
             "success": True,
             "old_path": str(old_logs_dir),
             "new_path": str(new_logs_dir),
             "action": "none",
-            "message": "Logs already at target location",
+            "message": "Logs already exists at destination",
         }
-
-    # Skip if target already exists and not forcing
-    if new_logs_dir.exists():
-        if not force:
-            logger.info(
-                "Logs already at target location, no migration needed: %s. Use --force to overwrite.",
-                new_logs_dir,
-            )
-            return {
-                "success": True,
-                "old_path": str(old_logs_dir),
-                "new_path": str(new_logs_dir),
-                "action": "none",
-                "message": "Logs already at target location",
-            }
-        logger.info("Force flag set, will backup and overwrite existing logs.")
 
     if dry_run:
         logger.info(
@@ -1081,57 +1094,56 @@ def migrate_logs(
             "dry_run": True,
         }
 
-    if new_logs_dir.exists():
-        logger.info("Backing up existing logs directory: %s", new_logs_dir)
-        backup_path = _backup_file(new_logs_dir)
-        try:
+    # Proceed with migration
+    staging_dir = _get_staging_path(new_home, "logs")
+    staging_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        # 1. Backup existing destination (ALWAYS)
+        if new_logs_dir.exists():
+            backup_path = _backup_file(new_logs_dir)
+            logger.info("Backing up existing logs directory to %s", backup_path)
             shutil.copytree(str(new_logs_dir), str(backup_path))
-        except (OSError, IOError) as e:
-            logger.exception("Failed to backup logs directory")
-            return {
-                "success": False,
-                "error": f"Failed to backup logs directory: {e}",
-                "old_path": str(old_logs_dir),
-                "migrated_count": 0,
-            }
 
-    new_logs_dir.mkdir(parents=True, exist_ok=True)
-
-    migrated_count = 0
-    failed_files = []
-
-    for log_file in old_logs_dir.glob("*.log"):
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        new_name = f"{log_file.stem}_migrated_{timestamp}.log"
-        dest = new_logs_dir / new_name
-        if dest.exists() and not force:
-            logger.info("Backing up existing log file: %s", dest)
-            backup_path = _backup_file(dest)
-            try:
-                shutil.copy2(str(dest), str(backup_path))
-            except (OSError, IOError) as e:
-                logger.warning("Failed to backup log file: %s", e)
-                failed_files.append(str(log_file))
-                continue
-        try:
-            shutil.move(str(log_file), str(dest))
-            logger.debug("Migrated log: %s", log_file)
+        # 2. Move files to staging with timestamped names
+        migrated_count = 0
+        for log_file in old_logs_dir.glob("*.log"):
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            new_name = f"{log_file.stem}_migrated_{timestamp}.log"
+            dest_staged = staging_dir / new_name
+            shutil.move(str(log_file), str(dest_staged))
             migrated_count += 1
-        except (OSError, IOError) as e:
-            logger.warning("Failed to migrate log %s: %s", log_file, e)
-            failed_files.append(str(log_file))
 
-    result = {
-        "success": len(failed_files) == 0,
-        "migrated_count": migrated_count,
-        "old_path": str(old_logs_dir),
-        "new_path": str(new_logs_dir),
-        "action": "move",
-    }
-    if failed_files:
-        result["failed_files"] = failed_files
-        result["error"] = f"Failed to migrate {len(failed_files)} log file(s)"
-    return result
+        # 3. Finalize: Move staging content to final logs dir
+        new_logs_dir.mkdir(parents=True, exist_ok=True)
+        for staged_file in staging_dir.iterdir():
+            final_dest = new_logs_dir / staged_file.name
+            if final_dest.exists():
+                final_dest.unlink()
+            shutil.move(str(staged_file), str(final_dest))
+
+        logger.info("Migrated %d logs to %s", migrated_count, new_logs_dir)
+
+        # Cleanup legacy dir if empty
+        try:
+            if not any(old_logs_dir.iterdir()):
+                old_logs_dir.rmdir()
+        except (OSError, IOError):
+            pass
+
+        return {
+            "success": True,
+            "migrated_count": migrated_count,
+            "old_path": str(old_logs_dir),
+            "new_path": str(new_logs_dir),
+            "action": "move",
+        }
+    except Exception as exc:
+        logger.exception("Failed to migrate logs from %s", old_logs_dir)
+        raise MigrationError.step_failed("logs", str(exc)) from exc
+    finally:
+        if staging_dir.exists():
+            shutil.rmtree(str(staging_dir), ignore_errors=True)
 
 
 def migrate_store(
@@ -1143,23 +1155,14 @@ def migrate_store(
     """
     Migrate the E2EE store directory from legacy roots into the new home's `matrix/store` directory.
 
-    If the current platform is Windows, the function skips migration and returns success because E2EE is not supported. It searches legacy_roots for the first existing `store` directory and moves it to `new_home/store`. If a destination exists and `force` is False, a timestamped backup is created before overwriting. When `dry_run` is True, no filesystem changes are made and the function reports the intended action.
-
     Parameters:
         legacy_roots (list[Path]): Directories to scan for a legacy `store` directory.
-        new_home (Path): Target home directory where `matrix/store` will be placed.
+        new_home (Path): Target home directory.
         dry_run (bool): If True, only report intended actions without modifying files.
-        force (bool): If True, overwrite existing destination without creating a backup.
+        force (bool): If True, overwrite existing destination (backups are always created).
 
     Returns:
-        dict: Result of the migration. Common keys:
-            - `success` (bool): Whether the operation completed (or would complete for dry run).
-            - `message` (str): Informational message (present for skips or no-op cases).
-            - `old_path` (str): Source path of the migrated store (when applicable).
-            - `new_path` (str): Destination path (when applicable).
-            - `action` (str): `"move"`.
-            - `dry_run` (bool): Echoes the dry_run flag when applicable.
-            - `error` (str): Error message on failure.
+        dict: Migration result.
     """
     if sys.platform == "win32":
         return {
@@ -1177,7 +1180,7 @@ def migrate_store(
     for legacy_root in roots_to_scan:
         candidate = legacy_root / STORE_DIRNAME
         if candidate.resolve() == new_store_dir.resolve():
-            if candidate.exists():
+            if _dir_has_entries(candidate):
                 logger.info(
                     "Store already at target location, no migration needed: %s",
                     new_store_dir,
@@ -1195,27 +1198,34 @@ def migrate_store(
             logger.info("Found store directory in legacy root: %s", old_store_dir)
             break
 
-    if not old_store_dir or not old_store_dir.exists():
+    if not old_store_dir:
+        if _dir_has_entries(new_store_dir):
+            logger.info("E2EE store already migrated to %s", new_store_dir)
+            return {
+                "success": True,
+                "new_path": str(new_store_dir),
+                "action": "none",
+                "message": "Already migrated",
+            }
+        logger.info("No E2EE store directory found in legacy locations")
         return {
             "success": True,
             "message": "No E2EE store directory found in legacy locations",
         }
 
     # Skip if target already exists and not forcing
-    if new_store_dir.exists():
-        if not force:
-            logger.info(
-                "Store directory already exists at destination, skipping: %s. Use --force to overwrite.",
-                new_store_dir,
-            )
-            return {
-                "success": True,
-                "old_path": str(old_store_dir),
-                "new_path": str(new_store_dir),
-                "action": "none",
-                "message": "Store directory already exists at destination",
-            }
-        logger.info("Force flag set, will backup and overwrite existing store.")
+    if new_store_dir.exists() and not force:
+        logger.warning(
+            "Store directory already exists at destination, skipping: %s. Use --force to overwrite.",
+            new_store_dir,
+        )
+        return {
+            "success": True,
+            "old_path": str(old_store_dir),
+            "new_path": str(new_store_dir),
+            "action": "none",
+            "message": "Store directory already exists at destination",
+        }
 
     if dry_run:
         logger.info(
@@ -1229,44 +1239,39 @@ def migrate_store(
             "dry_run": True,
         }
 
-    new_store_dir.parent.mkdir(parents=True, exist_ok=True)
-
-    backup_error: str | None = None
-    if new_store_dir.exists():
-        logger.info("Backing up existing store directory: %s", new_store_dir)
-        backup_path = _backup_file(new_store_dir)
-        try:
-            shutil.copytree(str(new_store_dir), str(backup_path))
-        except (OSError, IOError) as e:
-            logger.exception("Failed to backup store directory")
-            backup_error = str(e)
-
-    if backup_error:
-        return {
-            "success": False,
-            "error": f"Failed to backup store directory: {backup_error}",
-            "old_path": str(old_store_dir),
-        }
+    # Proceed with migration
+    staging_dir = _get_staging_path(new_home, "store")
+    staging_dir.parent.mkdir(parents=True, exist_ok=True)
 
     try:
+        # 1. Backup existing destination (ALWAYS)
         if new_store_dir.exists():
-            shutil.rmtree(str(new_store_dir))
-            logger.info("Removing existing store directory for move: %s", new_store_dir)
-        shutil.move(str(old_store_dir), str(new_store_dir))
-        logger.info("Moving store from %s to %s", old_store_dir, new_store_dir)
+            backup_path = _backup_file(new_store_dir)
+            logger.info("Backing up existing store directory to %s", backup_path)
+            shutil.copytree(str(new_store_dir), str(backup_path))
+
+        # 2. Move to staging
+        if staging_dir.exists():
+            shutil.rmtree(str(staging_dir))
+        shutil.move(str(old_store_dir), str(staging_dir))
+        logger.debug("Staged store directory at %s", staging_dir)
+
+        # 3. Finalize: move staging to final destination
+        _finalize_move(staging_dir, new_store_dir)
+        logger.info("Migrated E2EE store to %s", new_store_dir)
+
         return {
             "success": True,
             "old_path": str(old_store_dir),
             "new_path": str(new_store_dir),
             "action": "move",
         }
-    except (OSError, IOError) as exc:
-        logger.exception("Failed to migrate E2EE store")
-        return {
-            "success": False,
-            "error": str(exc),
-            "old_path": str(old_store_dir),
-        }
+    except Exception as exc:
+        logger.exception("Failed to migrate E2EE store from %s", old_store_dir)
+        raise MigrationError.step_failed("store", str(exc)) from exc
+    finally:
+        if staging_dir.exists():
+            shutil.rmtree(str(staging_dir), ignore_errors=True)
 
 
 def _migrate_plugin_tier(
@@ -1286,7 +1291,7 @@ def _migrate_plugin_tier(
         old_dir (Path): Source directory containing plugin folders.
         new_dir (Path): Destination directory for the plugin tier.
         tier_name (str): Label used for logging and error reporting (e.g. "custom").
-        force (bool): If True, overwrite existing destinations without creating backups.
+        force (bool): If True, overwrite existing destinations.
         errors (list[str]): List to append error messages to.
 
     Returns:
@@ -1308,34 +1313,29 @@ def _migrate_plugin_tier(
                 continue
             dest = new_dir / item.name
             if dest.exists():
-                if not force:
-                    logger.info(
-                        "Plugin already exists at destination, skipping: %s", dest
-                    )
-                    continue
-                logger.info("Backing up existing %s plugin: %s", tier_name, dest)
-                backup_path = _backup_file(dest)
-                try:
-                    shutil.copytree(str(dest), str(backup_path))
-                except (OSError, IOError) as e:
-                    logger.warning("Failed to backup %s plugin: %s", tier_name, e)
-                    errors.append(f"{tier_name} backup {dest}: {e}")
-                    continue
-            try:
-                if dest.exists():
+                # In staging, we shouldn't have collisions unless staging was dirty
+                if dest.is_dir():
                     shutil.rmtree(str(dest))
-                    logger.debug(
-                        "Removing existing %s plugin for move: %s", tier_name, dest
-                    )
+                else:
+                    dest.unlink()
+
+            try:
                 shutil.move(str(item), str(dest))
-                logger.debug("Migrated %s plugin: %s", tier_name, item)
+                logger.debug("Staged %s plugin: %s", tier_name, item)
                 migrated = True
             except (OSError, IOError) as e:
-                logger.warning("Failed to migrate %s plugin %s: %s", tier_name, item, e)
+                logger.warning("Failed to stage %s plugin %s: %s", tier_name, item, e)
                 errors.append(f"{tier_name} {item}: {e}")
     except (OSError, IOError) as e:
-        logger.warning("Failed to migrate %s plugins: %s", tier_name, e)
+        logger.warning("Failed to stage %s plugins: %s", tier_name, e)
         errors.append(f"{tier_name}: {e}")
+
+    # Cleanup old tier dir if empty
+    try:
+        if old_dir.exists() and not any(old_dir.iterdir()):
+            old_dir.rmdir()
+    except (OSError, IOError):
+        pass
 
     return migrated
 
@@ -1351,19 +1351,12 @@ def migrate_plugins(
 
     Parameters:
         legacy_roots (list[Path]): Legacy root directories to scan for a `plugins` directory.
-        new_home (Path): Destination MMRELAY_HOME where `plugins` will be created or updated.
+        new_home (Path): Destination MMRELAY_HOME root for plugins.
         dry_run (bool): If True, only report the intended actions without modifying the filesystem.
-        force (bool): If True, overwrite existing destinations without creating backups.
+        force (bool): If True, overwrite existing destinations (backups are always created).
 
     Returns:
-        dict: Migration result containing at least:
-            - `success` (bool): Whether the operation completed (or would complete for dry runs).
-            - `old_path` (str): Path to the discovered legacy plugins directory (if any).
-            - `new_path` (str): Path to the destination plugins directory.
-            - `action` (str): `"move"`.
-            - `migrated_types` (list[str], optional): Which plugin tiers were migrated (`"custom"`, `"community"`).
-            - `dry_run` (bool, optional): Present and True when invoked in dry-run mode.
-            - `message` / `error` (str, optional): Informational or error message when applicable.
+        dict: Migration result.
     """
     old_plugins_dir: Path | None = None
 
@@ -1374,18 +1367,43 @@ def migrate_plugins(
             logger.info("Found plugins directory in legacy root: %s", old_plugins_dir)
             break
 
+    new_plugins_dir = new_home / "plugins"
+
+    if old_plugins_dir:
+        # Add same-path guard
+        if old_plugins_dir.resolve() == new_plugins_dir.resolve():
+            if _dir_has_entries(old_plugins_dir):
+                logger.info(
+                    "Plugins already at target location, no migration needed: %s",
+                    new_plugins_dir,
+                )
+                return {
+                    "success": True,
+                    "old_path": str(old_plugins_dir),
+                    "new_path": str(new_plugins_dir),
+                    "action": "none",
+                    "message": "Plugins already at target location",
+                }
+
     if not old_plugins_dir or not old_plugins_dir.exists():
+        if _dir_has_entries(new_plugins_dir):
+            logger.info("Plugins already migrated to %s", new_plugins_dir)
+            return {
+                "success": True,
+                "new_path": str(new_plugins_dir),
+                "action": "none",
+                "message": "Already migrated",
+            }
+        logger.info("No plugins directory found in legacy locations")
         return {
             "success": True,
             "message": "No plugins directory found in legacy locations",
         }
 
-    new_plugins_dir = new_home / "plugins"
-
-    # Add same-path guard
-    if old_plugins_dir.resolve() == new_plugins_dir.resolve():
-        logger.info(
-            "Plugins already at target location, no migration needed: %s",
+    # Skip if target already exists and not forcing
+    if new_plugins_dir.exists() and not force:
+        logger.warning(
+            "Plugins directory already exists at destination, skipping: %s. Use --force to overwrite.",
             new_plugins_dir,
         )
         return {
@@ -1395,22 +1413,6 @@ def migrate_plugins(
             "action": "none",
             "message": "Plugins already at target location",
         }
-
-    # Skip if target already exists and not forcing
-    if new_plugins_dir.exists():
-        if not force:
-            logger.info(
-                "Plugins already at target location, no migration needed: %s. Use --force to overwrite.",
-                new_plugins_dir,
-            )
-            return {
-                "success": True,
-                "old_path": str(old_plugins_dir),
-                "new_path": str(new_plugins_dir),
-                "action": "none",
-                "message": "Plugins already at target location",
-            }
-        logger.info("Force flag set, will backup and overwrite existing plugins.")
 
     if dry_run:
         logger.info(
@@ -1426,89 +1428,68 @@ def migrate_plugins(
             "dry_run": True,
         }
 
-    errors: list[str] = []
-
-    if new_plugins_dir.exists():
-        logger.info("Backing up existing plugins directory: %s", new_plugins_dir)
-        backup_path = _backup_file(new_plugins_dir)
-        try:
-            shutil.copytree(str(new_plugins_dir), str(backup_path))
-        except (OSError, IOError) as e:
-            logger.exception("Failed to backup plugins directory")
-            return {
-                "success": False,
-                "error": f"Failed to backup plugins directory: {e}",
-                "old_path": str(old_plugins_dir),
-                "new_path": str(new_plugins_dir),
-            }
+    # Proceed with migration
+    staging_dir = _get_staging_path(new_home, "plugins")
+    staging_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        new_plugins_dir.mkdir(parents=True, exist_ok=True)
-    except (OSError, IOError) as e:
-        logger.warning("Failed to create plugins directory: %s", e)
-        errors.append(f"plugins dir: {e}")
+        # 1. Backup existing destination (ALWAYS)
+        if new_plugins_dir.exists():
+            backup_path = _backup_file(new_plugins_dir)
+            logger.info("Backing up existing plugins directory to %s", backup_path)
+            shutil.copytree(str(new_plugins_dir), str(backup_path))
 
-    migrated_types: list[str] = []
+        errors: list[str] = []
+        migrated_types: list[str] = []
 
-    # Migrate plugin tiers
-    old_custom_dir = old_plugins_dir / "custom"
-    if _migrate_plugin_tier(
-        old_custom_dir,
-        new_plugins_dir / "custom",
-        "custom",
-        force,
-        errors,
-    ):
-        migrated_types.append("custom")
+        # 2. Stage tiers
+        old_custom_dir = old_plugins_dir / "custom"
+        if _migrate_plugin_tier(
+            old_custom_dir,
+            staging_dir / "custom",
+            "custom",
+            force,
+            errors,
+        ):
+            migrated_types.append("custom")
 
-    old_community_dir = old_plugins_dir / "community"
-    if _migrate_plugin_tier(
-        old_community_dir,
-        new_plugins_dir / "community",
-        "community",
-        force,
-        errors,
-    ):
-        migrated_types.append("community")
+        old_community_dir = old_plugins_dir / "community"
+        if _migrate_plugin_tier(
+            old_community_dir,
+            staging_dir / "community",
+            "community",
+            force,
+            errors,
+        ):
+            migrated_types.append("community")
 
-    failed = len(errors) > 0
+        if errors:
+            raise OSError("; ".join(errors))
 
-    if not failed:
-        for plugin_dir in (old_custom_dir, old_community_dir):
-            if plugin_dir.exists():
-                try:
-                    if not any(plugin_dir.iterdir()):
-                        plugin_dir.rmdir()
-                except (OSError, IOError) as e:
-                    logger.warning(
-                        "Failed to remove empty plugin directory %s: %s",
-                        plugin_dir,
-                        e,
-                    )
+        # 3. Finalize: move staging to final destination
+        _finalize_move(staging_dir, new_plugins_dir)
+        logger.info("Migrated plugins to %s", new_plugins_dir)
 
-        if old_plugins_dir.exists():
-            try:
-                if not any(old_plugins_dir.iterdir()):
-                    old_plugins_dir.rmdir()
-            except (OSError, IOError) as e:
-                logger.warning(
-                    "Failed to remove empty plugins directory %s: %s",
-                    old_plugins_dir,
-                    e,
-                )
+        # Cleanup legacy directory if empty
+        try:
+            if not any(old_plugins_dir.iterdir()):
+                old_plugins_dir.rmdir()
+        except (OSError, IOError):
+            pass
 
-    success = len(errors) == 0
-
-    result = {
-        "success": success,
-        "migrated_types": migrated_types,
-        "old_path": str(old_plugins_dir),
-        "new_path": str(new_plugins_dir),
-        "action": "move",
-    }
-    if errors:
-        result["error"] = "; ".join(errors)
-    return result
+        return {
+            "success": True,
+            "migrated_types": migrated_types,
+            "old_path": str(old_plugins_dir),
+            "new_path": str(new_plugins_dir),
+            "action": "move",
+        }
+    except Exception as exc:
+        logger.exception("Failed to migrate plugins from %s", old_plugins_dir)
+        raise MigrationError.step_failed("plugins", str(exc)) from exc
+    finally:
+        if staging_dir.exists():
+            shutil.rmtree(str(staging_dir), ignore_errors=True)
 
 
 def migrate_gpxtracker(
@@ -1520,24 +1501,14 @@ def migrate_gpxtracker(
     """
     Migrate GPX files for the community gpxtracker plugin into the new plugins/community/gpxtracker/data directory.
 
-    Scans legacy roots for a `community-plugins.gpxtracker.gpx_directory` setting in `config.yaml` and moves any `*.gpx` files found into `new_home/plugins/community/gpxtracker/data`, appending a per-file timestamp to each destination filename. Creates the destination directory if needed. If a destination file exists and `force` is False, a timestamped backup is created before moving. When `dry_run` is True, no filesystem changes are made and the planned actions are reported.
-
     Parameters:
         legacy_roots (list[Path]): Directories to scan for legacy `config.yaml` entries.
         new_home (Path): Destination MMRELAY_HOME root for plugin data.
         dry_run (bool): If True, report actions without making changes.
-        force (bool): If True, overwrite existing destination files without creating backups.
+        force (bool): If True, overwrite existing destination files (backups are always created).
 
     Returns:
-        dict: Summary of the migration outcome. Common keys:
-            - `success` (bool): True on success, False on failure.
-            - `migrated_count` (int): Number of GPX files moved (when successful).
-            - `old_path` (str): Source GPX directory that was scanned.
-            - `new_path` (str): Destination data directory path.
-            - `action` (str): `"move"`.
-            - `dry_run` (bool): Present when a dry run was requested.
-            - `message` (str): Informational message when skipping migration.
-            - `error` (str): Error details when `success` is False.
+        dict: Summary of the migration outcome.
     """
     old_gpx_dir: Path | None = None
 
@@ -1551,8 +1522,6 @@ def migrate_gpxtracker(
             try:
                 import yaml
             except ImportError as e:
-                # If yaml is missing, it's missing for the whole process.
-                # Stop scanning and warn the user.
                 logger.warning("Failed to import yaml for GPX tracker detection: %s", e)
                 break
 
@@ -1576,122 +1545,107 @@ def migrate_gpxtracker(
             except (OSError, yaml.YAMLError) as e:
                 logger.warning("Failed to read legacy config %s: %s", legacy_config, e)
 
+    new_gpx_data_dir = new_home / "plugins" / "community" / "gpxtracker" / "data"
+
+    if old_gpx_dir:
+        # Expansion and path guard
+        expanded_old_gpx_dir = old_gpx_dir.expanduser()
+        try:
+            if expanded_old_gpx_dir.resolve() == new_gpx_data_dir.resolve():
+                if _dir_has_entries(expanded_old_gpx_dir):
+                    logger.info(
+                        "gpxtracker source already at target location; skipping migration"
+                    )
+                    return {
+                        "success": True,
+                        "migrated_count": 0,
+                        "old_path": str(expanded_old_gpx_dir),
+                        "new_path": str(new_gpx_data_dir),
+                        "action": "none",
+                        "message": "gpxtracker already at target location",
+                    }
+        except OSError:
+            pass
+
     if not old_gpx_dir or not old_gpx_dir.exists():
+        if _dir_has_entries(new_gpx_data_dir):
+            logger.info("GPX tracker data already migrated to %s", new_gpx_data_dir)
+            return {
+                "success": True,
+                "new_path": str(new_gpx_data_dir),
+                "action": "none",
+                "message": "Already migrated",
+            }
+        logger.info(
+            "gpxtracker plugin not configured with gpx_directory or directory not found, skipping"
+        )
         return {
             "success": True,
             "message": "gpxtracker plugin not configured with gpx_directory, skipping migration",
         }
 
-    new_gpx_data_dir = new_home / "plugins" / "community" / "gpxtracker" / "data"
-
     if dry_run:
         logger.info(
             "[DRY RUN] Would move gpxtracker GPX files from %s to %s",
-            old_gpx_dir if old_gpx_dir else "not configured",
-            new_home / "plugins" / "community" / "gpxtracker" / "data",
+            old_gpx_dir,
+            new_gpx_data_dir,
         )
         return {
             "success": True,
-            "old_path": str(old_gpx_dir) if old_gpx_dir else "not configured",
+            "old_path": str(old_gpx_dir),
             "new_path": str(new_gpx_data_dir),
             "action": "move",
             "dry_run": True,
         }
 
-    new_gpx_data_dir.mkdir(parents=True, exist_ok=True)
-
-    migrated_count = 0
-    errors: list[str] = []
-
-    # Expand ~ if needed
-    expanded_old_gpx_dir = Path(old_gpx_dir).expanduser()
-    if not expanded_old_gpx_dir.exists():
-        logger.info(
-            "Old GPX directory not found at expanded path: %s", expanded_old_gpx_dir
-        )
+    # Proceed with migration
+    staging_dir = _get_staging_path(new_home, "gpxtracker")
+    staging_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        if expanded_old_gpx_dir.resolve() == new_gpx_data_dir.resolve():
-            logger.info(
-                "gpxtracker source directory matches destination; skipping migration"
-            )
-            return {
-                "success": True,
-                "migrated_count": 0,
-                "old_path": str(expanded_old_gpx_dir),
-                "new_path": str(new_gpx_data_dir),
-                "action": "move",
-                "message": "gpxtracker source equals destination, skipping",
-            }
-    except OSError:
-        if expanded_old_gpx_dir.absolute() == new_gpx_data_dir.absolute():
-            logger.info(
-                "gpxtracker source directory matches destination; skipping migration"
-            )
-            return {
-                "success": True,
-                "migrated_count": 0,
-                "old_path": str(expanded_old_gpx_dir),
-                "new_path": str(new_gpx_data_dir),
-                "action": "move",
-                "message": "gpxtracker source equals destination, skipping",
-            }
+        migrated_count = 0
+        errors: list[str] = []
 
-    # Move GPX files
-    try:
-        for gpx_file in expanded_old_gpx_dir.glob("*.gpx"):
+        # 1. Stage GPX files with timestamped names
+        for gpx_file in old_gpx_dir.glob("*.gpx"):
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             new_name = f"{gpx_file.stem}_migrated_{timestamp}.gpx"
-            dest_path = new_gpx_data_dir / new_name
+            dest_staged = staging_dir / new_name
+            shutil.move(str(gpx_file), str(dest_staged))
+            migrated_count += 1
 
-            backup_failed = False
-            if dest_path.exists() and not force:
-                logger.info("Backing up existing GPX file: %s", dest_path)
-                backup_path = _backup_file(dest_path)
-                try:
-                    shutil.copy2(str(dest_path), str(backup_path))
-                except (OSError, IOError) as e:
-                    logger.warning("Failed to backup GPX file: %s", e)
-                    backup_failed = True
+        if migrated_count > 0:
+            # 2. Finalize: move staging to final data dir
+            new_gpx_data_dir.mkdir(parents=True, exist_ok=True)
+            for staged_file in staging_dir.iterdir():
+                final_dest = new_gpx_data_dir / staged_file.name
 
-            if backup_failed:
-                logger.info("Skipping GPX file due to backup failure: %s", dest_path)
-                errors.append(f"backup failed for {dest_path}")
-                continue
+                # ALWAYS backup if destination exists
+                if final_dest.exists():
+                    backup_path = _backup_file(final_dest)
+                    logger.info(
+                        "Backing up existing GPX file %s to %s", final_dest, backup_path
+                    )
+                    shutil.copy2(str(final_dest), str(backup_path))
+                    final_dest.unlink()
 
-            try:
-                logger.info("Moving GPX file: %s", gpx_file)
-                shutil.move(str(gpx_file), str(dest_path))
-                logger.debug("Migrated GPX file: %s", gpx_file)
-                migrated_count += 1
-            except (OSError, IOError) as e:
-                logger.exception("Failed to migrate GPX file %s", gpx_file)
-                errors.append(f"move failed for {gpx_file}: {e}")
-    except (OSError, IOError) as exc:
-        logger.exception("Failed to migrate gpxtracker GPX files")
+                shutil.move(str(staged_file), str(final_dest))
+
+        logger.info("Migrated %d GPX files to %s", migrated_count, new_gpx_data_dir)
+
         return {
-            "success": False,
-            "error": str(exc),
-            "old_path": str(expanded_old_gpx_dir),
-        }
-
-    if errors:
-        return {
-            "success": False,
-            "error": "; ".join(errors),
+            "success": True,
             "migrated_count": migrated_count,
-            "old_path": str(expanded_old_gpx_dir),
+            "old_path": str(old_gpx_dir),
             "new_path": str(new_gpx_data_dir),
             "action": "move",
         }
-
-    return {
-        "success": True,
-        "migrated_count": migrated_count,
-        "old_path": str(expanded_old_gpx_dir),
-        "new_path": str(new_gpx_data_dir),
-        "action": "move",
-    }
+    except Exception as exc:
+        logger.exception("Failed to migrate gpxtracker GPX files from %s", old_gpx_dir)
+        raise MigrationError.step_failed("gpxtracker", str(exc)) from exc
+    finally:
+        if staging_dir.exists():
+            shutil.rmtree(str(staging_dir), ignore_errors=True)
 
 
 def is_migration_needed() -> bool:
@@ -1893,6 +1847,17 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
         report["success"] = False
         report["error"] = str(exc)
         report["message"] = "Migration failed"
+
+        # Log detailed failure info
+        staging_dir = new_home / STAGING_DIRNAME
+        logger.error(
+            "Migration failed during step: %s", getattr(exc, "step", "unknown")
+        )
+        logger.error("Error details: %s", exc)
+        if staging_dir.exists():
+            logger.error("Staged data may be present in: %s", staging_dir)
+        logger.error("Please resolve the issue and re-run migration.")
+
         return report
 
     logger.info(

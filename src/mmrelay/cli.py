@@ -1839,9 +1839,12 @@ def handle_doctor_command(args: argparse.Namespace) -> int:
     if is_migration_needed():
         print("   ⚠️  Migration RECOMMENDED:")
         print("       Legacy data detected in one or more locations.")
-        print("       Run 'mmrelay migrate --dry-run' to preview migration.")
-        print("       Run 'mmrelay migrate' to perform migration.")
-        print("       Use '--force' flag to skip backup prompts.")
+        print("  Run 'mmrelay migrate --dry-run' to preview migration.")
+        print("  Run 'mmrelay migrate' to perform migration.")
+        print(
+            "  Use '--force' to overwrite existing destinations (backups will still be created)."
+        )
+
     else:
         print("   ✅ No migration needed (clean install or already migrated)")
 
@@ -2140,7 +2143,7 @@ def handle_migrate_command(args: argparse.Namespace) -> int:
         int: `0` on success, `1` on failure.
     """
     try:
-        from mmrelay.migrate import perform_migration
+        from mmrelay.migrate import is_migration_needed, perform_migration
         from mmrelay.paths import resolve_all_paths
 
         dry_run = getattr(args, "dry_run", False)
@@ -2158,7 +2161,10 @@ def handle_migrate_command(args: argparse.Namespace) -> int:
             for source in legacy_sources:
                 print(f"  - {source}")
         else:
-            print("Legacy sources detected: none")
+            if is_migration_needed():
+                print("Legacy sources detected: HOME (same-home legacy data)")
+            else:
+                print("Legacy sources detected: none")
         print()
 
         result = perform_migration(dry_run=dry_run, force=force)

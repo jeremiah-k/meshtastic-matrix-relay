@@ -55,8 +55,15 @@ For containers, the canonical model remains:
 
 Migration in v1.3 uses **move semantics** by default: legacy files are moved to the new structure and removed from their original locations to prevent duplicates.
 
-If you need to overwrite existing target files without creating backups, use
-`mmrelay migrate --force` (only after confirming your own external backup).
+To ensure safety and atomicity, the migration process follows a **staged move pattern**:
+
+1. Each unit (config, credentials, etc.) is first moved to a temporary staging directory (`MMRELAY_HOME/.migration_staging/`).
+2. The staged data is validated for integrity.
+3. Upon successful validation, the unit is atomically renamed to its final destination in `MMRELAY_HOME`.
+
+If a destination file already exists, a timestamped backup is **always** created before it is overwritten. These backups are stored in a dedicated directory: `MMRELAY_HOME/.migration_backups/`.
+
+If you need to overwrite existing target files, use `mmrelay migrate --force`. Note that even with `--force`, safety backups of your existing destination data are still created.
 
 ## Deployment-Specific Migration Quick Reference
 

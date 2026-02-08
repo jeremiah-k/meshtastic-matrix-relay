@@ -148,8 +148,9 @@ spec:
           livenessProbe:
             exec:
               command:
-                - mmrelay
-                - doctor
+                - sh
+                - -c
+                - "find {{ .Values.readyFile }} -mmin -2 | grep -q ."
             initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
             timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}

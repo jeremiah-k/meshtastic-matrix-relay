@@ -534,8 +534,10 @@ class TestMigrateCredentials:
         result = migrate_credentials([legacy_root_dir], new_home, force=True)
 
         assert result["success"] is True
-        # Backup should be created
-        backups = list((new_home / "matrix").glob("credentials.json.bak.*"))
+        # Backup should be created in .migration_backups
+        backup_dir = matrix_dir / ".migration_backups"
+        assert backup_dir.exists()
+        backups = list(backup_dir.glob("credentials.json.bak.*"))
         assert len(backups) == 1
 
     def test_force_creates_backup(
@@ -557,7 +559,9 @@ class TestMigrateCredentials:
 
         assert result["success"] is True
         # Backup should be created even in force mode for safety
-        backups = list((new_home / "matrix").glob("credentials.json.bak.*"))
+        backup_dir = matrix_dir / ".migration_backups"
+        assert backup_dir.exists()
+        backups = list(backup_dir.glob("credentials.json.bak.*"))
         assert len(backups) == 1
 
     def test_move_oserror(
@@ -572,10 +576,12 @@ class TestMigrateCredentials:
         new_home.mkdir()
 
         with patch("shutil.move", side_effect=OSError("Mock error")):
-            result = migrate_credentials([legacy_root], new_home)
+            from mmrelay.migrate import MigrationError
 
-            assert result["success"] is False
-            assert "Mock error" in result["error"]
+            with pytest.raises(
+                MigrationError, match="credentials migration failed: Mock error"
+            ):
+                migrate_credentials([legacy_root], new_home)
 
     def test_backup_oserror_logged(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -608,14 +614,12 @@ class TestMigrateCredentials:
             return None
 
         with patch("shutil.copy2", side_effect=mock_copy_oserror):
-            with patch("mmrelay.migrate.logger") as mock_logger:
-                result = migrate_credentials([legacy_root_dir], new_home, force=True)
+            from mmrelay.migrate import MigrationError
 
-                # Migration should fail if backup fails (safety first)
-                assert result["success"] is False
-                assert "Failed to backup credentials" in result["error"]
-                # Error should be logged
-                mock_logger.exception.assert_called()
+            with pytest.raises(
+                MigrationError, match="credentials migration failed: Backup error"
+            ):
+                migrate_credentials([legacy_root_dir], new_home, force=True)
 
 
 class TestMigrateConfig:
@@ -678,7 +682,10 @@ class TestMigrateConfig:
         result = migrate_config([legacy_root_dir], new_home, force=True)
 
         assert result["success"] is True
-        backups = list(new_home.glob("config.yaml.bak.*"))
+        # Backup should be created in .migration_backups
+        backup_dir = new_home / ".migration_backups"
+        assert backup_dir.exists()
+        backups = list(backup_dir.glob("config.yaml.bak.*"))
         assert len(backups) == 1
 
 
@@ -969,7 +976,7 @@ class TestMigrateLogs:
 
         assert result["success"] is True
         assert result["action"] == "none"
-        assert "already at target location" in result["message"]
+        assert "already exists at destination" in result["message"]
         assert (new_logs / "existing.log").read_text() == "existing"
 
     def test_timestamped_log_names(

@@ -1915,8 +1915,10 @@ class TestAuthStatus(unittest.TestCase):
             "/home/user/.mmrelay/config.yaml",
             "/etc/mmrelay/config.yaml",
         ]
-        # First path doesn't have credentials, second path does
-        mock_exists.side_effect = lambda path: path == "/etc/mmrelay/credentials.json"
+        # First path doesn't have credentials, second path does (in matrix/ subdir)
+        mock_exists.side_effect = (
+            lambda path: path == "/etc/mmrelay/matrix/credentials.json"
+        )
         mock_get_command.return_value = "mmrelay auth login"
 
         # Mock valid credentials.json content
@@ -1941,10 +1943,11 @@ class TestAuthStatus(unittest.TestCase):
         mock_exists.assert_any_call("/home/user/.mmrelay/credentials.json")
         mock_exists.assert_any_call("/home/user/.mmrelay/matrix/credentials.json")
         mock_exists.assert_any_call("/etc/mmrelay/credentials.json")
+        mock_exists.assert_any_call("/etc/mmrelay/matrix/credentials.json")
 
         # Check printed output shows second path
         mock_print.assert_any_call(
-            "✅ Found credentials.json at: /etc/mmrelay/credentials.json"
+            "✅ Found credentials.json at: /etc/mmrelay/matrix/credentials.json"
         )
         mock_print.assert_any_call("   Homeserver: https://matrix.example.com")
         mock_print.assert_any_call("   User ID: @relay:example.com")
@@ -2421,6 +2424,26 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
         mock_validate_creds.assert_called_once_with(config_path, None)
         mock_print.assert_any_call("❌ Error: No Matrix authentication configured")
         mock_print.assert_any_call("   Setup: mmrelay auth login")
+
+    @patch("mmrelay.cli._validate_credentials_json")
+    @patch("builtins.print")
+    def test_validate_matrix_authentication_propagates_base_config(
+        self, mock_print, mock_validate_creds
+    ):
+        """Test that base_config is forwarded to _validate_credentials_json."""
+        config_path = "/home/user/.mmrelay/config.yaml"
+        matrix_section = {"access_token": "token123"}
+        base_config = {"matrix": {"homeserver": "https://matrix.org"}}
+        mock_validate_creds.return_value = True
+
+        from mmrelay.cli import _validate_matrix_authentication
+
+        result = _validate_matrix_authentication(
+            config_path, matrix_section, base_config
+        )
+
+        self.assertTrue(result)
+        mock_validate_creds.assert_called_once_with(config_path, base_config)
 
 
 class TestHandleCliCommands(unittest.TestCase):

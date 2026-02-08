@@ -101,7 +101,7 @@ spec:
               command:
                 - sh
                 - -c
-                - mmrelay doctor
+                - find /run/mmrelay/ready -mmin -2 | grep -q .
             initialDelaySeconds: 0
             periodSeconds: 60
             timeoutSeconds: 20

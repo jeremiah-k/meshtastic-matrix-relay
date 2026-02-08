@@ -32,9 +32,13 @@ services:
 
     # Tip: For correct permissions and paths, ensure UID, GID, and MMRELAY_HOST_HOME are set in a .env file or exported
 
-    # Lightweight readiness check (checks readiness file periodically updated by app)
+    # Readiness check (checks readiness file freshness periodically updated by app)
     healthcheck:
-      test: ["CMD-SHELL", "test -f $${MMRELAY_READY_FILE:-/tmp/mmrelay-ready}"]
+      test:
+        [
+          "CMD-SHELL",
+          "find $${MMRELAY_READY_FILE:-/tmp/mmrelay-ready} -mmin -2 | grep -q .",
+        ]
       interval: 30s
       timeout: 5s
       retries: 3

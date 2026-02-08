@@ -20,7 +20,7 @@ NC='\033[0m'
 
 HELM_IMAGE="${HELM_IMAGE:-alpine/helm:3.14.2}"
 CHART_PATH="${CHART_PATH:-deploy/helm/mmrelay}"
-RENDER_DIR="${RENDER_DIR:-/tmp/helm-render-$$}"
+RENDER_DIR="${RENDER_DIR:-$(mktemp -d /tmp/helm-render-XXXXXX)}"
 KUBECONFORM_BIN="${KUBECONFORM_BIN-}"
 KUBE_LINTER_BIN="${KUBE_LINTER_BIN-}"
 KUBE_LINTER_CONFIG="${KUBE_LINTER_CONFIG:-scripts/ci/kube-linter-config.yaml}"
@@ -145,13 +145,14 @@ validate_pre_rendered_samples() {
 	if [[ -d ${sample_dir} ]]; then
 		local find_output
 		find_output="$(mktemp)"
-		trap 'rm -f "${find_output}"' RETURN
 		if ! find "${sample_dir}" -maxdepth 2 -name "*.yaml" -print0 >"${find_output}"; then
+			rm -f "${find_output}"
 			return 1
 		fi
 		while IFS= read -r -d '' file; do
 			files+=("${file}")
 		done <"${find_output}"
+		rm -f "${find_output}"
 	fi
 
 	if [[ ${#files[@]} -eq 0 ]]; then
@@ -161,12 +162,16 @@ validate_pre_rendered_samples() {
 
 	for file in "${files[@]}"; do
 		echo -e "${YELLOW}Validating sample ${file}...${NC}"
+		local val_log="${RENDER_DIR}/$(basename "${file}")-validate.log"
 		set +e
-		validate_manifest "${file}" >/dev/null 2>&1
+		validate_manifest "${file}" >"${val_log}" 2>&1
 		local validate_status=$?
 		set -e
 		if [[ ${validate_status} -ne 0 ]]; then
 			echo -e "${RED}✗ Failed to validate ${file}${NC}"
+			echo "Validator output:"
+			cat "${val_log}"
+			echo "File content:"
 			cat "${file}"
 			return 1
 		fi
