@@ -497,7 +497,7 @@ def _validate_credentials_json(
     """
     Validate a Matrix credentials.json located relative to the given configuration.
 
-    Searches for a credentials.json file (honoring an explicit credentials_path in `config` when present) and verifies it contains non-empty string values for "homeserver", "access_token", "user_id", and "device_id". On validation failure this function prints concise, user-facing error messages and guidance to run the authentication login flow.
+    Searches for a credentials.json file (honoring an explicit credentials_path in `config` when present) and verifies it contains non-empty string values for "homeserver", "access_token", and "user_id". The "device_id" field is optional; if missing, a warning is logged noting potential session tracking issues. On validation failure this function prints concise, user-facing error messages and guidance to run the authentication login flow.
 
     Parameters:
         config_path (str): Path to the configuration file used to locate credentials.json.
@@ -517,8 +517,10 @@ def _validate_credentials_json(
 
     try:
         explicit_path = get_explicit_credentials_path(config or relay_config)
-    except InvalidCredentialsPathTypeError:
-        explicit_path = None
+    except InvalidCredentialsPathTypeError as exc:
+        _get_logger().error("Invalid credentials_path: %s", exc)
+        print(f"❌ Error: {exc}", file=sys.stderr)
+        return False
 
     candidate_paths = get_credentials_search_paths(
         explicit_path=explicit_path,
@@ -829,8 +831,10 @@ def _find_credentials_json_path(
 
     try:
         explicit_path = get_explicit_credentials_path(config or relay_config)
-    except InvalidCredentialsPathTypeError:
-        explicit_path = None
+    except InvalidCredentialsPathTypeError as exc:
+        _get_logger().error("Invalid credentials_path: %s", exc)
+        print(f"❌ Error: {exc}", file=sys.stderr)
+        return None
 
     candidate_paths = get_credentials_search_paths(
         explicit_path=explicit_path,

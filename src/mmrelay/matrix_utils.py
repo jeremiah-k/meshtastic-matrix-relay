@@ -1827,7 +1827,7 @@ async def _perform_matrix_login(
                             "Updated credentials.json with discovered information"
                         )
                     except OSError as e:
-                        logger.error(
+                        logger.exception(
                             f"Failed to persist updated session information: {e}"
                         )
 

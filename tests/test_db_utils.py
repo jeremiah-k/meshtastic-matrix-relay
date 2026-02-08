@@ -1105,9 +1105,8 @@ class TestDbUtils(unittest.TestCase):
         """
         Test that get_db_path() skips logging warning when _db_path_logged is already True.
 
-        This test verifies the else branch of line 155 condition: when a legacy database
-        is found but _db_path_logged is already True (from a previous find), the warning
-        is skipped and the path is returned directly.
+        Forces re-resolution (clear cache) while keeping _db_path_logged = True
+        to verify the else branch of the _db_path_logged guard.
         """
         clear_db_path_cache()
         import mmrelay.db_utils
@@ -1116,31 +1115,14 @@ class TestDbUtils(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             database_dir = os.path.join(temp_dir, "database")
-            legacy_dir1 = os.path.join(temp_dir, "legacy1")
-            legacy_dir2 = os.path.join(temp_dir, "legacy2")
+            legacy_dir = os.path.join(temp_dir, "legacy")
 
-            # Create databases in both legacy directories
-            os.makedirs(legacy_dir1, exist_ok=True)
-            legacy_db_path1 = os.path.join(legacy_dir1, "meshtastic.sqlite")
-            with sqlite3.connect(legacy_db_path1) as conn:
-                conn.execute("CREATE TABLE test_table1 (id INTEGER)")
+            # Create legacy database
+            os.makedirs(legacy_dir, exist_ok=True)
+            legacy_db_path = os.path.join(legacy_dir, "meshtastic.sqlite")
+            with sqlite3.connect(legacy_db_path) as conn:
+                conn.execute("CREATE TABLE test_table (id INTEGER)")
 
-            os.makedirs(legacy_dir2, exist_ok=True)
-            legacy_db_path2 = os.path.join(legacy_dir2, "meshtastic.sqlite")
-            with sqlite3.connect(legacy_db_path2) as conn:
-                conn.execute("CREATE TABLE test_table2 (id INTEGER)")
-
-            # Set up mocks that will return different legacy dirs on each call
-            call_count = [0]
-
-            def get_legacy_dirs_side_effect(*args, **kwargs):
-                call_count[0] += 1
-                if call_count[0] == 1:
-                    return [legacy_dir1, legacy_dir2]
-                else:
-                    return [legacy_dir1, legacy_dir2]
-
-            # Mock paths and deprecation window
             with patch(
                 "mmrelay.db_utils.resolve_all_paths",
                 return_value={"database_dir": database_dir, "legacy_sources": []},
@@ -1150,28 +1132,22 @@ class TestDbUtils(unittest.TestCase):
                 ):
                     with patch(
                         "mmrelay.db_utils.get_legacy_dirs",
-                        side_effect=get_legacy_dirs_side_effect,
+                        return_value=[legacy_dir],
                     ):
                         with patch("mmrelay.db_utils.logger") as mock_logger:
-                            # First call - finds DB in legacy_dir1, logs warning
-                            # Clear cache first to force re-resolution
-                            clear_db_path_cache()
-                            path1 = get_db_path()
-                            self.assertEqual(path1, legacy_db_path1)
-                            self.assertEqual(mock_logger.warning.call_count, 1)
+                            # Pre-set _db_path_logged to True, then clear only
+                            # the cached path to force re-resolution through
+                            # the legacy branch while skipping the warning.
+                            import mmrelay.db_utils as db_mod
 
-                            # Now set _db_path_logged to True manually to test the else branch
-                            import mmrelay.db_utils as db_utils_module
+                            db_mod._cached_db_path = None
+                            db_mod._cached_config_hash = None
+                            db_mod._db_path_logged = True
 
-                            db_utils_module._db_path_logged = True
-
-                            # Second call - finds same DB in legacy_dir1 again,
-                            # but skips warning because _db_path_logged is True
-                            # (this covers the else branch of line 155 -> 163)
-                            path2 = get_db_path()
-                            self.assertEqual(path2, legacy_db_path1)
-                            # Warning should still be only 1 (not logged again)
-                            self.assertEqual(mock_logger.warning.call_count, 1)
+                            path = get_db_path()
+                            self.assertEqual(path, legacy_db_path)
+                            # Warning should NOT have been logged
+                            mock_logger.warning.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -70,21 +70,17 @@ class TestConfigEdgeCases(unittest.TestCase):
             # Should return directory containing config.py
             self.assertTrue(result.endswith("mmrelay"))
 
-        def test_get_config_paths_with_args(self):
-            """
+    def test_get_config_paths_with_args(self):
+        """
+        Test that get_config_paths returns the specified config path when provided via command line arguments.
+        """
+        mock_args = MagicMock()
+        mock_args.config = "/custom/path/config.yaml"
 
-            Test that get_config_paths returns the specified config path when provided via command line arguments.
+        with patch("mmrelay.config.os.makedirs"):
+            paths = get_config_paths(mock_args)
 
-            """
-
-            mock_args = MagicMock()
-
-            mock_args.config = "/custom/path/config.yaml"
-
-            with patch("mmrelay.config.os.makedirs"):
-                paths = get_config_paths(mock_args)
-
-            self.assertEqual(paths[0], "/custom/path/config.yaml")
+        self.assertEqual(paths[0], "/custom/path/config.yaml")
 
     def test_get_config_paths_windows_platform(self):
         """
