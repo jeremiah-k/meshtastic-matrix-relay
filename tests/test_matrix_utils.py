@@ -7153,12 +7153,12 @@ def test_matrix_utils_imports_nio_exceptions_when_available(monkeypatch):
     class LogoutError(Exception):
         pass
 
-    setattr(exc_mod, "LocalProtocolError", LocalProtocolError)
-    setattr(exc_mod, "LocalTransportError", LocalTransportError)
-    setattr(exc_mod, "RemoteProtocolError", RemoteProtocolError)
-    setattr(exc_mod, "RemoteTransportError", RemoteTransportError)
-    setattr(resp_mod, "LoginError", LoginError)
-    setattr(resp_mod, "LogoutError", LogoutError)
+    exc_mod.LocalProtocolError = LocalProtocolError  # type: ignore[attr-defined]
+    exc_mod.LocalTransportError = LocalTransportError  # type: ignore[attr-defined]
+    exc_mod.RemoteProtocolError = RemoteProtocolError  # type: ignore[attr-defined]
+    exc_mod.RemoteTransportError = RemoteTransportError  # type: ignore[attr-defined]
+    resp_mod.LoginError = LoginError  # type: ignore[attr-defined]
+    resp_mod.LogoutError = LogoutError  # type: ignore[attr-defined]
 
     monkeypatch.setitem(sys.modules, "nio.exceptions", exc_mod)
     monkeypatch.setitem(sys.modules, "nio.responses", resp_mod)
