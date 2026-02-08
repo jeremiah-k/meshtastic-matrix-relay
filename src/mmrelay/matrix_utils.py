@@ -1826,9 +1826,9 @@ async def _perform_matrix_login(
                         logger.info(
                             "Updated credentials.json with discovered information"
                         )
-                    except OSError as e:
+                    except OSError:
                         logger.exception(
-                            f"Failed to persist updated session information: {e}"
+                            "Failed to persist updated session information"
                         )
 
                     if e2ee_device_id and user_id:

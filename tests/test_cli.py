@@ -805,9 +805,9 @@ class TestCLIValidationFunctions(unittest.TestCase):
         """Test _is_valid_serial_port with edge cases."""
         from mmrelay.cli import _is_valid_serial_port
 
-        self.assertFalse(_is_valid_serial_port(None))
+        self.assertFalse(_is_valid_serial_port(None))  # type: ignore[arg-type]
         self.assertFalse(_is_valid_serial_port(""))
-        self.assertFalse(_is_valid_serial_port(123))
+        self.assertFalse(_is_valid_serial_port(123))  # type: ignore[arg-type]
 
     def test_is_valid_host_ipv4_address(self):
         """Test _is_valid_host with valid IPv4 addresses."""
@@ -851,9 +851,9 @@ class TestCLIValidationFunctions(unittest.TestCase):
         """Test _is_valid_host with edge cases."""
         from mmrelay.cli import _is_valid_host
 
-        self.assertFalse(_is_valid_host(None))
+        self.assertFalse(_is_valid_host(None))  # type: ignore[arg-type]
         self.assertFalse(_is_valid_host(""))
-        self.assertFalse(_is_valid_host(123))
+        self.assertFalse(_is_valid_host(123))  # type: ignore[arg-type]
         self.assertFalse(_is_valid_host("   "))
 
     def test_is_valid_ble_address_mac_address(self):
@@ -878,7 +878,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
         """Test _is_valid_ble_address with invalid addresses."""
         from mmrelay.cli import _is_valid_ble_address
 
-        self.assertFalse(_is_valid_ble_address(None))
+        self.assertFalse(_is_valid_ble_address(None))  # type: ignore[arg-type]
         self.assertFalse(_is_valid_ble_address(""))
         self.assertFalse(_is_valid_ble_address("AA:BB:CC:DD:EE"))
         self.assertFalse(_is_valid_ble_address("AA:BB:CC:DD:EE:FF:00"))
@@ -889,7 +889,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
         """Test _is_valid_ble_address with edge cases."""
         from mmrelay.cli import _is_valid_ble_address
 
-        self.assertFalse(_is_valid_ble_address(123))
+        self.assertFalse(_is_valid_ble_address(123))  # type: ignore[arg-type]
         self.assertFalse(_is_valid_ble_address("   "))
 
 
@@ -1358,12 +1358,12 @@ class TestAuthLogout(unittest.TestCase):
 
     @patch(
         "mmrelay.cli_utils.logout_matrix_bot",
-        new=MagicMock(side_effect=Exception("Test error")),
+        new=MagicMock(side_effect=RuntimeError("Test error")),
     )
     @patch("builtins.print")
     def test_handle_auth_logout_exception_handling(self, mock_print):
-        """Test logout handles general exceptions gracefully."""
-        # ASYNC MOCK FIX: Make the mock raise Exception when called
+        """Test logout handles runtime exceptions gracefully."""
+        # ASYNC MOCK FIX: Make the mock raise RuntimeError when called
         self.mock_args.password = "test_password"
         self.mock_args.yes = True
 
@@ -1674,10 +1674,10 @@ class TestAuthLogin(unittest.TestCase):
 
     @patch("mmrelay.matrix_utils.login_matrix_bot")
     @patch("builtins.print")
-    def test_handle_auth_login_general_exception(self, mock_print, mock_login):
-        """Test handling of general exceptions during login."""
-        # ASYNC MOCK FIX: Make the mock raise Exception when called
-        mock_login.side_effect = Exception("Test error")
+    def test_handle_auth_login_runtime_exception(self, mock_print, mock_login):
+        """Test handling of runtime exceptions during login."""
+        # ASYNC MOCK FIX: Make the mock raise RuntimeError when called
+        mock_login.side_effect = RuntimeError("Test error")
 
         # Call function
         result = handle_auth_login(self.mock_args)

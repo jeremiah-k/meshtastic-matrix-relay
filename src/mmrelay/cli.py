@@ -1536,9 +1536,6 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                 )
                 return False
 
-        # Reset config_path if we're continuing to the next iteration
-        config_path = None
-
     print("Error: No configuration file found in any of the following locations:")
     for path in config_paths:
         print(f"  - {path}")
@@ -1717,15 +1714,15 @@ def _print_path_summary(paths_info: dict[str, Any]) -> None:
     """
     # Print HOME information
     print("\n📍 HOME Directory:")
-    print(f"   Location: {paths_info['home']}")
-    print(f"   Source: {paths_info['home_source']}")
+    print(f"   Location: {paths_info.get('home', '<unknown>')}")
+    print(f"   Source: {paths_info.get('home_source', '<unknown>')}")
 
     # Print runtime artifact paths
     print("\n📁 Runtime Artifacts (all in HOME):")
-    print(f"   Credentials: {paths_info['credentials_path']}")
-    print(f"   Database: {paths_info['database_dir']}")
-    print(f"   Store (E2EE): {paths_info['store_dir']}")
-    print(f"   Logs: {paths_info['logs_dir']}")
+    print(f"   Credentials: {paths_info.get('credentials_path', '<unknown>')}")
+    print(f"   Database: {paths_info.get('database_dir', '<unknown>')}")
+    print(f"   Store (E2EE): {paths_info.get('store_dir', '<unknown>')}")
+    print(f"   Logs: {paths_info.get('logs_dir', '<unknown>')}")
     if "log_file" in paths_info:
         print(f"   Log File: {paths_info['log_file']}")
 
@@ -1858,13 +1855,13 @@ def handle_doctor_command(args: argparse.Namespace) -> int:
     if getattr(args, "migration", False):
         report = verify_migration()
         print("\n🧭 Migration Verification:")
-        if report["warnings"]:
-            for warning in report["warnings"]:
+        if report.get("warnings"):
+            for warning in report.get("warnings", []):
                 print(f"   ⚠️  {warning}")
         else:
             print("   ✅ No legacy data found")
-        if report["errors"]:
-            for error in report["errors"]:
+        if report.get("errors"):
+            for error in report.get("errors", []):
                 print(f"   ❌ {error}")
             return 1
 
@@ -1962,7 +1959,13 @@ def handle_auth_login(args: argparse.Namespace) -> int:
     except KeyboardInterrupt:
         print("\nAuthentication cancelled by user.")
         return 1
-    except Exception as e:
+    except (
+        ConnectionError,
+        asyncio.TimeoutError,
+        OSError,
+        RuntimeError,
+        ValueError,
+    ) as e:
         print(f"\nError during authentication: {e}")
         return 1
 
@@ -2117,7 +2120,13 @@ def handle_auth_logout(args: argparse.Namespace) -> int:
     except KeyboardInterrupt:
         print("\nLogout cancelled by user.")
         return 1
-    except Exception as e:
+    except (
+        ConnectionError,
+        asyncio.TimeoutError,
+        OSError,
+        RuntimeError,
+        ValueError,
+    ) as e:
         print(f"\nError during logout: {e}")
         return 1
 
