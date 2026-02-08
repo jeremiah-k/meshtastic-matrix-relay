@@ -9,10 +9,10 @@ store.
 - Unified runtime path model (`MMRELAY_HOME`) across local, Docker, and Kubernetes.
 - Added migration workflow:
   - `mmrelay migrate --dry-run`
-  - `mmrelay migrate` / `mmrelay migrate --move`
+  - `mmrelay migrate`
   - `mmrelay verify-migration`
-  - `mmrelay doctor --migration`
-- Added rollback behavior for failed migration steps.
+  - `mmrelay doctor`
+- Transitioned to move-only migration for safety and simplicity.
 - Updated deployment docs/examples for 1.3 path behavior.
 - Clarified E2EE dependency troubleshooting.
 
@@ -21,9 +21,9 @@ store.
 1. Stop relay.
 2. Upgrade to 1.3.0.
 3. Preview migration: `mmrelay migrate --dry-run`
-4. Apply migration: `mmrelay migrate` (or `--move`)
+4. Apply migration: `mmrelay migrate`
 5. Verify: `mmrelay verify-migration`
-6. Check diagnostics: `mmrelay doctor --migration`
+6. Check diagnostics: `mmrelay doctor`
 7. Start relay.
 
 ### Docker users

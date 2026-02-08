@@ -109,7 +109,7 @@ Exit code semantics:
 You can also run:
 
 ```bash
-mmrelay doctor --migration
+mmrelay doctor
 ```
 
 This prints human-readable warnings when legacy data is still present.

@@ -438,13 +438,13 @@ The `mmrelay migrate` command handles data migrations between versions:
 
 ```bash
 # Dry-run: Preview changes without making them
-kubectl exec -n mmrelay <pod-name> -- mmrelay migrate --dry-run --home /data
+kubectl exec -n mmrelay <pod-name> -- mmrelay migrate --dry-run
 
 # Perform migration
-kubectl exec -n mmrelay <pod-name> -- mmrelay migrate --home /data
+kubectl exec -n mmrelay <pod-name> -- mmrelay migrate
 
 # Force migration (if files already exist in target)
-kubectl exec -n mmrelay <pod-name> -- mmrelay migrate --force --home /data
+kubectl exec -n mmrelay <pod-name> -- mmrelay migrate --force
 ```
 
 The migration command is designed to be idempotent and safe. It:

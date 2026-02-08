@@ -468,12 +468,21 @@ services:
     user: "${UID:-1000}:${GID:-1000}"
     environment:
       - MMRELAY_HOME=/data
+      - MMRELAY_READY_FILE=/tmp/mmrelay-ready
     volumes:
       # Use MMRELAY_HOST_HOME for host paths (not MMRELAY_HOME to avoid conflict)
       # For SELinux systems (RHEL/CentOS/Fedora), add :Z flag to prevent permission denied errors
       - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay:/data:Z
       # For non-SELinux systems, you can use:
       # - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay:/data
+
+    # Lightweight readiness check
+    healthcheck:
+      test: ["CMD-SHELL", "test -f $${MMRELAY_READY_FILE:-/tmp/mmrelay-ready}"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 ```
 
 ### Step 4: Start the container

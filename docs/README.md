@@ -8,7 +8,6 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 - **[Migration Guide for v1.3](MIGRATION_1.3.md)** - Upgrading from older versions to unified HOME model
 - **[E2EE Guide](E2EE.md)** - Matrix End-to-End Encryption setup and usage
 - **[Docker Guide](DOCKER.md)** - Docker deployment and configuration
-- **[Docker Compose Example](docker-compose.yml)** - Quick Docker Compose setup with MMRELAY_HOME
 - **[Helm Guide](HELM.md)** - Kubernetes Helm chart deployment guide
 
 ## Advanced Configuration
@@ -19,44 +18,6 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 
 - **[What's New in 1.3.0](WHATS_NEW_1.3.md)** - Short release summary and migration TL;DR
 - **[Release Checklist for 1.3](RELEASE_1.3.md)** - Release verification checklist/status tracking
-
-## Docker Compose Quick Start
-
-A minimal Docker Compose example is available at `docs/docker-compose.yml`. This provides the fastest way to run MMRelay with persistent data using the unified MMRELAY_HOME model.
-
-**Quick Start:**
-
-```bash
-# 1. Copy the example to your project directory
-cp docs/docker-compose.yml .
-
-# 2. Replace image tag in docker-compose.yml
-#    Change: ghcr.io/jeremiah-k/mmrelay:REPLACE_ME
-#    To: ghcr.io/jeremiah-k/mmrelay:<version>
-#    (See https://github.com/jeremiah-k/meshtastic-matrix-relay/pkgs/container/mmrelay for available tags)
-
-# 3. Create your config.yaml (or use sample)
-# Option A: if you cloned this repository
-cp src/mmrelay/tools/sample_config.yaml config.yaml
-# Option B: if you only copied docker-compose.yml
-curl -fsSL https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample_config.yaml -o config.yaml
-# Edit config.yaml with your settings
-
-# 4. Start the service
-docker compose up -d
-
-# 5. View logs
-docker compose logs -f
-
-# 6. Verify configuration
-docker compose exec mmrelay mmrelay doctor
-```
-
-**Data Location:** All persistent data (credentials, database, logs, plugins, E2EE store) lives in the `./mmrelay-data` directory that Docker Compose creates automatically.
-
-**Migration:** If upgrading from an old layout, run `docker compose exec mmrelay mmrelay migrate --dry-run` first, then `docker compose exec mmrelay mmrelay migrate` to migrate.
-
-For full Docker documentation, see [DOCKER.md](DOCKER.md).
 
 ## File Locations
 
@@ -83,7 +44,6 @@ docs/
 ├── WHATS_NEW_1.3.md       # 1.3 release summary
 ├── E2EE.md               # End-to-End Encryption guide
 ├── DOCKER.md             # Docker deployment guide
-├── docker-compose.yml    # Minimal Docker Compose quick-start example
 ├── KUBERNETES.md         # Static manifest deployment guide
 ├── HELM.md               # Helm chart deployment guide
 ├── ADVANCED_CONFIGURATION.md # Advanced configuration options

@@ -21,7 +21,6 @@ STRICT_FILES=(
 	"deploy/k8s/kustomization.yaml"
 	"deploy/k8s/overlays/digest/kustomization.yaml"
 	"Makefile"
-	"docs/docker-compose.yml"
 	"src/mmrelay/tools/sample-docker-compose.yaml"
 	"src/mmrelay/tools/sample-docker-compose-prebuilt.yaml"
 	"src/mmrelay/tools/sample.env"

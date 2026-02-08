@@ -873,7 +873,7 @@ class TestMigrateDatabase:
 
         assert result["success"] is True
         assert result["action"] == "none"
-        assert "already exists at destination" in result["message"]
+        assert "already at target location" in result["message"]
         assert db_path.read_text() == "existing"
 
 
@@ -969,7 +969,7 @@ class TestMigrateLogs:
 
         assert result["success"] is True
         assert result["action"] == "none"
-        assert "already exists at destination" in result["message"]
+        assert "already at target location" in result["message"]
         assert (new_logs / "existing.log").read_text() == "existing"
 
     def test_timestamped_log_names(
@@ -1192,7 +1192,7 @@ class TestMigratePlugins:
 
         assert result["success"] is True
         assert result["action"] == "none"
-        assert "already exists at destination" in result["message"]
+        assert "already at target location" in result["message"]
 
 
 class TestMigrateGpxtracker:

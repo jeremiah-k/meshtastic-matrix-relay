@@ -549,6 +549,18 @@ def migrate_credentials(
     for legacy_root in roots_to_scan:
         candidate = legacy_root / CREDENTIALS_FILENAME
         if candidate.resolve() == new_creds.resolve():
+            if candidate.exists():
+                logger.info(
+                    "Credentials already at target location, no migration needed: %s",
+                    new_creds,
+                )
+                return {
+                    "success": True,
+                    "old_path": str(candidate),
+                    "new_path": str(new_creds),
+                    "action": "none",
+                    "message": "Credentials already at target location",
+                }
             continue
         if candidate.exists():
             old_creds = candidate
@@ -859,7 +871,7 @@ def migrate_database(
                 "success": True,
                 "new_path": str(new_db_dir),
                 "action": "none",
-                "message": "Database already exists at destination",
+                "message": "Database already at target location",
             }
         logger.info("Force flag set, will backup and overwrite existing database.")
 
@@ -1040,7 +1052,7 @@ def migrate_logs(
     if new_logs_dir.exists():
         if not force:
             logger.info(
-                "Logs directory already exists at destination, skipping: %s. Use --force to overwrite.",
+                "Logs already at target location, no migration needed: %s. Use --force to overwrite.",
                 new_logs_dir,
             )
             return {
@@ -1048,7 +1060,7 @@ def migrate_logs(
                 "old_path": str(old_logs_dir),
                 "new_path": str(new_logs_dir),
                 "action": "none",
-                "message": "Logs already exists at destination",
+                "message": "Logs already at target location",
             }
         logger.info("Force flag set, will backup and overwrite existing logs.")
 
@@ -1160,6 +1172,18 @@ def migrate_store(
     for legacy_root in roots_to_scan:
         candidate = legacy_root / STORE_DIRNAME
         if candidate.resolve() == new_store_dir.resolve():
+            if candidate.exists():
+                logger.info(
+                    "Store already at target location, no migration needed: %s",
+                    new_store_dir,
+                )
+                return {
+                    "success": True,
+                    "old_path": str(candidate),
+                    "new_path": str(new_store_dir),
+                    "action": "none",
+                    "message": "Store already at target location",
+                }
             continue
         if candidate.exists():
             old_store_dir = candidate
@@ -1371,7 +1395,7 @@ def migrate_plugins(
     if new_plugins_dir.exists():
         if not force:
             logger.info(
-                "Plugins directory already exists at destination, skipping: %s. Use --force to overwrite.",
+                "Plugins already at target location, no migration needed: %s. Use --force to overwrite.",
                 new_plugins_dir,
             )
             return {
@@ -1379,7 +1403,7 @@ def migrate_plugins(
                 "old_path": str(old_plugins_dir),
                 "new_path": str(new_plugins_dir),
                 "action": "none",
-                "message": "Plugins directory already exists at destination",
+                "message": "Plugins already at target location",
             }
         logger.info("Force flag set, will backup and overwrite existing plugins.")
 
