@@ -7,6 +7,7 @@ import io
 import json
 import logging
 import os
+import random
 import re
 import ssl
 import sys
@@ -3020,6 +3021,107 @@ async def _get_e2ee_error_message() -> str:
     return get_e2ee_error_message(dict(e2ee_status))
 
 
+async def _send_matrix_message_with_retry(
+    matrix_client: Any,
+    room_id: str,
+    content: dict[str, Any],
+    max_retries: int = 3,
+    base_delay: float = 1.0,
+    max_delay: float = 30.0,
+) -> Any:
+    """
+    Send a message to Matrix with exponential backoff retry logic.
+
+    Retries on transient failures like timeouts and network errors.
+    Returns the response on success, or None if all retries exhausted.
+
+    Parameters:
+        matrix_client: The Matrix AsyncClient instance.
+        room_id: Target room ID.
+        content: Message content dict.
+        max_retries: Maximum number of retry attempts.
+        base_delay: Initial delay between retries in seconds.
+        max_delay: Maximum delay between retries in seconds.
+
+    Returns:
+        The room_send response on success, None on failure.
+    """
+    last_exception: Exception | None = None
+
+    for attempt in range(max_retries + 1):
+        try:
+            # Check room encryption status before sending
+            room = (
+                matrix_client.rooms.get(room_id)
+                if matrix_client and hasattr(matrix_client, "rooms")
+                else None
+            )
+
+            # Final check: Do not send to encrypted rooms if E2EE is not enabled
+            if (
+                room
+                and getattr(room, "encrypted", False)
+                and not getattr(matrix_client, "e2ee_enabled", False)
+            ):
+                room_name = getattr(room, "display_name", room_id)
+                error_message = await _get_e2ee_error_message()
+                logger.error(
+                    f"🔒 BLOCKED: Cannot send message to encrypted room '{room_name}' ({room_id})"
+                )
+                logger.error(f"Reason: {error_message}")
+                logger.info(
+                    "💡 Tip: Run 'mmrelay config check' to validate your E2EE setup"
+                )
+                return None
+
+            response = await asyncio.wait_for(
+                matrix_client.room_send(
+                    room_id=room_id,
+                    message_type="m.room.message",
+                    content=content,
+                    ignore_unverified_devices=True,
+                ),
+                timeout=MATRIX_ROOM_SEND_TIMEOUT,
+            )
+            return response
+
+        except asyncio.TimeoutError as e:
+            last_exception = e
+            if attempt < max_retries:
+                # Exponential backoff with jitter
+                delay = min(base_delay * (2**attempt), max_delay)
+                jitter = random.uniform(0, delay * 0.1)  # 10% jitter
+                total_delay = delay + jitter
+                logger.warning(
+                    f"Timeout sending to Matrix room {room_id} (attempt {attempt + 1}/{max_retries + 1}), "
+                    f"retrying in {total_delay:.1f}s..."
+                )
+                await asyncio.sleep(total_delay)
+            else:
+                logger.exception(
+                    f"Timeout sending message to Matrix room {room_id} after {max_retries + 1} attempts"
+                )
+
+        except NIO_COMM_EXCEPTIONS as e:
+            last_exception = e
+            if attempt < max_retries:
+                # Exponential backoff with jitter for network errors
+                delay = min(base_delay * (2**attempt), max_delay)
+                jitter = random.uniform(0, delay * 0.1)  # 10% jitter
+                total_delay = delay + jitter
+                logger.warning(
+                    f"Network error sending to Matrix room {room_id} (attempt {attempt + 1}/{max_retries + 1}): {e}, "
+                    f"retrying in {total_delay:.1f}s..."
+                )
+                await asyncio.sleep(total_delay)
+            else:
+                logger.exception(
+                    f"Error sending message to Matrix room {room_id} after {max_retries + 1} attempts"
+                )
+
+    return None
+
+
 async def matrix_relay(
     room_id: str,
     message: str,
@@ -3058,7 +3160,28 @@ async def matrix_relay(
     # Log the current state of the config
     logger.debug(f"matrix_relay: config is {'available' if config else 'None'}")
 
-    matrix_client = await connect_matrix()
+    # Try to get Matrix client with retry logic for initialization failures
+    matrix_client = None
+    max_init_retries = 3
+    init_retry_delay = 2.0
+
+    for init_attempt in range(max_init_retries):
+        matrix_client = await connect_matrix()
+        if matrix_client is not None:
+            break
+
+        if init_attempt < max_init_retries - 1:
+            logger.warning(
+                f"Matrix client initialization failed (attempt {init_attempt + 1}/{max_init_retries}), "
+                f"retrying in {init_retry_delay}s..."
+            )
+            await asyncio.sleep(init_retry_delay)
+        else:
+            logger.error(
+                f"Matrix client initialization failed after {max_init_retries} attempts. "
+                f"Message to room {room_id} may be lost."
+            )
+            return
 
     if matrix_client is None:
         logger.error("Matrix client is None. Cannot send message.")
@@ -3198,17 +3321,13 @@ async def matrix_relay(
                 logger.error(f"Error formatting Matrix reply: {e}")
 
         try:
-            # Send the message with a timeout
-            # For encrypted rooms, use ignore_unverified_devices=True
-            # After checking working implementations, always use ignore_unverified_devices=True
-            # for text messages to ensure encryption works properly
+            # Debug logging for encryption status
             room = (
                 matrix_client.rooms.get(room_id)
                 if matrix_client and hasattr(matrix_client, "rooms")
                 else None
             )
 
-            # Debug logging for encryption status
             if room:
                 encrypted_status = getattr(room, "encrypted", "unknown")
                 logger.debug(
@@ -3229,37 +3348,22 @@ async def matrix_relay(
                     f"Room {room_id} not found in client.rooms - cannot determine encryption status"
                 )
 
-            # Always use ignore_unverified_devices=True for text messages (like matrix-nio-send)
-            logger.debug(
-                "Sending message with ignore_unverified_devices=True (always for text messages)"
+            # Use retry logic for sending messages
+            response = await _send_matrix_message_with_retry(
+                matrix_client=matrix_client,
+                room_id=room_id,
+                content=content,
+                max_retries=3,
+                base_delay=1.0,
             )
 
-            # Final check: Do not send to encrypted rooms if E2EE is not enabled
-            if (
-                room
-                and getattr(room, "encrypted", False)
-                and not getattr(matrix_client, "e2ee_enabled", False)
-            ):
-                room_name = getattr(room, "display_name", room_id)
-                error_message = await _get_e2ee_error_message()
+            if response is None:
+                # All retries exhausted - message was not sent
                 logger.error(
-                    f"🔒 BLOCKED: Cannot send message to encrypted room '{room_name}' ({room_id})"
-                )
-                logger.error(f"Reason: {error_message}")
-                logger.info(
-                    "💡 Tip: Run 'mmrelay config check' to validate your E2EE setup"
+                    f"Failed to send message to Matrix room {room_id} after all retry attempts. "
+                    f"Message may be lost."
                 )
                 return
-
-            response = await asyncio.wait_for(
-                matrix_client.room_send(
-                    room_id=room_id,
-                    message_type="m.room.message",
-                    content=content,
-                    ignore_unverified_devices=True,
-                ),
-                timeout=MATRIX_ROOM_SEND_TIMEOUT,  # Increased timeout
-            )
 
             # Log at info level, matching one-point-oh pattern
             logger.info(f"Sent inbound radio message to matrix room: {room_id}")

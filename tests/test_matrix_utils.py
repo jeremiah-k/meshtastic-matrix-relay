@@ -1699,12 +1699,12 @@ async def test_matrix_relay_client_none(
     _mock_logger, mock_storage_enabled, mock_get_interactions, mock_connect_matrix
 ):
     """
-    Test that `matrix_relay` returns early and logs an error if the Matrix client is None.
+    Test that `matrix_relay` returns early and logs an error if the Matrix client cannot be initialized.
     """
     mock_get_interactions.return_value = {"reactions": False, "replies": False}
     mock_storage_enabled.return_value = False
 
-    # Mock connect_matrix to return None
+    # Mock connect_matrix to return None (simulating failed initialization after retries)
     mock_connect_matrix.return_value = None
 
     # Should return early without sending
@@ -1717,8 +1717,10 @@ async def test_matrix_relay_client_none(
         portnum=1,
     )
 
-    # Should log error about None client
-    _mock_logger.error.assert_called_with("Matrix client is None. Cannot send message.")
+    # Should log error about failed initialization after retries
+    _mock_logger.error.assert_called_with(
+        "Matrix client initialization failed after 3 attempts. Message to room !room:matrix.org may be lost."
+    )
 
 
 @patch("mmrelay.matrix_utils.connect_matrix")
@@ -2101,7 +2103,7 @@ async def test_matrix_relay_reply_missing_mapping_logs_warning(
 async def test_matrix_relay_send_timeout_logs_and_returns(
     mock_logger, _mock_storage_enabled, mock_get_interactions, mock_connect_matrix
 ):
-    """Timeouts during room_send should be logged and return."""
+    """Timeouts during room_send should be logged with retry information and return."""
     mock_get_interactions.return_value = {"reactions": False, "replies": False}
 
     mock_client = MagicMock()
@@ -2124,8 +2126,9 @@ async def test_matrix_relay_send_timeout_logs_and_returns(
             portnum=1,
         )
 
+    # After all retries are exhausted, should log final timeout error
     mock_logger.exception.assert_any_call(
-        "Timeout sending message to Matrix room %s", "!room:matrix.org"
+        "Timeout sending message to Matrix room !room:matrix.org after 4 attempts"
     )
 
 
