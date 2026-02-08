@@ -912,10 +912,15 @@ def migrate_database(
 
     logger.info("Migrating database from %s to %s", most_recent, new_db_dir)
 
-    # Copy-then-delete pattern: Always copy first, verify, then delete sources only if verification succeeds.
-    # This prevents data loss if integrity check fails after files are moved.
+    # Add same-path guard to avoid copying over itself (which raises OSError and could lose data)
     for db_path in selected_group:
         dest = new_db_dir / db_path.name
+        if db_path.resolve() == dest.resolve():
+            logger.info("Database file already at target location: %s", db_path)
+            # Integrity check already passed? No, we still need to verify if we want move semantics.
+            # But if it's the same path, we just don't copy it.
+            continue
+
         if dest.exists():
             logger.info("Backing up existing database file: %s", dest)
             backup_path = _backup_file(dest)
@@ -1429,8 +1434,13 @@ def migrate_plugins(
         try:
             shutil.copytree(str(new_plugins_dir), str(backup_path))
         except (OSError, IOError) as e:
-            logger.warning("Failed to backup plugins directory: %s", e)
-            errors.append(f"plugins backup: {e}")
+            logger.exception("Failed to backup plugins directory")
+            return {
+                "success": False,
+                "error": f"Failed to backup plugins directory: {e}",
+                "old_path": str(old_plugins_dir),
+                "new_path": str(new_plugins_dir),
+            }
 
     try:
         new_plugins_dir.mkdir(parents=True, exist_ok=True)
@@ -1635,7 +1645,7 @@ def migrate_gpxtracker(
             dest_path = new_gpx_data_dir / new_name
 
             backup_failed = False
-            if dest_path.exists():
+            if dest_path.exists() and not force:
                 logger.info("Backing up existing GPX file: %s", dest_path)
                 backup_path = _backup_file(dest_path)
                 try:

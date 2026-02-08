@@ -1285,7 +1285,7 @@ class TestMigratePluginsEdgeCases:
             )
 
         assert result["success"] is False
-        assert "plugins backup" in result["error"]
+        assert "Failed to backup plugins directory" in result["error"]
 
     def test_migrate_plugins_new_dir_creation_failure(self, tmp_path: Path) -> None:
         """Test plugins directory creation failure is surfaced."""
@@ -1346,7 +1346,7 @@ class TestMigratePluginsEdgeCases:
             )
 
         assert result["success"] is False
-        assert "plugins backup" in result["error"]
+        assert "Failed to backup plugins directory" in result["error"]
 
     def test_migrate_plugins_cleanup_rmdir_error(self, tmp_path: Path) -> None:
         """Test cleanup rmdir errors are captured."""
@@ -1674,7 +1674,7 @@ class TestMigrateGpxtrackerEdgeCases:
         ):
             mock_datetime.now.return_value = fixed_time
             result = migrate_gpxtracker(
-                [legacy_root_dir], new_home, dry_run=False, force=True
+                [legacy_root_dir], new_home, dry_run=False, force=False
             )
 
         assert result["success"] is False

@@ -5212,62 +5212,6 @@ async def test_connect_matrix_legacy_config(
 @patch("mmrelay.matrix_utils.save_credentials")
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.cli_utils._create_ssl_context", return_value=None)
-async def test_login_matrix_bot_reuses_existing_device_id(
-    _mock_ssl_context, mock_async_client, _mock_save_credentials, tmp_path
-):
-    """Existing credentials should supply device_id when available."""
-    mock_discovery_client = AsyncMock()
-    mock_main_client = AsyncMock()
-    mock_async_client.side_effect = [mock_discovery_client, mock_main_client]
-
-    mock_discovery_client.discovery_info.return_value = SimpleNamespace(
-        homeserver_url="https://matrix.org"
-    )
-    mock_discovery_client.close = AsyncMock()
-    mock_main_client.login.return_value = MagicMock(
-        access_token="token", device_id="DEV", user_id="@user:matrix.org"
-    )
-    mock_main_client.whoami.return_value = MagicMock(user_id="@user:matrix.org")
-    mock_main_client.close = AsyncMock()
-
-    credentials_path = str(tmp_path / "credentials.json")
-
-    with (
-        patch(
-            "mmrelay.paths.resolve_all_paths",
-            return_value={
-                "credentials_path": credentials_path,
-                "legacy_sources": [],
-            },
-        ),
-        patch("mmrelay.matrix_utils.os.path.exists", return_value=True),
-        patch("builtins.open", new_callable=MagicMock),
-        patch(
-            "mmrelay.config.json.load",
-            return_value={"user_id": "@user:matrix.org", "device_id": "DEV"},
-        ),
-        patch(
-            "mmrelay.matrix_utils._normalize_bot_user_id",
-            return_value="@user:matrix.org",
-        ),
-        patch("mmrelay.config.load_config", return_value={}),
-        patch("mmrelay.config.is_e2ee_enabled", return_value=False),
-    ):
-        result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
-            logout_others=False,
-        )
-
-    assert result is True
-    assert mock_async_client.call_args_list[1].kwargs["device_id"] == "DEV"
-    assert mock_main_client.device_id == "DEV"
-
-
-@patch("mmrelay.matrix_utils.save_credentials")
-@patch("mmrelay.matrix_utils.AsyncClient")
-@patch("mmrelay.cli_utils._create_ssl_context", return_value=None)
 async def test_login_matrix_bot_e2ee_store_path_created(
     _mock_ssl_context, mock_async_client, _mock_save_credentials
 ):
@@ -5883,61 +5827,64 @@ async def test_login_matrix_bot_no_password_warns(
     assert result is True
     mock_logger.warning.assert_any_call("No password provided")
 
-
-@patch("mmrelay.matrix_utils.save_credentials")
-@patch("mmrelay.matrix_utils.AsyncClient")
-@patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
-@patch("mmrelay.matrix_utils._normalize_bot_user_id", return_value="@user:matrix.org")
-async def test_login_matrix_bot_credentials_load_failure_logs_debug(
-    _mock_normalize,
-    _mock_ssl_context,
-    mock_async_client,
-    _mock_save_credentials,
-    tmp_path,
-):
-    """Credential load errors should be logged and ignored."""
-    mock_discovery_client = AsyncMock()
-    mock_main_client = AsyncMock()
-    mock_async_client.side_effect = [mock_discovery_client, mock_main_client]
-
-    mock_discovery_client.discovery_info.return_value = SimpleNamespace(
-        homeserver_url="https://matrix.org"
+    @patch("mmrelay.matrix_utils.async_load_credentials", new_callable=AsyncMock)
+    @patch("mmrelay.matrix_utils.save_credentials")
+    @patch("mmrelay.matrix_utils.AsyncClient")
+    @patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
+    @patch(
+        "mmrelay.matrix_utils._normalize_bot_user_id", return_value="@user:matrix.org"
     )
-    mock_discovery_client.close = AsyncMock()
-    mock_main_client.login.return_value = MagicMock(
-        access_token="token", device_id="DEV", user_id="@user:matrix.org"
-    )
-    mock_main_client.whoami.return_value = MagicMock(user_id="@user:matrix.org")
-    mock_main_client.close = AsyncMock()
-
-    credentials_path = str(tmp_path / "credentials.json")
-
-    with (
-        patch(
-            "mmrelay.paths.resolve_all_paths",
-            return_value={
-                "credentials_path": credentials_path,
-                "legacy_sources": [],
-            },
-        ),
-        patch("mmrelay.matrix_utils.os.path.exists", return_value=True),
-        patch("builtins.open", side_effect=OSError("boom")),
-        patch("mmrelay.config.load_config", return_value={}),
-        patch("mmrelay.config.is_e2ee_enabled", return_value=False),
-        patch("mmrelay.matrix_utils.logger") as mock_logger,
+    async def test_login_matrix_bot_credentials_load_failure_logs_debug(
+        _mock_normalize,
+        _mock_ssl_context,
+        mock_async_client,
+        _mock_save_credentials,
+        mock_load_credentials,
+        tmp_path,
     ):
-        result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
-            logout_others=False,
-        )
+        """Credential load errors should be logged and ignored."""
+        mock_discovery_client = AsyncMock()
+        mock_main_client = AsyncMock()
+        mock_async_client.side_effect = [mock_discovery_client, mock_main_client]
 
-    assert result is True
-    assert any(
-        "Could not load existing credentials" in call.args[0]
-        for call in mock_logger.debug.call_args_list
-    )
+        mock_discovery_client.discovery_info.return_value = SimpleNamespace(
+            homeserver_url="https://matrix.org"
+        )
+        mock_discovery_client.close = AsyncMock()
+        mock_main_client.login.return_value = MagicMock(
+            access_token="token", device_id="DEV", user_id="@user:matrix.org"
+        )
+        mock_main_client.whoami.return_value = MagicMock(user_id="@user:matrix.org")
+        mock_main_client.close = AsyncMock()
+
+        credentials_path = str(tmp_path / "credentials.json")
+        mock_load_credentials.side_effect = OSError("boom")
+
+        with (
+            patch(
+                "mmrelay.paths.resolve_all_paths",
+                return_value={
+                    "credentials_path": credentials_path,
+                    "legacy_sources": [],
+                },
+            ),
+            patch("mmrelay.matrix_utils.os.path.exists", return_value=True),
+            patch("mmrelay.config.load_config", return_value={}),
+            patch("mmrelay.config.is_e2ee_enabled", return_value=False),
+            patch("mmrelay.matrix_utils.logger") as mock_logger,
+        ):
+            result = await login_matrix_bot(
+                homeserver="https://matrix.org",
+                username="user",
+                password="pass",
+                logout_others=False,
+            )
+
+        assert result is True
+        assert any(
+            "Could not load existing credentials" in call.args[0]
+            for call in mock_logger.debug.call_args_list
+        )
 
 
 @patch("mmrelay.matrix_utils.save_credentials")

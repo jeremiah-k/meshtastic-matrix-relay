@@ -182,17 +182,24 @@ render_and_validate() {
 	local output_file="${RENDER_DIR}/${name}.yaml"
 
 	echo -e "${YELLOW}Rendering ${name}...${NC}"
+	local err_file="${RENDER_DIR}/${name}-render.err"
 	set +e
 	helm_in_container template mmrelay "${CHART_PATH}" \
 		--namespace mmrelay \
-		"$@" >"${output_file}" 2>&1
+		"$@" >"${output_file}" 2>"${err_file}"
 	local render_status=$?
 	set -e
 	if [[ ${render_status} -ne 0 ]]; then
 		echo -e "${RED}✗ Failed to render ${name}${NC}"
 		echo "Error output:"
-		cat "${output_file}"
+		cat "${err_file}"
+		[[ -s ${output_file} ]] && cat "${output_file}"
 		return 1
+	fi
+
+	if [[ -s ${err_file} ]]; then
+		echo -e "${YELLOW}Warnings during rendering ${name}:${NC}" >&2
+		cat "${err_file}" >&2
 	fi
 
 	echo -e "${GREEN}✓ Rendered ${name}${NC}"

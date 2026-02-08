@@ -1382,6 +1382,11 @@ async def _resolve_and_load_credentials(
     e2ee_device_id: Optional[str] = None
     credentials_path: str | None = None
 
+    # Authoritative path resolution using unified layout logic
+    candidate_path = await asyncio.to_thread(
+        _resolve_credentials_save_path, config_data
+    )
+
     try:
         credentials = await async_load_credentials()
     except asyncio.CancelledError:
@@ -1391,13 +1396,8 @@ async def _resolve_and_load_credentials(
         credentials = None
 
     if credentials is None:
-        candidate_path = await asyncio.to_thread(
-            _resolve_credentials_save_path, config_data
-        )
         if candidate_path and await asyncio.to_thread(os.path.isfile, candidate_path):  # type: ignore[arg-type]
             logger.warning("Ignoring invalid credentials file: %s", candidate_path)
-    else:
-        candidate_path = None
 
     if credentials:
         missing_keys = _missing_credentials_keys(credentials)
@@ -1408,13 +1408,7 @@ async def _resolve_and_load_credentials(
             )
             credentials = None
         else:
-            credentials_path = (
-                candidate_path
-                if candidate_path is not None
-                else await asyncio.to_thread(
-                    _resolve_credentials_save_path, config_data  # type: ignore[arg-type]
-                )
-            )
+            credentials_path = candidate_path
             matrix_homeserver = credentials["homeserver"]
             matrix_access_token = credentials["access_token"]
             bot_user_id = credentials["user_id"]
@@ -2565,25 +2559,10 @@ async def login_matrix_bot(
                 path_exists = False
             existing_credentials_path = credentials_path if path_exists else None
             if existing_credentials_path is not None:
-
-                def _load_existing_creds(path: str) -> dict[str, Any]:
-                    """
-                    Read and parse a JSON credentials file into a dictionary.
-
-                    Parameters:
-                        path (str): Filesystem path to a JSON credentials file.
-
-                    Returns:
-                        dict[str, Any]: The parsed JSON object as a dictionary.
-                    """
-                    with open(path, "r", encoding="utf-8") as f:
-                        return cast(dict[str, Any], json.load(f))
-
-                existing_creds = await asyncio.to_thread(
-                    _load_existing_creds, existing_credentials_path
-                )
+                existing_creds = await async_load_credentials()
                 if (
-                    "device_id" in existing_creds
+                    existing_creds
+                    and "device_id" in existing_creds
                     and existing_creds.get("user_id") == username
                 ):
                     existing_device_id = existing_creds["device_id"]
@@ -3163,7 +3142,9 @@ async def matrix_relay(
             # For Matrix replies, we need to format the body with quoted content
             # Get the original message details for proper quoting
             try:
-                orig = get_message_map_by_matrix_event_id(reply_to_event_id)
+                orig = await asyncio.to_thread(
+                    get_message_map_by_matrix_event_id, reply_to_event_id
+                )
                 if orig:
                     # orig = (meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)
                     _, _, original_text, original_meshnet = orig
@@ -4001,7 +3982,9 @@ async def on_room_message(
 
         # If original_matrix_event_id is set, this is a reaction to some other matrix event
         if original_matrix_event_id:
-            orig = get_message_map_by_matrix_event_id(original_matrix_event_id)
+            orig = await asyncio.to_thread(
+                get_message_map_by_matrix_event_id, original_matrix_event_id
+            )
             if not orig:
                 # If we don't find the original message in the DB, we suspect it's a reaction-to-reaction scenario
                 logger.debug(

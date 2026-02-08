@@ -98,7 +98,7 @@ check_doc_files() {
 					local FENCE_LINE=$((FENCE_IDX + 1))
 
 					# Check for fence opening (```... or ~~~... with 3+ chars)
-					if [[ ${FENCE_CONTENT} =~ ^[[:space:]]*(\`+|~+) ]]; then
+					if [[ ${FENCE_CONTENT} =~ ^[[:space:]]*(\`{3,}|~{3,}) ]]; then
 						# Found opening fence - capture the delimiter (``` or ~~~)
 						local DELIMITER="${BASH_REMATCH[1]}"
 

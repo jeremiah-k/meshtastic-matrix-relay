@@ -550,6 +550,10 @@ def _validate_credentials_json(
                 ", ".join(missing_fields),
                 credentials_path,
             )
+            print(
+                f"❌ Error: credentials.json missing required fields: {', '.join(missing_fields)}",
+                file=sys.stderr,
+            )
             continue
 
         # Optional device_id for legacy compatibility
