@@ -74,7 +74,7 @@ ENV MMRELAY_HOME=/data
 USER mmrelay
 
 # Health check - uses ready-file when MMRELAY_READY_FILE is set, otherwise runs doctor
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD sh -c 'if [ -n "$MMRELAY_READY_FILE" ]; then test -f "$MMRELAY_READY_FILE"; else mmrelay doctor; fi'
 
 # Default command

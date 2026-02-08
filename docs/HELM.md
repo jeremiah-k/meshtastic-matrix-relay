@@ -498,7 +498,7 @@ The Helm chart stores all data in a PVC mounted at `/data`. Backing up this PVC 
 
 #### Backup Methods
 
-**Method 1: PVC snapshot (recommended)**
+##### Method 1: PVC snapshot (recommended)
 
 If your Kubernetes storage provider supports volume snapshots:
 
@@ -511,7 +511,7 @@ kubectl create volumesnapshot mmrelay-data-backup-$(date +%Y%m%d) \
 
 Check your cloud provider's documentation for snapshot creation limits, retention policies, and restoration procedures.
 
-**Method 2: Exec-based backup (quick and simple)**
+##### Method 2: Exec-based backup (quick and simple)
 
 ```bash
 # Get the pod name
@@ -521,7 +521,7 @@ POD_NAME=$(kubectl get pods -n mmrelay -l app.kubernetes.io/name=mmrelay -o json
 kubectl exec -n mmrelay $POD_NAME -- tar czf - /data > mmrelay-backup-$(date +%Y%m%d).tar.gz
 ```
 
-**Method 3: rsync backup (for larger deployments)**
+##### Method 3: rsync backup (for larger deployments)
 
 ```bash
 # Create a temporary pod with the PVC mounted

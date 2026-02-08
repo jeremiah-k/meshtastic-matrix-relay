@@ -1836,8 +1836,7 @@ def handle_doctor_command(args: argparse.Namespace) -> int:
         print("   ⚠️  Migration RECOMMENDED:")
         print("       Legacy data detected in one or more locations.")
         print("       Run 'mmrelay migrate --dry-run' to preview migration.")
-        print("       Run 'mmrelay migrate' to perform migration (default: copy).")
-        print("       Use '--move' flag to move instead of copy.")
+        print("       Run 'mmrelay migrate' to perform migration.")
         print("       Use '--force' flag to skip backup prompts.")
     else:
         print("   ✅ No migration needed (clean install or already migrated)")
@@ -1996,8 +1995,11 @@ def handle_auth_status(args: argparse.Namespace) -> int:
     try:
         explicit_path = get_explicit_credentials_path(config_data)
     except InvalidCredentialsPathTypeError as exc:
+        from mmrelay.log_utils import get_logger
+
+        get_logger("CLI").error("Invalid credentials_path configuration", exc_info=True)
         print(f"❌ Error: {exc}", file=sys.stderr)
-        explicit_path = None
+        return 1
 
     candidate_paths = get_credentials_search_paths(
         explicit_path=explicit_path,

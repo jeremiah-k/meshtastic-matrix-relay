@@ -78,8 +78,8 @@ See [Kubernetes-Specific Notes](#kubernetes-specific-notes) for detailed instruc
 
 ### Migration Command Flags
 
-- `--dry-run`: Preview migration actions without changing files.
-- `--force`: Allow overwriting existing files without backup.
+- `--dry-run`: Preview migration actions without changing files. Recommended before applying changes.
+- `--force`: Allow overwriting existing files in `MMRELAY_HOME` without creating backups. Use only if you have confirmed your own external backups.
 
 ## After Upgrading
 

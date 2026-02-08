@@ -1,6 +1,5 @@
 """Comprehensive tests for migrate.py module covering all migration functions."""
 
-import json
 import os
 import sqlite3
 import sys
@@ -11,7 +10,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import mmrelay.migrate as migrate_module
-import mmrelay.paths as paths_module
 from mmrelay.migrate import (
     _backup_file,
     _dir_has_entries,
@@ -837,6 +835,45 @@ class TestMigrateDatabase:
         conn.close()
         assert "new_table" in tables
 
+    def test_already_at_target_location(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test database already at target location returns success."""
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+        db_dir = new_home / "database"
+        db_dir.mkdir()
+        db_path = db_dir / "meshtastic.sqlite"
+        db_path.write_text("content")
+
+        result = migrate_database([new_home], new_home)
+
+        assert result["success"] is True
+        assert result["action"] == "none"
+        assert "already at target location" in result["message"]
+
+    def test_target_exists_skips_without_force(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test skips database migration if target exists and force=False."""
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        (legacy_root / "meshtastic.sqlite").write_text("legacy")
+
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+        db_dir = new_home / "database"
+        db_dir.mkdir()
+        db_path = db_dir / "meshtastic.sqlite"
+        db_path.write_text("existing")
+
+        result = migrate_database([legacy_root], new_home, force=False)
+
+        assert result["success"] is True
+        assert result["action"] == "none"
+        assert "already exists at destination" in result["message"]
+        assert db_path.read_text() == "existing"
+
 
 class TestMigrateLogs:
     """Tests for migrate_logs function (lines 614-695)."""
@@ -893,6 +930,45 @@ class TestMigrateLogs:
         assert result["migrated_count"] == 2
         assert not (logs_dir / "app.log").exists()
         assert not (logs_dir / "debug.log").exists()
+
+    def test_already_at_target_location(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test logs already at target location returns success."""
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+        logs_dir = new_home / "logs"
+        logs_dir.mkdir()
+        (logs_dir / "app.log").write_text("content")
+
+        result = migrate_logs([new_home], new_home)
+
+        assert result["success"] is True
+        assert result["action"] == "none"
+        assert "already at target location" in result["message"]
+
+    def test_target_exists_skips_without_force(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test skips logs migration if target exists and force=False."""
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        old_logs = legacy_root / "logs"
+        old_logs.mkdir()
+        (old_logs / "app.log").write_text("legacy")
+
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+        new_logs = new_home / "logs"
+        new_logs.mkdir()
+        (new_logs / "existing.log").write_text("existing")
+
+        result = migrate_logs([legacy_root], new_home, force=False)
+
+        assert result["success"] is True
+        assert result["action"] == "none"
+        assert "already exists at destination" in result["message"]
+        assert (new_logs / "existing.log").read_text() == "existing"
 
     def test_timestamped_log_names(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1079,6 +1155,42 @@ class TestMigratePlugins:
         assert (new_home / "plugins" / "community" / "plugin2").exists()
         assert not community_dir.exists()
         assert not plugins_dir.exists()
+
+    def test_already_at_target_location(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test plugins already at target location returns success."""
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+        plugins_dir = new_home / "plugins"
+        plugins_dir.mkdir()
+
+        result = migrate_plugins([new_home], new_home)
+
+        assert result["success"] is True
+        assert result["action"] == "none"
+        assert "already at target location" in result["message"]
+
+    def test_target_exists_skips_without_force(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test skips plugins migration if target exists and force=False."""
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        old_plugins = legacy_root / "plugins"
+        old_plugins.mkdir()
+        (old_plugins / "custom").mkdir()
+
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+        new_plugins = new_home / "plugins"
+        new_plugins.mkdir()
+
+        result = migrate_plugins([legacy_root], new_home, force=False)
+
+        assert result["success"] is True
+        assert result["action"] == "none"
+        assert "already exists at destination" in result["message"]
 
 
 class TestMigrateGpxtracker:

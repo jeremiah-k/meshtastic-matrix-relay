@@ -8,7 +8,6 @@ follow pytest conventions and document the purpose of each test case.
 Inline comments explain test assertions and expected behavior for clarity.
 """
 
-import json
 import os
 import shutil
 import sqlite3
@@ -36,7 +35,6 @@ from mmrelay.migrate import (
     print_migration_verification,
     verify_migration,
 )
-from mmrelay.paths import get_home_dir
 
 
 class TestPathIsWithinHome:

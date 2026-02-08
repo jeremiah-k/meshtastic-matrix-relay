@@ -1411,15 +1411,8 @@ async def _resolve_and_load_credentials(
             credentials_path = (
                 candidate_path
                 if candidate_path is not None
-                else cast(
-                    "str | None",
-                    await asyncio.to_thread(
-                        cast(
-                            "Callable[[dict[str, Any] | None], str]",
-                            _resolve_credentials_save_path,
-                        ),
-                        config_data,
-                    ),
+                else await asyncio.to_thread(
+                    _resolve_credentials_save_path, config_data  # type: ignore[arg-type]
                 )
             )
             matrix_homeserver = credentials["homeserver"]
@@ -2295,6 +2288,10 @@ async def connect_matrix(
     matrix_access_token = auth_info.access_token
     bot_user_id = auth_info.user_id
     e2ee_device_id = auth_info.device_id
+
+    if not isinstance(config, dict):
+        logger.error("Configuration is not a valid mapping. Cannot connect to Matrix.")
+        return None
 
     if "matrix_rooms" not in config:
         logger.error("Configuration is missing 'matrix_rooms' section")

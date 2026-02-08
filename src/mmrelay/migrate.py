@@ -5,10 +5,9 @@ Handles automatic migration from legacy and partial new layouts to unified
 MMRELAY_HOME directory structure.
 
 Migration rules:
-- Atomic operations with rollback on failure
+- Move semantics with backup-before-overwrite safety
 - Preserve old files as backups (with timestamp suffixes)
 - Support dry-run mode for testing
-- Track migration state to avoid re-running
 - Clear deprecation warnings for legacy environment variables
 
 Migration paths (v1.2.x → v1.3):
@@ -45,7 +44,6 @@ Plugin Data Migration (Three-Tier System):
     New: $MMRELAY_HOME/plugins/community/gpxtracker/data/
 """
 
-import json
 import shutil
 import sqlite3
 import sys
@@ -55,7 +53,7 @@ from typing import Any, Callable
 
 from mmrelay.constants.app import CREDENTIALS_FILENAME, MATRIX_DIRNAME, STORE_DIRNAME
 from mmrelay.log_utils import get_logger
-from mmrelay.paths import get_home_dir, resolve_all_paths
+from mmrelay.paths import resolve_all_paths
 
 logger = get_logger("Migration")
 
@@ -550,7 +548,7 @@ def migrate_credentials(
 
     for legacy_root in roots_to_scan:
         candidate = legacy_root / CREDENTIALS_FILENAME
-        if candidate == new_creds:
+        if candidate.resolve() == new_creds.resolve():
             continue
         if candidate.exists():
             old_creds = candidate
@@ -561,6 +559,17 @@ def migrate_credentials(
         return {
             "success": True,
             "message": "No credentials file found in legacy locations",
+        }
+
+    # Skip if target already exists and not forcing
+    if new_creds.exists() and not force:
+        logger.info("Credentials already exist at destination, skipping: %s", new_creds)
+        return {
+            "success": True,
+            "old_path": str(old_creds),
+            "new_path": str(new_creds),
+            "action": "none",
+            "message": "Credentials already exist at destination",
         }
 
     if dry_run:
@@ -649,7 +658,7 @@ def migrate_config(
 
     for legacy_root in legacy_roots:
         candidate = legacy_root / "config.yaml"
-        if candidate == new_config:
+        if candidate.resolve() == new_config.resolve():
             if candidate.exists():
                 logger.info(
                     "Config already at target location, no migration needed: %s",
@@ -672,6 +681,17 @@ def migrate_config(
         return {
             "success": True,
             "message": "No config.yaml found in legacy locations",
+        }
+
+    # Skip if target already exists and not forcing
+    if new_config.exists() and not force:
+        logger.info("Config already exists at destination, skipping: %s", new_config)
+        return {
+            "success": True,
+            "old_path": str(old_config),
+            "new_path": str(new_config),
+            "action": "none",
+            "message": "Config already exists at destination",
         }
 
     if dry_run:
@@ -769,23 +789,11 @@ def migrate_database(
         dict: Result summary including at minimum `success` (bool). On success includes `old_path` (source main DB path), `new_path` (destination database directory), and `action` (`"move"`). May include `dry_run`, `message`, or `error` keys for additional context.
     """
     new_db_dir = new_home / "database"
-
-    if dry_run:
-        logger.info("[DRY RUN] Would move database to %s", new_db_dir)
-        return {
-            "success": True,
-            "new_path": str(new_db_dir),
-            "action": "move",
-            "dry_run": True,
-        }
-
-    new_db_dir.mkdir(parents=True, exist_ok=True)
-
     candidates = []
 
     for legacy_root in legacy_roots:
         legacy_db = legacy_root / "meshtastic.sqlite"
-        if legacy_db == new_db_dir / "meshtastic.sqlite":
+        if legacy_db.resolve() == (new_db_dir / "meshtastic.sqlite").resolve():
             if legacy_db.exists() and len(legacy_roots) == 1:
                 logger.info(
                     "Database already at target location, no migration needed: %s",
@@ -809,7 +817,7 @@ def migrate_database(
         partial_data_dir = legacy_root / "data"
         if partial_data_dir.exists():
             partial_db = partial_data_dir / "meshtastic.sqlite"
-            if partial_db == new_db_dir / "meshtastic.sqlite":
+            if partial_db.resolve() == (new_db_dir / "meshtastic.sqlite").resolve():
                 continue
             if partial_db.exists():
                 candidates.append(partial_db)
@@ -821,7 +829,7 @@ def migrate_database(
         legacy_db_dir = legacy_root / "database"
         if legacy_db_dir.exists():
             legacy_db = legacy_db_dir / "meshtastic.sqlite"
-            if legacy_db == new_db_dir / "meshtastic.sqlite":
+            if legacy_db.resolve() == (new_db_dir / "meshtastic.sqlite").resolve():
                 if legacy_db.exists() and len(legacy_roots) == 1:
                     logger.info(
                         "Database already at target location, no migration needed: %s",
@@ -847,6 +855,27 @@ def migrate_database(
             "success": True,
             "message": "No database files found in legacy location",
         }
+
+    # Skip if target already exists and not forcing
+    if (new_db_dir / "meshtastic.sqlite").exists() and not force:
+        logger.info("Database already exists at destination, skipping: %s", new_db_dir)
+        return {
+            "success": True,
+            "new_path": str(new_db_dir),
+            "action": "none",
+            "message": "Database already exists at destination",
+        }
+
+    if dry_run:
+        logger.info("[DRY RUN] Would move database to %s", new_db_dir)
+        return {
+            "success": True,
+            "new_path": str(new_db_dir),
+            "action": "move",
+            "dry_run": True,
+        }
+
+    new_db_dir.mkdir(parents=True, exist_ok=True)
 
     most_recent = _get_most_recent_database(candidates)
     if not most_recent:
@@ -999,7 +1028,7 @@ def migrate_logs(
     new_logs_dir = new_home / "logs"
 
     # Add same-path guard
-    if old_logs_dir == new_logs_dir:
+    if old_logs_dir.resolve() == new_logs_dir.resolve():
         logger.info(
             "Logs already at target location, no migration needed: %s", new_logs_dir
         )
@@ -1009,6 +1038,19 @@ def migrate_logs(
             "new_path": str(new_logs_dir),
             "action": "none",
             "message": "Logs already at target location",
+        }
+
+    # Skip if target already exists and not forcing
+    if new_logs_dir.exists() and not force:
+        logger.info(
+            "Logs directory already exists at destination, skipping: %s", new_logs_dir
+        )
+        return {
+            "success": True,
+            "old_path": str(old_logs_dir),
+            "new_path": str(new_logs_dir),
+            "action": "none",
+            "message": "Logs directory already exists at destination",
         }
 
     if dry_run:
@@ -1033,19 +1075,6 @@ def migrate_logs(
             return {
                 "success": False,
                 "error": f"Failed to backup logs directory: {e}",
-                "old_path": str(old_logs_dir),
-                "migrated_count": 0,
-            }
-    elif not new_logs_dir.exists() and not force:
-        backup_path = _backup_file(new_logs_dir)
-        try:
-            backup_path.mkdir(parents=True, exist_ok=True)
-            logger.info("Created empty logs backup directory: %s", backup_path)
-        except (OSError, IOError) as e:
-            logger.exception("Failed to create logs backup directory")
-            return {
-                "success": False,
-                "error": f"Failed to create logs backup directory: {e}",
                 "old_path": str(old_logs_dir),
                 "migrated_count": 0,
             }
@@ -1131,7 +1160,7 @@ def migrate_store(
 
     for legacy_root in roots_to_scan:
         candidate = legacy_root / STORE_DIRNAME
-        if candidate == new_store_dir:
+        if candidate.resolve() == new_store_dir.resolve():
             continue
         if candidate.exists():
             old_store_dir = candidate
@@ -1142,6 +1171,19 @@ def migrate_store(
         return {
             "success": True,
             "message": "No E2EE store directory found in legacy locations",
+        }
+
+    # Skip if target already exists and not forcing
+    if new_store_dir.exists() and not force:
+        logger.info(
+            "Store directory already exists at destination, skipping: %s", new_store_dir
+        )
+        return {
+            "success": True,
+            "old_path": str(old_store_dir),
+            "new_path": str(new_store_dir),
+            "action": "none",
+            "message": "Store directory already exists at destination",
         }
 
     if dry_run:
@@ -1166,14 +1208,6 @@ def migrate_store(
             shutil.copytree(str(new_store_dir), str(backup_path))
         except (OSError, IOError) as e:
             logger.exception("Failed to backup store directory")
-            backup_error = str(e)
-    elif not new_store_dir.exists() and not force:
-        backup_path = _backup_file(new_store_dir)
-        try:
-            backup_path.mkdir(parents=True, exist_ok=True)
-            logger.info("Created empty store backup directory: %s", backup_path)
-        except (OSError, IOError) as e:
-            logger.exception("Failed to create store backup directory")
             backup_error = str(e)
 
     if backup_error:
@@ -1263,11 +1297,10 @@ def _migrate_plugin_tier(
             except (OSError, IOError) as e:
                 logger.warning("Failed to migrate %s plugin %s: %s", tier_name, item, e)
                 errors.append(f"{tier_name} {item}: {e}")
-        return migrated
     except (OSError, IOError) as e:
         logger.warning("Failed to migrate %s plugins: %s", tier_name, e)
         errors.append(f"{tier_name}: {e}")
-        return False
+
     return migrated
 
 
@@ -1314,7 +1347,7 @@ def migrate_plugins(
     new_plugins_dir = new_home / "plugins"
 
     # Add same-path guard
-    if old_plugins_dir == new_plugins_dir:
+    if old_plugins_dir.resolve() == new_plugins_dir.resolve():
         logger.info(
             "Plugins already at target location, no migration needed: %s",
             new_plugins_dir,
@@ -1325,6 +1358,20 @@ def migrate_plugins(
             "new_path": str(new_plugins_dir),
             "action": "none",
             "message": "Plugins already at target location",
+        }
+
+    # Skip if target already exists and not forcing
+    if new_plugins_dir.exists() and not force:
+        logger.info(
+            "Plugins directory already exists at destination, skipping: %s",
+            new_plugins_dir,
+        )
+        return {
+            "success": True,
+            "old_path": str(old_plugins_dir),
+            "new_path": str(new_plugins_dir),
+            "action": "none",
+            "message": "Plugins directory already exists at destination",
         }
 
     if dry_run:
@@ -1351,14 +1398,6 @@ def migrate_plugins(
         except (OSError, IOError) as e:
             logger.warning("Failed to backup plugins directory: %s", e)
             errors.append(f"plugins backup: {e}")
-    elif not new_plugins_dir.exists() and not force:
-        backup_path = _backup_file(new_plugins_dir)
-        try:
-            backup_path.mkdir(parents=True, exist_ok=True)
-            logger.info("Created empty plugins backup directory: %s", backup_path)
-        except (OSError, IOError) as e:
-            logger.warning("Failed to create plugins backup directory: %s", e)
-            errors.append(f"plugins backup dir: {e}")
 
     try:
         new_plugins_dir.mkdir(parents=True, exist_ok=True)
@@ -1807,21 +1846,10 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
             report["message"] = "Dry run complete - no changes made"
 
         report["success"] = True
-    except Exception as exc:
-        # Determine if this is a known/expected migration failure or an unexpected bug
-        unexpected = not isinstance(
-            exc, (MigrationError, OSError, IOError, sqlite3.DatabaseError)
-        )
-        if unexpected:
-            logger.exception("Unexpected error during migration")
-
+    except (MigrationError, OSError, IOError, sqlite3.DatabaseError) as exc:
         report["success"] = False
         report["error"] = str(exc)
         report["message"] = "Migration failed"
-
-        if unexpected:
-            raise
-
         return report
 
     logger.info(

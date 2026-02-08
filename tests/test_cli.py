@@ -571,7 +571,8 @@ class TestMainFunction(unittest.TestCase):
             self.assertEqual(result, 0)
             mock_expanduser.assert_called_once_with("~/mmrelay")
             mock_makedirs.assert_called_once_with("/home/test/mmrelay", exist_ok=True)
-            self.assertEqual(str(get_home_dir()), "/home/test/mmrelay")
+            expected_home = os.path.abspath(mock_expanduser.return_value)
+            self.assertEqual(str(get_home_dir()), expected_home)
         finally:
             reset_home_override()
 
