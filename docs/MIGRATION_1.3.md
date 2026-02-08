@@ -53,7 +53,8 @@ For containers, the canonical model remains:
 3. Run `mmrelay migrate` to move legacy data into MMRELAY_HOME.
 4. Start MMRelay.
 
-If you want legacy locations cleaned up after migration, use `mmrelay migrate --move`.
+Migration in v1.3 uses **move semantics** by default: legacy files are moved to the new structure and removed from their original locations to prevent duplicates.
+
 If you need to overwrite existing target files without creating backups, use
 `mmrelay migrate --force` (only after confirming your own external backup).
 
@@ -78,7 +79,6 @@ See [Kubernetes-Specific Notes](#kubernetes-specific-notes) for detailed instruc
 ### Migration Command Flags
 
 - `--dry-run`: Preview migration actions without changing files.
-- `--move`: Move files instead of copy (removes legacy files after successful migration).
 - `--force`: Allow overwriting existing files without backup.
 
 ## After Upgrading
@@ -113,16 +113,6 @@ mmrelay doctor --migration
 ```
 
 This prints human-readable warnings when legacy data is still present.
-
-## Automatic Migration Rollback
-
-If the `mmrelay migrate` command fails during its execution, it will attempt to automatically roll back any changes made during that run. This process uses internal backups created during the migration.
-
-A successful automatic rollback ensures that:
-
-- Files and directories are restored to their pre-migration state.
-- Newly created directories (like `logs/` or `matrix/store/`) that did not exist before are removed to leave no residue.
-- The migration state is cleared, allowing you to retry after resolving the issue.
 
 ## How to Roll Back Safely (Manual)
 

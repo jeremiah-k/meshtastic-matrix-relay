@@ -39,7 +39,7 @@ def test_verify_migration_after_move(tmp_path, monkeypatch):
     assert paths_info["home"] == str(new_home)
     assert paths_info["legacy_sources"] == [str(legacy_root)]
 
-    report = perform_migration(move=True, force=True)
+    report = perform_migration(force=True)
     assert report["success"] is True
 
     verification = verify_migration()

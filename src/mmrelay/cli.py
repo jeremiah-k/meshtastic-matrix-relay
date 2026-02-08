@@ -282,11 +282,6 @@ def parse_arguments() -> argparse.Namespace:
         help="Preview migration without making changes",
     )
     migrate_parser.add_argument(
-        "--move",
-        action="store_true",
-        help="Use MOVE operation instead of COPY (requires --force or manual confirmation)",
-    )
-    migrate_parser.add_argument(
         "--force",
         action="store_true",
         help="Allow overwriting existing files without backup",
@@ -398,11 +393,6 @@ def parse_arguments() -> argparse.Namespace:
         "--dry-run",
         action="store_true",
         help="Preview migration without making changes",
-    )
-    service_migrate_parser.add_argument(
-        "--move",
-        action="store_true",
-        help="Use MOVE operation instead of COPY (requires --force or manual confirmation)",
     )
     service_migrate_parser.add_argument(
         "--force",
@@ -2135,10 +2125,10 @@ def handle_migrate_command(args: argparse.Namespace) -> int:
     """
     Run data migration from legacy directory layouts to the unified HOME-based layout.
 
-    Honors CLI flags on `args`: `dry_run` (report actions without changing files), `move` (move files instead of copying), and `force` (override safety checks).
+    Honors CLI flags on `args`: `dry_run` (report actions without changing files) and `force` (override safety checks).
 
     Parameters:
-        args (argparse.Namespace): Parsed CLI arguments containing optional `dry_run`, `move`, and `force` attributes.
+        args (argparse.Namespace): Parsed CLI arguments containing optional `dry_run` and `force` attributes.
 
     Returns:
         int: `0` on success, `1` on failure.
@@ -2149,14 +2139,12 @@ def handle_migrate_command(args: argparse.Namespace) -> int:
 
         dry_run = getattr(args, "dry_run", False)
         force = getattr(args, "force", False)
-        move = getattr(args, "move", False)
         paths_info = resolve_all_paths()
         legacy_sources = paths_info.get("legacy_sources", [])
 
         print("MMRelay Migration")
         print("=================")
         print(f"Mode: {'DRY RUN' if dry_run else 'APPLY'}")
-        print(f"Action: {'MOVE' if move else 'COPY'}")
         print(f"Force overwrite: {'yes' if force else 'no'}")
         print(f"MMRELAY_HOME: {paths_info.get('home')}")
         if legacy_sources:
@@ -2167,7 +2155,7 @@ def handle_migrate_command(args: argparse.Namespace) -> int:
             print("Legacy sources detected: none")
         print()
 
-        result = perform_migration(dry_run=dry_run, force=force, move=move)
+        result = perform_migration(dry_run=dry_run, force=force)
 
         if result.get("success"):
             print(

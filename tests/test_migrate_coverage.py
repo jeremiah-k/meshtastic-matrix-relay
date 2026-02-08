@@ -23,10 +23,8 @@ from mmrelay.migrate import (
     _backup_file,
     _dir_has_entries,
     _find_legacy_data,
-    _get_migration_state_path,
     _get_most_recent_database,
     _path_is_within_home,
-    _read_migration_state,
     migrate_config,
     migrate_credentials,
     migrate_database,
@@ -36,7 +34,6 @@ from mmrelay.migrate import (
     migrate_store,
     perform_migration,
     print_migration_verification,
-    rollback_migration,
     verify_migration,
 )
 from mmrelay.paths import get_home_dir
@@ -586,33 +583,6 @@ class TestBackupFile:
         assert ".backup." in backup_path.name
 
 
-class TestMigrationStatePath:
-    """Test _get_migration_state_path function coverage."""
-
-    def test_get_migration_state_path(self) -> None:
-        """Test that state path is under home directory."""
-        state_path = _get_migration_state_path()
-        home = get_home_dir()
-
-        assert home in state_path.parents or state_path.parent == home
-        assert state_path.name == "migration_completed.flag"
-
-
-class TestMigrationStateRead:
-    """Test _read_migration_state legacy parsing."""
-
-    def test_read_migration_state_legacy_string(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Test legacy non-JSON migration state content."""
-        monkeypatch.setattr("mmrelay.migrate.get_home_dir", lambda: tmp_path)
-        state_path = _get_migration_state_path()
-        state_path.write_text("legacy-version", encoding="utf-8")
-
-        result = _read_migration_state()
-        assert result == {"version": "legacy-version", "status": "completed"}
-
-
 class TestMigrateCredentialsEdgeCases:
     """Test migrate_credentials edge cases."""
 
@@ -632,7 +602,7 @@ class TestMigrateCredentialsEdgeCases:
         new_creds.mkdir()
 
         result = migrate_credentials(
-            [legacy_root], new_home, dry_run=False, force=False, move=True
+            [legacy_root], new_home, dry_run=False, force=False
         )
 
         assert result["success"] is True
@@ -655,7 +625,7 @@ class TestMigrateCredentialsEdgeCases:
         new_creds.write_text("old")
 
         result = migrate_credentials(
-            [legacy_root], new_home, dry_run=False, force=False, move=True
+            [legacy_root], new_home, dry_run=False, force=False
         )
 
         assert result["success"] is True
@@ -683,7 +653,7 @@ class TestMigrateCredentialsEdgeCases:
 
         with mock.patch("shutil.copy2", side_effect=selective_copy2):
             result = migrate_credentials(
-                [legacy_root], new_home, dry_run=False, force=False, move=False
+                [legacy_root], new_home, dry_run=False, force=False
             )
 
         assert result["success"] is False
@@ -707,9 +677,7 @@ class TestMigrateConfigEdgeCases:
         new_config = new_home / "config.yaml"
         new_config.mkdir()
 
-        result = migrate_config(
-            [legacy_root], new_home, dry_run=False, force=False, move=True
-        )
+        result = migrate_config([legacy_root], new_home, dry_run=False, force=False)
 
         assert result["success"] is True
         assert new_config.is_file()
@@ -727,9 +695,7 @@ class TestMigrateConfigEdgeCases:
         new_config = new_home / "config.yaml"
         new_config.write_text("old")
 
-        result = migrate_config(
-            [legacy_root], new_home, dry_run=False, force=False, move=True
-        )
+        result = migrate_config([legacy_root], new_home, dry_run=False, force=False)
 
         assert result["success"] is True
         assert new_config.read_text() == "config"
@@ -754,15 +720,13 @@ class TestMigrateConfigEdgeCases:
             return original_copy2(src, dst, *args, **kwargs)
 
         with mock.patch("shutil.copy2", side_effect=selective_copy2):
-            result = migrate_config(
-                [legacy_root], new_home, dry_run=False, force=False, move=False
-            )
+            result = migrate_config([legacy_root], new_home, dry_run=False, force=False)
 
         assert result["success"] is False
         assert "Mock backup error" in result.get("error", "")
 
-    def test_migrate_config_copy_failure(self, tmp_path: Path) -> None:
-        """Test migrate_config returns error on copy failure."""
+    def test_migrate_config_move_failure(self, tmp_path: Path) -> None:
+        """Test migrate_config returns error on move failure."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
         old_config = legacy_root / "config.yaml"
@@ -771,15 +735,13 @@ class TestMigrateConfigEdgeCases:
         new_home = tmp_path / "home"
         new_home.mkdir()
 
-        with mock.patch("shutil.copy2", side_effect=OSError("Mock copy error")):
-            result = migrate_config(
-                [legacy_root], new_home, dry_run=False, force=False, move=False
-            )
+        with mock.patch("shutil.move", side_effect=OSError("Mock move error")):
+            result = migrate_config([legacy_root], new_home, dry_run=False, force=False)
 
         assert result["success"] is False
-        assert "Mock copy error" in result["error"]
+        assert "Mock move error" in result["error"]
 
-    def test_migrate_config_already_at_target_move(self, tmp_path: Path) -> None:
+    def test_migrate_config_already_at_target(self, tmp_path: Path) -> None:
         """Test move doesn't delete config when already at target location."""
         new_home = tmp_path / "home"
         new_home.mkdir()
@@ -787,32 +749,12 @@ class TestMigrateConfigEdgeCases:
         config.write_text("my-config")
 
         # Config is already in new_home (not a legacy root)
-        result = migrate_config(
-            [new_home], new_home, dry_run=False, force=False, move=True
-        )
+        result = migrate_config([new_home], new_home, dry_run=False, force=False)
 
         assert result["success"] is True
         assert result["action"] == "none"
         assert "already at target" in result["message"]
         # Verify config still exists and wasn't deleted
-        assert config.exists()
-        assert config.read_text() == "my-config"
-
-    def test_migrate_config_already_at_target_copy(self, tmp_path: Path) -> None:
-        """Test copy when config already at target location (no-op)."""
-        new_home = tmp_path / "home"
-        new_home.mkdir()
-        config = new_home / "config.yaml"
-        config.write_text("my-config")
-
-        result = migrate_config(
-            [new_home], new_home, dry_run=False, force=False, move=False
-        )
-
-        assert result["success"] is True
-        assert result["action"] == "none"
-        assert "already at target" in result["message"]
-        # Verify config still exists
         assert config.exists()
         assert config.read_text() == "my-config"
 
@@ -829,9 +771,7 @@ class TestMigrateDatabaseEdgeCases:
         for root in legacy_roots:
             root.mkdir()
 
-        result = migrate_database(
-            legacy_roots, new_home, dry_run=False, force=False, move=False
-        )
+        result = migrate_database(legacy_roots, new_home, dry_run=False, force=False)
         assert result["success"] is True
         assert "No database files found" in result["message"]
 
@@ -848,7 +788,7 @@ class TestMigrateDatabaseEdgeCases:
 
         with mock.patch("mmrelay.migrate._get_most_recent_database", return_value=None):
             result = migrate_database(
-                [legacy_root], new_home, dry_run=False, force=False, move=False
+                [legacy_root], new_home, dry_run=False, force=False
             )
             assert result["success"] is False
             assert "No valid database files found" in result["message"]
@@ -906,7 +846,7 @@ class TestMigrateDatabaseEdgeCases:
 
         with mock.patch("shutil.copy2", side_effect=selective_copy2):
             result = migrate_database(
-                [legacy_root], new_home, dry_run=False, force=False, move=False
+                [legacy_root], new_home, dry_run=False, force=False
             )
             # Backup failure should abort database migration to avoid overwriting data
             assert result["success"] is False
@@ -929,9 +869,7 @@ class TestMigrateDatabaseEdgeCases:
         wal = database_dir / "meshtastic.sqlite-wal"
         wal.write_text("wal")
 
-        result = migrate_database(
-            [legacy_root], new_home, dry_run=False, force=False, move=False
-        )
+        result = migrate_database([legacy_root], new_home, dry_run=False, force=False)
 
         assert result["success"] is True
         assert (new_home / "database" / "meshtastic.sqlite").exists()
@@ -952,7 +890,7 @@ class TestMigrateDatabaseEdgeCases:
             return_value=tmp_path / "other.sqlite",
         ):
             result = migrate_database(
-                [legacy_root], new_home, dry_run=False, force=False, move=False
+                [legacy_root], new_home, dry_run=False, force=False
             )
             assert result["success"] is False
             assert "Most recent database group not found" in result["message"]
@@ -980,7 +918,7 @@ class TestMigrateDatabaseEdgeCases:
             Path, "unlink", autospec=True, side_effect=failing_unlink
         ):
             result = migrate_database(
-                [legacy_root], new_home, dry_run=False, force=False, move=True
+                [legacy_root], new_home, dry_run=False, force=False
             )
             assert result["success"] is True
 
@@ -995,7 +933,7 @@ class TestMigrateDatabaseEdgeCases:
 
         with mock.patch("shutil.copy2", side_effect=OSError("Mock copy error")):
             result = migrate_database(
-                [legacy_root], new_home, dry_run=False, force=False, move=False
+                [legacy_root], new_home, dry_run=False, force=False
             )
             assert result["success"] is False
             assert "error" in result
@@ -1019,9 +957,7 @@ class TestMigrateDatabaseEdgeCases:
         shm = data_dir / "meshtastic.sqlite-shm"
         shm.write_text("shm")
 
-        result = migrate_database(
-            [legacy_root], new_home, dry_run=False, force=False, move=False
-        )
+        result = migrate_database([legacy_root], new_home, dry_run=False, force=False)
 
         assert result["success"] is True
         assert (new_home / "database" / "meshtastic.sqlite").exists()
@@ -1058,9 +994,7 @@ class TestMigrateDatabaseEdgeCases:
             mock_connect.return_value.__enter__.return_value = mock_conn
 
             with pytest.raises(MigrationError) as exc_info:
-                migrate_database(
-                    [legacy_root], new_home, dry_run=False, force=False, move=False
-                )
+                migrate_database([legacy_root], new_home, dry_run=False, force=False)
 
         assert "integrity check failed" in str(exc_info.value).lower()
 
@@ -1092,9 +1026,7 @@ class TestMigrateDatabaseEdgeCases:
             "sqlite3.connect", side_effect=sqlite3.DatabaseError("Mock error")
         ):
             with pytest.raises(MigrationError) as exc_info:
-                migrate_database(
-                    [legacy_root], new_home, dry_run=False, force=False, move=False
-                )
+                migrate_database([legacy_root], new_home, dry_run=False, force=False)
 
         assert "Database verification failed" in str(exc_info.value)
 
@@ -1118,9 +1050,7 @@ class TestMigrateDatabaseEdgeCases:
             mock_connect.return_value = mock_conn
 
             with pytest.raises(MigrationError) as exc_info:
-                migrate_database(
-                    [legacy_root], new_home, dry_run=False, force=False, move=False
-                )
+                migrate_database([legacy_root], new_home, dry_run=False, force=False)
 
             assert "integrity check failed" in str(exc_info.value).lower()
 
@@ -1142,9 +1072,7 @@ class TestMigrateDatabaseEdgeCases:
             "sqlite3.connect", side_effect=sqlite3.DatabaseError("Mock error")
         ):
             with pytest.raises(MigrationError) as exc_info:
-                migrate_database(
-                    [legacy_root], new_home, dry_run=False, force=False, move=False
-                )
+                migrate_database([legacy_root], new_home, dry_run=False, force=False)
 
             assert "Database verification failed" in str(exc_info.value)
 
@@ -1162,9 +1090,7 @@ class TestMigrateDatabaseEdgeCases:
         legacy_wal.write_text("wal data")
 
         # Should not call integrity check on WAL files
-        result = migrate_database(
-            [legacy_root], new_home, dry_run=False, force=False, move=False
-        )
+        result = migrate_database([legacy_root], new_home, dry_run=False, force=False)
         assert result["success"] is True
 
 
@@ -1207,9 +1133,7 @@ class TestMigrateLogsEdgeCases:
             mock.patch("shutil.copy2", side_effect=selective_copy2),
         ):
             mock_datetime.now.return_value = fixed_time
-            result = migrate_logs(
-                [legacy_root], new_home, dry_run=False, force=False, move=False
-            )
+            result = migrate_logs([legacy_root], new_home, dry_run=False, force=False)
 
         # Backup failure is now fatal
         assert result["success"] is False
@@ -1238,9 +1162,7 @@ class TestMigrateStoreEdgeCases:
         (old_store_dir / "file").write_text("data")
 
         with mock.patch("shutil.copytree", side_effect=OSError("Mock backup error")):
-            result = migrate_store(
-                [legacy_root], new_home, dry_run=False, force=False, move=True
-            )
+            result = migrate_store([legacy_root], new_home, dry_run=False, force=False)
             assert result["success"] is False
             assert "backup" in result["error"]
 
@@ -1261,9 +1183,7 @@ class TestMigrateStoreEdgeCases:
         old_store_dir.mkdir()
         (old_store_dir / "new_file").write_text("new")
 
-        result = migrate_store(
-            [legacy_root], new_home, dry_run=False, force=False, move=True
-        )
+        result = migrate_store([legacy_root], new_home, dry_run=False, force=False)
 
         assert result["success"] is True
         assert result["action"] == "move"
@@ -1271,35 +1191,8 @@ class TestMigrateStoreEdgeCases:
         assert not (new_store_dir / "old_file").exists()
         assert (new_store_dir / "new_file").exists()
 
-    def test_migrate_store_copy_existing_directory_removal(
-        self, tmp_path: Path
-    ) -> None:
-        """Test that copy operation removes existing directory."""
-        new_home = tmp_path / "new_home"
-        new_home.mkdir()
-        new_store_dir = new_home / "matrix" / "store"
-        new_store_dir.parent.mkdir(parents=True)
-        new_store_dir.mkdir()
-        (new_store_dir / "old_file").write_text("old")
-
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        old_store_dir = legacy_root / "store"
-        old_store_dir.mkdir()
-        (old_store_dir / "new_file").write_text("new")
-
-        result = migrate_store(
-            [legacy_root], new_home, dry_run=False, force=False, move=False
-        )
-
-        assert result["success"] is True
-        assert result["action"] == "copy"
-        # Old file should be gone (directory replaced)
-        assert not (new_store_dir / "old_file").exists()
-        assert (new_store_dir / "new_file").exists()
-
-    def test_migrate_store_copytree_failure(self, tmp_path: Path) -> None:
-        """Test handling of copytree failure."""
+    def test_migrate_store_move_failure(self, tmp_path: Path) -> None:
+        """Test handling of move failure."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
         legacy_root = tmp_path / "legacy"
@@ -1308,10 +1201,8 @@ class TestMigrateStoreEdgeCases:
         old_store_dir.mkdir()
         (old_store_dir / "file").write_text("data")
 
-        with mock.patch("shutil.copytree", side_effect=OSError("Mock copy error")):
-            result = migrate_store(
-                [legacy_root], new_home, dry_run=False, force=False, move=False
-            )
+        with mock.patch("shutil.move", side_effect=OSError("Mock move error")):
+            result = migrate_store([legacy_root], new_home, dry_run=False, force=False)
             assert result["success"] is False
             assert "error" in result
 
@@ -1339,7 +1230,7 @@ class TestMigratePluginsEdgeCases:
 
         with mock.patch("shutil.copytree", side_effect=OSError("Mock backup error")):
             result = migrate_plugins(
-                [legacy_root], new_home, dry_run=False, force=False, move=False
+                [legacy_root], new_home, dry_run=False, force=False
             )
             # Backup failure should surface as migration failure
             assert result["success"] is False
@@ -1372,7 +1263,7 @@ class TestMigratePluginsEdgeCases:
             mock.patch.object(Path, "mkdir", autospec=True, side_effect=failing_mkdir),
         ):
             result = migrate_plugins(
-                [legacy_root], new_home, dry_run=False, force=False, move=False
+                [legacy_root], new_home, dry_run=False, force=False
             )
 
         assert result["success"] is False
@@ -1397,9 +1288,7 @@ class TestMigratePluginsEdgeCases:
             return original_mkdir(self, *args, **kwargs)
 
         with mock.patch.object(Path, "mkdir", autospec=True, side_effect=failing_mkdir):
-            result = migrate_plugins(
-                [legacy_root], new_home, dry_run=False, force=True, move=False
-            )
+            result = migrate_plugins([legacy_root], new_home, dry_run=False, force=True)
 
         assert result["success"] is False
         assert "plugins dir" in result["error"]
@@ -1433,7 +1322,7 @@ class TestMigratePluginsEdgeCases:
 
         with mock.patch("shutil.copytree", side_effect=selective_copytree):
             result = migrate_plugins(
-                [legacy_root], new_home, dry_run=False, force=False, move=False
+                [legacy_root], new_home, dry_run=False, force=False
             )
 
         assert result["success"] is False
@@ -1460,7 +1349,7 @@ class TestMigratePluginsEdgeCases:
 
         with mock.patch.object(Path, "rmdir", autospec=True, side_effect=failing_rmdir):
             result = migrate_plugins(
-                [legacy_root], new_home, dry_run=False, force=False, move=True
+                [legacy_root], new_home, dry_run=False, force=False
             )
 
         # Cleanup errors are now non-fatal warnings
@@ -1490,7 +1379,7 @@ class TestMigratePluginsEdgeCases:
 
         with mock.patch.object(Path, "rmdir", autospec=True, side_effect=failing_rmdir):
             result = migrate_plugins(
-                [legacy_root], new_home, dry_run=False, force=False, move=True
+                [legacy_root], new_home, dry_run=False, force=False
             )
 
         # Cleanup errors are now non-fatal warnings
@@ -1510,7 +1399,7 @@ class TestMigratePluginsEdgeCases:
 
         with mock.patch.object(Path, "iterdir", side_effect=OSError("Mock error")):
             result = migrate_plugins(
-                [legacy_root], new_home, dry_run=False, force=False, move=False
+                [legacy_root], new_home, dry_run=False, force=False
             )
 
         assert result["success"] is False
@@ -1538,9 +1427,7 @@ class TestMigratePluginsEdgeCases:
         (old_custom_dir / "test_plugin").mkdir()
         (old_custom_dir / "test_plugin" / "new_file.txt").write_text("new content")
 
-        result = migrate_plugins(
-            [legacy_root], new_home, dry_run=False, force=False, move=True
-        )
+        result = migrate_plugins([legacy_root], new_home, dry_run=False, force=False)
 
         assert result["success"] is True
         # Old file should be gone (directory replaced)
@@ -1570,9 +1457,7 @@ class TestMigratePluginsEdgeCases:
         (old_custom_dir / "test_plugin").mkdir()
         (old_custom_dir / "test_plugin" / "new_file.txt").write_text("new content")
 
-        result = migrate_plugins(
-            [legacy_root], new_home, dry_run=False, force=False, move=False
-        )
+        result = migrate_plugins([legacy_root], new_home, dry_run=False, force=False)
 
         assert result["success"] is True
         # Old file should be gone (directory replaced)
@@ -1595,9 +1480,7 @@ class TestMigratePluginsEdgeCases:
         (old_custom_dir / "plugin").mkdir()
 
         # Perform migration with move
-        result = migrate_plugins(
-            [legacy_root], new_home, dry_run=False, force=False, move=True
-        )
+        result = migrate_plugins([legacy_root], new_home, dry_run=False, force=False)
 
         assert result["success"] is True
         assert result["action"] == "move"
@@ -1619,9 +1502,7 @@ class TestMigratePluginsEdgeCases:
         (old_custom_dir / "plugin").mkdir()
 
         # Perform migration with move
-        result = migrate_plugins(
-            [legacy_root], new_home, dry_run=False, force=False, move=True
-        )
+        result = migrate_plugins([legacy_root], new_home, dry_run=False, force=False)
 
         assert result["success"] is True
         # After moving all plugins, old plugins dir should be empty or removed
@@ -1663,7 +1544,7 @@ class TestMigratePluginsEdgeCases:
 
         with mock.patch("shutil.rmtree", side_effect=failing_rmtree):
             result = migrate_plugins(
-                [legacy_root], new_home, dry_run=False, force=False, move=True
+                [legacy_root], new_home, dry_run=False, force=False
             )
             # Should still succeed despite cleanup errors (logged as debug)
             assert result["success"] is True
@@ -1709,9 +1590,7 @@ class TestMigrateGpxtrackerEdgeCases:
 
         monkeypatch.setattr(builtins, "__import__", mock_import)
 
-        result = migrate_gpxtracker(
-            [legacy_root], new_home, dry_run=False, force=False, move=False
-        )
+        result = migrate_gpxtracker([legacy_root], new_home, dry_run=False, force=False)
 
         assert result["success"] is True
         assert "gpxtracker plugin not configured" in result["message"]
@@ -1773,7 +1652,7 @@ class TestMigrateGpxtrackerEdgeCases:
         ):
             mock_datetime.now.return_value = fixed_time
             result = migrate_gpxtracker(
-                [legacy_root], new_home, dry_run=False, force=False, move=False
+                [legacy_root], new_home, dry_run=False, force=False
             )
 
         assert result["success"] is False
@@ -1786,7 +1665,7 @@ class TestMigrateGpxtrackerEdgeCases:
         )
 
     def test_migrate_gpxtracker_move_failure(self, tmp_path: Path) -> None:
-        """Test handling of GPX file move/copy failure."""
+        """Test handling of GPX file move failure."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
         legacy_root = tmp_path / "legacy"
@@ -1803,55 +1682,12 @@ community-plugins:
     gpx_directory: {gpx_dir}
 """)
 
-        with mock.patch("shutil.copy2", side_effect=OSError("Mock copy error")):
+        with mock.patch("shutil.move", side_effect=OSError("Mock move error")):
             result = migrate_gpxtracker(
-                [legacy_root], new_home, dry_run=False, force=False, move=False
+                [legacy_root], new_home, dry_run=False, force=False
             )
             assert result["success"] is False
-
-    def test_migrate_gpxtracker_source_equals_destination(self, tmp_path: Path) -> None:
-        """Test skipping migration when source equals destination."""
-        new_home = tmp_path / "new_home"
-        new_home.mkdir()
-        new_gpx_dir = new_home / "plugins" / "community" / "gpxtracker" / "data"
-        new_gpx_dir.mkdir(parents=True)
-
-        config = new_home / "config.yaml"
-        config.write_text(
-            f"community-plugins:\n  gpxtracker:\n    gpx_directory: {new_gpx_dir}\n"
-        )
-
-        result = migrate_gpxtracker(
-            [], new_home, dry_run=False, force=False, move=False
-        )
-
-        assert result["success"] is True
-        assert result["migrated_count"] == 0
-        assert "skipping" in result["message"]
-
-    def test_migrate_gpxtracker_copy_failure(self, tmp_path: Path) -> None:
-        """Test handling of GPX file copy failure."""
-        new_home = tmp_path / "new_home"
-        new_home.mkdir()
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        gpx_dir = legacy_root / "gpx"
-        gpx_dir.mkdir()
-        gpx_file = gpx_dir / "track.gpx"
-        gpx_file.write_text("track")
-
-        config = legacy_root / "config.yaml"
-        config.write_text(
-            f"community-plugins:\n  gpxtracker:\n    gpx_directory: {gpx_dir}\n"
-        )
-
-        with mock.patch("shutil.copy2", side_effect=OSError("Mock copy error")):
-            result = migrate_gpxtracker(
-                [legacy_root], new_home, dry_run=False, force=False, move=False
-            )
-
-        assert result["success"] is False
-        assert "copy failed" in result["error"]
+            assert "move failed" in result["error"]
 
     def test_migrate_gpxtracker_glob_oserror(self, tmp_path: Path) -> None:
         """Test handling of OSError during glob iteration."""
@@ -1869,7 +1705,7 @@ community-plugins:
 
         with mock.patch.object(Path, "glob", side_effect=OSError("Mock glob error")):
             result = migrate_gpxtracker(
-                [legacy_root], new_home, dry_run=False, force=False, move=False
+                [legacy_root], new_home, dry_run=False, force=False
             )
 
         assert result["success"] is False
@@ -1889,253 +1725,10 @@ community-plugins:
     gpx_directory: ~/nonexistent_gpx
 """)
 
-        result = migrate_gpxtracker(
-            [legacy_root], new_home, dry_run=False, force=False, move=False
-        )
+        result = migrate_gpxtracker([legacy_root], new_home, dry_run=False, force=False)
 
         # Should succeed gracefully (directory not found is handled)
         assert result["success"] is True
-
-
-class TestRollbackMigration:
-    """Test rollback_migration function coverage."""
-
-    def test_rollback_migration_no_migration_completed(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Test rollback when no migration was completed."""
-        # Ensure migration state file doesn't exist
-        home = tmp_path / "home"
-        home.mkdir()
-        monkeypatch.setattr("mmrelay.migrate.get_home_dir", lambda: home)
-
-        result = rollback_migration()
-        assert result["success"] is True
-        assert "No migration to rollback" in result["message"]
-
-    def test_rollback_migration_restore_credentials_success(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Test successful rollback of credentials."""
-        home = tmp_path / "home"
-        home.mkdir()
-        monkeypatch.setattr("mmrelay.migrate.get_home_dir", lambda: home)
-
-        # Create migration state file
-        state_file = home / "migration_completed.flag"
-        state_file.write_text("1.3")
-
-        # Create backup credentials
-        backup_dir = home / "matrix"
-        backup_dir.mkdir(parents=True, exist_ok=True)
-        backup_creds = backup_dir / "credentials.json.bak.20240101_120000"
-        backup_creds.write_text('{"backup": true}')
-
-        result = rollback_migration()
-
-        assert result["success"] is True
-        assert result["restored_count"] >= 1
-        # Check that credentials were restored
-        creds = home / "matrix" / "credentials.json"
-        assert creds.exists()
-        assert creds.read_text() == '{"backup": true}'
-
-    def test_rollback_migration_restore_database_success(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Test successful rollback of database."""
-        home = tmp_path / "home"
-        home.mkdir()
-        monkeypatch.setattr("mmrelay.migrate.get_home_dir", lambda: home)
-
-        # Create migration state file
-        state_file = home / "migration_completed.flag"
-        state_file.write_text("1.3")
-
-        # Create database directory and backup
-        db_dir = home / "database"
-        db_dir.mkdir()
-        backup_db = db_dir / "meshtastic.sqlite.bak.20240101_120000"
-        backup_db.write_text("backup db")
-
-        result = rollback_migration()
-
-        assert result["success"] is True
-        assert result["restored_count"] >= 1
-        # Check that database was restored
-        db = db_dir / "meshtastic.sqlite"
-        assert db.exists()
-        assert db.read_text() == "backup db"
-
-    def test_rollback_migration_restore_credentials_failure(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Test handling of credentials restore failure."""
-        home = tmp_path / "home"
-        home.mkdir()
-        monkeypatch.setattr("mmrelay.migrate.get_home_dir", lambda: home)
-
-        # Create migration state file
-        state_file = home / "migration_completed.flag"
-        state_file.write_text("1.3")
-
-        # Create backup credentials
-        matrix_dir = home / "matrix"
-        matrix_dir.mkdir(parents=True, exist_ok=True)
-        backup_creds = matrix_dir / "credentials.json.bak.20240101_120000"
-        backup_creds.write_text('{"backup": true}')
-
-        # Mock copy2 to fail
-        with mock.patch("shutil.copy2", side_effect=OSError("Mock error")):
-            result = rollback_migration()
-
-            # Should report failure when restore errors occur
-            assert result["success"] is False
-
-    def test_rollback_migration_restore_database_failure(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Test handling of database restore failure."""
-        home = tmp_path / "home"
-        home.mkdir()
-        monkeypatch.setattr("mmrelay.migrate.get_home_dir", lambda: home)
-
-        # Create migration state file
-        state_file = home / "migration_completed.flag"
-        state_file.write_text("1.3")
-
-        # Create database directory and backup
-        db_dir = home / "database"
-        db_dir.mkdir()
-        backup_db = db_dir / "meshtastic.sqlite.bak.20240101_120000"
-        backup_db.write_text("backup db")
-
-        # Mock copy2 to fail
-        with mock.patch("shutil.copy2", side_effect=OSError("Mock error")):
-            result = rollback_migration()
-
-            # Should report failure when restore errors occur
-            assert result["success"] is False
-
-    def test_rollback_migration_remove_state_file_success(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Test that state file is removed on successful rollback."""
-        home = tmp_path / "home"
-        home.mkdir()
-        monkeypatch.setattr("mmrelay.migrate.get_home_dir", lambda: home)
-
-        # Create migration state file
-        state_file = home / "migration_completed.flag"
-        state_file.write_text("1.3")
-
-        result = rollback_migration()
-
-        assert result["success"] is True
-        # State file should be removed
-        assert not state_file.exists()
-
-    def test_rollback_migration_remove_state_file_failure(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Test handling of state file removal failure."""
-        home = tmp_path / "home"
-        home.mkdir()
-        monkeypatch.setattr("mmrelay.migrate.get_home_dir", lambda: home)
-
-        # Create migration state file
-        state_file = home / "migration_completed.flag"
-        state_file.write_text("1.3")
-
-        # Mock unlink to fail
-        with mock.patch.object(Path, "unlink", side_effect=OSError("Mock error")):
-            result = rollback_migration()
-
-            # Should report failure when cleanup fails
-            assert result["success"] is False
-
-    def test_rollback_migration_multiple_backups_selects_most_recent(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Test that rollback selects most recent backup."""
-        home = tmp_path / "home"
-        home.mkdir()
-        monkeypatch.setattr("mmrelay.migrate.get_home_dir", lambda: home)
-
-        # Create migration state file
-        state_file = home / "migration_completed.flag"
-        state_file.write_text("1.3")
-
-        # Create multiple backups with different timestamps
-        matrix_dir = home / "matrix"
-        matrix_dir.mkdir(parents=True, exist_ok=True)
-        backup1 = matrix_dir / "credentials.json.bak.20240101_120000"
-        backup1.write_text("backup1")
-        backup2 = matrix_dir / "credentials.json.bak.20240102_130000"
-        backup2.write_text("backup2")  # More recent
-        backup3 = matrix_dir / "credentials.json.bak.20240101_110000"
-        backup3.write_text("backup3")
-
-        result = rollback_migration()
-
-        assert result["success"] is True
-        # Should restore most recent (backup2)
-        creds = home / "matrix" / "credentials.json"
-        assert creds.read_text() == "backup2"
-
-    def test_rollback_migration_uses_completed_steps_from_state(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Test completed_steps are loaded from state when not provided."""
-        home = tmp_path / "home"
-        home.mkdir()
-        monkeypatch.setattr("mmrelay.migrate.get_home_dir", lambda: home)
-
-        state_file = home / "migration_completed.flag"
-        state_file.write_text(
-            json.dumps({"version": "1.3", "status": "completed", "completed_steps": []})
-        )
-
-        result = rollback_migration()
-        assert result["success"] is True
-        assert not state_file.exists()
-
-    def test_rollback_migration_restores_plugins_directory(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Test plugins directory restore removes existing and copies backup."""
-        home = tmp_path / "home"
-        home.mkdir()
-        monkeypatch.setattr("mmrelay.migrate.get_home_dir", lambda: home)
-
-        plugins_dir = home / "plugins"
-        plugins_dir.mkdir()
-        (plugins_dir / "old.txt").write_text("old")
-
-        backup_dir = home / "plugins.bak.20240101_120000"
-        backup_dir.mkdir()
-        (backup_dir / "new.txt").write_text("new")
-
-        result = rollback_migration(completed_steps=["plugins"])
-        assert result["success"] is True
-        assert (plugins_dir / "new.txt").exists()
-        assert not (plugins_dir / "old.txt").exists()
-
-    def test_rollback_migration_store_skip_windows(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Test store rollback is skipped on Windows."""
-        home = tmp_path / "home"
-        home.mkdir()
-        monkeypatch.setattr("mmrelay.migrate.get_home_dir", lambda: home)
-        monkeypatch.setattr("mmrelay.migrate.sys.platform", "win32")
-
-        result = rollback_migration(completed_steps=["store"])
-        assert result["success"] is True
-
-
-class TestPerformMigration:
-    """Test perform_migration coverage for error handling."""
 
     def test_perform_migration_home_mkdir_error(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -2157,7 +1750,7 @@ class TestPerformMigration:
 
         monkeypatch.setattr(Path, "mkdir", failing_mkdir)
 
-        report = perform_migration(dry_run=False, force=False, move=False)
+        report = perform_migration(dry_run=False, force=False)
         assert report["success"] is False
         assert "Failed to create new home directory" in report["message"]
 
@@ -2194,7 +1787,7 @@ class TestPerformMigration:
         monkeypatch.setattr("mmrelay.migrate.migrate_plugins", ok_result)
         monkeypatch.setattr("mmrelay.migrate.migrate_gpxtracker", gpx_result)
 
-        report = perform_migration(dry_run=True, force=False, move=False)
+        report = perform_migration(dry_run=True, force=False)
         assert report["success"] is True
         assert gpx_called["value"] is True
 
@@ -2230,7 +1823,7 @@ class TestPerformMigration:
         monkeypatch.setattr("mmrelay.migrate.migrate_plugins", ok_result)
         monkeypatch.setattr("mmrelay.migrate.migrate_gpxtracker", gpx_result)
 
-        report = perform_migration(dry_run=True, force=False, move=False)
+        report = perform_migration(dry_run=True, force=False)
         assert report["success"] is True
         assert gpx_called["value"] is True
 
@@ -2249,14 +1842,10 @@ class TestPerformMigration:
             return {"success": False, "error": "boom"}
 
         monkeypatch.setattr("mmrelay.migrate.migrate_credentials", failed_step)
-        monkeypatch.setattr(
-            "mmrelay.migrate.rollback_migration",
-            lambda *args, **kwargs: {"success": True},
-        )
 
-        report = perform_migration(dry_run=False, force=False, move=False)
+        report = perform_migration(dry_run=False, force=False)
         assert report["success"] is False
-        assert "rollback" in report
+        assert "rollback" not in report
 
     def test_perform_migration_oserror_branch(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -2273,14 +1862,10 @@ class TestPerformMigration:
             raise OSError("boom")
 
         monkeypatch.setattr("mmrelay.migrate.migrate_credentials", raise_oserror)
-        monkeypatch.setattr(
-            "mmrelay.migrate.rollback_migration",
-            lambda *args, **kwargs: {"success": True},
-        )
 
-        report = perform_migration(dry_run=False, force=False, move=False)
+        report = perform_migration(dry_run=False, force=False)
         assert report["success"] is False
-        assert "rollback" in report
+        assert "rollback" not in report
 
     def test_perform_migration_unexpected_exception_branch(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -2296,12 +1881,7 @@ class TestPerformMigration:
         def raise_runtime(*_args, **_kwargs):
             raise RuntimeError("boom")
 
-        rollback_mock = mock.Mock(return_value={"success": True})
-
         monkeypatch.setattr("mmrelay.migrate.migrate_credentials", raise_runtime)
-        monkeypatch.setattr("mmrelay.migrate.rollback_migration", rollback_mock)
 
         with pytest.raises(RuntimeError):
-            perform_migration(dry_run=False, force=False, move=False)
-
-        assert rollback_mock.called
+            perform_migration(dry_run=False, force=False)

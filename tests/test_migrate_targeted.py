@@ -6,7 +6,6 @@ Tests covering:
 - migrate_plugins (lines 877-952)
 - migrate_gpxtracker (lines 1048-1081)
 - perform_migration (lines 1152-1194, 1208-1239)
-- rollback_migration (lines 1298-1307)
 """
 
 import builtins
@@ -25,7 +24,6 @@ from mmrelay.migrate import (
     migrate_plugins,
     migrate_store,
     perform_migration,
-    rollback_migration,
 )
 
 _original_builtins_import = builtins.__import__
@@ -91,17 +89,15 @@ class TestMigrateGpxtracker(unittest.TestCase):
 
 
 class TestPerformMigration(unittest.TestCase):
-    """Tests for perform_migration function (lines 1152-1194, 1208-1239)."""
+    """Tests for perform_migration function."""
 
     @patch("mmrelay.migrate.migrate_store")
     @patch("mmrelay.migrate.migrate_plugins")
     @patch("mmrelay.migrate.migrate_gpxtracker")
     @patch("mmrelay.paths.get_home_dir")
     @patch("mmrelay.paths.resolve_all_paths")
-    @patch("mmrelay.migrate._get_migration_state_path")
     def test_runs_all_migrations(
         self,
-        mock_get_state_path,
         mock_resolve,
         mock_home,
         mock_gpx,
@@ -120,14 +116,12 @@ class TestPerformMigration(unittest.TestCase):
             mock_store.return_value = {"success": True, "message": "Done"}
             mock_plugins.return_value = {"success": True, "message": "Done"}
             mock_gpx.return_value = {"success": True, "message": "Done"}
-            mock_get_state_path.return_value = Path(tmpdir) / "migration_completed.flag"
 
-            result = perform_migration(dry_run=False, force=False, move=False)
+            result = perform_migration(dry_run=False, force=False)
 
             self.assertTrue(result.get("success"))
             self.assertGreaterEqual(len(result.get("migrations", [])), 3)
 
-    @patch("mmrelay.migrate.rollback_migration")
     @patch("mmrelay.migrate.migrate_store")
     @patch("mmrelay.migrate.get_home_dir")
     @patch("mmrelay.paths.get_home_dir")
@@ -138,7 +132,6 @@ class TestPerformMigration(unittest.TestCase):
         mock_paths_home,
         mock_migrate_home,
         mock_store,
-        mock_rollback,
     ):
         """Test perform_migration returns error when migration fails."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -155,10 +148,9 @@ class TestPerformMigration(unittest.TestCase):
                 "error": "Test error",
             }
 
-            result = perform_migration(dry_run=False, force=False, move=False)
+            result = perform_migration(dry_run=False, force=False)
 
             self.assertFalse(result.get("success"))
-            mock_rollback.assert_called_once()
             # Error is in the migrations list, not at top level
             migrations = result.get("migrations", [])
             store_migration = [m for m in migrations if m.get("type") == "store"]
@@ -186,19 +178,18 @@ class TestPerformMigration(unittest.TestCase):
                 "dry_run": True,
             }
 
-            result = perform_migration(dry_run=True, force=False, move=False)
+            result = perform_migration(dry_run=True, force=False)
 
             self.assertTrue(result.get("success"))
             self.assertGreater(len(result.get("migrations", [])), 0)
 
-    @patch("mmrelay.migrate.rollback_migration")
     @patch("mmrelay.migrate.migrate_database")
     @patch("mmrelay.migrate.migrate_config")
     @patch("mmrelay.migrate.migrate_credentials")
     @patch("mmrelay.migrate.get_home_dir")
     @patch("mmrelay.paths.get_home_dir")
     @patch("mmrelay.paths.resolve_all_paths")
-    def test_database_failure_rolls_back_completed_steps(
+    def test_database_failure_stops_migration(
         self,
         mock_resolve,
         mock_paths_home,
@@ -206,9 +197,8 @@ class TestPerformMigration(unittest.TestCase):
         mock_creds,
         mock_config,
         mock_db,
-        mock_rollback,
     ):
-        """Test perform_migration rolls back completed steps on database failure."""
+        """Test perform_migration stops on database failure."""
         with tempfile.TemporaryDirectory() as tmpdir:
             mock_paths_home.return_value = Path(tmpdir)
             mock_migrate_home.return_value = Path(tmpdir)
@@ -222,29 +212,10 @@ class TestPerformMigration(unittest.TestCase):
             mock_config.return_value = {"success": True}
             mock_db.side_effect = sqlite3.DatabaseError("Database failure")
 
-            result = perform_migration(dry_run=False, force=False, move=False)
+            result = perform_migration(dry_run=False, force=False)
 
             self.assertFalse(result.get("success"))
-            mock_rollback.assert_called_once()
-            called_steps = mock_rollback.call_args.kwargs.get("completed_steps", [])
-            self.assertEqual(called_steps, ["credentials", "config"])
-
-
-class TestRollbackMigration(unittest.TestCase):
-    """Tests for rollback_migration function (lines 1298-1307)."""
-
-    @patch("mmrelay.paths.get_home_dir")
-    @patch("builtins.print")
-    def test_prints_warning_message(self, mock_print, mock_home):
-        """Test rollback_migration returns success message."""
-        mock_home.return_value = Path("/home")
-
-        result = rollback_migration()
-
-        mock_print.assert_not_called()
-        # When no migration was completed, returns success with message
-        self.assertTrue(result.get("success"))
-        self.assertIn("rollback", result.get("message", "").lower())
+            self.assertEqual(result.get("completed_steps"), ["credentials", "config"])
 
 
 if __name__ == "__main__":
