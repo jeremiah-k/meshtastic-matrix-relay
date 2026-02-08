@@ -3055,8 +3055,8 @@ async def test_upload_image_returns_upload_error_on_network_exception():
 
     assert hasattr(result, "message")
     assert hasattr(result, "status_code")
-    assert result.message == "boom"
-    assert result.status_code is None
+    assert result.message == "boom"  # type: ignore[attr-defined]
+    assert result.status_code is None  # type: ignore[attr-defined]
     mock_client.upload.assert_awaited_once()
 
 
@@ -3649,7 +3649,7 @@ async def test_connect_matrix_sync_validation_error_retries_with_invite_safe_fil
         call_count[0] += 1
         if call_count[0] == 1:
             # First sync raises ValidationError (caught, triggers invite-safe filter)
-            raise jsonschema.exceptions.ValidationError(
+            raise jsonschema.ValidationError(  # type: ignore[attr-defined]
                 message="Invalid schema",
                 path=(),
                 schema_path=(),
@@ -3739,7 +3739,7 @@ async def test_connect_matrix_sync_validation_error_retry_failure_closes_client(
         """
         call_count["count"] += 1
         if call_count["count"] == 1:
-            raise jsonschema.exceptions.ValidationError(
+            raise jsonschema.ValidationError(  # type: ignore[attr-defined]
                 message="Invalid schema",
                 path=(),
                 schema_path=(),
@@ -4257,7 +4257,7 @@ async def test_connect_matrix_e2ee_windows_disables(monkeypatch):
     ):
         await connect_matrix(config)
 
-    _, kwargs = mx.AsyncClientConfig.call_args
+    _, kwargs = mx.AsyncClientConfig.call_args  # type: ignore[attr-defined]
     assert kwargs["encryption_enabled"] is False
 
 
@@ -7153,12 +7153,12 @@ def test_matrix_utils_imports_nio_exceptions_when_available(monkeypatch):
     class LogoutError(Exception):
         pass
 
-    exc_mod.LocalProtocolError = LocalProtocolError
-    exc_mod.LocalTransportError = LocalTransportError
-    exc_mod.RemoteProtocolError = RemoteProtocolError
-    exc_mod.RemoteTransportError = RemoteTransportError
-    resp_mod.LoginError = LoginError
-    resp_mod.LogoutError = LogoutError
+    setattr(exc_mod, "LocalProtocolError", LocalProtocolError)
+    setattr(exc_mod, "LocalTransportError", LocalTransportError)
+    setattr(exc_mod, "RemoteProtocolError", RemoteProtocolError)
+    setattr(exc_mod, "RemoteTransportError", RemoteTransportError)
+    setattr(resp_mod, "LoginError", LoginError)
+    setattr(resp_mod, "LogoutError", LogoutError)
 
     monkeypatch.setitem(sys.modules, "nio.exceptions", exc_mod)
     monkeypatch.setitem(sys.modules, "nio.responses", resp_mod)
