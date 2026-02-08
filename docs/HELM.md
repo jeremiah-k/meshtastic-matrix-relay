@@ -477,9 +477,85 @@ kubectl rollout restart deployment/mmrelay -n mmrelay
 
 ### Backup Before Upgrade
 
-```bash
-kubectl exec -n mmrelay <pod-name> -- tar czf - /data > mmrelay-backup.tar.gz
+#### Understanding Data Locations
+
+All MMRelay persistent data lives under `/data` inside the container:
+
+```text
+/data/
+├── matrix/
+│   ├── credentials.json   # Matrix authentication credentials
+│   └── store/             # E2EE encryption keys (if enabled)
+├── database/
+│   └── meshtastic.sqlite  # SQLite database (nodes, messages, state)
+├── logs/                  # Application logs
+└── plugins/               # Custom and community plugins
+    ├── custom/
+    └── community/
 ```
+
+The Helm chart stores all data in a PVC mounted at `/data`. Backing up this PVC preserves your complete MMRelay state.
+
+#### Backup Methods
+
+**Method 1: PVC snapshot (recommended)**
+
+If your Kubernetes storage provider supports volume snapshots:
+
+```bash
+# Create a snapshot of the mmrelay-data PVC
+kubectl create volumesnapshot mmrelay-data-backup-$(date +%Y%m%d) \
+  --source=persistentvolumeclaim/mmrelay-data \
+  --namespace mmrelay
+```
+
+Check your cloud provider's documentation for snapshot creation limits, retention policies, and restoration procedures.
+
+**Method 2: Exec-based backup (quick and simple)**
+
+```bash
+# Get the pod name
+POD_NAME=$(kubectl get pods -n mmrelay -l app.kubernetes.io/name=mmrelay -o jsonpath='{.items[0].metadata.name}')
+
+# Create a compressed backup
+kubectl exec -n mmrelay $POD_NAME -- tar czf - /data > mmrelay-backup-$(date +%Y%m%d).tar.gz
+```
+
+**Method 3: rsync backup (for larger deployments)**
+
+```bash
+# Create a temporary pod with the PVC mounted
+kubectl run backup-pod \
+  --image=busybox:1.36 \
+  --overrides='{
+    "spec": {
+      "containers": [{
+        "name": "backup",
+        "image": "busybox:1.36",
+        "command": ["sleep", "3600"],
+        "volumeMounts": [{
+          "name": "data",
+          "mountPath": "/data"
+        }]
+      }],
+      "volumes": [{
+        "name": "data",
+        "persistentVolumeClaim": {
+          "claimName": "mmrelay-data"
+        }
+      }]
+    }
+  }' \
+  --namespace mmrelay
+
+# Copy data from the temporary pod
+kubectl cp -n mmrelay backup-pod:/data ./mmrelay-backup-$(date +%Y%m%d)
+
+# Clean up the temporary pod
+kubectl delete pod backup-pod -n mmrelay
+```
+
+For detailed restore procedures and disaster recovery guidance, see the [KUBERNETES.md](KUBERNETES.md#backup-restore-and-disaster-recovery) document.
 
 ## Troubleshooting
 
