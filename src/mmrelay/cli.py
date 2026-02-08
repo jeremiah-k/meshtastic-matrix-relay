@@ -2013,7 +2013,7 @@ def handle_auth_status(args: argparse.Namespace) -> int:
                 with open(credentials_path, "r", encoding="utf-8") as f:
                     credentials = json.load(f)
 
-                required = ("homeserver", "access_token", "user_id", "device_id")
+                required = ("homeserver", "access_token", "user_id")
                 if not all(
                     isinstance(credentials.get(k), str) and credentials.get(k).strip()
                     for k in required
@@ -2023,6 +2023,15 @@ def handle_auth_status(args: argparse.Namespace) -> int:
                         "(missing required fields)"
                     )
                     continue
+
+                if not (
+                    isinstance(credentials.get("device_id"), str)
+                    and credentials["device_id"].strip()
+                ):
+                    print(
+                        f"⚠️  credentials.json at {credentials_path} is missing 'device_id' "
+                        "(may cause session tracking issues)"
+                    )
             except (OSError, json.JSONDecodeError, TypeError, ValueError) as e:
                 print(
                     f"⚠️  Skipping unreadable credentials.json at {credentials_path}: {e}"

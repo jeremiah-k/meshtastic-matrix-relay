@@ -4759,8 +4759,8 @@ async def test_connect_matrix_save_credentials_failure_warns(monkeypatch):
         await connect_matrix(config)
 
     assert any(
-        "Failed to persist discovered device_id" in call.args[0]
-        for call in mock_logger.warning.call_args_list
+        "Failed to persist updated session information" in call.args[0]
+        for call in mock_logger.error.call_args_list
     )
 
 
