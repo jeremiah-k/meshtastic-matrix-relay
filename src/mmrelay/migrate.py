@@ -887,7 +887,7 @@ def migrate_database(
                 continue
             if legacy_db.exists():
                 candidates.append(legacy_db)
-                for suffix in ["-wal", "-shm"]:
+                for suffix in ["-wal", "-shm", "-journal"]:
                     sidecar = legacy_db.with_suffix(f".sqlite{suffix}")
                     if sidecar.exists():
                         candidates.append(sidecar)
@@ -1124,6 +1124,7 @@ def migrate_logs(
 
     # Proceed with migration
     staging_dir = _get_staging_path(new_home, "logs")
+    migration_succeeded = False
 
     try:
         staging_dir.mkdir(parents=True, exist_ok=True)
@@ -1151,6 +1152,7 @@ def migrate_logs(
                 final_dest.unlink()
             shutil.move(str(staged_file), str(final_dest))
 
+        migration_succeeded = True
         logger.info("Migrated %d logs to %s", migrated_count, new_logs_dir)
 
         # Cleanup legacy dir if empty
@@ -1171,7 +1173,8 @@ def migrate_logs(
         logger.exception("Failed to migrate logs from %s", old_logs_dir)
         raise MigrationError.step_failed("logs", str(exc)) from exc
     finally:
-        if staging_dir.exists():
+        # Only remove staging if migration succeeded to preserve data on failure
+        if migration_succeeded and staging_dir.exists():
             shutil.rmtree(str(staging_dir), ignore_errors=True)
 
 
@@ -1470,6 +1473,7 @@ def migrate_plugins(
 
     # Proceed with migration
     staging_dir = _get_staging_path(new_home, "plugins")
+    migration_succeeded = False
 
     try:
         staging_dir.mkdir(parents=True, exist_ok=True)
@@ -1509,6 +1513,7 @@ def migrate_plugins(
 
         # 3. Finalize: move staging to final destination
         _finalize_move(staging_dir, new_plugins_dir)
+        migration_succeeded = True
         logger.info("Migrated plugins to %s", new_plugins_dir)
 
         # Cleanup legacy directory if empty
@@ -1529,7 +1534,8 @@ def migrate_plugins(
         logger.exception("Failed to migrate plugins from %s", old_plugins_dir)
         raise MigrationError.step_failed("plugins", str(exc)) from exc
     finally:
-        if staging_dir.exists():
+        # Only remove staging if migration succeeded to preserve data on failure
+        if migration_succeeded and staging_dir.exists():
             shutil.rmtree(str(staging_dir), ignore_errors=True)
 
 
@@ -1641,6 +1647,7 @@ def migrate_gpxtracker(
 
     # Proceed with migration
     staging_dir = _get_staging_path(new_home, "gpxtracker")
+    migration_succeeded = False
 
     try:
         staging_dir.mkdir(parents=True, exist_ok=True)
@@ -1672,6 +1679,7 @@ def migrate_gpxtracker(
 
                 shutil.move(str(staged_file), str(final_dest))
 
+        migration_succeeded = True
         logger.info("Migrated %d GPX files to %s", migrated_count, new_gpx_data_dir)
 
         return {
@@ -1685,7 +1693,8 @@ def migrate_gpxtracker(
         logger.exception("Failed to migrate gpxtracker GPX files from %s", old_gpx_dir)
         raise MigrationError.step_failed("gpxtracker", str(exc)) from exc
     finally:
-        if staging_dir.exists():
+        # Only remove staging if migration succeeded to preserve data on failure
+        if migration_succeeded and staging_dir.exists():
             shutil.rmtree(str(staging_dir), ignore_errors=True)
 
 
@@ -1897,9 +1906,8 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
             else ""
         )
         logger.exception(
-            "Migration failed during step: %s. Error details: %s.%s",
+            "Migration failed during step: %s.%s",
             getattr(exc, "step", "unknown"),
-            exc,
             staged_note,
         )
 
@@ -1911,7 +1919,7 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
                     completed_steps=completed_steps,
                     migrations=report["migrations"],
                     new_home=new_home,
-                    legacy_roots=legacy_roots,
+                    _legacy_roots=legacy_roots,
                 )
                 report["rollback"] = rollback_report
                 if rollback_report["success"]:
@@ -1925,7 +1933,7 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
                 logger.exception("Automatic rollback failed")
                 report["rollback_error"] = str(rollback_exc)
         else:
-            logger.error("Please resolve the issue and re-run migration.")
+            logger.exception("Please resolve the issue and re-run migration.")
 
         return report
 
@@ -1941,7 +1949,7 @@ def rollback_migration(
     completed_steps: list[str],
     migrations: list[dict[str, Any]],
     new_home: Path,
-    legacy_roots: list[Path],
+    _legacy_roots: list[Path] | None = None,
 ) -> dict[str, Any]:
     """
     Rollback completed migration steps to restore pre-migration state.
@@ -1953,7 +1961,7 @@ def rollback_migration(
         completed_steps: List of step names that were completed before failure.
         migrations: List of migration results with paths for each step.
         new_home: Path to the new MMRELAY_HOME directory.
-        legacy_roots: List of legacy root directories.
+        _legacy_roots: List of legacy root directories (unused, kept for API compatibility).
 
     Returns:
         dict: Rollback report with status and details of each rollback action.
@@ -2077,7 +2085,7 @@ def rollback_migration(
             )
 
         except (OSError, IOError, shutil.Error) as e:
-            logger.error("Failed to rollback step '%s': %s", step_name, e)
+            logger.exception("Failed to rollback step '%s': %s", step_name, e)
             rollback_report["errors"].append({"step": step_name, "error": str(e)})
             rollback_report["success"] = False
 

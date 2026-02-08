@@ -189,12 +189,15 @@ def test_migration_failure_reports_paths(
                 assert result["success"] is False
 
                 # Check that failure info was logged
+                # Note: logger.exception is used, not logger.error
                 log_messages = [
                     call.args[0] % call.args[1:] if len(call.args) > 1 else call.args[0]
-                    for call in mock_logger.error.call_args_list
+                    for call in mock_logger.exception.call_args_list
                 ]
 
                 assert any(
                     "Migration failed during step: config" in m for m in log_messages
-                )
-                assert any(str(new_home / STAGING_DIRNAME) in m for m in log_messages)
+                ), f"No matching log message found in {log_messages}"
+                assert any(
+                    str(new_home / STAGING_DIRNAME) in m for m in log_messages
+                ), f"Staging dir not found in {log_messages}"

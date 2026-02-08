@@ -63,8 +63,8 @@ spec:
             - sh
             - -c
             - |
-              mkdir -p {{ .Values.mmrelayHome }}/matrix
-              chown -R {{ .Values.containerSecurityContext.runAsUser }}:{{ default .Values.containerSecurityContext.runAsUser .Values.containerSecurityContext.runAsGroup }} {{ .Values.mmrelayHome }}
+              mkdir -p "{{ .Values.mmrelayHome }}/matrix"
+              chown -R {{ .Values.containerSecurityContext.runAsUser }}:{{ default .Values.containerSecurityContext.runAsUser .Values.containerSecurityContext.runAsGroup }} "{{ .Values.mmrelayHome }}"
           securityContext:
             runAsUser: 0
             runAsGroup: 0
@@ -150,7 +150,7 @@ spec:
               command:
                 - sh
                 - -c
-                - "find {{ .Values.readyFile }} -mmin -2 | grep -q ."
+                - "find {{ .Values.readyFile | quote }} -mmin -2 | grep -q ."
             initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
             timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
