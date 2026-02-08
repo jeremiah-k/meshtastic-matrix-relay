@@ -569,7 +569,7 @@ class TestBackupFile:
 
         # Should have timestamp in name
         assert backup_path.name.startswith("test.txt.bak.")
-        assert backup_path.parent == src_path.parent
+        assert backup_path.parent == src_path.parent / ".migration_backups"
 
     def test_backup_file_custom_suffix(self, tmp_path: Path) -> None:
         """Test backup with custom suffix."""
@@ -650,12 +650,12 @@ class TestMigrateCredentialsEdgeCases:
             return original_copy2(src, dst, *args, **kwargs)
 
         with mock.patch("shutil.copy2", side_effect=selective_copy2):
-            result = migrate_credentials(
-                [legacy_root_dir], new_home, dry_run=False, force=True
-            )
-
-        assert result["success"] is False
-        assert "Failed to backup credentials" in result.get("error", "")
+            with pytest.raises(
+                MigrationError, match="credentials migration failed: Mock backup error"
+            ):
+                migrate_credentials(
+                    [legacy_root_dir], new_home, dry_run=False, force=True
+                )
 
 
 class TestMigrateConfigEdgeCases:
@@ -718,12 +718,10 @@ class TestMigrateConfigEdgeCases:
             return original_copy2(src, dst, *args, **kwargs)
 
         with mock.patch("shutil.copy2", side_effect=selective_copy2):
-            result = migrate_config(
-                [legacy_root_dir], new_home, dry_run=False, force=True
-            )
-
-        assert result["success"] is False
-        assert "Mock backup error" in result.get("error", "")
+            with pytest.raises(
+                MigrationError, match="config migration failed: Mock backup error"
+            ):
+                migrate_config([legacy_root_dir], new_home, dry_run=False, force=True)
 
     def test_migrate_config_move_failure(self, tmp_path: Path) -> None:
         """Test migrate_config returns error on move failure."""
@@ -736,12 +734,10 @@ class TestMigrateConfigEdgeCases:
         new_home.mkdir()
 
         with mock.patch("shutil.move", side_effect=OSError("Mock move error")):
-            result = migrate_config(
-                [legacy_root_dir], new_home, dry_run=False, force=True
-            )
-
-        assert result["success"] is False
-        assert "Mock move error" in result["error"]
+            with pytest.raises(
+                MigrationError, match="config migration failed: Mock move error"
+            ):
+                migrate_config([legacy_root_dir], new_home, dry_run=False, force=True)
 
     def test_migrate_config_already_at_target(self, tmp_path: Path) -> None:
         """Test move doesn't delete config when already at target location."""
@@ -847,12 +843,8 @@ class TestMigrateDatabaseEdgeCases:
             return original_copy2(src, dst, *args, **kwargs)
 
         with mock.patch("shutil.copy2", side_effect=selective_copy2):
-            result = migrate_database(
-                [legacy_root_dir], new_home, dry_run=False, force=True
-            )
-            # Backup failure should abort database migration to avoid overwriting data
-            assert result["success"] is False
-            assert "Failed to backup database" in result.get("error", "")
+            with pytest.raises(MigrationError, match="database migration failed"):
+                migrate_database([legacy_root_dir], new_home, dry_run=False, force=True)
 
     def test_migrate_database_from_database_dir(self, tmp_path: Path) -> None:
         """Test migration from legacy database/ directory."""
@@ -936,11 +928,10 @@ class TestMigrateDatabaseEdgeCases:
         legacy_db.write_text("legacy")
 
         with mock.patch("shutil.copy2", side_effect=OSError("Mock copy error")):
-            result = migrate_database(
-                [legacy_root_dir], new_home, dry_run=False, force=True
-            )
-            assert result["success"] is False
-            assert "error" in result
+            with pytest.raises(
+                MigrationError, match="database migration failed: Mock copy error"
+            ):
+                migrate_database([legacy_root_dir], new_home, dry_run=False, force=True)
 
     def test_migrate_database_from_data_dir_with_sidecars(self, tmp_path: Path) -> None:
         """Test migration from legacy data/ directory with sidecars."""
@@ -1142,13 +1133,10 @@ class TestMigrateLogsEdgeCases:
         ):
             mock_datetime.now.return_value = fixed_time
             # force=True is needed to trigger migration when destination exists
-            result = migrate_logs(
-                [legacy_root_dir], new_home, dry_run=False, force=True
-            )
-
-        # Backup failure is now fatal
-        assert result["success"] is False
-        assert result["migrated_count"] == 0
+            with pytest.raises(
+                MigrationError, match="logs migration failed: Mock backup failure"
+            ):
+                migrate_logs([legacy_root_dir], new_home, dry_run=False, force=True)
 
 
 @pytest.mark.skipif(
@@ -1173,11 +1161,10 @@ class TestMigrateStoreEdgeCases:
         (old_store_dir / "file").write_text("data")
 
         with mock.patch("shutil.copytree", side_effect=OSError("Mock backup error")):
-            result = migrate_store(
-                [legacy_root_dir], new_home, dry_run=False, force=True
-            )
-            assert result["success"] is False
-            assert "backup" in result["error"]
+            with pytest.raises(
+                MigrationError, match="store migration failed: Mock backup error"
+            ):
+                migrate_store([legacy_root_dir], new_home, dry_run=False, force=True)
 
     def test_migrate_store_move_existing_directory_removal(
         self, tmp_path: Path
@@ -1215,11 +1202,10 @@ class TestMigrateStoreEdgeCases:
         (old_store_dir / "file").write_text("data")
 
         with mock.patch("shutil.move", side_effect=OSError("Mock move error")):
-            result = migrate_store(
-                [legacy_root_dir], new_home, dry_run=False, force=True
-            )
-            assert result["success"] is False
-            assert "error" in result
+            with pytest.raises(
+                MigrationError, match="store migration failed: Mock move error"
+            ):
+                migrate_store([legacy_root_dir], new_home, dry_run=False, force=True)
 
 
 class TestMigratePluginsEdgeCases:
@@ -1244,12 +1230,10 @@ class TestMigratePluginsEdgeCases:
         (old_custom_dir / "plugin").mkdir()
 
         with mock.patch("shutil.copytree", side_effect=OSError("Mock backup error")):
-            result = migrate_plugins(
-                [legacy_root_dir], new_home, dry_run=False, force=True
-            )
-            # Backup failure should surface as migration failure
-            assert result["success"] is False
-            assert "error" in result
+            with pytest.raises(
+                MigrationError, match="plugins migration failed: Mock backup error"
+            ):
+                migrate_plugins([legacy_root_dir], new_home, dry_run=False, force=True)
 
     def test_migrate_plugins_backup_dir_creation_failure(self, tmp_path: Path) -> None:
         """Test backup directory creation failure is surfaced."""
@@ -1269,23 +1253,14 @@ class TestMigratePluginsEdgeCases:
         def fake_backup_file(_path: Path) -> Path:
             return backup_path
 
-        original_mkdir = Path.mkdir
-
-        def failing_mkdir(self: Path, *args, **kwargs):
-            if self == backup_path:
-                raise OSError("Mock mkdir error")
-            return original_mkdir(self, *args, **kwargs)
-
         with (
             mock.patch("mmrelay.migrate._backup_file", side_effect=fake_backup_file),
             mock.patch("shutil.copytree", side_effect=OSError("Mock copytree error")),
         ):
-            result = migrate_plugins(
-                [legacy_root_dir], new_home, dry_run=False, force=True
-            )
-
-        assert result["success"] is False
-        assert "Failed to backup plugins directory" in result["error"]
+            with pytest.raises(
+                MigrationError, match="plugins migration failed: Mock copytree error"
+            ):
+                migrate_plugins([legacy_root_dir], new_home, dry_run=False, force=True)
 
     def test_migrate_plugins_new_dir_creation_failure(self, tmp_path: Path) -> None:
         """Test plugins directory creation failure is surfaced."""
@@ -1297,21 +1272,25 @@ class TestMigratePluginsEdgeCases:
         old_plugins_dir = legacy_root_dir / "plugins"
         old_plugins_dir.mkdir()
 
-        new_plugins_dir = new_home / "plugins"
+        # In v1.3, we create staging_dir before starting backup/migration.
+        # We mock the Path.mkdir call specifically for the staging path.
+        staging_dir = new_home / ".migration_staging" / "plugins"
+
         original_mkdir = Path.mkdir
 
-        def failing_mkdir(self: Path, *args, **kwargs):
-            if self == new_plugins_dir:
+        def selective_mkdir(self, *args, **kwargs):
+            # Only fail for the specific plugins staging directory, not its parents
+            if str(self).endswith(".migration_staging/plugins"):
                 raise OSError("Mock mkdir error")
             return original_mkdir(self, *args, **kwargs)
 
-        with mock.patch.object(Path, "mkdir", autospec=True, side_effect=failing_mkdir):
-            result = migrate_plugins(
-                [legacy_root_dir], new_home, dry_run=False, force=True
-            )
-
-        assert result["success"] is False
-        assert "plugins dir" in result["error"]
+        with mock.patch(
+            "mmrelay.migrate.Path.mkdir", side_effect=selective_mkdir, autospec=True
+        ):
+            with pytest.raises(
+                MigrationError, match="plugins migration failed: Mock mkdir error"
+            ):
+                migrate_plugins([legacy_root_dir], new_home, dry_run=False, force=True)
 
     def test_migrate_plugins_backup_community_plugin_failure(
         self, tmp_path: Path
@@ -1336,17 +1315,15 @@ class TestMigratePluginsEdgeCases:
         original_copytree = shutil.copytree
 
         def selective_copytree(src, dst, *args, **kwargs):
-            if Path(src) == new_community_dir / "existing":
+            if Path(src) == new_plugins_dir:
                 raise OSError("Mock backup error")
             return original_copytree(src, dst, *args, **kwargs)
 
         with mock.patch("shutil.copytree", side_effect=selective_copytree):
-            result = migrate_plugins(
-                [legacy_root_dir], new_home, dry_run=False, force=True
-            )
-
-        assert result["success"] is False
-        assert "Failed to backup plugins directory" in result["error"]
+            with pytest.raises(
+                MigrationError, match="plugins migration failed: Mock backup error"
+            ):
+                migrate_plugins([legacy_root_dir], new_home, dry_run=False, force=True)
 
     def test_migrate_plugins_cleanup_rmdir_error(self, tmp_path: Path) -> None:
         """Test cleanup rmdir errors are captured."""
@@ -1418,12 +1395,10 @@ class TestMigratePluginsEdgeCases:
         old_custom_dir.mkdir()
 
         with mock.patch.object(Path, "iterdir", side_effect=OSError("Mock error")):
-            result = migrate_plugins(
-                [legacy_root_dir], new_home, dry_run=False, force=True
-            )
-
-        assert result["success"] is False
-        assert "custom" in result["error"]
+            with pytest.raises(
+                MigrationError, match="plugins migration failed: custom: Mock error"
+            ):
+                migrate_plugins([legacy_root_dir], new_home, dry_run=False, force=True)
 
     def test_migrate_plugins_move_removes_existing_custom(self, tmp_path: Path) -> None:
         """Test that move operation removes existing custom plugin."""
@@ -1673,18 +1648,12 @@ class TestMigrateGpxtrackerEdgeCases:
             mock.patch("shutil.copy2", side_effect=selective_copy2),
         ):
             mock_datetime.now.return_value = fixed_time
-            result = migrate_gpxtracker(
-                [legacy_root_dir], new_home, dry_run=False, force=False
-            )
-
-        assert result["success"] is False
-        assert "error" in result
-        assert gpx_file.exists()
-        assert gpx_file.read_text() == "track"
-        assert dest_path.read_text() == "existing"
-        assert sorted(p.name for p in new_gpx_dir.iterdir()) == sorted(
-            [existing_gpx.name, dest_path.name]
-        )
+            with pytest.raises(
+                MigrationError, match="gpxtracker migration failed: Mock backup error"
+            ):
+                migrate_gpxtracker(
+                    [legacy_root_dir], new_home, dry_run=False, force=False
+                )
 
     def test_migrate_gpxtracker_move_failure(self, tmp_path: Path) -> None:
         """Test handling of GPX file move failure."""
@@ -1705,11 +1674,12 @@ community-plugins:
 """)
 
         with mock.patch("shutil.move", side_effect=OSError("Mock move error")):
-            result = migrate_gpxtracker(
-                [legacy_root_dir], new_home, dry_run=False, force=True
-            )
-            assert result["success"] is False
-            assert "move failed" in result["error"]
+            with pytest.raises(
+                MigrationError, match="gpxtracker migration failed: Mock move error"
+            ):
+                migrate_gpxtracker(
+                    [legacy_root_dir], new_home, dry_run=False, force=True
+                )
 
     def test_migrate_gpxtracker_glob_oserror(self, tmp_path: Path) -> None:
         """Test handling of OSError during glob iteration."""
@@ -1726,11 +1696,12 @@ community-plugins:
         )
 
         with mock.patch.object(Path, "glob", side_effect=OSError("Mock glob error")):
-            result = migrate_gpxtracker(
-                [legacy_root_dir], new_home, dry_run=False, force=True
-            )
-
-        assert result["success"] is False
+            with pytest.raises(
+                MigrationError, match="gpxtracker migration failed: Mock glob error"
+            ):
+                migrate_gpxtracker(
+                    [legacy_root_dir], new_home, dry_run=False, force=True
+                )
 
     def test_migrate_gpxtracker_expanded_path_not_found(self, tmp_path: Path) -> None:
         """Test handling when expanded GPX directory doesn't exist."""

@@ -649,14 +649,18 @@ def migrate_credentials(
 
     # Proceed with migration
     staging_path = _get_staging_path(new_home, "credentials")
-    staging_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
+        staging_path.parent.mkdir(parents=True, exist_ok=True)
+
         # 1. Backup destination if it exists (ALWAYS)
         if new_creds.exists():
             backup_path = _backup_file(new_creds)
             logger.info("Backing up existing destination to %s", backup_path)
-            shutil.copy2(str(new_creds), str(backup_path))
+            if new_creds.is_dir():
+                shutil.copytree(str(new_creds), str(backup_path))
+            else:
+                shutil.copy2(str(new_creds), str(backup_path))
 
         # 2. Move to staging
         if staging_path.exists():
@@ -766,14 +770,18 @@ def migrate_config(
 
     # Proceed with migration
     staging_path = _get_staging_path(new_home, "config")
-    staging_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
+        staging_path.parent.mkdir(parents=True, exist_ok=True)
+
         # 1. Backup destination if it exists (ALWAYS)
         if new_config.exists():
             backup_path = _backup_file(new_config)
             logger.info("Backing up existing destination to %s", backup_path)
-            shutil.copy2(str(new_config), str(backup_path))
+            if new_config.is_dir():
+                shutil.copytree(str(new_config), str(backup_path))
+            else:
+                shutil.copy2(str(new_config), str(backup_path))
 
         # 2. Move to staging
         if staging_path.exists():
@@ -943,9 +951,10 @@ def migrate_database(
 
     # Proceed with migration
     staging_dir = _get_staging_path(new_home, "database")
-    staging_dir.mkdir(parents=True, exist_ok=True)
 
     try:
+        staging_dir.mkdir(parents=True, exist_ok=True)
+
         # 1. Backup existing database files (ALWAYS)
         for db_path in selected_group:
             dest = new_db_dir / db_path.name
@@ -956,7 +965,10 @@ def migrate_database(
                 logger.info(
                     "Backing up existing database file %s to %s", dest, backup_path
                 )
-                shutil.copy2(str(dest), str(backup_path))
+                if dest.is_dir():
+                    shutil.copytree(str(dest), str(backup_path))
+                else:
+                    shutil.copy2(str(dest), str(backup_path))
 
         # 2. Copy to staging (using copy-verify-delete pattern)
         for db_path in selected_group:
@@ -1096,9 +1108,10 @@ def migrate_logs(
 
     # Proceed with migration
     staging_dir = _get_staging_path(new_home, "logs")
-    staging_dir.mkdir(parents=True, exist_ok=True)
 
     try:
+        staging_dir.mkdir(parents=True, exist_ok=True)
+
         # 1. Backup existing destination (ALWAYS)
         if new_logs_dir.exists():
             backup_path = _backup_file(new_logs_dir)
@@ -1430,9 +1443,10 @@ def migrate_plugins(
 
     # Proceed with migration
     staging_dir = _get_staging_path(new_home, "plugins")
-    staging_dir.mkdir(parents=True, exist_ok=True)
 
     try:
+        staging_dir.mkdir(parents=True, exist_ok=True)
+
         # 1. Backup existing destination (ALWAYS)
         if new_plugins_dir.exists():
             backup_path = _backup_file(new_plugins_dir)
@@ -1600,9 +1614,10 @@ def migrate_gpxtracker(
 
     # Proceed with migration
     staging_dir = _get_staging_path(new_home, "gpxtracker")
-    staging_dir.mkdir(parents=True, exist_ok=True)
 
     try:
+        staging_dir.mkdir(parents=True, exist_ok=True)
+
         migrated_count = 0
         errors: list[str] = []
 
