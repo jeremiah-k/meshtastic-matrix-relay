@@ -490,15 +490,13 @@ def _finalize_move(staging_path: Path, dest_path: Path) -> None:
 
     # Atomic replace for single files (on POSIX). Directories require a best-effort
     # delete-then-move fallback and are not atomic.
-    if dest_path.exists():
-        if dest_path.is_dir():
-            shutil.rmtree(str(dest_path))
-        else:
-            dest_path.unlink()
-
     if staging_path.is_file():
+        # For single files, use atomic replace (POSIX). This overwrites dest if it exists.
         staging_path.replace(dest_path)
     else:
+        # For directories: remove existing dest first, then move (not atomic)
+        if dest_path.exists():
+            shutil.rmtree(str(dest_path))
         shutil.move(str(staging_path), str(dest_path))
     logger.debug("Finalized move from %s to %s", staging_path, dest_path)
 
@@ -1724,7 +1722,7 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
 
     Parameters:
         dry_run (bool): If True, simulate the migration and report actions without making changes.
-        force (bool): If True, overwrite existing destinations (backups are still created).
+        force (bool): Controls whether existing destination entries are overwritten (force=True) or skipped (force=False). Backups are always created before any overwrite regardless of this flag.
 
     Returns:
         dict: Migration report containing at least the keys:
