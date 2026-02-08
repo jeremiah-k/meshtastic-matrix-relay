@@ -491,9 +491,16 @@ class MessageQueue:
                     elif time_since_last < MINIMUM_MESSAGE_DELAY:
                         # Warn when messages are sent less than MINIMUM_MESSAGE_DELAY seconds apart
                         logger.warning(
-                            f"[Runtime] Messages sent {time_since_last:.1f}s apart, which is below {MINIMUM_MESSAGE_DELAY}s. "
+                            f"Messages sent {time_since_last:.1f}s apart, which is below {MINIMUM_MESSAGE_DELAY}s. "
                             f"Due to rate limiting in the Meshtastic Firmware, messages may be dropped."
                         )
+                elif self._message_delay < MINIMUM_MESSAGE_DELAY:
+                    # Warn on first send if configured delay is below MINIMUM_MESSAGE_DELAY
+                    logger.warning(
+                        f"Messages are being sent with {self._message_delay}s delay, "
+                        f"which is below {MINIMUM_MESSAGE_DELAY}s. "
+                        f"Due to rate limiting in the Meshtastic Firmware, messages may be dropped."
+                    )
 
                 # Final connection check right before sending to catch race conditions
                 if not self._should_send_message():

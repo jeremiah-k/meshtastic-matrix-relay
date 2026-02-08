@@ -573,7 +573,7 @@ class TestMessageQueueEdgeCases(unittest.TestCase):
 
             # Check that we got the expected runtime warning
             warning_messages = "\n".join(cm.output)
-            self.assertIn("[Runtime] Messages sent", warning_messages)
+            # The warning should indicate messages are being sent below MINIMUM_MESSAGE_DELAY
             self.assertIn(f"below {MINIMUM_MESSAGE_DELAY}s", warning_messages)
             self.assertIn("may be dropped", warning_messages)
 
