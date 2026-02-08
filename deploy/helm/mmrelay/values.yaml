@@ -13,6 +13,8 @@ image:
 # Runtime paths (fixed by container design)
 mmrelayHome: /data
 configPath: /data/config.yaml
+# Liveness probe expects this ready file to be updated at least every 2 minutes
+# (see livenessProbe find -mmin -2). Adjust the probe or update cadence if needed.
 readyFile: /run/mmrelay/ready
 
 # Config injection
@@ -41,6 +43,8 @@ credentials:
 # Persistence configuration
 persistence:
   enabled: true
+  # When disabled, the data volume uses emptyDir and all runtime state is ephemeral.
+  # Enable persistence for production deployments.
   # If set, use existing claim instead of creating one
   existingClaim: ""
   storageClass: ""

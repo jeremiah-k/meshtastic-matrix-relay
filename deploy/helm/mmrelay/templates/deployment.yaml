@@ -150,7 +150,9 @@ spec:
               command:
                 - sh
                 - -c
-                - find "{{ .Values.readyFile }}" -mmin -2 | grep -q .
+                - 'find "$1" -mmin -2 | grep -q .'
+                - "liveness-probe"
+                - {{ .Values.readyFile }}
             initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
             timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
@@ -167,17 +169,17 @@ spec:
           {{- end }}
           volumeMounts:
             - name: config
-              mountPath: {{ .Values.configPath }}
+              mountPath: {{ .Values.configPath | quote }}
               subPath: {{ .Values.config.key }}
               readOnly: true
             {{- if .Values.credentials.enabled }}
             - name: credentials
-              mountPath: {{ .Values.mmrelayHome }}/matrix/{{ .Values.credentials.key }}
+              mountPath: "{{ .Values.mmrelayHome }}/matrix/{{ .Values.credentials.key }}"
               subPath: {{ .Values.credentials.key }}
               readOnly: true
             {{- end }}
             - name: data
-              mountPath: {{ .Values.mmrelayHome }}
+              mountPath: {{ .Values.mmrelayHome | quote }}
             - name: tmp
               mountPath: /tmp
             - name: run

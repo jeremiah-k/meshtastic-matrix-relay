@@ -473,7 +473,7 @@ def _backup_file(src_path: Path, suffix: str = ".bak") -> Path:
 
 def _finalize_move(staging_path: Path, dest_path: Path) -> None:
     """
-    Atomically finalize a staged move by renaming the staging path to the final destination.
+    Finalize a staged move by renaming the staging path to the final destination.
 
     Parameters:
         staging_path (Path): The path where the unit was staged.
@@ -488,14 +488,18 @@ def _finalize_move(staging_path: Path, dest_path: Path) -> None:
     # Ensure parent of destination exists
     dest_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Atomic rename (on POSIX)
+    # Atomic replace for single files (on POSIX). Directories require a best-effort
+    # delete-then-move fallback and are not atomic.
     if dest_path.exists():
         if dest_path.is_dir():
             shutil.rmtree(str(dest_path))
         else:
             dest_path.unlink()
 
-    shutil.move(str(staging_path), str(dest_path))
+    if staging_path.is_file():
+        staging_path.replace(dest_path)
+    else:
+        shutil.move(str(staging_path), str(dest_path))
     logger.debug("Finalized move from %s to %s", staging_path, dest_path)
 
 
@@ -956,6 +960,8 @@ def migrate_database(
     # Proceed with migration
     staging_dir = _get_staging_path(new_home, "database")
 
+    migration_succeeded = False
+
     try:
         staging_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1022,6 +1028,7 @@ def migrate_database(
             except (OSError, IOError):
                 logger.warning("Failed to delete source file: %s", db_path)
 
+        migration_succeeded = True
         return {
             "success": True,
             "old_path": str(most_recent),
@@ -1032,7 +1039,7 @@ def migrate_database(
         logger.exception("Failed to migrate database from %s", most_recent)
         raise MigrationError.step_failed("database", str(exc)) from exc
     finally:
-        if staging_dir.exists():
+        if migration_succeeded and staging_dir.exists():
             shutil.rmtree(str(staging_dir), ignore_errors=True)
 
 
@@ -1717,7 +1724,7 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
 
     Parameters:
         dry_run (bool): If True, simulate the migration and report actions without making changes.
-        force (bool): If True, allow overwriting existing destinations without creating backups.
+        force (bool): If True, overwrite existing destinations (backups are still created).
 
     Returns:
         dict: Migration report containing at least the keys:
@@ -2085,7 +2092,7 @@ def rollback_migration(
             )
 
         except (OSError, IOError, shutil.Error) as e:
-            logger.exception("Failed to rollback step '%s': %s", step_name, e)
+            logger.exception("Failed to rollback step '%s'", step_name)
             rollback_report["errors"].append({"step": step_name, "error": str(e)})
             rollback_report["success"] = False
 

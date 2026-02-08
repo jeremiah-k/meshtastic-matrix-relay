@@ -301,7 +301,14 @@ probes:
 
 - **Readiness**: Checks for ready file at `/run/mmrelay/ready` (cheap, fast)
 - **Startup**: Allows up to 5 minutes for initialization (60 failures × 5s = 300s)
-- **Liveness**: Runs `mmrelay doctor` for deeper health checks
+- **Liveness**: Checks the ready file for recent updates
+
+#### Ready-file heartbeat contract
+
+The liveness probe checks ready-file freshness using `find -mmin -2`, which means the
+application must update (touch) the ready file at least once every 2 minutes. If your
+environment needs a longer heartbeat window, adjust the probe command or liveness
+thresholds to avoid unintended restarts.
 
 ### Lifecycle Hooks
 
