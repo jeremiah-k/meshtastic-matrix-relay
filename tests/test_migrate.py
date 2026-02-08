@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import mmrelay.migrate as migrate_module
+import mmrelay.paths as paths_module
 from mmrelay.migrate import (
     _backup_file,
     _dir_has_entries,
@@ -518,9 +519,9 @@ class TestMigrateCredentials:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test backs up existing credentials."""
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        creds = legacy_root / "credentials.json"
+        legacy_root_dir = tmp_path / "legacy_root"
+        legacy_root_dir.mkdir()
+        creds = legacy_root_dir / "credentials.json"
         creds.write_text('{"token": "new"}')
         new_home = tmp_path / "home"
         new_home.mkdir()
@@ -529,7 +530,8 @@ class TestMigrateCredentials:
         existing_creds = matrix_dir / "credentials.json"
         existing_creds.write_text('{"token": "old"}')
 
-        result = migrate_credentials([legacy_root], new_home)
+        # force=True is needed to trigger migration when destination exists
+        result = migrate_credentials([legacy_root_dir], new_home, force=True)
 
         assert result["success"] is True
         # Backup should be created
@@ -579,9 +581,9 @@ class TestMigrateCredentials:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test logs warning on backup OSError."""
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        creds = legacy_root / "credentials.json"
+        legacy_root_dir = tmp_path / "legacy_root"
+        legacy_root_dir.mkdir()
+        creds = legacy_root_dir / "credentials.json"
         creds.write_text('{"token": "new"}')
         new_home = tmp_path / "home"
         new_home.mkdir()
@@ -607,7 +609,7 @@ class TestMigrateCredentials:
 
         with patch("shutil.copy2", side_effect=mock_copy_oserror):
             with patch("mmrelay.migrate.logger") as mock_logger:
-                result = migrate_credentials([legacy_root], new_home)
+                result = migrate_credentials([legacy_root_dir], new_home, force=True)
 
                 # Migration should fail if backup fails (safety first)
                 assert result["success"] is False
@@ -664,16 +666,16 @@ class TestMigrateConfig:
 
     def test_backup_existing_config(self, tmp_path: Path) -> None:
         """Test backs up existing config.yaml."""
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        config_file = legacy_root / "config.yaml"
+        legacy_root_dir = tmp_path / "legacy_root"
+        legacy_root_dir.mkdir()
+        config_file = legacy_root_dir / "config.yaml"
         config_file.write_text("matrix: {}")
         new_home = tmp_path / "home"
         new_home.mkdir()
         existing_config = new_home / "config.yaml"
         existing_config.write_text("old: true")
 
-        result = migrate_config([legacy_root], new_home)
+        result = migrate_config([legacy_root_dir], new_home, force=True)
 
         assert result["success"] is True
         backups = list(new_home.glob("config.yaml.bak.*"))
@@ -1329,7 +1331,7 @@ class TestIsMigrationNeeded:
         (home / "matrix").mkdir(parents=True)
         (home / "matrix" / "credentials.json").write_text("{}")
 
-        monkeypatch.setattr(migrate_module, "get_home_dir", lambda: home)
+        monkeypatch.setattr(paths_module, "get_home_dir", lambda: home)
         monkeypatch.setattr(
             migrate_module,
             "resolve_all_paths",
@@ -1358,7 +1360,7 @@ class TestIsMigrationNeeded:
         legacy_root.mkdir()
         (legacy_root / "credentials.json").write_text("{}")
 
-        monkeypatch.setattr(migrate_module, "get_home_dir", lambda: home)
+        monkeypatch.setattr(paths_module, "get_home_dir", lambda: home)
         monkeypatch.setattr(
             migrate_module,
             "resolve_all_paths",
@@ -1387,7 +1389,7 @@ class TestIsMigrationNeeded:
         (home / "matrix").mkdir(parents=True)
         (home / "matrix" / "credentials.json").write_text("{}")
 
-        monkeypatch.setattr(migrate_module, "get_home_dir", lambda: home)
+        monkeypatch.setattr(paths_module, "get_home_dir", lambda: home)
         monkeypatch.setattr(
             migrate_module,
             "resolve_all_paths",

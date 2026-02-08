@@ -117,109 +117,109 @@ class TestFindLegacyData:
 
     def test_find_legacy_data_credentials(self, tmp_path: Path) -> None:
         """Test finding credentials.json."""
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        creds = legacy_root / "credentials.json"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        creds = legacy_root_dir / "credentials.json"
         creds.write_text('{"test": "data"}')
 
-        findings = _find_legacy_data(legacy_root)
+        findings = _find_legacy_data(legacy_root_dir)
         assert len(findings) == 1
         assert findings[0]["type"] == "credentials"
         assert findings[0]["path"] == str(creds)
 
     def test_find_legacy_data_database(self, tmp_path: Path) -> None:
         """Test finding meshtastic.sqlite."""
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        db = legacy_root / "meshtastic.sqlite"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        db = legacy_root_dir / "meshtastic.sqlite"
         db.write_text("sqlite db")
 
-        findings = _find_legacy_data(legacy_root)
+        findings = _find_legacy_data(legacy_root_dir)
         assert len(findings) == 1
         assert findings[0]["type"] == "database"
 
     def test_find_legacy_data_wal_shm(self, tmp_path: Path) -> None:
         """Test finding database with WAL/SHM sidecars."""
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        db = legacy_root / "meshtastic.sqlite"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        db = legacy_root_dir / "meshtastic.sqlite"
         db.write_text("sqlite db")
-        wal = legacy_root / "meshtastic.sqlite-wal"
+        wal = legacy_root_dir / "meshtastic.sqlite-wal"
         wal.write_text("wal data")
-        shm = legacy_root / "meshtastic.sqlite-shm"
+        shm = legacy_root_dir / "meshtastic.sqlite-shm"
         shm.write_text("shm data")
 
-        findings = _find_legacy_data(legacy_root)
+        findings = _find_legacy_data(legacy_root_dir)
         # Should find db, wal, and shm
         db_findings = [f for f in findings if f["type"] == "database"]
         assert len(db_findings) == 3
 
     def test_find_legacy_data_partial_database(self, tmp_path: Path) -> None:
         """Test finding database in partial new layout (data/ directory)."""
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        data_dir = legacy_root / "data"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        data_dir = legacy_root_dir / "data"
         data_dir.mkdir()
         db = data_dir / "meshtastic.sqlite"
         db.write_text("sqlite db")
 
-        findings = _find_legacy_data(legacy_root)
+        findings = _find_legacy_data(legacy_root_dir)
         db_findings = [f for f in findings if f["type"] == "database"]
         assert len(db_findings) == 1
         assert "data" in db_findings[0]["path"]
 
     def test_find_legacy_data_logs(self, tmp_path: Path) -> None:
         """Test finding logs directory."""
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        logs_dir = legacy_root / "logs"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        logs_dir = legacy_root_dir / "logs"
         logs_dir.mkdir()
         (logs_dir / "test.log").write_text("log content")
 
-        findings = _find_legacy_data(legacy_root)
+        findings = _find_legacy_data(legacy_root_dir)
         log_findings = [f for f in findings if f["type"] == "logs"]
         assert len(log_findings) == 1
 
     def test_find_legacy_data_store(self, tmp_path: Path) -> None:
         """Test finding E2EE store directory."""
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        store_dir = legacy_root / "store"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        store_dir = legacy_root_dir / "store"
         store_dir.mkdir()
         (store_dir / "key").write_text("key data")
 
-        findings = _find_legacy_data(legacy_root)
+        findings = _find_legacy_data(legacy_root_dir)
         store_findings = [f for f in findings if f["type"] == "e2ee_store"]
         assert len(store_findings) == 1
 
     def test_find_legacy_data_plugins(self, tmp_path: Path) -> None:
         """Test finding plugins directory."""
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        plugins_dir = legacy_root / "plugins"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        plugins_dir = legacy_root_dir / "plugins"
         plugins_dir.mkdir()
         (plugins_dir / "test.py").write_text("plugin code")
 
-        findings = _find_legacy_data(legacy_root)
+        findings = _find_legacy_data(legacy_root_dir)
         plugin_findings = [f for f in findings if f["type"] == "plugins"]
         assert len(plugin_findings) == 1
 
     def test_find_legacy_data_deduplication(self, tmp_path: Path) -> None:
         """Test that duplicate paths are deduplicated."""
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
 
         # Create files that would be found multiple times
-        db = legacy_root / "meshtastic.sqlite"
+        db = legacy_root_dir / "meshtastic.sqlite"
         db.write_text("db")
 
         # Database layout with nested database (should dedupe)
-        database_dir = legacy_root / "database"
+        database_dir = legacy_root_dir / "database"
         database_dir.mkdir()
         db2 = database_dir / "meshtastic.sqlite"
         db2.write_text("db2")
 
-        findings = _find_legacy_data(legacy_root)
+        findings = _find_legacy_data(legacy_root_dir)
         db_findings = [f for f in findings if f["type"] == "database"]
         paths = [f["path"] for f in db_findings]
         # Should have unique paths only
@@ -227,12 +227,12 @@ class TestFindLegacyData:
 
     def test_find_legacy_data_config(self, tmp_path: Path) -> None:
         """Test finding config.yaml."""
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        config = legacy_root / "config.yaml"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        config = legacy_root_dir / "config.yaml"
         config.write_text("config")
 
-        findings = _find_legacy_data(legacy_root)
+        findings = _find_legacy_data(legacy_root_dir)
         config_findings = [f for f in findings if f["type"] == "config"]
         assert len(config_findings) == 1
 
@@ -240,11 +240,11 @@ class TestFindLegacyData:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Test duplicate findings are skipped by path string."""
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        creds = legacy_root / "credentials.json"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        creds = legacy_root_dir / "credentials.json"
         creds.write_text("creds")
-        config = legacy_root / "config.yaml"
+        config = legacy_root_dir / "config.yaml"
         config.write_text("config")
 
         creds_str = str(creds)
@@ -257,7 +257,7 @@ class TestFindLegacyData:
 
         monkeypatch.setattr(Path, "__str__", fake_str)
 
-        findings = _find_legacy_data(legacy_root)
+        findings = _find_legacy_data(legacy_root_dir)
         paths = [f["path"] for f in findings]
         assert paths.count(creds_str) == 1
 
@@ -284,9 +284,9 @@ class TestVerifyMigration:
         plugins_dir = home / "plugins"
         plugins_dir.mkdir()
 
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        store_dir = legacy_root / "store"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        store_dir = legacy_root_dir / "store"
         store_dir.mkdir()
         (store_dir / "keys.db").write_text("keys")
 
@@ -297,7 +297,7 @@ class TestVerifyMigration:
             "logs_dir": str(logs_dir),
             "plugins_dir": str(plugins_dir),
             "store_dir": "N/A (Windows)",
-            "legacy_sources": [str(legacy_root)],
+            "legacy_sources": [str(legacy_root_dir)],
         }
 
         monkeypatch.setattr("mmrelay.migrate.resolve_all_paths", lambda: paths_info)
@@ -372,9 +372,9 @@ class TestVerifyMigration:
         store_dir.parent.mkdir(parents=True, exist_ok=True)
         store_dir.mkdir()
 
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        legacy_logs = legacy_root / "logs"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        legacy_logs = legacy_root_dir / "logs"
         legacy_logs.mkdir()
         (legacy_logs / "legacy.log").write_text("log")
 
@@ -385,7 +385,7 @@ class TestVerifyMigration:
             "logs_dir": str(logs_dir),
             "plugins_dir": str(plugins_dir),
             "store_dir": str(store_dir),
-            "legacy_sources": [str(legacy_root)],
+            "legacy_sources": [str(legacy_root_dir)],
         }
 
         monkeypatch.setattr("mmrelay.migrate.resolve_all_paths", lambda: paths_info)
@@ -588,9 +588,9 @@ class TestMigrateCredentialsEdgeCases:
         self, tmp_path: Path
     ) -> None:
         """Test move removes an existing credentials directory."""
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        old_creds = legacy_root / "credentials.json"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        old_creds = legacy_root_dir / "credentials.json"
         old_creds.write_text("creds")
 
         new_home = tmp_path / "home"
@@ -600,7 +600,7 @@ class TestMigrateCredentialsEdgeCases:
         new_creds.mkdir()
 
         result = migrate_credentials(
-            [legacy_root], new_home, dry_run=False, force=False
+            [legacy_root_dir], new_home, dry_run=False, force=True
         )
 
         assert result["success"] is True
@@ -611,9 +611,9 @@ class TestMigrateCredentialsEdgeCases:
         self, tmp_path: Path
     ) -> None:
         """Test move removes an existing credentials file."""
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        old_creds = legacy_root / "credentials.json"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        old_creds = legacy_root_dir / "credentials.json"
         old_creds.write_text("creds")
 
         new_home = tmp_path / "home"
@@ -623,7 +623,7 @@ class TestMigrateCredentialsEdgeCases:
         new_creds.write_text("old")
 
         result = migrate_credentials(
-            [legacy_root], new_home, dry_run=False, force=False
+            [legacy_root_dir], new_home, dry_run=False, force=True
         )
 
         assert result["success"] is True
@@ -631,9 +631,9 @@ class TestMigrateCredentialsEdgeCases:
 
     def test_migrate_credentials_backup_failure_continues(self, tmp_path: Path) -> None:
         """Test backup failure aborts credentials migration."""
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        old_creds = legacy_root / "credentials.json"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        old_creds = legacy_root_dir / "credentials.json"
         old_creds.write_text("new-creds")
 
         new_home = tmp_path / "home"
@@ -645,13 +645,13 @@ class TestMigrateCredentialsEdgeCases:
         original_copy2 = shutil.copy2
 
         def selective_copy2(src, dst, *args, **kwargs):
-            if Path(src) == new_creds:
+            if ".bak." in str(dst):
                 raise OSError("Mock backup error")
             return original_copy2(src, dst, *args, **kwargs)
 
         with mock.patch("shutil.copy2", side_effect=selective_copy2):
             result = migrate_credentials(
-                [legacy_root], new_home, dry_run=False, force=False
+                [legacy_root_dir], new_home, dry_run=False, force=False
             )
 
         assert result["success"] is False
@@ -665,9 +665,9 @@ class TestMigrateConfigEdgeCases:
         self, tmp_path: Path
     ) -> None:
         """Test move removes an existing config directory before migrating."""
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        old_config = legacy_root / "config.yaml"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        old_config = legacy_root_dir / "config.yaml"
         old_config.write_text("config")
 
         new_home = tmp_path / "home"
@@ -675,7 +675,7 @@ class TestMigrateConfigEdgeCases:
         new_config = new_home / "config.yaml"
         new_config.mkdir()
 
-        result = migrate_config([legacy_root], new_home, dry_run=False, force=False)
+        result = migrate_config([legacy_root_dir], new_home, dry_run=False, force=True)
 
         assert result["success"] is True
         assert new_config.is_file()
@@ -683,9 +683,9 @@ class TestMigrateConfigEdgeCases:
 
     def test_migrate_config_move_removes_existing_file(self, tmp_path: Path) -> None:
         """Test move removes an existing config file before migrating."""
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        old_config = legacy_root / "config.yaml"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        old_config = legacy_root_dir / "config.yaml"
         old_config.write_text("config")
 
         new_home = tmp_path / "home"
@@ -693,16 +693,16 @@ class TestMigrateConfigEdgeCases:
         new_config = new_home / "config.yaml"
         new_config.write_text("old")
 
-        result = migrate_config([legacy_root], new_home, dry_run=False, force=False)
+        result = migrate_config([legacy_root_dir], new_home, dry_run=False, force=True)
 
         assert result["success"] is True
         assert new_config.read_text() == "config"
 
     def test_migrate_config_backup_failure_continues(self, tmp_path: Path) -> None:
         """Test backup failure aborts config migration."""
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        old_config = legacy_root / "config.yaml"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        old_config = legacy_root_dir / "config.yaml"
         old_config.write_text("new-config")
 
         new_home = tmp_path / "home"
@@ -713,28 +713,32 @@ class TestMigrateConfigEdgeCases:
         original_copy2 = shutil.copy2
 
         def selective_copy2(src, dst, *args, **kwargs):
-            if Path(src) == new_config:
+            if ".bak." in str(dst):
                 raise OSError("Mock backup error")
             return original_copy2(src, dst, *args, **kwargs)
 
         with mock.patch("shutil.copy2", side_effect=selective_copy2):
-            result = migrate_config([legacy_root], new_home, dry_run=False, force=False)
+            result = migrate_config(
+                [legacy_root_dir], new_home, dry_run=False, force=False
+            )
 
         assert result["success"] is False
         assert "Mock backup error" in result.get("error", "")
 
     def test_migrate_config_move_failure(self, tmp_path: Path) -> None:
         """Test migrate_config returns error on move failure."""
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        old_config = legacy_root / "config.yaml"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        old_config = legacy_root_dir / "config.yaml"
         old_config.write_text("config")
 
         new_home = tmp_path / "home"
         new_home.mkdir()
 
         with mock.patch("shutil.move", side_effect=OSError("Mock move error")):
-            result = migrate_config([legacy_root], new_home, dry_run=False, force=False)
+            result = migrate_config(
+                [legacy_root_dir], new_home, dry_run=False, force=True
+            )
 
         assert result["success"] is False
         assert "Mock move error" in result["error"]
@@ -747,7 +751,7 @@ class TestMigrateConfigEdgeCases:
         config.write_text("my-config")
 
         # Config is already in new_home (not a legacy root)
-        result = migrate_config([new_home], new_home, dry_run=False, force=False)
+        result = migrate_config([new_home], new_home, dry_run=False, force=True)
 
         assert result["success"] is True
         assert result["action"] == "none"
@@ -764,12 +768,12 @@ class TestMigrateDatabaseEdgeCases:
         """Test when all database candidates are invalid."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
-        legacy_roots = [tmp_path / "legacy1", tmp_path / "legacy2"]
+        legacy_root_dirs = [tmp_path / "legacy1", tmp_path / "legacy2"]
 
-        for root in legacy_roots:
+        for root in legacy_root_dirs:
             root.mkdir()
 
-        result = migrate_database(legacy_roots, new_home, dry_run=False, force=False)
+        result = migrate_database(legacy_root_dirs, new_home, dry_run=False, force=True)
         assert result["success"] is True
         assert "No database files found" in result["message"]
 
@@ -777,16 +781,16 @@ class TestMigrateDatabaseEdgeCases:
         """Test when _get_most_recent_database returns None."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
 
         # Create a candidate
-        db = legacy_root / "meshtastic.sqlite"
+        db = legacy_root_dir / "meshtastic.sqlite"
         db.write_text("db")
 
         with mock.patch("mmrelay.migrate._get_most_recent_database", return_value=None):
             result = migrate_database(
-                [legacy_root], new_home, dry_run=False, force=False
+                [legacy_root_dir], new_home, dry_run=False, force=True
             )
             assert result["success"] is False
             assert "No valid database files found" in result["message"]
@@ -804,9 +808,9 @@ class TestMigrateDatabaseEdgeCases:
         conn.execute("CREATE TABLE test (id INTEGER)")
         conn.close()
 
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        legacy_db = legacy_root / "meshtastic.sqlite"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        legacy_db = legacy_root_dir / "meshtastic.sqlite"
         conn = sqlite3.connect(legacy_db)
         conn.execute("CREATE TABLE test (id INTEGER)")
         conn.close()
@@ -844,7 +848,7 @@ class TestMigrateDatabaseEdgeCases:
 
         with mock.patch("shutil.copy2", side_effect=selective_copy2):
             result = migrate_database(
-                [legacy_root], new_home, dry_run=False, force=False
+                [legacy_root_dir], new_home, dry_run=False, force=True
             )
             # Backup failure should abort database migration to avoid overwriting data
             assert result["success"] is False
@@ -854,10 +858,10 @@ class TestMigrateDatabaseEdgeCases:
         """Test migration from legacy database/ directory."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
 
-        database_dir = legacy_root / "database"
+        database_dir = legacy_root_dir / "database"
         database_dir.mkdir()
         legacy_db = database_dir / "meshtastic.sqlite"
         conn = sqlite3.connect(legacy_db)
@@ -867,7 +871,9 @@ class TestMigrateDatabaseEdgeCases:
         wal = database_dir / "meshtastic.sqlite-wal"
         wal.write_text("wal")
 
-        result = migrate_database([legacy_root], new_home, dry_run=False, force=False)
+        result = migrate_database(
+            [legacy_root_dir], new_home, dry_run=False, force=True
+        )
 
         assert result["success"] is True
         assert (new_home / "database" / "meshtastic.sqlite").exists()
@@ -877,10 +883,10 @@ class TestMigrateDatabaseEdgeCases:
         """Test when selected_group is empty."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
 
-        db = legacy_root / "meshtastic.sqlite"
+        db = legacy_root_dir / "meshtastic.sqlite"
         db.write_text("db")
 
         with mock.patch(
@@ -888,7 +894,7 @@ class TestMigrateDatabaseEdgeCases:
             return_value=tmp_path / "other.sqlite",
         ):
             result = migrate_database(
-                [legacy_root], new_home, dry_run=False, force=False
+                [legacy_root_dir], new_home, dry_run=False, force=True
             )
             assert result["success"] is False
             assert "Most recent database group not found" in result["message"]
@@ -897,10 +903,10 @@ class TestMigrateDatabaseEdgeCases:
         """Test move path logs warning when source unlink fails."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
 
-        legacy_db = legacy_root / "meshtastic.sqlite"
+        legacy_db = legacy_root_dir / "meshtastic.sqlite"
         conn = sqlite3.connect(legacy_db)
         conn.execute("CREATE TABLE test (id INTEGER)")
         conn.close()
@@ -916,7 +922,7 @@ class TestMigrateDatabaseEdgeCases:
             Path, "unlink", autospec=True, side_effect=failing_unlink
         ):
             result = migrate_database(
-                [legacy_root], new_home, dry_run=False, force=False
+                [legacy_root_dir], new_home, dry_run=False, force=True
             )
             assert result["success"] is True
 
@@ -924,14 +930,14 @@ class TestMigrateDatabaseEdgeCases:
         """Test handling of move/copy failure."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        legacy_db = legacy_root / "meshtastic.sqlite"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        legacy_db = legacy_root_dir / "meshtastic.sqlite"
         legacy_db.write_text("legacy")
 
         with mock.patch("shutil.copy2", side_effect=OSError("Mock copy error")):
             result = migrate_database(
-                [legacy_root], new_home, dry_run=False, force=False
+                [legacy_root_dir], new_home, dry_run=False, force=True
             )
             assert result["success"] is False
             assert "error" in result
@@ -940,10 +946,10 @@ class TestMigrateDatabaseEdgeCases:
         """Test migration from legacy data/ directory with sidecars."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
 
-        data_dir = legacy_root / "data"
+        data_dir = legacy_root_dir / "data"
         data_dir.mkdir()
         legacy_db = data_dir / "meshtastic.sqlite"
         conn = sqlite3.connect(legacy_db)
@@ -955,7 +961,9 @@ class TestMigrateDatabaseEdgeCases:
         shm = data_dir / "meshtastic.sqlite-shm"
         shm.write_text("shm")
 
-        result = migrate_database([legacy_root], new_home, dry_run=False, force=False)
+        result = migrate_database(
+            [legacy_root_dir], new_home, dry_run=False, force=True
+        )
 
         assert result["success"] is True
         assert (new_home / "database" / "meshtastic.sqlite").exists()
@@ -968,10 +976,10 @@ class TestMigrateDatabaseEdgeCases:
         """Test cleanup warning when integrity check cleanup cannot unlink."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
 
-        legacy_db = legacy_root / "meshtastic.sqlite"
+        legacy_db = legacy_root_dir / "meshtastic.sqlite"
         conn = sqlite3.connect(legacy_db)
         conn.execute("CREATE TABLE test (id INTEGER)")
         conn.close()
@@ -992,7 +1000,7 @@ class TestMigrateDatabaseEdgeCases:
             mock_connect.return_value.__enter__.return_value = mock_conn
 
             with pytest.raises(MigrationError) as exc_info:
-                migrate_database([legacy_root], new_home, dry_run=False, force=False)
+                migrate_database([legacy_root_dir], new_home, dry_run=False, force=True)
 
         assert "integrity check failed" in str(exc_info.value).lower()
 
@@ -1002,10 +1010,10 @@ class TestMigrateDatabaseEdgeCases:
         """Test cleanup warning when DatabaseError cleanup cannot unlink."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
 
-        legacy_db = legacy_root / "meshtastic.sqlite"
+        legacy_db = legacy_root_dir / "meshtastic.sqlite"
         conn = sqlite3.connect(legacy_db)
         conn.execute("CREATE TABLE test (id INTEGER)")
         conn.close()
@@ -1024,7 +1032,7 @@ class TestMigrateDatabaseEdgeCases:
             "sqlite3.connect", side_effect=sqlite3.DatabaseError("Mock error")
         ):
             with pytest.raises(MigrationError) as exc_info:
-                migrate_database([legacy_root], new_home, dry_run=False, force=False)
+                migrate_database([legacy_root_dir], new_home, dry_run=False, force=True)
 
         assert "Database verification failed" in str(exc_info.value)
 
@@ -1032,11 +1040,11 @@ class TestMigrateDatabaseEdgeCases:
         """Test SQLite integrity check failure."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
 
         # Create valid SQLite database
-        legacy_db = legacy_root / "meshtastic.sqlite"
+        legacy_db = legacy_root_dir / "meshtastic.sqlite"
         conn = sqlite3.connect(legacy_db)
         conn.execute("CREATE TABLE test (id INTEGER)")
         conn.close()
@@ -1048,7 +1056,7 @@ class TestMigrateDatabaseEdgeCases:
             mock_connect.return_value = mock_conn
 
             with pytest.raises(MigrationError) as exc_info:
-                migrate_database([legacy_root], new_home, dry_run=False, force=False)
+                migrate_database([legacy_root_dir], new_home, dry_run=False, force=True)
 
             assert "integrity check failed" in str(exc_info.value).lower()
 
@@ -1056,11 +1064,11 @@ class TestMigrateDatabaseEdgeCases:
         """Test SQLite DatabaseError during integrity check."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
 
         # Create valid SQLite database
-        legacy_db = legacy_root / "meshtastic.sqlite"
+        legacy_db = legacy_root_dir / "meshtastic.sqlite"
         conn = sqlite3.connect(legacy_db)
         conn.execute("CREATE TABLE test (id INTEGER)")
         conn.close()
@@ -1070,7 +1078,7 @@ class TestMigrateDatabaseEdgeCases:
             "sqlite3.connect", side_effect=sqlite3.DatabaseError("Mock error")
         ):
             with pytest.raises(MigrationError) as exc_info:
-                migrate_database([legacy_root], new_home, dry_run=False, force=False)
+                migrate_database([legacy_root_dir], new_home, dry_run=False, force=True)
 
             assert "Database verification failed" in str(exc_info.value)
 
@@ -1080,15 +1088,17 @@ class TestMigrateDatabaseEdgeCases:
         """Test that WAL/SHM files skip integrity check."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
 
         # Create WAL file (not a main database)
-        legacy_wal = legacy_root / "meshtastic.sqlite-wal"
+        legacy_wal = legacy_root_dir / "meshtastic.sqlite-wal"
         legacy_wal.write_text("wal data")
 
         # Should not call integrity check on WAL files
-        result = migrate_database([legacy_root], new_home, dry_run=False, force=False)
+        result = migrate_database(
+            [legacy_root_dir], new_home, dry_run=False, force=True
+        )
         assert result["success"] is True
 
 
@@ -1099,9 +1109,9 @@ class TestMigrateLogsEdgeCases:
         """Test log backup failure and copy error handling."""
         from datetime import datetime
 
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        logs_dir = legacy_root / "logs"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        logs_dir = legacy_root_dir / "logs"
         logs_dir.mkdir()
         log_file = logs_dir / "app.log"
         log_file.write_text("log")
@@ -1128,10 +1138,13 @@ class TestMigrateLogsEdgeCases:
         with (
             mock.patch("mmrelay.migrate.datetime") as mock_datetime,
             mock.patch("shutil.copytree", side_effect=OSError("Mock backup failure")),
-            mock.patch("shutil.copy2", side_effect=selective_copy2),
+            mock.patch("shutil.copy2", original_copy2),
         ):
             mock_datetime.now.return_value = fixed_time
-            result = migrate_logs([legacy_root], new_home, dry_run=False, force=False)
+            # force=True is needed to trigger migration when destination exists
+            result = migrate_logs(
+                [legacy_root_dir], new_home, dry_run=False, force=True
+            )
 
         # Backup failure is now fatal
         assert result["success"] is False
@@ -1153,14 +1166,16 @@ class TestMigrateStoreEdgeCases:
         new_store_dir.mkdir()
         (new_store_dir / "file").write_text("data")
 
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        old_store_dir = legacy_root / "store"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        old_store_dir = legacy_root_dir / "store"
         old_store_dir.mkdir()
         (old_store_dir / "file").write_text("data")
 
         with mock.patch("shutil.copytree", side_effect=OSError("Mock backup error")):
-            result = migrate_store([legacy_root], new_home, dry_run=False, force=False)
+            result = migrate_store(
+                [legacy_root_dir], new_home, dry_run=False, force=True
+            )
             assert result["success"] is False
             assert "backup" in result["error"]
 
@@ -1175,13 +1190,13 @@ class TestMigrateStoreEdgeCases:
         new_store_dir.mkdir()
         (new_store_dir / "old_file").write_text("old")
 
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        old_store_dir = legacy_root / "store"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        old_store_dir = legacy_root_dir / "store"
         old_store_dir.mkdir()
         (old_store_dir / "new_file").write_text("new")
 
-        result = migrate_store([legacy_root], new_home, dry_run=False, force=False)
+        result = migrate_store([legacy_root_dir], new_home, dry_run=False, force=True)
 
         assert result["success"] is True
         assert result["action"] == "move"
@@ -1193,14 +1208,16 @@ class TestMigrateStoreEdgeCases:
         """Test handling of move failure."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        old_store_dir = legacy_root / "store"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        old_store_dir = legacy_root_dir / "store"
         old_store_dir.mkdir()
         (old_store_dir / "file").write_text("data")
 
         with mock.patch("shutil.move", side_effect=OSError("Mock move error")):
-            result = migrate_store([legacy_root], new_home, dry_run=False, force=False)
+            result = migrate_store(
+                [legacy_root_dir], new_home, dry_run=False, force=True
+            )
             assert result["success"] is False
             assert "error" in result
 
@@ -1218,9 +1235,9 @@ class TestMigratePluginsEdgeCases:
         new_custom_dir.mkdir()
         (new_custom_dir / "existing").mkdir()
 
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        old_plugins_dir = legacy_root / "plugins"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        old_plugins_dir = legacy_root_dir / "plugins"
         old_plugins_dir.mkdir()
         old_custom_dir = old_plugins_dir / "custom"
         old_custom_dir.mkdir()
@@ -1228,7 +1245,7 @@ class TestMigratePluginsEdgeCases:
 
         with mock.patch("shutil.copytree", side_effect=OSError("Mock backup error")):
             result = migrate_plugins(
-                [legacy_root], new_home, dry_run=False, force=False
+                [legacy_root_dir], new_home, dry_run=False, force=True
             )
             # Backup failure should surface as migration failure
             assert result["success"] is False
@@ -1239,9 +1256,9 @@ class TestMigratePluginsEdgeCases:
         new_home = tmp_path / "new_home"
         new_home.mkdir()
 
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        old_plugins_dir = legacy_root / "plugins"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        old_plugins_dir = legacy_root_dir / "plugins"
         old_plugins_dir.mkdir()
 
         backup_path = tmp_path / "plugins.bak.test"
@@ -1261,7 +1278,7 @@ class TestMigratePluginsEdgeCases:
             mock.patch.object(Path, "mkdir", autospec=True, side_effect=failing_mkdir),
         ):
             result = migrate_plugins(
-                [legacy_root], new_home, dry_run=False, force=False
+                [legacy_root_dir], new_home, dry_run=False, force=True
             )
 
         assert result["success"] is False
@@ -1272,9 +1289,9 @@ class TestMigratePluginsEdgeCases:
         new_home = tmp_path / "new_home"
         new_home.mkdir()
 
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        old_plugins_dir = legacy_root / "plugins"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        old_plugins_dir = legacy_root_dir / "plugins"
         old_plugins_dir.mkdir()
 
         new_plugins_dir = new_home / "plugins"
@@ -1286,7 +1303,9 @@ class TestMigratePluginsEdgeCases:
             return original_mkdir(self, *args, **kwargs)
 
         with mock.patch.object(Path, "mkdir", autospec=True, side_effect=failing_mkdir):
-            result = migrate_plugins([legacy_root], new_home, dry_run=False, force=True)
+            result = migrate_plugins(
+                [legacy_root_dir], new_home, dry_run=False, force=True
+            )
 
         assert result["success"] is False
         assert "plugins dir" in result["error"]
@@ -1303,9 +1322,9 @@ class TestMigratePluginsEdgeCases:
         new_community_dir.mkdir()
         (new_community_dir / "existing").mkdir()
 
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        old_plugins_dir = legacy_root / "plugins"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        old_plugins_dir = legacy_root_dir / "plugins"
         old_plugins_dir.mkdir()
         old_community_dir = old_plugins_dir / "community"
         old_community_dir.mkdir()
@@ -1320,7 +1339,7 @@ class TestMigratePluginsEdgeCases:
 
         with mock.patch("shutil.copytree", side_effect=selective_copytree):
             result = migrate_plugins(
-                [legacy_root], new_home, dry_run=False, force=False
+                [legacy_root_dir], new_home, dry_run=False, force=True
             )
 
         assert result["success"] is False
@@ -1330,9 +1349,9 @@ class TestMigratePluginsEdgeCases:
         """Test cleanup rmdir errors are captured."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        old_plugins_dir = legacy_root / "plugins"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        old_plugins_dir = legacy_root_dir / "plugins"
         old_plugins_dir.mkdir()
         old_custom_dir = old_plugins_dir / "custom"
         old_custom_dir.mkdir()
@@ -1347,7 +1366,7 @@ class TestMigratePluginsEdgeCases:
 
         with mock.patch.object(Path, "rmdir", autospec=True, side_effect=failing_rmdir):
             result = migrate_plugins(
-                [legacy_root], new_home, dry_run=False, force=False
+                [legacy_root_dir], new_home, dry_run=False, force=True
             )
 
         # Cleanup errors are now non-fatal warnings
@@ -1360,9 +1379,9 @@ class TestMigratePluginsEdgeCases:
         """Test cleanup errors when removing the plugins root."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        old_plugins_dir = legacy_root / "plugins"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        old_plugins_dir = legacy_root_dir / "plugins"
         old_plugins_dir.mkdir()
         old_custom_dir = old_plugins_dir / "custom"
         old_custom_dir.mkdir()
@@ -1377,7 +1396,7 @@ class TestMigratePluginsEdgeCases:
 
         with mock.patch.object(Path, "rmdir", autospec=True, side_effect=failing_rmdir):
             result = migrate_plugins(
-                [legacy_root], new_home, dry_run=False, force=False
+                [legacy_root_dir], new_home, dry_run=False, force=True
             )
 
         # Cleanup errors are now non-fatal warnings
@@ -1388,16 +1407,16 @@ class TestMigratePluginsEdgeCases:
         """Test handling of iterdir failure for custom plugins."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        old_plugins_dir = legacy_root / "plugins"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        old_plugins_dir = legacy_root_dir / "plugins"
         old_plugins_dir.mkdir()
         old_custom_dir = old_plugins_dir / "custom"
         old_custom_dir.mkdir()
 
         with mock.patch.object(Path, "iterdir", side_effect=OSError("Mock error")):
             result = migrate_plugins(
-                [legacy_root], new_home, dry_run=False, force=False
+                [legacy_root_dir], new_home, dry_run=False, force=True
             )
 
         assert result["success"] is False
@@ -1415,9 +1434,9 @@ class TestMigratePluginsEdgeCases:
         (new_custom_dir / "test_plugin").mkdir()
         (new_custom_dir / "test_plugin" / "old_file.txt").write_text("old content")
 
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        old_plugins_dir = legacy_root / "plugins"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        old_plugins_dir = legacy_root_dir / "plugins"
         old_plugins_dir.mkdir()
         old_custom_dir = old_plugins_dir / "custom"
         old_custom_dir.mkdir()
@@ -1425,7 +1444,7 @@ class TestMigratePluginsEdgeCases:
         (old_custom_dir / "test_plugin").mkdir()
         (old_custom_dir / "test_plugin" / "new_file.txt").write_text("new content")
 
-        result = migrate_plugins([legacy_root], new_home, dry_run=False, force=False)
+        result = migrate_plugins([legacy_root_dir], new_home, dry_run=False, force=True)
 
         assert result["success"] is True
         # Old file should be gone (directory replaced)
@@ -1445,9 +1464,9 @@ class TestMigratePluginsEdgeCases:
         (new_custom_dir / "test_plugin").mkdir()
         (new_custom_dir / "test_plugin" / "old_file.txt").write_text("old content")
 
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        old_plugins_dir = legacy_root / "plugins"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        old_plugins_dir = legacy_root_dir / "plugins"
         old_plugins_dir.mkdir()
         old_custom_dir = old_plugins_dir / "custom"
         old_custom_dir.mkdir()
@@ -1455,7 +1474,7 @@ class TestMigratePluginsEdgeCases:
         (old_custom_dir / "test_plugin").mkdir()
         (old_custom_dir / "test_plugin" / "new_file.txt").write_text("new content")
 
-        result = migrate_plugins([legacy_root], new_home, dry_run=False, force=False)
+        result = migrate_plugins([legacy_root_dir], new_home, dry_run=False, force=True)
 
         assert result["success"] is True
         # Old file should be gone (directory replaced)
@@ -1469,16 +1488,16 @@ class TestMigratePluginsEdgeCases:
         """Test that move operation cleans up empty custom directory."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        old_plugins_dir = legacy_root / "plugins"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        old_plugins_dir = legacy_root_dir / "plugins"
         old_plugins_dir.mkdir()
         old_custom_dir = old_plugins_dir / "custom"
         old_custom_dir.mkdir()
         (old_custom_dir / "plugin").mkdir()
 
         # Perform migration with move
-        result = migrate_plugins([legacy_root], new_home, dry_run=False, force=False)
+        result = migrate_plugins([legacy_root_dir], new_home, dry_run=False, force=True)
 
         assert result["success"] is True
         assert result["action"] == "move"
@@ -1491,16 +1510,16 @@ class TestMigratePluginsEdgeCases:
         """Test that move operation cleans up empty plugins directory."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        old_plugins_dir = legacy_root / "plugins"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        old_plugins_dir = legacy_root_dir / "plugins"
         old_plugins_dir.mkdir()
         old_custom_dir = old_plugins_dir / "custom"
         old_custom_dir.mkdir()
         (old_custom_dir / "plugin").mkdir()
 
         # Perform migration with move
-        result = migrate_plugins([legacy_root], new_home, dry_run=False, force=False)
+        result = migrate_plugins([legacy_root_dir], new_home, dry_run=False, force=True)
 
         assert result["success"] is True
         # After moving all plugins, old plugins dir should be empty or removed
@@ -1510,9 +1529,9 @@ class TestMigratePluginsEdgeCases:
         """Test handling of OSError during cleanup."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        old_plugins_dir = legacy_root / "plugins"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        old_plugins_dir = legacy_root_dir / "plugins"
         old_plugins_dir.mkdir()
         old_custom_dir = old_plugins_dir / "custom"
         old_custom_dir.mkdir()
@@ -1542,7 +1561,7 @@ class TestMigratePluginsEdgeCases:
 
         with mock.patch("shutil.rmtree", side_effect=failing_rmtree):
             result = migrate_plugins(
-                [legacy_root], new_home, dry_run=False, force=False
+                [legacy_root_dir], new_home, dry_run=False, force=True
             )
             # Should still succeed despite cleanup errors (logged as debug)
             assert result["success"] is True
@@ -1557,9 +1576,9 @@ class TestMigrateGpxtrackerEdgeCases:
         """Test handling of YAML import error."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        config = legacy_root / "config.yaml"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        config = legacy_root_dir / "config.yaml"
         config.write_text("test: config")
 
         # Mock yaml import to fail
@@ -1588,7 +1607,9 @@ class TestMigrateGpxtrackerEdgeCases:
 
         monkeypatch.setattr(builtins, "__import__", mock_import)
 
-        result = migrate_gpxtracker([legacy_root], new_home, dry_run=False, force=False)
+        result = migrate_gpxtracker(
+            [legacy_root_dir], new_home, dry_run=False, force=True
+        )
 
         assert result["success"] is True
         assert "gpxtracker plugin not configured" in result["message"]
@@ -1604,13 +1625,13 @@ class TestMigrateGpxtrackerEdgeCases:
         existing_gpx = new_gpx_dir / "existing.gpx"
         existing_gpx.write_text("existing")
 
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        gpx_dir = legacy_root / "gpx"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        gpx_dir = legacy_root_dir / "gpx"
         gpx_dir.mkdir()
         gpx_file = gpx_dir / "track.gpx"
         gpx_file.write_text("track")
-        config = legacy_root / "config.yaml"
+        config = legacy_root_dir / "config.yaml"
         config.write_text(
             f"community-plugins:\n  gpxtracker:\n    gpx_directory: {gpx_dir}\n"
         )
@@ -1650,7 +1671,7 @@ class TestMigrateGpxtrackerEdgeCases:
         ):
             mock_datetime.now.return_value = fixed_time
             result = migrate_gpxtracker(
-                [legacy_root], new_home, dry_run=False, force=False
+                [legacy_root_dir], new_home, dry_run=False, force=True
             )
 
         assert result["success"] is False
@@ -1666,14 +1687,14 @@ class TestMigrateGpxtrackerEdgeCases:
         """Test handling of GPX file move failure."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
 
-        gpx_dir = legacy_root / "gpx"
+        gpx_dir = legacy_root_dir / "gpx"
         gpx_dir.mkdir()
         (gpx_dir / "track.gpx").write_text("track")
 
-        config = legacy_root / "config.yaml"
+        config = legacy_root_dir / "config.yaml"
         config.write_text(f"""
 community-plugins:
   gpxtracker:
@@ -1682,7 +1703,7 @@ community-plugins:
 
         with mock.patch("shutil.move", side_effect=OSError("Mock move error")):
             result = migrate_gpxtracker(
-                [legacy_root], new_home, dry_run=False, force=False
+                [legacy_root_dir], new_home, dry_run=False, force=True
             )
             assert result["success"] is False
             assert "move failed" in result["error"]
@@ -1691,19 +1712,19 @@ community-plugins:
         """Test handling of OSError during glob iteration."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        gpx_dir = legacy_root / "gpx"
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        gpx_dir = legacy_root_dir / "gpx"
         gpx_dir.mkdir()
 
-        config = legacy_root / "config.yaml"
+        config = legacy_root_dir / "config.yaml"
         config.write_text(
             f"community-plugins:\n  gpxtracker:\n    gpx_directory: {gpx_dir}\n"
         )
 
         with mock.patch.object(Path, "glob", side_effect=OSError("Mock glob error")):
             result = migrate_gpxtracker(
-                [legacy_root], new_home, dry_run=False, force=False
+                [legacy_root_dir], new_home, dry_run=False, force=True
             )
 
         assert result["success"] is False
@@ -1712,18 +1733,20 @@ community-plugins:
         """Test handling when expanded GPX directory doesn't exist."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
 
         # Create legacy config with gpx_directory pointing to non-existent path
-        config = legacy_root / "config.yaml"
+        config = legacy_root_dir / "config.yaml"
         config.write_text("""
 community-plugins:
   gpxtracker:
     gpx_directory: ~/nonexistent_gpx
 """)
 
-        result = migrate_gpxtracker([legacy_root], new_home, dry_run=False, force=False)
+        result = migrate_gpxtracker(
+            [legacy_root_dir], new_home, dry_run=False, force=True
+        )
 
         # Should succeed gracefully (directory not found is handled)
         assert result["success"] is True
@@ -1733,10 +1756,10 @@ community-plugins:
     ) -> None:
         """Test new home directory creation failure."""
         new_home = tmp_path / "home"
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
 
-        paths_info = {"home": str(new_home), "legacy_sources": [str(legacy_root)]}
+        paths_info = {"home": str(new_home), "legacy_sources": [str(legacy_root_dir)]}
         monkeypatch.setattr("mmrelay.migrate.resolve_all_paths", lambda: paths_info)
 
         original_mkdir = Path.mkdir
@@ -1748,7 +1771,7 @@ community-plugins:
 
         monkeypatch.setattr(Path, "mkdir", failing_mkdir)
 
-        report = perform_migration(dry_run=False, force=False)
+        report = perform_migration(dry_run=False, force=True)
         assert report["success"] is False
         assert "Failed to create new home directory" in report["message"]
 
@@ -1757,15 +1780,15 @@ community-plugins:
     ) -> None:
         """Test gpxtracker step runs when configured."""
         new_home = tmp_path / "home"
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
 
-        config = legacy_root / "config.yaml"
+        config = legacy_root_dir / "config.yaml"
         config.write_text(
             "community-plugins:\n  gpxtracker:\n    gpx_directory: /tmp/gpx\n"
         )
 
-        paths_info = {"home": str(new_home), "legacy_sources": [str(legacy_root)]}
+        paths_info = {"home": str(new_home), "legacy_sources": [str(legacy_root_dir)]}
         monkeypatch.setattr("mmrelay.migrate.resolve_all_paths", lambda: paths_info)
 
         def ok_result(*_args, **_kwargs):
@@ -1785,7 +1808,7 @@ community-plugins:
         monkeypatch.setattr("mmrelay.migrate.migrate_plugins", ok_result)
         monkeypatch.setattr("mmrelay.migrate.migrate_gpxtracker", gpx_result)
 
-        report = perform_migration(dry_run=True, force=False)
+        report = perform_migration(dry_run=True, force=True)
         assert report["success"] is True
         assert gpx_called["value"] is True
 
@@ -1794,14 +1817,14 @@ community-plugins:
     ) -> None:
         """Test YAML parse failure during gpxtracker detection."""
         new_home = tmp_path / "home"
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        (legacy_root / "plugins").mkdir()
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        (legacy_root_dir / "plugins").mkdir()
 
-        config = legacy_root / "config.yaml"
+        config = legacy_root_dir / "config.yaml"
         config.write_text("community-plugins: [")
 
-        paths_info = {"home": str(new_home), "legacy_sources": [str(legacy_root)]}
+        paths_info = {"home": str(new_home), "legacy_sources": [str(legacy_root_dir)]}
         monkeypatch.setattr("mmrelay.migrate.resolve_all_paths", lambda: paths_info)
 
         def ok_result(*_args, **_kwargs):
@@ -1821,7 +1844,7 @@ community-plugins:
         monkeypatch.setattr("mmrelay.migrate.migrate_plugins", ok_result)
         monkeypatch.setattr("mmrelay.migrate.migrate_gpxtracker", gpx_result)
 
-        report = perform_migration(dry_run=True, force=False)
+        report = perform_migration(dry_run=True, force=True)
         assert report["success"] is True
         assert gpx_called["value"] is True
 
@@ -1830,10 +1853,10 @@ community-plugins:
     ) -> None:
         """Test MigrationError handling branch."""
         new_home = tmp_path / "home"
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
 
-        paths_info = {"home": str(new_home), "legacy_sources": [str(legacy_root)]}
+        paths_info = {"home": str(new_home), "legacy_sources": [str(legacy_root_dir)]}
         monkeypatch.setattr("mmrelay.migrate.resolve_all_paths", lambda: paths_info)
 
         def failed_step(*_args, **_kwargs):
@@ -1841,7 +1864,7 @@ community-plugins:
 
         monkeypatch.setattr("mmrelay.migrate.migrate_credentials", failed_step)
 
-        report = perform_migration(dry_run=False, force=False)
+        report = perform_migration(dry_run=False, force=True)
         assert report["success"] is False
         assert "rollback" not in report
 
@@ -1850,10 +1873,10 @@ community-plugins:
     ) -> None:
         """Test OSError handling branch."""
         new_home = tmp_path / "home"
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
 
-        paths_info = {"home": str(new_home), "legacy_sources": [str(legacy_root)]}
+        paths_info = {"home": str(new_home), "legacy_sources": [str(legacy_root_dir)]}
         monkeypatch.setattr("mmrelay.migrate.resolve_all_paths", lambda: paths_info)
 
         def raise_oserror(*_args, **_kwargs):
@@ -1861,7 +1884,7 @@ community-plugins:
 
         monkeypatch.setattr("mmrelay.migrate.migrate_credentials", raise_oserror)
 
-        report = perform_migration(dry_run=False, force=False)
+        report = perform_migration(dry_run=False, force=True)
         assert report["success"] is False
         assert "rollback" not in report
 
@@ -1870,10 +1893,10 @@ community-plugins:
     ) -> None:
         """Test unexpected exception branch re-raises."""
         new_home = tmp_path / "home"
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
 
-        paths_info = {"home": str(new_home), "legacy_sources": [str(legacy_root)]}
+        paths_info = {"home": str(new_home), "legacy_sources": [str(legacy_root_dir)]}
         monkeypatch.setattr("mmrelay.migrate.resolve_all_paths", lambda: paths_info)
 
         def raise_runtime(*_args, **_kwargs):
@@ -1882,4 +1905,4 @@ community-plugins:
         monkeypatch.setattr("mmrelay.migrate.migrate_credentials", raise_runtime)
 
         with pytest.raises(RuntimeError):
-            perform_migration(dry_run=False, force=False)
+            perform_migration(dry_run=False, force=True)

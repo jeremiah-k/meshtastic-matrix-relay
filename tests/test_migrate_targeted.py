@@ -32,7 +32,7 @@ _original_builtins_import = builtins.__import__
 class TestMigrateStore(unittest.TestCase):
     """Tests for migrate_store function (lines 774-807)."""
 
-    @patch("mmrelay.migrate.get_home_dir")
+    @patch("mmrelay.paths.get_home_dir")
     @patch("sys.platform", "win32")
     def test_returns_success_on_windows(self, mock_get_home):
         """Test returns success message on Windows (E2EE not supported)."""
@@ -123,7 +123,7 @@ class TestPerformMigration(unittest.TestCase):
             self.assertGreaterEqual(len(result.get("migrations", [])), 3)
 
     @patch("mmrelay.migrate.migrate_store")
-    @patch("mmrelay.migrate.get_home_dir")
+    @patch("mmrelay.paths.get_home_dir")
     @patch("mmrelay.paths.get_home_dir")
     @patch("mmrelay.paths.resolve_all_paths")
     def test_returns_error_on_migration_failure(
@@ -186,7 +186,7 @@ class TestPerformMigration(unittest.TestCase):
     @patch("mmrelay.migrate.migrate_database")
     @patch("mmrelay.migrate.migrate_config")
     @patch("mmrelay.migrate.migrate_credentials")
-    @patch("mmrelay.migrate.get_home_dir")
+    @patch("mmrelay.paths.get_home_dir")
     @patch("mmrelay.paths.get_home_dir")
     @patch("mmrelay.paths.resolve_all_paths")
     def test_database_failure_stops_migration(
