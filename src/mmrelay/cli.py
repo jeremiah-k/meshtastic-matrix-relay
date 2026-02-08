@@ -1535,9 +1535,6 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
         # Reset config_path if we're continuing to the next iteration
         config_path = None
 
-        # Reset config_path if we're continuing to the next iteration
-        config_path = None
-
     print("Error: No configuration file found in any of the following locations:")
     for path in config_paths:
         print(f"  - {path}")

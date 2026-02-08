@@ -13,7 +13,11 @@ from mmrelay.constants.database import (
 )
 from mmrelay.db_runtime import DatabaseManager
 from mmrelay.log_utils import get_logger
-from mmrelay.paths import resolve_all_paths
+from mmrelay.paths import (
+    get_legacy_dirs,
+    is_deprecation_window_active,
+    resolve_all_paths,
+)
 
 # Global config variable that will be set from main.py
 config = None
@@ -135,6 +139,29 @@ def get_db_path() -> str:
         # Continue anyway - the database connection will fail later if needed
 
     default_path = os.path.join(database_dir, "meshtastic.sqlite")
+
+    # If default path doesn't exist, check legacy locations
+    if not os.path.exists(default_path) and is_deprecation_window_active():
+        legacy_dirs = get_legacy_dirs()
+        for legacy_dir in legacy_dirs:
+            # Check various possible legacy locations
+            candidates = [
+                os.path.join(legacy_dir, "meshtastic.sqlite"),
+                os.path.join(legacy_dir, "data", "meshtastic.sqlite"),
+                os.path.join(legacy_dir, "database", "meshtastic.sqlite"),
+            ]
+            for candidate in candidates:
+                if os.path.exists(candidate):
+                    if not _db_path_logged:
+                        logger.warning(
+                            "Database found in legacy location: %s. "
+                            "Please run 'mmrelay migrate' to move to new unified structure. "
+                            "Support for legacy database locations will be removed in v1.4.",
+                            candidate,
+                        )
+                        _db_path_logged = True
+                    _cached_db_path = candidate
+                    return candidate
 
     _cached_db_path = default_path
     return default_path

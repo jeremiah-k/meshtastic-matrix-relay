@@ -86,19 +86,20 @@ class TestConfigEdgeCases(unittest.TestCase):
 
         Verifies that the returned paths include a directory under 'AppData', as expected for Windows environments.
         """
-        with (
-            patch("mmrelay.paths.sys.platform", "win32"),
-            patch("mmrelay.paths.platformdirs.user_data_dir") as mock_user_data,
-            patch("mmrelay.config.os.makedirs"),
-        ):
-            mock_user_data.return_value = "C:\\Users\\Test\\AppData\\Local\\mmrelay"
-            paths = get_config_paths()
-            # Check that a Windows-style path is in the list
-            # We normalize because get_config_paths uses absolute path which might
-            # prepend CWD on Linux if the mock path isn't recognized as absolute.
-            # But "C:\" should be absolute enough.
-            windows_path_found = any("AppData" in str(path) for path in paths)
-            self.assertTrue(windows_path_found)
+        with patch.dict(os.environ, {}, clear=True):
+            with (
+                patch("mmrelay.paths.sys.platform", "win32"),
+                patch("mmrelay.paths.platformdirs.user_data_dir") as mock_user_data,
+                patch("mmrelay.config.os.makedirs"),
+            ):
+                mock_user_data.return_value = "C:\\Users\\Test\\AppData\\Local\\mmrelay"
+                paths = get_config_paths()
+                # Check that a Windows-style path is in the list
+                # We normalize because get_config_paths uses absolute path which might
+                # prepend CWD on Linux if the mock path isn't recognized as absolute.
+                # But "C:\" should be absolute enough.
+                windows_path_found = any("AppData" in str(path) for path in paths)
+                self.assertTrue(windows_path_found)
 
     def test_get_config_paths_darwin_platform(self):
         """
@@ -106,15 +107,17 @@ class TestConfigEdgeCases(unittest.TestCase):
 
         Simulates a Darwin platform and a custom base directory to ensure get_config_paths includes the expected config.yaml path in its results.
         """
-        with (
-            patch("mmrelay.paths.sys.platform", "darwin"),
-            patch("mmrelay.paths.Path.home", return_value=Path("/home/test")),
-            patch("mmrelay.config.os.makedirs"),
-        ):
-            paths = get_config_paths()
-            self.assertIn(
-                "/home/test/.mmrelay/config.yaml", [os.path.normpath(p) for p in paths]
-            )
+        with patch.dict(os.environ, {}, clear=True):
+            with (
+                patch("mmrelay.paths.sys.platform", "darwin"),
+                patch("mmrelay.paths.Path.home", return_value=Path("/home/test")),
+                patch("mmrelay.config.os.makedirs"),
+            ):
+                paths = get_config_paths()
+                self.assertIn(
+                    "/home/test/.mmrelay/config.yaml",
+                    [os.path.normpath(p) for p in paths],
+                )
 
     def test_load_config_yaml_parse_error(self):
         """

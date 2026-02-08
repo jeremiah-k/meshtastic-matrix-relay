@@ -882,11 +882,17 @@ def isolate_mmrelay_home(
     are confined to this temporary location.
     """
     tmp_home = tmp_path_factory.mktemp("mmrelay_test_home")
+    # Store original if any
+    original_home = os.environ.get("MMRELAY_HOME")
     os.environ["MMRELAY_HOME"] = str(tmp_home)
 
     yield tmp_home
 
-    # Optional: cleanup or verify if needed
+    # Restore or unset
+    if original_home is not None:
+        os.environ["MMRELAY_HOME"] = original_home
+    else:
+        os.environ.pop("MMRELAY_HOME", None)
 
 
 @pytest.fixture
@@ -908,6 +914,11 @@ def clean_migration_home(
 
     # Override MMRELAY_HOME for this specific test
     monkeypatch.setenv("MMRELAY_HOME", str(home))
+
+    # Force paths module to re-resolve home from the updated env var
+    import mmrelay.paths
+
+    mmrelay.paths.reset_home_override()
 
     # Ensure no migration state file exists
     state_file = home / "migration_completed.flag"

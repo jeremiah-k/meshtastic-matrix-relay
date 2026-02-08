@@ -51,13 +51,14 @@ class TestConfig(unittest.TestCase):
         """
         Test that get_base_dir() returns the default base directory on Linux systems.
         """
-        with patch("sys.platform", "linux"):
-            with warnings.catch_warnings(record=True) as caught:
-                warnings.simplefilter("always", DeprecationWarning)
-                base_dir = get_base_dir()
-            if caught:
-                self.assertIn("Use paths.get_home_dir()", str(caught[0].message))
-            self.assertEqual(base_dir, os.path.expanduser("~/.mmrelay"))
+        with patch.dict(os.environ, {}, clear=True):
+            with patch("sys.platform", "linux"):
+                with warnings.catch_warnings(record=True) as caught:
+                    warnings.simplefilter("always", DeprecationWarning)
+                    base_dir = get_base_dir()
+                if caught:
+                    self.assertIn("Use paths.get_home_dir()", str(caught[0].message))
+                self.assertEqual(base_dir, os.path.expanduser("~/.mmrelay"))
 
     @patch("mmrelay.paths.platformdirs.user_data_dir")
     def test_get_base_dir_windows(self, mock_user_data_dir):
@@ -65,14 +66,17 @@ class TestConfig(unittest.TestCase):
         """
         Test that get_base_dir returns correct default base directory on Windows when platform detection and user data directory are mocked.
         """
-        with (patch("mmrelay.paths.sys.platform", "win32"),):
-            mock_user_data_dir.return_value = "C:\\Users\\test\\AppData\\Local\\mmrelay"
-            with warnings.catch_warnings(record=True) as caught:
-                warnings.simplefilter("always", DeprecationWarning)
-                base_dir = get_base_dir()
-            if caught:
-                self.assertIn("Use paths.get_home_dir()", str(caught[0].message))
-            self.assertEqual(base_dir, "C:\\Users\\test\\AppData\\Local\\mmrelay")
+        with patch.dict(os.environ, {}, clear=True):
+            with (patch("mmrelay.paths.sys.platform", "win32"),):
+                mock_user_data_dir.return_value = (
+                    "C:\\Users\\test\\AppData\\Local\\mmrelay"
+                )
+                with warnings.catch_warnings(record=True) as caught:
+                    warnings.simplefilter("always", DeprecationWarning)
+                    base_dir = get_base_dir()
+                if caught:
+                    self.assertIn("Use paths.get_home_dir()", str(caught[0].message))
+                self.assertEqual(base_dir, "C:\\Users\\test\\AppData\\Local\\mmrelay")
 
     @patch("mmrelay.config.os.path.isfile")
     @patch("builtins.open")
@@ -123,33 +127,35 @@ class TestConfig(unittest.TestCase):
 
         Simulates a Windows environment and verifies that the returned config paths include the expected Windows-specific config file location.
         """
-        with (
-            patch("mmrelay.paths.sys.platform", "win32"),
-            patch("sys.argv", ["mmrelay"]),
-        ):
-            # Use a path that looks absolute even on Linux for testing consistency
-            win_path = "/win/AppData/Local/mmrelay"
-            mock_user_data_dir.return_value = win_path
+        with patch.dict(os.environ, {}, clear=True):
+            with (
+                patch("mmrelay.paths.sys.platform", "win32"),
+                patch("sys.argv", ["mmrelay"]),
+            ):
+                # Use a path that looks absolute even on Linux for testing consistency
+                win_path = "/win/AppData/Local/mmrelay"
+                mock_user_data_dir.return_value = win_path
 
-            paths = get_config_paths()
-            expected_path = os.path.join(win_path, "config.yaml")
-            # Normalize paths for comparison
-            normalized_paths = [os.path.normpath(p) for p in paths]
-            self.assertIn(os.path.normpath(expected_path), normalized_paths)
+                paths = get_config_paths()
+                expected_path = os.path.join(win_path, "config.yaml")
+                # Normalize paths for comparison
+                normalized_paths = [os.path.normpath(p) for p in paths]
+                self.assertIn(os.path.normpath(expected_path), normalized_paths)
 
     @patch("mmrelay.config.os.makedirs")
     def test_get_data_dir_linux(self, _mock_makedirs):
         """
         Test that get_data_dir returns default data directory path on Linux platforms.
         """
-        with (patch("sys.platform", "linux"),):
-            with warnings.catch_warnings(record=True) as caught:
-                warnings.simplefilter("always", DeprecationWarning)
-                data_dir = get_data_dir(create=False)
-            if caught:
-                self.assertIn("Use paths.get_home_dir()", str(caught[0].message))
-            # New unified layout: data_dir returns home directory
-            self.assertEqual(data_dir, os.path.expanduser("~/.mmrelay"))
+        with patch.dict(os.environ, {}, clear=True):
+            with (patch("sys.platform", "linux"),):
+                with warnings.catch_warnings(record=True) as caught:
+                    warnings.simplefilter("always", DeprecationWarning)
+                    data_dir = get_data_dir(create=False)
+                if caught:
+                    self.assertIn("Use paths.get_home_dir()", str(caught[0].message))
+                # New unified layout: data_dir returns home directory
+                self.assertEqual(data_dir, os.path.expanduser("~/.mmrelay"))
 
     @patch("mmrelay.config.os.makedirs")
     def test_get_config_paths_with_home_env(self, mock_makedirs):
@@ -170,9 +176,10 @@ class TestConfig(unittest.TestCase):
         """
         Test that get_log_dir() returns the default logs directory on Linux platforms.
         """
-        with (patch("sys.platform", "linux"),):
-            log_dir = get_log_dir()
-            self.assertEqual(log_dir, os.path.expanduser("~/.mmrelay/logs"))
+        with patch.dict(os.environ, {}, clear=True):
+            with (patch("sys.platform", "linux"),):
+                log_dir = get_log_dir()
+                self.assertEqual(log_dir, os.path.expanduser("~/.mmrelay/logs"))
 
     @patch("mmrelay.config.os.makedirs")
     def test_get_plugin_data_dir_linux(self, mock_makedirs):
@@ -181,10 +188,13 @@ class TestConfig(unittest.TestCase):
 
         Ensures the function resolves both the default plugins data directory and a plugin-specific directory for the Linux platform.
         """
-        with (patch("sys.platform", "linux"),):
-            plugin_data_dir = get_plugin_data_dir()
-            # New unified layout: plugins under home directory
-            self.assertEqual(plugin_data_dir, os.path.expanduser("~/.mmrelay/plugins"))
+        with patch.dict(os.environ, {}, clear=True):
+            with (patch("sys.platform", "linux"),):
+                plugin_data_dir = get_plugin_data_dir()
+                # New unified layout: plugins under home directory
+                self.assertEqual(
+                    plugin_data_dir, os.path.expanduser("~/.mmrelay/plugins")
+                )
             plugin_specific_dir = get_plugin_data_dir("my_plugin")
             # New unified layout: core plugin data under home/plugins/core/<name>/data
             self.assertEqual(
@@ -411,15 +421,16 @@ class TestConfigEdgeCases(unittest.TestCase):
     @patch("mmrelay.paths.sys.platform", "win32")
     def test_get_data_dir_windows(self, mock_makedirs, mock_user_data_dir):
         """Test get_data_dir on Windows platform."""
-        mock_user_data_dir.return_value = "C:\\Users\\test\\AppData\\Local\\mmrelay"
+        with patch.dict(os.environ, {}, clear=True):
+            mock_user_data_dir.return_value = "C:\\Users\\test\\AppData\\Local\\mmrelay"
 
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always", DeprecationWarning)
-            result = get_data_dir(create=False)
-        if caught:
-            self.assertIn("Use paths.get_home_dir()", str(caught[0].message))
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always", DeprecationWarning)
+                result = get_data_dir(create=False)
+            if caught:
+                self.assertIn("Use paths.get_home_dir()", str(caught[0].message))
 
-        self.assertEqual(result, "C:\\Users\\test\\AppData\\Local\\mmrelay")
+            self.assertEqual(result, "C:\\Users\\test\\AppData\\Local\\mmrelay")
         mock_user_data_dir.assert_called_once_with("mmrelay", None)
         # New unified layout: no automatic directory creation in get_data_dir
         mock_makedirs.assert_not_called()

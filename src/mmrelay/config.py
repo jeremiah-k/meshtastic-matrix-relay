@@ -765,7 +765,7 @@ def load_credentials() -> dict[str, Any] | None:
             config_paths=config_paths,
         )
         logger.debug("Looking for credentials at: %s", candidate_paths)
-    except (OSError, PermissionError, TypeError):
+    except (OSError, PermissionError, InvalidCredentialsPathTypeError):
         logger.exception("Error preparing credentials path candidates")
         return None
 
