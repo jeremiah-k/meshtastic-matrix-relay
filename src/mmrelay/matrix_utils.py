@@ -2293,9 +2293,11 @@ async def connect_matrix(
         logger.error("Configuration is not a valid mapping. Cannot connect to Matrix.")
         return None
 
-    if "matrix_rooms" not in config or not isinstance(config["matrix_rooms"], dict):
+    if "matrix_rooms" not in config or not isinstance(
+        config["matrix_rooms"], (dict, list)
+    ):
         logger.error(
-            "Configuration is missing 'matrix_rooms' section or it is not a mapping"
+            "Configuration is missing 'matrix_rooms' section or it is not a valid format (list or dict)"
         )
         logger.error(
             "Please ensure your config.yaml includes a valid matrix_rooms configuration"
