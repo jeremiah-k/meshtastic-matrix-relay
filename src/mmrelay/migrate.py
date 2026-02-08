@@ -562,15 +562,20 @@ def migrate_credentials(
         }
 
     # Skip if target already exists and not forcing
-    if new_creds.exists() and not force:
-        logger.info("Credentials already exist at destination, skipping: %s", new_creds)
-        return {
-            "success": True,
-            "old_path": str(old_creds),
-            "new_path": str(new_creds),
-            "action": "none",
-            "message": "Credentials already exist at destination",
-        }
+    if new_creds.exists():
+        if not force:
+            logger.info(
+                "Credentials already exist at destination, skipping: %s. Use --force to overwrite.",
+                new_creds,
+            )
+            return {
+                "success": True,
+                "old_path": str(old_creds),
+                "new_path": str(new_creds),
+                "action": "none",
+                "message": "Credentials already exist at destination",
+            }
+        logger.info("Force flag set, will backup and overwrite existing credentials.")
 
     if dry_run:
         logger.info(
@@ -584,7 +589,7 @@ def migrate_credentials(
             "dry_run": True,
         }
 
-    if new_creds.exists() and not force:
+    if new_creds.exists():
         logger.info("Backing up existing credentials: %s", new_creds)
         backup_path = _backup_file(new_creds)
         try:
@@ -684,15 +689,20 @@ def migrate_config(
         }
 
     # Skip if target already exists and not forcing
-    if new_config.exists() and not force:
-        logger.info("Config already exists at destination, skipping: %s", new_config)
-        return {
-            "success": True,
-            "old_path": str(old_config),
-            "new_path": str(new_config),
-            "action": "none",
-            "message": "Config already exists at destination",
-        }
+    if new_config.exists():
+        if not force:
+            logger.info(
+                "Config already exists at destination, skipping: %s. Use --force to overwrite.",
+                new_config,
+            )
+            return {
+                "success": True,
+                "old_path": str(old_config),
+                "new_path": str(new_config),
+                "action": "none",
+                "message": "Config already exists at destination",
+            }
+        logger.info("Force flag set, will backup and overwrite existing config.")
 
     if dry_run:
         logger.info("[DRY RUN] Would move config from %s to %s", old_config, new_config)
@@ -708,12 +718,7 @@ def migrate_config(
 
     # Only create backup if old_config exists at a different location (actual migration)
     # Backup is only needed when old_config actually exists (migration happening)
-    if (
-        new_config.exists()
-        and not force
-        and old_config != new_config
-        and old_config.exists()
-    ):
+    if new_config.exists() and old_config.resolve() != new_config.resolve():
         logger.info("Backing up existing config.yaml: %s", new_config)
         backup_path = _backup_file(new_config)
         try:
@@ -731,19 +736,6 @@ def migrate_config(
             }
 
     try:
-        # Don't try to move/copy if source and destination are the same
-        if old_config == new_config:
-            logger.info(
-                "Config already at target location, no migration needed: %s", new_config
-            )
-            return {
-                "success": True,
-                "old_path": str(old_config),
-                "new_path": str(new_config),
-                "action": "none",
-                "message": "Config already at target location",
-            }
-
         if new_config.exists():
             if new_config.is_dir():
                 shutil.rmtree(str(new_config))
@@ -857,14 +849,19 @@ def migrate_database(
         }
 
     # Skip if target already exists and not forcing
-    if (new_db_dir / "meshtastic.sqlite").exists() and not force:
-        logger.info("Database already exists at destination, skipping: %s", new_db_dir)
-        return {
-            "success": True,
-            "new_path": str(new_db_dir),
-            "action": "none",
-            "message": "Database already exists at destination",
-        }
+    if (new_db_dir / "meshtastic.sqlite").exists():
+        if not force:
+            logger.info(
+                "Database already exists at destination, skipping: %s. Use --force to overwrite.",
+                new_db_dir,
+            )
+            return {
+                "success": True,
+                "new_path": str(new_db_dir),
+                "action": "none",
+                "message": "Database already exists at destination",
+            }
+        logger.info("Force flag set, will backup and overwrite existing database.")
 
     if dry_run:
         logger.info("[DRY RUN] Would move database to %s", new_db_dir)
@@ -905,20 +902,19 @@ def migrate_database(
 
     # Copy-then-delete pattern: Always copy first, verify, then delete sources only if verification succeeds.
     # This prevents data loss if integrity check fails after files are moved.
-    if not force:
-        for db_path in selected_group:
-            dest = new_db_dir / db_path.name
-            if dest.exists():
-                logger.info("Backing up existing database: %s", dest)
-                backup_path = _backup_file(dest)
-                try:
-                    shutil.copy2(str(dest), str(backup_path))
-                except (OSError, IOError) as e:
-                    logger.exception("Failed to backup database %s", dest)
-                    return {
-                        "success": False,
-                        "error": f"Failed to backup database {dest}: {e}",
-                    }
+    for db_path in selected_group:
+        dest = new_db_dir / db_path.name
+        if dest.exists():
+            logger.info("Backing up existing database file: %s", dest)
+            backup_path = _backup_file(dest)
+            try:
+                shutil.copy2(str(dest), str(backup_path))
+            except (OSError, IOError) as e:
+                logger.exception("Failed to backup database %s", dest)
+                return {
+                    "success": False,
+                    "error": f"Failed to backup database {dest}: {e}",
+                }
 
     for db_path in selected_group:
         dest = new_db_dir / db_path.name
@@ -1041,17 +1037,20 @@ def migrate_logs(
         }
 
     # Skip if target already exists and not forcing
-    if new_logs_dir.exists() and not force:
-        logger.info(
-            "Logs directory already exists at destination, skipping: %s", new_logs_dir
-        )
-        return {
-            "success": True,
-            "old_path": str(old_logs_dir),
-            "new_path": str(new_logs_dir),
-            "action": "none",
-            "message": "Logs directory already exists at destination",
-        }
+    if new_logs_dir.exists():
+        if not force:
+            logger.info(
+                "Logs directory already exists at destination, skipping: %s. Use --force to overwrite.",
+                new_logs_dir,
+            )
+            return {
+                "success": True,
+                "old_path": str(old_logs_dir),
+                "new_path": str(new_logs_dir),
+                "action": "none",
+                "message": "Logs already exists at destination",
+            }
+        logger.info("Force flag set, will backup and overwrite existing logs.")
 
     if dry_run:
         logger.info(
@@ -1065,7 +1064,7 @@ def migrate_logs(
             "dry_run": True,
         }
 
-    if new_logs_dir.exists() and not force:
+    if new_logs_dir.exists():
         logger.info("Backing up existing logs directory: %s", new_logs_dir)
         backup_path = _backup_file(new_logs_dir)
         try:
@@ -1174,17 +1173,20 @@ def migrate_store(
         }
 
     # Skip if target already exists and not forcing
-    if new_store_dir.exists() and not force:
-        logger.info(
-            "Store directory already exists at destination, skipping: %s", new_store_dir
-        )
-        return {
-            "success": True,
-            "old_path": str(old_store_dir),
-            "new_path": str(new_store_dir),
-            "action": "none",
-            "message": "Store directory already exists at destination",
-        }
+    if new_store_dir.exists():
+        if not force:
+            logger.info(
+                "Store directory already exists at destination, skipping: %s. Use --force to overwrite.",
+                new_store_dir,
+            )
+            return {
+                "success": True,
+                "old_path": str(old_store_dir),
+                "new_path": str(new_store_dir),
+                "action": "none",
+                "message": "Store directory already exists at destination",
+            }
+        logger.info("Force flag set, will backup and overwrite existing store.")
 
     if dry_run:
         logger.info(
@@ -1201,7 +1203,7 @@ def migrate_store(
     new_store_dir.parent.mkdir(parents=True, exist_ok=True)
 
     backup_error: str | None = None
-    if new_store_dir.exists() and not force:
+    if new_store_dir.exists():
         logger.info("Backing up existing store directory: %s", new_store_dir)
         backup_path = _backup_file(new_store_dir)
         try:
@@ -1276,7 +1278,12 @@ def _migrate_plugin_tier(
             if not item.is_dir():
                 continue
             dest = new_dir / item.name
-            if dest.exists() and not force:
+            if dest.exists():
+                if not force:
+                    logger.info(
+                        "Plugin already exists at destination, skipping: %s", dest
+                    )
+                    continue
                 logger.info("Backing up existing %s plugin: %s", tier_name, dest)
                 backup_path = _backup_file(dest)
                 try:
@@ -1361,18 +1368,20 @@ def migrate_plugins(
         }
 
     # Skip if target already exists and not forcing
-    if new_plugins_dir.exists() and not force:
-        logger.info(
-            "Plugins directory already exists at destination, skipping: %s",
-            new_plugins_dir,
-        )
-        return {
-            "success": True,
-            "old_path": str(old_plugins_dir),
-            "new_path": str(new_plugins_dir),
-            "action": "none",
-            "message": "Plugins directory already exists at destination",
-        }
+    if new_plugins_dir.exists():
+        if not force:
+            logger.info(
+                "Plugins directory already exists at destination, skipping: %s. Use --force to overwrite.",
+                new_plugins_dir,
+            )
+            return {
+                "success": True,
+                "old_path": str(old_plugins_dir),
+                "new_path": str(new_plugins_dir),
+                "action": "none",
+                "message": "Plugins directory already exists at destination",
+            }
+        logger.info("Force flag set, will backup and overwrite existing plugins.")
 
     if dry_run:
         logger.info(
@@ -1390,7 +1399,7 @@ def migrate_plugins(
 
     errors: list[str] = []
 
-    if new_plugins_dir.exists() and not force:
+    if new_plugins_dir.exists():
         logger.info("Backing up existing plugins directory: %s", new_plugins_dir)
         backup_path = _backup_file(new_plugins_dir)
         try:
@@ -1602,7 +1611,7 @@ def migrate_gpxtracker(
             dest_path = new_gpx_data_dir / new_name
 
             backup_failed = False
-            if dest_path.exists() and not force:
+            if dest_path.exists():
                 logger.info("Backing up existing GPX file: %s", dest_path)
                 backup_path = _backup_file(dest_path)
                 try:

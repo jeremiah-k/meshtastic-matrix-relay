@@ -284,7 +284,7 @@ def parse_arguments() -> argparse.Namespace:
     migrate_parser.add_argument(
         "--force",
         action="store_true",
-        help="Allow overwriting existing files without backup",
+        help="Allow overwriting existing files at destination (backups will still be created)",
     )
 
     # CONFIG group
@@ -397,7 +397,7 @@ def parse_arguments() -> argparse.Namespace:
     service_migrate_parser.add_argument(
         "--force",
         action="store_true",
-        help="Allow overwriting existing files without backup",
+        help="Allow overwriting existing files at destination (backups will still be created)",
     )
 
     # Use parse_known_args to handle unknown arguments gracefully (e.g., pytest args)

@@ -651,7 +651,7 @@ class TestMigrateCredentialsEdgeCases:
 
         with mock.patch("shutil.copy2", side_effect=selective_copy2):
             result = migrate_credentials(
-                [legacy_root_dir], new_home, dry_run=False, force=False
+                [legacy_root_dir], new_home, dry_run=False, force=True
             )
 
         assert result["success"] is False
@@ -719,7 +719,7 @@ class TestMigrateConfigEdgeCases:
 
         with mock.patch("shutil.copy2", side_effect=selective_copy2):
             result = migrate_config(
-                [legacy_root_dir], new_home, dry_run=False, force=False
+                [legacy_root_dir], new_home, dry_run=False, force=True
             )
 
         assert result["success"] is False
@@ -1255,6 +1255,9 @@ class TestMigratePluginsEdgeCases:
         """Test backup directory creation failure is surfaced."""
         new_home = tmp_path / "new_home"
         new_home.mkdir()
+        # Create new_plugins_dir to trigger backup
+        new_plugins_dir = new_home / "plugins"
+        new_plugins_dir.mkdir()
 
         legacy_root_dir = tmp_path / "legacy_root_dir"
         legacy_root_dir.mkdir()
@@ -1275,14 +1278,14 @@ class TestMigratePluginsEdgeCases:
 
         with (
             mock.patch("mmrelay.migrate._backup_file", side_effect=fake_backup_file),
-            mock.patch.object(Path, "mkdir", autospec=True, side_effect=failing_mkdir),
+            mock.patch("shutil.copytree", side_effect=OSError("Mock copytree error")),
         ):
             result = migrate_plugins(
                 [legacy_root_dir], new_home, dry_run=False, force=True
             )
 
         assert result["success"] is False
-        assert "plugins backup dir" in result["error"]
+        assert "plugins backup" in result["error"]
 
     def test_migrate_plugins_new_dir_creation_failure(self, tmp_path: Path) -> None:
         """Test plugins directory creation failure is surfaced."""
@@ -1343,7 +1346,7 @@ class TestMigratePluginsEdgeCases:
             )
 
         assert result["success"] is False
-        assert "community backup" in result["error"]
+        assert "plugins backup" in result["error"]
 
     def test_migrate_plugins_cleanup_rmdir_error(self, tmp_path: Path) -> None:
         """Test cleanup rmdir errors are captured."""

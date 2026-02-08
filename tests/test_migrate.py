@@ -538,10 +538,10 @@ class TestMigrateCredentials:
         backups = list((new_home / "matrix").glob("credentials.json.bak.*"))
         assert len(backups) == 1
 
-    def test_force_no_backup(
+    def test_force_creates_backup(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Test force mode skips backup."""
+        """Test force mode creates backup for safety."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
         creds = legacy_root / "credentials.json"
@@ -556,9 +556,9 @@ class TestMigrateCredentials:
         result = migrate_credentials([legacy_root], new_home, force=True)
 
         assert result["success"] is True
-        # No backup should be created
+        # Backup should be created even in force mode for safety
         backups = list((new_home / "matrix").glob("credentials.json.bak.*"))
-        assert len(backups) == 0
+        assert len(backups) == 1
 
     def test_move_oserror(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
