@@ -4760,7 +4760,7 @@ async def test_connect_matrix_save_credentials_failure_warns(monkeypatch):
 
     assert any(
         "Failed to persist updated session information" in call.args[0]
-        for call in mock_logger.error.call_args_list
+        for call in mock_logger.exception.call_args_list
     )
 
 
