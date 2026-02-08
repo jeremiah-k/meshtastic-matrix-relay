@@ -198,12 +198,15 @@ render_and_validate() {
 	echo -e "${GREEN}✓ Rendered ${name}${NC}"
 
 	echo -e "${YELLOW}Validating ${name}...${NC}"
+	local val_log="${RENDER_DIR}/${name}-validate.log"
 	set +e
-	validate_manifest "${output_file}" >/dev/null 2>&1
+	validate_manifest "${output_file}" >"${val_log}" 2>&1
 	local validate_status=$?
 	set -e
 	if [[ ${validate_status} -ne 0 ]]; then
 		echo -e "${RED}✗ Failed to validate ${name}${NC}"
+		echo "Validator output:"
+		cat "${val_log}"
 		echo "Rendered output:"
 		cat "${output_file}"
 		return 1
