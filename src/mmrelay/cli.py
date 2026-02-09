@@ -572,7 +572,7 @@ def _validate_credentials_json(
                 credentials_path,
             )
             print(
-                f"❌ Error: credentials.json missing required fields: {', '.join(missing_fields)}",
+                f"⚠️  Warning: credentials.json missing required fields: {', '.join(missing_fields)}",
                 file=sys.stderr,
             )
             continue
@@ -1743,7 +1743,7 @@ def _print_path_summary(paths_info: dict[str, Any]) -> None:
 
     # Print plugin paths
     print("\n📦 Plugins:")
-    print(f"   Plugins: {paths_info['plugins_dir']}")
+    print(f"   Plugins: {paths_info.get('plugins_dir', '<unknown>')}")
     if "custom_plugins_dir" in paths_info:
         print(f"   Custom: {paths_info['custom_plugins_dir']}")
     if "community_plugins_dir" in paths_info:
@@ -1860,10 +1860,10 @@ def handle_doctor_command(args: argparse.Namespace) -> int:
     if is_migration_needed():
         print("   ⚠️  Migration RECOMMENDED:")
         print("       Legacy data detected in one or more locations.")
-        print("  Run 'mmrelay migrate --dry-run' to preview migration.")
-        print("  Run 'mmrelay migrate' to perform migration.")
+        print("       Run 'mmrelay migrate --dry-run' to preview migration.")
+        print("       Run 'mmrelay migrate' to perform migration.")
         print(
-            "  Use '--force' to overwrite existing destinations (backups will still be created)."
+            "       Use '--force' to overwrite existing destinations (backups will still be created)."
         )
 
     else:
@@ -2023,9 +2023,7 @@ def handle_auth_status(args: argparse.Namespace) -> int:
     try:
         explicit_path = get_explicit_credentials_path(config_data)
     except InvalidCredentialsPathTypeError as exc:
-        from mmrelay.log_utils import get_logger
-
-        get_logger("CLI").error("Invalid credentials_path configuration", exc_info=True)
+        _get_logger().error("Invalid credentials_path configuration: %s", exc)
         print(f"❌ Error: {exc}", file=sys.stderr)
         return 1
 

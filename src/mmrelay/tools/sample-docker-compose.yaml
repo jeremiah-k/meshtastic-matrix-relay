@@ -32,13 +32,14 @@ services:
     # Tip: For correct permissions and paths, ensure UID, GID, and MMRELAY_HOST_HOME are set in a .env file or exported
 
     # Readiness check (checks readiness file freshness periodically updated by app)
+    # Note: start_period allows time for slow Matrix login/E2EE key sync
     healthcheck:
       test:
         [
-          CMD-SHELL,
+          "CMD-SHELL",
           "find $${MMRELAY_READY_FILE:-/tmp/mmrelay-ready} -mmin -2 | grep -q .",
         ]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 30s
+      start_period: 60s

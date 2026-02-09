@@ -70,6 +70,7 @@ class MessageQueue:
         self._in_flight = False
         self._has_current = False
         self._dropped_messages = 0
+        self._last_queue_full_log_time: float | None = None
 
     def start(self, message_delay: float = DEFAULT_MESSAGE_DELAY) -> None:
         """
@@ -269,12 +270,16 @@ class MessageQueue:
                                 return False
 
                         # Log queue full warning periodically (every 5 seconds)
-                        elapsed = time.monotonic() - start_time
-                        if elapsed < 5.0:
+                        current_time = time.monotonic()
+                        if (
+                            self._last_queue_full_log_time is None
+                            or current_time - self._last_queue_full_log_time >= 5.0
+                        ):
                             logger.warning(
                                 f"Message queue full ({self._queue.qsize()}/{MAX_QUEUE_SIZE}), "
                                 f"waiting for space: {description}"
                             )
+                            self._last_queue_full_log_time = current_time
 
                         # Release lock and wait a bit before retrying
                         # Use try/finally to ensure lock is always reacquired
@@ -608,8 +613,6 @@ class MessageQueue:
                         self._requeue_message(current_message)
                         current_message = None
                         self._has_current = False
-                        # Mark the original task as done since we requeued
-                        self._queue.task_done()
                         await asyncio.sleep(1.0)
                         continue
                     else:

@@ -148,23 +148,11 @@ def _is_mmrelay_running() -> bool:
         except (OSError, IOError, subprocess.TimeoutExpired, FileNotFoundError):
             pass
     else:
-        # On Windows, try using tasklist
-        try:
-            tasklist_path = shutil.which("tasklist")
-            if not tasklist_path:
-                return False
-            result = subprocess.run(  # nosec B603,B607
-                [tasklist_path, "/FI", "IMAGENAME eq python.exe"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if "python" in result.stdout.lower():
-                # Best effort - can't easily check command line on Windows
-                # Just warn if python processes exist
-                return True
-        except (OSError, IOError, subprocess.TimeoutExpired, FileNotFoundError):
-            pass
+        # Windows: cannot reliably distinguish mmrelay from other Python processes
+        logger.debug(
+            "Running-instance detection not supported on Windows; skipping check"
+        )
+        return False
 
     return False
 
@@ -2286,9 +2274,7 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
                 logger.exception("Automatic rollback failed")
                 report["rollback_error"] = str(rollback_exc)
         else:
-            # Use logger.error instead of logger.exception to avoid double traceback
-            # (the traceback was already logged above)
-            logger.error("Please resolve the issue and re-run migration.")
+            logger.warning("Please resolve the issue and re-run migration.")
 
         # Release migration lock on failure
         if not dry_run and lock_file.exists():
@@ -2349,7 +2335,7 @@ def rollback_migration(
 
     backup_dir = new_home / BACKUP_DIRNAME
 
-    def find_backup_for_step(step_name: str, dest_path: Path) -> Path | None:
+    def find_backup_for_step(_step_name: str, dest_path: Path) -> Path | None:
         """Find the most recent backup for a given destination path."""
         if not backup_dir.exists():
             return None
@@ -2396,7 +2382,7 @@ def rollback_migration(
             )
             return True
         except (OSError, IOError, shutil.Error) as e:
-            logger.error("Failed to restore %s from backup: %s", step_name, e)
+            logger.exception("Failed to restore %s from backup", step_name)
             return False
 
     # Process steps in reverse order (last completed first)
@@ -2477,7 +2463,7 @@ def rollback_migration(
                             {"step": step_name, "removed": new_path}
                         )
                     except (OSError, IOError) as e:
-                        logger.error("Failed to remove migrated %s: %s", step_name, e)
+                        logger.exception("Failed to remove migrated %s", step_name)
                         rollback_report["errors"].append(
                             {"step": step_name, "error": f"Failed to remove: {e}"}
                         )

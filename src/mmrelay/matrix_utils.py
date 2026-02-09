@@ -3176,9 +3176,12 @@ async def matrix_relay(
                 )
                 await asyncio.sleep(init_retry_delay)
             else:
-                logger.error(
-                    f"Matrix client initialization failed after {max_init_retries} attempts: {exc}. "
-                    f"Message to room {room_id} may be lost."
+                logger.exception(
+                    "Matrix client initialization failed after %s attempts: %s. "
+                    "Message to room %s may be lost.",
+                    max_init_retries,
+                    exc,
+                    room_id,
                 )
                 return
             continue
