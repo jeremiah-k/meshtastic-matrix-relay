@@ -7,8 +7,8 @@ import io
 import json
 import logging
 import os
-import random
 import re
+import secrets
 import ssl
 import sys
 import time
@@ -1491,9 +1491,10 @@ async def _resolve_and_load_credentials(
                 return None
         except asyncio.CancelledError:
             raise
-        except Exception as e:
+        except (OSError, IOError) as e:
+            # Catch file I/O errors from credentials loading/saving
             logger.exception(
-                "Error during automatic login (%s). Please use 'mmrelay auth login' for interactive setup",
+                "I/O error during automatic login (%s). Please use 'mmrelay auth login' for interactive setup",
                 type(e).__name__,
             )
             return None
@@ -2323,7 +2324,8 @@ async def connect_matrix(
         )
         bot_user_id = ""
 
-    matrix_client = _initialize_matrix_client(
+    # Use local variable during initialization to avoid exposing half-initialized client
+    client = _initialize_matrix_client(
         homeserver=matrix_homeserver,
         user_id=bot_user_id,
         device_id=e2ee_device_id,
@@ -2333,30 +2335,28 @@ async def connect_matrix(
     )
 
     try:
-        await _perform_matrix_login(matrix_client, auth_info)
+        await _perform_matrix_login(client, auth_info)
 
         # Re-sync global in case whoami discovered a different user_id
         if auth_info.user_id and auth_info.user_id != bot_user_id:
             bot_user_id = auth_info.user_id
 
         if not bot_user_id:
-            resolved_user_id = matrix_client.user_id
+            resolved_user_id = client.user_id
             if isinstance(resolved_user_id, str) and resolved_user_id:
                 bot_user_id = resolved_user_id
             else:
                 logger.error("Matrix user ID is missing or invalid.")
-                await _close_matrix_client_after_failure(
-                    matrix_client, "connect_matrix setup"
-                )
+                await _close_matrix_client_after_failure(client, "connect_matrix setup")
                 return None
 
         if e2ee_enabled:
-            await _maybe_upload_e2ee_keys(matrix_client)
+            await _maybe_upload_e2ee_keys(client)
 
         logger.debug("Performing initial sync to initialize rooms...")
-        sync_response = await _perform_initial_sync(matrix_client, matrix_homeserver)
+        sync_response = await _perform_initial_sync(client, matrix_homeserver)
         await _post_sync_setup(
-            matrix_client,
+            client,
             sync_response,
             config,
             matrix_rooms,
@@ -2365,9 +2365,11 @@ async def connect_matrix(
             e2ee_enabled,
         )
     except BaseException:
-        await _close_matrix_client_after_failure(matrix_client, "connect_matrix setup")
+        await _close_matrix_client_after_failure(client, "connect_matrix setup")
         raise
     else:
+        # Only assign to global after successful initialization
+        matrix_client = client
         return matrix_client
 
 
@@ -3046,7 +3048,8 @@ async def _send_matrix_message_with_retry(
     Returns:
         The room_send response on success, None on failure.
     """
-    last_exception: Exception | None = None
+    # Use cryptographically secure random for jitter
+    rng = secrets.SystemRandom()
 
     for attempt in range(max_retries + 1):
         try:
@@ -3083,14 +3086,11 @@ async def _send_matrix_message_with_retry(
                 ),
                 timeout=MATRIX_ROOM_SEND_TIMEOUT,
             )
-            return response
-
-        except asyncio.TimeoutError as e:
-            last_exception = e
+        except asyncio.TimeoutError:
             if attempt < max_retries:
                 # Exponential backoff with jitter
                 delay = min(base_delay * (2**attempt), max_delay)
-                jitter = random.uniform(0, delay * 0.1)  # 10% jitter
+                jitter = rng.uniform(0, delay * 0.1)  # 10% jitter
                 total_delay = delay + jitter
                 logger.warning(
                     f"Timeout sending to Matrix room {room_id} (attempt {attempt + 1}/{max_retries + 1}), "
@@ -3103,11 +3103,10 @@ async def _send_matrix_message_with_retry(
                 )
 
         except NIO_COMM_EXCEPTIONS as e:
-            last_exception = e
             if attempt < max_retries:
                 # Exponential backoff with jitter for network errors
                 delay = min(base_delay * (2**attempt), max_delay)
-                jitter = random.uniform(0, delay * 0.1)  # 10% jitter
+                jitter = rng.uniform(0, delay * 0.1)  # 10% jitter
                 total_delay = delay + jitter
                 logger.warning(
                     f"Network error sending to Matrix room {room_id} (attempt {attempt + 1}/{max_retries + 1}): {e}, "
@@ -3118,6 +3117,8 @@ async def _send_matrix_message_with_retry(
                 logger.exception(
                     f"Error sending message to Matrix room {room_id} after {max_retries + 1} attempts"
                 )
+        else:
+            return response
 
     return None
 
@@ -3166,13 +3167,39 @@ async def matrix_relay(
     init_retry_delay = 2.0
 
     for init_attempt in range(max_init_retries):
-        matrix_client = await connect_matrix()
+        try:
+            matrix_client = await connect_matrix()
+        except (
+            MissingMatrixRoomsError,
+            MatrixSyncTimeoutError,
+            MatrixSyncFailedError,
+            MatrixSyncFailedDetailsError,
+        ) as exc:
+            # These are expected initialization failures - log and retry
+            if init_attempt < max_init_retries - 1:
+                logger.warning(
+                    f"Matrix client initialization failed (attempt {init_attempt + 1}/{max_init_retries}): {exc}, "
+                    f"retrying in {init_retry_delay}s..."
+                )
+                await asyncio.sleep(init_retry_delay)
+            else:
+                logger.error(
+                    f"Matrix client initialization failed after {max_init_retries} attempts: {exc}. "
+                    f"Message to room {room_id} may be lost."
+                )
+                return
+            continue
+        # Re-raise unexpected exceptions so they aren't silently swallowed
+        except Exception:
+            logger.exception("Unexpected error during Matrix client initialization")
+            raise
+
         if matrix_client is not None:
             break
 
         if init_attempt < max_init_retries - 1:
             logger.warning(
-                f"Matrix client initialization failed (attempt {init_attempt + 1}/{max_init_retries}), "
+                f"Matrix client initialization returned None (attempt {init_attempt + 1}/{max_init_retries}), "
                 f"retrying in {init_retry_delay}s..."
             )
             await asyncio.sleep(init_retry_delay)

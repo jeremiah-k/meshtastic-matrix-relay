@@ -4,6 +4,9 @@ kind: Deployment
 {{- if not .Values.config.enabled }}
 {{- fail (printf "config.enabled must be true; config is required and mounted at %s" .Values.configPath) }}
 {{- end }}
+{{- if gt (int .Values.replicaCount) 1 }}
+{{- fail "replicaCount must be 1; mmrelay uses SQLite on a single PVC and does not support concurrent replicas" }}
+{{- end }}
 metadata:
   name: {{ include "mmrelay.fullname" . }}
   labels:

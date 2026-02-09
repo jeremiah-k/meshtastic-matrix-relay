@@ -245,12 +245,17 @@ class MessageQueue:
 
             # Try to enqueue the message
             start_time = time.monotonic()
+            queue_full = False
             while True:
                 try:
                     self._queue.put_nowait(message)
                     # Success - break out of loop
                     break
                 except Full:
+                    queue_full = True
+
+                if queue_full:
+                    queue_full = False  # Reset for next iteration
                     if wait:
                         # Check if we've exceeded timeout
                         if timeout is not None:
@@ -272,9 +277,12 @@ class MessageQueue:
                             )
 
                         # Release lock and wait a bit before retrying
+                        # Use try/finally to ensure lock is always reacquired
                         self._lock.release()
-                        time.sleep(0.5)
-                        self._lock.acquire()
+                        try:
+                            time.sleep(0.5)
+                        finally:
+                            self._lock.acquire()
 
                         # Re-check queue is still running
                         if not self._running:
@@ -325,25 +333,28 @@ class MessageQueue:
         Returns:
             bool: True if successfully requeued, False if queue is full.
         """
-        # Create a new queue with the message at the front
-        new_queue: Queue[QueuedMessage] = Queue(maxsize=MAX_QUEUE_SIZE)
-        try:
-            new_queue.put_nowait(message)
-            # Move all existing messages to the new queue
-            while not self._queue.empty():
-                try:
-                    existing_msg = self._queue.get_nowait()
-                    new_queue.put_nowait(existing_msg)
-                    self._queue.task_done()
-                except (Empty, Full):
-                    break
-            # Replace the queue
-            self._queue = new_queue
-            return True
-        except Full:
-            logger.error(f"Cannot requeue message - queue full: {message.description}")
-            self._dropped_messages += 1
-            return False
+        with self._lock:
+            # Create a new queue with the message at the front
+            new_queue: Queue[QueuedMessage] = Queue(maxsize=MAX_QUEUE_SIZE)
+            try:
+                new_queue.put_nowait(message)
+                # Move all existing messages to the new queue
+                while not self._queue.empty():
+                    try:
+                        existing_msg = self._queue.get_nowait()
+                        new_queue.put_nowait(existing_msg)
+                        self._queue.task_done()
+                    except (Empty, Full):
+                        break
+                # Replace the queue
+                self._queue = new_queue
+                return True
+            except Full:
+                logger.error(
+                    f"Cannot requeue message - queue full: {message.description}"
+                )
+                self._dropped_messages += 1
+                return False
 
     def is_running(self) -> bool:
         """
@@ -602,8 +613,8 @@ class MessageQueue:
                         await asyncio.sleep(1.0)
                         continue
                     else:
-                        logger.error(
-                            f"Error sending queued message '{current_message.description}': {e}"
+                        logger.exception(
+                            f"Error sending queued message '{current_message.description}'"
                         )
 
                 # Mark task as done and clear current message

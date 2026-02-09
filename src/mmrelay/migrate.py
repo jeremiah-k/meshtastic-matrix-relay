@@ -2144,7 +2144,13 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
         Raises:
             MigrationError: If the step result indicates failure (i.e., the returned result has a falsy `success` value). The exception includes the step name and an error detail.
         """
-        result = func(*args, **kwargs)
+        try:
+            result = func(*args, **kwargs)
+        except Exception as exc:
+            # Record the failure before re-raising so it appears in the report
+            failure_result = {"success": False, "error": str(exc)}
+            _record_step(step_name, failure_result)
+            raise
         _record_step(step_name, result)
         if not result.get("success", True):
             error_detail = (
@@ -2244,9 +2250,11 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
             if staging_dir.exists()
             else ""
         )
+        # Extract step name before logger.exception to satisfy TRY401
+        failed_step = getattr(exc, "step", "unknown")
         logger.exception(
             "Migration failed during step: %s.%s",
-            getattr(exc, "step", "unknown"),
+            failed_step,
             staged_note,
         )
 
@@ -2272,7 +2280,9 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
                 logger.exception("Automatic rollback failed")
                 report["rollback_error"] = str(rollback_exc)
         else:
-            logger.exception("Please resolve the issue and re-run migration.")
+            # Use logger.error instead of logger.exception to avoid double traceback
+            # (the traceback was already logged above)
+            logger.error("Please resolve the issue and re-run migration.")
 
         # Release migration lock on failure
         if not dry_run and lock_file.exists():
