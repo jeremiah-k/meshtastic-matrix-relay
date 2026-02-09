@@ -1552,9 +1552,6 @@ async def test_connect_matrix_alias_resolution_exception(
         # Create a mock for room_resolve_alias that raises an exception
         mock_room_resolve_alias = MagicMock()
 
-        class FakeNetworkError(Exception):
-            """Simulated network failure for tests."""
-
         async def mock_room_resolve_alias_impl(_alias):
             """
             Mock async implementation that simulates a network failure when resolving a Matrix room alias.
@@ -1563,9 +1560,9 @@ async def test_connect_matrix_alias_resolution_exception(
                 _alias (str): The room alias to resolve (ignored by this mock).
 
             Raises:
-                FakeNetworkError: Always raised to simulate a network error during alias resolution.
+                OSError: Always raised to simulate a network error during alias resolution.
             """
-            raise FakeNetworkError()
+            raise OSError("Simulated network failure")
 
         mock_room_resolve_alias.side_effect = mock_room_resolve_alias_impl
 
@@ -1573,6 +1570,13 @@ async def test_connect_matrix_alias_resolution_exception(
         mock_client_instance.sync = mock_sync
         mock_client_instance.get_displayname = mock_get_displayname
         mock_client_instance.room_resolve_alias = mock_room_resolve_alias
+
+        # Mock async close method for cleanup
+        async def mock_close():
+            """Simulate async client close."""
+            pass
+
+        mock_client_instance.close = mock_close
         mock_async_client.return_value = mock_client_instance
 
         # Create config with room aliases

@@ -2188,6 +2188,8 @@ async def _post_sync_setup(
             logger.exception(f"Error resolving alias {alias}")
         except (TypeError, ValueError, AttributeError):
             logger.exception(f"Error resolving alias {alias}")
+        except OSError:
+            logger.exception(f"Error resolving alias {alias}")
         return None
 
     await _resolve_aliases_in_mapping(matrix_rooms, _resolve_alias)
