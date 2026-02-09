@@ -12,7 +12,7 @@ This checklist is required before tagging a 1.3 release.
 ## Migration Checks
 
 - [ ] Run `mmrelay migrate --dry-run` on a legacy fixture and review output.
-- [ ] Run `mmrelay migrate --move` on a legacy fixture and confirm data lands under MMRELAY_HOME.
+- [ ] Run `mmrelay migrate` on a legacy fixture and confirm data lands under MMRELAY_HOME.
 - [x] Run `mmrelay verify-migration` and confirm exit code is 0.
 - [x] Run `mmrelay doctor --migration` and confirm there are no warnings.
 - [x] Credentials are present at MMRELAY_HOME and reported by verification.

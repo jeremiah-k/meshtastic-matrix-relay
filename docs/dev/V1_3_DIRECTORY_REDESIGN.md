@@ -264,7 +264,7 @@ If migration fails:
 
 1. Preserve original files (don't delete)
 2. Log detailed error with paths
-3. Provide manual recovery guidance using `mmrelay migrate --dry-run` (and `--move`/`--force` as needed)
+3. Provide manual recovery guidance using `mmrelay migrate --dry-run` (and `--force` as needed)
 4. Document manual restore steps (copy from `.bak` files in MMRELAY_HOME if needed)
 
 ---
@@ -927,15 +927,12 @@ migrate_parser.add_argument(
     action="store_true",
     help="Show what would be migrated without making changes",
 )
-migrate_parser.add_argument(
-    "--move",
-    action="store_true",
-    help="Move files instead of copying (requires confirmation unless --force)",
-)
+# Note: The actual implementation uses move semantics by default.
+# The --move flag was not implemented; move is always the behavior.
 migrate_parser.add_argument(
     "--force",
     action="store_true",
-    help="Overwrite existing destination files and skip backups",
+    help="Overwrite existing destination files (backups are always created)",
 )
 ```
 
@@ -1137,7 +1134,7 @@ args: []
 
 - `--home <path>` CLI argument
 - `MMRELAY_HOME` environment variable
-- `mmrelay migrate` command (with --dry-run, --move, and --force)
+- `mmrelay migrate` command (with --dry-run and --force; move semantics are default)
 - Unified directory structure under single home directory
 - Atomic migrations with rollback support
 - Clear separation between config and data

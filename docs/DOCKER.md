@@ -59,6 +59,38 @@ docker compose logs -f
 
 > **Production deployment**: The `:latest` tag is mutable and may change. For production deployments, pin a specific version tag or digest to ensure reproducible deployments. See the [Kubernetes Guide](KUBERNETES.md#pinning-digests-for-production) for digest pinning examples.
 
+## Docker Migration Quick Reference
+
+If upgrading from an older version with the old directory layout, use these commands:
+
+**Preview migration (dry-run):**
+
+```bash
+# One-shot dry-run from host (recommended first step)
+docker run --rm -v "$HOME/.mmrelay:/data" ghcr.io/jeremiah-k/mmrelay:latest mmrelay migrate --dry-run
+
+# Or from a running container
+docker compose exec mmrelay mmrelay migrate --dry-run
+```
+
+**Run migration:**
+
+```bash
+# One-shot migration from host
+docker run --rm -v "$HOME/.mmrelay:/data" ghcr.io/jeremiah-k/mmrelay:latest mmrelay migrate
+
+# Or from a running container
+docker compose exec mmrelay mmrelay migrate
+```
+
+**Verify migration:**
+
+```bash
+docker compose exec mmrelay mmrelay verify-migration
+```
+
+> **Note**: Legacy credential/location fallback is supported until v1.4; warnings will be emitted until you migrate. See the [Migration Guide for v1.3](MIGRATION_1.3.md) for complete details.
+
 ## Deployment Methods
 
 MMRelay supports two deployment approaches:
@@ -356,6 +388,7 @@ The Docker image includes a built-in health check that supports two modes:
 
 - Runs `mmrelay doctor` to verify runtime HOME validity and no legacy paths
 - Suitable for standalone deployments where you want deeper health checks
+- Note: In this mode, the healthcheck returns 0 regardless of migration status. For production deployments that need true readiness checks, use `MMRELAY_READY_FILE` mode.
 
 **Recommended mode (MMRELAY_READY_FILE set):**
 

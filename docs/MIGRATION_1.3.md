@@ -6,6 +6,8 @@ This guide helps you upgrade from any legacy layout to the v1.3 unified HOME mod
 
 MMRelay now uses a single MMRELAY_HOME root for all runtime state:
 
+> **Deprecation Note**: Legacy credential/location fallback is supported until v1.4; warnings will be emitted until you migrate. Plan to migrate before upgrading to v1.4.
+
 - Credentials (moved to `matrix/` subdirectory)
 - Database (moved to `database/` subdirectory)
 - Logs (moved to `logs/` subdirectory)
