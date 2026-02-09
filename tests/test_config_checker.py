@@ -123,8 +123,7 @@ class TestConfigChecker(unittest.TestCase):
         mock_validate_credentials.assert_called_once()
         mock_get_e2ee_status.assert_called_once()
 
-    @patch("mmrelay.config.os.makedirs")
-    def test_get_config_paths(self, mock_makedirs):
+    def test_get_config_paths(self):
         """
         Verify get_config_paths() returns a list of candidate configuration file paths.
 

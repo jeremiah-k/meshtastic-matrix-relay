@@ -127,7 +127,8 @@ def get_config_paths(args: Any = None) -> list[str]:
     """
     Get a prioritized list of candidate configuration file paths for the application.
 
-    Ensures the user's home configuration directory exists (best-effort) before returning paths.
+    This function is read-only and does not create any directories. Directory
+    creation should be handled by ensure_directories() in mmrelay.paths.
 
     Parameters:
         args (Any): Parsed command-line arguments; if present, `args.config` is used as an explicit config candidate.
@@ -137,12 +138,6 @@ def get_config_paths(args: Any = None) -> list[str]:
     """
     explicit = getattr(args, "config", None) if args else None
     paths = get_unified_config_paths(explicit=explicit)
-
-    # Match legacy behavior: ensure home directory (user config dir) exists
-    try:
-        os.makedirs(str(get_home_dir()), exist_ok=True)
-    except (OSError, PermissionError):
-        pass
 
     # Convert Path objects to absolute strings
     return [str(p.absolute()) for p in paths]

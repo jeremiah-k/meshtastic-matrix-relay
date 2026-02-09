@@ -1,4 +1,7 @@
-{{- if .Values.autoscaling.enabled }}
+{{- if .Values.autoscaling.enabled -}}
+{{- if gt (int .Values.autoscaling.maxReplicas) 1 -}}
+{{- fail "autoscaling.maxReplicas must be 1; mmrelay does not support concurrent replicas due to SQLite database" -}}
+{{- end -}}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:

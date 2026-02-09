@@ -1583,6 +1583,11 @@ def main() -> int:
         # Handle the --base-dir/--data-dir options
         _apply_dir_overrides(args)
 
+        # Ensure application directories exist after overrides are applied
+        from mmrelay.paths import ensure_directories
+
+        ensure_directories(create_missing=True)
+
         args_dict = vars(args)
         has_modern_command = bool(getattr(args, "command", None))
         has_legacy_flag = any(

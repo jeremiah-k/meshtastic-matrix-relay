@@ -118,9 +118,8 @@ class TestConfig(unittest.TestCase):
             paths = get_config_paths()
             self.assertIn(os.path.expanduser("~/.mmrelay/config.yaml"), paths)
 
-    @patch("mmrelay.config.os.makedirs")
     @patch("mmrelay.paths.platformdirs.user_data_dir")
-    def test_get_config_paths_windows(self, mock_user_data_dir, _mock_makedirs):
+    def test_get_config_paths_windows(self, mock_user_data_dir):
         # Test with no args on Windows
         """
         Test that `get_config_paths` returns the correct configuration file path on Windows.
@@ -157,8 +156,7 @@ class TestConfig(unittest.TestCase):
                 # New unified layout: data_dir returns home directory
                 self.assertEqual(data_dir, os.path.expanduser("~/.mmrelay"))
 
-    @patch("mmrelay.config.os.makedirs")
-    def test_get_config_paths_with_home_env(self, mock_makedirs):
+    def test_get_config_paths_with_home_env(self):
         """Test get_config_paths respects MMRELAY_HOME environment variable."""
         with (
             patch.dict(os.environ, {"MMRELAY_HOME": "/custom/home"}),
@@ -168,8 +166,6 @@ class TestConfig(unittest.TestCase):
             self.assertIn(
                 "/custom/home/config.yaml", [os.path.normpath(p) for p in paths]
             )
-            # Should call makedirs on the home dir
-            mock_makedirs.assert_any_call("/custom/home", exist_ok=True)
 
     @patch("mmrelay.config.os.makedirs")
     def test_get_log_dir_linux(self, _mock_makedirs):
@@ -449,18 +445,6 @@ class TestConfigEdgeCases(unittest.TestCase):
         self.assertEqual(result, expected_path)
         _mock_get_unified_logs_dir.assert_called_once()
         mock_makedirs.assert_called_once_with(expected_path, exist_ok=True)
-
-    @patch("mmrelay.config.os.makedirs")
-    def test_get_config_paths_permission_error(self, mock_makedirs):
-        """Test get_config_paths when directory creation fails."""
-        # Mock OSError when creating user config directory
-        mock_makedirs.side_effect = [OSError("Permission denied"), None, None]
-
-        paths = get_config_paths()
-
-        # Should still return paths even if user config dir creation fails
-        self.assertIsInstance(paths, list)
-        self.assertGreater(len(paths), 0)
 
 
 class TestEnvironmentVariableHelpers(unittest.TestCase):
