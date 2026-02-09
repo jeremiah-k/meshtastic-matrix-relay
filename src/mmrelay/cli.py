@@ -1886,6 +1886,10 @@ def handle_doctor_command(args: argparse.Namespace) -> int:
             for error in report.get("errors", []):
                 print(f"   ❌ {error}")
             return 1
+        # Also return 1 if there's any legacy data (even cleanup-only)
+        # to prompt user to take action
+        if report.get("legacy_data_found"):
+            return 1
 
     # Return success
     return 0
