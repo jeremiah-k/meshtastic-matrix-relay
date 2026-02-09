@@ -10,10 +10,10 @@ import asyncio
 import contextlib
 import threading
 import time
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import partial
-from queue import Empty, Full, Queue
 from typing import Any, Callable, Optional, cast
 
 from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
@@ -57,7 +57,7 @@ class MessageQueue:
 
         Sets up the bounded FIFO queue, timing/state variables for rate limiting and delivery tracking, a thread lock for state transitions, and counters/placeholders for the processor task and executor.
         """
-        self._queue: Queue[QueuedMessage] = Queue(maxsize=MAX_QUEUE_SIZE)
+        self._queue: deque[QueuedMessage] = deque(maxlen=MAX_QUEUE_SIZE)
         self._processor_task: Optional[asyncio.Task[None]] = None
         self._running = False
         self._lock = threading.Lock()
@@ -246,24 +246,16 @@ class MessageQueue:
 
             # Try to enqueue the message
             start_time = time.monotonic()
-            queue_full = False
             while True:
-                try:
-                    self._queue.put_nowait(message)
-                    # Success - break out of loop
-                    break
-                except Full:
-                    queue_full = True
-
-                if queue_full:
-                    queue_full = False  # Reset for next iteration
+                queue_size = len(self._queue)
+                if queue_size >= MAX_QUEUE_SIZE:
                     if wait:
                         # Check if we've exceeded timeout
                         if timeout is not None:
                             elapsed = time.monotonic() - start_time
                             if elapsed >= timeout:
                                 logger.error(
-                                    f"Message queue full ({self._queue.qsize()}/{MAX_QUEUE_SIZE}) "
+                                    f"Message queue full ({queue_size}/{MAX_QUEUE_SIZE}) "
                                     f"and wait timed out after {timeout}s, dropping message: {description}"
                                 )
                                 self._dropped_messages += 1
@@ -276,7 +268,7 @@ class MessageQueue:
                             or current_time - self._last_queue_full_log_time >= 5.0
                         ):
                             logger.warning(
-                                f"Message queue full ({self._queue.qsize()}/{MAX_QUEUE_SIZE}), "
+                                f"Message queue full ({queue_size}/{MAX_QUEUE_SIZE}), "
                                 f"waiting for space: {description}"
                             )
                             self._last_queue_full_log_time = current_time
@@ -300,15 +292,19 @@ class MessageQueue:
                     else:
                         # Not waiting - immediately drop the message
                         logger.error(
-                            f"Message queue full ({self._queue.qsize()}/{MAX_QUEUE_SIZE}), "
+                            f"Message queue full ({queue_size}/{MAX_QUEUE_SIZE}), "
                             f"dropping message: {description}. "
                             f"Consider increasing queue size or reducing message rate."
                         )
                         self._dropped_messages += 1
                         return False
 
+                # Queue has space, append the message
+                self._queue.append(message)
+                break
+
             # Only log queue status when there are multiple messages
-            queue_size = self._queue.qsize()
+            queue_size = len(self._queue)
             if queue_size >= 2:
                 logger.debug(
                     f"Queued message ({queue_size}/{MAX_QUEUE_SIZE}): {description}"
@@ -322,7 +318,7 @@ class MessageQueue:
         Returns:
             int: The current queue size.
         """
-        return self._queue.qsize()
+        return len(self._queue)
 
     def _requeue_message(self, message: QueuedMessage) -> bool:
         """
@@ -339,27 +335,16 @@ class MessageQueue:
             bool: True if successfully requeued, False if queue is full.
         """
         with self._lock:
-            # Create a new queue with the message at the front
-            new_queue: Queue[QueuedMessage] = Queue(maxsize=MAX_QUEUE_SIZE)
-            try:
-                new_queue.put_nowait(message)
-                # Move all existing messages to the new queue
-                while not self._queue.empty():
-                    try:
-                        existing_msg = self._queue.get_nowait()
-                        new_queue.put_nowait(existing_msg)
-                        self._queue.task_done()
-                    except (Empty, Full):
-                        break
-                # Replace the queue
-                self._queue = new_queue
-                return True
-            except Full:
+            # Check if queue is full - use O(1) appendleft for prepend
+            if len(self._queue) >= MAX_QUEUE_SIZE:
                 logger.error(
                     f"Cannot requeue message - queue full: {message.description}"
                 )
                 self._dropped_messages += 1
                 return False
+            # O(1) prepend using deque's appendleft
+            self._queue.appendleft(message)
+            return True
 
     def is_running(self) -> bool:
         """
@@ -388,7 +373,7 @@ class MessageQueue:
         """
         return {
             "running": self._running,
-            "queue_size": self._queue.qsize(),
+            "queue_size": len(self._queue),
             "message_delay": self._message_delay,
             "processor_task_active": self._processor_task is not None
             and not self._processor_task.done(),
@@ -414,7 +399,7 @@ class MessageQueue:
             `True` if the queue drained before being stopped and before the timeout, `False` if the queue was stopped before draining or the timeout was reached.
         """
         deadline = (time.monotonic() + timeout) if timeout is not None else None
-        while (not self._queue.empty()) or self._in_flight or self._has_current:
+        while self._queue or self._in_flight or self._has_current:
             if not self._running:
                 return False
             if deadline is not None and time.monotonic() > deadline:
@@ -454,7 +439,7 @@ class MessageQueue:
                 # Get next message if we don't have one waiting
                 if current_message is None:
                     # Monitor queue depth for operational awareness
-                    queue_size = self._queue.qsize()
+                    queue_size = len(self._queue)
                     if queue_size > QUEUE_HIGH_WATER_MARK:
                         logger.warning(
                             f"Queue depth high: {queue_size} messages pending"
@@ -466,9 +451,9 @@ class MessageQueue:
 
                     # Get next message (non-blocking)
                     try:
-                        current_message = self._queue.get_nowait()
+                        current_message = self._queue.popleft()
                         self._has_current = True
-                    except Empty:
+                    except IndexError:
                         # No messages, wait a bit and continue
                         await asyncio.sleep(0.1)
                         continue
@@ -621,8 +606,7 @@ class MessageQueue:
                             f"Error sending queued message '{current_message.description}'"
                         )
 
-                # Mark task as done and clear current message
-                self._queue.task_done()
+                # Clear current message
                 current_message = None
                 self._in_flight = False
                 self._has_current = False
@@ -633,8 +617,6 @@ class MessageQueue:
                     logger.warning(
                         f"Message in flight was dropped during shutdown: {current_message.description}"
                     )
-                    with contextlib.suppress(Exception):
-                        self._queue.task_done()
                 self._in_flight = False
                 self._has_current = False
                 break

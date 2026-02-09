@@ -1196,7 +1196,7 @@ args: []
 1. **Migration timing**: Explicit user action via `mmrelay migrate` (with `--dry-run` preview).
 2. **Legacy config handling**: `config.yaml` migration is implemented with backup behavior and `--force` override.
 3. **Partial new layout support**: Supported (v1.2.10+ hybrid layouts are included in migration/verification).
-4. **Backup strategy**: Backups are created by default; `--force` allows overwrite without backup.
+4. **Backup strategy**: Backups are created by default; `--force` allows overwrite (backups are still created).
 5. **Rollback strategy**: Automatic rollback is attempted on migration failure.
 6. **Primary home variable**: `MMRELAY_HOME` is the canonical runtime root.
 7. **Database layout**: Uses `database/` subdirectory under `MMRELAY_HOME`.

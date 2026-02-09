@@ -206,6 +206,13 @@ class MigrationError(Exception):
         return exc
 
 
+class StagingPathMissingError(OSError):
+    """Raised when a staging path is missing during finalize."""
+
+    def __init__(self, path: Path) -> None:
+        super().__init__(f"Staging path does not exist: {path}")
+
+
 def _path_is_within_home(path: Path, home: Path) -> bool:
     """
     Determine whether a given path is the same as or located inside the specified home directory.
@@ -711,11 +718,12 @@ def _check_disk_space(
         usage = shutil.disk_usage(str(check_path))
         # Add 50% safety margin
         required_with_margin = int(required_bytes * 1.5)
-        return (usage.free >= required_with_margin, usage.free)
     except (OSError, IOError):
         # If we can't check disk space, assume it's OK and log warning
         logger.warning("Could not check disk space at %s", check_path)
         return (True, 0)
+    else:
+        return (usage.free >= required_with_margin, usage.free)
 
 
 def _finalize_move(staging_path: Path, dest_path: Path) -> None:
@@ -727,10 +735,11 @@ def _finalize_move(staging_path: Path, dest_path: Path) -> None:
         dest_path (Path): The final destination path.
 
     Raises:
-        OSError: If validation or finalization fails.
+        StagingPathMissingError: If the staging path does not exist.
+        OSError: If finalization fails.
     """
     if not staging_path.exists():
-        raise OSError(f"Staging path does not exist: {staging_path}")
+        raise StagingPathMissingError(staging_path)
 
     # Ensure parent of destination exists
     dest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1804,6 +1813,10 @@ def migrate_plugins(
     staging_dir = _get_staging_path(new_home, "plugins")
     migration_succeeded = False
 
+    def _raise_plugin_stage_errors(stage_errors: list[str]) -> None:
+        """Raise OSError for plugin staging failures."""
+        raise OSError("; ".join(stage_errors))
+
     try:
         staging_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1838,7 +1851,7 @@ def migrate_plugins(
             migrated_types.append("community")
 
         if errors:
-            raise OSError("; ".join(errors))
+            _raise_plugin_stage_errors(errors)
 
         # 3. Finalize: move staging to final destination
         _finalize_move(staging_dir, new_plugins_dir)
@@ -2478,10 +2491,11 @@ def rollback_migration(
             logger.info(
                 "Restored %s from backup %s to %s", step_name, backup_path, restore_path
             )
-            return True
         except (OSError, IOError, shutil.Error):
             logger.exception("Failed to restore %s from backup", step_name)
             return False
+        else:
+            return True
 
     # Process steps in reverse order (last completed first)
     for step_name in reversed(completed_steps):

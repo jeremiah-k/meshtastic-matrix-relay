@@ -250,7 +250,7 @@ MMRelay checks for authentication in this order:
 
 ### Container Management
 
-- `make run` - Start container (prebuilt or source based on override file)
+- `make run` - Start container (prebuilt or source-based on override file)
 - `make stop` - Stop container (keeps container for restart)
 - `make logs` - Show container logs
 - `make shell` - Access container shell

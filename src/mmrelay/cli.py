@@ -1827,7 +1827,11 @@ def handle_verify_migration_command(_args: argparse.Namespace) -> int:
     Returns:
         0 if the verification report indicates success, 1 otherwise.
     """
-    from mmrelay.migrate import print_migration_verification, verify_migration
+    try:
+        from mmrelay.migrate import print_migration_verification, verify_migration
+    except ImportError as e:
+        print(f"Error importing migration module: {e}")
+        return 1
 
     report = verify_migration()
     print_migration_verification(report)
@@ -1846,8 +1850,12 @@ def handle_doctor_command(args: argparse.Namespace) -> int:
     Returns:
         int: 0 on success, 1 if migration verification reported errors.
     """
-    from mmrelay.migrate import is_migration_needed, verify_migration
-    from mmrelay.paths import resolve_all_paths
+    try:
+        from mmrelay.migrate import is_migration_needed, verify_migration
+        from mmrelay.paths import resolve_all_paths
+    except ImportError as e:
+        print(f"Error importing required modules: {e}")
+        return 1
 
     # Get path information
     paths_info = resolve_all_paths()
