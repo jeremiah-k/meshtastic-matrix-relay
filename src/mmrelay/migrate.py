@@ -45,9 +45,11 @@ Plugin Data Migration (Three-Tier System):
 """
 
 import atexit
+import os
 import shutil
 import signal
 import sqlite3
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -63,6 +65,19 @@ logger = get_logger("Migration")
 _current_lock_file: Path | None = None
 
 
+def _cleanup_lock_file() -> None:
+    """Remove lock file if it exists. Safe to call multiple times."""
+    global _current_lock_file
+    if _current_lock_file is not None and _current_lock_file.exists():
+        try:
+            _current_lock_file.unlink()
+            logger.debug("Cleaned up migration lock: %s", _current_lock_file)
+        except (OSError, IOError):
+            pass
+        finally:
+            _current_lock_file = None
+
+
 def _register_lock_cleanup(lock_file: Path) -> None:
     """
     Register cleanup handlers for lock file on normal exit and signals.
@@ -73,31 +88,79 @@ def _register_lock_cleanup(lock_file: Path) -> None:
     global _current_lock_file
     _current_lock_file = lock_file
 
-    def cleanup_lock() -> None:
-        """Remove lock file if it exists."""
-        global _current_lock_file
-        if _current_lock_file is not None and _current_lock_file.exists():
-            try:
-                _current_lock_file.unlink()
-                logger.debug("Cleaned up migration lock: %s", _current_lock_file)
-            except (OSError, IOError):
-                pass
-            finally:
-                _current_lock_file = None
-
-    # Register for normal exit
-    atexit.register(cleanup_lock)
+    # Register for normal exit (including sys.exit())
+    atexit.register(_cleanup_lock_file)
 
     # Register for common signals (Unix/Linux)
     if sys.platform != "win32":
+
+        def _signal_handler(signum: int, frame: object) -> None:
+            """Handle signals by cleaning up and re-raising."""
+            _cleanup_lock_file()
+            # Re-raise the signal with default handler to exit properly
+            signal.signal(signum, signal.SIG_DFL)
+            os.kill(os.getpid(), signum)
+
         for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
             try:
-                signal.signal(
-                    sig, lambda signum, frame: cleanup_lock() or sys.exit(128 + signum)
-                )
+                signal.signal(sig, _signal_handler)
             except (ValueError, OSError):
                 # Signal may not be available or already handled
                 pass
+
+
+def _is_mmrelay_running() -> bool:
+    """
+    Check if an MMRelay process is currently running.
+
+    Returns:
+        True if MMRelay appears to be running, False otherwise.
+    """
+    current_pid = os.getpid()
+
+    # Try using pgrep on Unix systems
+    if sys.platform != "win32":
+        try:
+            result = subprocess.run(
+                ["pgrep", "-f", "mmrelay|python.*mmrelay"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                for pid_str in result.stdout.strip().split("\n"):
+                    try:
+                        pid = int(pid_str)
+                        if pid != current_pid:
+                            # Check if it's actually mmrelay
+                            try:
+                                with open(f"/proc/{pid}/cmdline", "rb") as f:
+                                    cmdline = f.read().decode("utf-8", errors="ignore")
+                                    if "mmrelay" in cmdline:
+                                        return True
+                            except (OSError, IOError):
+                                continue
+                    except ValueError:
+                        continue
+        except (OSError, IOError, subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+    else:
+        # On Windows, try using tasklist
+        try:
+            result = subprocess.run(
+                ["tasklist", "/FI", "IMAGENAME eq python.exe"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if "python" in result.stdout.lower():
+                # Best effort - can't easily check command line on Windows
+                # Just warn if python processes exist
+                return True
+        except (OSError, IOError, subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+
+    return False
 
 
 def _get_db_base_path(path: Path) -> Path:
@@ -554,34 +617,6 @@ def _backup_file(src_path: Path, suffix: str = ".bak") -> Path:
     backup_dir.mkdir(parents=True, exist_ok=True)
     backup_name = f"{src_path.name}{suffix}.{timestamp}"
     return backup_dir / backup_name
-
-
-def _verify_backup(src_path: Path, backup_path: Path) -> bool:
-    """
-    Verify that a backup was created successfully.
-
-    Parameters:
-        src_path: Original source path that was backed up
-        backup_path: Path where backup should exist
-
-    Returns:
-        True if backup exists and has content, False otherwise
-    """
-    if not backup_path.exists():
-        return False
-
-    if src_path.is_dir():
-        # For directories, check that backup exists and has at least one entry
-        try:
-            return any(backup_path.iterdir())
-        except (OSError, IOError):
-            return False
-    else:
-        # For files, check that backup exists and has non-zero size
-        try:
-            return backup_path.stat().st_size > 0
-        except (OSError, IOError):
-            return False
 
 
 def _check_disk_space(
@@ -2002,6 +2037,26 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
 
     logger.info("Starting migration from legacy layout to v1.3 unified home directory")
 
+    # Check if MMRelay is running (best-effort detection)
+    if not dry_run:
+        if _is_mmrelay_running():
+            logger.warning(
+                "MMRelay appears to be running. Migration while the application is active "
+                "may cause file corruption or inconsistent state. "
+                "Please stop MMRelay before running migration."
+            )
+            report["success"] = False
+            report["error"] = "MMRelay is running"
+            report["message"] = (
+                "MMRelay appears to be running. Please stop the application before migration "
+                "to prevent data corruption. If this is a false positive, use --force to proceed."
+            )
+            if not force:
+                return report
+            logger.warning(
+                "Proceeding with migration despite running instance (--force)"
+            )
+
     # Check disk space before starting migration
     if not dry_run:
         has_space, free_bytes = _check_disk_space(new_home)
@@ -2252,10 +2307,11 @@ def rollback_migration(
     _legacy_roots: list[Path] | None = None,
 ) -> dict[str, Any]:
     """
-    Rollback completed migration steps to restore pre-migration state.
+    Rollback completed migration steps by restoring from backups.
 
-    Iterates through completed steps in reverse order and attempts to undo
-    each migration action. Restores files from backups where available.
+    This function restores files from the .migration_backups/ directory
+    created during migration. It does NOT try to move files back from
+    the new location because the old location may have been deleted.
 
     Parameters:
         completed_steps: List of step names that were completed before failure.
@@ -2275,6 +2331,58 @@ def rollback_migration(
 
     logger.info("Starting automatic rollback of migration steps")
 
+    backup_dir = new_home / BACKUP_DIRNAME
+
+    def find_backup_for_step(step_name: str, dest_path: Path) -> Path | None:
+        """Find the most recent backup for a given destination path."""
+        if not backup_dir.exists():
+            return None
+
+        # Backup names follow pattern: <name>.bak.<timestamp> or <name>_pre_migration.<timestamp>
+        # The backup is named after the destination that was backed up
+        dest_name = dest_path.name
+
+        # Look for backups with the destination name
+        candidates = []
+        for backup in backup_dir.iterdir():
+            # Check if backup name starts with dest_name
+            if backup.name.startswith(dest_name):
+                candidates.append(backup)
+
+        if candidates:
+            # Return most recent by modification time
+            return max(candidates, key=lambda p: p.stat().st_mtime)
+        return None
+
+    def restore_from_backup(
+        backup_path: Path, restore_path: Path, step_name: str
+    ) -> bool:
+        """Restore a file or directory from backup to its original location."""
+        try:
+            # Create parent directories
+            restore_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Remove what's currently at restore location
+            if restore_path.exists():
+                if restore_path.is_dir():
+                    shutil.rmtree(str(restore_path))
+                else:
+                    restore_path.unlink()
+
+            # Copy from backup (keep backup intact for safety)
+            if backup_path.is_dir():
+                shutil.copytree(str(backup_path), str(restore_path))
+            else:
+                shutil.copy2(str(backup_path), str(restore_path))
+
+            logger.info(
+                "Restored %s from backup %s to %s", step_name, backup_path, restore_path
+            )
+            return True
+        except (OSError, IOError, shutil.Error) as e:
+            logger.error("Failed to restore %s from backup: %s", step_name, e)
+            return False
+
     # Process steps in reverse order (last completed first)
     for step_name in reversed(completed_steps):
         try:
@@ -2291,98 +2399,73 @@ def rollback_migration(
                 )
                 continue
 
-            old_path = step_result.get("old_path")
             new_path = step_result.get("new_path")
             action = step_result.get("action")
 
-            if action == "none" or not old_path or not new_path:
+            # Skip steps that didn't actually migrate anything
+            if action in (
+                "none",
+                "already_at_target",
+                "already_migrated",
+                "not_found",
+                "skip_force_required",
+            ):
                 logger.debug(
-                    "Step '%s' had no action or missing paths, skipping", step_name
+                    "Step '%s' had no migration action, skipping rollback", step_name
                 )
                 continue
 
-            old_path_obj = Path(old_path)
+            if not new_path:
+                logger.debug("Step '%s' has no new_path, skipping rollback", step_name)
+                continue
+
             new_path_obj = Path(new_path)
 
-            # Rollback logic based on step type
-            if step_name == "database":
-                # For database, move files back from new to old location
-                if new_path_obj.exists():
-                    # Ensure parent directory exists
-                    old_path_obj.parent.mkdir(parents=True, exist_ok=True)
-                    # Move database files back
-                    if new_path_obj.is_dir():
-                        for db_file in new_path_obj.iterdir():
-                            dest = old_path_obj.parent / db_file.name
-                            if dest.exists():
-                                if dest.is_dir():
-                                    shutil.rmtree(str(dest))
-                                else:
-                                    dest.unlink()
-                            shutil.move(str(db_file), str(dest))
-                        # Remove empty new directory
-                        if not any(new_path_obj.iterdir()):
-                            new_path_obj.rmdir()
-                    else:
-                        if old_path_obj.exists():
-                            old_path_obj.unlink()
-                        shutil.move(str(new_path_obj), str(old_path_obj))
-                    logger.info(
-                        "Rolled back database from %s to %s", new_path, old_path
-                    )
+            # Find backup for this step
+            backup_path = find_backup_for_step(step_name, new_path_obj)
 
-            elif step_name in ("config", "credentials"):
-                # For single files, move back if new exists
-                if new_path_obj.exists():
-                    old_path_obj.parent.mkdir(parents=True, exist_ok=True)
-                    if old_path_obj.exists():
-                        old_path_obj.unlink()
-                    shutil.move(str(new_path_obj), str(old_path_obj))
-                    logger.info(
-                        "Rolled back %s from %s to %s", step_name, new_path, old_path
+            if backup_path:
+                # Restore from backup to new location (undo the overwrite)
+                if restore_from_backup(backup_path, new_path_obj, step_name):
+                    rollback_report["rolled_back_steps"].append(
+                        {
+                            "step": step_name,
+                            "restored_from": str(backup_path),
+                            "restored_to": new_path,
+                        }
                     )
-
-            elif step_name == "store":
-                # For E2EE store (directory)
-                if new_path_obj.exists():
-                    old_path_obj.parent.mkdir(parents=True, exist_ok=True)
-                    if old_path_obj.exists():
-                        shutil.rmtree(str(old_path_obj))
-                    shutil.move(str(new_path_obj), str(old_path_obj))
-                    logger.info(
-                        "Rolled back E2EE store from %s to %s", new_path, old_path
+                else:
+                    rollback_report["errors"].append(
+                        {
+                            "step": step_name,
+                            "error": f"Failed to restore from {backup_path}",
+                        }
                     )
-
-            elif step_name == "plugins":
-                # For plugins, we moved directories from old to new
-                # Try to restore by moving back
-                if new_path_obj.exists() and old_path_obj.exists():
-                    # Both exist, can't safely rollback
-                    logger.warning(
-                        "Cannot rollback plugins: both source and destination exist"
-                    )
-                elif new_path_obj.exists():
-                    old_path_obj.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.move(str(new_path_obj), str(old_path_obj))
-                    logger.info("Rolled back plugins from %s to %s", new_path, old_path)
-
-            elif step_name in ("logs", "gpxtracker"):
-                # For logs and gpxtracker, similar to other directories
+                    rollback_report["success"] = False
+            else:
+                # No backup exists - this means the destination didn't exist before migration
+                # So we should remove the migrated files
+                logger.info(
+                    "No backup found for %s, removing migrated files from %s",
+                    step_name,
+                    new_path,
+                )
                 if new_path_obj.exists():
-                    old_path_obj.parent.mkdir(parents=True, exist_ok=True)
-                    if old_path_obj.exists():
-                        if old_path_obj.is_dir():
-                            shutil.rmtree(str(old_path_obj))
+                    try:
+                        if new_path_obj.is_dir():
+                            shutil.rmtree(str(new_path_obj))
                         else:
-                            old_path_obj.unlink()
-                    shutil.move(str(new_path_obj), str(old_path_obj))
-                    logger.info(
-                        "Rolled back %s from %s to %s", step_name, new_path, old_path
-                    )
-
-            rollback_report["rolled_back_steps"].append(
-                {"step": step_name, "old_path": old_path, "new_path": new_path}
-            )
+                            new_path_obj.unlink()
+                        logger.info("Removed migrated %s from %s", step_name, new_path)
+                        rollback_report["rolled_back_steps"].append(
+                            {"step": step_name, "removed": new_path}
+                        )
+                    except (OSError, IOError) as e:
+                        logger.error("Failed to remove migrated %s: %s", step_name, e)
+                        rollback_report["errors"].append(
+                            {"step": step_name, "error": f"Failed to remove: {e}"}
+                        )
+                        rollback_report["success"] = False
 
         except (OSError, IOError, shutil.Error) as e:
             logger.exception("Failed to rollback step '%s'", step_name)
@@ -2398,6 +2481,9 @@ def rollback_migration(
                 logger.debug("Cleaned up staging directory after rollback")
             except (OSError, IOError):
                 pass
+
+    # Note: We intentionally do NOT clean up backups after rollback
+    # They serve as a safety net and can be manually removed later
 
     if rollback_report["success"] and not rollback_report["errors"]:
         logger.info("Rollback completed successfully")
