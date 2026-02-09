@@ -2439,9 +2439,10 @@ async def reconnect() -> None:
                     )
                     break
                 loop = asyncio.get_running_loop()
-                # Pass force_connect=True without overwriting the global config
+                # Pass the current config during reconnection to ensure matrix_rooms is populated
+                # Using None for passed_config would skip matrix_rooms initialization
                 meshtastic_client = await loop.run_in_executor(
-                    None, connect_meshtastic, None, True
+                    None, connect_meshtastic, config, True
                 )
                 if meshtastic_client:
                     logger.info("Reconnected successfully.")
@@ -2700,18 +2701,62 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                 )
                 return
 
+        # Normalize channel to integer to prevent type mismatch issues
+        # Meshtastic packets may contain channel as string or int
+        try:
+            channel = int(channel)
+        except (ValueError, TypeError):
+            logger.warning(
+                f"Invalid channel value {channel!r} (type: {type(channel).__name__}), "
+                f"defaulting to {DEFAULT_CHANNEL_VALUE}"
+            )
+            channel = DEFAULT_CHANNEL_VALUE
+
         # Check if channel is mapped to a Matrix room
         channel_mapped = False
         iterable_rooms = (
             matrix_rooms.values() if isinstance(matrix_rooms, dict) else matrix_rooms
         )
         for room in iterable_rooms:
-            if isinstance(room, dict) and room.get("meshtastic_channel") == channel:
+            if not isinstance(room, dict):
+                continue
+
+            # Normalize room channel to integer for comparison
+            room_channel = room.get("meshtastic_channel")
+            try:
+                room_channel = int(room_channel) if room_channel is not None else None
+            except (ValueError, TypeError):
+                logger.warning(
+                    f"Invalid meshtastic_channel value {room_channel!r} in room config "
+                    f"for room {room.get('id', 'unknown')}, skipping this room"
+                )
+                continue
+
+            if room_channel == channel:
                 channel_mapped = True
+                logger.debug(
+                    f"Channel {channel} mapped to Matrix room {room.get('id', 'unknown')}"
+                )
                 break
 
         if not channel_mapped:
-            logger.debug(f"Skipping message from unmapped channel {channel}")
+            # Use WARNING level so this is visible without debug logging enabled
+            # This helps users diagnose configuration issues
+            available_channels = []
+            for room in iterable_rooms:
+                if isinstance(room, dict):
+                    ch = room.get("meshtastic_channel")
+                    try:
+                        ch = int(ch) if ch is not None else None
+                    except (ValueError, TypeError):
+                        ch = f"<invalid: {ch!r}>"
+                    available_channels.append(ch)
+
+            logger.warning(
+                f"Skipping message from unmapped channel {channel}. "
+                f"Available channels in config: {available_channels}. "
+                f"Check your matrix_rooms configuration to ensure this channel is mapped."
+            )
             return
 
         # If detection_sensor is disabled and this is a detection sensor packet, skip it
@@ -2792,13 +2837,19 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             logger.debug("Message was handled by a plugin. Not relaying to Matrix.")
             return
 
+        # Check if matrix_rooms is empty BEFORE attempting to relay
+        # This can happen during startup race conditions where messages arrive
+        # before matrix_rooms is populated, or during reconnection
+        if not matrix_rooms:
+            logger.warning(
+                f"matrix_rooms is empty - cannot relay message from {longname}. "
+                f"This may indicate a startup race condition or configuration issue. "
+                f"Message will be dropped: {text[:50]}{'...' if len(text) > 50 else ''}"
+            )
+            return
+
         # Relay the message to all Matrix rooms mapped to this channel
         logger.info(f"Relaying Meshtastic message from {longname} to Matrix")
-
-        # Check if matrix_rooms is empty
-        if not matrix_rooms:
-            logger.error("matrix_rooms is empty. Cannot relay message to Matrix.")
-            return
 
         iterable_rooms = (
             matrix_rooms.values() if isinstance(matrix_rooms, dict) else matrix_rooms
