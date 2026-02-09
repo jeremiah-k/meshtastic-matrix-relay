@@ -48,7 +48,7 @@ setup(
         "matrix-nio==0.25.2",
         "matplotlib==3.10.8",
         "requests==2.32.5",
-        "markdown==3.10.1",
+        "markdown==3.10.2",
         "bleach==6.3.0",
         "haversine==2.9.0",
         "schedule==1.2.2",
