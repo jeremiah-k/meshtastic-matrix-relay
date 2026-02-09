@@ -415,18 +415,15 @@ networkPolicy:
   enabled: true
 ```
 
-### Horizontal Pod Autoscaler
+### No Horizontal Pod Autoscaler (HPA)
 
-```yaml
-autoscaling:
-  enabled: false
-  minReplicas: 1
-  maxReplicas: 3
-  targetCPUUtilizationPercentage: 80
-  targetMemoryUtilizationPercentage: 80
-```
+This chart **does not support autoscaling** and intentionally omits an HPA template.
 
-> **Note**: MMRelay is stateful. Enable autoscaling only if you have configured state externalization (e.g., external database).
+**Reasons:**
+
+1. **SQLite database**: MMRelay uses SQLite for persistence. SQLite is a file-based database that does not support concurrent access from multiple processes. Multiple replicas would corrupt the database.
+
+2. **Meshtastic device connections**: Each Meshtastic device allows only one active client connection at a time. Multiple relay instances connecting to the same device would cause connection conflicts.
 
 ## Runtime Paths
 

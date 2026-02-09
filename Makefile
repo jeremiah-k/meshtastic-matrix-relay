@@ -200,26 +200,7 @@ edit:
 
 # Setup: interactive - prompt for prebuilt vs source build
 setup: _setup_common _setup_with_migration_check
-	@if [ -f docker-compose.yaml.legacy.bak ]; then \
-		echo ""; \
-		echo "Select deployment mode:"; \
-		echo "  [1] Prebuilt image (recommended - faster, auto-updates available)"; \
-		echo "  [2] Build from source (for developers)"; \
-		echo ""; \
-		read -p "Choose [1-2, default=1]: " mode; \
-		case "$$mode" in \
-			2) \
-				cp src/mmrelay/tools/sample-docker-compose-prebuilt.yaml docker-compose.yaml; \
-				cp src/mmrelay/tools/sample-docker-compose-override.yaml docker-compose.override.yaml; \
-				echo "docker-compose.yaml created (base - prebuilt image)"; \
-				echo "docker-compose.override.yaml created (override - build from source)"; \
-			;; \
-			*) \
-				cp src/mmrelay/tools/sample-docker-compose-prebuilt.yaml docker-compose.yaml; \
-				echo "docker-compose.yaml created (prebuilt image)"; \
-			;; \
-		esac; \
-	elif [ ! -f docker-compose.yaml ]; then \
+	@if [ -f docker-compose.yaml.legacy.bak ] || [ ! -f docker-compose.yaml ]; then \
 		echo ""; \
 		echo "Select deployment mode:"; \
 		echo "  [1] Prebuilt image (recommended - faster, auto-updates available)"; \

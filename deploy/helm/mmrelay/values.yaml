@@ -149,16 +149,11 @@ networkPolicy:
   # ingress: []
   # egress: []
 
-# Horizontal Pod Autoscaler (disabled by default)
-# WARNING: Meshtastic devices allow only one active client connection at a time.
-# Do not scale replicas for a single device deployment without a topology that
-# guarantees only one relay instance connects to each device.
-autoscaling:
-  enabled: false
-  minReplicas: 1
-  maxReplicas: 3
-  targetCPUUtilizationPercentage: 80
-  targetMemoryUtilizationPercentage: 80
+# Autoscaling is NOT supported by this chart.
+# MMRelay uses SQLite for persistence and Meshtastic devices allow only one
+# active client connection at a time. Running multiple replicas would cause
+# database corruption and/or connection conflicts.
+# This chart intentionally does NOT include an HPA template for this reason.
 
 # Pod annotations
 podAnnotations: {}
