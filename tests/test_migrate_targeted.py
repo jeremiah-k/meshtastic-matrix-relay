@@ -117,10 +117,12 @@ class TestPerformMigration(unittest.TestCase):
             mock_plugins.return_value = {"success": True, "message": "Done"}
             mock_gpx.return_value = {"success": True, "message": "Done"}
 
-            result = perform_migration(dry_run=False, force=False)
+            # Mock running instance check to return False (no running instance)
+            with patch("mmrelay.migrate._is_mmrelay_running", return_value=False):
+                result = perform_migration(dry_run=False, force=False)
 
-            self.assertTrue(result.get("success"))
-            self.assertGreaterEqual(len(result.get("migrations", [])), 3)
+                self.assertTrue(result.get("success"))
+                self.assertGreaterEqual(len(result.get("migrations", [])), 3)
 
     @patch("mmrelay.migrate.migrate_store")
     @patch("mmrelay.paths.get_home_dir")
@@ -148,16 +150,18 @@ class TestPerformMigration(unittest.TestCase):
                 "error": "Test error",
             }
 
-            result = perform_migration(dry_run=False, force=False)
+            # Mock running instance check to return False (no running instance)
+            with patch("mmrelay.migrate._is_mmrelay_running", return_value=False):
+                result = perform_migration(dry_run=False, force=False)
 
-            self.assertFalse(result.get("success"))
-            # Error is in the migrations list, not at top level
-            migrations = result.get("migrations", [])
-            store_migration = [m for m in migrations if m.get("type") == "store"]
-            self.assertTrue(any(store_migration))
-            self.assertEqual(
-                store_migration[0].get("result", {}).get("error"), "Test error"
-            )
+                self.assertFalse(result.get("success"))
+                # Error is in the migrations list, not at top level
+                migrations = result.get("migrations", [])
+                store_migration = [m for m in migrations if m.get("type") == "store"]
+                self.assertTrue(any(store_migration))
+                self.assertEqual(
+                    store_migration[0].get("result", {}).get("error"), "Test error"
+                )
 
     @patch("mmrelay.migrate.migrate_store")
     @patch("mmrelay.paths.get_home_dir")
@@ -178,10 +182,12 @@ class TestPerformMigration(unittest.TestCase):
                 "dry_run": True,
             }
 
-            result = perform_migration(dry_run=True, force=False)
+            # Mock running instance check to return False (no running instance)
+            with patch("mmrelay.migrate._is_mmrelay_running", return_value=False):
+                result = perform_migration(dry_run=True, force=False)
 
-            self.assertTrue(result.get("success"))
-            self.assertGreater(len(result.get("migrations", [])), 0)
+                self.assertTrue(result.get("success"))
+                self.assertGreater(len(result.get("migrations", [])), 0)
 
     @patch("mmrelay.migrate.migrate_database")
     @patch("mmrelay.migrate.migrate_config")
@@ -212,10 +218,14 @@ class TestPerformMigration(unittest.TestCase):
             mock_config.return_value = {"success": True}
             mock_db.side_effect = sqlite3.DatabaseError("Database failure")
 
-            result = perform_migration(dry_run=False, force=False)
+            # Mock running instance check to return False (no running instance)
+            with patch("mmrelay.migrate._is_mmrelay_running", return_value=False):
+                result = perform_migration(dry_run=False, force=False)
 
-            self.assertFalse(result.get("success"))
-            self.assertEqual(result.get("completed_steps"), ["credentials", "config"])
+                self.assertFalse(result.get("success"))
+                self.assertEqual(
+                    result.get("completed_steps"), ["credentials", "config"]
+                )
 
 
 if __name__ == "__main__":
