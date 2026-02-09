@@ -3,7 +3,7 @@
 # Detect docker compose command (prefer newer 'docker compose' over 'docker-compose')
 DOCKER_COMPOSE := $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
 
-.PHONY: all test help build build-nocache rebuild run stop logs shell clean config edit setup setup-prebuilt update-compose doctor paths
+.PHONY: all test help build build-nocache rebuild run stop logs shell clean config edit setup setup-prebuilt update-compose doctor paths _check_legacy_env _check_legacy_compose _migrate_prompt
 
 # Alias targets for checkmake compliance
 all: help
@@ -30,6 +30,94 @@ help:
 	@echo "  paths   - Show runtime paths inside the container"
 	@echo "  clean   - Remove containers and networks"
 
+# =============================================================================
+# Legacy Detection and Migration (v1.2.x → v1.3)
+# =============================================================================
+
+# Check for legacy .env file (v1.2.x used MMRELAY_HOME, v1.3 uses MMRELAY_HOST_HOME)
+_check_legacy_env:
+	@if [ -f .env ]; then \
+		if grep -q '^MMRELAY_HOME=' .env 2>/dev/null && ! grep -q '^MMRELAY_HOST_HOME=' .env 2>/dev/null; then \
+			echo "LEGACY_ENV=1"; \
+		fi; \
+	fi
+
+# Check for legacy docker-compose.yaml (v1.2.x used two volume mounts, v1.3 uses single mount)
+_check_legacy_compose:
+	@if [ -f docker-compose.yaml ]; then \
+		if grep -q '/app/config.yaml' docker-compose.yaml 2>/dev/null; then \
+			echo "LEGACY_COMPOSE=1"; \
+		elif grep -q '/app/data' docker-compose.yaml 2>/dev/null && ! grep -q 'MMRELAY_HOME=/data' docker-compose.yaml 2>/dev/null; then \
+			echo "LEGACY_COMPOSE=1"; \
+		fi; \
+	fi
+
+# Prompt user for migration when legacy detected
+_migrate_prompt:
+	@echo ""
+	@echo "╔══════════════════════════════════════════════════════════════════╗"
+	@echo "║           Legacy Setup Detected - Migration Required             ║"
+	@echo "╚══════════════════════════════════════════════════════════════════╝"
+	@echo ""
+	@echo "Your current setup uses the v1.2.x directory layout which is deprecated."
+	@echo ""
+	@echo "Changes needed:"
+	@if [ -f .env ] && grep -q '^MMRELAY_HOME=' .env 2>/dev/null && ! grep -q '^MMRELAY_HOST_HOME=' .env 2>/dev/null; then \
+		echo "  • .env: Replace MMRELAY_HOME with MMRELAY_HOST_HOME"; \
+	fi
+	@if [ -f docker-compose.yaml ] && grep -q '/app/config.yaml\|/app/data' docker-compose.yaml 2>/dev/null; then \
+		echo "  • docker-compose.yaml: Update to v1.3 format (single volume mount)"; \
+	fi
+	@echo ""
+	@echo "After updating and starting the container, run:"
+	@echo "  docker compose exec mmrelay mmrelay migrate --dry-run"
+	@echo "  docker compose exec mmrelay mmrelay migrate"
+	@echo "  docker compose exec mmrelay mmrelay verify-migration"
+	@echo ""
+	@echo "[1] Update files automatically (recommended)"
+	@echo "[2] Skip - I'll handle it manually"
+	@echo ""
+	@read -p "Choose [1-2]: " choice; \
+	case "$$choice" in \
+		1) \
+			echo "MIGRATE=yes"; \
+		;; \
+		2) \
+			echo "MIGRATE=no"; \
+		;; \
+		*) \
+			echo "MIGRATE=yes"; \
+		;; \
+	esac
+
+# Internal: Handle legacy detection and prompt for migration
+_setup_with_migration_check:
+	@legacy_env=$$($(MAKE) -s _check_legacy_env); \
+	legacy_compose=$$($(MAKE) -s _check_legacy_compose); \
+	if [ -n "$$legacy_env" ] || [ -n "$$legacy_compose" ]; then \
+		migrate=$$($(MAKE) -s _migrate_prompt); \
+		if echo "$$migrate" | grep -q 'MIGRATE=yes'; then \
+			echo ""; \
+			echo "Updating configuration files..."; \
+			if [ -f .env ] && grep -q '^MMRELAY_HOME=' .env 2>/dev/null && ! grep -q '^MMRELAY_HOST_HOME=' .env 2>/dev/null; then \
+				echo "Updating .env file..."; \
+				sed -i.bak 's/^MMRELAY_HOME=$$HOME/MMRELAY_HOST_HOME=/' .env 2>/dev/null || true; \
+				sed -i.bak 's/^MMRELAY_HOME=/MMRELAY_HOST_HOME=/' .env 2>/dev/null || true; \
+				rm -f .env.bak; \
+				echo "  ✓ .env updated (MMRELAY_HOME → MMRELAY_HOST_HOME)"; \
+			fi; \
+			if [ -f docker-compose.yaml ]; then \
+				echo "Replacing docker-compose.yaml with v1.3 format..."; \
+				cp docker-compose.yaml docker-compose.yaml.legacy.bak; \
+				echo "  ✓ Backup saved to docker-compose.yaml.legacy.bak"; \
+			fi; \
+		fi; \
+	fi
+
+# =============================================================================
+# Setup Targets
+# =============================================================================
+
 # Internal target for common setup tasks
 _setup_common:
 	@mkdir -p ~/.mmrelay
@@ -48,8 +136,11 @@ _setup_common:
 	@echo "Host directory ~/.mmrelay created - will be mounted to /data in the container"
 
 # Copy sample config to ~/.mmrelay/config.yaml and create Docker files
-config: _setup_common
-	@if [ ! -f docker-compose.yaml ]; then \
+config: _setup_common _setup_with_migration_check
+	@if [ -f docker-compose.yaml.legacy.bak ]; then \
+		cp src/mmrelay/tools/sample-docker-compose.yaml docker-compose.yaml; \
+		echo "docker-compose.yaml replaced with v1.3 format"; \
+	elif [ ! -f docker-compose.yaml ]; then \
 		cp src/mmrelay/tools/sample-docker-compose.yaml docker-compose.yaml; \
 		echo "docker-compose.yaml created from sample - edit if needed"; \
 	else \
@@ -104,13 +195,15 @@ edit:
 	fi
 
 # Setup: copy config and open editor (builds from source)
-setup:
-	@$(MAKE) config
+setup: config
 	@$(MAKE) edit
 
 # Setup with prebuilt images: copy config and use prebuilt docker-compose
-setup-prebuilt: _setup_common
-	@if [ ! -f docker-compose.yaml ]; then \
+setup-prebuilt: _setup_common _setup_with_migration_check
+	@if [ -f docker-compose.yaml.legacy.bak ]; then \
+		cp src/mmrelay/tools/sample-docker-compose-prebuilt.yaml docker-compose.yaml; \
+		echo "docker-compose.yaml replaced with v1.3 format (prebuilt image)"; \
+	elif [ ! -f docker-compose.yaml ]; then \
 		cp src/mmrelay/tools/sample-docker-compose-prebuilt.yaml docker-compose.yaml; \
 		echo "docker-compose.yaml created from prebuilt sample - uses official images"; \
 	else \
