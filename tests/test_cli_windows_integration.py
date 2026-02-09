@@ -8,7 +8,10 @@ including console setup, error handling, and Windows-specific guidance.
 import os
 import sys
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -19,38 +22,40 @@ from mmrelay.cli import generate_sample_config, main
 class TestCLIWindowsConsoleSetup(unittest.TestCase):
     """Test cases for Windows console setup in CLI main function."""
 
-    @patch("sys.platform", "win32")
-    @patch("os.name", "nt")  # Also mock os.name to make is_windows() return True
-    @patch("mmrelay.windows_utils.setup_windows_console")
-    @patch("mmrelay.cli.parse_arguments")
-    def test_main_calls_windows_console_setup(
-        self, mock_parse_args, _mock_setup_console
-    ):
+    @pytest.mark.skipif(
+        sys.platform != "win32",
+        reason="Windows-specific test - WindowsPath cannot be instantiated on non-Windows systems",
+    )
+    def test_main_calls_windows_console_setup(self):
         """
         Verify that main() invokes Windows console setup when running on Windows.
 
         Sets up minimal parsed CLI arguments and patches the main execution path so the test
         exercises only the CLI entry behavior. Asserts that the Windows console setup helper
         is called exactly once and that main() returns the expected exit code (0).
+
+        Note: This test is skipped on non-Windows systems because pathlib's Path class
+        cannot instantiate WindowsPath on Linux/macOS, even when mocking sys.platform.
+        The Windows console setup logic is tested on Windows CI instead.
         """
-        # Mock parse_arguments to return minimal args and exit early
+        # Create mock args
         mock_args = MagicMock()
         mock_args.command = None
         mock_args.generate_config = False
         mock_args.check_config = False
-        mock_args.install_service = (
-            False  # Ensure service installation is not triggered
-        )
+        mock_args.install_service = False
         mock_args.auth = None
         mock_args.version = False
-        mock_parse_args.return_value = mock_args
 
-        # Mock run_main to avoid full execution
-        with patch("mmrelay.main.run_main", return_value=0):
+        with (
+            patch("mmrelay.windows_utils.setup_windows_console") as mock_setup_console,
+            patch("mmrelay.cli.parse_arguments", return_value=mock_args),
+            patch("mmrelay.main.run_main", return_value=0),
+        ):
             result = main()
 
         # Should call Windows console setup
-        _mock_setup_console.assert_called_once()
+        mock_setup_console.assert_called_once()
         self.assertEqual(result, 0)
 
     @patch("sys.platform", "linux")
@@ -116,12 +121,14 @@ class TestCLIWindowsErrorHandling(unittest.TestCase):
         mock_get_error.return_value = "Windows-specific error guidance"
 
         # Mock file operations to fail with OSError
-        with patch(
-            "mmrelay.cli.get_config_paths", return_value=["/test/config.yaml"]
-        ), patch("os.path.isfile", return_value=False), patch(
-            "mmrelay.tools.get_sample_config_path", side_effect=OSError("Access denied")
+        with (
+            patch("mmrelay.cli.get_config_paths", return_value=["/test/config.yaml"]),
+            patch("os.path.isfile", return_value=False),
+            patch(
+                "mmrelay.tools.get_sample_config_path",
+                side_effect=OSError("Access denied"),
+            ),
         ):
-
             result = generate_sample_config()
 
         # Should fail gracefully
@@ -138,19 +145,17 @@ class TestCLIWindowsErrorHandling(unittest.TestCase):
     ):
         """Test that generate_sample_config provides Windows troubleshooting guidance."""
         # Mock all config generation methods to fail
-        with patch(
-            "mmrelay.cli.get_config_paths", return_value=["/test/config.yaml"]
-        ), patch("os.path.isfile", return_value=False), patch(
-            "mmrelay.cli.get_sample_config_path",
-            return_value="/nonexistent/sample_config.yaml",
-        ), patch(
-            "os.path.exists", return_value=False
-        ), patch(
-            "importlib.resources.files", side_effect=ImportError()
-        ), patch(
-            "mmrelay.cli._get_minimal_config_template", side_effect=OSError()
+        with (
+            patch("mmrelay.cli.get_config_paths", return_value=["/test/config.yaml"]),
+            patch("os.path.isfile", return_value=False),
+            patch(
+                "mmrelay.cli.get_sample_config_path",
+                return_value="/nonexistent/sample_config.yaml",
+            ),
+            patch("os.path.exists", return_value=False),
+            patch("importlib.resources.files", side_effect=ImportError()),
+            patch("mmrelay.cli._get_minimal_config_template", side_effect=OSError()),
         ):
-
             result = generate_sample_config()
 
         # Should fail
@@ -170,19 +175,17 @@ class TestCLIWindowsErrorHandling(unittest.TestCase):
     def test_generate_config_no_windows_guidance_on_linux(self, mock_print):
         """Test that generate_sample_config doesn't provide Windows guidance on Linux."""
         # Mock all config generation methods to fail
-        with patch(
-            "mmrelay.cli.get_config_paths", return_value=["/test/config.yaml"]
-        ), patch("os.path.isfile", return_value=False), patch(
-            "mmrelay.cli.get_sample_config_path",
-            return_value="/nonexistent/sample_config.yaml",
-        ), patch(
-            "os.path.exists", return_value=False
-        ), patch(
-            "importlib.resources.files", side_effect=ImportError()
-        ), patch(
-            "mmrelay.cli._get_minimal_config_template", side_effect=OSError()
+        with (
+            patch("mmrelay.cli.get_config_paths", return_value=["/test/config.yaml"]),
+            patch("os.path.isfile", return_value=False),
+            patch(
+                "mmrelay.cli.get_sample_config_path",
+                return_value="/nonexistent/sample_config.yaml",
+            ),
+            patch("os.path.exists", return_value=False),
+            patch("importlib.resources.files", side_effect=ImportError()),
+            patch("mmrelay.cli._get_minimal_config_template", side_effect=OSError()),
         ):
-
             result = generate_sample_config()
 
         # Should fail

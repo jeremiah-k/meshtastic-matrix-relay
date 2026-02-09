@@ -1371,9 +1371,10 @@ def migrate_logs(
 
         # 2. Move files to staging with timestamped names
         migrated_count = 0
-        for log_file in old_logs_dir.glob("*.log"):
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            new_name = f"{log_file.stem}_migrated_{timestamp}.log"
+        for idx, log_file in enumerate(old_logs_dir.glob("*.log")):
+            # Include microseconds and index to avoid filename collisions
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            new_name = f"{log_file.stem}_migrated_{timestamp}_{idx}.log"
             dest_staged = staging_dir / new_name
             shutil.move(str(log_file), str(dest_staged))
             migrated_count += 1
@@ -1938,9 +1939,10 @@ def migrate_gpxtracker(
         migrated_count = 0
 
         # 2. Stage GPX files with timestamped names
-        for gpx_file in old_gpx_dir.glob("*.gpx"):
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            new_name = f"{gpx_file.stem}_migrated_{timestamp}.gpx"
+        for idx, gpx_file in enumerate(old_gpx_dir.glob("*.gpx")):
+            # Include microseconds and index to avoid filename collisions
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            new_name = f"{gpx_file.stem}_migrated_{timestamp}_{idx}.gpx"
             dest_staged = staging_dir / new_name
             shutil.move(str(gpx_file), str(dest_staged))
             migrated_count += 1
@@ -2345,27 +2347,38 @@ def rollback_migration(
 
     logger.info("Starting automatic rollback of migration steps")
 
-    backup_dir = new_home / BACKUP_DIRNAME
-
     def find_backup_for_step(_step_name: str, dest_path: Path) -> Path | None:
-        """Find the most recent backup for a given destination path."""
-        if not backup_dir.exists():
-            return None
+        """Find the most recent backup for a given destination path.
 
+        _backup_file stores backups in dest_path.parent / BACKUP_DIRNAME,
+        so search there first, then fall back to new_home / BACKUP_DIRNAME.
+        """
         # Backup names follow pattern: <name>.bak.<timestamp> or <name>_pre_migration.<timestamp>
         # The backup is named after the destination that was backed up
         dest_name = dest_path.name
 
-        # Look for backups with the destination name
-        candidates = []
-        for backup in backup_dir.iterdir():
-            # Check if backup name starts with dest_name
-            if backup.name.startswith(dest_name):
-                candidates.append(backup)
+        # Search in order: destination's parent backup dir, then home backup dir
+        backup_dirs = [
+            dest_path.parent
+            / BACKUP_DIRNAME,  # Primary: where _backup_file creates them
+            new_home / BACKUP_DIRNAME,  # Fallback: for top-level files
+        ]
 
-        if candidates:
-            # Return most recent by modification time
-            return max(candidates, key=lambda p: p.stat().st_mtime)
+        for backup_dir in backup_dirs:
+            if not backup_dir.exists():
+                continue
+
+            # Look for backups with the destination name
+            candidates = []
+            for backup in backup_dir.iterdir():
+                # Check if backup name starts with dest_name
+                if backup.name.startswith(dest_name):
+                    candidates.append(backup)
+
+            if candidates:
+                # Return most recent by modification time
+                return max(candidates, key=lambda p: p.stat().st_mtime)
+
         return None
 
     def restore_from_backup(

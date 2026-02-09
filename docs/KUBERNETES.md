@@ -527,7 +527,7 @@ These are **not** persistent and should not be backed up.
 The PVC is the **single source of truth** for persistent data:
 
 - `/data` (PVC): **Authoritative** - persistent, backed up
-- /data/config.yaml: Not persistent - injected from Secret/ConfigMap, not backed up (unless it is manually copied to the PVC)
+- `/data/config.yaml`: **Not persistent** - injected from Secret/ConfigMap, not backed up (unless it is manually copied to the PVC)
 - `/run/mmrelay`: **Not persistent** - recreated on each pod start
 - `/tmp`: **Not persistent** - temporary storage
 
@@ -741,6 +741,6 @@ Because environments differ widely, treat BLE support in Kubernetes as experimen
 
 - Ready file: The ready file feature is enabled by default via `MMRELAY_READY_FILE=/run/mmrelay/ready` in the deployment:
   - Readiness and startup probes check for the marker file at `/run/mmrelay/ready`
-  - Liveness probe runs `mmrelay doctor` for deeper health checks
+  - Liveness probe verifies the ready file at `/run/mmrelay/ready` was modified within the last 2 minutes
   - Heartbeat interval is configurable via `MMRELAY_READY_HEARTBEAT_SECONDS` (default: 60s)
 - NetworkPolicy: The default NetworkPolicy allows all egress; restrict CIDRs as needed for production. The default policy includes rules for both IPv4 (`0.0.0.0/0`) and IPv6 (`::/0`) egress.

@@ -2623,7 +2623,8 @@ def generate_sample_config() -> bool:
     # No config file exists, generate one in the first location
     target_path = config_paths[0]
 
-    # Directory should already exist from get_config_paths() call
+    # Ensure the target directory exists
+    os.makedirs(os.path.dirname(target_path), exist_ok=True)
 
     # Use the helper function to get the sample config path
     sample_config_path = get_sample_config_path()

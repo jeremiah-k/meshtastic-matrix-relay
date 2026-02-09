@@ -170,7 +170,7 @@ def get_credentials_search_paths(
         If `path` is None, empty, or already present in `seen`, the function has no effect; otherwise it appends `path` to `candidate_paths` and records it in `seen`.
 
         Parameters:
-            path (Path string to add; ignored if `None` or already added.
+            path (str | None): Path string to add; ignored if `None` or already added.
         """
         if not path or path in seen:
             return

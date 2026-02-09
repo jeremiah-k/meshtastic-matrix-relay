@@ -1187,7 +1187,7 @@ class TestE2EEStoreDir(unittest.TestCase):
     @patch("mmrelay.config.sys.platform", "linux")
     @patch(
         "mmrelay.config.get_unified_store_dir",
-        return_value="/home/user/.mmrelay/store",
+        return_value="/home/user/.mmrelay/matrix/store",
     )
     @patch("mmrelay.config.os.makedirs")
     def test_get_e2ee_store_dir_creates_directory(
@@ -1195,14 +1195,14 @@ class TestE2EEStoreDir(unittest.TestCase):
     ):
         """Test E2EE store directory creation when it doesn't exist."""
         result = get_e2ee_store_dir()
-        expected_path = "/home/user/.mmrelay/store"
+        expected_path = "/home/user/.mmrelay/matrix/store"
         self.assertEqual(result, expected_path)
         mock_makedirs.assert_called_once_with(expected_path, exist_ok=True)
 
     @patch("mmrelay.config.sys.platform", "linux")
     @patch(
         "mmrelay.config.get_unified_store_dir",
-        return_value=os.path.join(tempfile.gettempdir(), ".mmrelay", "store"),
+        return_value=os.path.join(tempfile.gettempdir(), ".mmrelay", "matrix", "store"),
     )
     @patch("mmrelay.config.os.makedirs")
     def test_get_e2ee_store_dir_existing_directory(
@@ -1210,7 +1210,9 @@ class TestE2EEStoreDir(unittest.TestCase):
     ):
         """Test E2EE store directory when it already exists."""
         result = get_e2ee_store_dir()
-        expected_path = os.path.join(tempfile.gettempdir(), ".mmrelay", "store")
+        expected_path = os.path.join(
+            tempfile.gettempdir(), ".mmrelay", "matrix", "store"
+        )
         self.assertEqual(result, expected_path)
         mock_makedirs.assert_called_once_with(expected_path, exist_ok=True)
 
