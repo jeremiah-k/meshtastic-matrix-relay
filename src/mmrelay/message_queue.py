@@ -613,6 +613,7 @@ class MessageQueue:
                         self._requeue_message(current_message)
                         current_message = None
                         self._has_current = False
+                        self._in_flight = False
                         await asyncio.sleep(1.0)
                         continue
                     else:

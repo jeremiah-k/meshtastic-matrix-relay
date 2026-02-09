@@ -33,7 +33,6 @@ services:
     # Tip: For correct permissions and paths, ensure UID, GID, and MMRELAY_HOST_HOME are set in a .env file or exported
 
     # Readiness check (checks readiness file freshness periodically updated by app)
-    # Readiness check (checks readiness file freshness periodically updated by app)
     # Note: start_period allows time for slow Matrix login/E2EE key sync
     healthcheck:
       test:

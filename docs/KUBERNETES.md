@@ -555,17 +555,15 @@ MMRelay uses Kubernetes startup, readiness, and liveness probes to ensure the po
 
 **Liveness probe** (period: 60s, timeout: 20s, failureThreshold: 3):
 
-- Runs `mmrelay doctor` for deeper health checks
-- Checks if MMRelay is still healthy after startup completes
+- Checks that the ready file at `/run/mmrelay/ready` has been modified within the last 2 minutes
+- Verifies the application is still actively updating the ready file (not frozen/deadlocked)
 - If the probe fails repeatedly, Kubernetes will restart the pod
 - The longer period and timeout reduce false positives for transient issues
 
-`mmrelay doctor` verifies:
+The ready file check verifies:
 
-- Runtime HOME (`/data`) is valid
-- Path resolution is working correctly
-- Legacy data sources are detected (if any)
-- Migration status is reported
+- The application process is running and responsive
+- The periodic ready file updates are occurring (updated every loop iteration)
 
 **Why this split?**
 

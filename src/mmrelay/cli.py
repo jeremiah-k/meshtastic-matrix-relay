@@ -2240,6 +2240,9 @@ def handle_migrate_command(args: argparse.Namespace) -> int:
     except ImportError as e:
         print(f"Error importing migration module: {e}")
         return 1
+    except OSError as e:
+        print(f"❌ Migration failed due to filesystem error: {e}")
+        return 1
 
 
 def handle_service_command(args: argparse.Namespace) -> int:

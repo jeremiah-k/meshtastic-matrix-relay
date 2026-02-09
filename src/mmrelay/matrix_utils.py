@@ -2188,8 +2188,6 @@ async def _post_sync_setup(
             logger.exception(f"Error resolving alias {alias}")
         except (TypeError, ValueError, AttributeError):
             logger.exception(f"Error resolving alias {alias}")
-        except Exception:
-            logger.exception(f"Error resolving alias {alias}")
         return None
 
     await _resolve_aliases_in_mapping(matrix_rooms, _resolve_alias)
@@ -3177,17 +3175,18 @@ async def matrix_relay(
                 await asyncio.sleep(init_retry_delay)
             else:
                 logger.exception(
-                    "Matrix client initialization failed after %s attempts: %s. "
+                    "Matrix client initialization failed after %s attempts. "
                     "Message to room %s may be lost.",
                     max_init_retries,
-                    exc,
                     room_id,
                 )
                 return
             continue
-        # Re-raise unexpected exceptions so they aren't silently swallowed
-        except Exception:
-            logger.exception("Unexpected error during Matrix client initialization")
+        # Re-raise unexpected OS/network errors so they aren't silently swallowed
+        except OSError:
+            logger.exception(
+                "Unexpected OS/network error during Matrix client initialization"
+            )
             raise
 
         if matrix_client is not None:

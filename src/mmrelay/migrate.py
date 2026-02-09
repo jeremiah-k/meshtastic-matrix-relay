@@ -842,6 +842,7 @@ def migrate_credentials(
 
     # Proceed with migration
     staging_path = _get_staging_path(new_home, "credentials")
+    migration_succeeded = False
 
     try:
         staging_path.parent.mkdir(parents=True, exist_ok=True)
@@ -867,6 +868,7 @@ def migrate_credentials(
 
         # 3. Finalize
         _finalize_move(staging_path, new_creds)
+        migration_succeeded = True
         logger.info("Migrated credentials to %s", new_creds)
 
         return {
@@ -886,6 +888,10 @@ def migrate_credentials(
     except Exception as exc:
         logger.exception("Failed to migrate credentials from %s", old_creds)
         raise MigrationError.step_failed("credentials", str(exc)) from exc
+    finally:
+        # Only remove staging if migration succeeded to preserve data on failure
+        if migration_succeeded and staging_path.exists():
+            staging_path.unlink(missing_ok=True)
 
 
 def migrate_config(
@@ -975,6 +981,7 @@ def migrate_config(
 
     # Proceed with migration
     staging_path = _get_staging_path(new_home, "config")
+    migration_succeeded = False
 
     try:
         staging_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1000,6 +1007,7 @@ def migrate_config(
 
         # 3. Finalize
         _finalize_move(staging_path, new_config)
+        migration_succeeded = True
         logger.info("Migrated config to %s", new_config)
 
         return {
@@ -1019,6 +1027,10 @@ def migrate_config(
     except Exception as exc:
         logger.exception("Failed to migrate config from %s", old_config)
         raise MigrationError.step_failed("config", str(exc)) from exc
+    finally:
+        # Only remove staging if migration succeeded to preserve data on failure
+        if migration_succeeded and staging_path.exists():
+            staging_path.unlink(missing_ok=True)
 
 
 def migrate_database(
@@ -1329,7 +1341,7 @@ def migrate_logs(
             "old_path": str(old_logs_dir),
             "new_path": str(new_logs_dir),
             "action": "skip_force_required",
-            "message": "Logs already exists at destination",
+            "message": "Logs already exist at destination",
         }
 
     if dry_run:
@@ -2381,7 +2393,7 @@ def rollback_migration(
                 "Restored %s from backup %s to %s", step_name, backup_path, restore_path
             )
             return True
-        except (OSError, IOError, shutil.Error) as e:
+        except (OSError, IOError, shutil.Error):
             logger.exception("Failed to restore %s from backup", step_name)
             return False
 
@@ -2445,29 +2457,22 @@ def rollback_migration(
                     )
                     rollback_report["success"] = False
             else:
-                # No backup exists - this means the destination didn't exist before migration
-                # So we should remove the migrated files
-                logger.info(
-                    "No backup found for %s, removing migrated files from %s",
+                # No backup exists - destination was new. The source was moved (deleted),
+                # so removing from new_path would cause permanent data loss.
+                logger.warning(
+                    "No backup found for %s at %s; skipping removal to preserve data. "
+                    "Manual cleanup may be needed.",
                     step_name,
                     new_path,
                 )
-                if new_path_obj.exists():
-                    try:
-                        if new_path_obj.is_dir():
-                            shutil.rmtree(str(new_path_obj))
-                        else:
-                            new_path_obj.unlink()
-                        logger.info("Removed migrated %s from %s", step_name, new_path)
-                        rollback_report["rolled_back_steps"].append(
-                            {"step": step_name, "removed": new_path}
-                        )
-                    except (OSError, IOError) as e:
-                        logger.exception("Failed to remove migrated %s", step_name)
-                        rollback_report["errors"].append(
-                            {"step": step_name, "error": f"Failed to remove: {e}"}
-                        )
-                        rollback_report["success"] = False
+                rollback_report["rolled_back_steps"].append(
+                    {
+                        "step": step_name,
+                        "skipped": True,
+                        "reason": "no backup, data preserved",
+                        "path": new_path,
+                    }
+                )
 
         except (OSError, IOError, shutil.Error) as e:
             logger.exception("Failed to rollback step '%s'", step_name)

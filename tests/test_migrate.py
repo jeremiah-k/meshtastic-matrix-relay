@@ -976,7 +976,7 @@ class TestMigrateLogs:
 
         assert result["success"] is True
         assert result["action"] == "skip_force_required"
-        assert "already exists at destination" in result["message"]
+        assert "already exist at destination" in result["message"]
         assert (new_logs / "existing.log").read_text() == "existing"
 
     def test_timestamped_log_names(
