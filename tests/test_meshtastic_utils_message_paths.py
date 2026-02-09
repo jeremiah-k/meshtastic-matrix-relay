@@ -357,7 +357,7 @@ def test_on_meshtastic_message_logs_when_matrix_rooms_falsy(
     with _patch_message_deps() as (mock_logger, _mock_relay):
         on_meshtastic_message(packet, _make_interface())
 
-        # The message format was also updated to be more descriptive
+    # Empty matrix_rooms now logs as warning before relay attempt with descriptive message
     assert any(
         "matrix_rooms is empty" in str(call)
         and call[0][0].startswith("matrix_rooms is empty")

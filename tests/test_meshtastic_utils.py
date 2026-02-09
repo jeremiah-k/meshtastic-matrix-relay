@@ -1677,7 +1677,7 @@ def test_reconnect_attempts_connection(
 
         asyncio.run(_run())
 
-        # After fix for issue #438, reconnection passes config instead of None
+        # Reconnection now passes config to ensure matrix_rooms is re-initialized
         mock_connect.assert_called_with(mu.config, True)
 
 
