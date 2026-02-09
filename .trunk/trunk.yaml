@@ -51,6 +51,7 @@ lint:
       paths:
         - src/mmrelay/setup_utils.py
         - src/mmrelay/cli_utils.py # Ignore B110 for client close error handling during logout
+        - src/mmrelay/migrate.py # Ignore B603 for safe subprocess.run with validated pgrep path
         - tests/** # Ignore all bandit security warnings in test files (hardcoded test passwords, asserts, etc.)
     - linters: [mypy]
       paths:
