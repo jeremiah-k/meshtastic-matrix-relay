@@ -486,22 +486,84 @@ def verify_migration() -> dict[str, Any]:
     home_has_data = any(item["exists"] for item in artifact_statuses)
     split_roots = legacy_data_found and home_has_data
 
+    # Build a lookup of which new artifacts have actual content
+    # For directories, we check if they have entries (not just exist)
+    # For files, we check if they exist
+    artifact_has_content: dict[str, bool] = {}
+    for artifact in artifact_statuses:
+        key = artifact["key"]
+        path_str = artifact["path"]
+        if path_str is None:
+            artifact_has_content[key] = False
+            continue
+
+        path = Path(path_str)
+        # For directory-type artifacts, check if they have entries
+        if key in ("logs", "plugins", "e2ee_store"):
+            artifact_has_content[key] = _dir_has_entries(path)
+        else:
+            # For file-type artifacts (credentials, database), check existence
+            artifact_has_content[key] = path.exists()
+
     warnings: list[str] = []
+    cleanup_needed: list[str] = (
+        []
+    )  # Legacy items where new artifact already has content
+    migration_needed: list[str] = []  # Legacy items where new artifact is missing/empty
+
     for root in legacy_findings:
         for item in root["items"]:
             item_type = item["type"]
             item_path = item["path"]
+
+            # Map legacy item types to artifact keys
+            type_to_key = {
+                "credentials": "credentials",
+                "e2ee_store": "e2ee_store",
+                "database": "database",
+                "logs": "logs",
+                "plugins": "plugins",
+            }
+
+            artifact_key = type_to_key.get(item_type)
+            new_artifact_has_content = (
+                artifact_has_content.get(artifact_key, False) if artifact_key else False
+            )
+
+            # Determine if this is cleanup (new location has data) or migration needed
             if item_type == "e2ee_store":
-                warnings.append(f"Your E2EE store is still in {item_path}")
+                if new_artifact_has_content:
+                    cleanup_needed.append(item_path)
+                    warnings.append(
+                        f"Legacy E2EE store at {item_path} can be removed (new location has data)"
+                    )
+                else:
+                    migration_needed.append(item_path)
+                    warnings.append(f"Your E2EE store is still in {item_path}")
             else:
-                warnings.append(f"Found legacy data at {item_path}")
+                if new_artifact_has_content:
+                    cleanup_needed.append(item_path)
+                    warnings.append(
+                        f"Legacy {item_type} at {item_path} can be removed (new location has data)"
+                    )
+                else:
+                    migration_needed.append(item_path)
+                    warnings.append(f"Found legacy data at {item_path}")
 
     errors: list[str] = []
     if credentials_missing:
         errors.append("Missing credentials.json in MMRELAY_HOME")
-    if legacy_data_found:
+
+    # Only report migration error if there's legacy data that actually needs migration
+    # (i.e., the new artifact doesn't exist yet)
+    if migration_needed:
         errors.append("Legacy data exists and migration is still required")
-    if split_roots:
+    elif cleanup_needed and not migration_needed:
+        # All legacy items have corresponding new artifacts - this is cleanup, not migration failure
+        # Don't treat as error, just informational
+        pass
+
+    if split_roots and migration_needed:
         errors.append("Split roots detected (data exists in HOME and legacy locations)")
     for artifact in artifact_statuses:
         if artifact["path"] and not artifact["inside_home"]:
@@ -516,6 +578,8 @@ def verify_migration() -> dict[str, Any]:
         "credentials_missing": credentials_missing,
         "legacy_data_found": legacy_data_found,
         "split_roots": split_roots,
+        "cleanup_needed": cleanup_needed,
+        "migration_needed": migration_needed,
         "warnings": warnings,
         "errors": errors,
         "ok": len(errors) == 0,
@@ -573,8 +637,17 @@ def print_migration_verification(report: dict[str, Any]) -> None:
             for item in legacy_root["items"]:
                 print(f"     - {item['type']}: {item['path']}")
 
+    # Check for cleanup-only scenario (legacy exists but new artifact also exists)
+    cleanup_needed = report.get("cleanup_needed", [])
+
     if report["ok"]:
         print("\n✅ Migration verification PASSED")
+        if cleanup_needed:
+            print("\n🧹 Cleanup Suggestions:")
+            print("   The following legacy items can be safely removed:")
+            for item_path in cleanup_needed:
+                print(f"     - {item_path}")
+            print("   (New location already has data)")
     else:
         print("\n❌ Migration verification FAILED")
         for error in report["errors"]:
