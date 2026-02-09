@@ -1954,11 +1954,9 @@ async def _perform_initial_sync(
         logger.error(
             "4. Consider using a different Matrix homeserver if the problem persists"
         )
-        await _close_matrix_client_after_failure(client, "sync timeout")
         raise MatrixSyncTimeoutError() from None
     except asyncio.CancelledError:
         logger.exception("Initial sync cancelled")
-        await _close_matrix_client_after_failure(client, "sync cancellation")
         raise
     except JSONSCHEMA_VALIDATION_ERROR as exc:
         logger.exception("Initial sync response failed schema validation.")
@@ -2071,7 +2069,6 @@ async def _perform_initial_sync(
                 logger.debug("Invite-safe sync retry handler failed", exc_info=True)
             except asyncio.CancelledError:
                 logger.exception("Invite-ignoring sync retry cancelled")
-                await _close_matrix_client_after_failure(client, "sync cancellation")
                 raise
             except SYNC_RETRY_EXCEPTIONS:
                 logger.exception("Invite-ignoring sync retry failed")
@@ -2082,18 +2079,15 @@ async def _perform_initial_sync(
             )
         except asyncio.CancelledError:
             logger.exception("Invite-safe sync retry cancelled")
-            await _close_matrix_client_after_failure(client, "sync cancellation")
             raise
         except NIO_COMM_EXCEPTIONS:
             logger.exception("Invite-safe sync retry failed")
 
         if sync_response is None:
             logger.exception("Matrix sync failed")
-            await _close_matrix_client_after_failure(client, "sync failure")
             raise MatrixSyncFailedError() from exc
     except NIO_COMM_EXCEPTIONS as exc:
         logger.exception("Matrix sync failed")
-        await _close_matrix_client_after_failure(client, "sync failure")
         raise MatrixSyncFailedError() from exc
 
     return sync_response
@@ -2148,7 +2142,6 @@ async def _post_sync_setup(
         logger.error("3. Ensure the Matrix server is online and accessible")
         logger.error("4. Check if your credentials are still valid")
 
-        await _close_matrix_client_after_failure(client, "sync failure")
         raise MatrixSyncFailedDetailsError(error_type, error_details)
 
     logger.info(f"Initial sync completed. Found {len(client.rooms)} rooms.")

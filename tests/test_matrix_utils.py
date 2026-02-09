@@ -3613,7 +3613,7 @@ async def test_connect_matrix_sync_error_close_failure_logs():
     assert mock_client.close.await_count == 1
     assert any(
         call.args[:2]
-        == ("Ignoring error while closing client after %s", "sync failure")
+        == ("Ignoring error while closing client after %s", "connect_matrix setup")
         for call in mock_logger.debug.call_args_list
     )
 
