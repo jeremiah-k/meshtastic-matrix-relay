@@ -43,11 +43,13 @@ _check_legacy_env:
 	fi
 
 # Check for legacy docker-compose.yaml (v1.2.x used two volume mounts, v1.3 uses single mount)
+# Detection: v1.3 has MMRELAY_HOME=/data in environment AND single /data mount
+# Legacy lacks MMRELAY_HOME=/data OR has /app/ mounts
 _check_legacy_compose:
 	@if [ -f docker-compose.yaml ]; then \
-		if grep -q '/app/config.yaml' docker-compose.yaml 2>/dev/null; then \
-			echo "LEGACY_COMPOSE=1"; \
-		elif grep -q '/app/data' docker-compose.yaml 2>/dev/null && ! grep -q 'MMRELAY_HOME=/data' docker-compose.yaml 2>/dev/null; then \
+		if grep -q 'MMRELAY_HOME=/data' docker-compose.yaml 2>/dev/null; then \
+			: v1.3 format detected, not legacy; \
+		elif grep -q ':/app/' docker-compose.yaml 2>/dev/null; then \
 			echo "LEGACY_COMPOSE=1"; \
 		fi; \
 	fi
@@ -65,7 +67,7 @@ _migrate_prompt:
 	@if [ -f .env ] && grep -q '^MMRELAY_HOME=' .env 2>/dev/null && ! grep -q '^MMRELAY_HOST_HOME=' .env 2>/dev/null; then \
 		echo "  • .env: Replace MMRELAY_HOME with MMRELAY_HOST_HOME"; \
 	fi
-	@if [ -f docker-compose.yaml ] && grep -q '/app/config.yaml\|/app/data' docker-compose.yaml 2>/dev/null; then \
+	@if [ -f docker-compose.yaml ] && grep -q ':/app/' docker-compose.yaml 2>/dev/null; then \
 		echo "  • docker-compose.yaml: Update to v1.3 format (single volume mount)"; \
 	fi
 	@echo ""
@@ -106,7 +108,7 @@ _setup_with_migration_check:
 				rm -f .env.bak; \
 				echo "  ✓ .env updated (MMRELAY_HOME → MMRELAY_HOST_HOME)"; \
 			fi; \
-			if [ -f docker-compose.yaml ]; then \
+			if [ -f docker-compose.yaml ] && grep -q ':/app/' docker-compose.yaml 2>/dev/null; then \
 				echo "Replacing docker-compose.yaml with v1.3 format..."; \
 				cp docker-compose.yaml docker-compose.yaml.legacy.bak; \
 				echo "  ✓ Backup saved to docker-compose.yaml.legacy.bak"; \
