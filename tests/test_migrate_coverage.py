@@ -18,6 +18,7 @@ from unittest import mock
 import pytest
 
 from mmrelay.migrate import (
+    BACKUP_DIRNAME,
     MigrationError,
     _backup_file,
     _dir_has_entries,
@@ -750,7 +751,7 @@ class TestMigrateConfigEdgeCases:
         result = migrate_config([new_home], new_home, dry_run=False, force=True)
 
         assert result["success"] is True
-        assert result["action"] == "none"
+        assert result["action"] == "already_at_target"
         assert "already at target" in result["message"]
         # Verify config still exists and wasn't deleted
         assert config.exists()
@@ -1544,6 +1545,48 @@ class TestMigratePluginsEdgeCases:
             # Should still succeed despite cleanup errors (logged as debug)
             assert result["success"] is True
 
+    def test_migrate_plugins_old_directory_moved_to_backup(
+        self, tmp_path: Path
+    ) -> None:
+        """Test that old plugin directory is moved to backup after successful migration.
+
+        This cleans up the filesystem by moving the (now empty) old directory
+        to a backup location rather than deleting it outright.
+        """
+        new_home = tmp_path / "new_home"
+        new_home.mkdir()
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        old_plugins_dir = legacy_root_dir / "plugins"
+        old_plugins_dir.mkdir()
+        old_custom_dir = old_plugins_dir / "custom"
+        old_custom_dir.mkdir()
+        (old_custom_dir / "plugin").mkdir()
+        (old_custom_dir / "plugin" / "__init__.py").write_text("# plugin")
+
+        # Perform migration
+        result = migrate_plugins(
+            [legacy_root_dir], new_home, dry_run=False, force=False
+        )
+
+        assert result["success"] is True
+        assert result["action"] == "move"
+
+        # Old plugins directory should no longer exist at original location
+        assert not old_plugins_dir.exists(), "Old plugins directory should be moved"
+
+        # The backup directory should exist (moved there for cleanup)
+        backup_dir = legacy_root_dir / BACKUP_DIRNAME
+        assert backup_dir.exists(), "Backup directory should exist"
+
+        # Find the backup of the old plugins directory (has timestamp suffix)
+        backups = list(backup_dir.glob("plugins_pre_migration.*"))
+        assert len(backups) > 0, "Old plugins directory should be moved to backup"
+
+        # Verify the new location has the plugins
+        new_custom = new_home / "plugins" / "custom" / "plugin" / "__init__.py"
+        assert new_custom.exists(), "Plugin should exist in new location"
+
 
 class TestMigrateGpxtrackerEdgeCases:
     """Test migrate_gpxtracker error paths and edge cases."""
@@ -1621,31 +1664,9 @@ class TestMigrateGpxtrackerEdgeCases:
         dest_path = new_gpx_dir / dest_name
         dest_path.write_text("existing")
 
-        original_copy2 = shutil.copy2
-
-        def selective_copy2(src, dst, *args, **kwargs):
-            """
-            Perform a file copy from `src` to `dst`, raising an OSError when `src` matches the predefined `dest_path` to simulate a backup error.
-
-            Parameters:
-                src (str | os.PathLike): Source file path to copy.
-                dst (str | os.PathLike): Destination file path.
-                *args: Additional positional arguments passed to the underlying copy function.
-                **kwargs: Additional keyword arguments passed to the underlying copy function.
-
-            Returns:
-                The value returned by the underlying copy operation.
-
-            Raises:
-                OSError: If `src` is equal to the externally defined `dest_path`, to simulate a backup failure.
-            """
-            if Path(src) == dest_path:
-                raise OSError("Mock backup error")
-            return original_copy2(src, dst, *args, **kwargs)
-
         with (
             mock.patch("mmrelay.migrate.datetime") as mock_datetime,
-            mock.patch("shutil.copy2", side_effect=selective_copy2),
+            mock.patch("shutil.copytree", side_effect=OSError("Mock backup error")),
         ):
             mock_datetime.now.return_value = fixed_time
             with pytest.raises(

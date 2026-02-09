@@ -44,7 +44,9 @@ Plugin Data Migration (Three-Tier System):
     New: $MMRELAY_HOME/plugins/community/gpxtracker/data/
 """
 
+import atexit
 import shutil
+import signal
 import sqlite3
 import sys
 from datetime import datetime
@@ -56,6 +58,46 @@ from mmrelay.log_utils import get_logger
 from mmrelay.paths import resolve_all_paths
 
 logger = get_logger("Migration")
+
+# Global reference to current lock file for cleanup on signal
+_current_lock_file: Path | None = None
+
+
+def _register_lock_cleanup(lock_file: Path) -> None:
+    """
+    Register cleanup handlers for lock file on normal exit and signals.
+
+    Parameters:
+        lock_file: Path to the lock file to clean up
+    """
+    global _current_lock_file
+    _current_lock_file = lock_file
+
+    def cleanup_lock() -> None:
+        """Remove lock file if it exists."""
+        global _current_lock_file
+        if _current_lock_file is not None and _current_lock_file.exists():
+            try:
+                _current_lock_file.unlink()
+                logger.debug("Cleaned up migration lock: %s", _current_lock_file)
+            except (OSError, IOError):
+                pass
+            finally:
+                _current_lock_file = None
+
+    # Register for normal exit
+    atexit.register(cleanup_lock)
+
+    # Register for common signals (Unix/Linux)
+    if sys.platform != "win32":
+        for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            try:
+                signal.signal(
+                    sig, lambda signum, frame: cleanup_lock() or sys.exit(128 + signum)
+                )
+            except (ValueError, OSError):
+                # Signal may not be available or already handled
+                pass
 
 
 def _get_db_base_path(path: Path) -> Path:
@@ -217,6 +259,44 @@ def _find_legacy_data(legacy_root: Path) -> list[dict[str, str]]:
         add_finding("plugins", plugins_dir)
 
     return findings
+
+
+def _warn_multiple_sources(
+    legacy_roots: list[Path],
+    artifact_name: str,
+    artifact_filename: str,
+    check_dir_entries: bool = False,
+) -> None:
+    """
+    Warn if multiple legacy roots contain the same artifact.
+
+    Parameters:
+        legacy_roots: List of legacy root directories to check
+        artifact_name: Human-readable name of the artifact (e.g., "credentials")
+        artifact_filename: Filename to check for (e.g., "credentials.json")
+        check_dir_entries: If True, also check if directory has entries
+    """
+    found_in: list[Path] = []
+    for root in legacy_roots:
+        candidate = root / artifact_filename
+        try:
+            if candidate.exists():
+                if check_dir_entries and candidate.is_dir():
+                    if _dir_has_entries(candidate):
+                        found_in.append(root)
+                else:
+                    found_in.append(root)
+        except (OSError, IOError):
+            continue
+
+    if len(found_in) > 1:
+        logger.warning(
+            "Multiple %s files found across legacy roots: %s. "
+            "Using: %s. Other locations will be ignored.",
+            artifact_name,
+            [str(r) for r in found_in],
+            found_in[0],
+        )
 
 
 def verify_migration() -> dict[str, Any]:
@@ -446,6 +526,11 @@ def print_migration_verification(report: dict[str, Any]) -> None:
 
 STAGING_DIRNAME = ".migration_staging"
 BACKUP_DIRNAME = ".migration_backups"
+LOCK_FILENAME = ".migration.lock"
+
+# Minimum free space required for migration (in bytes)
+# Allowing for staging + backups with 50% safety margin
+MIN_FREE_SPACE_BYTES = 500 * 1024 * 1024  # 500 MB minimum
 
 
 def _get_staging_path(new_home: Path, unit_name: str) -> Path:
@@ -471,6 +556,66 @@ def _backup_file(src_path: Path, suffix: str = ".bak") -> Path:
     return backup_dir / backup_name
 
 
+def _verify_backup(src_path: Path, backup_path: Path) -> bool:
+    """
+    Verify that a backup was created successfully.
+
+    Parameters:
+        src_path: Original source path that was backed up
+        backup_path: Path where backup should exist
+
+    Returns:
+        True if backup exists and has content, False otherwise
+    """
+    if not backup_path.exists():
+        return False
+
+    if src_path.is_dir():
+        # For directories, check that backup exists and has at least one entry
+        try:
+            return any(backup_path.iterdir())
+        except (OSError, IOError):
+            return False
+    else:
+        # For files, check that backup exists and has non-zero size
+        try:
+            return backup_path.stat().st_size > 0
+        except (OSError, IOError):
+            return False
+
+
+def _check_disk_space(
+    path: Path, required_bytes: int | None = None
+) -> tuple[bool, int]:
+    """
+    Check if there's sufficient disk space available at the given path.
+
+    Parameters:
+        path: Path to check disk space for (uses parent directory if file)
+        required_bytes: Minimum bytes required (defaults to MIN_FREE_SPACE_BYTES)
+
+    Returns:
+        Tuple of (has_sufficient_space, free_bytes_available)
+    """
+    if required_bytes is None:
+        required_bytes = MIN_FREE_SPACE_BYTES
+
+    # Use parent directory if path is a file or doesn't exist
+    check_path = path
+    if not check_path.exists() or check_path.is_file():
+        check_path = check_path.parent
+
+    try:
+        usage = shutil.disk_usage(str(check_path))
+        # Add 50% safety margin
+        required_with_margin = int(required_bytes * 1.5)
+        return (usage.free >= required_with_margin, usage.free)
+    except (OSError, IOError):
+        # If we can't check disk space, assume it's OK and log warning
+        logger.warning("Could not check disk space at %s", check_path)
+        return (True, 0)
+
+
 def _finalize_move(staging_path: Path, dest_path: Path) -> None:
     """
     Finalize a staged move by renaming the staging path to the final destination.
@@ -488,15 +633,24 @@ def _finalize_move(staging_path: Path, dest_path: Path) -> None:
     # Ensure parent of destination exists
     dest_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Atomic replace for single files (on POSIX). Directories require a best-effort
-    # delete-then-move fallback and are not atomic.
+    # Atomic replace for single files (on POSIX).
+    # For directories: use best-effort approach (directory moves are not atomic).
     if staging_path.is_file():
-        # For single files, use atomic replace (POSIX). This overwrites dest if it exists.
+        # For single files, use atomic replace (POSIX).
+        # If destination exists as a different type (e.g., directory), remove it first
+        if dest_path.exists() and dest_path.is_dir():
+            shutil.rmtree(str(dest_path))
         staging_path.replace(dest_path)
     else:
-        # For directories: remove existing dest first, then move (not atomic)
+        # For directories: use non-atomic approach
+        # IMPORTANT: Backups should already be created by the caller before
+        # calling _finalize_move. This is best-effort - true atomic directory
+        # moves are not supported by most filesystems.
         if dest_path.exists():
-            shutil.rmtree(str(dest_path))
+            if dest_path.is_file():
+                dest_path.unlink()
+            else:
+                shutil.rmtree(str(dest_path))
         shutil.move(str(staging_path), str(dest_path))
     logger.debug("Finalized move from %s to %s", staging_path, dest_path)
 
@@ -584,6 +738,9 @@ def migrate_credentials(
     Returns:
         dict: Migration result.
     """
+    # Warn if credentials exist in multiple legacy roots
+    _warn_multiple_sources(legacy_roots, "credentials", CREDENTIALS_FILENAME)
+
     new_creds = new_home / MATRIX_DIRNAME / CREDENTIALS_FILENAME
     old_creds: Path | None = None
 
@@ -603,7 +760,7 @@ def migrate_credentials(
                     "success": True,
                     "old_path": str(candidate),
                     "new_path": str(new_creds),
-                    "action": "none",
+                    "action": "already_at_target",
                     "message": "Credentials already at target location",
                 }
             continue
@@ -618,12 +775,13 @@ def migrate_credentials(
             return {
                 "success": True,
                 "new_path": str(new_creds),
-                "action": "none",
+                "action": "already_migrated",
                 "message": "Already migrated",
             }
         logger.info("No credentials file found in legacy locations")
         return {
             "success": True,
+            "action": "not_found",
             "message": "No credentials file found in legacy locations",
         }
 
@@ -637,7 +795,7 @@ def migrate_credentials(
             "success": True,
             "old_path": str(old_creds),
             "new_path": str(new_creds),
-            "action": "none",
+            "action": "skip_force_required",
             "message": "Credentials already exist at destination",
         }
 
@@ -688,6 +846,14 @@ def migrate_credentials(
             "new_path": str(new_creds),
             "action": "move",
         }
+    except PermissionError as exc:
+        logger.exception(
+            "Permission denied during credentials migration from %s", old_creds
+        )
+        raise MigrationError.step_failed(
+            "credentials",
+            f"Permission denied. Check file permissions for {exc.filename}: {exc}",
+        ) from exc
     except Exception as exc:
         logger.exception("Failed to migrate credentials from %s", old_creds)
         raise MigrationError.step_failed("credentials", str(exc)) from exc
@@ -711,6 +877,9 @@ def migrate_config(
     Returns:
         dict: Migration result summary.
     """
+    # Warn if config exists in multiple legacy roots
+    _warn_multiple_sources(legacy_roots, "config", "config.yaml")
+
     new_config = new_home / "config.yaml"
     old_config: Path | None = None
 
@@ -726,7 +895,7 @@ def migrate_config(
                     "success": True,
                     "old_path": str(candidate),
                     "new_path": str(new_config),
-                    "action": "none",
+                    "action": "already_at_target",
                     "message": "Config already at target location",
                 }
             continue
@@ -741,12 +910,13 @@ def migrate_config(
             return {
                 "success": True,
                 "new_path": str(new_config),
-                "action": "none",
+                "action": "already_migrated",
                 "message": "Already migrated",
             }
         logger.info("No config.yaml found in legacy locations")
         return {
             "success": True,
+            "action": "not_found",
             "message": "No config.yaml found in legacy locations",
         }
 
@@ -760,7 +930,7 @@ def migrate_config(
             "success": True,
             "old_path": str(old_config),
             "new_path": str(new_config),
-            "action": "none",
+            "action": "skip_force_required",
             "message": "Config already exists at destination",
         }
 
@@ -809,6 +979,14 @@ def migrate_config(
             "new_path": str(new_config),
             "action": "move",
         }
+    except PermissionError as exc:
+        logger.exception(
+            "Permission denied during config migration from %s", old_config
+        )
+        raise MigrationError.step_failed(
+            "config",
+            f"Permission denied. Check file permissions for {exc.filename}: {exc}",
+        ) from exc
     except Exception as exc:
         logger.exception("Failed to migrate config from %s", old_config)
         raise MigrationError.step_failed("config", str(exc)) from exc
@@ -847,7 +1025,7 @@ def migrate_database(
                     "success": True,
                     "old_path": str(legacy_db),
                     "new_path": str(new_db_dir),
-                    "action": "none",
+                    "action": "already_at_target",
                     "message": "Database already at target location",
                 }
             continue
@@ -883,7 +1061,7 @@ def migrate_database(
                         "success": True,
                         "old_path": str(legacy_db),
                         "new_path": str(new_db_dir),
-                        "action": "none",
+                        "action": "already_at_target",
                         "message": "Database already at target location",
                     }
                 continue
@@ -900,12 +1078,13 @@ def migrate_database(
             return {
                 "success": True,
                 "new_path": str(new_db_dir),
-                "action": "none",
+                "action": "already_migrated",
                 "message": "Already migrated",
             }
         logger.info("No database files found in legacy locations")
         return {
             "success": True,
+            "action": "not_found",
             "message": "No database files found in legacy locations",
         }
 
@@ -918,7 +1097,7 @@ def migrate_database(
         return {
             "success": True,
             "new_path": str(new_db_dir),
-            "action": "none",
+            "action": "skip_force_required",
             "message": "Database already at target location",
         }
 
@@ -1033,6 +1212,14 @@ def migrate_database(
             "new_path": str(new_db_dir),
             "action": "move",
         }
+    except PermissionError as exc:
+        logger.exception(
+            "Permission denied during database migration from %s", most_recent
+        )
+        raise MigrationError.step_failed(
+            "database",
+            f"Permission denied. Check file permissions for {exc.filename}: {exc}",
+        ) from exc
     except Exception as exc:
         logger.exception("Failed to migrate database from %s", most_recent)
         raise MigrationError.step_failed("database", str(exc)) from exc
@@ -1082,7 +1269,7 @@ def migrate_logs(
                     "success": True,
                     "old_path": str(old_logs_dir),
                     "new_path": str(new_logs_dir),
-                    "action": "none",
+                    "action": "already_at_target",
                     "message": "Logs already at target location",
                 }
 
@@ -1092,12 +1279,13 @@ def migrate_logs(
             return {
                 "success": True,
                 "new_path": str(new_logs_dir),
-                "action": "none",
+                "action": "already_migrated",
                 "message": "Already migrated",
             }
         logger.info("No logs directory found in legacy locations")
         return {
             "success": True,
+            "action": "not_found",
             "message": "No logs directory found in legacy locations",
         }
 
@@ -1111,7 +1299,7 @@ def migrate_logs(
             "success": True,
             "old_path": str(old_logs_dir),
             "new_path": str(new_logs_dir),
-            "action": "none",
+            "action": "skip_force_required",
             "message": "Logs already exists at destination",
         }
 
@@ -1174,6 +1362,14 @@ def migrate_logs(
             "new_path": str(new_logs_dir),
             "action": "move",
         }
+    except PermissionError as exc:
+        logger.exception(
+            "Permission denied during logs migration from %s", old_logs_dir
+        )
+        raise MigrationError.step_failed(
+            "logs",
+            f"Permission denied. Check file permissions for {exc.filename}: {exc}",
+        ) from exc
     except Exception as exc:
         logger.exception("Failed to migrate logs from %s", old_logs_dir)
         raise MigrationError.step_failed("logs", str(exc)) from exc
@@ -1226,7 +1422,7 @@ def migrate_store(
                     "success": True,
                     "old_path": str(candidate),
                     "new_path": str(new_store_dir),
-                    "action": "none",
+                    "action": "already_at_target",
                     "message": "Store already at target location",
                 }
             continue
@@ -1241,12 +1437,13 @@ def migrate_store(
             return {
                 "success": True,
                 "new_path": str(new_store_dir),
-                "action": "none",
+                "action": "already_migrated",
                 "message": "Already migrated",
             }
         logger.info("No E2EE store directory found in legacy locations")
         return {
             "success": True,
+            "action": "not_found",
             "message": "No E2EE store directory found in legacy locations",
         }
 
@@ -1260,7 +1457,7 @@ def migrate_store(
             "success": True,
             "old_path": str(old_store_dir),
             "new_path": str(new_store_dir),
-            "action": "none",
+            "action": "skip_force_required",
             "message": "Store directory already exists at destination",
         }
 
@@ -1305,6 +1502,14 @@ def migrate_store(
             "new_path": str(new_store_dir),
             "action": "move",
         }
+    except PermissionError as exc:
+        logger.exception(
+            "Permission denied during E2EE store migration from %s", old_store_dir
+        )
+        raise MigrationError.step_failed(
+            "store",
+            f"Permission denied. Check file permissions for {exc.filename}: {exc}",
+        ) from exc
     except Exception as exc:
         logger.exception("Failed to migrate E2EE store from %s", old_store_dir)
         raise MigrationError.step_failed("store", str(exc)) from exc
@@ -1406,6 +1611,9 @@ def migrate_plugins(
     Returns:
         dict: Migration result.
     """
+    # Warn if plugins exist in multiple legacy roots
+    _warn_multiple_sources(legacy_roots, "plugins", "plugins", check_dir_entries=True)
+
     old_plugins_dir: Path | None = None
 
     for legacy_root in legacy_roots:
@@ -1429,7 +1637,7 @@ def migrate_plugins(
                     "success": True,
                     "old_path": str(old_plugins_dir),
                     "new_path": str(new_plugins_dir),
-                    "action": "none",
+                    "action": "already_at_target",
                     "message": "Plugins already at target location",
                 }
 
@@ -1439,12 +1647,13 @@ def migrate_plugins(
             return {
                 "success": True,
                 "new_path": str(new_plugins_dir),
-                "action": "none",
+                "action": "already_migrated",
                 "message": "Already migrated",
             }
         logger.info("No plugins directory found in legacy locations")
         return {
             "success": True,
+            "action": "not_found",
             "message": "No plugins directory found in legacy locations",
         }
 
@@ -1458,7 +1667,7 @@ def migrate_plugins(
             "success": True,
             "old_path": str(old_plugins_dir),
             "new_path": str(new_plugins_dir),
-            "action": "none",
+            "action": "skip_force_required",
             "message": "Plugins already at target location",
         }
 
@@ -1521,12 +1730,22 @@ def migrate_plugins(
         migration_succeeded = True
         logger.info("Migrated plugins to %s", new_plugins_dir)
 
-        # Cleanup legacy directory if empty
-        try:
-            if not any(old_plugins_dir.iterdir()):
-                old_plugins_dir.rmdir()
-        except (OSError, IOError):
-            pass
+        # Move the old plugin directory to a backup location to keep the filesystem
+        # clean while preserving the ability to roll back if needed. This avoids
+        # leaving empty or partially-empty directories around after migration.
+        if old_plugins_dir.exists():
+            try:
+                backup_path = _backup_file(old_plugins_dir, suffix="_pre_migration")
+                shutil.move(str(old_plugins_dir), str(backup_path))
+                logger.info(
+                    "Moved old plugin directory to backup location: %s", backup_path
+                )
+            except (OSError, IOError) as e:
+                logger.warning(
+                    "Could not move old plugin directory to backup: %s. "
+                    "You may manually remove it after confirming migration success.",
+                    e,
+                )
 
         return {
             "success": True,
@@ -1535,6 +1754,14 @@ def migrate_plugins(
             "new_path": str(new_plugins_dir),
             "action": "move",
         }
+    except PermissionError as exc:
+        logger.exception(
+            "Permission denied during plugins migration from %s", old_plugins_dir
+        )
+        raise MigrationError.step_failed(
+            "plugins",
+            f"Permission denied. Check file permissions for {exc.filename}: {exc}",
+        ) from exc
     except Exception as exc:
         logger.exception("Failed to migrate plugins from %s", old_plugins_dir)
         raise MigrationError.step_failed("plugins", str(exc)) from exc
@@ -1613,7 +1840,7 @@ def migrate_gpxtracker(
                         "migrated_count": 0,
                         "old_path": str(expanded_old_gpx_dir),
                         "new_path": str(new_gpx_data_dir),
-                        "action": "none",
+                        "action": "already_at_target",
                         "message": "gpxtracker already at target location",
                     }
         except OSError:
@@ -1625,7 +1852,7 @@ def migrate_gpxtracker(
             return {
                 "success": True,
                 "new_path": str(new_gpx_data_dir),
-                "action": "none",
+                "action": "already_migrated",
                 "message": "Already migrated",
             }
         logger.info(
@@ -1633,6 +1860,7 @@ def migrate_gpxtracker(
         )
         return {
             "success": True,
+            "action": "not_found",
             "message": "gpxtracker plugin not configured with gpx_directory, skipping migration",
         }
 
@@ -1657,9 +1885,18 @@ def migrate_gpxtracker(
     try:
         staging_dir.mkdir(parents=True, exist_ok=True)
 
+        # 1. Backup entire destination directory if it exists (ALWAYS)
+        # This preserves non-.gpx files (README, metadata, subdirectories)
+        if new_gpx_data_dir.exists() and any(new_gpx_data_dir.iterdir()):
+            backup_path = _backup_file(new_gpx_data_dir)
+            logger.info(
+                "Backing up entire gpxtracker data directory to %s", backup_path
+            )
+            shutil.copytree(str(new_gpx_data_dir), str(backup_path))
+
         migrated_count = 0
 
-        # 1. Stage GPX files with timestamped names
+        # 2. Stage GPX files with timestamped names
         for gpx_file in old_gpx_dir.glob("*.gpx"):
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             new_name = f"{gpx_file.stem}_migrated_{timestamp}.gpx"
@@ -1668,18 +1905,13 @@ def migrate_gpxtracker(
             migrated_count += 1
 
         if migrated_count > 0:
-            # 2. Finalize: move staging to final data dir
+            # 3. Finalize: move staging to final data dir
             new_gpx_data_dir.mkdir(parents=True, exist_ok=True)
             for staged_file in staging_dir.iterdir():
                 final_dest = new_gpx_data_dir / staged_file.name
 
-                # ALWAYS backup if destination exists
+                # Remove existing file if present (backup already created above)
                 if final_dest.exists():
-                    backup_path = _backup_file(final_dest)
-                    logger.info(
-                        "Backing up existing GPX file %s to %s", final_dest, backup_path
-                    )
-                    shutil.copy2(str(final_dest), str(backup_path))
                     final_dest.unlink()
 
                 shutil.move(str(staged_file), str(final_dest))
@@ -1694,6 +1926,14 @@ def migrate_gpxtracker(
             "new_path": str(new_gpx_data_dir),
             "action": "move",
         }
+    except PermissionError as exc:
+        logger.exception(
+            "Permission denied during gpxtracker migration from %s", old_gpx_dir
+        )
+        raise MigrationError.step_failed(
+            "gpxtracker",
+            f"Permission denied. Check file permissions for {exc.filename}: {exc}",
+        ) from exc
     except Exception as exc:
         logger.exception("Failed to migrate gpxtracker GPX files from %s", old_gpx_dir)
         raise MigrationError.step_failed("gpxtracker", str(exc)) from exc
@@ -1762,6 +2002,25 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
 
     logger.info("Starting migration from legacy layout to v1.3 unified home directory")
 
+    # Check disk space before starting migration
+    if not dry_run:
+        has_space, free_bytes = _check_disk_space(new_home)
+        if not has_space:
+            free_mb = free_bytes / (1024 * 1024)
+            min_mb = MIN_FREE_SPACE_BYTES / (1024 * 1024)
+            report["success"] = False
+            report["error"] = "Insufficient disk space"
+            report["message"] = (
+                f"Insufficient disk space for migration. "
+                f"Available: {free_mb:.0f} MB, Required: {min_mb:.0f} MB (with safety margin). "
+                f"Free up disk space and try again."
+            )
+            return report
+        logger.debug(
+            "Disk space check passed: %d MB available",
+            free_bytes // (1024 * 1024),
+        )
+
     # Get new home directory
     try:
         if not dry_run:
@@ -1771,6 +2030,26 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
         report["error"] = str(e)
         report["message"] = f"Failed to create new home directory: {e}"
         return report
+
+    # Acquire migration lock to prevent concurrent migrations
+    lock_file = new_home / LOCK_FILENAME
+    if not dry_run:
+        try:
+            lock_file.touch(exist_ok=False)
+            logger.debug("Acquired migration lock: %s", lock_file)
+            # Register cleanup handlers for lock file
+            _register_lock_cleanup(lock_file)
+        except FileExistsError:
+            report["success"] = False
+            report["error"] = "Migration lock file exists"
+            report["message"] = (
+                f"Another migration appears to be in progress (lock file: {lock_file}). "
+                "If you're certain no other migration is running, remove the lock file and try again."
+            )
+            return report
+        except (OSError, IOError) as e:
+            logger.warning("Could not create migration lock file: %s", e)
+            # Continue anyway - lock is a safety feature, not a hard requirement
 
     completed_steps: list[str] = []
 
@@ -1940,12 +2219,28 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
         else:
             logger.exception("Please resolve the issue and re-run migration.")
 
+        # Release migration lock on failure
+        if not dry_run and lock_file.exists():
+            try:
+                lock_file.unlink()
+                logger.debug("Released migration lock after failure: %s", lock_file)
+            except (OSError, IOError) as e:
+                logger.warning("Could not remove migration lock file: %s", e)
+
         return report
 
     logger.info(
         "Migration complete. Summary: %d migrations performed",
         len(report["migrations"]),
     )
+
+    # Release migration lock
+    if not dry_run and lock_file.exists():
+        try:
+            lock_file.unlink()
+            logger.debug("Released migration lock: %s", lock_file)
+        except (OSError, IOError) as e:
+            logger.warning("Could not remove migration lock file: %s", e)
 
     return report
 

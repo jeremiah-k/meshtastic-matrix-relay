@@ -858,7 +858,7 @@ class TestMigrateDatabase:
         result = migrate_database([new_home], new_home)
 
         assert result["success"] is True
-        assert result["action"] == "none"
+        assert result["action"] == "already_at_target"
         assert "already at target location" in result["message"]
 
     def test_target_exists_skips_without_force(
@@ -879,7 +879,7 @@ class TestMigrateDatabase:
         result = migrate_database([legacy_root], new_home, force=False)
 
         assert result["success"] is True
-        assert result["action"] == "none"
+        assert result["action"] == "skip_force_required"
         assert "already at target location" in result["message"]
         assert db_path.read_text() == "existing"
 
@@ -953,7 +953,7 @@ class TestMigrateLogs:
         result = migrate_logs([new_home], new_home)
 
         assert result["success"] is True
-        assert result["action"] == "none"
+        assert result["action"] == "already_at_target"
         assert "already at target location" in result["message"]
 
     def test_target_exists_skips_without_force(
@@ -975,7 +975,7 @@ class TestMigrateLogs:
         result = migrate_logs([legacy_root], new_home, force=False)
 
         assert result["success"] is True
-        assert result["action"] == "none"
+        assert result["action"] == "skip_force_required"
         assert "already exists at destination" in result["message"]
         assert (new_logs / "existing.log").read_text() == "existing"
 
@@ -1173,11 +1173,13 @@ class TestMigratePlugins:
         new_home.mkdir()
         plugins_dir = new_home / "plugins"
         plugins_dir.mkdir()
+        # Add a file so the directory is not empty
+        (plugins_dir / "test_plugin.txt").write_text("plugin")
 
         result = migrate_plugins([new_home], new_home)
 
         assert result["success"] is True
-        assert result["action"] == "none"
+        assert result["action"] == "already_at_target"
         assert "already at target location" in result["message"]
 
     def test_target_exists_skips_without_force(
@@ -1198,7 +1200,7 @@ class TestMigratePlugins:
         result = migrate_plugins([legacy_root], new_home, force=False)
 
         assert result["success"] is True
-        assert result["action"] == "none"
+        assert result["action"] == "skip_force_required"
         assert "already at target location" in result["message"]
 
 

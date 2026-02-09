@@ -35,7 +35,7 @@ def test_migrate_twice_is_noop(tmp_path: Path):
     # Second run
     result2 = migrate_config([legacy_root], new_home)
     assert result2["success"] is True
-    assert result2["action"] == "none"
+    assert result2["action"] == "already_migrated"
     assert "already migrated" in result2["message"].lower()
 
 
@@ -51,7 +51,7 @@ def test_already_migrated_guard(tmp_path: Path):
 
     result = migrate_config([legacy_root], new_home)
     assert result["success"] is True
-    assert result["action"] == "none"
+    assert result["action"] == "already_migrated"
     assert "already migrated" in result["message"].lower()
 
 
@@ -65,7 +65,7 @@ def test_same_path_guard(tmp_path: Path):
     # legacy_roots contains new_home
     result = migrate_config([new_home], new_home)
     assert result["success"] is True
-    assert result["action"] == "none"
+    assert result["action"] == "already_at_target"
     assert "already at target location" in result["message"].lower()
 
 
