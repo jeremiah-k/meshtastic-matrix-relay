@@ -2857,7 +2857,19 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         for room in iterable_rooms:
             if not isinstance(room, dict):
                 continue
-            if room.get("meshtastic_channel") == channel:
+
+            # Normalize room channel to integer for comparison
+            room_channel = room.get("meshtastic_channel")
+            try:
+                room_channel = int(room_channel) if room_channel is not None else None
+            except (ValueError, TypeError):
+                logger.warning(
+                    f"Invalid meshtastic_channel value {room_channel!r} in room config "
+                    f"for room {room.get('id', 'unknown')}, skipping this room"
+                )
+                continue
+
+            if room_channel == channel:
                 # Storing the message_map (if enabled) occurs inside matrix_relay() now,
                 # controlled by relay_reactions.
                 try:

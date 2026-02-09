@@ -105,7 +105,7 @@ _setup_with_migration_check:
 			echo "Updating configuration files..."; \
 			if [ -f .env ] && grep -q '^MMRELAY_HOME=' .env 2>/dev/null && ! grep -q '^MMRELAY_HOST_HOME=' .env 2>/dev/null; then \
 				echo "Updating .env file..."; \
-				sed -i.bak 's/^MMRELAY_HOME=$$HOME/MMRELAY_HOST_HOME=/' .env 2>/dev/null || true; \
+				sed -i.bak 's/^MMRELAY_HOME=$$HOME$$/MMRELAY_HOST_HOME=$$HOME/' .env 2>/dev/null || true; \
 				sed -i.bak 's/^MMRELAY_HOME=/MMRELAY_HOST_HOME=/' .env 2>/dev/null || true; \
 				rm -f .env.bak; \
 				echo "  ✓ .env updated (MMRELAY_HOME → MMRELAY_HOST_HOME)"; \

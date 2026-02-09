@@ -99,7 +99,8 @@ For users who prefer web-based Docker management:
    - Copy content from: [sample-docker-compose-prebuilt.yaml](https://github.com/jeremiah-k/meshtastic-matrix-relay/blob/main/src/mmrelay/tools/sample-docker-compose-prebuilt.yaml)
    - **Important:** Use `MMRELAY_HOST_HOME` environment variable for host paths (the sample compose file already uses this pattern)
    - Set environment variables in Portainer if needed (UID, GID, etc.)
-   3. **Minimal Portainer compose (if you prefer to start simple):**
+
+3. **Minimal Portainer compose (if you prefer to start simple):**
 
    ```yaml
    services:

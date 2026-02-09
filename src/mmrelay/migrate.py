@@ -94,7 +94,7 @@ def _register_lock_cleanup(lock_file: Path) -> None:
     # Register for common signals (Unix/Linux)
     if sys.platform != "win32":
 
-        def _signal_handler(signum: int, frame: object) -> None:
+        def _signal_handler(signum: int, _frame: object) -> None:
             """Handle signals by cleaning up and re-raising."""
             _cleanup_lock_file()
             # Re-raise the signal with default handler to exit properly
