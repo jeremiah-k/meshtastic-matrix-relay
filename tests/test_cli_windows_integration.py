@@ -8,7 +8,6 @@ including console setup, error handling, and Windows-specific guidance.
 import os
 import sys
 import unittest
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest

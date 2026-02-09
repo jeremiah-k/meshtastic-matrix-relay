@@ -16,6 +16,7 @@ MMRelay supports Docker deployment with two image options and multiple deploymen
 - [Make Commands Reference](#make-commands-reference)
 - [Connection Types](#connection-types)
 - [Data Persistence](#data-persistence)
+- [Switching Between Prebuilt and Source Build](#switching-between-prebuilt-and-source-build)
 - [Troubleshooting](#troubleshooting)
 - [Complete Docker Example](#complete-docker-example)
 - [Updates](#updates)
@@ -59,6 +60,16 @@ docker compose logs -f
 > **Production deployment**: The `:latest` tag is mutable and may change. For production deployments, pin a specific version tag or digest to ensure reproducible deployments. See the [Kubernetes Guide](KUBERNETES.md#pinning-digests-for-production) for digest pinning examples.
 
 ## Deployment Methods
+
+MMRelay supports two deployment approaches:
+
+1. **Prebuilt Images (Recommended)** - Pull official images from GitHub Container Registry
+2. **Build from Source** - Build images locally from the Dockerfile
+
+Both use the same base `docker-compose.yaml` file. The difference is whether an optional `docker-compose.override.yaml` file exists:
+
+- **No override file** → Uses prebuilt image
+- **Override file present** → Builds from source
 
 If the Quick Start above doesn't work for your setup, choose from these alternatives:
 
@@ -113,11 +124,13 @@ For users who prefer web-based Docker management:
 For developers who want to build their own image:
 
 ```bash
-make setup    # Copy config, .env, and docker-compose.yaml, then opens editor
+make setup    # Interactive setup - choose "Build from source"
 make build    # Build Docker image from source (uses layer caching)
 make run      # Start container
 make logs     # View logs
 ```
+
+This creates `docker-compose.yaml` (base with prebuilt image) and `docker-compose.override.yaml` (override to build from source).
 
 ### Build from Source without Make
 
@@ -128,7 +141,10 @@ If you prefer not to use Make commands:
 mkdir -p ~/.mmrelay
 cp src/mmrelay/tools/sample_config.yaml ~/.mmrelay/config.yaml
 nano ~/.mmrelay/config.yaml  # Edit your settings
-cp src/mmrelay/tools/sample-docker-compose.yaml docker-compose.yaml
+
+# Set up docker compose files
+cp src/mmrelay/tools/sample-docker-compose-prebuilt.yaml docker-compose.yaml
+cp src/mmrelay/tools/sample-docker-compose-override.yaml docker-compose.override.yaml
 
 # Build and start:
 docker compose build
@@ -136,7 +152,7 @@ docker compose up -d
 docker compose logs -f
 ```
 
-**Note:** The `make config` command is still the easiest way to set up the files correctly. Building from source without any Make commands would require manually creating all configuration files and is not recommended.
+**How this works:** Docker Compose automatically merges `docker-compose.yaml` (base configuration) with `docker-compose.override.yaml` (build from source override). The override file tells Docker to build locally instead of pulling the prebuilt image.
 
 ## Configuration
 
@@ -189,14 +205,19 @@ MMRelay checks for authentication in this order:
 
 ### Setup Commands
 
-- `make setup-prebuilt` - Copy config for prebuilt images and open editor (recommended)
-- `make setup` - Copy config for building from source and open editor
+- `make setup` - Interactive setup (choose prebuilt vs source build)
+- `make setup-prebuilt` - Direct setup with prebuilt image (recommended)
 - `make config` - Copy sample files and create directories (config.yaml, .env, docker-compose.yaml)
 - `make edit` - Edit config file with your preferred editor
 
+### Switching Between Prebuilt and Source
+
+- `make use-prebuilt` - Switch to prebuilt image (removes override file)
+- `make use-source` - Switch to build from source (creates override file)
+
 ### Container Management
 
-- `make run` - Start container (prebuilt images or built from source)
+- `make run` - Start container (prebuilt or source based on override file)
 - `make stop` - Stop container (keeps container for restart)
 - `make logs` - Show container logs
 - `make shell` - Access container shell
@@ -529,6 +550,39 @@ The unified `MMRELAY_HOME` model is now the default. All runtime state lives und
 - `plugins/community/` - Community plugins
 
 This provides a clean, predictable structure for all persistent data.
+
+## Switching Between Prebuilt and Source Build
+
+MMRelay uses Docker Compose's standard override mechanism to support both prebuilt images and source builds without maintaining separate configuration files.
+
+### How It Works
+
+- **`docker-compose.yaml`** - Base configuration (uses prebuilt image)
+- **`docker-compose.override.yaml`** - Optional override (builds from source)
+
+Docker Compose automatically merges these files when you run `docker compose up`. If the override file exists, it builds from source. If not, it uses the prebuilt image.
+
+### Quick Switching
+
+```bash
+# Switch to prebuilt image (default)
+make use-prebuilt
+
+# Switch to build from source
+make use-source
+```
+
+**What happens:**
+
+- `use-prebuilt` removes the override file → uses prebuilt image
+- `use-source` creates the override file → builds from source
+
+**Benefits:**
+
+- ✅ Your customizations (BLE settings, env vars, etc.) stay in the base file
+- ✅ No complex file editing or sed commands
+- ✅ Standard Docker Compose pattern
+- ✅ Easy to version control (git-ignore the override file)
 
 ## Updates
 

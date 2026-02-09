@@ -149,8 +149,8 @@ If verification fails, stop the rollout and restore your previous image and back
    - Use a single bind mount or volume at `/data`
    - config mounted at `/data/config.yaml`
    - reference examples:
-     - prebuilt image flow: [`src/mmrelay/tools/sample-docker-compose-prebuilt.yaml`](../src/mmrelay/tools/sample-docker-compose-prebuilt.yaml)
-     - local build flow: [`src/mmrelay/tools/sample-docker-compose.yaml`](../src/mmrelay/tools/sample-docker-compose.yaml)
+     - prebuilt image (recommended): [`src/mmrelay/tools/sample-docker-compose-prebuilt.yaml`](../src/mmrelay/tools/sample-docker-compose-prebuilt.yaml)
+     - build from source override: [`src/mmrelay/tools/sample-docker-compose-override.yaml`](../src/mmrelay/tools/sample-docker-compose-override.yaml)
      - environment template: [`src/mmrelay/tools/sample.env`](../src/mmrelay/tools/sample.env)
 2. Ensure `.env` host path values are valid absolute paths.
 3. Run migration inside container:

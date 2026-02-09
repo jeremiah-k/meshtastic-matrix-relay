@@ -16,6 +16,7 @@ src/mmrelay.egg-info
 
 # Docker files (use samples from src/mmrelay/tools/)
 docker-compose.yaml
+docker-compose.override.yaml
 .env
 
 # Coverage files
