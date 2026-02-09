@@ -148,6 +148,7 @@ class TestCLIWindowsErrorHandling(unittest.TestCase):
         with (
             patch("mmrelay.cli.get_config_paths", return_value=["/test/config.yaml"]),
             patch("os.path.isfile", return_value=False),
+            patch("os.makedirs"),  # Mock makedirs to allow test to proceed
             patch(
                 "mmrelay.cli.get_sample_config_path",
                 return_value="/nonexistent/sample_config.yaml",
@@ -178,6 +179,7 @@ class TestCLIWindowsErrorHandling(unittest.TestCase):
         with (
             patch("mmrelay.cli.get_config_paths", return_value=["/test/config.yaml"]),
             patch("os.path.isfile", return_value=False),
+            patch("os.makedirs"),  # Mock makedirs to allow test to proceed
             patch(
                 "mmrelay.cli.get_sample_config_path",
                 return_value="/nonexistent/sample_config.yaml",

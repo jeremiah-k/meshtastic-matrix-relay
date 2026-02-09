@@ -2624,7 +2624,21 @@ def generate_sample_config() -> bool:
     target_path = config_paths[0]
 
     # Ensure the target directory exists
-    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+    try:
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+    except (IOError, OSError) as e:
+        # Provide Windows-specific error guidance if available
+        try:
+            from mmrelay.windows_utils import get_windows_error_message, is_windows
+
+            if is_windows():
+                error_msg = get_windows_error_message(e)
+                print(f"Error creating config directory: {error_msg}")
+            else:
+                print(f"Error creating config directory: {e}")
+        except ImportError:
+            print(f"Error creating config directory: {e}")
+        return False
 
     # Use the helper function to get the sample config path
     sample_config_path = get_sample_config_path()
