@@ -49,7 +49,7 @@ import os
 import shutil
 import signal
 import sqlite3
-import subprocess
+import subprocess  # nosec B404
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -121,8 +121,11 @@ def _is_mmrelay_running() -> bool:
     # Try using pgrep on Unix systems
     if sys.platform != "win32":
         try:
-            result = subprocess.run(
-                ["pgrep", "-f", "mmrelay|python.*mmrelay"],
+            pgrep_path = shutil.which("pgrep")
+            if not pgrep_path:
+                return False
+            result = subprocess.run(  # nosec B603,B607
+                [pgrep_path, "-f", "mmrelay|python.*mmrelay"],
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -147,8 +150,11 @@ def _is_mmrelay_running() -> bool:
     else:
         # On Windows, try using tasklist
         try:
-            result = subprocess.run(
-                ["tasklist", "/FI", "IMAGENAME eq python.exe"],
+            tasklist_path = shutil.which("tasklist")
+            if not tasklist_path:
+                return False
+            result = subprocess.run(  # nosec B603,B607
+                [tasklist_path, "/FI", "IMAGENAME eq python.exe"],
                 capture_output=True,
                 text=True,
                 timeout=5,

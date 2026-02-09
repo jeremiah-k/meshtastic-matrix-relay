@@ -36,7 +36,7 @@ services:
     healthcheck:
       test:
         [
-          "CMD-SHELL",
+          CMD-SHELL,
           "find $${MMRELAY_READY_FILE:-/tmp/mmrelay-ready} -mmin -2 | grep -q .",
         ]
       interval: 30s
