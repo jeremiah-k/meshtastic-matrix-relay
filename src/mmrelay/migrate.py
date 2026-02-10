@@ -185,14 +185,22 @@ def _is_mmrelay_running() -> bool:
                     try:
                         pid = int(pid_str)
                         if pid != current_pid:
-                            # Check if it's actually mmrelay
-                            try:
-                                with open(f"/proc/{pid}/cmdline", "rb") as f:
-                                    cmdline = f.read().decode("utf-8", errors="ignore")
-                                    if "mmrelay" in cmdline:
-                                        return True
-                            except (OSError, IOError):
-                                continue
+                            # Check if it's actually mmrelay via /proc (Linux only)
+                            proc_cmdline = Path(f"/proc/{pid}/cmdline")
+                            if proc_cmdline.exists():
+                                try:
+                                    with open(proc_cmdline, "rb") as f:
+                                        cmdline = f.read().decode(
+                                            "utf-8", errors="ignore"
+                                        )
+                                        if "mmrelay" in cmdline:
+                                            return True
+                                except (OSError, IOError):
+                                    continue
+                            else:
+                                # On non-Linux (e.g. macOS), pgrep match is our best signal
+                                # as /proc doesn't exist.
+                                return True
                     except ValueError:
                         continue
         except (OSError, IOError, subprocess.TimeoutExpired, FileNotFoundError):

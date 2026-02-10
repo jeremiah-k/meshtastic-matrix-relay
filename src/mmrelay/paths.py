@@ -200,6 +200,17 @@ def get_config_paths(*, explicit: str | None = None) -> list[Path]:
         if (legacy_home / "config.yaml") not in candidates:
             candidates.append(legacy_home / "config.yaml")
 
+    # 5. Platform-specific legacy user data dir (e.g., Windows AppData)
+    # This handles configs from older Windows installations
+    try:
+        platform_user_data = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
+        if platform_user_data != home and platform_user_data.exists():
+            if (platform_user_data / "config.yaml") not in candidates:
+                candidates.append(platform_user_data / "config.yaml")
+    except (OSError, RuntimeError):
+        # platformdirs may fail in some environments, skip it
+        pass
+
     # Remove duplicates while preserving order
     seen = set()
     unique_candidates = []
