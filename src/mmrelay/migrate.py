@@ -102,7 +102,7 @@ def _is_windows_file_in_use_error(exc: OSError) -> bool:
     return False
 
 
-def _retry_on_file_in_use(func: Callable[[], Any], operation: str) -> None:
+def _retry_on_file_in_use(func: Callable[..., Any], operation: str) -> None:
     """
     Execute a file operation with retry logic for Windows file-in-use errors.
 
@@ -110,7 +110,7 @@ def _retry_on_file_in_use(func: Callable[[], Any], operation: str) -> None:
     caused by antivirus scanners, Windows Indexer, or other processes.
 
     Parameters:
-        func (Callable[[], None]): The file operation to execute.
+        func (Callable[..., Any]): The file operation to execute.
         operation (str): Description of the operation for logging.
 
     Raises:
@@ -1532,11 +1532,11 @@ def migrate_database(
                 continue
             if dest.exists():
                 _retry_on_file_in_use(
-                    lambda: dest.unlink(),
+                    lambda d=dest: d.unlink(),
                     f"unlink {dest}",
                 )
             _retry_on_file_in_use(
-                lambda: shutil.move(str(staged), str(dest)),
+                lambda s=staged, d=dest: shutil.move(str(s), str(d)),
                 f"move {staged} to {dest}",
             )
 
@@ -1700,11 +1700,11 @@ def migrate_logs(
             final_dest = new_logs_dir / staged_file.name
             if final_dest.exists():
                 _retry_on_file_in_use(
-                    lambda: final_dest.unlink(),
+                    lambda d=final_dest: d.unlink(),
                     f"unlink {final_dest}",
                 )
             _retry_on_file_in_use(
-                lambda: shutil.move(str(staged_file), str(final_dest)),
+                lambda s=staged_file, d=final_dest: shutil.move(str(s), str(d)),
                 f"move {staged_file} to {final_dest}",
             )
 
@@ -2310,12 +2310,12 @@ def migrate_gpxtracker(
                 # Remove existing file if present (backup already created above)
                 if final_dest.exists():
                     _retry_on_file_in_use(
-                        lambda: final_dest.unlink(),
+                        lambda d=final_dest: d.unlink(),
                         f"unlink {final_dest}",
                     )
 
                 _retry_on_file_in_use(
-                    lambda: shutil.move(str(staged_file), str(final_dest)),
+                    lambda s=staged_file, d=final_dest: shutil.move(str(s), str(d)),
                     f"move {staged_file} to {final_dest}",
                 )
 

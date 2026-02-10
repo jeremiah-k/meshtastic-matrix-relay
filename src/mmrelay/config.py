@@ -392,7 +392,6 @@ def get_e2ee_store_dir() -> str:
     try:
         store_dir = str(get_unified_store_dir())
         os.makedirs(store_dir, exist_ok=True)
-        return store_dir
     except paths_module.E2EENotSupportedError as e:
         # Match legacy behavior on Windows: logs warning and returns a path anyway
         # (even if it won't be used for E2EE)
@@ -402,6 +401,8 @@ def get_e2ee_store_dir() -> str:
         # Fallback for permission errors - log and return a home-based path
         logger.warning("Could not create E2EE store directory: %s", e)
         return _get_fallback_store_dir()
+    else:
+        return store_dir
 
 
 def _convert_env_bool(value: str, var_name: str) -> bool:

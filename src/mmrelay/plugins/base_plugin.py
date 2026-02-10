@@ -219,10 +219,17 @@ class BasePlugin(ABC):
             self.mapped_channels = []
 
         self.plugin_type: str = "core"
-        if config is not None:
-            if self.plugin_name in config.get("community-plugins", {}):
+        if isinstance(config, dict):
+            community_plugins = config.get("community-plugins", {})
+            custom_plugins = config.get("custom-plugins", {})
+            if (
+                isinstance(community_plugins, dict)
+                and self.plugin_name in community_plugins
+            ):
                 self.plugin_type = "community"
-            elif self.plugin_name in config.get("custom-plugins", {}):
+            elif (
+                isinstance(custom_plugins, dict) and self.plugin_name in custom_plugins
+            ):
                 self.plugin_type = "custom"
 
         # Get the channels specified for this plugin, or default to all mapped channels

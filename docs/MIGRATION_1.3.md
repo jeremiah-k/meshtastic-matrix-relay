@@ -102,6 +102,8 @@ See [Kubernetes-Specific Notes](#kubernetes-specific-notes) for detailed instruc
 - `--dry-run`: Preview migration actions without changing files. Recommended before applying changes.
 - `--force`: Allow overwriting existing files in `MMRELAY_HOME` (backups are still created). Use only after verifying your backups.
 
+> **Note**: Migration uses **move semantics by default** — source files are moved to the new location rather than copied. This prevents duplicate data and keeps the migration clean. Backups are always created before any overwrites.
+
 ## After Upgrading
 
 1. Run `mmrelay verify-migration` (read-only) to confirm the unified layout.

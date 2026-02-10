@@ -150,7 +150,7 @@ def get_home_dir() -> Path:
         return Path(env_data_dir).expanduser().absolute()
 
     # Platform defaults
-    if sys.platform in ["linux", "darwin"]:
+    if sys.platform != "win32":
         return Path.home() / f".{APP_NAME}"
     else:  # Windows
         return Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
@@ -741,7 +741,7 @@ def get_diagnostics() -> dict[str, Any]:
         "matrix_dir": resolved["matrix_dir"],
         "credentials_path": resolved["credentials_path"],
         "database_dir": resolved["database_dir"],
-        "database_path": str(Path(resolved["database_dir"]) / "meshtastic.sqlite"),
+        "database_path": str(get_database_path()),
         "logs_dir": resolved["logs_dir"],
         "log_file": resolved["log_file"],
         "plugins_dir": resolved["plugins_dir"],

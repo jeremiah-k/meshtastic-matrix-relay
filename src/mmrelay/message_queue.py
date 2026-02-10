@@ -305,6 +305,8 @@ class MessageQueue:
 
                 # Queue has space, append the message
                 self._queue.append(message)
+                # Reset the queue full log time since we successfully enqueued
+                self._last_queue_full_log_time = None
                 break
 
             # Only log queue status when there are multiple messages
