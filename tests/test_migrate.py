@@ -494,6 +494,52 @@ class TestMigrateCredentials:
         assert result["dry_run"] is True
         assert not (new_home / "matrix" / "credentials.json").exists()
 
+    def test_fallback_home_root_credentials_migrates_when_valid(
+        self, tmp_path: Path
+    ) -> None:
+        """Test valid ~/credentials.json is migrated as compatibility fallback."""
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+
+        fake_home = tmp_path / "fake_home"
+        fake_home.mkdir()
+        home_creds = fake_home / "credentials.json"
+        home_creds.write_text(
+            '{"homeserver":"https://matrix.tchncs.de","user_id":"@bot:tchncs.de","access_token":"syt_token"}'
+        )
+
+        with patch("mmrelay.migrate.Path.home", return_value=fake_home):
+            result = migrate_credentials([legacy_root], new_home)
+
+        assert result["success"] is True
+        assert result["action"] == "move"
+        assert (new_home / "matrix" / "credentials.json").exists()
+        assert not home_creds.exists()
+
+    def test_fallback_home_root_credentials_ignored_when_invalid(
+        self, tmp_path: Path
+    ) -> None:
+        """Test invalid ~/credentials.json is ignored to avoid unrelated file moves."""
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+
+        fake_home = tmp_path / "fake_home"
+        fake_home.mkdir()
+        home_creds = fake_home / "credentials.json"
+        home_creds.write_text('{"token":"not-matrix-creds"}')
+
+        with patch("mmrelay.migrate.Path.home", return_value=fake_home):
+            result = migrate_credentials([legacy_root], new_home)
+
+        assert result["success"] is True
+        assert result["action"] == "not_found"
+        assert home_creds.exists()
+        assert not (new_home / "matrix" / "credentials.json").exists()
+
     def test_migrate_credentials_success(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

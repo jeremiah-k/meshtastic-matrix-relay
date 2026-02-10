@@ -45,6 +45,7 @@ Plugin Data Migration (Three-Tier System):
 """
 
 import atexit
+import json
 import os
 import shutil
 import signal
@@ -63,6 +64,42 @@ logger = get_logger("Migration")
 
 # Global reference to current lock file for cleanup on signal
 _current_lock_file: Path | None = None
+
+
+def _looks_like_matrix_credentials(path: Path) -> bool:
+    """
+    Return True when a file appears to be a Matrix credentials JSON document.
+
+    This validation is intentionally strict for legacy home-root fallback detection,
+    so we do not move unrelated JSON files from a user's home directory.
+
+    Parameters:
+        path (Path): Candidate credentials file path.
+
+    Returns:
+        bool: True if the file contains required Matrix credential keys.
+    """
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, ValueError, TypeError):
+        return False
+
+    if not isinstance(payload, dict):
+        return False
+
+    required = ("homeserver", "access_token", "user_id")
+    for key in required:
+        value = payload.get(key)
+        if not isinstance(value, str) or not value.strip():
+            return False
+
+    # Keep fallback strict to avoid false positives from unrelated files.
+    user_id = payload.get("user_id", "")
+    if not user_id.startswith("@") or ":" not in user_id:
+        return False
+
+    return True
 
 
 def _cleanup_lock_file() -> None:
@@ -879,6 +916,26 @@ def migrate_credentials(
             old_creds = candidate
             logger.info("Found credentials.json in legacy root: %s", old_creds)
             break
+
+    # Backwards-compatibility fallback:
+    # Some older flows could leave credentials at ~/credentials.json.
+    # Only migrate this fallback location if it appears to be valid Matrix credentials.
+    if not old_creds:
+        home_root_candidate = Path.home() / CREDENTIALS_FILENAME
+        if home_root_candidate.exists():
+            if _looks_like_matrix_credentials(home_root_candidate):
+                old_creds = home_root_candidate
+                logger.warning(
+                    "Found legacy credentials at home root (%s). "
+                    "Migrating for backwards compatibility.",
+                    old_creds,
+                )
+            else:
+                logger.warning(
+                    "Ignoring home-root credentials candidate %s: "
+                    "missing required Matrix credential keys.",
+                    home_root_candidate,
+                )
 
     if not old_creds:
         if new_creds.exists():

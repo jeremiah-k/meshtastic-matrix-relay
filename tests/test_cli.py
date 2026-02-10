@@ -1409,8 +1409,11 @@ class TestAuthLogin(unittest.TestCase):
         self.mock_args.password = None
 
     @patch("mmrelay.matrix_utils.login_matrix_bot")
+    @patch("mmrelay.cli.ensure_directories")
     @patch("builtins.print")
-    def test_handle_auth_login_interactive_mode_success(self, mock_print, mock_login):
+    def test_handle_auth_login_interactive_mode_success(
+        self, mock_print, mock_ensure_dirs, mock_login
+    ):
         """Test interactive mode (no parameters) with successful login."""
         # ASYNC MOCK FIX: Return value directly, not a coroutine
         mock_login.return_value = True
@@ -1420,6 +1423,7 @@ class TestAuthLogin(unittest.TestCase):
 
         # Verify results
         self.assertEqual(result, 0)
+        mock_ensure_dirs.assert_called_once_with(create_missing=True)
         mock_login.assert_called_once_with(
             homeserver=None, username=None, password=None, logout_others=False
         )

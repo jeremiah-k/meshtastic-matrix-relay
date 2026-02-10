@@ -54,6 +54,7 @@ from mmrelay.constants.network import (
 )
 from mmrelay.e2ee_utils import E2EEStatus
 from mmrelay.log_utils import get_logger
+from mmrelay.paths import ensure_directories
 from mmrelay.tools import get_sample_config_path
 
 # Lazy-initialized logger to avoid circular imports and filesystem access during import
@@ -1932,6 +1933,13 @@ def handle_auth_login(args: argparse.Namespace) -> int:
     import asyncio
 
     from mmrelay.matrix_utils import login_matrix_bot
+
+    # Ensure the HOME layout exists before interactive/non-interactive auth flows.
+    # This prevents first-run logins from falling back to ad-hoc credential paths.
+    try:
+        ensure_directories(create_missing=True)
+    except OSError as e:
+        _get_logger().warning("Could not pre-create MMRelay directories: %s", e)
 
     # Extract arguments
     homeserver = getattr(args, "homeserver", None)

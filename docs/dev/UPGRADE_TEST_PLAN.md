@@ -184,6 +184,20 @@ mmrelay --version  # Should show 1.3.x
 
 ### 1.4 Test Migration Commands (pipx)
 
+**IMPORTANT: Validate backwards compatibility before running migration**
+
+```bash
+# Start v1.3.x once WITHOUT migration to verify backwards compatibility
+mmrelay
+
+# Expected output:
+# - v1.3 starts successfully using legacy credentials/data
+# - Warning may indicate legacy credentials location and suggest migration
+# - Relay connects and joins rooms normally
+
+# Stop relay, then continue with migration commands
+```
+
 ```bash
 # Dry run migration
 mmrelay migrate --dry-run
@@ -244,6 +258,20 @@ systemctl --user status mmrelay
 ## Section 2: Docker Compose Upgrade Test
 
 **Test the upgrade path using Docker Compose with proper volume mounting**
+
+### Current Repeatable Path (2026-02-10)
+
+Use this path as primary execution order for Docker testing:
+
+1. Seed legacy data with `pipx install 'mmrelay[e2e]==1.2.11'` + `mmrelay auth login`
+2. Ensure legacy credentials are at `~/.mmrelay/credentials.json`
+3. Start Docker dev image `ghcr.io/jeremiah-k/mmrelay:1.3.0-dev-v13rc1-2-f3ea4ea` **before migration**
+4. Verify backwards compatibility from container logs
+5. Run migration via one-off Docker commands (`--user root` where required)
+6. Run `mmrelay verify-migration`
+7. Restore host ownership: `sudo chown -R $(id -u):$(id -g) ~/.mmrelay`
+
+If legacy 1.2.11 Docker images are unavailable from registry, continue with this path.
 
 ### 2.1 Prepare v1.2.11 Docker Environment
 
@@ -420,24 +448,36 @@ docker logs mmrelay --tail 50
 **Users should be able to run migration commands from within the container:**
 
 ```bash
-# Enter the running container
-docker exec -it mmrelay bash
+# First: run container on v1.3 image WITHOUT migration to verify backwards compatibility
+docker logs mmrelay --tail 100
 
-# Inside container - check current paths
-ls -la /data/
-cat /data/config.yaml | head -20
+# Expected: v1.3 starts with legacy credentials/data and suggests migration
 
-# Run migration dry-run
-mmrelay migrate --dry-run
+# Then run migration as one-off command container.
+# Note: In some environments migration requires root due to mounted volume permissions.
 
-# Run actual migration
-mmrelay migrate
+# Dry-run migration
+docker run --rm --user root \
+  -v ${HOME}/.mmrelay:/data \
+  -v ${HOME}/config.yaml:/app/config.yaml:ro \
+  ghcr.io/jeremiah-k/mmrelay:1.3.0-dev-v13rc1-2-f3ea4ea \
+  mmrelay migrate --dry-run
+
+# Apply migration
+docker run --rm --user root \
+  -v ${HOME}/.mmrelay:/data \
+  -v ${HOME}/config.yaml:/app/config.yaml:ro \
+  ghcr.io/jeremiah-k/mmrelay:1.3.0-dev-v13rc1-2-f3ea4ea \
+  mmrelay migrate
 
 # Verify migration
-mmrelay verify-migration
+docker run --rm --user root \
+  -v ${HOME}/.mmrelay:/data \
+  ghcr.io/jeremiah-k/mmrelay:1.3.0-dev-v13rc1-2-f3ea4ea \
+  mmrelay verify-migration
 
-# Exit container
-exit
+# Restore host ownership after root-run migration
+sudo chown -R $(id -u):$(id -g) ~/.mmrelay
 ```
 
 **Expected Results:**

@@ -48,6 +48,18 @@ For containers, the canonical model remains:
 3. Run a read-only preview: `mmrelay migrate --dry-run`.
 4. If you are containerized, make sure you have a single persistent root.
 
+### Credentials Compatibility Notes
+
+- v1.3 can migrate legacy credentials from:
+  - `MMRELAY_HOME/credentials.json` (expected legacy location)
+  - `~/credentials.json` (legacy fallback; only when file looks like valid Matrix credentials)
+- For safety, home-root fallback migration validates required keys before moving files:
+  - `homeserver`
+  - `access_token`
+  - `user_id`
+
+If your credentials are missing or malformed, run `mmrelay auth login` again to regenerate.
+
 ## Upgrade Steps (All Deployments)
 
 1. Stop MMRelay.
@@ -159,6 +171,23 @@ If verification fails, stop the rollout and restore your previous image and back
    - `docker compose exec mmrelay mmrelay migrate --dry-run`
    - `docker compose exec mmrelay mmrelay migrate`
    - `docker compose exec mmrelay mmrelay verify-migration`
+
+If your deployment runs the app container as non-root and migration reports permission errors,
+run one-off migration commands as root:
+
+```bash
+docker run --rm --user root \
+  -v ${HOME}/.mmrelay:/data \
+  -v ${HOME}/config.yaml:/app/config.yaml:ro \
+  ghcr.io/jeremiah-k/mmrelay:<tag> \
+  mmrelay migrate
+```
+
+After root-run migration, restore ownership on host files so normal runtime (non-root) can read/write:
+
+```bash
+sudo chown -R $(id -u):$(id -g) ~/.mmrelay
+```
 
 If verification fails, stop the container, restore your backup, and roll back to the previous image.
 
