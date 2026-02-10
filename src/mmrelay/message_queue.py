@@ -211,16 +211,16 @@ class MessageQueue:
         **kwargs: Any,
     ) -> bool:
         """
-        Add a send operation to the queue for ordered, rate-limited delivery.
-
+        Enqueues a send operation for ordered, rate-limited delivery.
+        
         Parameters:
-            description (str): Human-readable description used for logging.
-            mapping_info (dict[str, Any] | None): Optional metadata to correlate the sent message with an external event (e.g., Matrix IDs); stored after a successful send.
-            wait (bool): If True, wait for queue space to become available instead of immediately dropping. Default False for backward compatibility.
-            timeout (float | None): Maximum time to wait for queue space if wait=True. None means wait indefinitely.
-
+            description: Human-readable description used for logging.
+            mapping_info: Optional metadata to correlate the sent message with an external event (e.g., Matrix IDs); stored after a successful send.
+            wait: If True, wait for queue space to become available instead of immediately dropping. Defaults to False.
+            timeout: Maximum time in seconds to wait for queue space when `wait` is True; `None` means wait indefinitely.
+        
         Returns:
-            bool: `true` if the message was successfully enqueued, `false` if the queue is not running, is full, or wait timed out.
+            `true` if the message was successfully enqueued, `false` otherwise.
         """
         # Ensure processor is started if event loop is now available.
         # This is called outside the lock to prevent potential deadlocks.
@@ -313,10 +313,10 @@ class MessageQueue:
 
     def get_queue_size(self) -> int:
         """
-        Return the number of messages currently in the queue.
-
+        Get the current number of messages queued.
+        
         Returns:
-            int: The current queue size.
+            int: Number of messages in the queue.
         """
         return len(self._queue)
 
@@ -348,10 +348,10 @@ class MessageQueue:
 
     def is_running(self) -> bool:
         """
-        Report whether the message queue processor is active.
-
+        Indicates whether the message queue is active.
+        
         Returns:
-            True if the processor is running, False otherwise.
+            `true` if the queue is running, `false` otherwise.
         """
         return self._running
 
@@ -427,9 +427,9 @@ class MessageQueue:
 
     async def _process_queue(self) -> None:
         """
-        Process queued messages in FIFO order, sending each when the connection is ready and the configured inter-message delay has elapsed.
-
-        Runs until the queue is stopped or the task is cancelled. After a successful send, updates last-send timestamps and, when provided mapping information is present and the send result exposes an `id`, persists the message mapping. Cancellation may drop an in-flight message.
+        Process queued messages and send them while respecting connection state and the configured inter-message delay.
+        
+        Runs until the queue is stopped or the task is cancelled. On a successful send, updates the queue's last-send timestamps; if a message includes mapping information and the send result exposes an `id`, persists that mapping. Maintains FIFO ordering, requeues messages on transient connection-related failures for later retry, and preserves rate-limiting checks between sends. Cancellation may drop an in-flight message.
         """
         logger.debug("Message queue processor started")
         current_message = None

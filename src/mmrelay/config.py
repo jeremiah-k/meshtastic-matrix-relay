@@ -65,10 +65,10 @@ def _expand_path(path: str) -> str:
 @functools.lru_cache(maxsize=None)
 def _warn_deprecated(_name: str) -> None:
     """
-    Emit a DeprecationWarning instructing callers to use paths.get_home_dir().
-
+    Emit a deprecation warning advising callers to use paths.get_home_dir().
+    
     Parameters:
-        _name (str): Ignored; present so callers can cache warnings per name (e.g., via lru_cache).
+        _name (str): Ignored; included so callers can cache or key warnings (e.g., with lru_cache).
     """
     warnings.warn(
         "Use paths.get_home_dir() instead. Support will be removed in v1.4.",
@@ -150,15 +150,15 @@ def get_credentials_search_paths(
     include_base_data: bool = True,
 ) -> list[str]:
     """
-    Build an ordered, de-duplicated list of candidate credentials.json paths.
-
+    Build an ordered, de-duplicated list of candidate credentials.json file paths to try when locating Matrix credentials.
+    
     Parameters:
-        explicit_path (str | None): Optional explicit file or directory path.
-        config_paths (Iterable[str] | None): Optional iterable of config file paths.
-        include_base_data (bool): When True, include unified base data directory's credentials path in candidates.
-
+        explicit_path (str | None): An explicit file or directory path provided by the caller; if a directory is given, "credentials.json" will be appended.
+        config_paths (Iterable[str] | None): Iterable of configuration file paths whose directories will be checked for adjacent credentials files.
+        include_base_data (bool): When True, include the unified base data credentials path with highest priority.
+    
     Returns:
-        list[str]: Ordered candidate credential file paths.
+        list[str]: Candidate credential file paths in priority order with duplicates removed.
     """
     candidate_paths: list[str] = []
     seen: set[str] = set()
@@ -244,27 +244,27 @@ class InvalidCredentialsPathTypeError(TypeError):
 
     def __init__(self) -> None:
         """
-        Initialize the exception raised when a provided `credentials_path` value is not a string.
-
-        The exception message is set to: "credentials_path must be a string".
+        Create an InvalidCredentialsPathTypeError indicating the provided `credentials_path` is not a string.
+        
+        The exception's message is "credentials_path must be a string".
         """
         super().__init__("credentials_path must be a string")
 
 
 def get_explicit_credentials_path(config: Mapping[str, Any] | None) -> str | None:
     """
-    Get the explicitly configured credentials path, if present.
-
-    Checks the `MMRELAY_CREDENTIALS_PATH` environment variable first, then the top-level
+    Return the explicitly configured credentials path, if any.
+    
+    Checks the environment variable MMRELAY_CREDENTIALS_PATH first, then the top-level
     `credentials_path` key in `config`, and finally `config["matrix"]["credentials_path"]`.
     If a configured value is present it must be a string.
-
+    
     Parameters:
         config (Mapping[str, Any] | None): Optional configuration mapping to consult.
-
+    
     Returns:
         str | None: The configured credentials path string, or `None` if not set.
-
+    
     Raises:
         InvalidCredentialsPathTypeError: If a found `credentials_path` value exists but is not a string.
     """
@@ -289,13 +289,13 @@ def get_explicit_credentials_path(config: Mapping[str, Any] | None) -> str | Non
 
 def get_data_dir(*, create: bool = True) -> str:
     """
-    Return the application's data directory path.
-
+    Get the application's data directory path.
+    
     Deprecated: use `get_home_dir()` from mmrelay.paths instead. If `create` is True, the directory will be created if it does not exist.
-
+    
     Parameters:
         create (bool): If True, ensure the returned directory exists by creating it when necessary.
-
+    
     Returns:
         str: Absolute path to the data directory.
     """
@@ -351,10 +351,10 @@ def get_plugin_data_dir(
 
 def get_log_dir() -> str:
     """
-    Return the application's log directory, creating it if missing.
-
+    Get the application's log directory, ensuring the directory exists.
+    
     Returns:
-        Absolute path to the log directory as a string; the directory is guaranteed to exist.
+        Absolute path to the log directory as a string.
     """
     log_dir = str(get_unified_logs_dir())
     os.makedirs(log_dir, exist_ok=True)
@@ -379,15 +379,15 @@ def _get_fallback_store_dir() -> str:
 
 def get_e2ee_store_dir() -> str:
     """
-    Return the absolute path to the application's E2EE data store directory, creating it when possible.
-
-    If the unified store resolver signals the platform does not support E2EE, this function returns a legacy store path under the user's home directory and logs a warning. If directory creation fails due to filesystem permissions or other OS errors, it returns the same home-based fallback path and logs a warning instead of failing. If the unified resolver raises a RuntimeError for reasons other than platform support, that RuntimeError is propagated.
-
+    Determine the absolute path to the application's E2EE data store directory, creating it when possible.
+    
+    If the platform does not support E2EE or directory creation fails (for example due to permissions), a home-based fallback path is returned and a warning is logged. On other runtime errors raised by the unified store resolver, the error is propagated.
+    
     Returns:
         The absolute path to the E2EE store directory as a string.
-
+    
     Raises:
-        RuntimeError: If the unified store resolver raises a RuntimeError that should not be handled as a platform-unsupported condition.
+        RuntimeError: If the unified store resolver raises a RuntimeError that is not handled as a platform-unsupported condition.
     """
     try:
         store_dir = str(get_unified_store_dir())
@@ -745,12 +745,11 @@ def apply_env_config_overrides(config: dict[str, Any] | None) -> dict[str, Any]:
 def load_credentials() -> dict[str, Any] | None:
     """
     Locate and load Matrix credentials from candidate credentials.json files.
-
-    Searches an explicit credentials path (from environment or configuration) followed by prioritized candidate locations and returns the first successfully parsed credentials mapping. If a credentials file is found in a legacy directory during the deprecation window, a migration warning is emitted. On any read/parse error or if no credentials file is found, returns None.
-
+    
+    Searches an explicit credentials path (from environment or configuration) followed by prioritized candidate locations and returns the first readable, valid credentials mapping. Emits a migration/deprecation warning when credentials are discovered in legacy locations. Files that are unreadable, invalid JSON, not an object, or missing required keys are ignored.
+    
     Returns:
-        dict[str, Any]: Parsed credentials mapping if a valid credentials.json is found.
-        None: If no readable, valid credentials file is found.
+        Parsed credentials mapping containing at least the keys 'homeserver', 'access_token', and 'user_id' if a valid credentials.json is found; `None` otherwise.
     """
     try:
         explicit_path = get_explicit_credentials_path(relay_config)
@@ -853,15 +852,13 @@ def load_credentials() -> dict[str, Any] | None:
 
 async def async_load_credentials() -> dict[str, Any] | None:
     """
-    Load Matrix credentials using a background thread.
-
-    Note: This reads module-level globals (relay_config, config_path) without
-    explicit synchronization. This is safe assuming these globals are fully
-    initialized during the application's sequential startup before any
-    asynchronous tasks are spawned.
-
+    Locate and load Matrix credentials from configured candidate paths.
+    
+    Searches configured and legacy credentials locations, validates that required keys are present, and returns the parsed credentials mapping when a readable, valid credentials file is found.
+    
     Returns:
-        dict[str, Any] | None: Parsed credentials mapping if a readable, valid credentials file is found; `None` otherwise.
+        dict[str, Any]: Loaded credentials containing at minimum `homeserver`, `access_token`, and `user_id`. `device_id` may be absent.
+        None: If no readable/valid credentials file is found.
     """
     return await asyncio.to_thread(load_credentials)
 
@@ -870,14 +867,14 @@ def save_credentials(
     credentials: dict[str, Any], credentials_path: str | None = None
 ) -> None:
     """
-    Persist the given credentials mapping to the resolved credentials.json file.
-
-    Resolves the target path from the explicit `credentials_path` argument, an explicit path from configuration, or the unified credentials path; if the resolved target refers to a directory the filename "credentials.json" is appended. The function creates the target directory if missing, writes the credentials as pretty-printed JSON (indent=2), and on Unix-like systems sets file permissions to owner read/write (0o600). I/O and permission failures are logged and re-raised.
-
+    Persist a credentials mapping to the resolved credentials.json file.
+    
+    Resolves the target path from the explicit `credentials_path` argument, an explicit path from configuration, or the unified credentials path; if the resolved target refers to a directory the filename "credentials.json" is appended. The function creates the target directory if missing, writes the credentials as pretty-printed JSON (indent=2), and sets file permissions to owner read/write (0o600) on Unix-like systems.
+    
     Parameters:
         credentials (dict): JSON-serializable mapping of credentials to persist.
         credentials_path (str | None): Optional file path or directory to write to; when omitted the function uses a configured or unified credentials path.
-
+    
     Raises:
         OSError: If creating directories or writing the file fails.
         PermissionError: If permission is denied when creating directories or writing the file.
@@ -960,10 +957,10 @@ _config_logger: "logging.Logger | None" = None
 
 def _get_logger() -> "logging.Logger":
     """
-    Return the configuration logger, initializing it on first access.
-
+    Get the configuration logger, initializing it on first access.
+    
     Returns:
-        logging.Logger: The configuration logger instance.
+        logging.Logger: The cached configuration logger instance.
     """
     global _config_logger
     if _config_logger is None:
@@ -980,7 +977,13 @@ class _LoggerProxy:
         return getattr(_get_logger(), name)
 
     def __setattr__(self, name: str, value: Any) -> None:
-        """Allow setting attributes (needed for mock.patch)."""
+        """
+        Allow assigning arbitrary attributes on the proxy instance to support dynamic patching and runtime assignment.
+        
+        Parameters:
+            name (str): Attribute name to set.
+            value (Any): Value to assign to the attribute.
+        """
         self.__dict__[name] = value
 
 
@@ -1299,14 +1302,27 @@ def _resolve_credentials_path(
     path_override: str | None, *, allow_relay_config_sources: bool
 ) -> tuple[str, str]:
     """
-    Determine the filesystem path to credentials.json and the directory that will contain it.
-
+    Resolve the filesystem path to credentials.json and its containing directory.
+    
+    If an explicit path_override is provided (file or directory), or if allow_relay_config_sources
+    is True and an override is present via the MMRELAY_CREDENTIALS_PATH environment variable,
+    relay_config["credentials_path"], or relay_config["matrix"]["credentials_path"], that value
+    is resolved and normalized. If the resolved candidate refers to a directory (including when
+    it ends with a path separator) `credentials.json` is appended. When no override is found,
+    the function returns the default credentials path under the application's home MATRIX_DIRNAME.
+    
     Parameters:
-        path_override (str | None): Explicit path or directory provided by the caller. If this is a directory (or ends with a path separator), `credentials.json` will be appended.
-        allow_relay_config_sources (bool): When True, also consider the MMRELAY_CREDENTIALS_PATH environment variable and `relay_config` keys `credentials_path` and `matrix.credentials_path` as possible overrides.
-
+        path_override (str | None): Explicit file or directory path supplied by the caller.
+            If this points to a directory (or ends with a path separator), `credentials.json`
+            will be appended. Tilde-expansion and absolute path normalization are applied.
+        allow_relay_config_sources (bool): If True, also consider MMRELAY_CREDENTIALS_PATH and
+            the relay_config keys `credentials_path` and `matrix.credentials_path` as candidate
+            overrides when path_override is None.
+    
     Returns:
-        tuple[str, str]: A pair (credentials_path, config_dir) where `credentials_path` is the resolved absolute path to `credentials.json` and `config_dir` is the directory that contains it.
+        tuple[str, str]: (credentials_path, config_dir) where `credentials_path` is the
+        absolute path to the credentials.json file and `config_dir` is the directory that
+        will contain that file.
     """
     candidate = path_override
 

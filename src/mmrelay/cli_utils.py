@@ -335,17 +335,12 @@ def _create_ssl_context() -> ssl.SSLContext | None:
 
 def _cleanup_local_session_data() -> bool:
     """
-    Remove local Matrix session artifacts including credentials and E2EE store directories.
-
-    Removes the credentials file located at the application's base directory and any
-    E2EE store directories (the default store directory and any user-configured
-    overrides under `matrix.e2ee.store_path` or `matrix.encryption.store_path`).
-    The function makes a best-effort attempt to remove all targeted files and
-    directories and continues attempting other removals even if some fail.
-
+    Remove local Matrix session artifacts including the credentials file and any E2EE store directories.
+    
+    Performs a best-effort removal using resolved application paths and any configured overrides (e.g. matrix.e2ee.store_path or matrix.encryption.store_path). Skips E2EE removal on platforms where it is not applicable, continues other removals if some fail, and logs successes or partial failures.
+    
     Returns:
-        bool: `True` if all targeted files and directories were removed successfully;
-              `False` if any removal failed.
+        bool: `True` if all targeted files and directories were removed successfully, `False` otherwise.
     """
     import shutil
 

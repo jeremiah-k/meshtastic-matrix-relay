@@ -704,11 +704,11 @@ class BasePlugin(ABC):
 
     def get_plugin_data_dir(self, subdir: str | None = None) -> str:
         """
-        Return the absolute filesystem path for this plugin's data directory, optionally for a named subdirectory; ensures the directory exists and accounts for the plugin's configured type.
-
+        Get the absolute filesystem path for this plugin's data directory, optionally for a named subdirectory; the directory is created if missing and resolution respects the plugin's configured type.
+        
         Parameters:
-            subdir (str | None): Optional subdirectory name inside the plugin data directory to return. If None, the top-level plugin data directory is returned.
-
+            subdir (str | None): Optional subdirectory name inside the plugin data directory. If None, the top-level plugin data directory is returned.
+        
         Returns:
             str: Absolute path to the plugin's data directory or the requested subdirectory.
         """
