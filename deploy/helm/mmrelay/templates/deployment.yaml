@@ -2,7 +2,7 @@
 apiVersion: apps/v1
 kind: Deployment
 {{- if not .Values.config.enabled }}
-{{- fail (printf "config.enabled must be true; config is required and mounted at %s" .Values.configPath) }}
+{{- fail (printf "config.enabled must be true; config is required and will be copied to %s" .Values.configPath) }}
 {{- end }}
 {{- if gt (int .Values.replicaCount) 1 }}
 {{- fail "replicaCount must be 1; mmrelay uses SQLite on a single PVC and does not support concurrent replicas" }}
@@ -58,17 +58,28 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- if and .Values.initContainer.enabled (or .Values.persistence.enabled .Values.credentials.enabled) }}
+      {{- if .Values.initContainer.enabled }}
       initContainers:
-        - name: fix-data-perms
+        - name: init-mmrelay
           image: "{{ .Values.initContainer.image.repository }}:{{ .Values.initContainer.image.tag }}{{- if .Values.initContainer.image.digest }}@{{ .Values.initContainer.image.digest }}{{- end }}"
           imagePullPolicy: {{ .Values.initContainer.image.pullPolicy }}
           command:
             - sh
             - -c
             - |
+              set -e
+              # Copy config.yaml from Secret/ConfigMap to PVC if not already present
+              if [ ! -f "{{ .Values.configPath }}" ]; then
+                echo "Copying config.yaml to PVC..."
+                cp /config-source/{{ .Values.config.key }} "{{ .Values.configPath }}"
+              else
+                echo "config.yaml already exists on PVC, skipping copy"
+              fi
+              # Create matrix directory for credentials.json
               mkdir -p "{{ .Values.mmrelayHome }}/matrix"
+              # Fix ownership for non-root app user
               chown -R {{ .Values.containerSecurityContext.runAsUser }}:{{ default .Values.containerSecurityContext.runAsUser .Values.containerSecurityContext.runAsGroup }} "{{ .Values.mmrelayHome }}"
+              echo "Initialization complete"
           securityContext:
             runAsUser: 0
             runAsGroup: 0
@@ -82,6 +93,9 @@ spec:
                 - FOWNER
                 - DAC_OVERRIDE
           volumeMounts:
+            - name: config-source
+              mountPath: /config-source
+              readOnly: true
             - name: data
               mountPath: {{ .Values.mmrelayHome }}
       {{- end }}
@@ -172,16 +186,6 @@ spec:
                   - "sleep {{ .Values.lifecycle.preStopSleepSeconds }} || true"
           {{- end }}
           volumeMounts:
-            - name: config
-              mountPath: {{ .Values.configPath | quote }}
-              subPath: {{ .Values.config.key }}
-              readOnly: true
-            {{- if .Values.credentials.enabled }}
-            - name: credentials
-              mountPath: "{{ .Values.mmrelayHome }}/matrix/{{ .Values.credentials.key }}"
-              subPath: {{ .Values.credentials.key }}
-              readOnly: true
-            {{- end }}
             - name: data
               mountPath: {{ .Values.mmrelayHome | quote }}
             - name: tmp
@@ -192,7 +196,7 @@ spec:
             {{- toYaml . | nindent 12 }}
             {{- end }}
       volumes:
-        - name: config
+        - name: config-source
           {{- if eq .Values.config.source "configmap" }}
           configMap:
             name: {{ .Values.config.name }}
@@ -206,14 +210,6 @@ spec:
               - key: {{ .Values.config.key }}
                 path: {{ .Values.config.key }}
           {{- end }}
-        {{- if .Values.credentials.enabled }}
-        - name: credentials
-          secret:
-            secretName: {{ .Values.credentials.secretName }}
-            items:
-              - key: {{ .Values.credentials.key }}
-                path: {{ .Values.credentials.key }}
-        {{- end }}
         - name: data
           {{- if .Values.persistence.enabled }}
           persistentVolumeClaim:

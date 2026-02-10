@@ -18,6 +18,8 @@ configPath: /data/config.yaml
 readyFile: /run/mmrelay/ready
 
 # Config injection
+# The init container copies config.yaml from this Secret/ConfigMap to the PVC.
+# This allows the config to persist across pod restarts and be edited if needed.
 config:
   # Config is required; chart will fail if disabled.
   enabled: true
@@ -30,15 +32,14 @@ config:
   # Inline config data (used only when create=true)
   data: ""
 
-# Credentials injection
-credentials:
+# Matrix authentication via environment variables (RECOMMENDED)
+# The app will automatically create credentials.json on first run using these env vars.
+# This is the cleanest way to authenticate - no need to manage credentials.json manually.
+matrixAuth:
   enabled: false
-  secretName: mmrelay-credentials
-  key: credentials.json
-  # Only create the Secret when explicitly enabled
-  create: false
-  # Inline credentials data (used only when create=true)
-  data: ""
+  # Secret name containing Matrix auth credentials
+  # Must contain: MMRELAY_MATRIX_HOMESERVER, MMRELAY_MATRIX_BOT_USER_ID, MMRELAY_MATRIX_PASSWORD
+  secretName: mmrelay-matrix-auth
 
 # Persistence configuration
 persistence:
@@ -66,7 +67,8 @@ containerSecurityContext:
     drop:
       - ALL
 
-# Init container to fix data permissions (auto-disabled when persistence.enabled=false)
+# Init container configuration
+# Copies config.yaml from Secret/ConfigMap to PVC and sets up directory structure
 initContainer:
   enabled: true
   image:
@@ -189,14 +191,6 @@ env: []
 #     value: UTC
 #   - name: PYTHONUNBUFFERED
 #     value: "1"
-
-# Matrix auth environment variables (bootstrap mode)
-# These are optional and only used for initial credential creation
-# Set these via a separate Secret if needed
-matrixAuth:
-  enabled: false
-  # Secret name for Matrix auth credentials
-  secretName: mmrelay-matrix-auth
 
 # Additional volumes (use with caution)
 extraVolumes: []
