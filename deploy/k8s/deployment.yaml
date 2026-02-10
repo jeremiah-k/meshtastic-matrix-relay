@@ -95,6 +95,10 @@ spec:
             - name: MMRELAY_HOME
               value: /data
           envFrom:
+            # Matrix auth secret is optional so the pod can start without it;
+            # if Matrix auth is required, create the mmrelay-matrix-auth secret
+            # with MMRELAY_MATRIX_HOMESERVER, MMRELAY_MATRIX_BOT_USER_ID, and
+            # MMRELAY_MATRIX_PASSWORD keys before deploying.
             - secretRef:
                 name: mmrelay-matrix-auth
                 optional: true

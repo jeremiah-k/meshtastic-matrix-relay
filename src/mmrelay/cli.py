@@ -192,11 +192,19 @@ def _apply_dir_overrides(args: argparse.Namespace | None) -> None:
         "/dev",
         "/proc",
         "/sys",
-        # Windows system directories (common paths)
-        r"c:\windows",
-        r"c:\program files",
-        r"c:\program files (x86)",
     }
+    # Add Windows-specific system paths dynamically from environment variables
+    # This handles cases where Windows is installed on a different drive
+    if sys.platform == "win32":
+        system_root = os.environ.get("SystemRoot")
+        if system_root:
+            forbidden_paths.add(system_root.lower())
+        program_files = os.environ.get("ProgramFiles")
+        if program_files:
+            forbidden_paths.add(program_files.lower())
+        program_files_x86 = os.environ.get("ProgramFiles(x86)")
+        if program_files_x86:
+            forbidden_paths.add(program_files_x86.lower())
     if str(absolute_home).lower() in forbidden_paths:
         print(
             f"Error: Setting MMRELAY_HOME to a critical system directory ('{absolute_home}') is not allowed.",
