@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document provides a comprehensive test plan for validating the upgrade path from Meshtastic Matrix Relay v1.2.11 to v1.3.x across all supported deployment methods (pipx/systemd, Docker Compose, and Kubernetes).
+This document provides a comprehensive test plan for validating the upgrade path from Meshtastic Matrix Relay v1.2.11 to v1.3.x across pipx/systemd and Docker Compose, plus fresh-install validation for Kubernetes/Helm.
 
 ## Prerequisites
 
@@ -12,7 +12,7 @@ This document provides a comprehensive test plan for validating the upgrade path
 - Docker Compose v2.20.0+
 - Python 3.10+ with pipx installed
 - git
-- Access to Docker Hub for pulling images
+- Access to GHCR for pulling images
 - For Kubernetes testing: microk8s or equivalent cluster
 
 ### Test Data
@@ -25,7 +25,7 @@ This document provides a comprehensive test plan for validating the upgrade path
 
 ## Section 0: Environment Setup and Clean Slate
 
-**CRITICAL: Always verify clean state before starting tests**
+### Critical: Always verify clean state before starting tests
 
 ### 0.1 Check for Previous Test Data
 
@@ -56,7 +56,7 @@ rm -f ~/.config/systemd/user/mmrelay.service
 systemctl --user daemon-reload
 
 # Remove pipx installation
-pipx uninstall meshtastic-matrix-relay || true
+pipx uninstall mmrelay || true
 
 # Stop and remove Docker containers
 docker stop mmrelay watchtower 2>/dev/null || true
@@ -113,13 +113,13 @@ matrix:
 
 ## Section 1: pipx/systemd Service Test Flow
 
-**Test the upgrade path for pipx installations with systemd service**
+### Test the upgrade path for pipx installations with systemd service
 
 ### 1.1 Install v1.2.11 with pipx
 
 ```bash
 # Install v1.2.11
-pipx install meshtastic-matrix-relay==1.2.11
+pipx install 'mmrelay[e2e]==1.2.11'
 
 # Verify installation
 mmrelay --version  # Should show 1.2.11
@@ -136,7 +136,7 @@ mmrelay --config ~/config.yaml
 
 ```bash
 # Get the service file template from v1.2.11
-curl -o /tmp/mmrelay.service https://raw.githubusercontent.com/geoffwhittington/meshtastic-matrix-relay/1.2.11/src/mmrelay/tools/mmrelay.service
+curl -o /tmp/mmrelay.service https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/1.2.11/src/mmrelay/tools/mmrelay.service
 
 # OR if testing from local repo, get from tag:
 git show 1.2.11:src/mmrelay/tools/mmrelay.service > /tmp/mmrelay.service
@@ -175,8 +175,11 @@ systemctl --user stop mmrelay
 # Backup current config
 cp ~/config.yaml ~/config.yaml.pre-upgrade
 
-# Upgrade to latest version
-pipx upgrade meshtastic-matrix-relay
+# Upgrade to target v1.3.x build
+pipx uninstall mmrelay
+cd ~/dev/mmrelay
+git checkout f3ea4ea
+pipx install -e '.[e2e]'
 
 # Verify new version
 mmrelay --version  # Should show 1.3.x
@@ -184,7 +187,7 @@ mmrelay --version  # Should show 1.3.x
 
 ### 1.4 Test Migration Commands (pipx)
 
-**IMPORTANT: Validate backwards compatibility before running migration**
+### Important: Validate backwards compatibility before running migration
 
 ```bash
 # Start v1.3.x once WITHOUT migration to verify backwards compatibility
@@ -257,7 +260,7 @@ systemctl --user status mmrelay
 
 ## Section 2: Docker Compose Upgrade Test
 
-**Test the upgrade path using Docker Compose with proper volume mounting**
+### Test the upgrade path using Docker Compose with proper volume mounting
 
 ### Current Repeatable Path (2026-02-10)
 
@@ -284,7 +287,7 @@ cd ~/mmrelay-docker-test
 cat > docker-compose.yaml << 'EOF'
 services:
   mmrelay:
-    image: ghcr.io/geoffwhittington/meshtastic-matrix-relay:1.2.11
+    image: ghcr.io/jeremiah-k/mmrelay:1.2.11
     container_name: mmrelay
     restart: unless-stopped
     stop_grace_period: 30s
@@ -342,7 +345,7 @@ docker logs mmrelay --tail 50
 
 ### 2.3 Set Up Watchtower (nickfedor fork)
 
-**Important: Use nickfedor/watchtower fork, NOT containrrr/watchtower**
+### Important: Use nickfedor/watchtower fork, NOT containrrr/watchtower
 
 ```bash
 cd ~/mmrelay-docker-test
@@ -387,7 +390,7 @@ docker compose down
 cat > docker-compose.yaml << 'EOF'
 services:
   mmrelay:
-    image: ghcr.io/geoffwhittington/meshtastic-matrix-relay:latest
+    image: ghcr.io/jeremiah-k/mmrelay:latest
     container_name: mmrelay
     restart: unless-stopped
     stop_grace_period: 30s
@@ -516,13 +519,13 @@ docker ps -a | grep -E "mmrelay|watchtower"
 
 ## Section 3: systemd Service File Migration
 
-**After Docker tests, migrate the systemd service file to v1.3 pattern**
+### After Docker tests, migrate the systemd service file to v1.3 pattern
 
 ### 3.1 Get Updated Service File
 
 ```bash
 # Get the latest service file from v1.3
-curl -o /tmp/mmrelay-v13.service https://raw.githubusercontent.com/geoffwhittington/meshtastic-matrix-relay/main/src/mmrelay/tools/mmrelay.service
+curl -o /tmp/mmrelay-v13.service https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/mmrelay.service
 
 # OR from local repo:
 cp src/mmrelay/tools/mmrelay.service /tmp/mmrelay-v13.service
@@ -578,7 +581,7 @@ systemctl --user status mmrelay
 
 ## Section 4: Kubernetes/Helm Deployment Test
 
-**Test Kubernetes deployment using microk8s and Helm chart**
+### Test Kubernetes deployment using microk8s and Helm chart (fresh install only)
 
 ### 4.1 Prepare Kubernetes Environment
 
@@ -615,13 +618,13 @@ microk8s kubectl create secret generic mmrelay-matrix-auth \
 microk8s kubectl get secret -n mmrelay | grep mmrelay
 ```
 
-### 4.3 Deploy with Helm (v1.3.x only - no legacy test)
+### 4.3 Deploy with Helm (v1.3.x only, fresh install)
 
-**Note: Helm chart is v1.3+ only, no upgrade path from v1.2.11 needed**
+### Note: Helm chart is v1.3+ only, no upgrade path from v1.2.11 needed
 
 ```bash
 # Add Helm repository (if published)
-# helm repo add mmrelay https://geoffwhittington.github.io/meshtastic-matrix-relay
+# helm repo add mmrelay https://jeremiah-k.github.io/meshtastic-matrix-relay
 # helm repo update
 
 # OR use local chart
@@ -697,31 +700,7 @@ microk8s kubectl exec -n mmrelay deployment/mmrelay -- mmrelay doctor
 - Relay connects to Meshtastic and Matrix
 - `mmrelay doctor` shows unified `/data` paths and no migration required
 
-### 4.5 Test Helm Upgrade
-
-```bash
-# Modify values file to test upgrade
-cat >> /tmp/mmrelay-values.yaml << 'EOF'
-
-# Add environment variable to test upgrade
-env:
-  - name: LOG_LEVEL
-    value: DEBUG
-EOF
-
-# Perform Helm upgrade
-microk8s helm upgrade mmrelay ./helm/mmrelay \
-  --namespace mmrelay \
-  --values /tmp/mmrelay-values.yaml
-
-# Wait for rollout
-microk8s kubectl rollout status deployment/mmrelay -n mmrelay
-
-# Verify upgrade
-microk8s kubectl logs -n mmrelay -l app=mmrelay --tail=50
-```
-
-### 4.6 Clean Up Kubernetes Resources
+### 4.5 Clean Up Kubernetes Resources
 
 ```bash
 # Uninstall Helm release
@@ -761,7 +740,7 @@ diff ~/config.yaml.orig ~/config.yaml.orig || echo "Master config unchanged"
 # If you want to restore to clean state:
 # systemctl --user stop mmrelay
 # systemctl --user disable mmrelay
-# pipx uninstall meshtastic-matrix-relay
+# pipx uninstall mmrelay
 # docker compose -f ~/mmrelay-docker-test/docker-compose.yaml down
 # rm -rf ~/.mmrelay
 # microk8s kubectl delete namespace mmrelay
@@ -810,10 +789,9 @@ For each test run, document:
 
 - [ ] Helm deployment successful
 - [ ] Pod running correctly
-- [ ] Config loaded from ConfigMap
+- [ ] Config loaded from Secret
 - [ ] PVC working
-- [ ] Migration verification passed
-- [ ] Helm upgrade successful
+- [ ] Fresh-install runtime checks passed
 
 ### Issues Found
 
@@ -852,7 +830,7 @@ For each test run, document:
 ### Kubernetes Pod CrashLoopBackOff
 
 - Check pod logs: `microk8s kubectl logs -n mmrelay <pod-name>`
-- Verify ConfigMap mounted correctly
+- Verify Secret/config mounted correctly
 - Check PVC is bound: `microk8s kubectl get pvc -n mmrelay`
 
 ### Migration Fails
@@ -868,5 +846,5 @@ For each test run, document:
 - [Migration Guide](../MIGRATION_1.3.md)
 - [Docker Compose Sample](../../src/mmrelay/tools/sample-docker-compose-prebuilt.yaml)
 - [systemd Service File](../../src/mmrelay/tools/mmrelay.service)
-- [Helm Chart Documentation](../../helm/mmrelay/README.md)
+- [Helm Chart Documentation](../../deploy/helm/mmrelay/README.md)
 - [Watchtower (nickfedor fork)](https://github.com/nickfedor/watchtower)

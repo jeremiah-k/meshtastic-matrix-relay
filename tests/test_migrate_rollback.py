@@ -6,9 +6,6 @@ These tests verify the critical safety functionality that restores files from
 
 import shutil
 from pathlib import Path
-from unittest.mock import patch
-
-import pytest
 
 from mmrelay.migrate import BACKUP_DIRNAME, rollback_migration
 
