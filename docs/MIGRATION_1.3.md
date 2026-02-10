@@ -175,6 +175,59 @@ If you need to manually undo a successful migration:
 
 If verification fails, stop the rollout and restore your previous image and backup.
 
+## Windows-Specific Notes
+
+### Windows Installer Behavior
+
+The Windows installer uses the installation directory (e.g., `C:\Users\<user>\AppData\Local\Programs\MM Relay\`) as the MMRELAY_HOME. All batch files created by the installer use `--home` to ensure consistent data locations:
+
+- `mmrelay.bat` - Runs MMRelay with all data in the install directory
+- `setup-auth.bat` - Sets up Matrix authentication
+- `logout.bat` - Logs out from Matrix
+
+### Default Paths Without Installer
+
+If you installed via pip/pipx instead of the Windows installer, the default HOME location is:
+
+```text
+%LOCALAPPDATA%\mmrelay\
+├── config.yaml
+├── matrix\
+│   └── credentials.json
+├── database\
+│   └── meshtastic.sqlite
+├── logs\
+└── plugins\
+```
+
+### Upgrading on Windows
+
+1. **If using the Windows installer:**
+   - Download and run the new installer
+   - Your existing data in the install directory will be preserved
+   - No migration is needed if all data was already in the install directory
+
+2. **If upgrading from pip/pipx with data in `%LOCALAPPDATA%\mmrelay`:**
+   - Install the new version
+   - Open Command Prompt
+   - Run migration to verify and move any legacy data:
+
+   ```cmd
+   mmrelay migrate --dry-run
+   mmrelay migrate
+   mmrelay verify-migration
+   ```
+
+3. **If you have data in both locations:**
+   - The migration tool will detect this as a "split roots" condition
+   - Review the output carefully before proceeding
+   - Use `--dry-run` first to preview changes
+
+### Windows-Specific Limitations
+
+- **E2EE not supported**: Matrix End-to-End Encryption is not available on Windows due to library limitations. The `matrix/store/` directory is not created on Windows.
+- **File-in-use errors**: Migration includes retry logic for Windows file locks (antivirus, Windows Indexer), but may still fail if files are actively in use. Close MMRelay before running migration.
+
 ## Docker-Specific Notes
 
 1. Update compose to 1.3 model:
