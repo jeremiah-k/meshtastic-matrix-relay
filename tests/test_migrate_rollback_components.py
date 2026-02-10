@@ -27,8 +27,8 @@ class TestRollbackCredentialsMigration:
         gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
         gpx_plugin_dir.mkdir(parents=True)
 
-        backup_dir = new_home / "database" / ".migration_backups"
-        backup_dir.mkdir()
+        backup_dir = new_home / "matrix" / ".migration_backups"
+        backup_dir.mkdir(parents=True)
         creds_backup = backup_dir / "credentials.json.bak.20240101_120000"
         creds_backup.write_text(
             '{"homeserver": "https://matrix.org", "access_token": "test_token"}'
@@ -36,7 +36,7 @@ class TestRollbackCredentialsMigration:
 
         # Create current (migrated) credentials file
         creds_dest = new_home / "matrix" / "credentials.json"
-        creds_dest.parent.mkdir(parents=True)
+        creds_dest.parent.mkdir(parents=True, exist_ok=True)
         creds_dest.write_text(
             '{"homeserver": "https://new.server", "access_token": "new_token"}'
         )
@@ -83,8 +83,8 @@ class TestRollbackConfigMigration:
         gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
         gpx_plugin_dir.mkdir(parents=True)
 
-        backup_dir = new_home / "database" / ".migration_backups"
-        backup_dir.mkdir()
+        backup_dir = new_home / ".migration_backups"
+        backup_dir.mkdir(parents=True)
         config_backup = backup_dir / "config.yaml.bak.20240101_120000"
         config_backup.write_text(
             "meshtastic:\n  connection_type: serial\nmatrix:\n  homeserver: https://old.server"
@@ -138,7 +138,7 @@ class TestRollbackDatabaseMigration:
         gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
         gpx_plugin_dir.mkdir(parents=True)
 
-        backup_dir = new_home / "database" / ".migration_backups"
+        backup_dir = new_home / ".migration_backups"
         backup_dir.mkdir()
 
         # Main database backup
@@ -171,7 +171,7 @@ class TestRollbackDatabaseMigration:
         migrations = [
             {
                 "type": "database",
-                "result": {"new_path": str(db_dir), "action": "move", "success": True},
+                "result": {"new_path": str(db_file), "action": "move", "success": True},
             }
         ]
 
@@ -202,7 +202,7 @@ class TestRollbackLogsMigration:
         gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
         gpx_plugin_dir.mkdir(parents=True)
 
-        backup_dir = new_home / "database" / ".migration_backups"
+        backup_dir = new_home / ".migration_backups"
         backup_dir.mkdir()
         logs_backup = backup_dir / "logs.bak.20240101_120000"
         logs_backup.mkdir()
@@ -261,7 +261,7 @@ class TestRollbackStoreMigration:
         gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
         gpx_plugin_dir.mkdir(parents=True)
 
-        backup_dir = new_home / "database" / ".migration_backups"
+        backup_dir = new_home / ".migration_backups"
         backup_dir.mkdir()
         store_backup = backup_dir / "store.bak.20240101_120000"
         store_backup.mkdir()
@@ -318,7 +318,7 @@ class TestRollbackPluginsMigration:
         gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
         gpx_plugin_dir.mkdir(parents=True)
 
-        backup_dir = new_home / "database" / ".migration_backups"
+        backup_dir = new_home / ".migration_backups"
         backup_dir.mkdir()
         plugins_backup = backup_dir / "plugins.bak.20240101_120000"
         plugins_backup.mkdir()
@@ -335,14 +335,14 @@ class TestRollbackPluginsMigration:
 
         # Create current (migrated) plugins directory
         plugins_dest = new_home / "plugins"
-        plugins_dest.mkdir()
+        plugins_dest.mkdir(exist_ok=True)
 
         custom_dest = plugins_dest / "custom"
         custom_dest.mkdir()
         (custom_dest / "my_plugin.py").write_text("# New custom plugin")
 
         community_dest = plugins_dest / "community"
-        community_dest.mkdir()
+        community_dest.mkdir(exist_ok=True)
         (community_dest / "map_plugin.py").write_text("# New community plugin")
 
         # Test data
@@ -389,14 +389,16 @@ class TestRollbackGpxtrackerMigration:
         new_home = tmp_path / "home"
         new_home.mkdir()
 
-        # Create backup directory and GPX tracker backup
-        # Create parent directories for gpxtracker
-        gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
-        gpx_plugin_dir.mkdir(parents=True)
+        # Create current (migrated) GPX directory
+        gpx_dest = new_home / "plugins" / "community" / "gpxtracker" / "data"
+        gpx_dest.mkdir(parents=True)
+        (gpx_dest / "track_new.gpx").write_text("<gpx>New track</gpx>")
 
-        backup_dir = new_home / "database" / ".migration_backups"
+        # Create backup directory and GPX tracker backup.
+        # For this step rollback lookup searches under new_path.parent/.migration_backups
+        backup_dir = gpx_dest.parent / ".migration_backups"
         backup_dir.mkdir()
-        gpx_backup = backup_dir / "gpxtracker_data.bak.20240101_120000"
+        gpx_backup = backup_dir / "data.bak.20240101_120000"
         gpx_backup.mkdir()
 
         # Add GPX files to backup
@@ -404,11 +406,6 @@ class TestRollbackGpxtrackerMigration:
         (gpx_backup / "track_2024_01_02.gpx").write_text(
             "<gpx>Another backup track</gpx>"
         )
-
-        # Create current (migrated) GPX directory
-        gpx_dest = new_home / "plugins" / "community" / "gpxtracker" / "data"
-        gpx_dest.mkdir(parents=True)
-        (gpx_dest / "track_new.gpx").write_text("<gpx>New track</gpx>")
 
         # Test data
         completed_steps = ["gpxtracker"]
@@ -451,7 +448,7 @@ class TestRollbackMultipleComponents:
         gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
         gpx_plugin_dir.mkdir(parents=True)
 
-        backup_dir = new_home / "database" / ".migration_backups"
+        backup_dir = new_home / ".migration_backups"
         backup_dir.mkdir()
 
         # Create backups for multiple components

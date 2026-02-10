@@ -2478,7 +2478,9 @@ async def login_matrix_bot(
 
         # Get username
         if not username:
-            username = input("Enter Matrix username (without @): ")
+            username = input(
+                "Enter Matrix username or full user ID (e.g., bot or @bot:example.com): "
+            )
             prompted_for_credentials = True
 
         # Format username correctly using the original homeserver domain
@@ -2893,8 +2895,10 @@ async def login_matrix_bot(
     ):
         logger.exception("Error during login")
         try:
-            if client:
-                await client.close()
+            if client is not None:
+                maybe_coro = client.close()
+                if asyncio.iscoroutine(maybe_coro):
+                    await maybe_coro
         except (OSError, RuntimeError, ConnectionError) as cleanup_e:
             # Ignore errors during client cleanup - connection may already be closed
             logger.debug(f"Ignoring error during client cleanup: {cleanup_e}")

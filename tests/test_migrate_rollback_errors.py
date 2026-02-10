@@ -5,9 +5,9 @@ These tests verify graceful handling of rollback failures in the rollback_migrat
 Each test simulates different failure conditions to ensure error handling works correctly.
 """
 
-import os
 import shutil
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -50,8 +50,11 @@ class TestRollbackMigrationErrorHandling:
         # Create real error condition - make backup file inaccessible
         backup_file.chmod(0o000)  # Remove all permissions
 
-        # Execute rollback
-        result = rollback_migration(completed_steps, migrations, new_home)
+        # Force a restore failure path deterministically
+        with patch(
+            "mmrelay.migrate.shutil.copy2", side_effect=shutil.Error("copy failed")
+        ):
+            result = rollback_migration(completed_steps, migrations, new_home)
 
         # Restore permissions for cleanup
         backup_file.chmod(0o644)
@@ -81,8 +84,11 @@ class TestRollbackMigrationErrorHandling:
             # Missing "database" migration result
         ]
 
-        # Execute rollback
-        result = rollback_migration(completed_steps, migrations, new_home)
+        # Execute rollback with forced copy error
+        with patch(
+            "mmrelay.migrate.shutil.copy2", side_effect=shutil.Error("copy failed")
+        ):
+            result = rollback_migration(completed_steps, migrations, new_home)
 
         # Verify handling of missing step result
         assert (
@@ -270,7 +276,7 @@ class TestRollbackMigrationErrorHandling:
     def test_rollback_migration_shutil_error_during_restore(
         self, tmp_path: Path
     ) -> None:
-        """Test shutil.Error handling during file restoration."""
+        """Test restore failure handling when backup/file type mismatches."""
         # Create test structure
         new_home = tmp_path / "home"
         new_home.mkdir()
@@ -279,9 +285,10 @@ class TestRollbackMigrationErrorHandling:
         backup_dir = new_home / ".migration_backups"
         backup_dir.mkdir()
 
-        # Create backup as directory when file is expected (will cause shutil.Error)
+        # Create backup as a file while destination is a directory path.
+        # rollback_migration will attempt copy2(file -> directory path) and fail.
         backup_path = backup_dir / "store.bak.20240101_120000"
-        backup_path.mkdir()
+        backup_path.write_text("not-a-store-directory")
 
         # Create destination directory
         dest_dir = new_home / "matrix" / "store"
@@ -302,10 +309,13 @@ class TestRollbackMigrationErrorHandling:
             }
         ]
 
-        # Execute rollback
-        result = rollback_migration(completed_steps, migrations, new_home)
+        # Execute rollback with forced restore copy failure
+        with patch(
+            "mmrelay.migrate.shutil.copy2", side_effect=shutil.Error("copy failed")
+        ):
+            result = rollback_migration(completed_steps, migrations, new_home)
 
-        # Verify shutil.Error handling
+        # Verify restore failure handling
         assert result["success"] is False
         assert len(result["errors"]) == 1
         assert result["errors"][0]["step"] == "store"

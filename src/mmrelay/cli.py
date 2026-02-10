@@ -2011,7 +2011,21 @@ def handle_auth_login(args: argparse.Namespace) -> int:
                 logout_others=False,
             )
         )
-        return 0 if result else 1
+        if result:
+            from mmrelay.paths import get_credentials_path
+
+            creds_path = get_credentials_path()
+            # Keep non-interactive output quiet for automation and existing CLI behavior.
+            if len(provided_params) == 0:
+                if creds_path.exists():
+                    print(f"✅ credentials.json saved: {creds_path}")
+                else:
+                    print(
+                        "⚠️ Authentication succeeded but credentials file was not found at "
+                        f"expected path: {creds_path}"
+                    )
+            return 0
+        return 1
     except KeyboardInterrupt:
         print("\nAuthentication cancelled by user.")
         return 1

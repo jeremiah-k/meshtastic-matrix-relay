@@ -77,9 +77,9 @@ curl -fLo ./deploy/k8s/deployment.yaml "${BASE_URL}/deployment.yaml"
 curl -fLo ./deploy/k8s/kustomization.yaml "${BASE_URL}/kustomization.yaml"
 curl -fLo ./deploy/k8s/overlays/digest/kustomization.yaml "${BASE_URL}/overlays/digest/kustomization.yaml"
 
-# Optional: edit kustomization.yaml to set a specific image tag
+# Set a specific image tag (recommended; avoid floating latest in production/tests)
 ${EDITOR:-vi} ./deploy/k8s/kustomization.yaml
-# The default uses latest; set newTag to 1.3.0 (or another release tag) for stability
+# Set newTag to 1.3.0 (or your target release tag)
 # If you change the namespace, update the --namespace/-n flags below
 
 # Ensure the namespace exists
@@ -94,7 +94,7 @@ ${EDITOR:-vi} ./config.yaml
 # All runtime state lives under /data inside the container.
 # No legacy environment variables or CLI flags are required for container deployments.
 
-# Create a Matrix auth secret (environment-based auth)
+# Create a Matrix auth secret (environment-based auth bootstrap)
 # Set credentials (bash required for interactive prompts)
 read -p "Matrix homeserver URL (e.g., https://matrix.example.org): " HOMESERVER
 read -p "Matrix bot user ID (e.g., @bot:example.org): " BOT_USER_ID
@@ -105,6 +105,10 @@ kubectl create secret generic mmrelay-matrix-auth \
   --from-literal=MMRELAY_MATRIX_BOT_USER_ID="$BOT_USER_ID" \
   --from-literal=MMRELAY_MATRIX_PASSWORD="$PASSWORD" \
   --namespace mmrelay
+
+# NOTE: This bootstrap secret should be created once per fresh namespace/PVC.
+# Recreating namespace/PVC repeatedly forces new Matrix logins and may trigger
+# homeserver rate limits.
 
 # Store config.yaml in a Kubernetes Secret
 kubectl create secret generic mmrelay-config \

@@ -4,6 +4,8 @@ Last updated: 2026-02-10 (America/Chicago)
 
 Scope: repeatable validation of `1.2.11 -> 1.3.0` with focus on Docker dev image backwards compatibility first, then migration.
 
+K8s/Helm scope for this cycle: fresh installs only (no migration/upgrade path validation).
+
 ## Preconditions
 
 - `~/config.yaml.orig` exists and is valid.
@@ -128,6 +130,22 @@ Pass criteria:
 - PASS: Migration dry-run/apply/verify commands work.
 - PASS: Credentials moved to `~/.mmrelay/matrix/credentials.json`.
 - PASS: `verify-migration` passes; legacy cleanup suggestion shown for `/data/store`.
+
+## K8s/Helm fresh-install result (2026-02-10)
+
+- PASS: Static Kubernetes manifests deploy successfully from clean namespace with:
+  - `mmrelay-config` Secret
+  - `mmrelay-matrix-auth` Secret
+  - `kubectl apply -k deploy/k8s`
+- PASS: Helm chart deploys successfully from clean namespace with:
+  - `helm install mmrelay /home/agent/dev/mmrelay/deploy/helm/mmrelay -n mmrelay --values /tmp/mmrelay-helm-values.yaml`
+- PASS: Pod reaches running state; `mmrelay doctor` reports HOME at `/data` and no migration required.
+
+## Deployment smoothing updates applied
+
+- Updated static k8s default image tag to `1.3.0` (avoid floating `latest`).
+- Updated K8s/Helm docs to emphasize explicit tag pinning.
+- Added rate-limit guardrail: avoid repeated namespace/PVC recreation with Matrix bootstrap auth secret unless necessary.
 
 ## Production code changes applied from findings
 

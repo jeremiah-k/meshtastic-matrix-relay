@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from mmrelay.migrate import MigrationError, perform_migration, rollback_migration
+from mmrelay.migrate import MigrationError, perform_migration
 
 
 class TestMigrationAutomaticRollback:
@@ -54,7 +54,7 @@ class TestMigrationAutomaticRollback:
                 result = perform_migration(force=True)
 
         # Verify migration failed
-        assert result["success"] is True
+        assert result["success"] is False
         assert "config migration failed" in result["error"]
 
         # Verify rollback was called
@@ -102,7 +102,7 @@ class TestMigrationAutomaticRollback:
                 result = perform_migration(dry_run=True, force=True)
 
         # Verify migration failed
-        assert result["success"] is True
+        assert result["success"] is False
         assert result["dry_run"] is True
         assert "config migration failed" in result["error"]
 
@@ -139,7 +139,7 @@ class TestMigrationAutomaticRollback:
         with patch("mmrelay.migrate.rollback_migration") as mock_rollback:
             result = perform_migration(force=True)
 
-        # Verify migration failed
+        # Verify migration succeeds with no-op actions when nothing exists
         assert result["success"] is True
 
         # Verify no steps were completed
@@ -194,7 +194,7 @@ class TestMigrationAutomaticRollback:
                 result = perform_migration(force=True)
 
         # Verify migration failed
-        assert result["success"] is True
+        assert result["success"] is False
         assert "database migration failed" in result["error"]
 
         # Verify completed steps include credentials and config
@@ -259,7 +259,7 @@ class TestMigrationAutomaticRollback:
                 result = perform_migration(force=True)
 
         # Verify migration failed
-        assert result["success"] is True
+        assert result["success"] is False
         assert "logs migration failed" in result["error"]
 
         # Verify first 3 steps were completed
@@ -329,7 +329,7 @@ class TestMigrationAutomaticRollback:
                 result = perform_migration(force=True)
 
         # Verify migration failed
-        assert result["success"] is True
+        assert result["success"] is False
         assert "config migration failed" in result["error"]
 
         # Verify rollback was called and failed

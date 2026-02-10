@@ -53,6 +53,11 @@ kubectl create secret generic mmrelay-config \
 helm install mmrelay ./deploy/helm/mmrelay \
   --namespace mmrelay \
   --create-namespace
+
+# Optional but recommended: pin image tag explicitly for repeatable runs
+helm upgrade --install mmrelay ./deploy/helm/mmrelay \
+  --namespace mmrelay \
+  --set image.tag=1.3.0
 ```
 
 ### 6. Verify Deployment
@@ -222,6 +227,11 @@ On first startup, MMRelay will:
 2. Log into Matrix
 3. Create `/data/matrix/credentials.json` on the PVC
 4. Use existing `credentials.json` on subsequent restarts
+
+Rate-limit safety for repeat tests:
+
+- Do not repeatedly recreate namespace/PVC + `mmrelay-matrix-auth` unless required.
+- Reuse the same PVC between test iterations when possible to avoid repeated Matrix login bootstrap.
 
 ### Persistence
 

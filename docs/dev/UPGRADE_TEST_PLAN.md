@@ -596,17 +596,23 @@ microk8s kubectl create namespace mmrelay
 microk8s kubectl get namespaces
 ```
 
-### 4.2 Prepare Configuration Secret
+### 4.2 Prepare Configuration and Auth Secrets
 
 ```bash
-# Create ConfigMap from master config
-microk8s kubectl create configmap mmrelay-config \
+# Create config Secret from master config (realistic default)
+microk8s kubectl create secret generic mmrelay-config \
   --from-file=config.yaml=~/config.yaml.orig \
   --namespace=mmrelay
 
-# Verify ConfigMap
-microk8s kubectl get configmap -n mmrelay
-microk8s kubectl describe configmap mmrelay-config -n mmrelay
+# Create Matrix auth secret for fresh install bootstrap
+microk8s kubectl create secret generic mmrelay-matrix-auth \
+  --from-literal=MMRELAY_MATRIX_HOMESERVER=https://matrix.example.com \
+  --from-literal=MMRELAY_MATRIX_BOT_USER_ID=@bot:example.com \
+  --from-literal=MMRELAY_MATRIX_PASSWORD='<redacted>' \
+  --namespace=mmrelay
+
+# Verify Secrets
+microk8s kubectl get secret -n mmrelay | grep mmrelay
 ```
 
 ### 4.3 Deploy with Helm (v1.3.x only - no legacy test)
@@ -619,14 +625,14 @@ microk8s kubectl describe configmap mmrelay-config -n mmrelay
 # helm repo update
 
 # OR use local chart
-cd ~/dev/meshtastic-matrix-relay  # or wherever you have the repo
+cd ~/dev/mmrelay  # or wherever you have the repo
 
 # Create values override file
 cat > /tmp/mmrelay-values.yaml << 'EOF'
 image:
-  repository: ghcr.io/geoffwhittington/meshtastic-matrix-relay
-  tag: latest
-  pullPolicy: Always
+  repository: ghcr.io/jeremiah-k/mmrelay
+  tag: 1.3.0-dev-v13rc1-2-f3ea4ea
+  pullPolicy: IfNotPresent
 
 persistence:
   enabled: true
@@ -634,12 +640,16 @@ persistence:
   size: 1Gi
 
 config:
-  existingConfigMap: mmrelay-config
+  source: secret
+  name: mmrelay-config
 
-# Serial device passthrough (adjust as needed)
-serialDevice:
+matrixAuth:
   enabled: true
-  path: /dev/ttyUSB0
+  secretName: mmrelay-matrix-auth
+
+# Serial disabled for baseline fresh-install test
+serialDevice:
+  enabled: false
 
 # Resources
 resources:
@@ -652,7 +662,7 @@ resources:
 EOF
 
 # Install with Helm
-microk8s helm install mmrelay ./helm/mmrelay \
+microk8s helm install mmrelay ./deploy/helm/mmrelay \
   --namespace mmrelay \
   --values /tmp/mmrelay-values.yaml
 
@@ -661,34 +671,31 @@ microk8s kubectl rollout status deployment/mmrelay -n mmrelay
 
 # Verify pod is running
 microk8s kubectl get pods -n mmrelay
-microk8s kubectl describe pod -n mmrelay -l app=mmrelay
+microk8s kubectl describe pod -n mmrelay -l app.kubernetes.io/name=mmrelay
 ```
 
 ### 4.4 Verify Helm Deployment
 
 ```bash
 # Check pod logs
-microk8s kubectl logs -n mmrelay -l app=mmrelay --tail=100 -f
+microk8s kubectl logs -n mmrelay deployment/mmrelay --tail=100
 
 # Check persistent volume
 microk8s kubectl get pvc -n mmrelay
 microk8s kubectl get pv
 
-# Verify config mounted correctly
-microk8s kubectl exec -n mmrelay -it deployment/mmrelay -- cat /data/config.yaml | head -20
-
-# Test migration commands in pod
-microk8s kubectl exec -n mmrelay -it deployment/mmrelay -- mmrelay migrate --dry-run
-microk8s kubectl exec -n mmrelay -it deployment/mmrelay -- mmrelay verify-migration
+# Verify config and runtime paths
+microk8s kubectl exec -n mmrelay deployment/mmrelay -- cat /data/config.yaml | head -20
+microk8s kubectl exec -n mmrelay deployment/mmrelay -- mmrelay doctor
 ```
 
 **Expected Results:**
 
 - Pod starts and runs successfully
-- Config loads from ConfigMap
+- Config loads from Secret
 - Persistent volume attached and writable
 - Relay connects to Meshtastic and Matrix
-- Migration verification passes
+- `mmrelay doctor` shows unified `/data` paths and no migration required
 
 ### 4.5 Test Helm Upgrade
 
