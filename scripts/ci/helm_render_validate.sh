@@ -292,13 +292,6 @@ test_expected_failure \
 	--set config.create=true \
 	--set-string config.data=
 
-test_expected_failure \
-	"empty-credentials-data" \
-	--set config.enabled=true \
-	--set credentials.enabled=true \
-	--set credentials.create=true \
-	--set-string credentials.data=
-
 echo ""
 echo "=================================="
 echo "Step 3: Render Variants"
@@ -310,8 +303,7 @@ render_and_validate \
 	--set config.source=secret \
 	--set config.name=mmrelay-config \
 	--set config.key=config.yaml \
-	--set persistence.enabled=true \
-	--set credentials.enabled=false
+	--set persistence.enabled=true
 
 render_and_validate \
 	"configmap-config" \
@@ -319,19 +311,17 @@ render_and_validate \
 	--set config.source=configmap \
 	--set config.name=mmrelay-config \
 	--set config.key=config.yaml \
-	--set persistence.enabled=true \
-	--set credentials.enabled=false
+	--set persistence.enabled=true
 
 render_and_validate \
-	"with-credentials" \
+	"with-matrixauth" \
 	--set config.enabled=true \
 	--set config.source=secret \
 	--set config.name=mmrelay-config \
 	--set config.key=config.yaml \
 	--set persistence.enabled=true \
-	--set credentials.enabled=true \
-	--set credentials.secretName=mmrelay-credentials \
-	--set credentials.key=credentials.json
+	--set matrixAuth.enabled=true \
+	--set matrixAuth.secretName=mmrelay-matrix-auth
 
 render_and_validate \
 	"persistence-disabled-no-matrixauth" \
@@ -340,8 +330,7 @@ render_and_validate \
 	--set config.name=mmrelay-config \
 	--set config.key=config.yaml \
 	--set persistence.enabled=false \
-	--set matrixAuth.enabled=false \
-	--set credentials.enabled=false
+	--set matrixAuth.enabled=false
 
 render_and_validate \
 	"persistence-disabled-matrixauth" \
@@ -350,8 +339,7 @@ render_and_validate \
 	--set config.name=mmrelay-config \
 	--set config.key=config.yaml \
 	--set persistence.enabled=false \
-	--set matrixAuth.enabled=true \
-	--set credentials.enabled=false
+	--set matrixAuth.enabled=true
 
 render_and_validate \
 	"networkpolicy-enabled" \
@@ -360,7 +348,6 @@ render_and_validate \
 	--set config.name=mmrelay-config \
 	--set config.key=config.yaml \
 	--set persistence.enabled=true \
-	--set credentials.enabled=false \
 	--set networkPolicy.enabled=true
 
 echo ""
