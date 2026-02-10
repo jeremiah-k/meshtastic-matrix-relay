@@ -55,9 +55,13 @@ class MessageQueue:
         """
         Initialize the MessageQueue's internal structures and default runtime state.
 
-        Sets up the bounded FIFO queue, timing/state variables for rate limiting and delivery tracking, a thread lock for state transitions, and counters/placeholders for the processor task and executor.
+        Sets up the unbounded FIFO queue with explicit size checks, timing/state variables for rate limiting and delivery tracking, a thread lock for state transitions, and counters/placeholders for the processor task and executor.
+
+        Note: The queue is intentionally unbounded (no maxlen) to ensure all message drops are
+        explicitly logged. Size enforcement is handled in enqueue() with proper logging when
+        messages are dropped, rather than silent eviction by deque's maxlen.
         """
-        self._queue: deque[QueuedMessage] = deque(maxlen=MAX_QUEUE_SIZE)
+        self._queue: deque[QueuedMessage] = deque()  # Explicit size checks in enqueue()
         self._processor_task: Optional[asyncio.Task[None]] = None
         self._running = False
         self._lock = threading.Lock()

@@ -69,6 +69,17 @@ containerSecurityContext:
 
 # Init container configuration
 # Copies config.yaml from Secret/ConfigMap to PVC and sets up directory structure
+#
+# SECURITY NOTE: The init container runs as root (runAsUser: 0) to perform chown on the
+# PVC mount point. This is required because PVCs are typically owned by root when created,
+# and we need to change ownership so the non-root main container (runAsUser: 1000) can
+# write to it. The init container drops all capabilities except CHOWN/FOWNER/DAC_OVERRIDE
+# and has a read-only root filesystem. This is a one-time operation during pod startup.
+#
+# For environments with strict security policies, you may:
+# 1. Pre-provision the PVC with correct ownership (fsGroup in podSecurityContext handles this)
+# 2. Use a security context that allows fsGroup to manage permissions
+# 3. Disable the init container if your storage provisioner handles ownership correctly
 initContainer:
   enabled: true
   image:
