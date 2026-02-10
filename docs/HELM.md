@@ -105,6 +105,9 @@ helm upgrade mmrelay ./deploy/helm/mmrelay \
 
 ### Config Injection
 
+Primary recommendation: keep using a local `config.yaml` file and create `mmrelay-config` as a **Secret**.
+This is the default chart behavior and the simplest operational path.
+
 The chart supports two patterns for injecting `config.yaml`:
 
 #### Pattern A: Secret (Default)
@@ -127,7 +130,7 @@ kubectl create secret generic mmrelay-config \
   --namespace mmrelay
 ```
 
-#### Pattern B: ConfigMap
+#### Pattern B (optional, advanced): ConfigMap
 
 ```yaml
 config:
@@ -139,7 +142,7 @@ config:
   data: ""
 ```
 
-Create the ConfigMap externally:
+Create the ConfigMap externally (only if you intentionally choose ConfigMap mode):
 
 ```bash
 kubectl create configmap mmrelay-config \

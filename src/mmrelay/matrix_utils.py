@@ -121,7 +121,7 @@ from mmrelay.meshtastic_utils import connect_meshtastic, send_text_reply
 
 # Import meshtastic protobuf for port numbers when needed
 from mmrelay.message_queue import get_message_queue, queue_message
-from mmrelay.paths import get_credentials_path
+from mmrelay.paths import E2EENotSupportedError, get_credentials_path
 
 # Import nio exception types with error handling for test environments.
 # matrix-nio is not marked py.typed in our env; keep import-untyped for mypy --strict.
@@ -2595,9 +2595,28 @@ async def login_matrix_bot(
         # Get the E2EE store path only if E2EE is enabled
         store_path = None
         if e2ee_enabled:
-            store_path = str(await asyncio.to_thread(get_e2ee_store_dir))
-            await asyncio.to_thread(os.makedirs, store_path, exist_ok=True)
-            logger.debug(f"Using E2EE store path: {store_path}")
+            try:
+                store_path = str(await asyncio.to_thread(get_e2ee_store_dir))
+            except E2EENotSupportedError as e:
+                logger.warning(
+                    "E2EE is not supported on this platform; "
+                    "disabling E2EE for this login session: %s",
+                    e,
+                )
+                e2ee_enabled = False
+                store_path = None
+            except OSError as e:
+                logger.warning(
+                    "Could not resolve E2EE store path; "
+                    "disabling E2EE for this login session: %s",
+                    e,
+                )
+                e2ee_enabled = False
+                store_path = None
+
+            if store_path is not None:
+                await asyncio.to_thread(os.makedirs, store_path, exist_ok=True)
+                logger.debug(f"Using E2EE store path: {store_path}")
         else:
             logger.debug("E2EE disabled in configuration, not using store path")
 

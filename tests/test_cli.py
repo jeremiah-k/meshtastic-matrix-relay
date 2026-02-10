@@ -1432,8 +1432,11 @@ class TestAuthLogin(unittest.TestCase):
         mock_print.assert_any_call("=========================")
 
     @patch("mmrelay.matrix_utils.login_matrix_bot")
+    @patch("mmrelay.cli.ensure_directories")
     @patch("builtins.print")
-    def test_handle_auth_login_interactive_mode_failure(self, mock_print, mock_login):
+    def test_handle_auth_login_interactive_mode_failure(
+        self, mock_print, mock_ensure_dirs, mock_login
+    ):
         """Test interactive mode with failed login."""
         # ASYNC MOCK FIX: Return value directly, not a coroutine
         mock_login.return_value = False
@@ -1443,14 +1446,16 @@ class TestAuthLogin(unittest.TestCase):
 
         # Verify results
         self.assertEqual(result, 1)
+        mock_ensure_dirs.assert_called_once_with(create_missing=True)
         mock_login.assert_called_once_with(
             homeserver=None, username=None, password=None, logout_others=False
         )
 
     @patch("mmrelay.matrix_utils.login_matrix_bot")
+    @patch("mmrelay.cli.ensure_directories")
     @patch("builtins.print")
     def test_handle_auth_login_non_interactive_mode_success(
-        self, mock_print, mock_login
+        self, mock_print, mock_ensure_dirs, mock_login
     ):
         """Test non-interactive mode (all parameters provided) with successful login."""
         # ASYNC MOCK FIX: Return value directly, not a coroutine
@@ -1466,6 +1471,7 @@ class TestAuthLogin(unittest.TestCase):
 
         # Verify results
         self.assertEqual(result, 0)
+        mock_ensure_dirs.assert_called_once_with(create_missing=True)
         mock_login.assert_called_once_with(
             homeserver="https://matrix.org",
             username="@bot:matrix.org",
@@ -1476,9 +1482,10 @@ class TestAuthLogin(unittest.TestCase):
         mock_print.assert_not_called()
 
     @patch("mmrelay.matrix_utils.login_matrix_bot")
+    @patch("mmrelay.cli.ensure_directories")
     @patch("builtins.print")
     def test_handle_auth_login_non_interactive_mode_failure(
-        self, mock_print, mock_login
+        self, mock_print, mock_ensure_dirs, mock_login
     ):
         """Test non-interactive mode with failed login."""
         # ASYNC MOCK FIX: Return value directly, not a coroutine
@@ -1494,6 +1501,7 @@ class TestAuthLogin(unittest.TestCase):
 
         # Verify results
         self.assertEqual(result, 1)
+        mock_ensure_dirs.assert_called_once_with(create_missing=True)
         mock_login.assert_called_once()
 
     @patch("builtins.print")
@@ -1661,8 +1669,11 @@ class TestAuthLogin(unittest.TestCase):
         mock_print.assert_called_once_with(expected_message)
 
     @patch("mmrelay.matrix_utils.login_matrix_bot")
+    @patch("mmrelay.cli.ensure_directories")
     @patch("builtins.print")
-    def test_handle_auth_login_keyboard_interrupt(self, mock_print, mock_login):
+    def test_handle_auth_login_keyboard_interrupt(
+        self, mock_print, mock_ensure_dirs, mock_login
+    ):
         """Test handling of KeyboardInterrupt during login."""
         # ASYNC MOCK FIX: Make the mock raise KeyboardInterrupt when called
         mock_login.side_effect = KeyboardInterrupt()
@@ -1672,11 +1683,15 @@ class TestAuthLogin(unittest.TestCase):
 
         # Verify results
         self.assertEqual(result, 1)
+        mock_ensure_dirs.assert_called_once_with(create_missing=True)
         mock_print.assert_any_call("\nAuthentication cancelled by user.")
 
     @patch("mmrelay.matrix_utils.login_matrix_bot")
+    @patch("mmrelay.cli.ensure_directories")
     @patch("builtins.print")
-    def test_handle_auth_login_runtime_exception(self, mock_print, mock_login):
+    def test_handle_auth_login_runtime_exception(
+        self, mock_print, mock_ensure_dirs, mock_login
+    ):
         """Test handling of runtime exceptions during login."""
         # ASYNC MOCK FIX: Make the mock raise RuntimeError when called
         mock_login.side_effect = RuntimeError("Test error")
@@ -1686,6 +1701,7 @@ class TestAuthLogin(unittest.TestCase):
 
         # Verify results
         self.assertEqual(result, 1)
+        mock_ensure_dirs.assert_called_once_with(create_missing=True)
         mock_print.assert_any_call("\nError during authentication: Test error")
 
     @patch("mmrelay.matrix_utils.login_matrix_bot")
@@ -1804,7 +1820,10 @@ class TestAuthStatus(unittest.TestCase):
                 if call.args[0].startswith("✅ Found credentials.json at: "):
                     found_line = call.args[0]
                     break
-        self.assertIsNotNone(found_line)
+        self.assertIsNotNone(
+            found_line,
+            "Expected a print call starting with '✅ Found credentials.json at: ' but none found",
+        )
         mock_print.assert_any_call("   Homeserver: https://matrix.org")
         mock_print.assert_any_call("   User ID: @bot:matrix.org")
         mock_print.assert_any_call("   Device ID: DEVICEABC123")
@@ -1900,9 +1919,19 @@ class TestAuthStatus(unittest.TestCase):
         # Verify results - invalid credentials should be skipped and auth is reported missing
         self.assertEqual(result, 1)
 
-        # Check printed output shows invalid credentials were skipped
-        mock_print.assert_any_call(
-            "⚠️  Skipping invalid credentials.json at /home/user/.mmrelay/credentials.json (missing required fields)"
+        # Check printed output shows invalid credentials were skipped (path may vary)
+        found_skip_warning = False
+        for call in mock_print.call_args_list:
+            if call.args and isinstance(call.args[0], str):
+                text = call.args[0]
+                if text.startswith(
+                    "⚠️  Skipping invalid credentials.json at "
+                ) and text.endswith("(missing required fields)"):
+                    found_skip_warning = True
+                    break
+        self.assertTrue(
+            found_skip_warning,
+            "Expected path-agnostic invalid credentials warning print call",
         )
         mock_print.assert_any_call("Run 'mmrelay auth login' to authenticate")
 
@@ -2430,9 +2459,8 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
         mock_print.assert_any_call("   Setup: mmrelay auth login")
 
     @patch("mmrelay.cli._validate_credentials_json")
-    @patch("builtins.print")
     def test_validate_matrix_authentication_propagates_base_config(
-        self, mock_print, mock_validate_creds
+        self, mock_validate_creds
     ):
         """Test that base_config is forwarded to _validate_credentials_json."""
         config_path = "/home/user/.mmrelay/config.yaml"

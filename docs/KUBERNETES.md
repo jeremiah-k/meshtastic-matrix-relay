@@ -138,6 +138,9 @@ This keeps sensitive data out of the manifests so you can publish the manifests 
 
 ### Config injection options
 
+Primary recommendation: use a `config.yaml` file and create `mmrelay-config` as a **Secret**.
+This keeps operator workflow simple and consistent with the rest of the docs.
+
 MMRelay supports two patterns for injecting `config.yaml`:
 
 #### Pattern A (default): Secret
@@ -156,9 +159,10 @@ This is the recommended approach because:
 - Secrets are not logged or tracked in clear text by default
 - Supports rotation via external secret management systems
 
-#### Pattern B (optional): ConfigMap
+#### Pattern B (optional, advanced): ConfigMap
 
-If you prefer ConfigMaps (e.g., for non-sensitive config), uncomment the ConfigMap pattern in `deployment.yaml`:
+If your organization requires ConfigMaps (for non-sensitive config), you can switch to this mode.
+For most users, keep the default Secret-based flow to avoid extra configuration complexity.
 
 1. Create the ConfigMap:
 
@@ -531,7 +535,7 @@ These are **not** persistent and should not be backed up.
 The PVC is the **single source of truth** for persistent data:
 
 - `/data` (PVC): **Authoritative** - persistent, backed up
-- `/data/config.yaml`: **Not persistent** - injected from Secret/ConfigMap, not backed up (unless it is manually copied to the PVC)
+- `/data/config.yaml`: **Persistent after first startup** - copied by the init container from Secret/ConfigMap onto the PVC; subsequent pod restarts use the PVC copy
 - `/run/mmrelay`: **Not persistent** - recreated on each pod start
 - `/tmp`: **Not persistent** - temporary storage
 
@@ -631,9 +635,15 @@ Even with `fsGroup: 1000` set, some CSI drivers mount volumes owned by root. To 
 
 ```yaml
 initContainers:
-  - name: fix-data-perms
+  - name: init-mmrelay
     image: busybox:1.36
-    command: ["chown", "-R", "1000:1000", "/data"]
+    command:
+      - sh
+      - -c
+      - |
+        if [ ! -f /data/config.yaml ]; then cp /config-source/config.yaml /data/config.yaml; fi
+        mkdir -p /data/matrix
+        chown -R 1000:1000 /data
 ```
 
 This guarantees:

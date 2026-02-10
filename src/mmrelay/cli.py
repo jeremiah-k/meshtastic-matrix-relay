@@ -1599,8 +1599,6 @@ def main() -> int:
         _apply_dir_overrides(args)
 
         # Ensure application directories exist after overrides are applied
-        from mmrelay.paths import ensure_directories
-
         ensure_directories(create_missing=True)
 
         args_dict = vars(args)

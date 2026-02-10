@@ -109,7 +109,7 @@ _setup_with_migration_check:
 			if [ -f .env ] && grep -q '^MMRELAY_HOME=' .env 2>/dev/null && ! grep -q '^MMRELAY_HOST_HOME=' .env 2>/dev/null; then \
 				echo "Updating .env file..."; \
 				tmpfile=$$(mktemp) && \
-				sed -e 's|^MMRELAY_HOME=$$HOME$$|MMRELAY_HOST_HOME=$$HOME|' -e 's|^MMRELAY_HOME=|MMRELAY_HOST_HOME=|' .env > "$$tmpfile" && mv "$$tmpfile" .env || rm -f "$$tmpfile"; \
+				awk '{ if ($$0 ~ /^MMRELAY_HOME=/) sub(/^MMRELAY_HOME=/, "MMRELAY_HOST_HOME="); print }' .env > "$$tmpfile" && mv "$$tmpfile" .env || rm -f "$$tmpfile"; \
 				echo "  ✓ .env updated (MMRELAY_HOME → MMRELAY_HOST_HOME)"; \
 			fi; \
 			if [ -f docker-compose.yaml ] && grep -q ':/app/' docker-compose.yaml 2>/dev/null; then \
