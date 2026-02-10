@@ -390,7 +390,7 @@ docker compose down
 cat > docker-compose.yaml << 'EOF'
 services:
   mmrelay:
-    image: ghcr.io/jeremiah-k/mmrelay:latest
+    image: ghcr.io/jeremiah-k/mmrelay:1.3.0-dev-v13rc1-2-f3ea4ea
     container_name: mmrelay
     restart: unless-stopped
     stop_grace_period: 30s
@@ -722,7 +722,7 @@ microk8s kubectl get all -n mmrelay 2>/dev/null || echo "Namespace deleted succe
 ```bash
 # Check all installation methods are cleaned up
 which mmrelay  # Should still exist if pipx not uninstalled
-pipx list | grep meshtastic  # Should show current version
+pipx list | grep mmrelay  # Should show current version
 
 systemctl --user status mmrelay  # Should be disabled/stopped
 
