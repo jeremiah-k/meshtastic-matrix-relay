@@ -2702,7 +2702,6 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                 return
 
         # Normalize channel to integer to prevent type mismatch issues
-        # Meshtastic packets may contain channel as string or int
         try:
             channel = int(channel)
         except (ValueError, TypeError):
