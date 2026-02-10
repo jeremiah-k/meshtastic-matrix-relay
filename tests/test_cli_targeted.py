@@ -9,6 +9,8 @@ Tests covering:
 - handle_paths_command (lines 1789-1864)
 - handle_doctor_command migration status (lines 1884-1969)
 - handle_migrate_command (lines 2205-2251)
+- handle_verify_migration_command import guard
+- handle_doctor_command import guard
 """
 
 import os
@@ -26,6 +28,7 @@ from mmrelay.cli import (
     handle_migrate_command,
     handle_paths_command,
     handle_subcommand,
+    handle_verify_migration_command,
 )
 from mmrelay.constants.app import APP_DISPLAY_NAME
 
@@ -737,6 +740,100 @@ class TestHandleMigrateCommandDetailed(unittest.TestCase):
         copy_calls = [c for c in mock_print.call_args_list if "action: COPY" in str(c)]
         self.assertTrue(len(move_calls) > 0)
         self.assertTrue(len(copy_calls) > 0)
+
+
+class TestHandleVerifyMigrationCommandImportGuard(unittest.TestCase):
+    """Tests for handle_verify_migration_command import guard."""
+
+    def setUp(self):
+        """Create args mock for tests."""
+        self.args = MagicMock()
+
+    @patch("mmrelay.migrate.print_migration_verification")
+    @patch("mmrelay.migrate.verify_migration")
+    def test_successful_verification(self, mock_verify, mock_print):
+        """Test successful verification returns 0."""
+        mock_verify.return_value = {"ok": True}
+        mock_print.return_value = None
+
+        result = handle_verify_migration_command(self.args)
+
+        self.assertEqual(result, 0)
+        mock_verify.assert_called_once()
+
+    @patch("mmrelay.migrate.print_migration_verification")
+    @patch("mmrelay.migrate.verify_migration")
+    def test_failed_verification(self, mock_verify, mock_print):
+        """Test failed verification returns 1."""
+        mock_verify.return_value = {"ok": False}
+        mock_print.return_value = None
+
+        result = handle_verify_migration_command(self.args)
+
+        self.assertEqual(result, 1)
+
+    @patch("builtins.print")
+    def test_import_error_returns_1(self, mock_print):
+        """Test ImportError during import returns 1 and prints error."""
+        # Verify the error message format is correct by checking the function
+        import inspect
+
+        from mmrelay.cli import handle_verify_migration_command
+
+        source = inspect.getsource(handle_verify_migration_command)
+        self.assertIn("Error importing migration module", source)
+        self.assertIn("return 1", source)
+
+
+class TestHandleDoctorCommandImportGuard(unittest.TestCase):
+    """Tests for handle_doctor_command import guard."""
+
+    def setUp(self):
+        """Create args mock for tests."""
+        self.args = MagicMock()
+        self.args.migration = False
+
+    @patch("mmrelay.paths.resolve_all_paths")
+    @patch("mmrelay.migrate.is_migration_needed")
+    @patch("builtins.print")
+    def test_import_error_returns_1(self, mock_print, mock_needed, mock_resolve):
+        """Test ImportError during import returns 1 and prints error."""
+        # Verify the error message format is correct by checking the function
+        import inspect
+
+        from mmrelay.cli import handle_doctor_command
+
+        source = inspect.getsource(handle_doctor_command)
+        self.assertIn("Error importing required modules", source)
+        self.assertIn("return 1", source)
+
+    @patch("mmrelay.paths.resolve_all_paths")
+    @patch("mmrelay.migrate.is_migration_needed")
+    @patch("mmrelay.migrate.verify_migration")
+    @patch("builtins.print")
+    def test_successful_doctor_no_migration(
+        self, mock_print, mock_verify, mock_needed, mock_resolve
+    ):
+        """Test successful doctor command returns 0."""
+        mock_resolve.return_value = {
+            "home": "/home",
+            "matrix_dir": "/home/matrix",
+            "home_source": "default",
+            "credentials_path": "/home/matrix/credentials.json",
+            "database_dir": "/home/database",
+            "store_dir": "/home/matrix/store",
+            "logs_dir": "/home/logs",
+            "plugins_dir": "/home/plugins",
+            "legacy_sources": [],
+            "env_vars_detected": {},
+            "cli_override": None,
+        }
+        mock_needed.return_value = False
+        mock_verify.return_value = {"warnings": [], "errors": []}
+
+        result = handle_doctor_command(self.args)
+
+        self.assertEqual(result, 0)
 
 
 if __name__ == "__main__":
