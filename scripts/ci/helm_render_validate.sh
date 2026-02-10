@@ -52,7 +52,7 @@ trap cleanup EXIT
 mkdir -p "${RENDER_DIR}"
 
 # helm_in_container runs the configured Helm container image, mounting the current working directory at /workdir and forwarding all arguments to the containerized Helm command.
-# helm_in_container runs Helm inside the configured container image using the detected container runtime and forwards all provided Helm arguments.
+# helm_in_container mounts the current working directory into /workdir and runs Helm in the configured container image via the detected container runtime, forwarding all provided Helm arguments; returns non-zero if no container runtime is available or the container run fails.
 helm_in_container() {
 	if [[ -z ${CONTAINER_CMD} ]]; then
 		echo -e "${RED}ERROR: Helm container unavailable${NC}"
@@ -137,7 +137,7 @@ PY
 	return $?
 }
 
-# validate_pre_rendered_samples searches SAMPLE_MANIFEST_DIR (default deploy/k8s) for up to two levels of `.yaml` files and validates each with `validate_manifest`, printing status and exiting non‑zero on the first validation failure.
+# validate_pre_rendered_samples validates up to two levels of `.yaml` files under SAMPLE_MANIFEST_DIR (default deploy/k8s) using `validate_manifest`, printing per-file status and returning non‑zero on the first validation failure.
 validate_pre_rendered_samples() {
 	local sample_dir="${SAMPLE_MANIFEST_DIR:-deploy/k8s}"
 	local files=()
@@ -181,7 +181,7 @@ validate_pre_rendered_samples() {
 	return 0
 }
 
-# render_and_validate renders the Helm chart variant named by the first argument into RENDER_DIR/<name>.yaml, validates the rendered manifest, prints error and rendered output on failure, and returns non-zero if rendering or validation fail.
+# render_and_validate renders the Helm chart variant named by the first argument into RENDER_DIR/<name>.yaml, validates the rendered manifest, prints render or validator output on failure, and returns non-zero on render or validation failure; any additional arguments are forwarded to helm template.
 render_and_validate() {
 	local name="$1"
 	shift
@@ -227,7 +227,8 @@ render_and_validate() {
 	echo -e "${GREEN}✓ Validated ${name}${NC}"
 }
 
-# test_expected_failure tests that rendering the mmrelay Helm chart with the given scenario name and optional Helm value overrides fails as expected; it saves Helm output to the render directory, returns success when rendering fails (and reports whether the failure message contains "empty", "required", or "missing"), and returns failure if rendering unexpectedly succeeds.
+# test_expected_failure tests that rendering the mmrelay Helm chart with the given scenario name and optional Helm value overrides fails as expected, saving Helm output to RENDER_DIR/<name>-expected-fail.yaml.
+# It returns success when rendering fails (and reports whether the failure message contains "empty", "required", or "missing"), and returns failure if rendering unexpectedly succeeds.
 test_expected_failure() {
 	local name="$1"
 	shift

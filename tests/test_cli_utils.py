@@ -824,7 +824,11 @@ class TestLogoutMatrixBot:
 
     @pytest.mark.asyncio
     async def test_logout_matrix_bot_close_main_client_timeout(self):
-        """Test logout when closing main client raises TimeoutError (lines 763-764)."""
+        """
+        Verify logout_matrix_bot returns True when closing the main client raises a TimeoutError.
+        
+        Patches credential loading, AsyncClient construction, SSL context creation, session cleanup, and logger; simulates a timeout when closing the main AsyncClient and asserts the function completes successfully and logs a debug message.
+        """
         from mmrelay.cli_utils import logout_matrix_bot
 
         mock_credentials = {
@@ -867,9 +871,9 @@ class TestLogoutMatrixBot:
     @pytest.mark.asyncio
     async def test_logout_matrix_bot_process_exception(self):
         """
-        Verify logout_matrix_bot returns False and logs an exception when creating the AsyncClient raises an unexpected error.
-
-        Patches credential loading and SSL context creation, causes AsyncClient construction to raise, and asserts the function returns False, calls logger.exception once, and prints an error message.
+        Ensure logout_matrix_bot handles exceptions raised during AsyncClient construction.
+        
+        Patches credential loading and SSL context creation, forces AsyncClient construction to raise an unexpected Exception, and asserts that logout_matrix_bot returns False, calls logger.exception once, and prints an error message.
         """
         from mmrelay.cli_utils import logout_matrix_bot
 

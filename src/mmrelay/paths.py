@@ -50,10 +50,10 @@ class UnknownPluginTypeError(ValueError):
 
     def __init__(self, plugin_type: str | None) -> None:
         """
-        Initialize the exception with the unrecognized plugin_type.
-
+        Create an UnknownPluginTypeError for an unrecognized plugin type.
+        
         Parameters:
-            plugin_type (str | None): The plugin type value that was not recognized; included in the exception message.
+            plugin_type (str | None): The unrecognized plugin type included in the exception message.
         """
         super().__init__(f"Unknown plugin_type: {plugin_type!r}")
 
@@ -92,16 +92,12 @@ def reset_home_override() -> None:
 
 def get_home_dir() -> Path:
     """
-    Determine the application home directory according to CLI override, environment variables, and platform defaults.
-
-    Resolution order:
-    1. CLI override set via set_home_override()
-    2. MMRELAY_HOME environment variable
-    3. Legacy environment variables MMRELAY_BASE_DIR and MMRELAY_DATA_DIR (considered only during the deprecation window; warnings are emitted when used)
-    4. Platform defaults: ~/.mmrelay on Linux/macOS, and the OS user data directory on Windows
-
+    Resolve the application home directory using CLI override, environment variables, and platform defaults.
+    
+    Resolution precedence: 1) CLI override set by set_home_override(), 2) MMRELAY_HOME environment variable, 3) legacy environment variables MMRELAY_BASE_DIR / MMRELAY_DATA_DIR (during the deprecation window), 4) platform defaults (~/.mmrelay on Linux/macOS, OS user data dir on Windows). Emits deprecation warnings when legacy environment variables are detected or ignored.
+    
     Returns:
-        Path: Resolved application home directory.
+        Path: The resolved application home directory.
     """
 
     # Check CLI override first
@@ -229,10 +225,10 @@ def get_credentials_path() -> Path:
 
 def get_matrix_dir() -> Path:
     """
-    Resolve the directory used for Matrix-specific runtime artifacts.
-
+    Get the Matrix runtime directory under the resolved application home.
+    
     Returns:
-        Path: Path to the Matrix directory under the resolved application home.
+        Path to the Matrix directory under the resolved application home.
     """
     return get_home_dir() / MATRIX_DIRNAME
 
@@ -250,20 +246,20 @@ def get_database_dir() -> Path:
 
 def get_database_path() -> Path:
     """
-    Return the file path for the application's SQLite database.
-
+    Resolve the path to the application's SQLite database file.
+    
     Returns:
-        Path: Path to the SQLite file "meshtastic.sqlite" located in the application's database directory.
+        Path: Path to the file "meshtastic.sqlite" located in the application's database directory.
     """
     return get_database_dir() / "meshtastic.sqlite"
 
 
 def get_logs_dir() -> Path:
     """
-    Locate the application's logs directory under the resolved home.
-
+    Resolve the application's logs directory.
+    
     Returns:
-        Path: Path to the logs directory (home / "logs").
+        Path: Path to the logs directory located inside the resolved home (home / "logs").
     """
     home = get_home_dir()
     return home / "logs"
@@ -304,10 +300,10 @@ def get_e2ee_store_dir() -> Path:
 
 def get_plugins_dir() -> Path:
     """
-    Resolve the plugins root directory within the application home.
-
+    Return the plugins root directory under the resolved application home.
+    
     Returns:
-        The path to the plugins directory located under the application home.
+        Path: Path to the plugins directory located inside the application home.
     """
     home = get_home_dir()
     return home / "plugins"
@@ -366,14 +362,12 @@ def _normalize_plugin_type(plugin_type: str | None) -> str | None:
 
 def get_plugin_code_dir(plugin_name: str, plugin_type: str | None = None) -> Path:
     """
-    Locate the Tier 1 code directory for a plugin.
-
-    If `plugin_type` is provided it selects the corresponding plugin root; if omitted the function checks the custom then community plugin roots and falls back to the bundled core plugins path.
-
+    Locate the filesystem path for a plugin's code directory.
+    
     Parameters:
         plugin_name (str): Plugin directory name.
-        plugin_type (str | None): One of "custom", "community", or "core". If None, the function will search custom then community and finally use the bundled core location.
-
+        plugin_type (str | None): One of "custom", "community", or "core". If `None`, searches the custom then community plugin roots and falls back to the bundled core plugins location.
+    
     Returns:
         Path: Filesystem path to the plugin's code directory.
     """
@@ -397,17 +391,17 @@ def get_plugin_data_dir(
     plugin_name: str, subdir: str | None = None, plugin_type: str | None = None
 ) -> Path:
     """
-    Return the filesystem path for a plugin's Tier 2 data directory.
-
+    Locate the Tier 2 data directory for a plugin, optionally returning a specific subdirectory.
+    
+    If `plugin_type` is "custom", "community", or "core", the corresponding plugin area is used. If `plugin_type` is omitted, the function checks the custom and community plugin areas for the named plugin and falls back to the core plugins area if not found.
+    
     Parameters:
         plugin_name (str): Plugin identifier.
-        subdir (str | None): Optional subdirectory name inside the plugin's data directory.
-        plugin_type (str | None): Plugin category ("custom", "community", or "core").
-            When omitted, the function will try to resolve the plugin under
-            custom/community directories and fall back to the core plugins area.
-
+        subdir (str | None): Optional subdirectory name inside the plugin's data directory. If provided, the returned path points to this subdirectory.
+        plugin_type (str | None): Optional plugin category: "custom", "community", or "core". If omitted, the function will search custom then community and fall back to core.
+    
     Returns:
-        Path: Path to the plugin's data directory (filesystem Tier 2 path).
+        Path: Path to the plugin's data directory, or to the specified subdirectory within it.
     """
     normalized_type = _normalize_plugin_type(plugin_type)
     if normalized_type == "custom":
@@ -431,13 +425,13 @@ def get_plugin_data_dir(
 
 def get_plugin_database_path(plugin_name: str) -> Path:
     """
-    Get the filesystem path to a plugin-specific database file used for diagnostics.
-
+    Locate the filesystem path for a plugin-specific diagnostics database file.
+    
     Parameters:
         plugin_name (str): Plugin identifier used to compose the filename.
-
+    
     Returns:
-        Path: Path to the plugin database file (home/database/plugin_data_{plugin_name}).
+        Path: Path to the plugin database file at <home>/database/plugin_data_{plugin_name}.
     """
     # NOTE: MMRelay stores plugin data in the main SQLite database today.
     # This helper exists for diagnostics and potential future per-plugin DB files.
@@ -446,11 +440,11 @@ def get_plugin_database_path(plugin_name: str) -> Path:
 
 def ensure_directories(*, create_missing: bool = True) -> None:
     """
-    Ensure the MMRelay filesystem layout exists by creating or reporting missing directories.
-
-    When `create_missing` is True, create any required directories if they do not exist; when False, do not modify the filesystem and report each missing directory. The set of checked directories excludes the E2EE store on Windows.
+    Ensure MMRelay's required filesystem directories exist.
+    
+    When `create_missing` is True, missing directories are created (with parents). When False, directories are not modified and any missing paths are reported via warnings. The set of checked directories excludes the E2EE store on Windows.
     Parameters:
-        create_missing (bool): If True, create missing directories; if False, only report missing ones.
+        create_missing (bool): If True, create any missing directories; if False, only report missing ones.
     """
 
     raw_dirs = [
@@ -499,10 +493,10 @@ def get_legacy_env_vars() -> list[str]:
 
 def is_deprecation_window_active() -> bool:
     """
-    Determine whether the v1.3 deprecation window for legacy environment variables is active.
-
-    The window is active when the new `MMRELAY_HOME` environment variable is not set and one or more legacy variables (e.g., `MMRELAY_BASE_DIR`, `MMRELAY_DATA_DIR`) are present in the environment.
-
+    Report whether the v1.3 deprecation window for legacy MMRELAY environment variables is active.
+    
+    The window is active when `MMRELAY_HOME` is not set and one or more legacy variables (e.g., `MMRELAY_BASE_DIR`, `MMRELAY_DATA_DIR`) are present in the environment. When active, a deprecation warning listing the detected legacy variables is emitted.
+    
     Returns:
         True if the deprecation window is active, False otherwise.
     """
@@ -630,26 +624,23 @@ def get_legacy_dirs() -> list[Path]:
 def resolve_all_paths() -> dict[str, Any]:
     """
     Aggregate resolved application paths and related metadata into a single dictionary.
-
-    The returned dictionary contains canonical paths (stringified) and metadata used for diagnostics and tooling. Keys:
+    
+    Returns a mapping of canonical stringified paths and diagnostic metadata with the following keys:
     - home: canonical application home directory
-    - matrix_dir: path to the Matrix application data directory
-    - legacy_sources: list of existing legacy directories (not equal to home)
+    - matrix_dir: Matrix runtime directory
+    - legacy_sources: list of detected legacy MMRelay directories (excluded if equal to home)
     - credentials_path: path to credentials.json
-    - database_dir: path to the database directory
-    - store_dir: path to the E2EE store directory or "N/A (Windows)"
-    - logs_dir: path to the logs directory
-    - log_file: path to the active log file (respecting MMRELAY_LOG_PATH if set)
-    - plugins_dir: path to the plugins root
-    - custom_plugins_dir: path to the custom plugins directory
-    - community_plugins_dir: path to the community plugins directory
-    - deps_dir: path to the plugins dependencies directory (plugins_dir / "deps")
+    - database_dir: database directory
+    - store_dir: E2EE store directory or "N/A (Windows)"
+    - logs_dir: logs directory
+    - log_file: active log file (honors MMRELAY_LOG_PATH)
+    - plugins_dir: plugins root directory
+    - custom_plugins_dir: custom plugins directory
+    - community_plugins_dir: community plugins directory
+    - deps_dir: plugins dependencies directory (plugins_dir / "deps")
     - env_vars_detected: mapping of relevant environment variables that were present
-    - cli_override: CLI override source string if set (e.g. "--home"), otherwise None
+    - cli_override: CLI override source string if set (for example "--home"), otherwise None
     - home_source: human-readable description of which input determined the home directory
-
-    Returns:
-        dict: Mapping of the keys above to their resolved string values or metadata.
     """
     home = get_home_dir()
     legacy_dirs = get_legacy_dirs()

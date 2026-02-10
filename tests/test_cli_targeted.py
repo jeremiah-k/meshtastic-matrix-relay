@@ -35,16 +35,15 @@ from mmrelay.constants.app import APP_DISPLAY_NAME
 
 def _make_paths_info(**overrides):
     """
-    Create a standard paths_info dict for testing.
-
-    Provides a complete resolve_all_paths return value with sensible defaults,
-    allowing individual fields to be overridden as needed.
-
+    Return a complete sample `paths_info` dictionary used by CLI tests.
+    
+    The returned dictionary contains sensible default runtime paths and metadata; any keys may be replaced by providing them as keyword arguments.
+    
     Parameters:
-        **overrides: Key-value pairs to override in the base dict.
-
+        **overrides: Key-value pairs that override entries in the default `paths_info` dictionary.
+    
     Returns:
-        dict: A complete paths_info dictionary.
+        dict: A fully populated `paths_info` mapping (e.g., keys like `home`, `matrix_dir`, `credentials_path`, `legacy_sources`, `env_vars_detected`, etc.).
     """
     base = {
         "home": "/custom/home",
@@ -248,9 +247,9 @@ class TestHandleSubcommandDispatch(unittest.TestCase):
 
     def setUp(self):
         """
-        Create a MagicMock representing parsed CLI arguments and assign it to `self.args` for use by each test.
-
-        This runs before each test method to provide a fresh, configurable `args` mock.
+        Prepare a fresh MagicMock for parsed CLI arguments and assign it to `self.args`.
+        
+        Runs before each test method to provide an isolated, configurable `args` mock.
         """
         self.args = MagicMock()
 
@@ -325,9 +324,9 @@ class TestHandleMigrateCommand(unittest.TestCase):
 
     def setUp(self):
         """
-        Create self.args as a MagicMock and set migration-related flags `dry_run` and `force` to False.
-
-        Provides a default `args` object for tests that require these migration flag attributes.
+        Prepare a default args MagicMock with migration-related flags initialized.
+        
+        Sets `self.args` to a MagicMock and initializes the migration flags `dry_run` and `force` to False for use by tests.
         """
         self.args = MagicMock()
         self.args.dry_run = False
@@ -377,6 +376,20 @@ class TestHandleMigrateCommand(unittest.TestCase):
         original_import = builtins.__import__
 
         def _block_migrate(name, *args, **kwargs):
+            """
+            Import hook used in tests that blocks the `mmrelay.migrate` module.
+            
+            Parameters:
+                name (str): The fully-qualified module name being imported.
+                *args: Positional arguments forwarded to the original import function.
+                **kwargs: Keyword arguments forwarded to the original import function.
+            
+            Returns:
+                module: The result of the underlying import for modules other than `mmrelay.migrate`.
+            
+            Raises:
+                ImportError: Always raised when `name` equals "mmrelay.migrate" to simulate an import failure.
+            """
             if name == "mmrelay.migrate":
                 raise ImportError("mocked import error")
             return original_import(name, *args, **kwargs)
@@ -396,9 +409,9 @@ class TestHandleConfigPaths(unittest.TestCase):
 
     def setUp(self):
         """
-        Create a MagicMock representing parsed CLI arguments and assign it to `self.args` for use by each test.
-
-        This runs before each test method to provide a fresh, configurable `args` mock.
+        Prepare a fresh MagicMock for parsed CLI arguments and assign it to `self.args`.
+        
+        Runs before each test method to provide an isolated, configurable `args` mock.
         """
         self.args = MagicMock()
 
@@ -438,9 +451,9 @@ class TestHandlePathsCommand(unittest.TestCase):
 
     def setUp(self):
         """
-        Create a MagicMock representing parsed CLI arguments and assign it to `self.args` for use by each test.
-
-        This runs before each test method to provide a fresh, configurable `args` mock.
+        Prepare a fresh MagicMock for parsed CLI arguments and assign it to `self.args`.
+        
+        Runs before each test method to provide an isolated, configurable `args` mock.
         """
         self.args = MagicMock()
 
@@ -482,9 +495,9 @@ class TestHandleDoctorMigrationStatus(unittest.TestCase):
 
     def setUp(self):
         """
-        Create a MagicMock representing parsed CLI arguments and assign it to `self.args` for use by each test.
-
-        This runs before each test method to provide a fresh, configurable `args` mock.
+        Prepare a fresh MagicMock for parsed CLI arguments and assign it to `self.args`.
+        
+        Runs before each test method to provide an isolated, configurable `args` mock.
         """
         self.args = MagicMock()
 
@@ -554,9 +567,9 @@ class TestHandleConfigPathsDetails(unittest.TestCase):
 
     def setUp(self):
         """
-        Create a MagicMock representing parsed CLI arguments and assign it to `self.args` for use by each test.
-
-        This runs before each test method to provide a fresh, configurable `args` mock.
+        Prepare a fresh MagicMock for parsed CLI arguments and assign it to `self.args`.
+        
+        Runs before each test method to provide an isolated, configurable `args` mock.
         """
         self.args = MagicMock()
 
@@ -589,9 +602,9 @@ class TestHandlePathsCommandDetails(unittest.TestCase):
 
     def setUp(self):
         """
-        Create a MagicMock representing parsed CLI arguments and assign it to `self.args` for use by each test.
-
-        This runs before each test method to provide a fresh, configurable `args` mock.
+        Prepare a fresh MagicMock for parsed CLI arguments and assign it to `self.args`.
+        
+        Runs before each test method to provide an isolated, configurable `args` mock.
         """
         self.args = MagicMock()
 
@@ -617,9 +630,9 @@ class TestHandleMigrateCommandDetailed(unittest.TestCase):
 
     def setUp(self):
         """
-        Create a MagicMock representing parsed CLI arguments and assign it to `self.args` for use by each test.
-
-        This runs before each test method to provide a fresh, configurable `args` mock.
+        Prepare a fresh MagicMock for parsed CLI arguments and assign it to `self.args`.
+        
+        Runs before each test method to provide an isolated, configurable `args` mock.
         """
         self.args = MagicMock()
 
@@ -725,6 +738,20 @@ class TestHandleVerifyMigrationCommandImportGuard(unittest.TestCase):
         original_import = builtins.__import__
 
         def _block_migrate(name, *args, **kwargs):
+            """
+            Import hook used in tests that blocks the `mmrelay.migrate` module.
+            
+            Parameters:
+                name (str): The fully-qualified module name being imported.
+                *args: Positional arguments forwarded to the original import function.
+                **kwargs: Keyword arguments forwarded to the original import function.
+            
+            Returns:
+                module: The result of the underlying import for modules other than `mmrelay.migrate`.
+            
+            Raises:
+                ImportError: Always raised when `name` equals "mmrelay.migrate" to simulate an import failure.
+            """
             if name == "mmrelay.migrate":
                 raise ImportError("mocked import error")
             return original_import(name, *args, **kwargs)
@@ -755,6 +782,19 @@ class TestHandleDoctorCommandImportGuard(unittest.TestCase):
         original_import = builtins.__import__
 
         def _block_migrate(name, *args, **kwargs):
+            """
+            Prevent importing specific mmrelay modules during tests by raising ImportError for blocked module names.
+            
+            Parameters:
+                name (str): The fully qualified module name being imported. Additional positional and keyword
+                    arguments are passed through to the original import implementation.
+            
+            Returns:
+                module: The result of delegating to the original import function for allowed imports.
+            
+            Raises:
+                ImportError: If `name` is "mmrelay.migrate" or "mmrelay.paths".
+            """
             if name in ("mmrelay.migrate", "mmrelay.paths"):
                 raise ImportError("mocked import error")
             return original_import(name, *args, **kwargs)

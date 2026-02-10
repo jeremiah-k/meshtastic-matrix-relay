@@ -71,15 +71,15 @@ _PLUGIN_DEPS_DIR: str | None = None
 
 def _is_safe_plugin_name(name: str) -> bool:
     """
-    Validate a plugin identifier to ensure it contains no path traversal sequences, path separators, or absolute-path references.
-
-    This function is intended for short plugin names/identifiers (for example, "my-plugin") and should not be used to validate full filesystem paths.
-
+    Validate a short plugin name to ensure it contains no path traversal, path separators, or absolute-path references.
+    
+    Intended for short plugin identifiers (for example, "my-plugin"); do not use to validate full filesystem paths.
+    
     Parameters:
-        name (str): User-provided plugin name or identifier.
-
+        name (str): Candidate plugin name or identifier to validate.
+    
     Returns:
-        bool: `True` if the name contains no path separators, no ".." segments, is not empty or whitespace, and is not an absolute path; `False` otherwise.
+        bool: `True` if the name is non-empty, contains no path separators, contains no "`..`" segments, and is not an absolute path; `False` otherwise.
     """
     if not name or name.strip() == "":
         return False

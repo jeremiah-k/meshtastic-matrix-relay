@@ -133,14 +133,14 @@ def _check_credentials_available(
     config_path: Optional[str] = None, paths_info: Optional[Dict[str, Any]] = None
 ) -> bool:
     """
-    Determine whether a Matrix credentials file exists in any of the standard locations.
-
-    Checks for the credentials file beside the optional config file, at the primary HOME-based credentials location resolved by mmrelay.paths, and — while a deprecation window is active — in legacy credential locations.
-
+    Check whether a Matrix credentials file exists in any standard or legacy locations.
+    
+    Searches (in order) beside an optional config file's directory, the primary HOME-based credentials location, a legacy same-home location, and legacy source locations while the deprecation window is active.
+    
     Parameters:
-        config_path (str): Optional path to the application's configuration file; the config file's directory is searched for credentials.
-        paths_info (dict): Optional pre-resolved paths dictionary.
-
+        config_path (Optional[str]): Path to the application's configuration file; when provided, the config file's directory is searched for credentials.
+        paths_info (Optional[Dict[str, Any]]): Pre-resolved paths mapping (as returned by resolve_all_paths()); used instead of resolving paths inside the function.
+    
     Returns:
         bool: `True` if a credentials file is found in any checked location, `False` otherwise.
     """

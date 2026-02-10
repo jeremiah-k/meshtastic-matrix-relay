@@ -1402,7 +1402,11 @@ class TestAuthLogin(unittest.TestCase):
     """Test cases for handle_auth_login function."""
 
     def setUp(self):
-        """Set up test fixtures."""
+        """
+        Initialize per-test fixtures.
+        
+        Creates self.mock_args as a MagicMock and sets its attributes `homeserver`, `username`, and `password` to None.
+        """
         self.mock_args = MagicMock()
         self.mock_args.homeserver = None
         self.mock_args.username = None

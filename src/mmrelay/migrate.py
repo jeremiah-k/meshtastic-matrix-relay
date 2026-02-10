@@ -68,16 +68,17 @@ _current_lock_file: Path | None = None
 
 def _looks_like_matrix_credentials(path: Path) -> bool:
     """
-    Return True when a file appears to be a Matrix credentials JSON document.
-
-    This validation is intentionally strict for legacy home-root fallback detection,
-    so we do not move unrelated JSON files from a user's home directory.
-
+    Detects whether a file is a Matrix credentials JSON document.
+    
+    Performs strict validation to avoid false positives when scanning legacy locations:
+    the file must be a JSON object containing the string keys "homeserver", "access_token",
+    and "user_id". The "user_id" must start with "@" and contain a ":".
+    
     Parameters:
         path (Path): Candidate credentials file path.
-
+    
     Returns:
-        bool: True if the file contains required Matrix credential keys.
+        true if the file contains valid Matrix credential keys with the expected formats, false otherwise.
     """
     try:
         with path.open("r", encoding="utf-8") as handle:
@@ -103,7 +104,11 @@ def _looks_like_matrix_credentials(path: Path) -> bool:
 
 
 def _cleanup_lock_file() -> None:
-    """Remove lock file if it exists. Safe to call multiple times."""
+    """
+    Remove the migration lock file if present and clear the internal lock reference.
+    
+    This function is idempotent and suppresses filesystem errors while attempting removal, so it is safe to call multiple times.
+    """
     global _current_lock_file
     if _current_lock_file is not None and _current_lock_file.exists():
         try:
@@ -132,7 +137,13 @@ def _register_lock_cleanup(lock_file: Path) -> None:
     if sys.platform != "win32":
 
         def _signal_handler(signum: int, _frame: object) -> None:
-            """Handle signals by cleaning up and re-raising."""
+            """
+            Clean up the migration lock file, then re-deliver the received signal so the process exits with the default handler.
+            
+            Parameters:
+                signum (int): The received signal number.
+                _frame (object): The current stack frame supplied by the signal handler (unused).
+            """
             _cleanup_lock_file()
             # Re-raise the signal with default handler to exit properly
             signal.signal(signum, signal.SIG_DFL)
@@ -148,10 +159,12 @@ def _register_lock_cleanup(lock_file: Path) -> None:
 
 def _is_mmrelay_running() -> bool:
     """
-    Check if an MMRelay process is currently running.
-
+    Determine whether an MMRelay process appears to be running on the current host.
+    
+    On Unix-like systems this attempts to detect an existing mmrelay process; on Windows the check is skipped and the function returns `False`.
+    
     Returns:
-        True if MMRelay appears to be running, False otherwise.
+        `True` if an MMRelay process other than the current process appears to be running, `False` otherwise.
     """
     current_pid = os.getpid()
 
@@ -217,12 +230,12 @@ class MigrationError(Exception):
     def verification_failed(cls, detail: str) -> "MigrationError":
         """
         Create a MigrationError representing a database verification failure.
-
+        
         Parameters:
-            detail (str): Human-readable detail describing the verification failure.
-
+            detail (str): Human-readable description of the verification failure.
+        
         Returns:
-            MigrationError: Instance with a message indicating the database verification failure and the provided detail.
+            MigrationError: Error instance whose message is "Database verification failed: {detail}".
         """
         return cls(f"Database verification failed: {detail}")
 
@@ -247,21 +260,27 @@ class StagingPathMissingError(OSError):
     """Raised when a staging path is missing during finalize."""
 
     def __init__(self, path: Path) -> None:
+        """
+        Initialize the exception indicating an expected staging path is missing.
+        
+        Parameters:
+            path (Path): The expected staging path that was not found; used to construct the exception message.
+        """
         super().__init__(f"Staging path does not exist: {path}")
 
 
 def _path_is_within_home(path: Path, home: Path) -> bool:
     """
-    Determine whether a given path is the same as or located inside the specified home directory.
-
-    The comparison is performed on resolved absolute locations of both `path` and `home`, with a best-effort resolution if exact resolution fails.
-
+    Check whether `path` is the same as or located inside the `home` directory.
+    
+    Performs resolution to absolute paths and falls back to non-resolving absolute paths if resolution fails.
+    
     Parameters:
         path (Path): Path to test.
         home (Path): Directory to treat as the home/root.
-
+    
     Returns:
-        bool: `True` if `path` equals `home` or is located within `home`, `False` otherwise.
+        bool: `True` if `path` equals `home` or is contained within `home`, `False` otherwise.
     """
     try:
         resolved_path = path.resolve()
@@ -310,14 +329,13 @@ def _find_legacy_data(legacy_root: Path) -> list[dict[str, str]]:
 
     def add_finding(item_type: str, path: Path) -> None:
         """
-        Record a discovery of a legacy artifact by type and path unless the path was already recorded.
-
+        Record a discovered legacy artifact by type and path if it has not been recorded before.
+        
+        Appends an entry to the module-level `findings` list and adds the path string to the module-level `seen_paths` set. If the given path has already been recorded, the function does nothing.
+        
         Parameters:
             item_type (str): Category label for the finding (e.g., "credentials", "logs").
             path (Path): Filesystem path to the discovered artifact.
-
-        Notes:
-            Appends a dict {"type": item_type, "path": str(path)} to the module-level `findings` list and adds the path string to the module-level `seen_paths` set; no action is taken if the path has been seen before.
         """
         path_str = str(path)
         if path_str in seen_paths:
@@ -402,20 +420,22 @@ def _warn_multiple_sources(
 
 def verify_migration() -> dict[str, Any]:
     """
-    Verify MMRelay runtime and legacy data locations and compile a migration readiness report.
-
-    Inspects resolved runtime paths (credentials, database, logs, plugins, E2EE store), checks whether each artifact exists and is located inside MMRELAY_HOME, scans configured legacy sources for legacy data, and collects warnings and errors that indicate whether a migration is needed or safe to perform.
-
+    Builds a verification report describing MMRelay runtime artifacts, discovered legacy data, and whether migration or cleanup is required.
+    
+    The report inspects resolved runtime paths (credentials, database, logs, plugins, E2EE store), records whether each artifact exists and is located inside MMRELAY_HOME, scans configured legacy source roots and the HOME directory for legacy layout items, and collects warnings and errors indicating migration readiness or conflicts.
+    
     Returns:
-        dict[str, Any]: Verification report containing:
+        dict[str, Any]: Verification report with keys:
             - home: str path to MMRELAY_HOME
-            - artifacts: list of artifact status dicts with keys `key`, `label`, `path` (or None), `exists`, `inside_home`, `not_applicable`
-            - legacy_data: list of legacy source findings, each with `root` and discovered `items` (each item has `type` and `path`)
-            - credentials_missing: bool indicating credentials.json is absent from MMRELAY_HOME
-            - legacy_data_found: bool indicating any legacy artifacts were discovered outside HOME
-            - split_roots: bool indicating presence of data both in HOME and legacy locations
-            - warnings: list[str] of non-fatal observations
-            - errors: list[str] of detected issues preventing a clean migration
+            - artifacts: list[dict] status entries with `key`, `label`, `path` (or None), `exists`, `inside_home`, `not_applicable`
+            - legacy_data: list[dict] legacy source findings, each with `root` and `items` (each item has `type` and `path`)
+            - credentials_missing: bool, True if credentials.json is absent from MMRELAY_HOME
+            - legacy_data_found: bool, True if any legacy artifacts were discovered outside HOME
+            - split_roots: bool, True if data exists both in HOME and in legacy locations
+            - cleanup_needed: list[str] legacy paths that can be removed because new locations contain data
+            - migration_needed: list[str] legacy paths that should be migrated because new locations are missing/empty
+            - warnings: list[str] non-fatal observations
+            - errors: list[str] detected issues preventing a clean migration
             - ok: bool, True if no errors were detected
     """
     paths_info = resolve_all_paths()
@@ -632,24 +652,28 @@ def verify_migration() -> dict[str, Any]:
 
 def print_migration_verification(report: dict[str, Any]) -> None:
     """
-    Prints a human-readable summary of a migration verification report.
-
+    Prints a concise, human-readable summary of a migration verification report.
+    
     Parameters:
-        report (dict): Verification report with keys:
+        report (dict): Verification report containing:
             - home (str | Path): Resolved MMRELAY_HOME path.
             - artifacts (list[dict]): Runtime artifacts; each dict contains:
-                - label (str)
-                - path (str | Path)
-                - exists (bool)
-                - inside_home (bool)
-                - not_applicable (bool) — when the artifact is irrelevant on the platform.
+                - label (str): Human-facing name of the artifact.
+                - path (str | Path): Resolved filesystem path for the artifact.
+                - exists (bool): Whether the artifact exists at `path`.
+                - inside_home (bool): Whether `path` is located inside `home`.
+                - not_applicable (bool): True when the artifact is irrelevant on the platform.
             - legacy_data (list[dict]): Legacy scan results; each dict contains:
-                - root (str | Path)
-                - items (list[dict]) with keys `type` and `path`.
-            - ok (bool): True if verification passed, False otherwise.
-            - errors (list[str]): List of verification error messages (present when ok is False).
-
-    No return value.
+                - root (str | Path): Legacy root path that was scanned.
+                - items (list[dict]): Found legacy items, each with:
+                    - type (str): Artifact type (e.g., "credentials", "database", "logs").
+                    - path (str | Path): Location of the legacy item.
+            - ok (bool): Overall verification status; True when no blocking issues were found.
+            - errors (list[str]): Verification error messages present when `ok` is False.
+            - cleanup_needed (list[str], optional): Legacy paths that can be removed when migration is not required.
+    
+    Notes:
+        The function writes a human-oriented summary to standard output; it does not return a value.
     """
     print("\n" + "=" * 60)
     print("MMRelay Migration Verification (mmrelay verify-migration)")
@@ -714,14 +738,15 @@ def _get_staging_path(new_home: Path, unit_name: str) -> Path:
 
 def _backup_file(src_path: Path, suffix: str = ".bak") -> Path:
     """
-    Create a timestamped backup of the given path in a dedicated backup directory.
-
+    Constructs a timestamped backup path for src_path inside a dedicated `.migration_backups`
+    directory (the directory is created if missing) and returns that path.
+    
     Parameters:
-        src_path (Path): Original file or directory path to back up.
-        suffix (str): Suffix inserted after the original filename and before the timestamp.
-
+        src_path (Path): Original file or directory path to back up; only used to derive the backup name and parent directory.
+        suffix (str): Suffix inserted after the original filename and before the timestamp (default: ".bak").
+    
     Returns:
-        Path: New backup path with format ".migration_backups/<original_name><suffix>.<YYYYMMDD_HHMMSS>".
+        Path: Path under `<src_path.parent>/.migration_backups/` with the format `<original_name><suffix>.<YYYYMMDD_HHMMSS>`.
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_dir = src_path.parent / BACKUP_DIRNAME
@@ -734,14 +759,16 @@ def _check_disk_space(
     path: Path, required_bytes: int | None = None
 ) -> tuple[bool, int]:
     """
-    Check if there's sufficient disk space available at the given path.
-
+    Determine whether the filesystem containing the given path has at least the required free space.
+    
     Parameters:
-        path: Path to check disk space for (uses parent directory if file)
-        required_bytes: Minimum bytes required (defaults to MIN_FREE_SPACE_BYTES)
-
+        path (Path): File or directory path to check. If the path is a file or does not exist, its parent directory is used.
+        required_bytes (int | None): Minimum required bytes. If omitted, defaults to MIN_FREE_SPACE_BYTES.
+    
     Returns:
-        Tuple of (has_sufficient_space, free_bytes_available)
+        tuple[bool, int]: Tuple of (has_sufficient_space, free_bytes_available).
+            `has_sufficient_space` is `True` when the free space is greater than or equal to `required_bytes` multiplied by a 1.5 safety margin, `False` otherwise.
+            If disk usage cannot be determined, `(True, 0)` is returned.
     """
     if required_bytes is None:
         required_bytes = MIN_FREE_SPACE_BYTES
@@ -765,15 +792,17 @@ def _check_disk_space(
 
 def _finalize_move(staging_path: Path, dest_path: Path) -> None:
     """
-    Finalize a staged move by renaming the staging path to the final destination.
-
+    Finalize a staged unit move into its final destination.
+    
+    Moves the staged file or directory at `staging_path` into `dest_path`. For files this uses an atomic replace when supported; for directories this performs a best-effort move (non-atomic) and replaces any existing destination. Callers should create backups before invoking this function.
+    
     Parameters:
-        staging_path (Path): The path where the unit was staged.
-        dest_path (Path): The final destination path.
-
+        staging_path (Path): Path where the artifact was staged.
+        dest_path (Path): Final destination path for the artifact.
+    
     Raises:
-        StagingPathMissingError: If the staging path does not exist.
-        OSError: If finalization fails.
+        StagingPathMissingError: If `staging_path` does not exist.
+        OSError: If the filesystem operation fails during finalization.
     """
     if not staging_path.exists():
         raise StagingPathMissingError(staging_path)
@@ -818,13 +847,13 @@ def _get_most_recent_database(candidates: list[Path]) -> Path | None:
 
     def get_mtime(path: Path) -> float:
         """
-        Get a path's last modification time.
-
+        Get the last modification time of a filesystem path.
+        
         Parameters:
-            path (Path): Filesystem path to query.
-
+            path (Path): Path to check.
+        
         Returns:
-            float: Modification time as seconds since the epoch, or `0.0` if the path cannot be stat'd.
+            float: Modification time in seconds since the epoch; `0.0` if the path cannot be accessed.
         """
         try:
             return path.stat().st_mtime
@@ -876,15 +905,21 @@ def migrate_credentials(
 ) -> dict[str, Any]:
     """
     Migrate the first discovered legacy credentials.json into the new HOME matrix directory.
-
+    
+    Scans the provided legacy roots (and the target HOME) for an existing credentials.json,
+    optionally falls back to ~/credentials.json if it appears to be valid Matrix credentials,
+    and moves the first valid legacy file into new_home/matrix/credentials.json using a staging
+    area and a timestamped backup of any existing destination. Supports dry-run and force-overwrite.
+    
     Parameters:
-        legacy_roots (list[Path]): Directories to scan for legacy credentials files.
+        legacy_roots (list[Path]): Directories to scan for legacy credentials files in priority order.
         new_home (Path): Destination home directory where matrix/credentials.json will be placed.
-        dry_run (bool): If True, report intended action without modifying files.
-        force (bool): If True, overwrite existing destination (backups are always created).
-
+        dry_run (bool): If True, report the intended action without modifying files.
+        force (bool): If True, allow overwriting an existing destination (a backup is always created).
+    
     Returns:
-        dict: Migration result.
+        dict: Structured migration result containing keys such as `success`, `action`, `old_path`, `new_path`,
+              and optional `message` or `dry_run`.
     """
     # Warn if credentials exist in multiple legacy roots
     _warn_multiple_sources(legacy_roots, "credentials", CREDENTIALS_FILENAME)
@@ -1040,16 +1075,24 @@ def migrate_config(
     force: bool = False,
 ) -> dict[str, Any]:
     """
-    Locate and migrate the first legacy `config.yaml` into the new home directory.
-
+    Locate and migrate the first legacy config.yaml into the new home directory.
+    
     Parameters:
         legacy_roots (list[Path]): Directories to search for a legacy `config.yaml`.
         new_home (Path): Destination home directory where `config.yaml` should be placed.
         dry_run (bool): If True, report the intended action without modifying the filesystem.
-        force (bool): If True, overwrite an existing destination (backups are always created).
-
+        force (bool): If True, overwrite an existing destination (a backup is always created before overwrite).
+    
     Returns:
-        dict: Migration result summary.
+        dict: Migration result summary containing at least a `success` boolean and an `action` string.
+            Optional keys include:
+                - `old_path` (str): Source path of the migrated config (when applicable).
+                - `new_path` (str): Destination path for the config (when applicable).
+                - `dry_run` (bool): Present and True for dry-run responses.
+                - `message` (str): Human-readable status message.
+    
+    Raises:
+        MigrationError: If migration fails (permission errors or other failures are wrapped in a MigrationError).
     """
     # Warn if config exists in multiple legacy roots
     _warn_multiple_sources(legacy_roots, "config", "config.yaml")
@@ -1179,16 +1222,23 @@ def migrate_database(
     force: bool = False,
 ) -> dict[str, Any]:
     """
-    Migrate the Meshtastic SQLite database from legacy locations into the new home's database directory.
-
+    Migrate the Meshtastic SQLite database from detected legacy locations into the new home's database directory.
+    
     Parameters:
         legacy_roots (list[Path]): Directories to scan for legacy database files.
-        new_home (Path): Destination MMRELAY home directory.
+        new_home (Path): Destination MMRELAY home directory where the database directory will be created.
         dry_run (bool): If True, report planned actions without modifying the filesystem.
-        force (bool): If True, overwrite existing destination (backups are always created).
-
+        force (bool): If True, overwrite existing destination files (backups are created before overwrites).
+    
     Returns:
-        dict: Migration result.
+        dict: A migration result containing at least the `success` boolean and an `action` code.
+            Common keys:
+            - success (bool): `True` when migration completed or nothing needed to be done, `False` on failure.
+            - action (str): One of `"move"`, `"already_at_target"`, `"already_migrated"`, `"not_found"`, or `"skip_force_required"`.
+            - old_path (str, optional): Path of the legacy database chosen for migration.
+            - new_path (str, optional): Destination database directory path.
+            - message (str, optional): Human-readable status or error message.
+            - dry_run (bool, optional): Present and `True` when no changes were made due to a dry run.
     """
     new_db_dir = new_home / "database"
     candidates = []
@@ -1416,15 +1466,24 @@ def migrate_logs(
 ) -> dict[str, Any]:
     """
     Migrate log files from the first discovered legacy "logs" directory into the new home's "logs" directory.
-
+    
+    Searches the provided legacy roots for a "logs" directory, stages log files with timestamped names to avoid collisions, backs up any existing destination logs, moves staged files into new_home/logs, and removes the legacy directory if it becomes empty. Honors dry-run and force flags.
+    
     Parameters:
         legacy_roots (list[Path]): Directories to scan for a legacy "logs" directory.
         new_home (Path): Destination MMRELAY_HOME where logs should be placed.
-        dry_run (bool): If True, only report intended actions.
-        force (bool): If True, overwrite existing files/directories (backups are always created).
-
+        dry_run (bool): If True, report intended actions without performing them.
+        force (bool): If True, overwrite existing destination files/directories.
+    
     Returns:
-        dict: Migration result.
+        dict: Result of the migration containing keys such as:
+            - success (bool): Whether the step completed successfully.
+            - action (str): One of "move", "already_at_target", "already_migrated", "not_found", or "skip_force_required".
+            - old_path (str, optional): Path of the legacy logs directory when applicable.
+            - new_path (str, optional): Destination logs directory.
+            - migrated_count (int, optional): Number of log files moved.
+            - dry_run (bool, optional): Present and true for dry-run results.
+            - message (str, optional): Human-readable status when applicable.
     """
     old_logs_dir: Path | None = None
 
@@ -1781,16 +1840,27 @@ def migrate_plugins(
     force: bool = False,
 ) -> dict[str, Any]:
     """
-    Migrate plugins from legacy plugin directories into the new home plugins layout.
-
+    Migrate plugin tiers from legacy `plugins` directories into the new home `plugins` layout.
+    
+    Searches the provided legacy roots for a `plugins` directory, stages the `custom` and `community`
+    tiers (if present), creates backups of existing destinations and the original legacy directory,
+    and atomically moves staged content into place. Honors dry-run and force semantics.
+    
     Parameters:
         legacy_roots (list[Path]): Legacy root directories to scan for a `plugins` directory.
-        new_home (Path): Destination MMRELAY_HOME root for plugins.
-        dry_run (bool): If True, only report the intended actions without modifying the filesystem.
-        force (bool): If True, overwrite existing destinations (backups are always created).
-
+        new_home (Path): Destination MMRELAY_HOME root where `plugins` will be created.
+        dry_run (bool): If True, report intended actions without modifying the filesystem.
+        force (bool): If True, allow overwriting existing destinations.
+    
     Returns:
-        dict: Migration result.
+        dict: Migration result containing keys such as:
+            - "success" (bool): Whether the step completed without error.
+            - "action" (str): One of "move", "already_at_target", "already_migrated",
+              "not_found", or "skip_force_required".
+            - "old_path" (str, optional): Source legacy plugins directory, if applicable.
+            - "new_path" (str, optional): Destination plugins directory.
+            - "migrated_types" (list[str], optional): Plugin tiers migrated (e.g., ["custom","community"]).
+            - "dry_run" (bool, optional): Present and True when dry_run was used.
     """
     # Warn if plugins exist in multiple legacy roots
     _warn_multiple_sources(legacy_roots, "plugins", "plugins", check_dir_entries=True)
@@ -1871,7 +1941,15 @@ def migrate_plugins(
     migration_succeeded = False
 
     def _raise_plugin_stage_errors(stage_errors: list[str]) -> None:
-        """Raise OSError for plugin staging failures."""
+        """
+        Raise an OSError when one or more plugin staging operations failed.
+        
+        Parameters:
+        	stage_errors (list[str]): List of error messages collected during plugin staging; messages are joined with "; " to form the OSError message.
+        
+        Raises:
+        	OSError: Contains the concatenated staging error messages.
+        """
         raise OSError("; ".join(stage_errors))
 
     try:
@@ -1963,16 +2041,26 @@ def migrate_gpxtracker(
     force: bool = False,
 ) -> dict[str, Any]:
     """
-    Migrate GPX files for the community gpxtracker plugin into the new plugins/community/gpxtracker/data directory.
-
+    Migrate GPX files used by the community gpxtracker plugin into the new plugins/community/gpxtracker/data directory.
+    
     Parameters:
-        legacy_roots (list[Path]): Directories to scan for legacy `config.yaml` entries.
-        new_home (Path): Destination MMRELAY_HOME root for plugin data.
-        dry_run (bool): If True, report actions without making changes.
-        force (bool): If True, overwrite existing destination files (backups are always created).
-
+        legacy_roots (list[Path]): Directories to scan for legacy config.yaml entries to locate a configured `gpx_directory`.
+        new_home (Path): Destination MMRELAY_HOME root where plugin data should be placed.
+        dry_run (bool): If True, report the actions that would be taken without making any changes.
+        force (bool): If True, allow overwriting existing destination files (existing destination is always backed up before overwrite).
+    
     Returns:
-        dict: Summary of the migration outcome.
+        dict: Summary of the migration outcome. Common keys include:
+            - `success` (bool): Whether the migration step completed successfully.
+            - `action` (str): One of `'move'`, `'not_found'`, `'already_migrated'`, or `'already_at_target'`.
+            - `migrated_count` (int): Number of GPX files moved (present when `action` is `'move'`).
+            - `old_path` (str): Source GPX directory path when applicable.
+            - `new_path` (str): Destination GPX data directory path.
+            - `dry_run` (bool): Present and true when invoked in dry-run mode.
+            - `message` (str): Human-readable status message when applicable.
+    
+    Raises:
+        MigrationError: When migration fails (wrapped as a step failure with context).
     """
     old_gpx_dir: Path | None = None
 
@@ -2131,10 +2219,10 @@ def migrate_gpxtracker(
 
 def is_migration_needed() -> bool:
     """
-    Determine whether a migration from legacy layouts to the current home structure is required.
-
+    Check whether any legacy MMRelay data exists that should be migrated into the current HOME structure.
+    
     Returns:
-        True if legacy data is found that needs to be moved to the current home structure.
+        True if legacy data that requires migration is present, False otherwise.
     """
     report = verify_migration()
     return bool(report.get("legacy_data_found", False))
@@ -2466,20 +2554,22 @@ def rollback_migration(
     _legacy_roots: list[Path] | None = None,
 ) -> dict[str, Any]:
     """
-    Rollback completed migration steps by restoring from backups.
-
-    This function restores files from the .migration_backups/ directory
-    created during migration. It does NOT try to move files back from
-    the new location because the old location may have been deleted.
-
+    Restore completed migration steps by locating and restoring backups from the .migration_backups directory.
+    
+    Restores files or directories that were backed up before being overwritten during migration; if no backup exists for a step the function preserves the destination to avoid data loss. Cleans up the staging directory on successful rollback but does not remove backups.
+    
     Parameters:
-        completed_steps: List of step names that were completed before failure.
-        migrations: List of migration results with paths for each step.
-        new_home: Path to the new MMRELAY_HOME directory.
-        _legacy_roots: List of legacy root directories (unused, kept for API compatibility).
-
+        completed_steps (list[str]): Names of steps that completed before the failure, processed in reverse order.
+        migrations (list[dict[str, Any]]): Migration records containing per-step results (expected keys include "type" and "result" with "new_path" and "action").
+        new_home (Path): Path to the MMRELAY_HOME where backups and staging reside.
+        _legacy_roots (list[Path] | None): Unused; kept for API compatibility.
+    
     Returns:
-        dict: Rollback report with status and details of each rollback action.
+        dict: Rollback report containing:
+            - "success" (bool): True if all attempted restores succeeded, False if any failed.
+            - "timestamp" (str): ISO8601 timestamp of the rollback attempt.
+            - "rolled_back_steps" (list): Entries for each step restored or skipped (includes restored_from/restored_to or skip reason).
+            - "errors" (list): Any errors encountered during rollback.
     """
     rollback_report: dict[str, Any] = {
         "success": True,
@@ -2491,10 +2581,19 @@ def rollback_migration(
     logger.info("Starting automatic rollback of migration steps")
 
     def find_backup_for_step(_step_name: str, dest_path: Path) -> Path | None:
-        """Find the most recent backup for a given destination path.
-
-        _backup_file stores backups in dest_path.parent / BACKUP_DIRNAME,
-        so search there first, then fall back to new_home / BACKUP_DIRNAME.
+        """
+        Locate the most recent backup for the given destination path.
+        
+        Searches for files or directories whose names begin with dest_path.name inside
+        dest_path.parent/".migration_backups" and then falls back to new_home/".migration_backups".
+        Returns the newest matching entry by modification time, or None if no backup is found.
+        
+        Parameters:
+            _step_name (str): Step identifier (not used for lookup; provided for caller context).
+            dest_path (Path): Destination path whose backups are being searched.
+        
+        Returns:
+            Path | None: Path to the most recent matching backup, or `None` if none exists.
         """
         # Backup names follow pattern: <name>.bak.<timestamp> or <name>_pre_migration.<timestamp>
         # The backup is named after the destination that was backed up
@@ -2527,7 +2626,17 @@ def rollback_migration(
     def restore_from_backup(
         backup_path: Path, restore_path: Path, step_name: str
     ) -> bool:
-        """Restore a file or directory from backup to its original location."""
+        """
+        Restore a file or directory from a backup into its original destination.
+        
+        Parameters:
+            backup_path (Path): Path to the backup file or directory to restore.
+            restore_path (Path): Destination path where the backup will be restored.
+            step_name (str): Human-readable name for the migration step (used in logs).
+        
+        Returns:
+            bool: True if the restore completed successfully, False otherwise.
+        """
         try:
             # Create parent directories
             restore_path.parent.mkdir(parents=True, exist_ok=True)

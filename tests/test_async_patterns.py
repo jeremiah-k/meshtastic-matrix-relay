@@ -192,10 +192,10 @@ class TestAsyncPatterns(unittest.TestCase):
                                 # Make sync take longer than timeout
                                 async def slow_sync(*_args, **_kwargs):
                                     """
-                                    Simulates a delayed asynchronous sync operation.
-
+                                    Simulates a delayed Matrix client sync operation for tests.
+                                    
                                     Returns:
-                                        MagicMock: A mock sync response object.
+                                        MagicMock: A MagicMock instance representing the sync response.
                                     """
                                     await asyncio.sleep(2)  # 2 second delay
                                     return MagicMock()
@@ -230,9 +230,9 @@ class TestAsyncPatterns(unittest.TestCase):
 
         async def test_error_handling():
             """
-            Test that exceptions raised during async operations are properly propagated or handled.
-
-            Verifies that when an exception occurs in an awaited async method, error is either caught and asserted or function under test returns a valid result, ensuring robust error handling in async workflows.
+            Ensure exceptions from Matrix client async operations are either propagated with the expected message or handled so a client is still returned.
+            
+            Mocks credential loading, SSL context creation, and the Matrix AsyncClient to raise a NioLocalTransportError during sync; asserts that connect_matrix(self.config) either returns a non-None client or raises a ConnectionError whose message contains "Matrix sync failed".
             """
             # Mock credentials loading to prevent using real credentials
             mock_auth_info = MagicMock()

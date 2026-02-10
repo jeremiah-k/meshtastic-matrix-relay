@@ -138,16 +138,19 @@ _ble_scan_timeout_secs = BLE_SCAN_TIMEOUT_SECS
 
 def _normalize_room_channel(room: dict[str, Any]) -> int | None:
     """
-    Normalize a room's meshtastic_channel value to an integer.
-
-    Args:
-        room: A room configuration dictionary containing 'meshtastic_channel' key.
-
+    Normalize a room's configured `meshtastic_channel` value to an integer.
+    
+    Parameters:
+        room (dict[str, Any]): Room configuration dictionary; expected to contain the
+            'meshtastic_channel' key. An optional 'id' key may be used in warnings.
+    
     Returns:
-        The channel as an integer, or None if the value is invalid.
-
-    Note:
-        Logs a warning if the channel value cannot be converted to an integer.
+        int | None: The channel as an `int`, or `None` if the key is missing or the
+        value cannot be converted to an integer.
+    
+    Notes:
+        Logs a warning mentioning the room `id` when the channel value is present but
+        invalid.
     """
     room_channel = room.get("meshtastic_channel")
     if room_channel is None:
