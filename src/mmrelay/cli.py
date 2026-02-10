@@ -67,7 +67,7 @@ class MissingModuleAttributeError(AttributeError):
     def __init__(self, name: str) -> None:
         """
         Initialize the MissingModuleAttributeError with the missing module attribute's name.
-        
+
         Parameters:
             name (str): The name of the missing attribute used to construct the exception message.
         """
@@ -77,10 +77,10 @@ class MissingModuleAttributeError(AttributeError):
 def _get_logger() -> logging.Logger:
     """
     Get the module-level logger, creating and caching it on first access.
-    
+
     Returns:
         logging.Logger: The module logger instance.
-    
+
     Raises:
         RuntimeError: If the logger could not be initialized.
     """
@@ -95,15 +95,15 @@ def _get_logger() -> logging.Logger:
 def __getattr__(name: str) -> Any:
     """
     Provide the module attribute named "logger" via lazy initialization.
-    
+
     When accessed as module attribute `logger`, returns the module-level logger instance. For any other attribute name, raises MissingModuleAttributeError.
-    
+
     Parameters:
         name (str): The attribute name being requested.
-    
+
     Returns:
         Any: The module-level logger when `name` is "logger".
-    
+
     Raises:
         MissingModuleAttributeError: If the module does not expose the requested attribute.
     """
@@ -120,9 +120,9 @@ def __getattr__(name: str) -> Any:
 def _apply_dir_overrides(args: argparse.Namespace | None) -> None:
     """
     Apply CLI directory overrides to the application's unified HOME path.
-    
+
     Checks CLI flags in priority order: --home, --base-dir, then --data-dir. When an override is provided the function sets the resolved absolute HOME via the paths subsystem, emits deprecation/conflict warnings for legacy flags as appropriate, ensures the target directory exists, and aborts with an error if the target is a protected system directory.
-    
+
     Parameters:
         args (argparse.Namespace | None): Parsed CLI arguments that may contain `home`, `base_dir`, or `data_dir`. If `None` or no valid override is present, the function does nothing.
     """
@@ -506,9 +506,9 @@ def _e2ee_dependencies_available() -> bool:
 def _validate_e2ee_dependencies() -> bool:
     """
     Check whether the current platform supports end-to-end encryption (E2EE) and the required Python libraries are available.
-    
+
     Performs only local checks (platform and importability) and prints user-facing guidance when E2EE is unsupported or dependencies are missing.
-    
+
     Returns:
         True if the platform supports E2EE and required E2EE libraries can be imported, False otherwise.
     """
@@ -620,7 +620,7 @@ def _validate_credentials_json(
 def _is_valid_non_empty_string(value: Any) -> bool:
     """
     Determine whether a value is a non-empty string containing at least one non-whitespace character.
-    
+
     Returns:
         True if `value` is a `str` and contains at least one non-whitespace character, False otherwise.
     """
@@ -662,14 +662,14 @@ def _validate_matrix_authentication(
 ) -> bool:
     """
     Determine whether a usable Matrix authentication method is available.
-    
+
     Checks for a credentials.json located relative to config_path (honoring an explicit credentials_path in `config` when present) and, if none is found, falls back to password-based fields or an `access_token` in `matrix_section`.
-    
+
     Parameters:
         config_path (str): Path to the application's YAML config file; used to locate a credentials.json candidate.
         matrix_section (Mapping[str, Any] | None): The parsed "matrix" configuration section; may contain `access_token` or password-based fields.
         config (Mapping[str, Any] | None): Parsed configuration used to honor explicit `credentials_path` values when locating credentials.json.
-    
+
     Returns:
         `true` if a usable authentication method (credentials.json, password-based config, or access_token) is available, `false` otherwise.
     """
@@ -852,11 +852,11 @@ def _find_credentials_json_path(
 ) -> str | None:
     """
     Locate the credentials.json file by honoring an explicit credentials_path in the provided configuration and searching prioritized candidate locations.
-    
+
     Parameters:
         config_path (str | None): Optional path to a configuration file; if provided, its directory is considered among candidate locations.
         config (Mapping[str, Any] | None): Parsed configuration used to honor an explicit `credentials_path` override.
-    
+
     Returns:
         str | None: Absolute path to the discovered credentials.json, or `None` if no credentials file is found.
     """
@@ -888,11 +888,11 @@ def _find_credentials_json_path(
 def _print_unified_e2ee_analysis(e2ee_status: E2EEStatus) -> None:
     """
     Print a concise, user-facing analysis of end-to-end encryption (E2EE) readiness.
-    
+
     Prints a short report indicating platform support, whether required E2EE dependencies are available,
     whether E2EE is enabled in the configuration, whether usable credentials are present, an overall status line,
     and actionable fix instructions when the overall status is not "ready".
-    
+
     Parameters:
         e2ee_status (E2EEStatus): Mapping containing status flags and metadata used to determine readiness.
             Relevant keys include:
@@ -1584,9 +1584,9 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
 def main() -> int:
     """
     Run the MMRelay command-line interface, dispatching modern subcommands, deprecated legacy flags, or the main runtime.
-    
+
     Parses command-line arguments, applies directory overrides and initialization, and routes execution to the appropriate command handler or the primary application entrypoint; writes user-facing error messages and maps failure conditions to non-zero exit codes.
-    
+
     Returns:
         Exit code (int): `0` on success, non-zero on failure.
     """
@@ -1743,12 +1743,60 @@ def handle_auth_command(args: argparse.Namespace) -> int:
         return handle_auth_login(args)
 
 
+def _detect_same_home_legacy_items(paths_info: dict[str, Any]) -> list[dict[str, str]]:
+    """
+    Detect legacy v1.2 layout artifacts still present within HOME directory.
+
+    These are items that are in the wrong location within HOME (e.g., store/ instead of
+    matrix/store/, credentials.json at root instead of matrix/credentials.json).
+
+    Parameters:
+        paths_info (dict[str, Any]): Mapping returned by resolve_all_paths().
+
+    Returns:
+        list[dict[str, str]]: List of detected same-home legacy items, each with
+            'type' and 'path' keys. Empty list if none found.
+    """
+    from pathlib import Path
+
+    from mmrelay.constants.app import CREDENTIALS_FILENAME, STORE_DIRNAME
+
+    home = Path(paths_info.get("home", ""))
+    if not home.exists():
+        return []
+
+    same_home_legacy_items: list[dict[str, str]] = []
+
+    # Check for credentials.json at HOME root (should be in matrix/)
+    credentials_path = paths_info.get("credentials_path", "")
+    legacy_home_credentials = home / CREDENTIALS_FILENAME
+    if (
+        legacy_home_credentials.exists()
+        and str(legacy_home_credentials) != credentials_path
+    ):
+        same_home_legacy_items.append(
+            {"type": "credentials", "path": str(legacy_home_credentials)}
+        )
+
+    # Check for store/ at HOME root (should be in matrix/store/)
+    store_dir = paths_info.get("store_dir", "")
+    # Skip Windows case where store_dir is "N/A (Windows)"
+    if isinstance(store_dir, str) and not store_dir.startswith("N/A"):
+        legacy_home_store = home / STORE_DIRNAME
+        if legacy_home_store.exists() and str(legacy_home_store) != store_dir:
+            same_home_legacy_items.append(
+                {"type": "e2ee_store", "path": str(legacy_home_store)}
+            )
+
+    return same_home_legacy_items
+
+
 def _print_path_summary(paths_info: dict[str, Any]) -> None:
     """
     Print a human-readable summary of resolved MMRelay filesystem paths and related environment overrides.
-    
+
     Displays the configured HOME directory and its source, key runtime artifact locations (credentials, database, E2EE store, logs), plugin and legacy source locations, detected environment variables, and any CLI path override present in the provided resolution.
-    
+
     Parameters:
         paths_info (dict[str, Any]): Mapping returned by resolve_all_paths() containing path entries and metadata (e.g. 'home', 'home_source', 'credentials_path', 'database_dir', 'store_dir', 'logs_dir', 'log_file', 'plugins_dir', 'custom_plugins_dir', 'community_plugins_dir', 'legacy_sources', 'env_vars_detected', 'cli_override').
     """
@@ -1774,13 +1822,20 @@ def _print_path_summary(paths_info: dict[str, Any]) -> None:
     if "community_plugins_dir" in paths_info:
         print(f"   Community: {paths_info['community_plugins_dir']}")
 
-    # Print legacy sources
+    # Print legacy sources (external directories with legacy data)
     print("\n📋 Legacy Sources (read-only):")
     if paths_info.get("legacy_sources"):
         for legacy_dir in paths_info["legacy_sources"]:
             print(f"   - {legacy_dir}")
     else:
         print("   (none detected)")
+
+    # Check for same-home legacy items (v1.2 layout artifacts in wrong places)
+    same_home_legacy = _detect_same_home_legacy_items(paths_info)
+    if same_home_legacy:
+        print("\n📂 Legacy Layout in HOME (v1.2):")
+        for item in same_home_legacy:
+            print(f"   ⚠️  {item['type']}: {item['path']}")
 
     # Print environment variables
     print("\n🔧 Environment Variables:")
@@ -1926,12 +1981,12 @@ def handle_doctor_command(args: argparse.Namespace) -> int:
 def handle_auth_login(args: argparse.Namespace) -> int:
     """
     Perform Matrix bot authentication using either non-interactive CLI credentials or an interactive prompt.
-    
+
     If `args` provides all three of `homeserver`, `username`, and `password`, performs a non-interactive login. If none of those parameters are provided, runs an interactive login flow. If some but not all required parameters are supplied, reports the missing parameters and fails.
-    
+
     Parameters:
         args (argparse.Namespace): Parsed CLI namespace; may include `homeserver`, `username`, and `password`.
-    
+
     Returns:
         int: 0 on successful authentication, 1 on failure, cancellation, or unexpected errors.
     """
@@ -2135,16 +2190,16 @@ def handle_auth_status(args: argparse.Namespace) -> int:
 def handle_auth_logout(args: argparse.Namespace) -> int:
     """
     Log out the Matrix bot, clear local session data, and invalidate the bot's access token.
-    
+
     Prompts for a verification password if args.password is None or empty, and asks for confirmation
     unless args.yes is True. On success this removes local credentials, clears any E2EE store, and
     attempts to revoke the remote access token.
-    
+
     Parameters:
         args (argparse.Namespace): CLI arguments. Expected attributes:
             password (str | None): Verification password; if None or an empty string the function prompts securely.
             yes (bool): If True, skip the interactive confirmation prompt.
-    
+
     Returns:
         int: 0 on successful logout, 1 if the operation fails or is cancelled.
     """
@@ -2588,10 +2643,10 @@ def handle_config_diagnose(args: argparse.Namespace) -> int:
 def handle_cli_commands(args: argparse.Namespace) -> int | None:
     """
     Dispatch legacy CLI flags to their immediate handlers.
-    
+
     Parameters:
         args (argparse.Namespace): Parsed command-line arguments from argparse.
-    
+
     Returns:
         int | None: `0` on success, `1` on failure if a legacy command was handled; `None` if no legacy flag was present.
     """
@@ -2644,9 +2699,9 @@ def handle_cli_commands(args: argparse.Namespace) -> int | None:
 def generate_sample_config() -> bool:
     """
     Generate a sample configuration file at the highest-priority config path when no configuration exists.
-    
+
     If no existing config file is found, attempts to create one by copying a packaged sample, reading the bundled resource, checking common filesystem locations, and finally writing a minimal built-in template as a last resort. When a file is created, secure owner-only permissions are applied on Unix-like systems when possible. If a configuration file already exists at any candidate path, no file is created.
-    
+
     Returns:
         True if a sample configuration file was created, False otherwise.
     """

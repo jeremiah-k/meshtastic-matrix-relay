@@ -135,6 +135,25 @@ mmrelay doctor
 
 This prints human-readable warnings when legacy data is still present.
 
+### Legacy Layout Detection in HOME
+
+When upgrading from v1.2, the `mmrelay doctor` command might detect v1.2 layout artifacts still within your HOME directory:
+
+```
+📂 Legacy Layout in HOME (v1.2):
+   ⚠️  credentials: ~/.mmrelay/credentials.json
+   ⚠️  e2ee_store: ~/.mmrelay/store
+```
+
+This occurs when files are in the v1.2 locations (HOME root) instead of the v1.3 locations (`matrix/` subdirectory):
+
+| v1.2 Location                 | v1.3 Location                        |
+| ----------------------------- | ------------------------------------ |
+| `~/.mmrelay/credentials.json` | `~/.mmrelay/matrix/credentials.json` |
+| `~/.mmrelay/store/`           | `~/.mmrelay/matrix/store/`           |
+
+These items will be automatically moved to the correct locations when you run `mmrelay migrate`. No manual action is required.
+
 ## How to Roll Back Safely (Manual)
 
 If you need to manually undo a successful migration:
