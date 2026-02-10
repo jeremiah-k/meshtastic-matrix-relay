@@ -3,12 +3,9 @@ Additional tests for v1.3 features to fill coverage gaps in paths.py and migrate
 """
 
 import os
-import sys
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
-
-import pytest
 
 from mmrelay.migrate import (
     _cleanup_lock_file,
