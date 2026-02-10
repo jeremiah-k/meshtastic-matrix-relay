@@ -52,6 +52,7 @@ import signal
 import sqlite3
 import subprocess  # nosec B404
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
@@ -64,6 +65,93 @@ logger = get_logger("Migration")
 
 # Global reference to current lock file for cleanup on signal
 _current_lock_file: Path | None = None
+
+# Retry configuration for Windows file-in-use errors
+_MAX_RETRIES = 5
+_INITIAL_RETRY_DELAY = 0.1  # 100ms
+_MAX_RETRY_DELAY = 2.0  # 2 seconds
+
+
+def _is_windows_file_in_use_error(exc: OSError) -> bool:
+    """
+    Check if an OSError is a Windows file-in-use error.
+
+    Windows returns specific error codes when a file is locked:
+    - ERROR_SHARING_VIOLATION (32): File is being used by another process
+    - ERROR_LOCK_VIOLATION (33): File is locked
+    - ERROR_ACCESS_DENIED (5): Often indicates file is in use
+
+    Parameters:
+        exc (OSError): The exception to check.
+
+    Returns:
+        bool: True if this is a Windows file-in-use error, False otherwise.
+    """
+    if sys.platform != "win32":
+        return False
+
+    # Get Windows error code if available
+    winerror = getattr(exc, "winerror", None)
+    if winerror in (5, 32, 33):  # ACCESS_DENIED, SHARING_VIOLATION, LOCK_VIOLATION
+        return True
+
+    # Fallback: check errno for common locking errors
+    if exc.errno in (13,):  # EACCES
+        return True
+
+    return False
+
+
+def _retry_on_file_in_use(func: Callable[[], Any], operation: str) -> None:
+    """
+    Execute a file operation with retry logic for Windows file-in-use errors.
+
+    Uses exponential backoff with jitter to handle transient file locks
+    caused by antivirus scanners, Windows Indexer, or other processes.
+
+    Parameters:
+        func (Callable[[], None]): The file operation to execute.
+        operation (str): Description of the operation for logging.
+
+    Raises:
+        OSError: If the operation fails after all retries.
+    """
+    last_error: OSError | None = None
+
+    for attempt in range(_MAX_RETRIES):
+        try:
+            func()
+            return
+        except OSError as exc:
+            if not _is_windows_file_in_use_error(exc):
+                raise  # Re-raise non-retryable errors immediately
+
+            last_error = exc
+            if attempt < _MAX_RETRIES - 1:
+                # Exponential backoff with jitter
+                delay = min(
+                    _INITIAL_RETRY_DELAY * (2**attempt),
+                    _MAX_RETRY_DELAY,
+                )
+                logger.debug(
+                    "File in use during %s (attempt %d/%d), retrying in %.2fs: %s",
+                    operation,
+                    attempt + 1,
+                    _MAX_RETRIES,
+                    delay,
+                    exc,
+                )
+                time.sleep(delay)
+
+    # All retries exhausted
+    if last_error:
+        logger.warning(
+            "File operation %s failed after %d attempts due to file lock: %s",
+            operation,
+            _MAX_RETRIES,
+            last_error,
+        )
+        raise last_error
 
 
 def _looks_like_matrix_credentials(path: Path) -> bool:
@@ -804,6 +892,9 @@ def _finalize_move(staging_path: Path, dest_path: Path) -> None:
 
     Moves the staged file or directory at `staging_path` into `dest_path`. For files this uses an atomic replace when supported; for directories this performs a best-effort move (non-atomic) and replaces any existing destination. Callers should create backups before invoking this function.
 
+    On Windows, this function includes retry logic with exponential backoff to handle
+    file-in-use errors caused by antivirus scanners, Windows Indexer, or other processes.
+
     Parameters:
         staging_path (Path): Path where the artifact was staged.
         dest_path (Path): Final destination path for the artifact.
@@ -824,19 +915,31 @@ def _finalize_move(staging_path: Path, dest_path: Path) -> None:
         # For single files, use atomic replace (POSIX).
         # If destination exists as a different type (e.g., directory), remove it first
         if dest_path.exists() and dest_path.is_dir():
-            shutil.rmtree(str(dest_path))
+            _retry_on_file_in_use(
+                lambda: shutil.rmtree(str(dest_path)),
+                f"rmtree {dest_path}",
+            )
         staging_path.replace(dest_path)
     else:
-        # For directories: use non-atomic approach
+        # For directories: use non-atomic approach with retry logic
         # IMPORTANT: Backups should already be created by the caller before
         # calling _finalize_move. This is best-effort - true atomic directory
         # moves are not supported by most filesystems.
         if dest_path.exists():
             if dest_path.is_file():
-                dest_path.unlink()
+                _retry_on_file_in_use(
+                    lambda: dest_path.unlink(),
+                    f"unlink {dest_path}",
+                )
             else:
-                shutil.rmtree(str(dest_path))
-        shutil.move(str(staging_path), str(dest_path))
+                _retry_on_file_in_use(
+                    lambda: shutil.rmtree(str(dest_path)),
+                    f"rmtree {dest_path}",
+                )
+        _retry_on_file_in_use(
+            lambda: shutil.move(str(staging_path), str(dest_path)),
+            f"move {staging_path} to {dest_path}",
+        )
     logger.debug("Finalized move from %s to %s", staging_path, dest_path)
 
 
@@ -1428,8 +1531,14 @@ def migrate_database(
             if db_path.resolve() == dest.resolve():
                 continue
             if dest.exists():
-                dest.unlink()
-            shutil.move(str(staged), str(dest))
+                _retry_on_file_in_use(
+                    lambda: dest.unlink(),
+                    f"unlink {dest}",
+                )
+            _retry_on_file_in_use(
+                lambda: shutil.move(str(staged), str(dest)),
+                f"move {staged} to {dest}",
+            )
 
         # 5. Delete sources after successful move
         for db_path in selected_group:
@@ -1590,8 +1699,14 @@ def migrate_logs(
         for staged_file in staging_dir.iterdir():
             final_dest = new_logs_dir / staged_file.name
             if final_dest.exists():
-                final_dest.unlink()
-            shutil.move(str(staged_file), str(final_dest))
+                _retry_on_file_in_use(
+                    lambda: final_dest.unlink(),
+                    f"unlink {final_dest}",
+                )
+            _retry_on_file_in_use(
+                lambda: shutil.move(str(staged_file), str(final_dest)),
+                f"move {staged_file} to {final_dest}",
+            )
 
         migration_succeeded = True
         logger.info("Migrated %d logs to %s", migrated_count, new_logs_dir)
@@ -2194,9 +2309,15 @@ def migrate_gpxtracker(
 
                 # Remove existing file if present (backup already created above)
                 if final_dest.exists():
-                    final_dest.unlink()
+                    _retry_on_file_in_use(
+                        lambda: final_dest.unlink(),
+                        f"unlink {final_dest}",
+                    )
 
-                shutil.move(str(staged_file), str(final_dest))
+                _retry_on_file_in_use(
+                    lambda: shutil.move(str(staged_file), str(final_dest)),
+                    f"move {staged_file} to {final_dest}",
+                )
 
         migration_succeeded = True
         logger.info("Migrated %d GPX files to %s", migrated_count, new_gpx_data_dir)
