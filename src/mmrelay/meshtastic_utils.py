@@ -2770,7 +2770,8 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                         ch = int(ch) if ch is not None else None
                     except (ValueError, TypeError):
                         ch = f"<invalid: {ch!r}>"
-                    available_channels.append(ch)
+                    if ch is not None:
+                        available_channels.append(ch)
 
             logger.warning(
                 f"Skipping message from unmapped channel {channel}. "

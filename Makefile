@@ -92,7 +92,8 @@ _migrate_prompt:
 			echo "MIGRATE=no"; \
 		;; \
 		*) \
-			echo "MIGRATE=yes"; \
+			echo "Invalid choice. Skipping migration." >&2; \
+			echo "MIGRATE=no"; \
 		;; \
 	esac
 

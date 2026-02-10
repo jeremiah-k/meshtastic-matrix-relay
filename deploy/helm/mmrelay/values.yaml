@@ -94,6 +94,8 @@ probes:
     # The app must touch the ready file at least this frequently.
     # 2 minutes should be sufficient for normal operations; increase only if
     # using custom plugins that cause longer blocking operations.
+    # Effective grace period ≈ maxReadyFileAgeMinutes + (failureThreshold × periodSeconds)
+    # With defaults: ~2min + 3×60s = ~5 minutes before restart.
     maxReadyFileAgeMinutes: 2
     initialDelaySeconds: 0
     periodSeconds: 60

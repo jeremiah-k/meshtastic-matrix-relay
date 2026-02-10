@@ -325,14 +325,13 @@ class TestHandleMigrateCommand(unittest.TestCase):
 
     def setUp(self):
         """
-        Create self.args as a MagicMock and set migration-related flags `dry_run`, `force`, and `move` to False.
+        Create self.args as a MagicMock and set migration-related flags `dry_run` and `force` to False.
 
         Provides a default `args` object for tests that require these migration flag attributes.
         """
         self.args = MagicMock()
         self.args.dry_run = False
         self.args.force = False
-        self.args.move = False
 
     @patch("mmrelay.migrate.perform_migration")
     @patch("builtins.print")
@@ -630,7 +629,6 @@ class TestHandleMigrateCommandDetailed(unittest.TestCase):
         """Test prints dry run message when migration is dry run."""
         self.args.dry_run = True
         self.args.force = False
-        self.args.move = False
         mock_perform.return_value = {
             "success": True,
             "migrations": [
@@ -658,7 +656,6 @@ class TestHandleMigrateCommandDetailed(unittest.TestCase):
         """Test prints action details (COPY, MOVE, SKIP)."""
         self.args.dry_run = False
         self.args.force = False
-        self.args.move = True
         mock_perform.return_value = {
             "success": True,
             "migrations": [
