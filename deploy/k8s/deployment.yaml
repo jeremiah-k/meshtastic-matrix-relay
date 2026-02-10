@@ -10,6 +10,7 @@ metadata:
     checkov.io/skip4: CKV_K8S_14=Base manifest intentionally omits tag; pin via kustomization overlay.
     checkov.io/skip5: CKV_K8S_40=Service account token is not required for this workload.
     checkov.io/skip6: CKV_K8S_25=Init container needs CHOWN to set /data permissions on the PVC.
+    checkov.io/skip7: CKV2_K8S_6=NetworkPolicy is provided in networkpolicy.yaml; apply both manifests together for network segmentation.
   labels:
     app: mmrelay
 spec:

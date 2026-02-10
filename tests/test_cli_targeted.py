@@ -33,6 +33,39 @@ from mmrelay.cli import (
 from mmrelay.constants.app import APP_DISPLAY_NAME
 
 
+def _make_paths_info(**overrides):
+    """
+    Create a standard paths_info dict for testing.
+
+    Provides a complete resolve_all_paths return value with sensible defaults,
+    allowing individual fields to be overridden as needed.
+
+    Parameters:
+        **overrides: Key-value pairs to override in the base dict.
+
+    Returns:
+        dict: A complete paths_info dictionary.
+    """
+    base = {
+        "home": "/custom/home",
+        "matrix_dir": "/custom/home/matrix",
+        "home_source": "--home",
+        "cli_override": None,
+        "legacy_sources": [],
+        "credentials_path": "/custom/home/matrix/credentials.json",
+        "database_dir": "/custom/home/database",
+        "store_dir": "/custom/home/matrix/store",
+        "logs_dir": "/custom/home/logs",
+        "log_file": "/custom/home/logs/mmrelay.log",
+        "plugins_dir": "/custom/home/plugins",
+        "custom_plugins_dir": "/custom/home/plugins/custom",
+        "community_plugins_dir": "/custom/home/plugins/community",
+        "env_vars_detected": {},
+    }
+    base.update(overrides)
+    return base
+
+
 class TestApplyDirOverridesEarlyReturn(unittest.TestCase):
     """Tests for _apply_dir_overrides early return (lines 102-103)."""
 
@@ -367,22 +400,7 @@ class TestHandleConfigPaths(unittest.TestCase):
     @patch("builtins.print")
     def test_prints_home_directory(self, mock_print, mock_resolve):
         """Test prints HOME directory and source."""
-        mock_resolve.return_value = {
-            "home": "/custom/home",
-            "matrix_dir": "/custom/home/matrix",
-            "home_source": "--home",
-            "cli_override": None,
-            "legacy_sources": [],
-            "credentials_path": "/custom/home/matrix/credentials.json",
-            "database_dir": "/custom/home/database",
-            "store_dir": "/custom/home/matrix/store",
-            "logs_dir": "/custom/home/logs",
-            "log_file": "/custom/home/logs/mmrelay.log",
-            "plugins_dir": "/custom/home/plugins",
-            "custom_plugins_dir": "/custom/home/plugins/custom",
-            "community_plugins_dir": "/custom/home/plugins/community",
-            "env_vars_detected": {},
-        }
+        mock_resolve.return_value = _make_paths_info()
 
         result = handle_config_paths(self.args)
 
@@ -395,22 +413,9 @@ class TestHandleConfigPaths(unittest.TestCase):
     @patch("builtins.print")
     def test_shows_legacy_data_warning(self, mock_print, mock_exists, mock_resolve):
         """Test shows warning when legacy data is detected."""
-        mock_resolve.return_value = {
-            "home": "/custom/home",
-            "matrix_dir": "/custom/home/matrix",
-            "home_source": "--home",
-            "cli_override": None,
-            "legacy_sources": ["/legacy1", "/legacy2"],
-            "credentials_path": "/custom/home/matrix/credentials.json",
-            "database_dir": "/custom/home/database",
-            "store_dir": "/custom/home/matrix/store",
-            "logs_dir": "/custom/home/logs",
-            "log_file": "/custom/home/logs/mmrelay.log",
-            "plugins_dir": "/custom/home/plugins",
-            "custom_plugins_dir": "/custom/home/plugins/custom",
-            "community_plugins_dir": "/custom/home/plugins/community",
-            "env_vars_detected": {},
-        }
+        mock_resolve.return_value = _make_paths_info(
+            legacy_sources=["/legacy1", "/legacy2"]
+        )
         mock_exists.return_value = True
 
         result = handle_config_paths(self.args)
@@ -437,22 +442,7 @@ class TestHandlePathsCommand(unittest.TestCase):
     @patch("builtins.print")
     def test_prints_header(self, mock_print, mock_resolve):
         """Test prints header."""
-        mock_resolve.return_value = {
-            "home": "/custom/home",
-            "matrix_dir": "/custom/home/matrix",
-            "home_source": "--home",
-            "cli_override": None,
-            "legacy_sources": [],
-            "credentials_path": "/custom/home/matrix/credentials.json",
-            "database_dir": "/custom/home/database",
-            "store_dir": "/custom/home/matrix/store",
-            "logs_dir": "/custom/home/logs",
-            "log_file": "/custom/home/logs/mmrelay.log",
-            "plugins_dir": "/custom/home/plugins",
-            "custom_plugins_dir": "/custom/home/plugins/custom",
-            "community_plugins_dir": "/custom/home/plugins/community",
-            "env_vars_detected": {},
-        }
+        mock_resolve.return_value = _make_paths_info()
 
         result = handle_paths_command(self.args)
 
@@ -469,22 +459,7 @@ class TestHandlePathsCommand(unittest.TestCase):
     @patch("builtins.print")
     def test_shows_legacy_warning(self, mock_print, mock_exists, mock_resolve):
         """Test shows legacy data warning."""
-        mock_resolve.return_value = {
-            "home": "/custom/home",
-            "matrix_dir": "/custom/home/matrix",
-            "home_source": "--home",
-            "cli_override": None,
-            "legacy_sources": ["/legacy1"],
-            "credentials_path": "/custom/home/matrix/credentials.json",
-            "database_dir": "/custom/home/database",
-            "store_dir": "/custom/home/matrix/store",
-            "logs_dir": "/custom/home/logs",
-            "log_file": "/custom/home/logs/mmrelay.log",
-            "plugins_dir": "/custom/home/plugins",
-            "custom_plugins_dir": "/custom/home/plugins/custom",
-            "community_plugins_dir": "/custom/home/plugins/community",
-            "env_vars_detected": {},
-        }
+        mock_resolve.return_value = _make_paths_info(legacy_sources=["/legacy1"])
         mock_exists.return_value = True
 
         result = handle_paths_command(self.args)
@@ -516,19 +491,16 @@ class TestHandleDoctorMigrationStatus(unittest.TestCase):
     ):
         """Test prints migration recommendation when needed."""
         mock_needed.return_value = True
-        mock_resolve.return_value = {
-            "home": "/home",
-            "matrix_dir": "/home/matrix",
-            "home_source": "default",
-            "credentials_path": "/home/matrix/credentials.json",
-            "database_dir": "/home/database",
-            "store_dir": "/home/matrix/store",
-            "logs_dir": "/home/logs",
-            "plugins_dir": "/home/plugins",
-            "legacy_sources": [],
-            "env_vars_detected": {},
-            "cli_override": None,
-        }
+        mock_resolve.return_value = _make_paths_info(
+            home="/home",
+            matrix_dir="/home/matrix",
+            home_source="default",
+            credentials_path="/home/matrix/credentials.json",
+            database_dir="/home/database",
+            store_dir="/home/matrix/store",
+            logs_dir="/home/logs",
+            plugins_dir="/home/plugins",
+        )
         mock_verify.return_value = {"warnings": [], "errors": []}
         self.args.migration = False
 
@@ -549,19 +521,16 @@ class TestHandleDoctorMigrationStatus(unittest.TestCase):
     ):
         """Test prints no migration needed when not needed."""
         mock_needed.return_value = False
-        mock_resolve.return_value = {
-            "home": "/home",
-            "matrix_dir": "/home/matrix",
-            "home_source": "default",
-            "credentials_path": "/home/matrix/credentials.json",
-            "database_dir": "/home/database",
-            "store_dir": "/home/matrix/store",
-            "logs_dir": "/home/logs",
-            "plugins_dir": "/home/plugins",
-            "legacy_sources": [],
-            "env_vars_detected": {},
-            "cli_override": None,
-        }
+        mock_resolve.return_value = _make_paths_info(
+            home="/home",
+            matrix_dir="/home/matrix",
+            home_source="default",
+            credentials_path="/home/matrix/credentials.json",
+            database_dir="/home/database",
+            store_dir="/home/matrix/store",
+            logs_dir="/home/logs",
+            plugins_dir="/home/plugins",
+        )
         mock_verify.return_value = {"warnings": [], "errors": []}
         self.args.migration = False
 
@@ -589,22 +558,7 @@ class TestHandleConfigPathsDetails(unittest.TestCase):
     @patch("builtins.print")
     def test_prints_all_runtime_paths(self, mock_print, mock_resolve):
         """Test prints all runtime artifact paths."""
-        mock_resolve.return_value = {
-            "home": "/custom/home",
-            "matrix_dir": "/custom/home/matrix",
-            "home_source": "--home",
-            "cli_override": None,
-            "legacy_sources": [],
-            "credentials_path": "/custom/home/matrix/credentials.json",
-            "database_dir": "/custom/home/database",
-            "store_dir": "/custom/home/matrix/store",
-            "logs_dir": "/custom/home/logs",
-            "log_file": "/custom/home/logs/mmrelay.log",
-            "plugins_dir": "/custom/home/plugins",
-            "custom_plugins_dir": "/custom/home/plugins/custom",
-            "community_plugins_dir": "/custom/home/plugins/community",
-            "env_vars_detected": {},
-        }
+        mock_resolve.return_value = _make_paths_info()
 
         result = handle_config_paths(self.args)
 
@@ -639,22 +593,9 @@ class TestHandlePathsCommandDetails(unittest.TestCase):
     @patch("builtins.print")
     def test_prints_all_path_sections(self, mock_print, mock_resolve):
         """Test prints all path sections."""
-        mock_resolve.return_value = {
-            "home": "/custom/home",
-            "matrix_dir": "/custom/home/matrix",
-            "home_source": "--home",
-            "cli_override": None,
-            "legacy_sources": [],
-            "credentials_path": "/custom/home/matrix/credentials.json",
-            "database_dir": "/custom/home/database",
-            "store_dir": "/custom/home/matrix/store",
-            "logs_dir": "/custom/home/logs",
-            "log_file": "/custom/home/logs/mmrelay.log",
-            "plugins_dir": "/custom/home/plugins",
-            "custom_plugins_dir": "/custom/home/plugins/custom",
-            "community_plugins_dir": "/custom/home/plugins/community",
-            "env_vars_detected": {"MMRELAY_HOME": "/test"},
-        }
+        mock_resolve.return_value = _make_paths_info(
+            env_vars_detected={"MMRELAY_HOME": "/test"}
+        )
 
         result = handle_paths_command(self.args)
 
@@ -775,14 +716,23 @@ class TestHandleVerifyMigrationCommandImportGuard(unittest.TestCase):
     @patch("builtins.print")
     def test_import_error_returns_1(self, mock_print):
         """Test ImportError during import returns 1 and prints error."""
-        # Verify the error message format is correct by checking the function
-        import inspect
+        import builtins
 
-        from mmrelay.cli import handle_verify_migration_command
+        original_import = builtins.__import__
 
-        source = inspect.getsource(handle_verify_migration_command)
-        self.assertIn("Error importing migration module", source)
-        self.assertIn("return 1", source)
+        def _block_migrate(name, *args, **kwargs):
+            if name == "mmrelay.migrate":
+                raise ImportError("mocked import error")
+            return original_import(name, *args, **kwargs)
+
+        with patch.object(builtins, "__import__", side_effect=_block_migrate):
+            result = handle_verify_migration_command(self.args)
+
+        self.assertEqual(result, 1)
+        error_calls = [
+            c for c in mock_print.call_args_list if "Error importing" in str(c)
+        ]
+        self.assertTrue(len(error_calls) > 0)
 
 
 class TestHandleDoctorCommandImportGuard(unittest.TestCase):
@@ -793,19 +743,26 @@ class TestHandleDoctorCommandImportGuard(unittest.TestCase):
         self.args = MagicMock()
         self.args.migration = False
 
-    @patch("mmrelay.paths.resolve_all_paths")
-    @patch("mmrelay.migrate.is_migration_needed")
     @patch("builtins.print")
-    def test_import_error_returns_1(self, mock_print, mock_needed, mock_resolve):
+    def test_import_error_returns_1(self, mock_print):
         """Test ImportError during import returns 1 and prints error."""
-        # Verify the error message format is correct by checking the function
-        import inspect
+        import builtins
 
-        from mmrelay.cli import handle_doctor_command
+        original_import = builtins.__import__
 
-        source = inspect.getsource(handle_doctor_command)
-        self.assertIn("Error importing required modules", source)
-        self.assertIn("return 1", source)
+        def _block_migrate(name, *args, **kwargs):
+            if name == "mmrelay.migrate" or name == "mmrelay.paths":
+                raise ImportError("mocked import error")
+            return original_import(name, *args, **kwargs)
+
+        with patch.object(builtins, "__import__", side_effect=_block_migrate):
+            result = handle_doctor_command(self.args)
+
+        self.assertEqual(result, 1)
+        error_calls = [
+            c for c in mock_print.call_args_list if "Error importing" in str(c)
+        ]
+        self.assertTrue(len(error_calls) > 0)
 
     @patch("mmrelay.paths.resolve_all_paths")
     @patch("mmrelay.migrate.is_migration_needed")
@@ -815,19 +772,16 @@ class TestHandleDoctorCommandImportGuard(unittest.TestCase):
         self, mock_print, mock_verify, mock_needed, mock_resolve
     ):
         """Test successful doctor command returns 0."""
-        mock_resolve.return_value = {
-            "home": "/home",
-            "matrix_dir": "/home/matrix",
-            "home_source": "default",
-            "credentials_path": "/home/matrix/credentials.json",
-            "database_dir": "/home/database",
-            "store_dir": "/home/matrix/store",
-            "logs_dir": "/home/logs",
-            "plugins_dir": "/home/plugins",
-            "legacy_sources": [],
-            "env_vars_detected": {},
-            "cli_override": None,
-        }
+        mock_resolve.return_value = _make_paths_info(
+            home="/home",
+            matrix_dir="/home/matrix",
+            home_source="default",
+            credentials_path="/home/matrix/credentials.json",
+            database_dir="/home/database",
+            store_dir="/home/matrix/store",
+            logs_dir="/home/logs",
+            plugins_dir="/home/plugins",
+        )
         mock_needed.return_value = False
         mock_verify.return_value = {"warnings": [], "errors": []}
 

@@ -23,6 +23,7 @@ spec:
         checkov.io/skip1: "CKV_K8S_43=Chart allows tag/digest pinning via values.yaml"
         checkov.io/skip2: "CKV_K8S_35=Matrix auth uses env vars to bootstrap credentials.json on the PVC."
         checkov.io/skip3: "CKV_K8S_15=Default uses image.tag=1.3.0; pin via image.digest for production."
+        checkov.io/skip4: "CKV2_K8S_6=NetworkPolicy is provided in networkpolicy.yaml; enable via networkPolicy.enabled in values.yaml."
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
