@@ -102,6 +102,8 @@ spec:
               command:
                 - sh
                 - -c
+                # 2 minutes should be sufficient for normal operations; increase only if
+                # using custom plugins that cause longer blocking operations.
                 - find /run/mmrelay/ready -mmin -2 | grep -q .
             initialDelaySeconds: 0
             periodSeconds: 60

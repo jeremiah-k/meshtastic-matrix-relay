@@ -154,7 +154,7 @@ spec:
               command:
                 - sh
                 - -c
-                - 'find "$1" -mmin -2 | grep -q .'
+                - 'find "$1" -mmin -{{ .Values.probes.liveness.maxReadyFileAgeMinutes }} | grep -q .'
                 - "liveness-probe"
                 - {{ .Values.readyFile }}
             initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}

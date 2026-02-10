@@ -90,6 +90,11 @@ probes:
     timeoutSeconds: 2
     failureThreshold: 60
   liveness:
+    # Maximum age of the ready file before the pod is considered unhealthy
+    # The app must touch the ready file at least this frequently.
+    # 2 minutes should be sufficient for normal operations; increase only if
+    # using custom plugins that cause longer blocking operations.
+    maxReadyFileAgeMinutes: 2
     initialDelaySeconds: 0
     periodSeconds: 60
     timeoutSeconds: 20

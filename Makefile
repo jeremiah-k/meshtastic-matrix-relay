@@ -57,30 +57,32 @@ _check_legacy_compose:
 	fi
 
 # Prompt user for migration when legacy detected
+# Note: Informational output redirects to stderr (>&2) to bypass command substitution
+# capture in _setup_with_migration_check, while MIGRATE=... stays on stdout
 _migrate_prompt:
-	@echo ""
-	@echo "╔══════════════════════════════════════════════════════════════════╗"
-	@echo "║           Legacy Setup Detected - Migration Required             ║"
-	@echo "╚══════════════════════════════════════════════════════════════════╝"
-	@echo ""
-	@echo "Your current setup uses the v1.2.x directory layout which is deprecated."
-	@echo ""
-	@echo "Changes needed:"
+	@echo "" >&2
+	@echo "╔══════════════════════════════════════════════════════════════════╗" >&2
+	@echo "║           Legacy Setup Detected - Migration Required             ║" >&2
+	@echo "╚══════════════════════════════════════════════════════════════════╝" >&2
+	@echo "" >&2
+	@echo "Your current setup uses the v1.2.x directory layout which is deprecated." >&2
+	@echo "" >&2
+	@echo "Changes needed:" >&2
 	@if [ -f .env ] && grep -q '^MMRELAY_HOME=' .env 2>/dev/null && ! grep -q '^MMRELAY_HOST_HOME=' .env 2>/dev/null; then \
-		echo "  • .env: Replace MMRELAY_HOME with MMRELAY_HOST_HOME"; \
+		echo "  • .env: Replace MMRELAY_HOME with MMRELAY_HOST_HOME" >&2; \
 	fi
 	@if [ -f docker-compose.yaml ] && grep -q ':/app/' docker-compose.yaml 2>/dev/null; then \
-		echo "  • docker-compose.yaml: Update to v1.3 format (single volume mount)"; \
+		echo "  • docker-compose.yaml: Update to v1.3 format (single volume mount)" >&2; \
 	fi
-	@echo ""
-	@echo "After updating and starting the container, run:"
-	@echo "  docker compose exec mmrelay mmrelay migrate --dry-run"
-	@echo "  docker compose exec mmrelay mmrelay migrate"
-	@echo "  docker compose exec mmrelay mmrelay verify-migration"
-	@echo ""
-	@echo "[1] Update files automatically (recommended)"
-	@echo "[2] Skip - I'll handle it manually"
-	@echo ""
+	@echo "" >&2
+	@echo "After updating and starting the container, run:" >&2
+	@echo "  docker compose exec mmrelay mmrelay migrate --dry-run" >&2
+	@echo "  docker compose exec mmrelay mmrelay migrate" >&2
+	@echo "  docker compose exec mmrelay mmrelay verify-migration" >&2
+	@echo "" >&2
+	@echo "[1] Update files automatically (recommended)" >&2
+	@echo "[2] Skip - I'll handle it manually" >&2
+	@echo "" >&2
 	@read -p "Choose [1-2]: " choice; \
 	case "$$choice" in \
 		1) \
@@ -275,15 +277,16 @@ use-source:
 		echo "Already building from source (override file exists)."; \
 	fi
 
-# Update docker-compose.yaml with latest sample
+# Update docker-compose.yaml with latest sample (prebuilt-focused for v1.3+)
 update-compose:
 	@if [ -f docker-compose.yaml ]; then \
 		echo "Backing up existing docker-compose.yaml to docker-compose.yaml.bak"; \
 		cp docker-compose.yaml docker-compose.yaml.bak; \
 	fi
-	@cp src/mmrelay/tools/sample-docker-compose.yaml docker-compose.yaml
-	@echo "Updated docker-compose.yaml with latest sample"
+	@cp src/mmrelay/tools/sample-docker-compose-prebuilt.yaml docker-compose.yaml
+	@echo "Updated docker-compose.yaml with latest sample (prebuilt image)"
 	@echo "Please review and edit for your specific configuration (BLE, serial, etc.)"
+	@echo "To build from source, run 'make build-from-source'"
 
 # Build the Docker image (uses layer caching for faster builds)
 build:

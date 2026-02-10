@@ -180,18 +180,24 @@ def _apply_dir_overrides(args: argparse.Namespace | None) -> None:
 
     # Prevent using critical system directories as the home directory
     # Note: Only block truly critical paths - containers may use paths like /app or /data
+    # Using lower-case comparison for cross-platform compatibility
     forbidden_paths = {
-        "/",  # Root filesystem
-        "/etc",  # System configuration
-        "/usr",  # System binaries and libraries
-        "/bin",  # Essential user binaries
-        "/sbin",  # Essential system binaries
-        "/boot",  # Boot loader files
-        "/dev",  # Device files (virtual)
-        "/proc",  # Process information (virtual)
-        "/sys",  # System information (virtual)
+        # Unix system directories
+        "/",
+        "/etc",
+        "/usr",
+        "/bin",
+        "/sbin",
+        "/boot",
+        "/dev",
+        "/proc",
+        "/sys",
+        # Windows system directories (common paths)
+        r"c:\windows",
+        r"c:\program files",
+        r"c:\program files (x86)",
     }
-    if str(absolute_home) in forbidden_paths:
+    if str(absolute_home).lower() in forbidden_paths:
         print(
             f"Error: Setting MMRELAY_HOME to a critical system directory ('{absolute_home}') is not allowed.",
             file=sys.stderr,

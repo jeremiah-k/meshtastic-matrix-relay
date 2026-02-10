@@ -136,6 +136,34 @@ _ble_timeout_reset_threshold = BLE_TIMEOUT_RESET_THRESHOLD
 _ble_scan_timeout_secs = BLE_SCAN_TIMEOUT_SECS
 
 
+def _normalize_room_channel(room: dict[str, Any]) -> int | None:
+    """
+    Normalize a room's meshtastic_channel value to an integer.
+
+    Args:
+        room: A room configuration dictionary containing 'meshtastic_channel' key.
+
+    Returns:
+        The channel as an integer, or None if the value is invalid.
+
+    Note:
+        Logs a warning if the channel value cannot be converted to an integer.
+    """
+    room_channel = room.get("meshtastic_channel")
+    if room_channel is None:
+        return None
+    try:
+        return int(room_channel)
+    except (ValueError, TypeError):
+        logger.warning(
+            "Invalid meshtastic_channel value %r in room config "
+            "for room %s, skipping this room",
+            room_channel,
+            room.get("id", "unknown"),
+        )
+        return None
+
+
 def _shutdown_shared_executors() -> None:
     """
     Shutdown shared executors on interpreter exit to avoid blocking.
@@ -2720,15 +2748,8 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             if not isinstance(room, dict):
                 continue
 
-            # Normalize room channel to integer for comparison
-            room_channel = room.get("meshtastic_channel")
-            try:
-                room_channel = int(room_channel) if room_channel is not None else None
-            except (ValueError, TypeError):
-                logger.warning(
-                    f"Invalid meshtastic_channel value {room_channel!r} in room config "
-                    f"for room {room.get('id', 'unknown')}, skipping this room"
-                )
+            room_channel = _normalize_room_channel(room)
+            if room_channel is None:
                 continue
 
             if room_channel == channel:
@@ -2857,15 +2878,8 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             if not isinstance(room, dict):
                 continue
 
-            # Normalize room channel to integer for comparison
-            room_channel = room.get("meshtastic_channel")
-            try:
-                room_channel = int(room_channel) if room_channel is not None else None
-            except (ValueError, TypeError):
-                logger.warning(
-                    f"Invalid meshtastic_channel value {room_channel!r} in room config "
-                    f"for room {room.get('id', 'unknown')}, skipping this room"
-                )
+            room_channel = _normalize_room_channel(room)
+            if room_channel is None:
                 continue
 
             if room_channel == channel:

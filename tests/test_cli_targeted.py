@@ -373,9 +373,16 @@ class TestHandleMigrateCommand(unittest.TestCase):
     @patch("builtins.print")
     def test_import_error(self, mock_print):
         """Test ImportError when migrate module cannot be imported."""
-        with patch(
-            "mmrelay.migrate.perform_migration", side_effect=ImportError("Test error")
-        ):
+        import builtins
+
+        original_import = builtins.__import__
+
+        def _block_migrate(name, *args, **kwargs):
+            if name == "mmrelay.migrate":
+                raise ImportError("mocked import error")
+            return original_import(name, *args, **kwargs)
+
+        with patch.object(builtins, "__import__", side_effect=_block_migrate):
             result = handle_migrate_command(self.args)
 
         self.assertEqual(result, 1)
@@ -769,7 +776,7 @@ class TestHandleDoctorCommandImportGuard(unittest.TestCase):
     @patch("mmrelay.migrate.verify_migration")
     @patch("builtins.print")
     def test_successful_doctor_no_migration(
-        self, mock_print, mock_verify, mock_needed, mock_resolve
+        self, _mock_print, mock_verify, mock_needed, mock_resolve
     ):
         """Test successful doctor command returns 0."""
         mock_resolve.return_value = _make_paths_info(
