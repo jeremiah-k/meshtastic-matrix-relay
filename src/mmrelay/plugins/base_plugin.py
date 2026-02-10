@@ -6,8 +6,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from typing import Any, Protocol, cast
 
-# markdown has stubs in our env; avoid import-untyped so mypy --strict stays clean.
-import markdown  # mypy: ignore[import-untyped]
+import markdown
 from nio import (
     MatrixRoom,
     ReactionEvent,

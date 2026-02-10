@@ -1645,8 +1645,8 @@ def migrate_logs(
             "message": "No logs directory found in legacy locations",
         }
 
-    # Skip if target already exists and not forcing
-    if new_logs_dir.exists() and not force:
+    # Skip if target already has content and not forcing
+    if _dir_has_entries(new_logs_dir) and not force:
         logger.warning(
             "Logs already at target location, no migration needed: %s. Use --force to overwrite.",
             new_logs_dir,
@@ -1810,8 +1810,8 @@ def migrate_store(
             "message": "No E2EE store directory found in legacy locations",
         }
 
-    # Skip if target already exists and not forcing
-    if new_store_dir.exists() and not force:
+    # Skip if target already has content and not forcing
+    if _dir_has_entries(new_store_dir) and not force:
         logger.warning(
             "Store directory already exists at destination, skipping: %s. Use --force to overwrite.",
             new_store_dir,
@@ -2031,8 +2031,17 @@ def migrate_plugins(
             "message": "No plugins directory found in legacy locations",
         }
 
-    # Skip if target already exists and not forcing
-    if new_plugins_dir.exists() and not force:
+    # Check if target has actual plugin content (not just empty subdirectories)
+    # ensure_directories() creates empty custom/, community/, core/ subdirs
+    # We should only skip if those subdirs have actual plugin files
+    has_plugin_content = False
+    for plugin_type in ["custom", "community", "core"]:
+        type_dir = new_plugins_dir / plugin_type
+        if _dir_has_entries(type_dir):
+            has_plugin_content = True
+            break
+
+    if has_plugin_content and not force:
         logger.warning(
             "Plugins directory already exists at destination, skipping: %s. Use --force to overwrite.",
             new_plugins_dir,
@@ -2258,6 +2267,20 @@ def migrate_gpxtracker(
             "success": True,
             "action": "not_found",
             "message": "gpxtracker plugin not configured with gpx_directory, skipping migration",
+        }
+
+    # Skip if target already has content and not forcing
+    if _dir_has_entries(new_gpx_data_dir) and not force:
+        logger.warning(
+            "GPX tracker data directory already exists at destination, skipping: %s. Use --force to overwrite.",
+            new_gpx_data_dir,
+        )
+        return {
+            "success": True,
+            "old_path": str(old_gpx_dir),
+            "new_path": str(new_gpx_data_dir),
+            "action": "skip_force_required",
+            "message": "GPX tracker data directory already exists at destination",
         }
 
     if dry_run:

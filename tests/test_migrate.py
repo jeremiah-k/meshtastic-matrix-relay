@@ -1231,7 +1231,7 @@ class TestMigratePlugins:
     def test_target_exists_skips_without_force(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Test skips plugins migration if target exists and force=False."""
+        """Test skips plugins migration if target has content and force=False."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
         old_plugins = legacy_root / "plugins"
@@ -1242,6 +1242,10 @@ class TestMigratePlugins:
         new_home.mkdir()
         new_plugins = new_home / "plugins"
         new_plugins.mkdir()
+        # Add content to one of the standard plugin directories so it should skip
+        custom_dir = new_plugins / "custom"
+        custom_dir.mkdir()
+        (custom_dir / "existing_plugin.py").write_text("# existing plugin")
 
         result = migrate_plugins([legacy_root], new_home, force=False)
 
@@ -1667,3 +1671,179 @@ class TestRaisePluginStageErrors:
         result = migrate_plugins([legacy_root], new_home, dry_run=False, force=False)
 
         assert result["success"] is True
+
+
+class TestMigrationAfterEnsureDirectories:
+    """
+    Integration tests for migration when target directories pre-exist.
+
+    These tests simulate the real-world scenario where:
+    1. User runs mmrelay (ensure_directories creates empty dirs)
+    2. User runs mmrelay migrate
+    3. Migration should succeed because dirs are empty, not skip
+
+    This catches the bug where .exists() was used instead of _dir_has_entries().
+    """
+
+    def test_migrate_logs_after_ensure_directories(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """
+        Test that migration succeeds when ensure_directories() pre-created empty logs dir.
+
+        This is the real-world flow:
+        1. User runs mmrelay -> ensure_directories() creates empty logs/
+        2. User runs mmrelay migrate -> should migrate, not skip
+
+        Bug was: .exists() returned True for empty dirs, causing skip_force_required.
+        Fix: Use _dir_has_entries() which returns False for empty dirs.
+        """
+        from mmrelay.paths import ensure_directories
+
+        # Set up legacy data
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        old_logs = legacy_root / "logs"
+        old_logs.mkdir()
+        (old_logs / "app.log").write_text("legacy log content")
+
+        # Set up new home
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+
+        # Simulate CLI startup: ensure_directories creates empty directories
+        monkeypatch.setenv("MMRELAY_HOME", str(new_home))
+        paths_module._home_override = None  # Reset any cached value
+        paths_module.reset_home_override()
+        ensure_directories(create_missing=True)
+
+        # Verify empty logs directory exists (simulating the bug condition)
+        logs_dir = new_home / "logs"
+        assert logs_dir.exists(), "ensure_directories should have created logs dir"
+        assert not _dir_has_entries(logs_dir), "logs dir should be empty"
+
+        # Now run migration - it should succeed, not skip
+        result = migrate_logs([legacy_root], new_home, force=False)
+
+        # Should have migrated, not skipped
+        assert result["success"] is True
+        assert result["action"] == "move", f"Expected 'move', got '{result['action']}'"
+        assert (new_home / "logs").exists()
+        # Verify at least one log file was migrated
+        assert any(
+            (new_home / "logs").glob("*.log")
+        ), "Log files should have been migrated"
+
+    def test_migrate_plugins_after_ensure_directories(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """
+        Test that migration succeeds when ensure_directories() pre-created plugins dir.
+
+        Note: ensure_directories() creates plugins/custom/, plugins/community/, plugins/core/
+        subdirectories, so we check that the custom subdirectory is empty (no actual plugins).
+        """
+        from mmrelay.paths import ensure_directories
+
+        # Set up legacy data
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        old_plugins = legacy_root / "plugins"
+        old_custom = old_plugins / "custom"
+        old_custom.mkdir(parents=True)
+        (old_custom / "my_plugin.py").write_text("# plugin")
+
+        # Set up new home
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+
+        # Simulate CLI startup
+        monkeypatch.setenv("MMRELAY_HOME", str(new_home))
+        paths_module._home_override = None
+        paths_module.reset_home_override()
+        ensure_directories(create_missing=True)
+
+        # Verify plugins directory exists but custom subdirectory is empty
+        plugins_dir = new_home / "plugins"
+        custom_dir = plugins_dir / "custom"
+        assert (
+            plugins_dir.exists()
+        ), "ensure_directories should have created plugins dir"
+        assert (
+            custom_dir.exists()
+        ), "ensure_directories should have created custom subdirectory"
+        assert not _dir_has_entries(custom_dir), "custom plugins dir should be empty"
+
+        # Run migration
+        result = migrate_plugins([legacy_root], new_home, force=False)
+
+        # Should have migrated, not skipped
+        assert result["success"] is True
+        assert result["action"] == "move", f"Expected 'move', got '{result['action']}'"
+
+    def test_migrate_store_after_ensure_directories(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """
+        Test that migration succeeds when ensure_directories() pre-created empty store dir.
+        """
+        from mmrelay.paths import ensure_directories
+
+        # Skip on Windows - E2EE store not supported
+        if sys.platform == "win32":
+            pytest.skip("E2EE store not supported on Windows")
+
+        # Set up legacy data
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        old_store = legacy_root / "store"
+        old_store.mkdir()
+        (old_store / "key.txt").write_text("key data")
+
+        # Set up new home
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+
+        # Simulate CLI startup
+        monkeypatch.setenv("MMRELAY_HOME", str(new_home))
+        paths_module._home_override = None
+        paths_module.reset_home_override()
+        ensure_directories(create_missing=True)
+
+        # Run migration
+        result = migrate_store([legacy_root], new_home, force=False)
+
+        # Should have migrated, not skipped
+        assert result["success"] is True
+        assert result["action"] == "move", f"Expected 'move', got '{result['action']}'"
+
+    def test_migration_skips_when_target_has_content(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """
+        Test that migration DOES skip when target directory has actual content.
+
+        This verifies the fix still protects against overwriting existing data.
+        """
+
+        # Set up legacy data
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        old_logs = legacy_root / "logs"
+        old_logs.mkdir()
+        (old_logs / "app.log").write_text("legacy log content")
+
+        # Set up new home with EXISTING content
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+        logs_dir = new_home / "logs"
+        logs_dir.mkdir()
+        (logs_dir / "existing.log").write_text("existing content")  # Real content!
+
+        # Run migration - should skip because target has content
+        result = migrate_logs([legacy_root], new_home, force=False)
+
+        assert result["success"] is True
+        assert result["action"] == "skip_force_required"
+        # Verify original content is preserved
+        assert (logs_dir / "existing.log").read_text() == "existing content"
