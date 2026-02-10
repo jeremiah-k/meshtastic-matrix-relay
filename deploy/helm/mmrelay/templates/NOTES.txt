@@ -17,7 +17,7 @@ To run diagnostics inside the pod:
   $ kubectl exec -n {{ .Release.Namespace }} $POD_NAME -- mmrelay doctor
 
 DEPLOYMENT NOTES:
-- Config is copied from {{ .Values.config.name }} Secret to the PVC by the init container
+- Config is copied from {{ .Values.config.name }} {{ include "mmrelay.configSource" . }} to the PVC by the init container
 - {{ if .Values.matrixAuth.enabled }}Matrix auth is enabled via {{ .Values.matrixAuth.secretName }} Secret{{ else }}Matrix auth is disabled - set matrixAuth.enabled=true and create the auth secret{{ end }}
 - {{ if .Values.persistence.enabled }}Persistence is enabled - all data lives on the PVC{{ else }}WARNING: Persistence is disabled - all data is ephemeral{{ end }}
 

@@ -287,7 +287,7 @@ update-compose:
 	@cp src/mmrelay/tools/sample-docker-compose-prebuilt.yaml docker-compose.yaml
 	@echo "Updated docker-compose.yaml with latest sample (prebuilt image)"
 	@echo "Please review and edit for your specific configuration (BLE, serial, etc.)"
-	@echo "To build from source, run 'make build-from-source'"
+	@echo "To build from source, run 'make use-source'"
 
 # Build the Docker image (uses layer caching for faster builds)
 build:

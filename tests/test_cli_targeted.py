@@ -755,7 +755,7 @@ class TestHandleDoctorCommandImportGuard(unittest.TestCase):
         original_import = builtins.__import__
 
         def _block_migrate(name, *args, **kwargs):
-            if name == "mmrelay.migrate" or name == "mmrelay.paths":
+            if name in ("mmrelay.migrate", "mmrelay.paths"):
                 raise ImportError("mocked import error")
             return original_import(name, *args, **kwargs)
 

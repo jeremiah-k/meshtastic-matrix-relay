@@ -39,6 +39,7 @@ spec:
             - |
               set -e
               # Copy config.yaml from Secret to PVC if not already present
+              # To force re-copy from the Secret, delete /data/config.yaml and restart the pod
               if [ ! -f /data/config.yaml ]; then
                 echo "Copying config.yaml to PVC..."
                 cp /config-source/config.yaml /data/config.yaml

@@ -97,7 +97,7 @@ spec:
               mountPath: /config-source
               readOnly: true
             - name: data
-              mountPath: {{ .Values.mmrelayHome }}
+              mountPath: {{ .Values.mmrelayHome | quote }}
       {{- end }}
       containers:
         - name: mmrelay
