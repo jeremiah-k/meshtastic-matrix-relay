@@ -464,6 +464,26 @@ The migration command is designed to be idempotent and safe. It:
 
 For detailed migration instructions, see the [Migration Guide for v1.3](MIGRATION_1.3.md).
 
+### First-boot health expectations
+
+After upgrades, pods can remain unready/unhealthy until credentials/bootstrap state exists or migration is completed.
+
+Recommended sequence:
+
+```bash
+# Preview migration
+kubectl exec -n mmrelay <pod-name> -- mmrelay migrate --dry-run
+
+# Apply migration
+kubectl exec -n mmrelay <pod-name> -- mmrelay migrate
+
+# Verify
+kubectl exec -n mmrelay <pod-name> -- mmrelay verify-migration
+kubectl exec -n mmrelay <pod-name> -- mmrelay doctor
+```
+
+Deprecation timeline: legacy credential/location fallbacks are supported in v1.3 and planned for removal in v1.4.
+
 ### Disaster recovery checklist
 
 1. **Prevention**:

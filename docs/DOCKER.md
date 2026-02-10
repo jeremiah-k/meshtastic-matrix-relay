@@ -416,6 +416,25 @@ The Docker image includes a built-in health check that supports two modes:
 - To customize the heartbeat interval, set `MMRELAY_READY_HEARTBEAT_SECONDS` (default: 60)
 - To enable this in Compose, add `MMRELAY_READY_FILE` to the `environment` section (e.g., `- MMRELAY_READY_FILE=/tmp/mmrelay-ready`)
 
+### First-boot and migration health expectations
+
+On first boot after upgrade, containers may briefly report unhealthy if authentication/bootstrap data is not yet present or migration has not been completed.
+
+Recommended flow:
+
+```bash
+# 1) Preview migration
+docker compose exec mmrelay mmrelay migrate --dry-run
+
+# 2) Apply migration
+docker compose exec mmrelay mmrelay migrate
+
+# 3) Verify unified layout
+docker compose exec mmrelay mmrelay verify-migration
+```
+
+Deprecation timeline: legacy credential/location fallbacks are supported in v1.3 and planned for removal in v1.4.
+
 ## Troubleshooting
 
 ### Common Portainer Issues

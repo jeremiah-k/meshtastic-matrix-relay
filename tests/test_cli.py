@@ -1019,13 +1019,15 @@ class TestE2EEConfigurationFunctions(unittest.TestCase):
         }
         matrix_section = {
             "homeserver": "https://matrix.org",
-            "e2ee": {"enabled": True, "store_path": "~/.mmrelay/store"},
+            "e2ee": {"enabled": True, "store_path": "~/.mmrelay/matrix/store"},
         }
 
         with (
             patch("mmrelay.cli._validate_matrix_authentication", return_value=True),
             patch("mmrelay.cli._validate_e2ee_dependencies", return_value=True),
-            patch("os.path.expanduser", return_value="/home/user/.mmrelay/store"),
+            patch(
+                "os.path.expanduser", return_value="/home/user/.mmrelay/matrix/store"
+            ),
             patch("os.path.exists", return_value=True),
             patch("builtins.print"),
         ):
@@ -1404,7 +1406,7 @@ class TestAuthLogin(unittest.TestCase):
     def setUp(self):
         """
         Initialize per-test fixtures.
-        
+
         Creates self.mock_args as a MagicMock and sets its attributes `homeserver`, `username`, and `password` to None.
         """
         self.mock_args = MagicMock()
@@ -3159,12 +3161,12 @@ class TestValidateE2eeConfig(unittest.TestCase):
         # Setup mocks
         mock_validate_auth.return_value = True
         mock_validate_deps.return_value = True
-        mock_expanduser.return_value = "/home/user/.mmrelay/store"
+        mock_expanduser.return_value = "/home/user/.mmrelay/matrix/store"
         mock_exists.return_value = False  # Directory doesn't exist yet
 
         matrix_section = {
             "homeserver": "https://matrix.org",
-            "e2ee": {"enabled": True, "store_path": "~/.mmrelay/store"},
+            "e2ee": {"enabled": True, "store_path": "~/.mmrelay/matrix/store"},
         }
 
         # Import and call function
@@ -3180,9 +3182,9 @@ class TestValidateE2eeConfig(unittest.TestCase):
             self.config_path, matrix_section, self.base_config
         )
         mock_validate_deps.assert_called_once()
-        mock_expanduser.assert_called_once_with("~/.mmrelay/store")
+        mock_expanduser.assert_called_once_with("~/.mmrelay/matrix/store")
         mock_print.assert_any_call(
-            "Info: E2EE store directory will be created: /home/user/.mmrelay/store"
+            "Info: E2EE store directory will be created: /home/user/.mmrelay/matrix/store"
         )
         mock_print.assert_any_call("✅ E2EE configuration is valid")
 

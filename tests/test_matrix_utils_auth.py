@@ -1131,8 +1131,8 @@ def test_cleanup_local_session_data_success():
         patch(
             "mmrelay.paths.resolve_all_paths",
             return_value={
-                "credentials_path": "/test/config/credentials.json",
-                "store_dir": "/test/store",
+                "credentials_path": "/test/config/matrix/credentials.json",
+                "store_dir": "/test/config/matrix/store",
             },
         ),
         patch("mmrelay.config.load_config", return_value={}),
@@ -1145,8 +1145,8 @@ def test_cleanup_local_session_data_success():
         result = _cleanup_local_session_data()
 
         assert result is True
-        mock_remove.assert_called_once_with("/test/config/credentials.json")
-        mock_rmtree.assert_called_once_with("/test/store")
+        mock_remove.assert_called_once_with("/test/config/matrix/credentials.json")
+        mock_rmtree.assert_called_once_with("/test/config/matrix/store")
 
 
 def test_cleanup_local_session_data_files_not_exist():
@@ -1155,8 +1155,8 @@ def test_cleanup_local_session_data_files_not_exist():
         patch(
             "mmrelay.paths.resolve_all_paths",
             return_value={
-                "credentials_path": "/test/config/credentials.json",
-                "store_dir": "/test/store",
+                "credentials_path": "/test/config/matrix/credentials.json",
+                "store_dir": "/test/config/matrix/store",
             },
         ),
         patch("mmrelay.config.load_config", return_value={}),
@@ -1173,8 +1173,8 @@ def test_cleanup_local_session_data_permission_error():
         patch(
             "mmrelay.paths.resolve_all_paths",
             return_value={
-                "credentials_path": "/test/config/credentials.json",
-                "store_dir": "/test/store",
+                "credentials_path": "/test/config/matrix/credentials.json",
+                "store_dir": "/test/config/matrix/store",
             },
         ),
         patch("mmrelay.config.load_config", return_value={}),

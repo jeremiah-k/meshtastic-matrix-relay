@@ -319,8 +319,8 @@ class TestCleanupLocalSessionData:
     @patch(
         "mmrelay.paths.resolve_all_paths",
         return_value={
-            "credentials_path": "/test/config/credentials.json",
-            "store_dir": "/test/store",
+            "credentials_path": "/test/config/matrix/credentials.json",
+            "store_dir": "/test/config/matrix/store",
         },
     )
     def test_cleanup_success(
@@ -331,8 +331,8 @@ class TestCleanupLocalSessionData:
         mock_exists.return_value = True
         result = _cleanup_local_session_data()
         assert result is True
-        mock_remove.assert_called_once_with("/test/config/credentials.json")
-        mock_rmtree.assert_called_once_with("/test/store")
+        mock_remove.assert_called_once_with("/test/config/matrix/credentials.json")
+        mock_rmtree.assert_called_once_with("/test/config/matrix/store")
 
     @patch("os.path.exists", return_value=False)
     def test_cleanup_no_files(self, mock_exists):
@@ -347,8 +347,8 @@ class TestCleanupLocalSessionData:
     @patch(
         "mmrelay.paths.resolve_all_paths",
         return_value={
-            "credentials_path": "/test/config/credentials.json",
-            "store_dir": "/test/store",
+            "credentials_path": "/test/config/matrix/credentials.json",
+            "store_dir": "/test/config/matrix/store",
         },
     )
     def test_cleanup_permission_error(
@@ -826,7 +826,7 @@ class TestLogoutMatrixBot:
     async def test_logout_matrix_bot_close_main_client_timeout(self):
         """
         Verify logout_matrix_bot returns True when closing the main client raises a TimeoutError.
-        
+
         Patches credential loading, AsyncClient construction, SSL context creation, session cleanup, and logger; simulates a timeout when closing the main AsyncClient and asserts the function completes successfully and logs a debug message.
         """
         from mmrelay.cli_utils import logout_matrix_bot
@@ -872,7 +872,7 @@ class TestLogoutMatrixBot:
     async def test_logout_matrix_bot_process_exception(self):
         """
         Ensure logout_matrix_bot handles exceptions raised during AsyncClient construction.
-        
+
         Patches credential loading and SSL context creation, forces AsyncClient construction to raise an unexpected Exception, and asserts that logout_matrix_bot returns False, calls logger.exception once, and prints an error message.
         """
         from mmrelay.cli_utils import logout_matrix_bot

@@ -1206,6 +1206,14 @@ args: []
 
 ---
 
+## Open Follow-ups (post-v13rc1-2)
+
+1. **Auth first-run UX**: Keep validating that first-run `mmrelay auth login` consistently writes credentials into the unified `matrix/` subtree on all platforms.
+2. **Container bootstrap UX**: Continue documenting/streamlining first-boot behavior when credentials do not yet exist (health/readiness expectations).
+3. **Deprecation execution**: Track concrete removal tasks for legacy env/paths in v1.4 and ensure release checklist covers final cleanup.
+
+---
+
 ## Implementation Status (v13rc1-2)
 
 - [x] Phase 1 Foundation: `paths.py` and `migrate.py` implemented with coverage.

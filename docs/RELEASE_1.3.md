@@ -35,6 +35,20 @@ This checklist is required before tagging a 1.3 release.
 - [ ] All required GitHub Actions workflows are green on `v13rc1-2`.
 - [ ] No warnings or failures in lint, test, or packaging workflows on `v13rc1-2`.
 
+## CI and Packaging Validation Steps
+
+Run and record these before tagging:
+
+- [ ] Verify required workflows succeeded on `v13rc1-2`:
+  - unit/integration tests
+  - lint/format/static checks
+  - packaging/build artifacts
+- [ ] Confirm release packaging artifacts are generated and attached/published:
+  - Python package build
+  - container image build/publish
+  - Helm chart packaging/index update (if part of release)
+- [ ] Confirm no blocked checks remain in GitHub branch protection.
+
 ## Notes From Final Pass (Test Environment)
 
 - Verified in live test env (`coder`) on `v13rc1-2-dev`:
