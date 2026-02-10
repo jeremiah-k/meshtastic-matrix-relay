@@ -59,37 +59,9 @@ docker compose logs -f
 
 > **Production deployment**: The `:latest` tag is mutable and may change. For production deployments, pin a specific version tag or digest to ensure reproducible deployments. See the [Kubernetes Guide](KUBERNETES.md#pinning-digests-for-production) for digest pinning examples.
 
-## Docker Migration Quick Reference
+## Upgrading from Older Layouts
 
-If upgrading from an older version with the old directory layout, use these commands:
-
-**Preview migration (dry-run):**
-
-```bash
-# One-shot dry-run from host (recommended first step)
-docker run --rm -v "$HOME/.mmrelay:/data" ghcr.io/jeremiah-k/mmrelay:latest mmrelay migrate --dry-run
-
-# Or from a running container
-docker compose exec mmrelay mmrelay migrate --dry-run
-```
-
-**Run migration:**
-
-```bash
-# One-shot migration from host
-docker run --rm -v "$HOME/.mmrelay:/data" ghcr.io/jeremiah-k/mmrelay:latest mmrelay migrate
-
-# Or from a running container
-docker compose exec mmrelay mmrelay migrate
-```
-
-**Verify migration:**
-
-```bash
-docker compose exec mmrelay mmrelay verify-migration
-```
-
-> **Note**: Legacy credential/location fallback is supported until v1.4; warnings will be emitted until you migrate. See the [Migration Guide for v1.3](MIGRATION_1.3.md) for complete details.
+If you're upgrading an existing deployment from older MMRelay directory layouts, follow the [Migration Guide for v1.3](MIGRATION_1.3.md).
 
 ## Deployment Methods
 
@@ -416,24 +388,11 @@ The Docker image includes a built-in health check that supports two modes:
 - To customize the heartbeat interval, set `MMRELAY_READY_HEARTBEAT_SECONDS` (default: 60)
 - To enable this in Compose, add `MMRELAY_READY_FILE` to the `environment` section (e.g., `- MMRELAY_READY_FILE=/tmp/mmrelay-ready`)
 
-### First-boot and migration health expectations
+### First-boot health expectations
 
-On first boot after upgrade, containers may briefly report unhealthy if authentication/bootstrap data is not yet present or migration has not been completed.
+On first boot after upgrade, containers may briefly report unhealthy if authentication/bootstrap data is not yet present.
 
-Recommended flow:
-
-```bash
-# 1) Preview migration
-docker compose exec mmrelay mmrelay migrate --dry-run
-
-# 2) Apply migration
-docker compose exec mmrelay mmrelay migrate
-
-# 3) Verify unified layout
-docker compose exec mmrelay mmrelay verify-migration
-```
-
-Deprecation timeline: legacy credential/location fallbacks are supported in v1.3 and planned for removal in v1.4.
+For upgrade/migration procedures and deprecation timeline details, see the [Migration Guide for v1.3](MIGRATION_1.3.md).
 
 ## Troubleshooting
 

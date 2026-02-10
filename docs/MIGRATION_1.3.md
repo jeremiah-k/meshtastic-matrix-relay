@@ -178,7 +178,7 @@ run one-off migration commands as root:
 ```bash
 docker run --rm --user root \
   -v ${HOME}/.mmrelay:/data \
-  -v ${HOME}/config.yaml:/app/config.yaml:ro \
+  -v ${HOME}/config.yaml:/data/config.yaml:ro \
   ghcr.io/jeremiah-k/mmrelay:<tag> \
   mmrelay migrate
 ```

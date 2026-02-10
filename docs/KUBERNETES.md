@@ -119,7 +119,7 @@ kubectl create secret generic mmrelay-config \
 kubectl apply -k ./deploy/k8s
 
 # Check status
-kubectl get pods -n mmrelay -l app=mmrelay
+kubectl get pods -n mmrelay -l app.kubernetes.io/name=mmrelay
 kubectl logs -n mmrelay -f deployment/mmrelay
 ```
 
@@ -218,7 +218,7 @@ kubectl create secret generic mmrelay-credentials \
 
 3. Restart the pod:
    ```bash
-   kubectl delete pod -n mmrelay -l app=mmrelay
+   kubectl delete pod -n mmrelay -l app.kubernetes.io/name=mmrelay
    ```
 
 The pod will start using the mounted `credentials.json` instead of bootstrapping from environment variables.
@@ -244,7 +244,7 @@ To rotate credentials:
 
 3. Restart the pod:
    ```bash
-   kubectl delete pod -n mmrelay -l app=mmrelay
+   kubectl delete pod -n mmrelay -l app.kubernetes.io/name=mmrelay
    ```
 
 The new credentials will be loaded on the next startup.
@@ -326,7 +326,7 @@ Create a backup to local storage:
 
 ```bash
 # Get the pod name
-POD_NAME=$(kubectl get pods -n mmrelay -l app=mmrelay -o jsonpath='{.items[0].metadata.name}')
+POD_NAME=$(kubectl get pods -n mmrelay -l app.kubernetes.io/name=mmrelay -o jsonpath='{.items[0].metadata.name}')
 
 # Copy /data to local directory
 kubectl exec -n mmrelay $POD_NAME -- tar czf - /data > mmrelay-backup-$(date +%Y%m%d).tar.gz
@@ -510,7 +510,7 @@ The following resources can be safely deleted and will be recreated automaticall
 
 - **Pods**: Deleting a pod triggers Kubernetes to create a replacement pod.
 - **Deployments**: Deleting the deployment requires you to re-apply the manifest.
-- **ConfigMaps and Secrets**: These can be updated (not deleted) without affecting running pods until rollout.
+- **Secrets/ConfigMaps**: Updating them does not automatically rewrite `/data/config.yaml` once it exists on PVC; restart workflows should account for init-copy behavior.
 
 ```bash
 # Safe: Delete a pod (will be recreated)
@@ -679,7 +679,7 @@ After deployment, verify your configuration:
 
 ```bash
 # Get the pod name
-POD_NAME=$(kubectl get pods -n mmrelay -l app=mmrelay -o jsonpath='{.items[0].metadata.name}')
+POD_NAME=$(kubectl get pods -n mmrelay -l app.kubernetes.io/name=mmrelay -o jsonpath='{.items[0].metadata.name}')
 
 # Run diagnostics
 kubectl exec -n mmrelay $POD_NAME -- mmrelay doctor
