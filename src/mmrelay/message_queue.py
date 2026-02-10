@@ -212,13 +212,13 @@ class MessageQueue:
     ) -> bool:
         """
         Enqueues a send operation for ordered, rate-limited delivery.
-        
+
         Parameters:
             description: Human-readable description used for logging.
             mapping_info: Optional metadata to correlate the sent message with an external event (e.g., Matrix IDs); stored after a successful send.
             wait: If True, wait for queue space to become available instead of immediately dropping. Defaults to False.
             timeout: Maximum time in seconds to wait for queue space when `wait` is True; `None` means wait indefinitely.
-        
+
         Returns:
             `true` if the message was successfully enqueued, `false` otherwise.
         """
@@ -314,7 +314,7 @@ class MessageQueue:
     def get_queue_size(self) -> int:
         """
         Get the current number of messages queued.
-        
+
         Returns:
             int: Number of messages in the queue.
         """
@@ -349,7 +349,7 @@ class MessageQueue:
     def is_running(self) -> bool:
         """
         Indicates whether the message queue is active.
-        
+
         Returns:
             `true` if the queue is running, `false` otherwise.
         """
@@ -428,7 +428,7 @@ class MessageQueue:
     async def _process_queue(self) -> None:
         """
         Process queued messages and send them while respecting connection state and the configured inter-message delay.
-        
+
         Runs until the queue is stopped or the task is cancelled. On a successful send, updates the queue's last-send timestamps; if a message includes mapping information and the send result exposes an `id`, persists that mapping. Maintains FIFO ordering, requeues messages on transient connection-related failures for later retry, and preserves rate-limiting checks between sends. Cancellation may drop an in-flight message.
         """
         logger.debug("Message queue processor started")

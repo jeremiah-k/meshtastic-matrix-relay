@@ -21,13 +21,50 @@ jobs:
       - name: Install kubeconform
         run: |
           set -euo pipefail
-          curl -L -o /tmp/kubeconform.tar.gz \
-            "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
-          curl -L -o /tmp/kubeconform_checksums.txt \
-            "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/CHECKSUMS"
+
+          # Download with retry logic for transient failures
+          download_with_retry() {
+            local url="$1"
+            local output="$2"
+            local max_retries=3
+            local retry=0
+
+            while [ $retry -lt $max_retries ]; do
+              if curl -fsSL --retry 2 --retry-delay 3 -o "$output" "$url"; then
+                # Verify file is not empty
+                if [ -s "$output" ]; then
+                  return 0
+                fi
+              fi
+              echo "Download failed, retrying... (attempt $((retry + 1))/$max_retries)"
+              rm -f "$output"
+              retry=$((retry + 1))
+              sleep 2
+            done
+            echo "ERROR: Failed to download $url after $max_retries attempts"
+            return 1
+          }
+
+          download_with_retry \
+            "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            /tmp/kubeconform.tar.gz
+
+          download_with_retry \
+            "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/CHECKSUMS" \
+            /tmp/kubeconform_checksums.txt
+
+          # Verify checksums file has expected content before proceeding
+          if ! grep -q "kubeconform-linux-amd64.tar.gz" /tmp/kubeconform_checksums.txt; then
+            echo "ERROR: Checksums file does not contain expected entry"
+            echo "Contents of checksums file:"
+            cat /tmp/kubeconform_checksums.txt
+            exit 1
+          fi
+
           grep "kubeconform-linux-amd64.tar.gz" /tmp/kubeconform_checksums.txt \
             | awk '{print $1 "  /tmp/kubeconform.tar.gz"}' \
             | sha256sum -c -
+
           tar -xzf /tmp/kubeconform.tar.gz -C /tmp
           sudo mv /tmp/kubeconform /usr/local/bin/kubeconform
 

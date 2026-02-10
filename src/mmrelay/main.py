@@ -545,10 +545,10 @@ async def main(config: dict[str, Any]) -> None:
 def run_main(args: Any) -> int:
     """
     Load and validate configuration, initialize logging and modules, and run the main application loop.
-    
+
     Parameters:
         args (Any): Parsed command-line arguments (may be None). Recognized option: `log_level` to override the configured logging level.
-    
+
     Returns:
         int: `0` on successful completion or user-initiated interrupt, `1` for configuration errors or unhandled runtime exceptions.
     """

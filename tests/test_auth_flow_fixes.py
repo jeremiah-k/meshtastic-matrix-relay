@@ -121,10 +121,10 @@ class TestAuthFlowFixes(unittest.TestCase):
                 def mock_exists(path):
                     """
                     Simulate filesystem existence checks for tests, treating the credentials file as missing and the config directory as present.
-                    
+
                     Parameters:
                         path (str | os.PathLike): Path to check; compared against the test-scoped `credentials_path` and `config_dir` variables.
-                    
+
                     Returns:
                         bool: `True` if `path` equals `config_dir`, `False` otherwise (the `credentials_path` is treated as not existing).
                     """

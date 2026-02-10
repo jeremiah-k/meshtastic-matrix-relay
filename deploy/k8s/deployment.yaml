@@ -126,7 +126,7 @@ spec:
                 # Health check - verifies ready-file freshness when MMRELAY_READY_FILE is set,
                 # otherwise runs mmrelay doctor. 2 minutes should be sufficient for normal operations;
                 # increase only if using custom plugins that cause longer blocking operations.
-                - 'if [ -n "$MMRELAY_READY_FILE" ]; then find "$MMRELAY_READY_FILE" -mmin -2 | grep -q .; else mmrelay doctor; fi'
+                - if [ -n "$MMRELAY_READY_FILE" ]; then find "$MMRELAY_READY_FILE" -mmin -2 | grep -q .; else mmrelay doctor; fi
             initialDelaySeconds: 0
             periodSeconds: 60
             timeoutSeconds: 20

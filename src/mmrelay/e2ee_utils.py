@@ -134,13 +134,13 @@ def _check_credentials_available(
 ) -> bool:
     """
     Check whether a Matrix credentials file exists in any standard or legacy locations.
-    
+
     Searches (in order) beside an optional config file's directory, the primary HOME-based credentials location, a legacy same-home location, and legacy source locations while the deprecation window is active.
-    
+
     Parameters:
         config_path (Optional[str]): Path to the application's configuration file; when provided, the config file's directory is searched for credentials.
         paths_info (Optional[Dict[str, Any]]): Pre-resolved paths mapping (as returned by resolve_all_paths()); used instead of resolving paths inside the function.
-    
+
     Returns:
         bool: `True` if a credentials file is found in any checked location, `False` otherwise.
     """

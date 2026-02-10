@@ -193,7 +193,7 @@ class TestAsyncPatterns(unittest.TestCase):
                                 async def slow_sync(*_args, **_kwargs):
                                     """
                                     Simulates a delayed Matrix client sync operation for tests.
-                                    
+
                                     Returns:
                                         MagicMock: A MagicMock instance representing the sync response.
                                     """
@@ -231,7 +231,7 @@ class TestAsyncPatterns(unittest.TestCase):
         async def test_error_handling():
             """
             Ensure exceptions from Matrix client async operations are either propagated with the expected message or handled so a client is still returned.
-            
+
             Mocks credential loading, SSL context creation, and the Matrix AsyncClient to raise a NioLocalTransportError during sync; asserts that connect_matrix(self.config) either returns a non-None client or raises a ConnectionError whose message contains "Matrix sync failed".
             """
             # Mock credentials loading to prevent using real credentials

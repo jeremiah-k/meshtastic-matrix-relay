@@ -1050,7 +1050,7 @@ async def async_store_message_map(
 ) -> None:
     """
     Persist a mapping between a Meshtastic message or node and a Matrix event.
-    
+
     Parameters:
         meshtastic_id (int | str): Meshtastic message or node identifier.
         matrix_event_id (str): Matrix event ID to associate with the Meshtastic message.

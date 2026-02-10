@@ -876,13 +876,13 @@ def isolate_mmrelay_home(
 ) -> Generator[Path, None, None]:
     """
     Create and set an isolated MMRELAY_HOME directory for the test session and restore the original value afterwards.
-    
+
     Parameters:
         tmp_path_factory (pytest.TempPathFactory): Factory used to create a temporary directory for the isolated home.
-    
+
     Yields:
         Path: Path to the temporary MMRELAY_HOME directory provided to the test.
-    
+
     Description:
         Sets the MMRELAY_HOME environment variable to a temporary directory so tests do not write to the user's real home. Restores the original MMRELAY_HOME value (or unsets it) when the fixture completes.
     """

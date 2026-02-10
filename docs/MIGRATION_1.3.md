@@ -139,7 +139,7 @@ This prints human-readable warnings when legacy data is still present.
 
 When upgrading from v1.2, the `mmrelay doctor` command might detect v1.2 layout artifacts still within your HOME directory:
 
-```
+```text
 📂 Legacy Layout in HOME (v1.2):
    ⚠️  credentials: ~/.mmrelay/credentials.json
    ⚠️  e2ee_store: ~/.mmrelay/store
