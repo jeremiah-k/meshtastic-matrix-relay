@@ -479,6 +479,7 @@ def service_needs_update() -> tuple[bool, str]:
     - No existing user service file is present.
     - The service's ExecStart line does not contain an acceptable invocation (mmrelay on PATH, "/usr/bin/env mmrelay", or the current Python interpreter using `-m mmrelay`).
     - Environment PATH entries in the unit do not include common user-bin locations ("%h/.local/pipx/venvs/mmrelay/bin" or "%h/.local/bin").
+    - The service file uses legacy flags (--config, --logfile) instead of the v1.3 --home flag.
     - A template service file exists on disk and has a modification time newer than the installed service file.
 
     Returns:
@@ -536,6 +537,19 @@ def service_needs_update() -> tuple[bool, str]:
     )
     if not path_in_environment:
         return True, "Service PATH does not include common user-bin locations"
+
+    # Check if the service file is using legacy flags (--config, --logfile) instead of --home
+    # This ensures migration to v1.3 unified path model
+    if "--config" in exec_start_line or "--logfile" in exec_start_line:
+        return (
+            True,
+            "Service file uses legacy --config/--logfile flags (update to --home)",
+        )
+
+    # Check if the service file is missing the --home flag entirely
+    # A valid v1.3 service file should have --home
+    if "--home" not in exec_start_line:
+        return True, "Service file is missing --home flag (v1.3 unified path model)"
 
     # Check if the service file has been modified recently
     service_path = get_user_service_path()

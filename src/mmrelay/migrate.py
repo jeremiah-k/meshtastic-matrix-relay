@@ -61,6 +61,9 @@ from mmrelay.constants.app import CREDENTIALS_FILENAME, MATRIX_DIRNAME, STORE_DI
 from mmrelay.log_utils import get_logger
 from mmrelay.paths import resolve_all_paths
 
+# Lazy import to avoid circular dependency on Windows
+# setup_utils imports paths which imports constants
+
 logger = get_logger("Migration")
 
 # Global reference to current lock file for cleanup on signal
@@ -262,8 +265,10 @@ def _is_mmrelay_running() -> bool:
             pgrep_path = shutil.which("pgrep")
             if not pgrep_path:
                 return False
+            # Use a more specific pattern to avoid false positives
+            # Match: mmrelay (standalone) or python*/mmrelay (module execution)
             result = subprocess.run(  # nosec B603,B607
-                [pgrep_path, "-f", "mmrelay|python.*mmrelay"],
+                [pgrep_path, "-f", r"(^|/)mmrelay($|\s)|python.*\bmmrelay\b"],
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -286,9 +291,30 @@ def _is_mmrelay_running() -> bool:
                                 except (OSError, IOError):
                                     continue
                             else:
-                                # On non-Linux (e.g. macOS), pgrep match is our best signal
-                                # as /proc doesn't exist.
-                                return True
+                                # On non-Linux (e.g. macOS), do additional verification
+                                # by checking the process executable path
+                                try:
+                                    exe_result = subprocess.run(
+                                        ["ps", "-p", str(pid), "-o", "command="],
+                                        capture_output=True,
+                                        text=True,
+                                        timeout=2,
+                                    )
+                                    if exe_result.returncode == 0:
+                                        cmd = exe_result.stdout.strip()
+                                        # Verify it's actually mmrelay-related
+                                        if (
+                                            "mmrelay" in cmd.split()[0]
+                                            if cmd.split()
+                                            else ""
+                                        ):
+                                            return True
+                                        # Also match python -m mmrelay pattern
+                                        if "python" in cmd and "mmrelay" in cmd:
+                                            return True
+                                except (OSError, subprocess.TimeoutExpired):
+                                    # If we can't verify, be conservative and don't block
+                                    continue
                     except ValueError:
                         continue
         except (OSError, IOError, subprocess.TimeoutExpired, FileNotFoundError):
@@ -2369,6 +2395,127 @@ def migrate_gpxtracker(
             shutil.rmtree(str(staging_dir), ignore_errors=True)
 
 
+def migrate_service(
+    dry_run: bool = False,
+    force: bool = False,
+) -> dict[str, Any]:
+    """
+    Update the systemd user service file to use the v1.3 --home flag.
+
+    Checks if an existing mmrelay.service file needs updating to use the new
+    --home flag instead of the legacy --config and --logfile flags. On Windows,
+    this is a no-op since systemd is not available.
+
+    Parameters:
+        dry_run (bool): If True, report intended actions without making changes.
+        force (bool): If True, update the service file even if it appears up to date.
+
+    Returns:
+        dict: Migration result containing:
+            - success (bool): Whether the step completed successfully.
+            - action (str): One of "updated", "already_up_to_date", "not_found",
+              "not_applicable", or "error".
+            - message (str): Human-readable status message.
+            - path (str, optional): Path to the service file if it exists.
+    """
+    # Skip on Windows - systemd is not available
+    if sys.platform == "win32":
+        logger.debug("Skipping service migration on Windows (systemd not available)")
+        return {
+            "success": True,
+            "action": "not_applicable",
+            "message": "systemd not available on Windows",
+        }
+
+    # Lazy import to avoid issues on systems without systemd
+    try:
+        from mmrelay.setup_utils import (
+            create_service_file,
+            get_user_service_path,
+            reload_daemon,
+            service_exists,
+            service_needs_update,
+        )
+    except ImportError as e:
+        logger.warning("Could not import setup_utils for service migration: %s", e)
+        return {
+            "success": True,
+            "action": "not_applicable",
+            "message": f"Service utilities not available: {e}",
+        }
+
+    service_path = get_user_service_path()
+
+    # Check if a service file exists
+    if not service_exists():
+        logger.debug("No existing systemd service file found, skipping migration")
+        return {
+            "success": True,
+            "action": "not_found",
+            "message": "No existing service file to migrate",
+        }
+
+    # Check if the service needs updating
+    needs_update, reason = service_needs_update()
+
+    if not needs_update and not force:
+        logger.info("Service file is already up to date: %s", reason)
+        return {
+            "success": True,
+            "action": "already_up_to_date",
+            "message": f"Service file is up to date: {reason}",
+            "path": str(service_path),
+        }
+
+    if dry_run:
+        logger.info(
+            "[DRY RUN] Would update service file at %s (reason: %s)",
+            service_path,
+            reason,
+        )
+        return {
+            "success": True,
+            "action": "update",
+            "dry_run": True,
+            "message": f"Would update service file: {reason}",
+            "path": str(service_path),
+        }
+
+    # Perform the update
+    logger.info("Updating service file (reason: %s)", reason)
+
+    # Backup the existing service file before overwriting
+    backup_path = None
+    if service_path.exists():
+        backup_path = _backup_file(service_path, suffix=".service")
+        logger.info("Backing up existing service file to %s", backup_path)
+
+    if not create_service_file():
+        return {
+            "success": False,
+            "action": "error",
+            "message": "Failed to create/update service file",
+            "path": str(service_path),
+        }
+
+    # Reload systemd daemon to pick up the changes
+    if not reload_daemon():
+        logger.warning(
+            "Service file updated but daemon reload failed. "
+            "Run 'systemctl --user daemon-reload' manually."
+        )
+
+    logger.info("Service file updated successfully to use --home flag")
+
+    return {
+        "success": True,
+        "action": "updated",
+        "message": f"Service file updated: {reason}",
+        "path": str(service_path),
+        "backup_path": str(backup_path) if backup_path else None,
+    }
+
+
 def is_migration_needed() -> bool:
     """
     Check whether any legacy MMRelay data exists that should be migrated into the current HOME structure.
@@ -2619,6 +2766,14 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
             migrate_gpxtracker,
             legacy_roots,
             new_home,
+            dry_run=dry_run,
+            force=force,
+        )
+
+        # Update systemd service file to use --home flag (Linux only)
+        _run_step(
+            "service",
+            migrate_service,
             dry_run=dry_run,
             force=force,
         )

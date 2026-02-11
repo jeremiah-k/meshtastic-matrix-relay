@@ -681,8 +681,10 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         self, mock_getmtime, mock_get_template, mock_read_service
     ):
         """Test that service_needs_update returns True when the template is newer."""
+        # Include --home flag to pass the legacy flag checks
         mock_read_service.return_value = (
-            f"ExecStart={sys.executable} -m mmrelay\nEnvironment=PATH=%h/.local/bin"
+            f"ExecStart={sys.executable} -m mmrelay --home %h/.mmrelay\n"
+            f"Environment=PATH=%h/.local/bin"
         )
         mock_get_template.return_value = "/path/to/template"
         mock_getmtime.side_effect = [2, 1]  # template_mtime > service_mtime
