@@ -29,6 +29,7 @@ from mmrelay.constants.app import (
     CREDENTIALS_FILENAME,
     MATRIX_DIRNAME,
     STORE_DIRNAME,
+    WINDOWS_INSTALLER_DIR_NAME,
 )
 from mmrelay.log_utils import get_logger
 
@@ -78,6 +79,32 @@ def _reset_deprecation_warning_flag() -> None:
     """
     global _deprecation_warning_shown
     _deprecation_warning_shown = False
+
+
+def _has_mmrelay_artifacts(root: Path) -> bool:
+    """
+    Detect whether a directory contains indicators of an MMRelay data store.
+
+    Performs lightweight existence checks for common MMRelay artifacts (config, credentials,
+    or known database file locations) to avoid false positives.
+
+    Parameters:
+        root (Path): Directory to inspect for MMRelay artifacts.
+
+    Returns:
+        True if any known MMRelay artifact is present in `root`, False otherwise.
+    """
+    candidates = [
+        root / "config.yaml",
+        root / "credentials.json",
+        root / "matrix" / "credentials.json",
+        root / "meshtastic.sqlite",
+        root / "data" / "meshtastic.sqlite",
+        root / "database" / "meshtastic.sqlite",
+        root / "store",
+        root / "matrix" / "store",
+    ]
+    return any(candidate.exists() for candidate in candidates)
 
 
 def set_home_override(path: str, *, source: str | None = None) -> None:
@@ -175,6 +202,18 @@ def get_home_dir() -> Path:
     if sys.platform != "win32":
         return Path.home() / f".{APP_NAME}"
     else:  # Windows
+        # Check if Windows installer path exists with MMRelay data
+        # This takes precedence over platformdirs for Inno Setup users
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if local_app_data:
+            installer_path = (
+                Path(local_app_data) / "Programs" / WINDOWS_INSTALLER_DIR_NAME
+            )
+            # Check if this looks like an MMRelay installation with data
+            if installer_path.exists() and _has_mmrelay_artifacts(installer_path):
+                return installer_path
+
+        # Fall back to platformdirs default
         return Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
 
 
@@ -596,6 +635,24 @@ def get_legacy_dirs() -> list[Path]:
         # platformdirs may fail in some environments, skip it
         pass
 
+    # 2b. Check Windows Inno Setup installer path (AppData\Local\Programs\MM Relay)
+    # This is where the Windows installer puts the application and data
+    if sys.platform == "win32":
+        try:
+            local_app_data = os.environ.get("LOCALAPPDATA")
+            if local_app_data:
+                installer_path = (
+                    Path(local_app_data) / "Programs" / WINDOWS_INSTALLER_DIR_NAME
+                )
+                if installer_path.exists():
+                    installer_str = str(installer_path.absolute())
+                    if installer_str != home_str and installer_str not in seen:
+                        legacy_dirs.append(installer_path)
+                        seen.add(installer_str)
+        except (OSError, RuntimeError):
+            # Skip if we can't access the path
+            pass
+
     # 3. Check legacy MMRELAY_BASE_DIR environment variable
     env_base_dir = os.getenv("MMRELAY_BASE_DIR")
     if env_base_dir:
@@ -615,31 +672,6 @@ def get_legacy_dirs() -> list[Path]:
             if data_str != home_str and data_str not in seen:
                 legacy_dirs.append(data_path)
                 seen.add(data_str)
-
-    def _has_mmrelay_artifacts(root: Path) -> bool:
-        """
-        Detects whether a directory contains indicators of an MMRelay data store.
-
-        Performs lightweight existence checks for common MMRelay artifacts (config, credentials,
-        or known database file locations) to avoid false positives.
-
-        Parameters:
-            root (Path): Directory to inspect for MMRelay artifacts.
-
-        Returns:
-            True if any known MMRelay artifact is present in `root`, False otherwise.
-        """
-        candidates = [
-            root / "config.yaml",
-            root / "credentials.json",
-            root / "matrix" / "credentials.json",
-            root / "meshtastic.sqlite",
-            root / "data" / "meshtastic.sqlite",
-            root / "database" / "meshtastic.sqlite",
-            root / "store",
-            root / "matrix" / "store",
-        ]
-        return any(candidate.exists() for candidate in candidates)
 
     # 5. Check common Docker legacy mounts
     # These are common volume mount points in Docker deployments
