@@ -2524,33 +2524,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             # Create a sanitized copy of the packet for logging
             packet_for_logging = copy.deepcopy(packet)
 
-            # Remove potentially sensitive fields that exist in MeshPacket protobuf
-            # - public_key: The public key used for PKI encryption (if applicable)
-            # - encrypted: The encrypted payload bytes (redundant since we have decoded)
-            sensitive_keys = {
-                "public_key",
-                "encrypted",
-            }
-
-            def sanitize_dict(d):
-                """Recursively sanitize dictionary by removing sensitive keys."""
-                if not isinstance(d, dict):
-                    return d
-                result = {}
-                for k, v in d.items():
-                    # Skip keys that contain sensitive keywords
-                    if any(sk in k.lower() for sk in sensitive_keys):
-                        result[k] = "<redacted>"
-                    elif isinstance(v, dict):
-                        result[k] = sanitize_dict(v)
-                    elif isinstance(v, (bytes, bytearray)):
-                        result[k] = f"<bytes:{len(v)}>"
-                    else:
-                        result[k] = v
-                return result
-
-            sanitized_packet = sanitize_dict(packet_for_logging)
-            logger.debug(f"Full packet (sanitized): {sanitized_packet}")
+            logger.debug(f"Full packet: {packet_for_logging}")
         except Exception:
             # If sanitization fails, don't break message processing
             logger.debug("Failed to log full packet details")
