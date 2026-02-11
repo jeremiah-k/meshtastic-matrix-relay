@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 try:
     from mmrelay.paths import (
+        _reset_deprecation_warning_flag,
         ensure_directories,
         get_config_paths,
         get_database_path,
@@ -47,16 +48,20 @@ class TestPathResolutionEnvVars(unittest.TestCase):
         Reset the global home-directory override used by path resolution tests.
 
         This ensures each test starts with no overridden home directory state by calling reset_home_override().
+        Also resets the deprecation warning flag to ensure each test can emit warnings independently.
         """
         reset_home_override()
+        _reset_deprecation_warning_flag()
 
     def tearDown(self):
         """
         Reset any overridden home-directory state used by tests.
 
         Restores global home/path override to its default so subsequent tests run with a clean environment.
+        Also resets the deprecation warning flag.
         """
         reset_home_override()
+        _reset_deprecation_warning_flag()
 
     def test_mmrelay_home_with_legacy_vars(self):
         """Test MMRELAY_HOME with legacy env vars present (lines 85-86, 88-92)."""

@@ -69,6 +69,17 @@ _home_override_source: str | None = None
 _deprecation_warning_shown = False
 
 
+def _reset_deprecation_warning_flag() -> None:
+    """
+    Reset the deprecation warning flag for testing purposes.
+
+    This is an internal function used by tests to ensure each test
+    starts with a clean deprecation warning state.
+    """
+    global _deprecation_warning_shown
+    _deprecation_warning_shown = False
+
+
 def set_home_override(path: str, *, source: str | None = None) -> None:
     """
     Store a CLI-provided application home path and its source as the module-level override used by path resolution.
@@ -130,31 +141,34 @@ def get_home_dir() -> Path:
     env_base_dir = os.getenv("MMRELAY_BASE_DIR")
     env_data_dir = os.getenv("MMRELAY_DATA_DIR")
 
-    if env_base_dir and env_data_dir and not _deprecation_warning_shown:
-        logger.warning(
-            "Both MMRELAY_BASE_DIR and MMRELAY_DATA_DIR are set. "
-            "Preferring MMRELAY_BASE_DIR and ignoring MMRELAY_DATA_DIR. "
-            "Support will be removed in v1.4."
-        )
-        _deprecation_warning_shown = True
+    if env_base_dir and env_data_dir:
+        if not _deprecation_warning_shown:
+            logger.warning(
+                "Both MMRELAY_BASE_DIR and MMRELAY_DATA_DIR are set. "
+                "Preferring MMRELAY_BASE_DIR and ignoring MMRELAY_DATA_DIR. "
+                "Support will be removed in v1.4."
+            )
+            _deprecation_warning_shown = True
         return Path(env_base_dir).expanduser().absolute()
 
-    if env_base_dir and not _deprecation_warning_shown:
-        logger.warning(
-            "Deprecated environment variable MMRELAY_BASE_DIR is set. "
-            "Use MMRELAY_HOME instead. "
-            "Support will be removed in v1.4."
-        )
-        _deprecation_warning_shown = True
+    if env_base_dir:
+        if not _deprecation_warning_shown:
+            logger.warning(
+                "Deprecated environment variable MMRELAY_BASE_DIR is set. "
+                "Use MMRELAY_HOME instead. "
+                "Support will be removed in v1.4."
+            )
+            _deprecation_warning_shown = True
         return Path(env_base_dir).expanduser().absolute()
 
-    if env_data_dir and not _deprecation_warning_shown:
-        logger.warning(
-            "Deprecated environment variable MMRELAY_DATA_DIR is set. "
-            "Use MMRELAY_HOME instead. "
-            "Support will be removed in v1.4."
-        )
-        _deprecation_warning_shown = True
+    if env_data_dir:
+        if not _deprecation_warning_shown:
+            logger.warning(
+                "Deprecated environment variable MMRELAY_DATA_DIR is set. "
+                "Use MMRELAY_HOME instead. "
+                "Support will be removed in v1.4."
+            )
+            _deprecation_warning_shown = True
         return Path(env_data_dir).expanduser().absolute()
 
     # Platform defaults

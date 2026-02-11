@@ -108,7 +108,7 @@ _setup_with_migration_check:
 			echo "Updating configuration files..."; \
 			if [ -f .env ] && grep -q '^MMRELAY_HOME=' .env 2>/dev/null && ! grep -q '^MMRELAY_HOST_HOME=' .env 2>/dev/null; then \
 				echo "Updating .env file..."; \
-				sed -i.bak 's/^\([[:space:]]*\(export[[:space:]]\+\)\?\)MMRELAY_HOME=/\1MMRELAY_HOST_HOME=/' .env && rm -f .env.bak; \
+				sed 's/^\([[:space:]]*\(export[[:space:]]\+\)\?\)MMRELAY_HOME=/\1MMRELAY_HOST_HOME=/' .env > .env.tmp && mv .env.tmp .env; \
 				echo "  ✓ .env updated (MMRELAY_HOME → MMRELAY_HOST_HOME)"; \
 			fi; \
 			if [ -f docker-compose.yaml ] && grep -q ':/app/' docker-compose.yaml 2>/dev/null; then \
