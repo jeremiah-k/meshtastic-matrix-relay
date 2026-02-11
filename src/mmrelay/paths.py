@@ -503,7 +503,7 @@ def get_plugin_database_path(plugin_name: str) -> Path:
         plugin_name (str): Plugin identifier used to compose the filename.
 
     Returns:
-        Path: Path to the plugin database file at <home>/database/plugin_data_{plugin_name}.
+        Path: Path to the plugin database file at <home>/database/plugin_data_{plugin_name}.sqlite.
     """
     # NOTE: MMRelay stores plugin data in the main SQLite database today.
     # This helper exists for diagnostics and potential future per-plugin DB files.
