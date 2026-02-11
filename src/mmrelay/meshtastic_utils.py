@@ -2511,6 +2511,53 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         logger.error("Received malformed packet: packet is None or not a dict")
         return
 
+    # Full packet logging for debugging (when enabled in config)
+    # Check if full packet logging is enabled - must be explicitly True
+    debug_settings = config.get("logging", {}).get("debug", {}) if config else {}
+    if debug_settings.get("full_packets") is True:
+        try:
+            import copy
+
+            # Create a sanitized copy of the packet for logging
+            packet_for_logging = copy.deepcopy(packet)
+
+            # Remove potentially sensitive fields
+            # - raw: Raw protobuf objects (meshtastic library adds this)
+            # - payload: Raw byte arrays in decoded packets
+            # - encrypted/aes/nonce/key/private: Cryptographic material
+            sensitive_keys = {
+                "raw",
+                "payload",
+                "encrypted",
+                "aes",
+                "nonce",
+                "key",
+                "private",
+            }
+
+            def sanitize_dict(d):
+                """Recursively sanitize dictionary by removing sensitive keys."""
+                if not isinstance(d, dict):
+                    return d
+                result = {}
+                for k, v in d.items():
+                    # Skip keys that contain sensitive keywords
+                    if any(sk in k.lower() for sk in sensitive_keys):
+                        result[k] = "<redacted>"
+                    elif isinstance(v, dict):
+                        result[k] = sanitize_dict(v)
+                    elif isinstance(v, (bytes, bytearray)):
+                        result[k] = f"<bytes:{len(v)}>"
+                    else:
+                        result[k] = v
+                return result
+
+            sanitized_packet = sanitize_dict(packet_for_logging)
+            logger.debug(f"Full packet (sanitized): {sanitized_packet}")
+        except Exception:
+            # If sanitization fails, don't break message processing
+            logger.debug("Failed to log full packet details")
+
     # Log that we received a message (without the full packet details)
     decoded = packet.get("decoded")
     if decoded and isinstance(decoded, dict) and decoded.get("text"):

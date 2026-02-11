@@ -98,6 +98,7 @@ logging:
   #  matrix_nio: false      # Suppress matrix-nio logging
   #  bleak: true             # Enable DEBUG level for BLE
   #  meshtastic: "warning"   # Enable warning+ level for meshtastic
+  #  full_packets: false     # Log full packet details at DEBUG level (sanitized: removes keys, encrypted payloads)
 
 #database:
 #  path: ~/.mmrelay/data/meshtastic.sqlite   # Default location
