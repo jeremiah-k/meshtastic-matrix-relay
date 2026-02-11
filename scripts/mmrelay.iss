@@ -134,6 +134,41 @@ var
   matrix_username: string;
   matrix_password: string;
 begin
+  // Always update batch files to ensure they use current CLI flags
+  // This fixes upgrades from versions that used deprecated --data-dir
+  batch_file := '@echo off' + #13#10 +
+                'cd /d "' + sAppDir + '"' + #13#10 +
+                '"' + sAppDir + '\mmrelay.exe" --home "' + sAppDir + '" ' + #13#10 +
+                'pause';
+
+  if Not SaveStringToFile(sAppDir + '\mmrelay.bat', batch_file, false) then
+  begin
+    MsgBox('Could not create batch file "mmrelay.bat". Close any applications that may have it open and re-run setup', mbInformation, MB_OK);
+  end;
+
+  // Create setup-auth.bat for easy authentication setup
+  batch_file := '@echo off' + #13#10 +
+                'echo Setting up Matrix authentication...' + #13#10 +
+                '"' + sAppDir + '\mmrelay.exe" --home "' + sAppDir + '" auth login' + #13#10 +
+                'pause';
+
+  if Not SaveStringToFile(sAppDir + '\setup-auth.bat', batch_file, false) then
+  begin
+    MsgBox('Could not create batch file "setup-auth.bat". Close any applications that may have it open and re-run setup', mbInformation, MB_OK);
+  end;
+
+  // Create logout.bat for easy authentication cleanup
+  batch_file := '@echo off' + #13#10 +
+                'echo Logging out from Matrix authentication...' + #13#10 +
+                '"' + sAppDir + '\mmrelay.exe" --home "' + sAppDir + '" auth logout' + #13#10 +
+                'pause';
+
+  if Not SaveStringToFile(sAppDir + '\logout.bat', batch_file, false) then
+  begin
+    MsgBox('Could not create batch file "logout.bat". Close any applications that may have it open and re-run setup', mbInformation, MB_OK);
+  end;
+
+  // Only generate config.yaml if user selected "Overwrite config"
   If Not OverwriteConfig.Values[0] then
     Exit;
 
@@ -198,37 +233,5 @@ begin
   if Not SaveStringToFile(sAppDir + '/config.yaml', config, false) then
   begin
     MsgBox('Could not create config file "config.yaml". Close any applications that may have it open and re-run setup', mbInformation, MB_OK);
-  end;
-
-  batch_file := '@echo off' + #13#10 +
-                'cd /d "' + sAppDir + '"' + #13#10 +
-                '"' + sAppDir + '\mmrelay.exe" --home "' + sAppDir + '" ' + #13#10 +
-                'pause';
-
-  if Not SaveStringToFile(sAppDir + '/mmrelay.bat', batch_file, false) then
-  begin
-    MsgBox('Could not create batch file "mmrelay.bat". Close any applications that may have it open and re-run setup', mbInformation, MB_OK);
-  end;
-
-  // Create setup-auth.bat for easy authentication setup
-  batch_file := '@echo off' + #13#10 +
-                'echo Setting up Matrix authentication...' + #13#10 +
-                '"' + sAppDir + '\mmrelay.exe" --home "' + sAppDir + '" auth login' + #13#10 +
-                'pause';
-
-  if Not SaveStringToFile(sAppDir + '\setup-auth.bat', batch_file, false) then
-  begin
-    MsgBox('Could not create batch file "setup-auth.bat". Close any applications that may have it open and re-run setup', mbInformation, MB_OK);
-  end;
-
-  // Create logout.bat for easy authentication cleanup
-  batch_file := '@echo off' + #13#10 +
-                'echo Logging out from Matrix authentication...' + #13#10 +
-                '"' + sAppDir + '\mmrelay.exe" --home "' + sAppDir + '" auth logout' + #13#10 +
-                'pause';
-
-  if Not SaveStringToFile(sAppDir + '\logout.bat', batch_file, false) then
-  begin
-    MsgBox('Could not create batch file "logout.bat". Close any applications that may have it open and re-run setup', mbInformation, MB_OK);
   end;
 end;
