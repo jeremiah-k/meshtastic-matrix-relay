@@ -81,10 +81,6 @@ If you need to overwrite existing target files, use `mmrelay migrate --force`. N
 
 ## Deployment-Specific Migration Quick Reference
 
-### Docker Compose installs (Most Common)
-
-See [Docker-Specific Notes](#docker-specific-notes) for detailed instructions.
-
 ### Local / systemd / venv / pipx installs
 
 1. Upgrade package to 1.3.0.
@@ -92,6 +88,10 @@ See [Docker-Specific Notes](#docker-specific-notes) for detailed instructions.
    - `mmrelay migrate --dry-run`
    - `mmrelay migrate`
    - `mmrelay verify-migration`
+
+### Docker Compose installs
+
+See [Docker-Specific Notes](#docker-specific-notes) for detailed instructions.
 
 ### Windows Installer / pip installs
 
