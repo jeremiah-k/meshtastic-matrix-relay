@@ -1862,7 +1862,7 @@ class TestMigrationRealWorldScenarios:
     def test_windows_upgrade_from_old_install_location(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """
+        r"""
         Test Windows user upgrading from old Windows install location.
 
         Scenario:

@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 try:
     from mmrelay.paths import (
+        UnknownPluginTypeError,
         _has_mmrelay_artifacts,
         _reset_deprecation_warning_flag,
         ensure_directories,
@@ -36,7 +37,6 @@ try:
         get_plugin_database_path,
         reset_home_override,
         resolve_all_paths,
-        UnknownPluginTypeError,
         set_home_override,
     )
 

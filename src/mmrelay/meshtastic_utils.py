@@ -2787,11 +2787,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             available_channels = []
             for room in iterable_rooms:
                 if isinstance(room, dict):
-                    ch = room.get("meshtastic_channel")
-                    try:
-                        ch = int(ch) if ch is not None else None
-                    except (ValueError, TypeError):
-                        ch = f"<invalid: {ch!r}>"
+                    ch = _normalize_room_channel(room)
                     if ch is not None:
                         available_channels.append(ch)
 

@@ -237,15 +237,15 @@ Exit code semantics:
 
 Two commands are available for checking your installation:
 
-| Command                    | Purpose                                 | Exit Codes     |
-| -------------------------- | --------------------------------------- | -------------- |
-| `mmrelay verify-migration` | Migration validation for CI/CD          | 0=pass, 1=fail |
-| `mmrelay doctor`           | General diagnostics for troubleshooting | 0=success      |
+| Command                    | Purpose                                 | Exit Codes                                      |
+| -------------------------- | --------------------------------------- | ----------------------------------------------- |
+| `mmrelay verify-migration` | Migration validation for CI/CD          | 0=pass, 1=fail                                  |
+| `mmrelay doctor`           | General diagnostics for troubleshooting | 0=always (informational, do not script against) |
 
 **When to use each:**
 
 - **`verify-migration`**: Use in CI/CD pipelines and after migration to confirm the system is ready. Returns non-zero exit code if action is needed.
-- **`doctor`**: Use when troubleshooting path issues or checking system health. Shows additional info like environment variables, disk space, E2EE dependencies, and database health. Always returns 0 (informational only).
+- **`doctor`**: Use when troubleshooting path issues or checking system health. Shows additional info like environment variables, disk space, E2EE dependencies, and database health. Always returns 0 (informational only) — do not script against this command's exit code for automation.
 
 ### Legacy Layout Detection in HOME
 

@@ -112,7 +112,7 @@ _setup_with_migration_check:
 				echo "  ✓ .env updated (MMRELAY_HOME → MMRELAY_HOST_HOME)"; \
 			fi; \
 			if [ -f docker-compose.yaml ] && grep -q ':/app/' docker-compose.yaml 2>/dev/null; then \
-				echo "Replacing docker-compose.yaml with v1.3 format..."; \
+				echo "Backing up legacy docker-compose.yaml..."; \
 				cp docker-compose.yaml docker-compose.yaml.legacy.bak; \
 				echo "  ✓ Backup saved to docker-compose.yaml.legacy.bak"; \
 			fi; \

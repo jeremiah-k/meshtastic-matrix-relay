@@ -2052,7 +2052,7 @@ def _print_system_health(paths_info: dict[str, Any]) -> None:
         else:
             print(f"   ⚠️  Database not found: {db_path}")
             print("       Will be created on first run")
-    except Exception as e:
+    except (OSError, ValueError, AttributeError) as e:
         print(f"   ❌ Could not check database: {e}")
 
 
