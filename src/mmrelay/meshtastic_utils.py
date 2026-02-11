@@ -2512,27 +2512,24 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         return
 
     # Full packet logging for debugging (when enabled in config)
-    # Check if full packet logging is enabled - must be explicitly True
+    # Check if full packet logging is enabled - accepts boolean True or string "true"
     debug_settings = config.get("logging", {}).get("debug", {}) if config else {}
-    if debug_settings.get("full_packets") is True:
+    full_packets_setting = debug_settings.get("full_packets")
+    if full_packets_setting is True or (
+        isinstance(full_packets_setting, str) and full_packets_setting.lower() == "true"
+    ):
         try:
             import copy
 
             # Create a sanitized copy of the packet for logging
             packet_for_logging = copy.deepcopy(packet)
 
-            # Remove potentially sensitive fields
-            # - raw: Raw protobuf objects (meshtastic library adds this)
-            # - payload: Raw byte arrays in decoded packets
-            # - encrypted/aes/nonce/key/private: Cryptographic material
+            # Remove potentially sensitive fields that exist in MeshPacket protobuf
+            # - public_key: The public key used for PKI encryption (if applicable)
+            # - encrypted: The encrypted payload bytes (redundant since we have decoded)
             sensitive_keys = {
-                "raw",
-                "payload",
+                "public_key",
                 "encrypted",
-                "aes",
-                "nonce",
-                "key",
-                "private",
             }
 
             def sanitize_dict(d):
