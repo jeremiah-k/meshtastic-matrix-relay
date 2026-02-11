@@ -182,6 +182,7 @@ def test_on_meshtastic_message_does_not_filter_plain_emoji_message_when_reaction
 
 
 def test_on_meshtastic_message_reaction_missing_original(reset_meshtastic_globals):
+    """Test that reactions with missing originals are relayed as normal messages."""
     config = _base_config()
     _set_globals(config)
     packet = _base_packet()
@@ -189,14 +190,23 @@ def test_on_meshtastic_message_reaction_missing_original(reset_meshtastic_global
 
     with _patch_message_deps(
         interaction_settings={"reactions": True, "replies": True},
-    ) as (mock_logger, _mock_relay):
+    ) as (mock_logger, mock_relay):
         on_meshtastic_message(packet, _make_interface())
 
     assert mock_logger is not None
-    mock_logger.debug.assert_any_call("Original message for reaction not found in DB.")
+    # Should warn about missing original but still relay as normal message
+    mock_logger.warning.assert_any_call(
+        "Original message for reaction (replyId=%s) not found in DB. "
+        "Relaying as normal message instead.",
+        42,
+    )
+    # Message should be relayed as normal text message
+    assert mock_relay is not None
+    mock_relay.assert_awaited_once()
 
 
 def test_on_meshtastic_message_reply_missing_original(reset_meshtastic_globals):
+    """Test that replies with missing originals are relayed as normal messages."""
     config = _base_config()
     _set_globals(config)
     packet = _base_packet()
@@ -204,11 +214,19 @@ def test_on_meshtastic_message_reply_missing_original(reset_meshtastic_globals):
 
     with _patch_message_deps(
         interaction_settings={"reactions": True, "replies": True},
-    ) as (mock_logger, _mock_relay):
+    ) as (mock_logger, mock_relay):
         on_meshtastic_message(packet, _make_interface())
 
     assert mock_logger is not None
-    mock_logger.debug.assert_any_call("Original message for reply not found in DB.")
+    # Should warn about missing original but still relay as normal message
+    mock_logger.warning.assert_any_call(
+        "Original message for reply (replyId=%s) not found in DB. "
+        "Relaying as normal message instead.",
+        77,
+    )
+    # Message should be relayed as normal text message
+    assert mock_relay is not None
+    mock_relay.assert_awaited_once()
 
 
 def test_on_meshtastic_message_channel_fallback_numeric_portnum(

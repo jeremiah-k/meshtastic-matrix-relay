@@ -2669,9 +2669,18 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                 ),
                 loop=loop,
             )
+            return
         else:
-            logger.debug("Original message for reaction not found in DB.")
-        return
+            # Original message not found - fall through to normal text handling
+            # This can happen with:
+            # - Replies to messages from before the relay started
+            # - Cross-meshnet replies where original not in our DB
+            # - Signed IDs that don't match (packet from another node/source)
+            logger.warning(
+                "Original message for reaction (replyId=%s) not found in DB. "
+                "Relaying as normal message instead.",
+                replyId,
+            )
 
     # Reply handling (Meshtastic -> Matrix)
     # If replyId is present but emoji is not (or not 1), this is a reply
@@ -2708,9 +2717,18 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                 ),
                 loop=loop,
             )
+            return
         else:
-            logger.debug("Original message for reply not found in DB.")
-        return
+            # Original message not found - fall through to normal text handling
+            # This can happen with:
+            # - Replies to messages from before the relay started
+            # - Cross-meshnet replies where original not in our DB
+            # - Signed IDs that don't match (packet from another node/source)
+            logger.warning(
+                "Original message for reply (replyId=%s) not found in DB. "
+                "Relaying as normal message instead.",
+                replyId,
+            )
 
     # Normal text messages or detection sensor messages
     if text:
