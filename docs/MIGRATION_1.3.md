@@ -112,7 +112,7 @@ See [Kubernetes-Specific Notes](#kubernetes-specific-notes) for detailed instruc
 
 ## How to Verify Success
 
-Use the new verification command:
+Use the verification command:
 
 ```bash
 mmrelay verify-migration
@@ -130,13 +130,19 @@ Exit code semantics:
 - `0`: Unified-home is clean (no legacy data, no split roots, credentials present)
 - non-zero: Stop and fix before running live (missing credentials or legacy data present)
 
-You can also run:
+### Diagnostic Commands
 
-```bash
-mmrelay doctor
-```
+Two commands are available for checking your installation:
 
-This prints human-readable warnings when legacy data is still present.
+| Command                    | Purpose                                 | Exit Codes     |
+| -------------------------- | --------------------------------------- | -------------- |
+| `mmrelay verify-migration` | Migration validation for CI/CD          | 0=pass, 1=fail |
+| `mmrelay doctor`           | General diagnostics for troubleshooting | 0=success      |
+
+**When to use each:**
+
+- **`verify-migration`**: Use in CI/CD pipelines and after migration to confirm the system is ready. Returns non-zero exit code if action is needed.
+- **`doctor`**: Use when troubleshooting path issues or checking system health. Shows additional info like environment variables, disk space, E2EE dependencies, and database health. Always returns 0 (informational only).
 
 ### Legacy Layout Detection in HOME
 

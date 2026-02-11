@@ -1935,13 +1935,22 @@ def handle_doctor_command(args: argparse.Namespace) -> int:
     # Get path information
     paths_info = resolve_all_paths()
 
-    # Print header
+    # Print header with version
     print("\n" + "=" * 60)
-    print("MMRelay Path Diagnostics (mmrelay doctor)")
+    print("MMRelay Diagnostics (mmrelay doctor)")
     print("=" * 60)
+
+    # Print version info
+    print("\n🔢 Version:")
+    print(f"   MMRelay: {__version__}")
+    print(f"   Python: {sys.version.split()[0]}")
+    print(f"   Platform: {sys.platform}")
 
     # Print shared summary
     _print_path_summary(paths_info)
+
+    # System health checks
+    _print_system_health(paths_info)
 
     # Check migration status and print recommendations
     print("\n🔄 Migration Status:")
@@ -1976,6 +1985,75 @@ def handle_doctor_command(args: argparse.Namespace) -> int:
 
     # Return success
     return 0
+
+
+def _print_system_health(paths_info: dict[str, Any]) -> None:
+    """
+    Print system health diagnostics including E2EE status, disk space, and database health.
+
+    Parameters:
+        paths_info (dict[str, Any]): Mapping from resolve_all_paths() containing path entries.
+    """
+    import shutil
+    import sqlite3
+
+    from mmrelay.paths import get_database_path
+
+    # E2EE Dependencies
+    print("\n🔐 E2EE Dependencies:")
+    if sys.platform == WINDOWS_PLATFORM:
+        print("   ⚠️  Not supported on Windows")
+    elif _e2ee_dependencies_available():
+        print("   ✅ python-olm and nio crypto available")
+    else:
+        print("   ❌ Missing python-olm or nio crypto libraries")
+        print("       Install with: pip install mmrelay[e2e]")
+
+    # Disk Space
+    print("\n💾 Disk Space:")
+    try:
+        home_path = paths_info.get("home", ".")
+        if home_path and os.path.exists(home_path):
+            usage = shutil.disk_usage(home_path)
+            free_gb = usage.free / (1024**3)
+            total_gb = usage.total / (1024**3)
+            used_pct = (usage.used / usage.total) * 100
+            status = "✅" if free_gb > 1 else "⚠️" if free_gb > 0.1 else "❌"
+            print(
+                f"   {status} {free_gb:.1f} GB free of {total_gb:.1f} GB ({used_pct:.0f}% used)"
+            )
+            if free_gb < 0.5:
+                print("       ⚠️  Low disk space - database/logs may fail")
+        else:
+            print("   ⚠️  HOME directory not accessible")
+    except OSError as e:
+        print(f"   ❌ Could not check disk space: {e}")
+
+    # Database Health
+    print("\n🗄️  Database:")
+    try:
+        db_path = get_database_path()
+        if db_path.exists():
+            db_size_mb = db_path.stat().st_size / (1024**2)
+            print(f"   ✅ Database exists: {db_path}")
+            print(f"      Size: {db_size_mb:.1f} MB")
+
+            # Check WAL mode if possible
+            try:
+                with sqlite3.connect(str(db_path)) as conn:
+                    cursor = conn.execute("PRAGMA journal_mode;")
+                    mode = cursor.fetchone()[0]
+                    if mode.lower() == "wal":
+                        print("      Journal: WAL mode ✅")
+                    else:
+                        print(f"      Journal: {mode} mode")
+            except (sqlite3.Error, OSError):
+                pass  # Don't fail if we can't check
+        else:
+            print(f"   ⚠️  Database not found: {db_path}")
+            print("       Will be created on first run")
+    except Exception as e:
+        print(f"   ❌ Could not check database: {e}")
 
 
 def handle_auth_login(args: argparse.Namespace) -> int:

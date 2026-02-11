@@ -73,9 +73,12 @@ ENV MMRELAY_HOME=/data
 # Switch to non-root user
 USER mmrelay
 
-# Health check - verifies ready-file freshness when MMRELAY_READY_FILE is set, otherwise runs doctor
+# Health check - verifies ready-file freshness.
+# The ready file is created when the app is running and healthy.
+# If MMRELAY_READY_FILE is not set, this health check will fail.
+# Users who don't want ready-file health checks should omit HEALTHCHECK entirely.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD sh -c 'if [ -n "$MMRELAY_READY_FILE" ]; then find "$MMRELAY_READY_FILE" -mmin -2 | grep -q .; else mmrelay doctor; fi'
+    CMD find "$MMRELAY_READY_FILE" -mmin -2 | grep -q .
 
 # Default command
 # MMRELAY_HOME is set via ENV, so runtime paths resolve under /data by default.

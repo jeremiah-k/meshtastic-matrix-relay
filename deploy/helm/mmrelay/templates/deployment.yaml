@@ -168,7 +168,7 @@ spec:
               command:
                 - sh
                 - -c
-                - 'if [ -n "$MMRELAY_READY_FILE" ]; then find "$MMRELAY_READY_FILE" -mmin -{{ .Values.probes.liveness.maxReadyFileAgeMinutes }} | grep -q .; else mmrelay doctor; fi'
+                - 'find "$MMRELAY_READY_FILE" -mmin -{{ .Values.probes.liveness.maxReadyFileAgeMinutes }} | grep -q .'
             initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
             timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}

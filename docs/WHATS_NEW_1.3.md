@@ -22,9 +22,11 @@ store.
 2. Upgrade to 1.3.0.
 3. Preview migration: `mmrelay migrate --dry-run`
 4. Apply migration: `mmrelay migrate`
-5. Verify: `mmrelay verify-migration`
-6. Check diagnostics: `mmrelay doctor`
+5. Verify: `mmrelay verify-migration` (returns non-zero if action needed)
+6. Check diagnostics: `mmrelay doctor` (shows system health info)
 7. Start relay.
+
+> **Note**: `verify-migration` is for CI/CD validation (has exit codes), `doctor` is for troubleshooting (informational only).
 
 ### Docker users
 
