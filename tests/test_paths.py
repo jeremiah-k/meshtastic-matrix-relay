@@ -23,16 +23,21 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 try:
     from mmrelay.paths import (
+        _has_mmrelay_artifacts,
         _reset_deprecation_warning_flag,
         ensure_directories,
         get_config_paths,
         get_database_path,
+        get_diagnostics,
         get_home_dir,
         get_legacy_dirs,
         get_plugin_code_dir,
         get_plugin_data_dir,
         get_plugin_database_path,
         reset_home_override,
+        resolve_all_paths,
+        UnknownPluginTypeError,
+        set_home_override,
     )
 
     IMPORTS_AVAILABLE = True
@@ -320,6 +325,20 @@ class TestPathResolutionPlugins(unittest.TestCase):
             expected = Path("/home/plugins") / "community" / "test_plugin"
             self.assertEqual(result, expected)
 
+    def test_get_plugin_code_dir_core(self):
+        """Test get_plugin_code_dir returns core source path for core type."""
+        result = get_plugin_code_dir("mesh_relay", plugin_type="core")
+        self.assertIn("mmrelay", str(result))
+        self.assertIn("plugins", str(result))
+        self.assertIn("mesh_relay", str(result))
+
+    def test_normalize_plugin_type_invalid(self):
+        """Test _normalize_plugin_type raises UnknownPluginTypeError for invalid type."""
+        from mmrelay.paths import _normalize_plugin_type
+
+        with self.assertRaises(UnknownPluginTypeError):
+            _normalize_plugin_type("invalid_type")
+
     def test_get_plugin_data_dir_with_subdir(self):
         """Test get_plugin_data_dir with subdir returns Tier 2 path (lines 323-325)."""
         with patch("mmrelay.paths.get_plugins_dir", return_value=Path("/home/plugins")):
@@ -343,7 +362,7 @@ class TestPathResolutionPlugins(unittest.TestCase):
         with patch("mmrelay.paths.get_home_dir", return_value=Path("/home")):
             result = get_plugin_database_path("weather")
 
-            expected = Path("/home") / "database" / "plugin_data_weather"
+            expected = Path("/home") / "database" / "plugin_data_weather.sqlite"
             self.assertEqual(result, expected)
 
 
@@ -394,8 +413,12 @@ class TestPathDirectoryCreation(unittest.TestCase):
             with (
                 patch.dict(os.environ, {"MMRELAY_HOME": temp_dir}, clear=True),
                 patch("mmrelay.paths.sys.platform", "linux"),
+                patch("mmrelay.paths.logger") as mock_logger,
             ):
                 ensure_directories(create_missing=False)
+
+                # Should warn about missing directories
+                self.assertTrue(mock_logger.warning.called)
 
             base = Path(temp_dir)
             expected_missing = [
@@ -533,6 +556,111 @@ class TestLegacyDirsDetection(unittest.TestCase):
             # This test just checks function doesn't crash - actual results
             # depend on whether these paths exist on the system
             self.assertIsInstance(result, list)
+
+
+class TestInternalArtifactDetection(unittest.TestCase):
+    """Test _has_mmrelay_artifacts internal helper (lines 97-107)."""
+
+    def test_has_artifacts_config(self):
+        """Test _has_mmrelay_artifacts returns True when config.yaml exists."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "config.yaml").write_text("")
+            self.assertTrue(_has_mmrelay_artifacts(root))
+
+    def test_has_artifacts_credentials(self):
+        """Test _has_mmrelay_artifacts returns True when credentials.json exists."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "credentials.json").write_text("")
+            self.assertTrue(_has_mmrelay_artifacts(root))
+
+    def test_has_artifacts_none(self):
+        """Test _has_mmrelay_artifacts returns False when no artifacts exist."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self.assertFalse(_has_mmrelay_artifacts(root))
+
+
+class TestPathDiagnostics(unittest.TestCase):
+    """Test resolve_all_paths and get_diagnostics functions (lines 565-566, 629-649)."""
+
+    def setUp(self):
+        reset_home_override()
+        _reset_deprecation_warning_flag()
+
+    def test_resolve_all_paths_basic(self):
+        """Test resolve_all_paths returns all expected keys."""
+        with patch.dict(os.environ, {"MMRELAY_HOME": "/test/home"}, clear=True):
+            result = resolve_all_paths()
+
+            expected_keys = {
+                "home",
+                "matrix_dir",
+                "legacy_sources",
+                "credentials_path",
+                "database_dir",
+                "store_dir",
+                "logs_dir",
+                "log_file",
+                "plugins_dir",
+                "custom_plugins_dir",
+                "community_plugins_dir",
+                "deps_dir",
+                "env_vars_detected",
+                "cli_override",
+                "home_source",
+            }
+            self.assertTrue(expected_keys.issubset(result.keys()))
+            self.assertEqual(result["home"], str(Path("/test/home").absolute()))
+
+    def test_get_diagnostics_basic(self):
+        """Test get_diagnostics returns compatibility mapping."""
+        with patch.dict(os.environ, {"MMRELAY_HOME": "/test/home"}, clear=True):
+            result = get_diagnostics()
+
+            expected_keys = {
+                "home_dir",
+                "matrix_dir",
+                "credentials_path",
+                "database_dir",
+                "database_path",
+                "logs_dir",
+                "log_file",
+                "plugins_dir",
+                "custom_plugins_dir",
+                "community_plugins_dir",
+                "env_vars",
+                "cli_override",
+                "sources_used",
+                "legacy_active",
+            }
+            self.assertTrue(expected_keys.issubset(result.keys()))
+            self.assertEqual(result["home_dir"], str(Path("/test/home").absolute()))
+
+    def test_home_source_cli_home(self):
+        """Test home_source correctly identifies CLI override."""
+        set_home_override("/cli/home", source="--home")
+        try:
+            result = resolve_all_paths()
+            self.assertEqual(result["home_source"], "CLI (--home)")
+        finally:
+            reset_home_override()
+
+    def test_home_source_cli_base_dir(self):
+        """Test home_source correctly identifies CLI base-dir override."""
+        set_home_override("/cli/base", source="--base-dir")
+        try:
+            result = resolve_all_paths()
+            self.assertEqual(result["home_source"], "CLI (--base-dir)")
+        finally:
+            reset_home_override()
+
+    def test_home_source_env_home(self):
+        """Test home_source correctly identifies MMRELAY_HOME env var."""
+        with patch.dict(os.environ, {"MMRELAY_HOME": "/env/home"}, clear=True):
+            result = resolve_all_paths()
+            self.assertEqual(result["home_source"], "MMRELAY_HOME env var")
 
 
 if __name__ == "__main__":
