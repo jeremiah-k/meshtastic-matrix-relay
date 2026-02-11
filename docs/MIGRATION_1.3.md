@@ -81,7 +81,11 @@ If you need to overwrite existing target files, use `mmrelay migrate --force`. N
 
 ## Deployment-Specific Migration Quick Reference
 
-### Local / systemd / venv installs
+### Docker Compose installs (Most Common)
+
+See [Docker-Specific Notes](#docker-specific-notes) for detailed instructions.
+
+### Local / systemd / venv / pipx installs
 
 1. Upgrade package to 1.3.0.
 2. Run:
@@ -89,9 +93,9 @@ If you need to overwrite existing target files, use `mmrelay migrate --force`. N
    - `mmrelay migrate`
    - `mmrelay verify-migration`
 
-### Docker Compose installs
+### Windows Installer / pip installs
 
-See [Docker-Specific Notes](#docker-specific-notes) for detailed instructions.
+See [Windows-Specific Notes](#windows-specific-notes) for detailed instructions.
 
 ### Kubernetes / Helm installs
 
@@ -104,6 +108,105 @@ See [Kubernetes-Specific Notes](#kubernetes-specific-notes) for detailed instruc
 - `--force`: Allow overwriting existing files in `MMRELAY_HOME` (backups are still created). Use only after verifying your backups.
 
 > **Note**: Migration uses **move semantics by default** — source files are moved to the new location rather than copied. The `--move` flag is provided for explicitness but is not required since this is the default behavior. This prevents duplicate data and keeps the migration clean. Backups are always created before any overwrites.
+
+## Docker-Specific Notes
+
+1. Update compose to 1.3 model:
+   - `MMRELAY_HOME=/data`
+   - Use a single bind mount or volume at `/data`
+   - config mounted at `/data/config.yaml`
+   - reference examples:
+     - prebuilt image (recommended): [`src/mmrelay/tools/sample-docker-compose-prebuilt.yaml`](../src/mmrelay/tools/sample-docker-compose-prebuilt.yaml)
+     - build from source override: [`src/mmrelay/tools/sample-docker-compose-override.yaml`](../src/mmrelay/tools/sample-docker-compose-override.yaml)
+     - environment template: [`src/mmrelay/tools/sample.env`](../src/mmrelay/tools/sample.env)
+2. Ensure `.env` host path values are valid absolute paths.
+3. Run migration inside container:
+   - `docker compose exec mmrelay mmrelay migrate --dry-run`
+   - `docker compose exec mmrelay mmrelay migrate`
+   - `docker compose exec mmrelay mmrelay verify-migration`
+
+If your deployment runs the app container as non-root and migration reports permission errors,
+run one-off migration commands as root:
+
+```bash
+docker run --rm --user root \
+  -v ${HOME}/.mmrelay:/data \
+  -v ${HOME}/config.yaml:/data/config.yaml:ro \
+  ghcr.io/jeremiah-k/mmrelay:<tag> \
+  mmrelay migrate
+```
+
+After root-run migration, restore ownership on host files so normal runtime (non-root) can read/write:
+
+```bash
+sudo chown -R $(id -u):$(id -g) ~/.mmrelay
+```
+
+If verification fails, stop the container, restore your backup, and roll back to the previous image.
+
+## Windows-Specific Notes
+
+### Windows Installer Behavior
+
+The Windows installer uses the installation directory (e.g., `C:\Users\<user>\AppData\Local\Programs\MM Relay\`) as the MMRELAY_HOME. All batch files created by the installer use `--home` to ensure consistent data locations:
+
+- `mmrelay.bat` - Runs MMRelay with all data in the install directory
+- `setup-auth.bat` - Sets up Matrix authentication
+- `logout.bat` - Logs out from Matrix
+
+### Default Paths Without Installer
+
+If you installed via pip/pipx instead of the Windows installer, the default HOME location is:
+
+```text
+%LOCALAPPDATA%\mmrelay\
+├── config.yaml
+├── matrix\
+│   └── credentials.json
+├── database\
+│   └── meshtastic.sqlite
+├── logs\
+└── plugins\
+```
+
+### Upgrading on Windows
+
+1. **If using the Windows installer:**
+   - Download and run the new installer
+   - Your existing data in the install directory will be preserved
+   - No migration is needed if all data was already in the install directory
+
+2. **If upgrading from pip/pipx with data in `%LOCALAPPDATA%\mmrelay`:**
+   - Install the new version
+   - Open Command Prompt
+   - Run migration to verify and move any legacy data:
+
+   ```cmd
+   mmrelay migrate --dry-run
+   mmrelay migrate
+   mmrelay verify-migration
+   ```
+
+3. **If you have data in both locations:**
+   - The migration tool will detect this as a "split roots" condition
+   - Review the output carefully before proceeding
+   - Use `--dry-run` first to preview changes
+
+### Windows-Specific Limitations
+
+- **E2EE not supported**: Matrix End-to-End Encryption is not available on Windows due to library limitations. The `matrix/store/` directory is not created on Windows.
+- **File-in-use errors**: Migration includes retry logic for Windows file locks (antivirus, Windows Indexer), but may still fail if files are actively in use. Close MMRelay before running migration.
+
+## Kubernetes-Specific Notes
+
+1. Keep one PVC mounted at `/data`.
+2. Keep config mounted at `/data/config.yaml`.
+3. Deploy upgraded manifests/chart and verify in pod:
+   - `kubectl exec -n mmrelay <pod> -- mmrelay migrate --dry-run`
+   - `kubectl exec -n mmrelay <pod> -- mmrelay migrate`
+   - `kubectl exec -n mmrelay <pod> -- mmrelay verify-migration`
+
+If verification fails, stop the rollout and restore your previous image and backup.
 
 ## After Upgrading
 
@@ -172,105 +275,6 @@ If you need to manually undo a successful migration:
 3. Downgrade the package or container image.
 4. Start MMRelay.
 5. Confirm the service starts and data is intact.
-
-## Kubernetes-Specific Notes
-
-1. Keep one PVC mounted at `/data`.
-2. Keep config mounted at `/data/config.yaml`.
-3. Deploy upgraded manifests/chart and verify in pod:
-   - `kubectl exec -n mmrelay <pod> -- mmrelay migrate --dry-run`
-   - `kubectl exec -n mmrelay <pod> -- mmrelay migrate`
-   - `kubectl exec -n mmrelay <pod> -- mmrelay verify-migration`
-
-If verification fails, stop the rollout and restore your previous image and backup.
-
-## Windows-Specific Notes
-
-### Windows Installer Behavior
-
-The Windows installer uses the installation directory (e.g., `C:\Users\<user>\AppData\Local\Programs\MM Relay\`) as the MMRELAY_HOME. All batch files created by the installer use `--home` to ensure consistent data locations:
-
-- `mmrelay.bat` - Runs MMRelay with all data in the install directory
-- `setup-auth.bat` - Sets up Matrix authentication
-- `logout.bat` - Logs out from Matrix
-
-### Default Paths Without Installer
-
-If you installed via pip/pipx instead of the Windows installer, the default HOME location is:
-
-```text
-%LOCALAPPDATA%\mmrelay\
-├── config.yaml
-├── matrix\
-│   └── credentials.json
-├── database\
-│   └── meshtastic.sqlite
-├── logs\
-└── plugins\
-```
-
-### Upgrading on Windows
-
-1. **If using the Windows installer:**
-   - Download and run the new installer
-   - Your existing data in the install directory will be preserved
-   - No migration is needed if all data was already in the install directory
-
-2. **If upgrading from pip/pipx with data in `%LOCALAPPDATA%\mmrelay`:**
-   - Install the new version
-   - Open Command Prompt
-   - Run migration to verify and move any legacy data:
-
-   ```cmd
-   mmrelay migrate --dry-run
-   mmrelay migrate
-   mmrelay verify-migration
-   ```
-
-3. **If you have data in both locations:**
-   - The migration tool will detect this as a "split roots" condition
-   - Review the output carefully before proceeding
-   - Use `--dry-run` first to preview changes
-
-### Windows-Specific Limitations
-
-- **E2EE not supported**: Matrix End-to-End Encryption is not available on Windows due to library limitations. The `matrix/store/` directory is not created on Windows.
-- **File-in-use errors**: Migration includes retry logic for Windows file locks (antivirus, Windows Indexer), but may still fail if files are actively in use. Close MMRelay before running migration.
-
-## Docker-Specific Notes
-
-1. Update compose to 1.3 model:
-   - `MMRELAY_HOME=/data`
-   - Use a single bind mount or volume at `/data`
-   - config mounted at `/data/config.yaml`
-   - reference examples:
-     - prebuilt image (recommended): [`src/mmrelay/tools/sample-docker-compose-prebuilt.yaml`](../src/mmrelay/tools/sample-docker-compose-prebuilt.yaml)
-     - build from source override: [`src/mmrelay/tools/sample-docker-compose-override.yaml`](../src/mmrelay/tools/sample-docker-compose-override.yaml)
-     - environment template: [`src/mmrelay/tools/sample.env`](../src/mmrelay/tools/sample.env)
-2. Ensure `.env` host path values are valid absolute paths.
-3. Run migration inside container:
-   - `docker compose exec mmrelay mmrelay migrate --dry-run`
-   - `docker compose exec mmrelay mmrelay migrate`
-   - `docker compose exec mmrelay mmrelay verify-migration`
-
-If your deployment runs the app container as non-root and migration reports permission errors,
-run one-off migration commands as root:
-
-```bash
-docker run --rm --user root \
-  -v ${HOME}/.mmrelay:/data \
-  -v ${HOME}/config.yaml:/data/config.yaml:ro \
-  ghcr.io/jeremiah-k/mmrelay:<tag> \
-  mmrelay migrate
-```
-
-After root-run migration, restore ownership on host files so normal runtime (non-root) can read/write:
-
-```bash
-sudo chown -R $(id -u):$(id -g) ~/.mmrelay
-```
-
-If verification fails, stop the container, restore your backup, and roll back to the previous image.
 
 ## Legacy Examples (Reference Only)
 
