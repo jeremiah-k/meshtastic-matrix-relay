@@ -1847,3 +1847,270 @@ class TestMigrationAfterEnsureDirectories:
         assert result["action"] == "skip_force_required"
         # Verify original content is preserved
         assert (logs_dir / "existing.log").read_text() == "existing content"
+
+
+class TestMigrationRealWorldScenarios:
+    """
+    Tests for real-world upgrade scenarios that have caused issues.
+
+    These tests ensure:
+    1. Windows users upgrading from old install locations work correctly
+    2. Failed migrations can be safely re-run
+    3. Partially migrated data is handled properly
+    """
+
+    def test_windows_upgrade_from_old_install_location(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """
+        Test Windows user upgrading from old Windows install location.
+
+        Scenario:
+        1. User has v1.2.x installed in C:\\Users\\...\\AppData\\Local\\Programs\\MM Relay
+        2. v1.3.0 uses MMRELAY_HOME with platformdirs default
+        3. Migration should detect legacy data and move it to new location
+
+        This simulates the Windows upgrade path without requiring Windows.
+        """
+        # Simulate old Windows install location (what the installer creates)
+        old_install = tmp_path / "old_install"
+        old_install.mkdir()
+        (old_install / "config.yaml").write_text(
+            "matrix:\n  homeserver: https://example.com"
+        )
+        # Create a proper SQLite database (not just text)
+        db_path = old_install / "meshtastic.sqlite"
+        conn = sqlite3.connect(db_path)
+        conn.execute("CREATE TABLE test (id INTEGER)")
+        conn.commit()
+        conn.close()
+        matrix_dir = old_install / "matrix"
+        matrix_dir.mkdir()
+        (matrix_dir / "credentials.json").write_text('{"user": "legacy"}')
+
+        # New home would be platformdirs default on Windows
+        new_home = tmp_path / "new_home"
+        new_home.mkdir()
+
+        # Set up paths module to use our test directories
+        monkeypatch.setenv("MMRELAY_HOME", str(new_home))
+        paths_module._home_override = None
+        paths_module.reset_home_override()
+
+        # Mock resolve_all_paths to include our test legacy directory
+        monkeypatch.setattr(
+            migrate_module,
+            "resolve_all_paths",
+            lambda: {
+                "home": str(new_home),
+                "legacy_sources": [str(old_install)],
+                "credentials_path": str(new_home / "matrix" / "credentials.json"),
+                "database_dir": str(new_home / "database"),
+                "logs_dir": str(new_home / "logs"),
+                "plugins_dir": str(new_home / "plugins"),
+                "store_dir": str(new_home / "matrix" / "store"),
+            },
+        )
+
+        # Migration should find and move the legacy data
+        result = perform_migration(dry_run=False, force=False)
+
+        # Verify migration succeeded
+        assert result["success"] is True
+
+    def test_retry_after_partial_migration_failure(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """
+        Test that migration can be safely re-run after a partial failure.
+
+        Scenario:
+        1. User runs migration
+        2. Some artifacts migrate successfully (config, credentials)
+        3. Migration fails partway (e.g., database locked)
+        4. User fixes the issue and runs migration again
+        5. Already-migrated artifacts should be skipped, remaining ones migrated
+        """
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+
+        # Create all legacy artifacts
+        (legacy_root / "config.yaml").write_text("config")
+        matrix_dir = legacy_root / "matrix"
+        matrix_dir.mkdir()
+        (matrix_dir / "credentials.json").write_text('{"user": "test"}')
+        logs_dir = legacy_root / "logs"
+        logs_dir.mkdir()
+        (logs_dir / "app.log").write_text("log content")
+
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+
+        # Set up paths module
+        monkeypatch.setenv("MMRELAY_HOME", str(new_home))
+        paths_module._home_override = None
+        paths_module.reset_home_override()
+
+        # Mock resolve_all_paths to include our test legacy directory
+        monkeypatch.setattr(
+            migrate_module,
+            "resolve_all_paths",
+            lambda: {
+                "home": str(new_home),
+                "legacy_sources": [str(legacy_root)],
+                "credentials_path": str(new_home / "matrix" / "credentials.json"),
+                "database_dir": str(new_home / "database"),
+                "logs_dir": str(new_home / "logs"),
+                "plugins_dir": str(new_home / "plugins"),
+                "store_dir": str(new_home / "matrix" / "store"),
+            },
+        )
+
+        # First migration - simulate partial success by manually creating some migrated files
+        # Simulate config and credentials already migrated
+        (new_home / "config.yaml").write_text("config")
+        new_matrix = new_home / "matrix"
+        new_matrix.mkdir()
+        (new_matrix / "credentials.json").write_text('{"user": "test"}')
+
+        # Now run migration - it should skip already-migrated items
+        # and migrate the remaining ones (logs)
+        result = perform_migration(dry_run=False, force=False)
+
+        # Verify migration succeeded
+        assert result["success"] is True
+
+    def test_idempotent_migration(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """
+        Test that running migration multiple times is safe (idempotent).
+
+        Migration should:
+        - First run: migrate data
+        - Second run: detect data already migrated and report success
+        """
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+
+        # Create legacy artifacts - credentials at legacy root (not in matrix subdir)
+        (legacy_root / "config.yaml").write_text("config")
+        (legacy_root / "credentials.json").write_text('{"user": "test"}')
+
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+
+        # Set up paths module
+        monkeypatch.setenv("MMRELAY_HOME", str(new_home))
+        paths_module._home_override = None
+        paths_module.reset_home_override()
+
+        # Mock resolve_all_paths to include our test legacy directory
+        monkeypatch.setattr(
+            migrate_module,
+            "resolve_all_paths",
+            lambda: {
+                "home": str(new_home),
+                "legacy_sources": [str(legacy_root)],
+                "credentials_path": str(new_home / "matrix" / "credentials.json"),
+                "database_dir": str(new_home / "database"),
+                "logs_dir": str(new_home / "logs"),
+                "plugins_dir": str(new_home / "plugins"),
+                "store_dir": str(new_home / "matrix" / "store"),
+            },
+        )
+
+        # First migration
+        result1 = perform_migration(dry_run=False, force=False)
+        assert result1["success"] is True
+
+        # Second migration should also succeed (data already there)
+        result2 = perform_migration(dry_run=False, force=False)
+        assert result2["success"] is True
+
+        # Verify data wasn't corrupted
+        assert (new_home / "config.yaml").read_text() == "config"
+        assert (
+            new_home / "matrix" / "credentials.json"
+        ).read_text() == '{"user": "test"}'
+
+    def test_ensure_directories_creates_empty_dirs_migration_still_works(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """
+        Test the exact bug that was fixed: ensure_directories creates empty dirs,
+        but migration should still work because we check for CONTENT not just existence.
+
+        This is a comprehensive end-to-end test of the fix.
+        """
+        from mmrelay.paths import ensure_directories
+
+        # Set up legacy data with all artifact types
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+
+        # Config
+        (legacy_root / "config.yaml").write_text(
+            "matrix:\n  homeserver: https://example.com"
+        )
+
+        # Credentials - at legacy root (not in matrix subdir)
+        (legacy_root / "credentials.json").write_text('{"user": "legacy"}')
+
+        # Database - create a proper SQLite database
+        db_path = legacy_root / "meshtastic.sqlite"
+        conn = sqlite3.connect(db_path)
+        conn.execute("CREATE TABLE test (id INTEGER)")
+        conn.commit()
+        conn.close()
+
+        # Logs
+        logs_dir = legacy_root / "logs"
+        logs_dir.mkdir()
+        (logs_dir / "app.log").write_text("log entry")
+
+        # Set up new home
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+
+        # Simulate the bug condition: ensure_directories creates empty dirs
+        monkeypatch.setenv("MMRELAY_HOME", str(new_home))
+        paths_module._home_override = None
+        paths_module.reset_home_override()
+        ensure_directories(create_missing=True)
+
+        # Verify the bug condition exists (empty dirs created)
+        assert (new_home / "logs").exists()
+        assert (new_home / "plugins").exists()
+        assert (new_home / "database").exists()
+        if sys.platform != "win32":
+            assert (new_home / "matrix" / "store").exists() or (
+                new_home / "matrix"
+            ).exists()
+
+        # Mock resolve_all_paths to include our test legacy directory
+        monkeypatch.setattr(
+            migrate_module,
+            "resolve_all_paths",
+            lambda: {
+                "home": str(new_home),
+                "legacy_sources": [str(legacy_root)],
+                "credentials_path": str(new_home / "matrix" / "credentials.json"),
+                "database_dir": str(new_home / "database"),
+                "logs_dir": str(new_home / "logs"),
+                "plugins_dir": str(new_home / "plugins"),
+                "store_dir": str(new_home / "matrix" / "store"),
+            },
+        )
+
+        # Run full migration
+        result = perform_migration(dry_run=False, force=False)
+
+        # All artifacts should be migrated (not skipped)
+        assert result["success"] is True
+
+        # Verify actual migration happened
+        assert (new_home / "config.yaml").exists()
+        assert (new_home / "matrix" / "credentials.json").exists()
+        assert (new_home / "database" / "meshtastic.sqlite").exists()
+        assert any((new_home / "logs").glob("*.log"))

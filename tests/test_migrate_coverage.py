@@ -1672,8 +1672,10 @@ class TestMigrateGpxtrackerEdgeCases:
             with pytest.raises(
                 MigrationError, match="gpxtracker migration failed: Mock backup error"
             ):
+                # Use force=True to bypass the skip_force_required check
+                # and reach the backup code path
                 migrate_gpxtracker(
-                    [legacy_root_dir], new_home, dry_run=False, force=False
+                    [legacy_root_dir], new_home, dry_run=False, force=True
                 )
 
     def test_migrate_gpxtracker_move_failure(self, tmp_path: Path) -> None:
