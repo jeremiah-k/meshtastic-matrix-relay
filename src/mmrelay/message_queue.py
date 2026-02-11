@@ -28,6 +28,20 @@ from mmrelay.log_utils import get_logger
 
 logger = get_logger(name="MessageQueue")
 
+# Module-level constant for connection error keywords (fallback heuristic)
+# Used when exception types don't match known connection errors.
+_CONNECTION_ERROR_KEYWORDS = frozenset(
+    [
+        "connection",
+        "not connected",
+        "disconnected",
+        "timeout",
+        "broken pipe",
+        "reset by peer",
+        "network",
+    ]
+)
+
 
 @dataclass
 class QueuedMessage:
@@ -580,20 +594,17 @@ class MessageQueue:
                                 )
 
                 except Exception as e:
-                    error_msg = str(e).lower()
                     # Check if this is a connection-related error that should trigger requeue
-                    is_connection_error = any(
-                        keyword in error_msg
-                        for keyword in [
-                            "connection",
-                            "not connected",
-                            "disconnected",
-                            "timeout",
-                            "broken pipe",
-                            "reset by peer",
-                            "network",
-                        ]
+                    # First check exception types, then fall back to string matching
+                    is_connection_error = isinstance(
+                        e, (ConnectionError, OSError, TimeoutError)
                     )
+                    if not is_connection_error:
+                        error_msg = str(e).lower()
+                        is_connection_error = any(
+                            keyword in error_msg
+                            for keyword in _CONNECTION_ERROR_KEYWORDS
+                        )
 
                     if is_connection_error:
                         logger.warning(

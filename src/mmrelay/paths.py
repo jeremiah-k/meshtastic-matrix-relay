@@ -65,6 +65,9 @@ logger = get_logger("paths")
 _home_override: str | None = None
 _home_override_source: str | None = None
 
+# Track whether we've already emitted deprecation warnings to avoid duplicates
+_deprecation_warning_shown = False
+
 
 def set_home_override(path: str, *, source: str | None = None) -> None:
     """
@@ -94,11 +97,12 @@ def get_home_dir() -> Path:
     """
     Resolve the application home directory using CLI override, environment variables, and platform defaults.
 
-    Resolution precedence: 1) CLI override set by set_home_override(), 2) MMRELAY_HOME environment variable, 3) legacy environment variables MMRELAY_BASE_DIR / MMRELAY_DATA_DIR (during the deprecation window), 4) platform defaults (~/.mmrelay on Linux/macOS, OS user data dir on Windows). Emits deprecation warnings when legacy environment variables are detected or ignored.
+    Resolution precedence: 1) CLI override set by set_home_override(), 2) MMRELAY_HOME environment variable, 3) legacy environment variables MMRELAY_BASE_DIR / MMRELAY_DATA_DIR (during the deprecation window), 4) platform defaults(~/.mmrelay on Linux/macOS, OS user data dir on Windows). Emits deprecation warnings when legacy environment variables are detected or ignored.
 
     Returns:
         Path: The resolved application home directory.
     """
+    global _deprecation_warning_shown
 
     # Check CLI override first
     if _home_override:
@@ -113,40 +117,44 @@ def get_home_dir() -> Path:
             legacy_vars.append("MMRELAY_BASE_DIR")
         if os.getenv("MMRELAY_DATA_DIR"):
             legacy_vars.append("MMRELAY_DATA_DIR")
-        if legacy_vars:
+        if legacy_vars and not _deprecation_warning_shown:
             logger.warning(
                 "MMRELAY_HOME is set; ignoring legacy environment variable(s): %s. "
                 "Support will be removed in v1.4.",
                 ", ".join(legacy_vars),
             )
+            _deprecation_warning_shown = True
         return Path(env_home).expanduser().absolute()
 
     # Deprecation window: check legacy environment variables
     env_base_dir = os.getenv("MMRELAY_BASE_DIR")
     env_data_dir = os.getenv("MMRELAY_DATA_DIR")
 
-    if env_base_dir and env_data_dir:
+    if env_base_dir and env_data_dir and not _deprecation_warning_shown:
         logger.warning(
             "Both MMRELAY_BASE_DIR and MMRELAY_DATA_DIR are set. "
             "Preferring MMRELAY_BASE_DIR and ignoring MMRELAY_DATA_DIR. "
             "Support will be removed in v1.4."
         )
+        _deprecation_warning_shown = True
         return Path(env_base_dir).expanduser().absolute()
 
-    if env_base_dir:
+    if env_base_dir and not _deprecation_warning_shown:
         logger.warning(
             "Deprecated environment variable MMRELAY_BASE_DIR is set. "
             "Use MMRELAY_HOME instead. "
             "Support will be removed in v1.4."
         )
+        _deprecation_warning_shown = True
         return Path(env_base_dir).expanduser().absolute()
 
-    if env_data_dir:
+    if env_data_dir and not _deprecation_warning_shown:
         logger.warning(
             "Deprecated environment variable MMRELAY_DATA_DIR is set. "
             "Use MMRELAY_HOME instead. "
             "Support will be removed in v1.4."
         )
+        _deprecation_warning_shown = True
         return Path(env_data_dir).expanduser().absolute()
 
     # Platform defaults
@@ -506,11 +514,13 @@ def is_deprecation_window_active() -> bool:
     """
     Report whether the v1.3 deprecation window for legacy MMRELAY environment variables is active.
 
-    The window is active when `MMRELAY_HOME` is not set and one or more legacy variables (e.g., `MMRELAY_BASE_DIR`, `MMRELAY_DATA_DIR`) are present in the environment. When active, a deprecation warning listing the detected legacy variables is emitted.
+    The window is active when `MMRELAY_HOME` is not set and one or more legacy variables (e.g., `MMRELAY_BASE_DIR`, `MMRELAY_DATA_DIR`) are present in the environment. When active, a deprecation warning listing the detected legacy variables is emitted (once per process).
 
     Returns:
         True if the deprecation window is active, False otherwise.
     """
+    global _deprecation_warning_shown
+
     # Check if MMRELAY_HOME is being used (new behavior)
     new_home_set = os.getenv("MMRELAY_HOME") is not None
 
@@ -518,12 +528,14 @@ def is_deprecation_window_active() -> bool:
     if not new_home_set:
         legacy_vars = get_legacy_env_vars()
         if legacy_vars:
-            logger.warning(
-                "Deprecated environment variable(s) detected: %s. "
-                "Use MMRELAY_HOME instead. "
-                "Support will be removed in v1.4.",
-                ", ".join(legacy_vars),
-            )
+            if not _deprecation_warning_shown:
+                logger.warning(
+                    "Deprecated environment variable(s) detected: %s. "
+                    "Use MMRELAY_HOME instead. "
+                    "Support will be removed in v1.4.",
+                    ", ".join(legacy_vars),
+                )
+                _deprecation_warning_shown = True
             return True
 
     return False

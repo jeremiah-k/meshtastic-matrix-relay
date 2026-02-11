@@ -90,7 +90,8 @@ _COMPONENT_LOGGERS = {
 
 # Avoid file logging for loggers that are used during path resolution to
 # prevent recursive logging configuration (paths -> log_utils -> paths).
-_FILE_LOGGING_EXEMPT_LOGGERS = {"paths"}
+# Include both the short name and fully-qualified name for robustness.
+_FILE_LOGGING_EXEMPT_LOGGERS = {"paths", "mmrelay.paths"}
 
 
 def configure_component_debug_logging() -> None:

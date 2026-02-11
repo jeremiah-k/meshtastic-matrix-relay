@@ -2071,6 +2071,19 @@ def handle_auth_login(args: argparse.Namespace) -> int:
                 logout_others=False,
             )
         )
+    except KeyboardInterrupt:
+        print("\nAuthentication cancelled by user.")
+        return 1
+    except (
+        ConnectionError,
+        asyncio.TimeoutError,
+        OSError,
+        RuntimeError,
+        ValueError,
+    ) as e:
+        print(f"\nError during authentication: {e}")
+        return 1
+    else:
         if result:
             from mmrelay.paths import get_credentials_path
 
@@ -2085,18 +2098,6 @@ def handle_auth_login(args: argparse.Namespace) -> int:
                         f"expected path: {creds_path}"
                     )
             return 0
-        return 1
-    except KeyboardInterrupt:
-        print("\nAuthentication cancelled by user.")
-        return 1
-    except (
-        ConnectionError,
-        asyncio.TimeoutError,
-        OSError,
-        RuntimeError,
-        ValueError,
-    ) as e:
-        print(f"\nError during authentication: {e}")
         return 1
 
 

@@ -46,6 +46,7 @@ echo "Checking for legacy container paths and environment variables..."
 
 # check_strict_files checks each file in STRICT_FILES for any occurrence of the patterns in PATTERNS, prints matching lines (up to five) when found, and sets ERROR_FOUND to 1.
 check_strict_files() {
+	local PATTERN MATCHES FILE
 	for PATTERN in "${PATTERNS[@]}"; do
 		for FILE in "${STRICT_FILES[@]}"; do
 			if [[ -f ${FILE} ]]; then
@@ -152,6 +153,7 @@ check_doc_files() {
 		done
 
 		# Step 2: Check each forbidden pattern match
+		local PATTERN MATCHES MATCH_LINE MATCH_CONTENT RANGE
 		for PATTERN in "${PATTERNS[@]}"; do
 			MATCHES=$(grep -Fn -- "${PATTERN}" "${FILE}" || true)
 			if [[ -z ${MATCHES} ]]; then

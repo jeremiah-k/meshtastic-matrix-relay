@@ -100,9 +100,10 @@ See [Kubernetes-Specific Notes](#kubernetes-specific-notes) for detailed instruc
 ### Migration Command Flags
 
 - `--dry-run`: Preview migration actions without changing files. Recommended before applying changes.
+- `--move`: Move source files to `MMRELAY_HOME` instead of copying (this is the default behavior). Ignored when combined with `--dry-run`. Backups are still created before any overwrites.
 - `--force`: Allow overwriting existing files in `MMRELAY_HOME` (backups are still created). Use only after verifying your backups.
 
-> **Note**: Migration uses **move semantics by default** — source files are moved to the new location rather than copied. This prevents duplicate data and keeps the migration clean. Backups are always created before any overwrites.
+> **Note**: Migration uses **move semantics by default** — source files are moved to the new location rather than copied. The `--move` flag is provided for explicitness but is not required since this is the default behavior. This prevents duplicate data and keeps the migration clean. Backups are always created before any overwrites.
 
 ## After Upgrading
 
