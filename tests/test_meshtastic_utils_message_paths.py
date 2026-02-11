@@ -1,4 +1,6 @@
+from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from meshtastic.mesh_interface import BROADCAST_NUM
@@ -86,14 +88,14 @@ def _set_globals(config):
 @contextmanager
 def _patch_message_deps(
     interaction_settings=None,
-    longname="Long",
-    shortname="Short",
+    longname: str | None = "Long",
+    shortname: str | None = "Short",
     message_map=None,
     plugins=None,
     matrix_prefix="[p] ",
     patch_logger=True,
     patch_relay=True,
-):
+) -> Iterator[tuple[Any | None, Any | None]]:
     if interaction_settings is None:
         interaction_settings = {"reactions": False, "replies": False}
     if plugins is None:
@@ -145,7 +147,7 @@ def test_on_meshtastic_message_filters_reaction_when_disabled(
     config = _base_config()
     _set_globals(config)
     packet = _base_packet()
-    packet["decoded"].update({"emoji": EMOJI_FLAG_VALUE})
+    packet["decoded"].update({"emoji": EMOJI_FLAG_VALUE, "replyId": 42})
 
     with (
         patch(
@@ -161,6 +163,24 @@ def test_on_meshtastic_message_filters_reaction_when_disabled(
     )
 
 
+def test_on_meshtastic_message_does_not_filter_plain_emoji_message_when_reactions_disabled(
+    reset_meshtastic_globals,
+):
+    config = _base_config()
+    _set_globals(config)
+    packet = _base_packet()
+    packet["decoded"].update({"text": "👏", "emoji": EMOJI_FLAG_VALUE})
+
+    with _patch_message_deps(
+        interaction_settings={"reactions": False, "replies": True},
+        patch_logger=False,
+    ) as (_mock_logger, mock_relay):
+        on_meshtastic_message(packet, _make_interface(nodes={}))
+
+    assert mock_relay is not None
+    mock_relay.assert_awaited_once()
+
+
 def test_on_meshtastic_message_reaction_missing_original(reset_meshtastic_globals):
     config = _base_config()
     _set_globals(config)
@@ -172,6 +192,7 @@ def test_on_meshtastic_message_reaction_missing_original(reset_meshtastic_global
     ) as (mock_logger, _mock_relay):
         on_meshtastic_message(packet, _make_interface())
 
+    assert mock_logger is not None
     mock_logger.debug.assert_any_call("Original message for reaction not found in DB.")
 
 
@@ -186,6 +207,7 @@ def test_on_meshtastic_message_reply_missing_original(reset_meshtastic_globals):
     ) as (mock_logger, _mock_relay):
         on_meshtastic_message(packet, _make_interface())
 
+    assert mock_logger is not None
     mock_logger.debug.assert_any_call("Original message for reply not found in DB.")
 
 
@@ -201,6 +223,7 @@ def test_on_meshtastic_message_channel_fallback_numeric_portnum(
     with _patch_message_deps(patch_logger=False) as (_mock_logger, mock_relay):
         on_meshtastic_message(packet, _make_interface())
 
+    assert mock_relay is not None
     mock_relay.assert_awaited_once()
 
 
@@ -311,6 +334,8 @@ def test_on_meshtastic_message_direct_message_skips_relay(reset_meshtastic_globa
     with _patch_message_deps() as (mock_logger, mock_relay):
         on_meshtastic_message(packet, interface)
 
+    assert mock_relay is not None
+    assert mock_logger is not None
     mock_relay.assert_not_called()
     mock_logger.debug.assert_any_call(
         "Received a direct message from Long: Hello. Not relaying to Matrix."
@@ -329,6 +354,8 @@ def test_on_meshtastic_message_ignores_messages_for_other_nodes(
     with _patch_message_deps() as (mock_logger, mock_relay):
         on_meshtastic_message(packet, interface)
 
+    assert mock_relay is not None
+    assert mock_logger is not None
     mock_relay.assert_not_called()
     mock_logger.debug.assert_any_call(
         "Ignoring message intended for node %s (not broadcast or relay).", 1000
@@ -357,6 +384,7 @@ def test_on_meshtastic_message_logs_when_matrix_rooms_falsy(
     with _patch_message_deps() as (mock_logger, _mock_relay):
         on_meshtastic_message(packet, _make_interface())
 
+    assert mock_logger is not None
     # Empty matrix_rooms now logs as warning before relay attempt with descriptive message
     assert any(
         "matrix_rooms is empty" in str(call)

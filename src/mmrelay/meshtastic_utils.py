@@ -2575,6 +2575,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         # Filter out reactions if reactions are disabled
         if (
             not interactions["reactions"]
+            and decoded.get("replyId") is not None
             and "emoji" in decoded
             and decoded.get("emoji") == EMOJI_FLAG_VALUE
         ):
