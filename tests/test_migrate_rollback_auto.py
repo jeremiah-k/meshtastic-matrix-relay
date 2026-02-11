@@ -142,8 +142,8 @@ class TestMigrationAutomaticRollback:
         # Verify migration succeeds with no-op actions when nothing exists
         assert result["success"] is True
 
-        # Verify no steps were completed
-        assert len(result["completed_steps"]) == 7
+        # Verify no-op migration still records all migration steps, including service
+        assert len(result["completed_steps"]) == 8
 
         # Verify rollback was NOT called when no steps completed
         mock_rollback.assert_not_called()

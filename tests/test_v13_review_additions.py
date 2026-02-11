@@ -91,10 +91,15 @@ class TestMigrateGaps:
         """Test _is_mmrelay_running on macOS (no /proc)."""
         mock_exists.return_value = False  # No /proc/PID/cmdline
 
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = "1234\n"
-        mock_run.return_value = mock_result
+        pgrep_result = MagicMock()
+        pgrep_result.returncode = 0
+        pgrep_result.stdout = "1234\n"
+
+        ps_result = MagicMock()
+        ps_result.returncode = 0
+        ps_result.stdout = "/usr/bin/python -m mmrelay"
+
+        mock_run.side_effect = [pgrep_result, ps_result]
 
         # current pid is NOT 1234
         with patch("os.getpid", return_value=5678):
