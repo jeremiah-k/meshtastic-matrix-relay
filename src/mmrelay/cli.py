@@ -1606,7 +1606,10 @@ def main() -> int:
         # Handle the --base-dir/--data-dir options
         _apply_dir_overrides(args)
 
-        # Ensure application directories exist after overrides are applied
+        # Ensure application directories exist after overrides are applied.
+        # This runs unconditionally (including for read-only commands) to guarantee
+        # a consistent environment and avoid errors if subsequent operations need
+        # to write logs or temporary files.
         ensure_directories(create_missing=True)
 
         args_dict = vars(args)
@@ -1780,8 +1783,8 @@ def _detect_same_home_legacy_items(paths_info: dict[str, Any]) -> list[dict[str,
 
     # Check for store/ at HOME root (should be in matrix/store/)
     store_dir = paths_info.get("store_dir", "")
-    # Skip Windows case where store_dir is "N/A (Windows)"
-    if isinstance(store_dir, str) and not store_dir.startswith("N/A"):
+    # Skip if store_dir is not an absolute path (e.g., placeholder on Windows)
+    if isinstance(store_dir, str) and os.path.isabs(store_dir):
         legacy_home_store = home / STORE_DIRNAME
         if legacy_home_store.exists() and str(legacy_home_store) != store_dir:
             same_home_legacy_items.append(
@@ -1923,7 +1926,7 @@ def handle_doctor_command(args: argparse.Namespace) -> int:
         args (argparse.Namespace): Parsed CLI arguments; may include `migration` (bool) to enable migration verification.
 
     Returns:
-        int: 0 on success, 1 if migration verification reported errors.
+        int: 0 on success, 1 if migration verification reported errors or detected legacy data requiring action.
     """
     try:
         from mmrelay.migrate import is_migration_needed, verify_migration
@@ -1994,7 +1997,6 @@ def _print_system_health(paths_info: dict[str, Any]) -> None:
     Parameters:
         paths_info (dict[str, Any]): Mapping from resolve_all_paths() containing path entries.
     """
-    import shutil
     import sqlite3
 
     from mmrelay.paths import get_database_path

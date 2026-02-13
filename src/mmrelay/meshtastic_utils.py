@@ -2518,16 +2518,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     if full_packets_setting is True or (
         isinstance(full_packets_setting, str) and full_packets_setting.lower() == "true"
     ):
-        try:
-            import copy
-
-            # Create a sanitized copy of the packet for logging
-            packet_for_logging = copy.deepcopy(packet)
-
-            logger.debug(f"Full packet: {packet_for_logging}")
-        except Exception:
-            # If sanitization fails, don't break message processing
-            logger.debug("Failed to log full packet details")
+        logger.debug("Full packet: %s", packet)
 
     # Log that we received a message (without the full packet details)
     decoded = packet.get("decoded")
