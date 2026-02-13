@@ -24,4 +24,4 @@ pytest-timeout==2.4.0
  pyright==1.1.408
  types-PyYAML==6.0.12.20250915  # Type stubs for PyYAML to enable strict type checking
  types-Markdown==3.10.0.20251106  # Type stubs for Markdown to enable strict type checking
- types-jsonschema==4.26.0.20260109  # Type stubs for jsonschema to enable strict type checking
+ types-jsonschema==4.26.0.20260202  # Type stubs for jsonschema to enable strict type checking
