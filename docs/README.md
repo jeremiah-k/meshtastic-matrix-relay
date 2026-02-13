@@ -16,8 +16,8 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 
 ## Release-Specific Documents
 
-- **[What's New in 1.3.0](WHATS_NEW_1.3.md)** - Short release summary and migration TL;DR
-- **[Release Checklist for 1.3](RELEASE_1.3.md)** - Release verification checklist/status tracking
+- **[What's New in 1.3.0](WHATS_NEW_1.3.md)** - Release summary and changes overview
+- **[What's New in 1.2](WHATS_NEW_1.2.md)** - Previous release notes (historical)
 
 ## File Locations
 
@@ -37,24 +37,28 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 
 ```bash
 docs/
-├── README.md              # This file - documentation index
-├── INSTRUCTIONS.md        # Main installation and setup guide
-├── MIGRATION_1.3.md      # Migration guide for upgrading from older versions
-├── RELEASE_1.3.md         # 1.3 release checklist / verification tracking
-├── WHATS_NEW_1.3.md       # 1.3 release summary
-├── E2EE.md               # End-to-End Encryption guide
-├── DOCKER.md             # Docker deployment guide
-├── KUBERNETES.md         # Static manifest deployment guide
-├── HELM.md               # Helm chart deployment guide
+├── README.md                 # This file - documentation index
+├── INSTRUCTIONS.md           # Main installation and setup guide
+├── MIGRATION_1.3.md         # Migration guide for upgrading from older versions
+├── WHATS_NEW_1.3.md          # 1.3 release summary
+├── WHATS_NEW_1.2.md          # 1.2 release notes (historical)
+├── E2EE.md                  # End-to-End Encryption guide
+├── DOCKER.md                # Docker deployment guide
+├── KUBERNETES.md            # Static manifest deployment guide
+├── HELM.md                  # Helm chart deployment guide
 ├── ADVANCED_CONFIGURATION.md # Advanced configuration options
-└── dev/                  # Developer documentation
-    ├── CONSTANTS.md
-    ├── DATA_LAYOUT_MIGRATION.md
-    ├── E2EE_IMPLEMENTATION_NOTES.md
-    ├── INNO_SETUP_GUIDE.md
-    ├── TESTING_GUIDE.md
-    ├── V1_3_DIRECTORY_REDESIGN.md
-    └── V1_3_MIGRATION_IMPROVEMENTS_PLAN.md
+└── dev/                     # Developer documentation
+    ├── CONSTANTS.md         # Internal configuration constants
+    ├── E2EE_IMPLEMENTATION_NOTES.md  # E2EE technical details
+    ├── INNO_SETUP_GUIDE.md  # Windows installer build guide
+    ├── TESTING_GUIDE.md     # Testing patterns and practices
+    ├── RELEASE_1.3.md       # Release checklist (internal)
+    └── archive/             # Historical planning documents
+        ├── DATA_LAYOUT_MIGRATION.md
+        ├── V1_3_DIRECTORY_REDESIGN.md
+        ├── V1_3_MIGRATION_IMPROVEMENTS_PLAN.md
+        ├── UPGRADE_TEST_PLAN.md
+        └── UPGRADE_TEST_EXECUTION_CHECKLIST.md
 ```
 
 ## Getting Help
