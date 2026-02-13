@@ -20,10 +20,6 @@ A powerful and easy-to-use relay between Meshtastic devices and Matrix chat room
 - 🔐 **Matrix End-to-End Encryption (E2EE) support** 🔐
 - 📁 **Unified directory structure** 📁 **NEW in v1.3!**
 
-**MMRelay v1.3** introduces a unified runtime directory structure with a single `MMRELAY_HOME` for all data, plus streamlined migration tools for easy upgrades. All runtime data (credentials, database, logs, plugins, E2EE store) is now organized under one home directory.
-
-**MMRelay v1.2** introduced **Matrix End-to-End Encryption** support for secure communication in encrypted rooms. Messages are automatically encrypted/decrypted when communicating with encrypted Matrix rooms, with simple setup using `mmrelay auth login`.
-
 ## Documentation
 
 MMRelay supports multiple deployment methods including pipx, Docker, and Kubernetes. For complete setup instructions and all deployment options, see:
