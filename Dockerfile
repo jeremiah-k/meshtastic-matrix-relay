@@ -47,8 +47,8 @@ COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/pytho
 # Copy scripts to the correct location
 COPY --from=builder /usr/local/bin/mmrelay /usr/local/bin/mmrelay
 
-# Create app directory and set ownership
-RUN mkdir -p /app && chown -R mmrelay:mmrelay /app
+# Create app and data directories and set ownership
+RUN mkdir -p /app /data && chown -R mmrelay:mmrelay /app /data
 
 # Add container metadata labels
 ARG BUILD_DATE
@@ -68,15 +68,19 @@ LABEL org.opencontainers.image.title="Meshtastic Matrix Relay" \
 ENV PYTHONUNBUFFERED=1
 ENV MPLCONFIGDIR=/tmp/matplotlib
 ENV PATH=/usr/local/bin:/usr/bin:/bin
-ENV MMRELAY_DATA_DIR=/app/data
-ENV MMRELAY_CREDENTIALS_PATH=/app/data/credentials.json
+ENV MMRELAY_HOME=/data
+ENV MMRELAY_READY_FILE=/run/mmrelay/ready
 
 # Switch to non-root user
 USER mmrelay
 
-# Health check - ready file when configured, otherwise process detection
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD if [ -n "$MMRELAY_READY_FILE" ]; then test -f "$MMRELAY_READY_FILE"; else pgrep -f mmrelay >/dev/null 2>&1; fi
+# Health check - verifies ready-file freshness.
+# The ready file is created when the app is running and healthy.
+# Users who don't want ready-file health checks should omit HEALTHCHECK entirely.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD find "$MMRELAY_READY_FILE" -mmin -2 | grep -q .
 
-# Default command - uses config.yaml from volume mount
-CMD ["mmrelay", "--config", "/app/config.yaml"]
+# Default command
+# MMRELAY_HOME is set via ENV, so runtime paths resolve under /data by default.
+# mmrelay will automatically search for config.yaml in /data then in the current directory (/app).
+CMD ["mmrelay"]

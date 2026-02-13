@@ -9,30 +9,64 @@ This guide uses the static manifests in `deploy/k8s/`. Download them, create a S
 - Kubernetes cluster (v1.20+)
 - `kubectl` (includes kustomize support for `kubectl apply -k`)
 
-## Version Selection
+## Upgrading to 1.3
 
-The `MMRELAY_VERSION` variable is the container image tag (e.g., `1.2.10`). This is used for:
+If you are upgrading from 1.2.x or earlier, read and follow
+`docs/MIGRATION_1.3.md` before applying the manifests. New installations can
+proceed with the Quick Start below.
 
-- Setting the image tag in kustomization.yaml
-- Downloading the sample config.yaml
+## Image Selection
 
-The Kubernetes manifests shipped starting with **1.2.10**. This guide downloads them
-from the `main` branch for convenience.
+The base Kubernetes manifest uses `kustomize` images transform to set the container image tag. By default, the base configuration uses the `latest` tag. For 1.3.x, set a specific tag such as `1.3.0`.
 
-- **Production**: Use a specific release tag (e.g., `1.2.10`) for stability and reproducibility.
-- **Digest overlay**: Requires a release tag with published image digests.
+### Setting a specific image tag
 
-**Important**: The manifests require MMRelay **1.2.10+**.
+Edit `deploy/k8s/kustomization.yaml` to set a specific tag:
 
-## Quick Start (static manifests)
+```yaml
+images:
+  - name: ghcr.io/jeremiah-k/mmrelay
+    newTag: 1.3.0 # Change to your desired version
+```
+
+Alternatively, use `kustomize edit` from the command line:
+
+```bash
+kustomize edit set image ghcr.io/jeremiah-k/mmrelay:<tag>
+```
+
+### Pinning digests for production
+
+For production deployments, use the digest overlay to pin a specific image digest. This provides immutable image references.
+
+1. Find the digest for your desired tag:
+
+   ```bash
+   skopeo inspect docker://ghcr.io/jeremiah-k/mmrelay:<tag>
+   ```
+
+2. Update `deploy/k8s/overlays/digest/kustomization.yaml` with the digest:
+
+   ```yaml
+   images:
+     - name: ghcr.io/jeremiah-k/mmrelay
+       digest: sha256:abc123... # Replace with actual digest
+   ```
+
+3. Apply the overlay:
+   ```bash
+   kubectl apply -k ./deploy/k8s/overlays/digest
+   ```
+
+Tags and digests are listed on the GitHub Packages page:
+[https://github.com/jeremiah-k/meshtastic-matrix-relay/pkgs/container/mmrelay](https://github.com/jeremiah-k/meshtastic-matrix-relay/pkgs/container/mmrelay)
+
+## Quick Start (new install, static manifests)
 
 ```bash
 # Create a project directory and change into it
 mkdir -p mmrelay
 cd mmrelay
-
-# Set the version for the container image tag (manifests require MMRelay 1.2.10 or later)
-export MMRELAY_VERSION=1.2.10
 
 # Download manifests from the main branch
 BASE_URL="https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/deploy/k8s"
@@ -43,41 +77,38 @@ curl -fLo ./deploy/k8s/deployment.yaml "${BASE_URL}/deployment.yaml"
 curl -fLo ./deploy/k8s/kustomization.yaml "${BASE_URL}/kustomization.yaml"
 curl -fLo ./deploy/k8s/overlays/digest/kustomization.yaml "${BASE_URL}/overlays/digest/kustomization.yaml"
 
+# Set a specific image tag (recommended; avoid floating latest in production/tests)
+${EDITOR:-vi} ./deploy/k8s/kustomization.yaml
+# Set newTag to 1.3.0 (or your target release tag)
+# If you change the namespace, update the --namespace/-n flags below
+
 # Ensure the namespace exists
 kubectl create namespace mmrelay --dry-run=client -o yaml | kubectl apply -f -
 
-# Edit namespace/image tag in kustomization.yaml
-${EDITOR:-vi} ./deploy/k8s/kustomization.yaml
-# Set the image newTag to match your MMRELAY_VERSION (${MMRELAY_VERSION}); manifests require 1.2.10+
-# If you change the namespace above, update the --namespace/-n flags below to match
-# for secret creation and kubectl apply/get/log commands.
-
 # Create config.yaml from the project sample
-MMRELAY_CONFIG_REF="${MMRELAY_VERSION/latest/main}"
-curl -Lo ./config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/${MMRELAY_CONFIG_REF}/src/mmrelay/tools/sample_config.yaml
+curl -Lo ./config.yaml https://raw.githubusercontent.com/jeremiah-k/meshtastic-matrix-relay/main/src/mmrelay/tools/sample_config.yaml
 ${EDITOR:-vi} ./config.yaml
 
-# The files you just downloaded live in this `mmrelay/` workspace. Runtime
-# paths (logfile, credentials, etc.) are still defined inside `config.yaml` or
-# the env vars/CLI flags you set; the manifests already expect `/data` inside
-# the container, so update those values if you want the workspace to mirror the
-# mounted volume.
+# The default manifest sets MMRELAY_HOME=/data, so credentials,
+# database, logs, and E2EE store will all persist on the PVC.
+# All runtime state lives under /data inside the container.
+# No legacy environment variables or CLI flags are required for container deployments.
 
-# The default manifest sets MMRELAY_CREDENTIALS_PATH=/data/credentials.json,
-# so credentials will persist on the PVC. You can override this by explicitly
-# setting it in config.yaml:
-# matrix:
-#   credentials_path: /data/credentials.json
-#   e2ee:
-#     store_path: /data/store
+# Create a Matrix auth secret (environment-based auth bootstrap)
+# Set credentials (bash required for interactive prompts)
+read -p "Matrix homeserver URL (e.g., https://matrix.example.org): " HOMESERVER
+read -p "Matrix bot user ID (e.g., @bot:example.org): " BOT_USER_ID
+read -s -p "Matrix password: " PASSWORD; echo
 
-# Create a Matrix auth secret (environment-based auth)
-# The password is entered interactively and will not be shown or stored in shell history
 kubectl create secret generic mmrelay-matrix-auth \
-  --from-literal=MMRELAY_MATRIX_HOMESERVER=$(read -p "Matrix homeserver URL (e.g., https://matrix.example.org): "; echo "$REPLY") \
-  --from-literal=MMRELAY_MATRIX_BOT_USER_ID=$(read -p "Matrix bot user ID (e.g., @bot:example.org): "; echo "$REPLY") \
-  --from-literal=MMRELAY_MATRIX_PASSWORD=$(read -s -p "Matrix password: "; echo >&2; echo "$REPLY") \
+  --from-literal=MMRELAY_MATRIX_HOMESERVER="$HOMESERVER" \
+  --from-literal=MMRELAY_MATRIX_BOT_USER_ID="$BOT_USER_ID" \
+  --from-literal=MMRELAY_MATRIX_PASSWORD="$PASSWORD" \
   --namespace mmrelay
+
+# NOTE: This bootstrap secret should be created once per fresh namespace/PVC.
+# Recreating namespace/PVC repeatedly forces new Matrix logins and may trigger
+# homeserver rate limits.
 
 # Store config.yaml in a Kubernetes Secret
 kubectl create secret generic mmrelay-config \
@@ -88,21 +119,8 @@ kubectl create secret generic mmrelay-config \
 kubectl apply -k ./deploy/k8s
 
 # Check status
-kubectl get pods -n mmrelay -l app=mmrelay
+kubectl get pods -n mmrelay -l app.kubernetes.io/name=mmrelay
 kubectl logs -n mmrelay -f deployment/mmrelay
-```
-
-## Optional: pin the image digest
-
-If you want immutable image references for production, use the digest overlay.
-This requires a published image with a digest from GitHub Packages.
-
-Replace the placeholder digest in `./deploy/k8s/overlays/digest/kustomization.yaml`.
-Tags and digests are listed on the GitHub Packages page:
-[https://github.com/jeremiah-k/meshtastic-matrix-relay/pkgs/container/mmrelay](https://github.com/jeremiah-k/meshtastic-matrix-relay/pkgs/container/mmrelay)
-
-```bash
-kubectl apply -k ./deploy/k8s/overlays/digest
 ```
 
 ## Secrets and configuration
@@ -114,22 +132,571 @@ The deployment mounts a Secret named `mmrelay-config` with one key:
 Authentication secrets are provided separately using environment variables
 via the optional `mmrelay-matrix-auth` Secret (see example above). On first
 startup, MMRelay will log in with the provided credentials and create
-`/data/credentials.json` on the persistent volume.
+`/data/matrix/credentials.json` on the persistent volume.
 
 This keeps sensitive data out of the manifests so you can publish the manifests without exposing secrets. If you use an external secrets manager (External Secrets, Sealed Secrets, Vault, etc.), create the same Secret name/keys.
+
+### Config injection options
+
+Primary recommendation: use a `config.yaml` file and create `mmrelay-config` as a **Secret**.
+This keeps operator workflow simple and consistent with the rest of the docs.
+
+MMRelay supports two patterns for injecting `config.yaml`:
+
+#### Pattern A (default): Secret
+
+The default manifest uses a Secret to mount `config.yaml`:
+
+```bash
+kubectl create secret generic mmrelay-config \
+  --from-file=config.yaml=./config.yaml \
+  --namespace mmrelay
+```
+
+This is the recommended approach because:
+
+- Secrets can integrate with external secret managers (External Secrets, Sealed Secrets, Vault)
+- Secrets are not logged or tracked in clear text by default
+- Supports rotation via external secret management systems
+
+#### Pattern B (optional, advanced): ConfigMap
+
+If your organization requires ConfigMaps (for non-sensitive config), you can switch to this mode.
+For most users, keep the default Secret-based flow to avoid extra configuration complexity.
+
+1. Create the ConfigMap:
+
+   ```bash
+   kubectl create configmap mmrelay-config \
+     --from-file=config.yaml=./config.yaml \
+     --namespace mmrelay
+   ```
+
+2. Uncomment the ConfigMap volume and volumeMount in `deployment.yaml`:
+   - In the `volumes` section, uncomment the ConfigMap volume
+   - In `spec.template.spec.containers[0].volumeMounts`, uncomment the ConfigMap mount
+   - Comment out the Secret volume and mount
+
+**Important**: Only enable one pattern at a time (Secret OR ConfigMap), not both.
+
+### Credentials injection
+
+MMRelay includes a recommended pattern for injecting `credentials.json` from a Secret. This approach is safer than editing files inside running containers and enables credential rotation.
+
+#### Create the credentials Secret
+
+Generate credentials.json locally (or copy from an existing installation):
+
+```bash
+# Option 1: Create credentials.json locally (run locally with same config.yaml)
+mmrelay auth login
+
+# Option 2: Copy existing credentials from another deployment
+# Ensure the Matrix homeserver and bot user match your config.yaml
+cp ~/.mmrelay/matrix/credentials.json ./credentials.json
+```
+
+Create the Secret:
+
+```bash
+kubectl create secret generic mmrelay-credentials \
+  --from-file=credentials.json=./credentials.json \
+  --namespace mmrelay
+```
+
+#### Enable credentials Secret in deployment
+
+1. Uncomment the credentials Secret volume in `deployment.yaml`:
+   - In the `volumes` section, uncomment the credentials Secret volume
+   - In `spec.template.spec.containers[0].volumeMounts`, uncomment the credentials mount
+
+2. Delete the optional `mmrelay-matrix-auth` Secret (if used):
+
+   ```bash
+   kubectl delete secret mmrelay-matrix-auth -n mmrelay
+   ```
+
+3. Restart the pod:
+   ```bash
+   kubectl delete pod -n mmrelay -l app.kubernetes.io/name=mmrelay
+   ```
+
+The pod will start using the mounted `credentials.json` instead of bootstrapping from environment variables.
+
+#### Rotate credentials
+
+To rotate credentials:
+
+1. Generate new credentials.json locally:
+
+   ```bash
+   mmrelay auth login  # This overwrites existing credentials.json
+   ```
+
+2. Update the Secret:
+
+   ```bash
+   kubectl create secret generic mmrelay-credentials \
+     --from-file=credentials.json=./credentials.json \
+     --dry-run=client -o yaml \
+     --namespace mmrelay | kubectl apply -f -
+   ```
+
+3. Restart the pod:
+   ```bash
+   kubectl delete pod -n mmrelay -l app.kubernetes.io/name=mmrelay
+   ```
+
+The new credentials will be loaded on the next startup.
+
+#### Alternative: Environment-based auth (bootstrap mode)
+
+The default deployment includes an optional `mmrelay-matrix-auth` Secret for bootstrap mode. On first startup, MMRelay:
+
+1. Reads Matrix credentials from environment variables
+2. Logs into Matrix
+3. Creates `/data/matrix/credentials.json` on the PVC
+4. On subsequent restarts, uses the existing credentials.json
+
+This is useful for:
+
+- Initial deployment when you don't have credentials.json yet
+- Environments where Secret rotation is handled externally
+
+Note: Once credentials.json exists, the environment variables are no longer needed.
 
 ## Storage
 
 The deployment uses `/data` as the base directory for all persistent data:
 
-- **Credentials**: `/data/credentials.json` (auto-created on first login)
-- **Logs**: `/data/logs/mmrelay.log`
-- **Database**: `/data/mmrelay.db`
-- **E2EE store**: `/data/store/` (if encryption is enabled)
+- **Credentials**: `/data/matrix/credentials.json` (auto-created on first login)
+- **Logs**: `/data/logs/`
+- **Database**: `/data/database/meshtastic.sqlite`
+- **E2EE store**: `/data/matrix/store/` (if encryption is enabled)
+- **Plugins (custom)**: `/data/plugins/custom/`
+- **Plugins (community)**: `/data/plugins/community/`
 
-This is configured in `deployment.yaml` via `--base-dir /data`, `MMRELAY_BASE_DIR=/data`, and the PVC mount. All data persists across pod restarts.
+This is configured in `deployment.yaml` via `MMRELAY_HOME=/data` and the PVC mount. All data persists across pod restarts.
 
 `./deploy/k8s/pvc.yaml` uses the cluster default StorageClass. If your cluster requires a specific StorageClass, add `storageClassName` there.
+
+## Backup, restore, and disaster recovery
+
+### Runtime state location
+
+All MMRelay runtime state lives under `/data` inside the container:
+
+```text
+/data/
+├── matrix/
+│   ├── credentials.json   # Matrix authentication credentials
+│   └── store/             # E2EE encryption keys (if enabled)
+├── database/
+│   └── meshtastic.sqlite  # SQLite database (nodes, messages, state)
+├── logs/                  # Application logs
+└── plugins/               # Custom and community plugins
+    ├── custom/
+    └── community/
+```
+
+The PVC is the authoritative source for all persistent data. Backing up the PVC preserves your complete MMRelay state.
+
+### Backup
+
+#### Method 1: PVC snapshot (recommended)
+
+Most Kubernetes storage providers support volume snapshots:
+
+```bash
+# Create a snapshot of the mmrelay-data PVC
+kubectl create volumesnapshot mmrelay-data-backup-$(date +%Y%m%d) \
+  --source=persistentvolumeclaim/mmrelay-data \
+  --namespace mmrelay
+```
+
+Check your cloud provider's documentation for:
+
+- Snapshot creation limits (frequency, retention)
+- Snapshot-to-PVC restoration procedure
+- Cost implications of snapshots
+
+#### Method 2: rsync backup
+
+Create a backup to local storage:
+
+```bash
+# Get the pod name
+POD_NAME=$(kubectl get pods -n mmrelay -l app.kubernetes.io/name=mmrelay -o jsonpath='{.items[0].metadata.name}')
+
+# Copy /data to local directory
+kubectl exec -n mmrelay $POD_NAME -- tar czf - /data > mmrelay-backup-$(date +%Y%m%d).tar.gz
+```
+
+For larger deployments, use rsync:
+
+```bash
+# Create a temporary pod with the PVC
+kubectl run backup-pod \
+  --image=busybox:1.36 \
+  --overrides='{
+    "spec": {
+      "containers": [{
+        "name": "backup",
+        "image": "busybox:1.36",
+        "command": ["sleep", "3600"],
+        "volumeMounts": [{
+          "name": "data",
+          "mountPath": "/data"
+        }]
+      }],
+      "volumes": [{
+        "name": "data",
+        "persistentVolumeClaim": {
+          "claimName": "mmrelay-data"
+        }
+      }]
+    }
+  }' \
+  --namespace mmrelay
+
+# Copy data from the temporary pod
+kubectl cp -n mmrelay backup-pod:/data ./mmrelay-backup
+
+# Clean up the temporary pod
+kubectl delete pod backup-pod -n mmrelay
+```
+
+### Restore
+
+#### From PVC snapshot
+
+Restore a snapshot (procedure varies by storage provider):
+
+```bash
+# Example: Create a new PVC from a snapshot
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mmrelay-data-restored
+  namespace: mmrelay
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: <your-storage-class>
+  resources:
+    requests:
+      storage: 1Gi
+  dataSource:
+    name: mmrelay-data-backup-20250101
+    kind: VolumeSnapshot
+    apiGroup: snapshot.storage.k8s.io
+EOF
+
+# Update deployment to use the restored PVC
+kubectl set volume deployment/mmrelay -n mmrelay \
+  --name=data \
+  --overwrite \
+  --pvc-name=mmrelay-data-restored
+```
+
+#### From backup archive
+
+```bash
+# Stop the pod
+kubectl scale deployment mmrelay -n mmrelay --replicas=0
+
+# Create a temporary pod with the PVC
+kubectl run restore-pod \
+  --image=busybox:1.36 \
+  --overrides='{
+    "spec": {
+      "containers": [{
+        "name": "restore",
+        "image": "busybox:1.36",
+        "command": ["sleep", "3600"],
+        "volumeMounts": [{
+          "name": "data",
+          "mountPath": "/data"
+        }]
+      }],
+      "volumes": [{
+        "name": "data",
+        "persistentVolumeClaim": {
+          "claimName": "mmrelay-data"
+        }
+      }]
+    }
+  }' \
+  --namespace mmrelay
+
+# Copy the backup to the PVC
+kubectl cp ./mmrelay-backup -n mmrelay restore-pod:/data/
+
+# Clean up the temporary pod
+kubectl delete pod restore-pod -n mmrelay
+
+# Start the pod
+kubectl scale deployment mmrelay -n mmrelay --replicas=1
+```
+
+### Migration
+
+The `mmrelay migrate` command handles data migrations between versions:
+
+```bash
+# Dry-run: Preview changes without making them
+kubectl exec -n mmrelay <pod-name> -- mmrelay migrate --dry-run
+
+# Perform migration
+kubectl exec -n mmrelay <pod-name> -- mmrelay migrate
+
+# Force migration (if files already exist in target)
+kubectl exec -n mmrelay <pod-name> -- mmrelay migrate --force
+```
+
+The migration command is designed to be idempotent and safe. It:
+
+- Detects legacy directory structures
+- Moves files to the unified `/data` layout
+- Creates necessary directories
+- Preserves your existing data
+
+For detailed migration instructions, see the [Migration Guide for v1.3](MIGRATION_1.3.md).
+
+### First-boot health expectations
+
+After upgrades, pods can remain unready/unhealthy until credentials/bootstrap state exists or migration is completed.
+
+Recommended sequence:
+
+```bash
+# Preview migration
+kubectl exec -n mmrelay <pod-name> -- mmrelay migrate --dry-run
+
+# Apply migration
+kubectl exec -n mmrelay <pod-name> -- mmrelay migrate
+
+# Verify
+kubectl exec -n mmrelay <pod-name> -- mmrelay verify-migration
+kubectl exec -n mmrelay <pod-name> -- mmrelay doctor
+```
+
+Deprecation timeline: legacy credential/location fallbacks are supported in v1.3 and planned for removal in v1.4.
+
+### Disaster recovery checklist
+
+1. **Prevention**:
+   - Enable PVC snapshots (if supported by your storage provider)
+   - Set up regular backup schedules (cron, Velero, etc.)
+   - Test backup restoration procedures regularly
+
+2. **Detection**:
+   - Monitor pod health (liveness/readiness probes)
+   - Check PVC status (`kubectl get pvc -n mmrelay`)
+   - Verify disk space usage (`kubectl exec -n mmrelay <pod> -- df -h /data`)
+
+3. **Recovery**:
+   - Restore from the most recent backup
+   - Verify the pod starts successfully
+   - Run `mmrelay doctor` to validate the installation
+   - Check logs for any errors after restoration
+
+## Operator safety notes
+
+### Safe to delete
+
+The following resources can be safely deleted and will be recreated automatically:
+
+- **Pods**: Deleting a pod triggers Kubernetes to create a replacement pod.
+- **Deployments**: Deleting the deployment requires you to re-apply the manifest.
+- **Secrets/ConfigMaps**: Updating them does not automatically rewrite `/data/config.yaml` once it exists on PVC; restart workflows should account for init-copy behavior.
+
+```bash
+# Safe: Delete a pod (will be recreated)
+kubectl delete pod -n mmrelay <pod-name>
+
+# Safe: Force a pod restart via deployment
+kubectl rollout restart deployment mmrelay -n mmrelay
+```
+
+### Must never delete
+
+The following resources contain persistent data and must **never** be deleted:
+
+- **PersistentVolumeClaim (PVC)**: `mmrelay-data`
+  - Contains all runtime state (credentials, database, logs, E2EE keys, plugins)
+  - Deleting the PVC results in **permanent data loss**
+
+```bash
+# NEVER run this command
+kubectl delete pvc mmrelay-data -n mmrelay  # DANGEROUS - permanent data loss
+```
+
+If you need to reset the PVC:
+
+1. Scale down the deployment (`kubectl scale deployment mmrelay -n mmrelay --replicas=0`)
+2. Delete the PVC (`kubectl delete pvc mmrelay-data -n mmrelay`) - **only if you have a backup**
+3. Re-apply the PVC manifest
+4. Scale up the deployment
+
+### Auto-recreated
+
+The following paths recreate themselves automatically on startup:
+
+- `/run/mmrelay/`: Runtime directory (contains the ready file)
+- Caches: Temporary data cached in memory or temporary files
+- Logs: New log files are created on startup (old logs are retained in `/data/logs/`)
+
+These are **not** persistent and should not be backed up.
+
+### Authoritative data
+
+The PVC is the **single source of truth** for persistent data:
+
+- `/data` (PVC): **Authoritative** - persistent, backed up
+- `/data/config.yaml`: **Persistent after first startup** - copied by the init container from Secret/ConfigMap onto the PVC; subsequent pod restarts use the PVC copy
+- `/run/mmrelay`: **Not persistent** - recreated on each pod start
+- `/tmp`: **Not persistent** - temporary storage
+
+When debugging or troubleshooting, always verify the contents of `/data` on the PVC.
+
+## Operational model
+
+### Health probes
+
+MMRelay uses Kubernetes startup, readiness, and liveness probes to ensure the pod is operating correctly:
+
+**Readiness probe** (period: 10s, timeout: 2s, failureThreshold: 3):
+
+- Checks if the ready file exists at `/run/mmrelay/ready`
+- Cheap and stable check that determines service routing
+- The pod is marked "Ready" when the ready file exists
+- Traffic is only sent to ready pods
+
+**Startup probe** (period: 5s, timeout: 2s, failureThreshold: 60):
+
+- Also checks for the ready file at `/run/mmrelay/ready`
+- Allows up to 5 minutes for initialization (60 failures × 5s = 300s)
+- Prevents the liveness probe from killing the pod during slow startup
+- Once the startup probe succeeds, the liveness probe takes over
+
+**Liveness probe** (period: 60s, timeout: 20s, failureThreshold: 3):
+
+- Checks that the ready file at `/run/mmrelay/ready` has been modified within the last 2 minutes
+- Verifies the application is still actively updating the ready file (not frozen/deadlocked)
+- If the probe fails repeatedly, Kubernetes will restart the pod
+- The longer period and timeout reduce false positives for transient issues
+
+The ready file check verifies:
+
+- The application process is running and responsive
+- The periodic ready file updates are occurring (updated every loop iteration)
+
+**Why this split?**
+
+- Readiness determines service routing; it should be cheap and stable (ready-file check)
+- StartupProbe prevents crashloops on slow initialization by disabling liveness checks during startup
+- Liveness can be deeper and slower because it runs infrequently and only after startup succeeds
+
+### Troubleshooting probe failures
+
+If a pod is not ready or keeps restarting:
+
+1. Check the pod logs:
+
+   ```bash
+   kubectl logs -n mmrelay <pod-name>
+   ```
+
+2. Verify the ready file exists:
+
+   ```bash
+   kubectl exec -n mmrelay <pod-name> -- ls -l /run/mmrelay
+   ```
+
+3. Run doctor inside the pod:
+
+   ```bash
+   kubectl exec -n mmrelay <pod-name> -- mmrelay doctor
+   ```
+
+4. Verify the config Secret is mounted:
+
+   ```bash
+   kubectl exec -n mmrelay <pod-name> -- cat /data/config.yaml
+   ```
+
+5. Check the persistent volume claim status:
+   ```bash
+   kubectl get pvc -n mmrelay mmrelay-data
+   ```
+
+### Graceful shutdown
+
+MMRelay implements safe shutdown via a Kubernetes `preStop` lifecycle hook:
+
+```bash
+# Send SIGTERM to allow graceful shutdown
+sleep 5 || true
+```
+
+This gives MMRelay time to:
+
+- Flush the database to disk
+- Store any pending state
+- Disconnect cleanly from the mesh network
+
+The deployment sets `terminationGracePeriodSeconds: 30`, which allows the preStop hook and process cleanup to complete before Kubernetes sends `SIGKILL`.
+
+### Data directory ownership
+
+Even with `fsGroup: 1000` set, some CSI drivers mount volumes owned by root. To ensure MMRelay can write to `/data`, an initContainer runs before the main container starts:
+
+```yaml
+initContainers:
+  - name: init-mmrelay
+    image: busybox:1.36
+    command:
+      - sh
+      - -c
+      - |
+        if [ ! -f /data/config.yaml ]; then cp /config-source/config.yaml /data/config.yaml; fi
+        mkdir -p /data/matrix
+        chown -R 1000:1000 /data
+```
+
+This guarantees:
+
+- MMRelay (running as UID/GID 1000) can write credentials, database, plugins, and logs
+- Works across different storage backends (NFS, Ceph, local, etc.)
+
+The initContainer runs as root (`runAsUser: 0`) to modify ownership, then the main container runs as the non-root user (1000:1000).
+
+## Verification
+
+After deployment, verify your configuration:
+
+```bash
+# Get the pod name
+POD_NAME=$(kubectl get pods -n mmrelay -l app.kubernetes.io/name=mmrelay -o jsonpath='{.items[0].metadata.name}')
+
+# Run diagnostics
+kubectl exec -n mmrelay $POD_NAME -- mmrelay doctor
+
+# Verify paths
+kubectl exec -n mmrelay $POD_NAME -- mmrelay paths
+```
+
+**Expected output (summary)**:
+
+<!-- MMRELAY_ALLOW_LEGACY_EXAMPLE -->
+
+```text
+- HOME is `/data`
+- No legacy environment variables (MMRELAY_CREDENTIALS_PATH, MMRELAY_BASE_DIR, MMRELAY_DATA_DIR) are set
+- All runtime paths resolve under `/data`
+```
 
 ## Connection types
 
@@ -206,9 +773,8 @@ Because environments differ widely, treat BLE support in Kubernetes as experimen
 
 ## Notes
 
-- Credentials path: The default manifest sets `MMRELAY_CREDENTIALS_PATH=/data/credentials.json` so credentials created during first-run login persist on the PVC even when you authenticate via environment variables.
-- Ready file: The ready file feature is opt-in and enabled via `MMRELAY_READY_FILE=/run/mmrelay/ready`. When enabled:
-  - Readiness/liveness probes check for the marker file at `/run/mmrelay/ready`
+- Ready file: The ready file feature is enabled by default via `MMRELAY_READY_FILE=/run/mmrelay/ready` in the deployment:
+  - Readiness and startup probes check for the marker file at `/run/mmrelay/ready`
+  - Liveness probe verifies the ready file at `/run/mmrelay/ready` was modified within the last 2 minutes
   - Heartbeat interval is configurable via `MMRELAY_READY_HEARTBEAT_SECONDS` (default: 60s)
-  - **Important**: If you increase `MMRELAY_READY_HEARTBEAT_SECONDS` above 120s, update the liveness probe threshold (120s) in the manifest to match
 - NetworkPolicy: The default NetworkPolicy allows all egress; restrict CIDRs as needed for production. The default policy includes rules for both IPv4 (`0.0.0.0/0`) and IPv6 (`::/0`) egress.

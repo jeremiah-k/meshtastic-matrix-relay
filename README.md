@@ -17,18 +17,22 @@ A powerful and easy-to-use relay between Meshtastic devices and Matrix chat room
 - Relays messages to/from an MQTT broker, if configured in the Meshtastic firmware
 - ✨️ _Bidirectional replies and reactions support_ ✨️
 - ✨️ _Native Docker support_ ✨️
-- 🔐 **Matrix End-to-End Encryption (E2EE) support** 🔐 **NEW in v1.2!**
+- 🔐 **Matrix End-to-End Encryption (E2EE) support** 🔐
+- 📁 **Unified directory structure** 📁 **NEW in v1.3!**
 
-**MMRelay v1.2** introduces **Matrix End-to-End Encryption** support for secure communication in encrypted rooms. Messages are automatically encrypted/decrypted when communicating with encrypted Matrix rooms, with simple setup using `mmrelay auth login` or automatic credentials creation from config.yaml.
+**MMRelay v1.3** introduces a unified runtime directory structure with a single `MMRELAY_HOME` for all data, plus streamlined migration tools for easy upgrades. All runtime data (credentials, database, logs, plugins, E2EE store) is now organized under one home directory.
+
+**MMRelay v1.2** introduced **Matrix End-to-End Encryption** support for secure communication in encrypted rooms. Messages are automatically encrypted/decrypted when communicating with encrypted Matrix rooms, with simple setup using `mmrelay auth login`.
 
 ## Documentation
 
 MMRelay supports multiple deployment methods including pipx, Docker, and Kubernetes. For complete setup instructions and all deployment options, see:
 
 - [Installation Instructions](docs/INSTRUCTIONS.md) - Setup and configuration guide
+- [What's New in v1.3](docs/WHATS_NEW_1.3.md) - Latest release changes and migration info
+- [Migration Guide for v1.3](docs/MIGRATION_1.3.md) - Upgrading from v1.2 or earlier
 - [Docker Guide](docs/DOCKER.md) - Docker deployment methods
 - [Kubernetes Guide](docs/KUBERNETES.md) - Kubernetes deployment guide
-- [What's New in v1.2](docs/WHATS_NEW_1.2.md) - New features and improvements
 - [E2EE Setup Guide](docs/E2EE.md) - Matrix End-to-End Encryption configuration
 
 ---

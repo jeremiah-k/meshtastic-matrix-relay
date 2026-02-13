@@ -7,4 +7,6 @@ resources:
   - deployment.yaml
 images:
   - name: ghcr.io/jeremiah-k/mmrelay
-    newTag: 1.2.9
+    # Pin to a stable release by default for predictable deployments.
+    # Use overlays/digest for immutable production pinning.
+    newTag: 1.3.0

@@ -1,0 +1,220 @@
+# Default values for mmrelay Helm chart
+
+# Image configuration
+image:
+  repository: ghcr.io/jeremiah-k/mmrelay
+  tag: 1.3.0
+  pullPolicy: IfNotPresent
+  # If set, overrides tag (format: sha256:abc123...)
+  digest: ""
+  # Image pull secrets for private registries
+  pullSecrets: []
+
+# Runtime paths (fixed by container design)
+mmrelayHome: /data
+configPath: /data/config.yaml
+# Liveness probe expects this ready file to be updated at least every 2 minutes
+# (see livenessProbe find -mmin -2). Adjust the probe or update cadence if needed.
+readyFile: /run/mmrelay/ready
+
+# Config injection
+# The init container copies config.yaml from this Secret/ConfigMap to the PVC.
+# This allows the config to persist across pod restarts and be edited if needed.
+config:
+  # Config is required; chart will fail if disabled.
+  enabled: true
+  # source: "secret" or "configmap"
+  source: secret
+  name: mmrelay-config
+  key: config.yaml
+  # Only create the Secret/ConfigMap when explicitly enabled
+  create: false
+  # Inline config data (used only when create=true)
+  data: ""
+
+# Matrix authentication via environment variables (RECOMMENDED)
+# The app will automatically create credentials.json on first run using these env vars.
+# This is the cleanest way to authenticate - no need to manage credentials.json manually.
+matrixAuth:
+  enabled: false
+  # Secret name containing Matrix auth credentials
+  # Must contain: MMRELAY_MATRIX_HOMESERVER, MMRELAY_MATRIX_BOT_USER_ID, MMRELAY_MATRIX_PASSWORD
+  secretName: mmrelay-matrix-auth
+
+# Persistence configuration
+persistence:
+  enabled: true
+  # When disabled, the data volume uses emptyDir and all runtime state is ephemeral.
+  # Enable persistence for production deployments.
+  # If set, use existing claim instead of creating one
+  existingClaim: ""
+  storageClass: ""
+  size: 1Gi
+  accessModes:
+    - ReadWriteOnce
+
+# Security contexts
+podSecurityContext:
+  fsGroup: 1000
+
+containerSecurityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+  runAsNonRoot: true
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# Init container configuration
+# Copies config.yaml from Secret/ConfigMap to PVC and sets up directory structure
+#
+# SECURITY NOTE: The init container runs as root (runAsUser: 0) to perform chown on the
+# PVC mount point. This is required because PVCs are typically owned by root when created,
+# and we need to change ownership so the non-root main container (runAsUser: 1000) can
+# write to it. The init container drops all capabilities except CHOWN/FOWNER/DAC_OVERRIDE
+# and has a read-only root filesystem. This is a one-time operation during pod startup.
+#
+# For environments with strict security policies, you may:
+# 1. Pre-provision the PVC with correct ownership (fsGroup in podSecurityContext handles this)
+# 2. Use a security context that allows fsGroup to manage permissions
+# 3. Disable the init container if your storage provisioner handles ownership correctly
+initContainer:
+  enabled: true
+  image:
+    repository: busybox
+    tag: "1.36"
+    # If set, overrides tag (format: sha256:abc123...)
+    digest: ""
+    pullPolicy: IfNotPresent
+
+# Health probes
+probes:
+  enabled: true
+  readiness:
+    initialDelaySeconds: 0
+    periodSeconds: 10
+    timeoutSeconds: 2
+    failureThreshold: 3
+  startup:
+    initialDelaySeconds: 0
+    periodSeconds: 5
+    timeoutSeconds: 2
+    failureThreshold: 60
+  liveness:
+    # Maximum age of the ready file before the pod is considered unhealthy
+    # The app must touch the ready file at least this frequently.
+    # 2 minutes should be sufficient for normal operations; increase only if
+    # using custom plugins that cause longer blocking operations.
+    # Effective grace period ≈ maxReadyFileAgeMinutes + (failureThreshold × periodSeconds)
+    # With defaults: ~2min + 3×60s = ~5 minutes before restart.
+    maxReadyFileAgeMinutes: 2
+    initialDelaySeconds: 0
+    periodSeconds: 60
+    timeoutSeconds: 20
+    failureThreshold: 3
+
+# Lifecycle hooks
+lifecycle:
+  enabled: true
+  preStopSleepSeconds: 5
+  terminationGracePeriodSeconds: 30
+
+# Resource limits and requests
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Node placement
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# ServiceAccount configuration
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: false
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use
+  name: ""
+
+# Service configuration (disabled by default as mmrelay has no stable port)
+service:
+  enabled: false
+  type: ClusterIP
+  port: 8080
+  annotations: {}
+
+# Ingress configuration (disabled by default)
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: mmrelay.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# NetworkPolicy (disabled by default)
+networkPolicy:
+  enabled: false
+  # ingress: []
+  # egress: []
+
+# Autoscaling is NOT supported by this chart.
+# MMRelay uses SQLite for persistence and Meshtastic devices allow only one
+# active client connection at a time. Running multiple replicas would cause
+# database corruption and/or connection conflicts.
+# This chart intentionally does NOT include an HPA template for this reason.
+
+# Pod annotations
+podAnnotations: {}
+
+# Pod labels
+podLabels: {}
+
+# Replica count
+replicaCount: 1
+
+# Kubernetes namespace
+namespaceOverride: ""
+
+# AutomountServiceAccountToken
+automountServiceAccountToken: false
+
+# Seccomp profile
+seccompProfile:
+  type: RuntimeDefault
+
+# Environment variables
+env: []
+# Additional environment variables
+# env:
+#   - name: TZ
+#     value: UTC
+#   - name: PYTHONUNBUFFERED
+#     value: "1"
+
+# Additional volumes (use with caution)
+extraVolumes: []
+# Example:
+# extraVolumes:
+#   - name: serial-device
+#     hostPath:
+#       path: /dev/ttyUSB0
+#       type: CharDevice
+
+# Additional volume mounts (use with caution)
+extraVolumeMounts: []
+# Example:
+# extraVolumeMounts:
+#   - name: serial-device
+#     mountPath: /dev/ttyUSB0

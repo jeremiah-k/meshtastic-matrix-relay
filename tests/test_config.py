@@ -3,6 +3,8 @@ import os
 import sys
 import tempfile
 import unittest
+import warnings
+from typing import Any, Optional, Tuple
 from unittest.mock import MagicMock, mock_open, patch
 
 # Add src to path for imports
@@ -49,26 +51,32 @@ class TestConfig(unittest.TestCase):
         """
         Test that get_base_dir() returns the default base directory on Linux systems.
         """
-        with (
-            patch("sys.platform", "linux"),
-            patch("mmrelay.config.custom_data_dir", None),
-        ):
-            base_dir = get_base_dir()
-            self.assertEqual(base_dir, os.path.expanduser("~/.mmrelay"))
+        with patch.dict(os.environ, {}, clear=True):
+            with patch("sys.platform", "linux"):
+                with warnings.catch_warnings(record=True) as caught:
+                    warnings.simplefilter("always", DeprecationWarning)
+                    base_dir = get_base_dir()
+                if caught:
+                    self.assertIn("Use paths.get_home_dir()", str(caught[0].message))
+                self.assertEqual(base_dir, os.path.expanduser("~/.mmrelay"))
 
-    @patch("mmrelay.config.platformdirs.user_data_dir")
+    @patch("mmrelay.paths.platformdirs.user_data_dir")
     def test_get_base_dir_windows(self, mock_user_data_dir):
         # Test default base dir on Windows
         """
-        Test that get_base_dir returns the correct default base directory on Windows when platform detection and user data directory are mocked.
+        Test that get_base_dir returns correct default base directory on Windows when platform detection and user data directory are mocked.
         """
-        with (
-            patch("mmrelay.config.sys.platform", "win32"),
-            patch("mmrelay.config.custom_data_dir", None),
-        ):
-            mock_user_data_dir.return_value = "C:\\Users\\test\\AppData\\Local\\mmrelay"
-            base_dir = get_base_dir()
-            self.assertEqual(base_dir, "C:\\Users\\test\\AppData\\Local\\mmrelay")
+        with patch.dict(os.environ, {}, clear=True):
+            with (patch("mmrelay.paths.sys.platform", "win32"),):
+                mock_user_data_dir.return_value = (
+                    "C:\\Users\\test\\AppData\\Local\\mmrelay"
+                )
+                with warnings.catch_warnings(record=True) as caught:
+                    warnings.simplefilter("always", DeprecationWarning)
+                    base_dir = get_base_dir()
+                if caught:
+                    self.assertIn("Use paths.get_home_dir()", str(caught[0].message))
+                self.assertEqual(base_dir, "C:\\Users\\test\\AppData\\Local\\mmrelay")
 
     @patch("mmrelay.config.os.path.isfile")
     @patch("builtins.open")
@@ -106,58 +114,68 @@ class TestConfig(unittest.TestCase):
         with (
             patch("sys.platform", "linux"),
             patch("sys.argv", ["mmrelay"]),
-            patch("mmrelay.config.custom_data_dir", None),
         ):
             paths = get_config_paths()
             self.assertIn(os.path.expanduser("~/.mmrelay/config.yaml"), paths)
 
-    @patch("mmrelay.config.os.makedirs")
-    @patch("mmrelay.config.platformdirs.user_config_dir")
-    def test_get_config_paths_windows(self, mock_user_config_dir, mock_makedirs):
+    @patch("mmrelay.paths.platformdirs.user_data_dir")
+    def test_get_config_paths_windows(self, mock_user_data_dir):
         # Test with no args on Windows
         """
         Test that `get_config_paths` returns the correct configuration file path on Windows.
 
         Simulates a Windows environment and verifies that the returned config paths include the expected Windows-specific config file location.
         """
-        with (
-            patch("mmrelay.config.sys.platform", "win32"),
-            patch("sys.argv", ["mmrelay"]),
-        ):
-            mock_user_config_dir.return_value = (
-                "C:\\Users\\test\\AppData\\Local\\mmrelay\\config"
-            )
-            paths = get_config_paths()
-            expected_path = os.path.join(
-                "C:\\Users\\test\\AppData\\Local\\mmrelay\\config", "config.yaml"
-            )
-            self.assertIn(expected_path, paths)
-            # Verify makedirs was called but don't actually create directories
-            mock_makedirs.assert_called_once()
+        with patch.dict(os.environ, {}, clear=True):
+            with (
+                patch("mmrelay.paths.sys.platform", "win32"),
+                patch("sys.argv", ["mmrelay"]),
+            ):
+                # Use a path that looks absolute even on Linux for testing consistency
+                win_path = "/win/AppData/Local/mmrelay"
+                mock_user_data_dir.return_value = win_path
+
+                paths = get_config_paths()
+                expected_path = os.path.join(win_path, "config.yaml")
+                # Normalize paths for comparison
+                normalized_paths = [os.path.normpath(p) for p in paths]
+                self.assertIn(os.path.normpath(expected_path), normalized_paths)
 
     @patch("mmrelay.config.os.makedirs")
-    def test_get_data_dir_linux(self, mock_makedirs):
+    def test_get_data_dir_linux(self, _mock_makedirs):
         """
-        Test that get_data_dir returns the default data directory path on Linux platforms.
+        Test that get_data_dir returns default data directory path on Linux platforms.
         """
+        with patch.dict(os.environ, {}, clear=True):
+            with (patch("sys.platform", "linux"),):
+                with warnings.catch_warnings(record=True) as caught:
+                    warnings.simplefilter("always", DeprecationWarning)
+                    data_dir = get_data_dir(create=False)
+                if caught:
+                    self.assertIn("Use paths.get_home_dir()", str(caught[0].message))
+                # New unified layout: data_dir returns home directory
+                self.assertEqual(data_dir, os.path.expanduser("~/.mmrelay"))
+
+    def test_get_config_paths_with_home_env(self):
+        """Test get_config_paths respects MMRELAY_HOME environment variable."""
         with (
+            patch.dict(os.environ, {"MMRELAY_HOME": "/custom/home"}),
             patch("sys.platform", "linux"),
-            patch("mmrelay.config.custom_data_dir", None),
         ):
-            data_dir = get_data_dir()
-            self.assertEqual(data_dir, os.path.expanduser("~/.mmrelay/data"))
+            paths = get_config_paths()
+            self.assertIn(
+                "/custom/home/config.yaml", [os.path.normpath(p) for p in paths]
+            )
 
     @patch("mmrelay.config.os.makedirs")
-    def test_get_log_dir_linux(self, mock_makedirs):
+    def test_get_log_dir_linux(self, _mock_makedirs):
         """
         Test that get_log_dir() returns the default logs directory on Linux platforms.
         """
-        with (
-            patch("sys.platform", "linux"),
-            patch("mmrelay.config.custom_data_dir", None),
-        ):
-            log_dir = get_log_dir()
-            self.assertEqual(log_dir, os.path.expanduser("~/.mmrelay/logs"))
+        with patch.dict(os.environ, {}, clear=True):
+            with (patch("sys.platform", "linux"),):
+                log_dir = get_log_dir()
+                self.assertEqual(log_dir, os.path.expanduser("~/.mmrelay/logs"))
 
     @patch("mmrelay.config.os.makedirs")
     def test_get_plugin_data_dir_linux(self, mock_makedirs):
@@ -166,18 +184,18 @@ class TestConfig(unittest.TestCase):
 
         Ensures the function resolves both the default plugins data directory and a plugin-specific directory for the Linux platform.
         """
-        with (
-            patch("sys.platform", "linux"),
-            patch("mmrelay.config.custom_data_dir", None),
-        ):
-            plugin_data_dir = get_plugin_data_dir()
-            self.assertEqual(
-                plugin_data_dir, os.path.expanduser("~/.mmrelay/data/plugins")
-            )
+        with patch.dict(os.environ, {}, clear=True):
+            with (patch("sys.platform", "linux"),):
+                plugin_data_dir = get_plugin_data_dir()
+                # New unified layout: plugins under home directory
+                self.assertEqual(
+                    plugin_data_dir, os.path.expanduser("~/.mmrelay/plugins")
+                )
             plugin_specific_dir = get_plugin_data_dir("my_plugin")
+            # New unified layout: core plugin data under home/plugins/core/<name>/data
             self.assertEqual(
                 plugin_specific_dir,
-                os.path.expanduser("~/.mmrelay/data/plugins/my_plugin"),
+                os.path.expanduser("~/.mmrelay/plugins/core/my_plugin/data"),
             )
 
 
@@ -290,7 +308,7 @@ class TestConfigEdgeCases(unittest.TestCase):
 
         Simulates a YAML parsing error and verifies that `load_config` does not raise uncaught exceptions and returns a dictionary as fallback.
         """
-        import yaml  # type: ignore[import-untyped]
+        import yaml
 
         mock_isfile.return_value = True
 
@@ -375,63 +393,58 @@ class TestConfigEdgeCases(unittest.TestCase):
         mock_args = MagicMock()
         mock_args.config = "../config/test.yaml"
 
-        paths = get_config_paths(args=mock_args)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch.dict(os.environ, {"MMRELAY_HOME": temp_dir}):
+                paths = get_config_paths(args=mock_args)
 
-        # Should include the absolute version of the relative path
-        expected_path = os.path.abspath("../config/test.yaml")
-        self.assertIn(expected_path, paths)
+                # Should include the absolute version of the relative path
+                expected_path = os.path.abspath("../config/test.yaml")
+                normalized_paths = [os.path.normpath(p) for p in paths]
+                self.assertIn(os.path.normpath(expected_path), normalized_paths)
 
-        # Mock argparse Namespace object for absolute path
-        mock_args.config = "/absolute/path/config.yaml"
+                # Mock argparse Namespace object for absolute path
+                mock_args.config = "/absolute/path/config.yaml"
 
-        paths = get_config_paths(args=mock_args)
+                paths = get_config_paths(args=mock_args)
 
-        # Should include the absolute path
-        self.assertIn("/absolute/path/config.yaml", paths)
+                # Should include the absolute path
+                self.assertIn(
+                    "/absolute/path/config.yaml", [os.path.normpath(p) for p in paths]
+                )
 
-    @patch("mmrelay.config.platformdirs.user_data_dir")
+    @patch("mmrelay.paths.platformdirs.user_data_dir")
     @patch("mmrelay.config.os.makedirs")
-    @patch("mmrelay.config.sys.platform", "win32")
+    @patch("mmrelay.paths.sys.platform", "win32")
     def test_get_data_dir_windows(self, mock_makedirs, mock_user_data_dir):
         """Test get_data_dir on Windows platform."""
-        mock_user_data_dir.return_value = "C:\\Users\\test\\AppData\\Local\\mmrelay"
+        with patch.dict(os.environ, {}, clear=True):
+            mock_user_data_dir.return_value = "C:\\Users\\test\\AppData\\Local\\mmrelay"
 
-        result = get_data_dir()
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always", DeprecationWarning)
+                result = get_data_dir(create=False)
+            if caught:
+                self.assertIn("Use paths.get_home_dir()", str(caught[0].message))
 
-        self.assertEqual(result, "C:\\Users\\test\\AppData\\Local\\mmrelay")
+            self.assertEqual(result, "C:\\Users\\test\\AppData\\Local\\mmrelay")
         mock_user_data_dir.assert_called_once_with("mmrelay", None)
-        mock_makedirs.assert_called_once_with(
-            "C:\\Users\\test\\AppData\\Local\\mmrelay", exist_ok=True
-        )
+        # New unified layout: no automatic directory creation in get_data_dir
+        mock_makedirs.assert_not_called()
 
-    @patch("mmrelay.config.platformdirs.user_log_dir")
+    @patch(
+        "mmrelay.config.get_unified_logs_dir",
+        return_value="C:\\Users\\test\\AppData\\Local\\mmrelay\\logs",
+    )
     @patch("mmrelay.config.os.makedirs")
-    @patch("mmrelay.config.sys.platform", "win32")
-    def test_get_log_dir_windows(self, mock_makedirs, mock_user_log_dir):
+    @patch("mmrelay.paths.sys.platform", "win32")
+    def test_get_log_dir_windows(self, mock_makedirs, _mock_get_unified_logs_dir):
         """Test get_log_dir on Windows platform."""
-        mock_user_log_dir.return_value = (
-            "C:\\Users\\test\\AppData\\Local\\mmrelay\\Logs"
-        )
-
         result = get_log_dir()
+        expected_path = "C:\\Users\\test\\AppData\\Local\\mmrelay\\logs"
 
-        self.assertEqual(result, "C:\\Users\\test\\AppData\\Local\\mmrelay\\Logs")
-        mock_user_log_dir.assert_called_once_with("mmrelay", None)
-        mock_makedirs.assert_called_once_with(
-            "C:\\Users\\test\\AppData\\Local\\mmrelay\\Logs", exist_ok=True
-        )
-
-    @patch("mmrelay.config.os.makedirs")
-    def test_get_config_paths_permission_error(self, mock_makedirs):
-        """Test get_config_paths when directory creation fails."""
-        # Mock OSError when creating user config directory
-        mock_makedirs.side_effect = [OSError("Permission denied"), None, None]
-
-        paths = get_config_paths()
-
-        # Should still return paths even if user config dir creation fails
-        self.assertIsInstance(paths, list)
-        self.assertGreater(len(paths), 0)
+        self.assertEqual(result, expected_path)
+        _mock_get_unified_logs_dir.assert_called_once()
+        mock_makedirs.assert_called_once_with(expected_path, exist_ok=True)
 
 
 class TestEnvironmentVariableHelpers(unittest.TestCase):
@@ -933,26 +946,30 @@ class TestCredentials(unittest.TestCase):
     @patch("mmrelay.config.json.load")
     def test_load_credentials_success(self, mock_json_load, _mock_open, _mock_exists):
         """Test successful credential loading from JSON file."""
-        mock_json_load.return_value = {"user_id": "test", "access_token": "token"}
+        mock_json_load.return_value = {
+            "homeserver": "https://matrix.example.org",
+            "user_id": "test",
+            "access_token": "token",
+        }
         result = load_credentials()
-        self.assertEqual(result, {"user_id": "test", "access_token": "token"})
+        self.assertEqual(
+            result,
+            {
+                "homeserver": "https://matrix.example.org",
+                "user_id": "test",
+                "access_token": "token",
+            },
+        )
 
     @patch("mmrelay.config.os.path.exists", return_value=True)
-    @patch("mmrelay.config.os.path.isdir", return_value=False)
     @patch("builtins.open", new_callable=mock_open)
-    @patch("mmrelay.config.json.load")
-    def test_load_credentials_from_env_var(
-        self,
-        mock_json_load,
-        _mock_open,
-        _mock_isdir,
-        _mock_exists,
+    @patch("mmrelay.config.json.load", return_value=["not", "an", "object"])
+    def test_load_credentials_non_object(
+        self, _mock_json_load, _mock_open, _mock_exists
     ):
-        """Test credential loading using MMRELAY_CREDENTIALS_PATH."""
-        mock_json_load.return_value = {"user_id": "env", "access_token": "token"}
-        with patch.dict(os.environ, {"MMRELAY_CREDENTIALS_PATH": "/custom/creds.json"}):
-            result = load_credentials()
-        self.assertEqual(result, {"user_id": "env", "access_token": "token"})
+        """Test credential loading rejects non-object JSON payloads."""
+        result = load_credentials()
+        self.assertIsNone(result)
 
     @patch("mmrelay.config.os.path.exists", return_value=True)
     @patch("builtins.open", side_effect=OSError("Permission denied"))
@@ -965,212 +982,91 @@ class TestCredentials(unittest.TestCase):
     def test_save_credentials_directory_creation_failure(self, _mock_makedirs):
         """Test credential saving when directory creation fails."""
         credentials = {"user_id": "test"}
-        result = save_credentials(credentials)
-        self.assertIsNone(result)
+        with self.assertRaises(OSError):
+            save_credentials(credentials)
 
-    @patch("mmrelay.config.get_base_dir", return_value="/fake/dir")
     @patch("mmrelay.config.os.makedirs")
     @patch("builtins.open", side_effect=OSError("Permission denied"))
-    def test_save_credentials_file_open_failure(
-        self, _mock_open, _mock_makedirs, _mock_get_base_dir
-    ):
+    def test_save_credentials_file_open_failure(self, _mock_open, _mock_makedirs):
         """Test credential saving when opening file fails."""
         credentials = {"user_id": "test"}
-        result = save_credentials(credentials)
-        self.assertIsNone(result)
+        with self.assertRaises(OSError):
+            save_credentials(credentials)
 
-    @patch("mmrelay.config.get_base_dir", return_value="/fake/dir")
     @patch("mmrelay.config.os.makedirs")
     @patch("mmrelay.config.os.path.join", side_effect=os.path.join)
-    @patch("mmrelay.config.os.path.dirname", side_effect=os.path.dirname)
     @patch("mmrelay.config.os.path.isdir", return_value=False)
+    @patch("builtins.open", new_callable=mock_open)
+    def test_save_credentials_with_explicit_path(
+        self,
+        _mock_open,
+        _mock_isdir,
+        _mock_join,
+        _mock_makedirs,
+    ):
+        """Test save_credentials uses explicit credentials_path parameter."""
+        credentials = {"user_id": "test", "access_token": "token"}
+
+        save_credentials(credentials, credentials_path="/custom/creds.json")
+
+        _mock_makedirs.assert_called_once()
+        _mock_open.assert_called_once()
+        call_args = _mock_open.call_args
+        final_path = call_args[0][0]
+        self.assertEqual(
+            os.path.normpath(final_path),
+            os.path.normpath("/custom/creds.json"),
+            "Should use explicit credentials_path parameter",
+        )
+
+    @patch("mmrelay.config.os.makedirs")
+    @patch("mmrelay.config.os.path.join", side_effect=os.path.join)
     @patch("builtins.open", new_callable=mock_open)
     def test_save_credentials_trailing_separator_treated_as_dir(
         self,
         _mock_open,
-        _mock_makedirs,
-        _mock_dirname,
         _mock_join,
-        _mock_get_base_dir,
-        _mock_isdir,
+        _mock_makedirs,
     ):
-        """Test credentials_path with trailing separator is treated as directory."""
+        """Test credentials_path parameter with trailing separator is normalized."""
         credentials = {"user_id": "test", "access_token": "token"}
 
-        from mmrelay import config as config_module
+        save_credentials(credentials, credentials_path="/custom/dir/")
 
-        original_relay_config = config_module.relay_config.copy()
-        try:
-            config_module.relay_config = {}
-            with patch.dict(os.environ, {"MMRELAY_CREDENTIALS_PATH": "/custom/dir/"}):
-                save_credentials(credentials)
+        _mock_open.assert_called_once()
+        call_args = _mock_open.call_args
+        final_path = call_args[0][0]
+        self.assertEqual(
+            os.path.normpath(final_path),
+            os.path.normpath("/custom/dir/credentials.json"),
+            "Should append credentials.json to directory path with trailing separator",
+        )
 
-            _mock_makedirs.assert_called_once()
-            _mock_open.assert_called_once()
-            call_args = _mock_open.call_args
-            final_path = call_args[0][0]
-            self.assertTrue(
-                final_path.endswith("credentials.json"),
-                f"Should append credentials.json: {final_path}",
-            )
-            self.assertEqual(
-                final_path,
-                "/custom/dir/credentials.json",
-                "Should append credentials.json to directory path with trailing separator",
-            )
-        finally:
-            config_module.relay_config = original_relay_config
-
-    @patch("mmrelay.config.get_base_dir", return_value="/fake/dir")
     @patch("mmrelay.config.os.makedirs")
     @patch("mmrelay.config.os.path.join", side_effect=os.path.join)
-    @patch("mmrelay.config.os.path.isdir", return_value=False)
+    @patch("mmrelay.config.os.path.isdir", return_value=True)
     @patch("builtins.open", new_callable=mock_open)
-    def test_save_credentials_from_env_var(
+    def test_save_credentials_directory_as_path(
         self,
         _mock_open,
-        _mock_makedirs,
-        _mock_join,
-        _mock_get_base_dir,
         _mock_isdir,
-    ):
-        """Test save_credentials uses MMRELAY_CREDENTIALS_PATH environment variable."""
-        credentials = {"user_id": "test", "access_token": "token"}
-
-        from mmrelay import config as config_module
-
-        original_relay_config = config_module.relay_config.copy()
-        try:
-            config_module.relay_config = {}
-            with patch.dict(
-                os.environ, {"MMRELAY_CREDENTIALS_PATH": "/custom/creds.json"}
-            ):
-                save_credentials(credentials)
-
-            _mock_makedirs.assert_called_once()
-            _mock_open.assert_called_once()
-            call_args = _mock_open.call_args
-            final_path = call_args[0][0]
-            self.assertEqual(
-                final_path,
-                "/custom/creds.json",
-                "Should use path from MMRELAY_CREDENTIALS_PATH environment variable",
-            )
-        finally:
-            config_module.relay_config = original_relay_config
-
-    @patch("mmrelay.config.get_base_dir", return_value="/fake/dir")
-    @patch("mmrelay.config.os.makedirs")
-    @patch("mmrelay.config.os.path.join", side_effect=os.path.join)
-    @patch("mmrelay.config.os.path.isdir", return_value=False)
-    @patch("builtins.open", new_callable=mock_open)
-    def test_save_credentials_from_relay_config(
-        self,
-        _mock_open,
-        _mock_makedirs,
-        _mock_join,
-        _mock_get_base_dir,
-        _mock_isdir,
-    ):
-        """Test save_credentials uses relay_config['credentials_path'] when env var not set."""
-        credentials = {"user_id": "test", "access_token": "token"}
-
-        from mmrelay import config as config_module
-
-        original_relay_config = config_module.relay_config.copy()
-        try:
-            config_module.relay_config = {"credentials_path": "/config/creds.json"}
-
-            save_credentials(credentials)
-
-            _mock_makedirs.assert_called_once()
-            _mock_open.assert_called_once()
-            call_args = _mock_open.call_args
-            final_path = call_args[0][0]
-            self.assertEqual(
-                final_path,
-                "/config/creds.json",
-                "Should use path from relay_config['credentials_path']",
-            )
-        finally:
-            config_module.relay_config = original_relay_config
-
-    @patch("mmrelay.config.get_base_dir", return_value="/fake/dir")
-    @patch("mmrelay.config.os.makedirs")
-    @patch("mmrelay.config.os.path.join", side_effect=os.path.join)
-    @patch("mmrelay.config.os.path.isdir", return_value=False)
-    @patch("builtins.open", new_callable=mock_open)
-    def test_save_credentials_from_matrix_config(
-        self,
-        _mock_open,
-        _mock_makedirs,
-        _mock_join,
-        _mock_get_base_dir,
-        _mock_isdir,
-    ):
-        """Test save_credentials uses relay_config['matrix']['credentials_path'] as fallback."""
-        credentials = {"user_id": "test", "access_token": "token"}
-
-        from mmrelay import config as config_module
-
-        original_relay_config = config_module.relay_config.copy()
-        try:
-            config_module.relay_config = {
-                "matrix": {"credentials_path": "/matrix/creds.json"}
-            }
-
-            save_credentials(credentials)
-
-            _mock_makedirs.assert_called_once()
-            _mock_open.assert_called_once()
-            call_args = _mock_open.call_args
-            final_path = call_args[0][0]
-            self.assertEqual(
-                final_path,
-                "/matrix/creds.json",
-                "Should use path from relay_config['matrix']['credentials_path']",
-            )
-        finally:
-            config_module.relay_config = original_relay_config
-
-    @patch("mmrelay.config.get_base_dir", return_value="/fake/dir")
-    @patch("mmrelay.config.os.makedirs")
-    @patch("mmrelay.config.os.path.join", side_effect=os.path.join)
-    @patch("builtins.open", new_callable=mock_open)
-    def test_save_credentials_from_matrix_config_not_dict(
-        self,
-        _mock_open,
         _mock_join,
         _mock_makedirs,
-        _mock_get_base_dir,
     ):
-        """Test save_credentials when matrix config is not a dict."""
+        """Test save_credentials normalizes directory credentials_path."""
         credentials = {"user_id": "test", "access_token": "token"}
 
-        from mmrelay import config as config_module
+        save_credentials(credentials, credentials_path="/custom/dir")
 
-        original_relay_config = config_module.relay_config.copy()
-        original_config_path = config_module.config_path
-        try:
-            config_module.relay_config = {"matrix": "not_a_dict"}
-            config_module.config_path = None
+        _mock_open.assert_called_once()
+        call_args = _mock_open.call_args
+        final_path = call_args[0][0]
+        self.assertEqual(
+            final_path,
+            "/custom/dir/credentials.json",
+            "Should append credentials.json to directory path",
+        )
 
-            save_credentials(credentials)
-
-            _mock_makedirs.assert_any_call("/fake/dir", exist_ok=True)
-            _mock_open.assert_called_once()
-            call_args = _mock_open.call_args
-            final_path = call_args[0][0]
-            self.assertEqual(
-                final_path,
-                "/fake/dir/credentials.json",
-                "Should use get_base_dir() when matrix config is not a dict",
-            )
-        finally:
-            config_module.relay_config = original_relay_config
-            config_module.config_path = original_config_path
-
-    @patch("mmrelay.config.get_base_dir", return_value="/actual/directory")
     @patch("mmrelay.config.os.makedirs")
     @patch("mmrelay.config.os.path.join", side_effect=os.path.join)
     @patch("mmrelay.config.os.path.isdir", return_value=True)
@@ -1178,106 +1074,73 @@ class TestCredentials(unittest.TestCase):
     def test_save_credentials_actual_directory_path(
         self,
         _mock_open,
-        _mock_makedirs,
-        _mock_join,
-        _mock_get_base_dir,
         _mock_isdir,
+        _mock_join,
+        _mock_makedirs,
     ):
-        """Test save_credentials when path is an actual directory (via os.path.isdir)."""
+        """Test save_credentials normalizes explicit directory path."""
         credentials = {"user_id": "test", "access_token": "token"}
 
-        from mmrelay import config as config_module
+        save_credentials(credentials, credentials_path="/actual/directory")
 
-        original_relay_config = config_module.relay_config.copy()
-        try:
-            config_module.relay_config = {}
-            with patch.dict(
-                os.environ, {"MMRELAY_CREDENTIALS_PATH": "/actual/directory"}
-            ):
-                save_credentials(credentials)
+        _mock_open.assert_called_once()
+        call_args = _mock_open.call_args
+        final_path = call_args[0][0]
+        self.assertEqual(
+            final_path,
+            "/actual/directory/credentials.json",
+            "Should append credentials.json to directory path",
+        )
 
-            _mock_makedirs.assert_called_once()
-            _mock_open.assert_called_once()
-            call_args = _mock_open.call_args
-            final_path = call_args[0][0]
-            self.assertEqual(
-                final_path,
-                "/actual/directory/credentials.json",
-                "Should append credentials.json to actual directory",
-            )
-        finally:
-            config_module.relay_config = original_relay_config
-
-    @patch("mmrelay.config.get_base_dir", return_value="/custom/dir")
+    @patch("mmrelay.config.os.path.abspath", side_effect=lambda x: x)
+    @patch("mmrelay.config.os.path.expanduser", side_effect=lambda x: x)
     @patch("mmrelay.config.os.makedirs")
-    @patch.object(os.path, "altsep", "\\")
+    @patch("mmrelay.config.sys.platform", "win32")
     @patch("builtins.open", new_callable=mock_open)
     def test_save_credentials_altsep_path_detection(
-        self, _mock_open, _mock_makedirs, _mock_get_base_dir
-    ):
-        """Test save_credentials detects path ending with altsep (Windows separator) as directory."""
-        credentials = {"user_id": "test", "access_token": "token"}
-
-        from mmrelay import config as config_module
-
-        original_relay_config = config_module.relay_config.copy()
-        try:
-            config_module.relay_config = {}
-            with patch.dict(os.environ, {"MMRELAY_CREDENTIALS_PATH": "/custom/dir/"}):
-                save_credentials(credentials)
-
-            _mock_open.assert_called_once()
-            call_args = _mock_open.call_args
-            final_path = call_args[0][0]
-            self.assertTrue(
-                final_path.endswith("credentials.json"),
-                f"Should append credentials.json: {final_path}",
-            )
-        finally:
-            config_module.relay_config = original_relay_config
-
-    @patch("mmrelay.config.get_base_dir", return_value="/base/dir")
-    @patch("mmrelay.config.os.makedirs")
-    @patch("mmrelay.config.os.path.join", side_effect=os.path.join)
-    @patch("mmrelay.config.os.path.dirname", return_value="")
-    @patch("mmrelay.config.os.path.basename", return_value="creds.json")
-    @patch("mmrelay.config.os.path.isdir", return_value=False)
-    @patch("mmrelay.config.os.path.expanduser", side_effect=lambda x: x)
-    @patch("builtins.open", new_callable=mock_open)
-    def test_save_credentials_empty_config_dir_uses_base_dir(
         self,
         _mock_open,
-        _mock_expanduser,
-        _mock_isdir,
-        _mock_basename,
-        _mock_dirname,
-        _mock_join,
         _mock_makedirs,
-        _mock_get_base_dir,
+        _mock_expanduser,
+        _mock_abspath,
     ):
-        """Test save_credentials uses get_base_dir when config_dir is empty."""
+        """Test save_credentials normalizes directory paths with altsep."""
         credentials = {"user_id": "test", "access_token": "token"}
 
-        from mmrelay import config as config_module
+        # Use a Windows-style path to trigger altsep/ntpath logic
+        save_credentials(credentials, credentials_path="C:/custom/dir/")
 
-        original_relay_config = config_module.relay_config.copy()
-        try:
-            config_module.relay_config = {}
-            with patch.dict(os.environ, {"MMRELAY_CREDENTIALS_PATH": "creds.json"}):
-                save_credentials(credentials)
+        _mock_open.assert_called_once()
+        call_args = _mock_open.call_args
+        final_path = call_args[0][0]
 
-            _mock_makedirs.assert_called_once()
-            _mock_open.assert_called_once()
-            call_args = _mock_open.call_args
-            final_path = call_args[0][0]
-            self.assertEqual(
-                final_path,
-                "/base/dir/creds.json",
-                "Should use get_base_dir when config_dir is empty",
-            )
-            _mock_get_base_dir.assert_called()
-        finally:
-            config_module.relay_config = original_relay_config
+        import ntpath
+
+        self.assertEqual(
+            ntpath.normpath(final_path),
+            ntpath.normpath("C:/custom/dir/credentials.json"),
+            "Should append credentials.json to directory path with altsep",
+        )
+
+    @patch("mmrelay.config.os.makedirs")
+    @patch("builtins.open", new_callable=mock_open)
+    def test_save_credentials_empty_config_dir_uses_base_dir(
+        self, _mock_open, _mock_makedirs
+    ):
+        """Test save_credentials uses default path when credentials_path is a filename."""
+        credentials = {"user_id": "test", "access_token": "token"}
+
+        save_credentials(credentials, credentials_path="creds.json")
+
+        _mock_makedirs.assert_called_once()
+        _mock_open.assert_called_once()
+        call_args = _mock_open.call_args
+        final_path = call_args[0][0]
+        self.assertEqual(
+            final_path,
+            os.path.abspath("creds.json"),
+            "Should normalize credentials_path when it's a filename",
+        )
 
 
 class TestYAMLValidation(unittest.TestCase):
@@ -1294,6 +1157,7 @@ class TestYAMLValidation(unittest.TestCase):
             "key: value\n  invalid: - item1\n  - item2", "test.yaml"
         )
         self.assertFalse(result[0])  # is_valid should be False
+        self.assertIsNotNone(result[1])
         self.assertIn("YAML parsing error", result[1])
 
     def test_validate_yaml_syntax_empty(self):
@@ -1305,12 +1169,14 @@ class TestYAMLValidation(unittest.TestCase):
         """Test YAML validation for content using '=' instead of ':'"""
         result = validate_yaml_syntax("key = value", "test.yaml")
         self.assertFalse(result[0])
+        self.assertIsNotNone(result[1])
         self.assertIn("Use ':' instead of '='", result[1])
 
     def test_validate_yaml_syntax_non_standard_bool(self):
         """Test YAML validation for non-standard boolean values."""
         result = validate_yaml_syntax("key: yes", "test.yaml")
         self.assertTrue(result[0])  # Should be valid but with a warning
+        self.assertIsNotNone(result[1])
         self.assertIn("Style warning", result[1])
         self.assertIn("Consider using 'true' or 'false'", result[1])
 
@@ -1318,26 +1184,36 @@ class TestYAMLValidation(unittest.TestCase):
 class TestE2EEStoreDir(unittest.TestCase):
     """Test E2EE store directory creation."""
 
-    @patch("mmrelay.config.get_base_dir", return_value="/home/user/.mmrelay")
+    @patch("mmrelay.config.sys.platform", "linux")
+    @patch(
+        "mmrelay.config.get_unified_store_dir",
+        return_value="/home/user/.mmrelay/matrix/store",
+    )
     @patch("mmrelay.config.os.makedirs")
-    def test_get_e2ee_store_dir_creates_directory(self, mock_makedirs, _mock_base_dir):
+    def test_get_e2ee_store_dir_creates_directory(
+        self, mock_makedirs, _mock_get_unified_store_dir
+    ):
         """Test E2EE store directory creation when it doesn't exist."""
         result = get_e2ee_store_dir()
-        expected_path = "/home/user/.mmrelay/store"
+        expected_path = "/home/user/.mmrelay/matrix/store"
         self.assertEqual(result, expected_path)
         mock_makedirs.assert_called_once_with(expected_path, exist_ok=True)
 
+    @patch("mmrelay.config.sys.platform", "linux")
     @patch(
-        "mmrelay.config.get_base_dir",
-        return_value=os.path.join(tempfile.gettempdir(), ".mmrelay"),
+        "mmrelay.config.get_unified_store_dir",
+        return_value=os.path.join(tempfile.gettempdir(), ".mmrelay", "matrix", "store"),
     )
     @patch("mmrelay.config.os.makedirs")
-    def test_get_e2ee_store_dir_existing_directory(self, mock_makedirs, mock_base_dir):
+    def test_get_e2ee_store_dir_existing_directory(
+        self, mock_makedirs, _mock_get_unified_store_dir
+    ):
         """Test E2EE store directory when it already exists."""
         result = get_e2ee_store_dir()
-        expected_path = os.path.join(tempfile.gettempdir(), ".mmrelay", "store")
+        expected_path = os.path.join(
+            tempfile.gettempdir(), ".mmrelay", "matrix", "store"
+        )
         self.assertEqual(result, expected_path)
-        mock_base_dir.assert_called_once()
         mock_makedirs.assert_called_once_with(expected_path, exist_ok=True)
 
 
@@ -1367,7 +1243,7 @@ class TestLoadConfigUncoveredLines(unittest.TestCase):
         with patch("mmrelay.config.get_config_paths", return_value=["/fake/path.yaml"]):
             with patch(
                 "builtins.__import__",
-                side_effect=ImportError("No module named 'cli_utils'"),
+                side_effect=_cli_utils_import_blocker,
             ):
                 config = load_config()
 
@@ -1416,7 +1292,7 @@ class TestGetMeshtasticConfigValueUncoveredLines(unittest.TestCase):
 
         with patch(
             "builtins.__import__",
-            side_effect=ImportError("No module named 'cli_utils'"),
+            side_effect=_cli_utils_import_blocker,
         ):
             with self.assertRaises(KeyError) as cm:
                 get_meshtastic_config_value(config, "connection_type", required=True)
@@ -1528,8 +1404,9 @@ class TestConfigUncoveredLines(unittest.TestCase):
 
         mock_exists.side_effect = mock_exists_side_effect
 
-        with patch("sys.platform", "win32"), patch(
-            "mmrelay.config.os.listdir", return_value=["config.yaml"]
+        with (
+            patch("sys.platform", "win32"),
+            patch("mmrelay.config.os.listdir", return_value=["config.yaml"]),
         ):
             log_debug = []
 
@@ -1547,28 +1424,6 @@ class TestConfigUncoveredLines(unittest.TestCase):
                 result = load_credentials()
                 self.assertIsNone(result)
                 self.assertTrue(any("Directory contents" in msg for msg in log_debug))
-
-    @patch("mmrelay.config.os.path.isdir", return_value=False)
-    @patch("mmrelay.config.os.path.expanduser", return_value="credentials.json")
-    @patch("mmrelay.config.get_base_dir", return_value="/test/base")
-    @patch("mmrelay.config.os.path.exists", return_value=True)
-    @patch(
-        "builtins.open",
-        new_callable=mock_open,
-        read_data=json.dumps({"access_token": "test"}),
-    )
-    def test_load_credentials_path_without_dirname(
-        self,
-        _mock_open,
-        _mock_exists,
-        _mock_base,
-        _mock_expand,
-        _mock_isdir,
-    ):
-        """Test load_credentials with path without dirname (lines 594-595)."""
-        with patch.dict(os.environ, {"MMRELAY_CREDENTIALS_PATH": "credentials.json"}):
-            result = load_credentials()
-            self.assertEqual(result, {"access_token": "test"})
 
     @patch("mmrelay.config.get_base_dir", return_value="/test/base")
     @patch("mmrelay.config.os.makedirs")
@@ -1601,26 +1456,28 @@ class TestConfigUncoveredLines(unittest.TestCase):
     @patch("mmrelay.config.os.makedirs", side_effect=OSError("Permission denied"))
     def test_save_credentials_windows_error_guidance(self, _mock_mkdir, _mock_base):
         """Test save_credentials Windows error guidance (lines 701-704)."""
-        log_error = []
+        log_warning = []
 
-        def mock_error(*args, **_kwargs):
+        def mock_warning(*args, **_kwargs):
             """
-            Record the first positional argument as an error message in the shared `log_error` list.
+            Record the first positional argument as a warning message in the shared `log_warning` list.
 
             Parameters:
-                *args: Positional arguments where the first element is the error message to record.
+                *args: Positional arguments; the first element is treated as the warning message to record.
                 **_kwargs: Ignored.
             """
-            log_error.append(args[0])
+            log_warning.append(args[0])
 
-        with patch("sys.platform", "win32"), patch.object(
-            mmrelay.config.logger, "error", side_effect=mock_error
+        with (
+            patch("sys.platform", "win32"),
+            patch.object(mmrelay.config.logger, "warning", side_effect=mock_warning),
         ):
-            save_credentials({"access_token": "test"})
+            with self.assertRaises(OSError):
+                save_credentials({"access_token": "test"})
             self.assertTrue(
                 any(
                     "On Windows, ensure the application has write permissions" in msg
-                    for msg in log_error
+                    for msg in log_warning
                 )
             )
 
@@ -1651,6 +1508,7 @@ class TestConfigUncoveredLines(unittest.TestCase):
         """Test load_logging_config_from_env with filename (lines 349-350)."""
         mock_load.return_value = {"filename": "/test/log.txt"}
         config = load_logging_config_from_env()
+        self.assertIsNotNone(config)
         self.assertTrue(config.get("log_to_file"))
 
     @patch("mmrelay.config.os.path.isfile", return_value=True)
@@ -1660,6 +1518,22 @@ class TestConfigUncoveredLines(unittest.TestCase):
         """Test load_config with empty file (line 958)."""
         config = load_config("/test/empty.yaml")
         self.assertEqual(config, {})
+
+
+_real_import = __import__
+
+
+def _cli_utils_import_blocker(
+    name: str,
+    globals: Optional[dict] = None,
+    locals: Optional[dict] = None,
+    fromlist: Tuple[str, ...] = (),
+    level: int = 0,
+) -> Any:
+    """Raise ImportError for cli_utils imports, delegate everything else."""
+    if name in ("mmrelay.cli_utils", "cli_utils"):
+        raise ImportError
+    return _real_import(name, globals, locals, fromlist, level)
 
 
 if __name__ == "__main__":

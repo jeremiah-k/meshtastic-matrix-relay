@@ -13,6 +13,7 @@ Tests async patterns including:
 
 import asyncio
 import os
+import secrets
 import sys
 import time
 import unittest
@@ -38,7 +39,7 @@ class TestAsyncPatterns(unittest.TestCase):
         self.config = {
             "matrix": {
                 "homeserver": "https://matrix.org",
-                "access_token": "test_token",
+                "access_token": secrets.token_hex(16),
                 "bot_user_id": "@test:matrix.org",
             },
             "matrix_rooms": [{"id": "!room1:matrix.org", "meshtastic_channel": 0}],
@@ -56,35 +57,52 @@ class TestAsyncPatterns(unittest.TestCase):
             """
             Asynchronously tests the Matrix connection coroutine, ensuring proper awaiting and client initialization.
 
-            Simulates the Matrix connection process by mocking SSL context, certificate path, and Matrix AsyncClient. Verifies that the `connect_matrix` function awaits the sync method and returns a valid client instance.
+            Simulates the Matrix connection process by mocking SSL context, certificate path, and Matrix AsyncClient. Verifies that `connect_matrix` function awaits the sync method and returns a valid client instance.
             """
+            # Mock credentials loading to prevent using real credentials
+            mock_auth_info = MagicMock()
+            mock_auth_info.homeserver = "https://matrix.org"
+            mock_auth_info.access_token = secrets.token_hex(16)
+            mock_auth_info.user_id = "@test:matrix.org"
+            mock_auth_info.device_id = "TESTDEVICE"
+            mock_auth_info.credentials_path = None
+
             # Ensure matrix_client is None to avoid early return
             with patch("mmrelay.matrix_utils.matrix_client", None):
-                # Mock SSL context creation
-                with patch("ssl.create_default_context") as mock_ssl:
-                    mock_ssl.return_value = MagicMock()
+                with patch(
+                    "mmrelay.matrix_utils.async_load_credentials",
+                    new_callable=AsyncMock,
+                ) as mock_load:
+                    mock_load.return_value = mock_auth_info
+                    # Mock SSL context creation
+                    with patch("ssl.create_default_context") as mock_ssl:
+                        mock_ssl.return_value = MagicMock()
 
-                    # Mock certifi.where()
-                    with patch("certifi.where", return_value="/fake/cert/path"):
-                        # Mock Matrix client connection
-                        with patch(
-                            "mmrelay.matrix_utils.AsyncClient"
-                        ) as mock_client_class:
-                            mock_client = AsyncMock()
-                            mock_client.rooms = {}
-                            # Mock successful sync response
-                            mock_sync_response = MagicMock()
-                            mock_client.sync.return_value = mock_sync_response
-                            mock_client_class.return_value = mock_client
+                        # Mock certifi.where()
+                        with patch("certifi.where", return_value="/fake/cert/path"):
+                            # Mock Matrix client connection
+                            with patch(
+                                "mmrelay.matrix_utils.AsyncClient"
+                            ) as mock_client_class:
+                                mock_client = MagicMock()
+                                mock_client.rooms = {}
+                                # Use AsyncMock for sync method since it's awaited
+                                mock_client.sync = AsyncMock(return_value=MagicMock())
+                                # Mock other async methods that are called
+                                mock_client.get_displayname = AsyncMock(
+                                    return_value="TestBot"
+                                )
+                                mock_client.close = AsyncMock(return_value=None)
+                                mock_client_class.return_value = mock_client
 
-                            # Test that connect_matrix properly awaits
-                            result = await connect_matrix(self.config)
+                                # Test that connect_matrix properly awaits
+                                result = await connect_matrix(self.config)
 
-                            # Should return the client
-                            self.assertIsNotNone(result)
+                                # Should return to client
+                                self.assertIsNotNone(result)
 
-                            # Verify sync was called (awaited) - this is the main async operation now
-                            mock_client.sync.assert_called()
+                                # Verify sync was called (awaited) - this is the main async operation now
+                                mock_client.sync.assert_called()
 
         # Run the async test
         asyncio.run(test_coroutine())
@@ -143,44 +161,62 @@ class TestAsyncPatterns(unittest.TestCase):
 
             This function mocks a slow Matrix client operation and verifies that `asyncio.wait_for` raises a `TimeoutError` when the operation takes longer than the allowed timeout.
             """
+            # Mock credentials loading to prevent using real credentials
+            mock_auth_info = MagicMock()
+            mock_auth_info.homeserver = "https://matrix.org"
+            mock_auth_info.access_token = secrets.token_hex(16)
+            mock_auth_info.user_id = "@test:matrix.org"
+            mock_auth_info.device_id = "TESTDEVICE"
+            mock_auth_info.credentials_path = None
+
             # Ensure matrix_client is None to avoid early return
             with patch("mmrelay.matrix_utils.matrix_client", None):
-                # Mock SSL context creation
-                with patch("ssl.create_default_context") as mock_ssl:
-                    mock_ssl.return_value = MagicMock()
+                with patch(
+                    "mmrelay.matrix_utils.async_load_credentials",
+                    new_callable=AsyncMock,
+                ) as mock_load:
+                    mock_load.return_value = mock_auth_info
+                    # Mock SSL context creation
+                    with patch("ssl.create_default_context") as mock_ssl:
+                        mock_ssl.return_value = MagicMock()
 
-                    # Mock certifi.where()
-                    with patch("certifi.where", return_value="/fake/cert/path"):
-                        # Mock a slow Matrix operation
-                        with patch(
-                            "mmrelay.matrix_utils.AsyncClient"
-                        ) as mock_client_class:
-                            mock_client = AsyncMock()
-                            mock_client.rooms = {}
+                        # Mock certifi.where()
+                        with patch("certifi.where", return_value="/fake/cert/path"):
+                            # Mock a slow Matrix operation
+                            with patch(
+                                "mmrelay.matrix_utils.AsyncClient"
+                            ) as mock_client_class:
+                                mock_client = MagicMock()
+                                mock_client.rooms = {}
 
-                            # Make sync take longer than timeout
-                            async def slow_sync(*args, **kwargs):
-                                """
-                                Simulates a delayed asynchronous sync operation.
+                                # Make sync take longer than timeout
+                                async def slow_sync(*_args, **_kwargs):
+                                    """
+                                    Simulates a delayed Matrix client sync operation for tests.
 
-                                Returns:
-                                    MagicMock: A mock sync response object.
-                                """
-                                await asyncio.sleep(2)  # 2 second delay
-                                return MagicMock()
+                                    Returns:
+                                        MagicMock: A MagicMock instance representing the sync response.
+                                    """
+                                    await asyncio.sleep(2)  # 2 second delay
+                                    return MagicMock()
 
-                            mock_client.sync = slow_sync
-                            mock_client_class.return_value = mock_client
-
-                            # Test with short timeout
-                            try:
-                                await asyncio.wait_for(
-                                    connect_matrix(self.config), timeout=0.5
+                                mock_client.sync = slow_sync
+                                # Mock other async methods that are called
+                                mock_client.get_displayname = AsyncMock(
+                                    return_value="TestBot"
                                 )
-                                self.fail("Should have timed out")
-                            except asyncio.TimeoutError:
-                                # Expected timeout
-                                pass
+                                mock_client.close = AsyncMock(return_value=None)
+                                mock_client_class.return_value = mock_client
+
+                                # Test with short timeout
+                                try:
+                                    await asyncio.wait_for(
+                                        connect_matrix(self.config), timeout=0.5
+                                    )
+                                    self.fail("Should have timed out")
+                                except asyncio.TimeoutError:
+                                    # Expected timeout
+                                    pass
 
         # Run the timeout test
         asyncio.run(test_timeout())
@@ -194,31 +230,49 @@ class TestAsyncPatterns(unittest.TestCase):
 
         async def test_error_handling():
             """
-            Test that exceptions raised during async operations are properly propagated or handled.
+            Ensure exceptions from Matrix client async operations are either propagated with the expected message or handled so a client is still returned.
 
-            Verifies that when an exception occurs in an awaited async method, the error is either caught and asserted or the function under test returns a valid result, ensuring robust error handling in async workflows.
+            Mocks credential loading, SSL context creation, and the Matrix AsyncClient to raise a NioLocalTransportError during sync; asserts that connect_matrix(self.config) either returns a non-None client or raises a ConnectionError whose message contains "Matrix sync failed".
             """
+            # Mock credentials loading to prevent using real credentials
+            mock_auth_info = MagicMock()
+            mock_auth_info.homeserver = "https://matrix.org"
+            mock_auth_info.access_token = secrets.token_hex(16)
+            mock_auth_info.user_id = "@test:matrix.org"
+            mock_auth_info.device_id = "TESTDEVICE"
+            mock_auth_info.credentials_path = None
+
             # Mock SSL context creation
             with patch("ssl.create_default_context") as mock_ssl:
                 mock_ssl.return_value = MagicMock()
 
                 # Mock Matrix client that raises an exception
-                with patch("mmrelay.matrix_utils.AsyncClient") as mock_client_class:
-                    mock_client = AsyncMock()
-                    mock_client.rooms = {}
-                    mock_client.sync.side_effect = NioLocalTransportError(
-                        "Connection failed"
-                    )
-                    mock_client_class.return_value = mock_client
+                with patch(
+                    "mmrelay.matrix_utils.async_load_credentials",
+                    new_callable=AsyncMock,
+                ) as mock_load:
+                    mock_load.return_value = mock_auth_info
+                    with patch("mmrelay.matrix_utils.AsyncClient") as mock_client_class:
+                        mock_client = MagicMock()
+                        mock_client.rooms = {}
+                        # Use regular Mock with side_effect for exception testing
+                        mock_sync = MagicMock()
+                        mock_sync.side_effect = NioLocalTransportError(
+                            "Connection failed"
+                        )
+                        mock_client.sync = mock_sync
+                        # Make close() async since it's awaited
+                        mock_client.close = AsyncMock(return_value=None)
+                        mock_client_class.return_value = mock_client
 
-                    # Should handle the exception gracefully
-                    try:
-                        result = await connect_matrix(self.config)
-                        # connect_matrix should handle errors and return client anyway
-                        self.assertIsNotNone(result)
-                    except ConnectionError as e:
-                        # If exception is raised, it should be the expected one
-                        self.assertIn("Matrix sync failed", str(e))
+                        # Should handle of exception gracefully
+                        try:
+                            result = await connect_matrix(self.config)
+                            # connect_matrix should handle errors and return client anyway
+                            self.assertIsNotNone(result)
+                        except ConnectionError as e:
+                            # If exception is raised, it should be the expected one
+                            self.assertIn("Matrix sync failed", str(e))
 
         # Run the error handling test
         asyncio.run(test_error_handling())

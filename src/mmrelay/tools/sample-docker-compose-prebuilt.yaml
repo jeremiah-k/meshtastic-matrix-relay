@@ -8,17 +8,18 @@ services:
     labels:
       - com.centurylinklabs.watchtower.enable=true # Enables automatic updates via Watchtower (if enabled, below)
     environment:
+      - MMRELAY_HOME=/data
+      - MMRELAY_READY_FILE=/tmp/mmrelay-ready
       - TZ=UTC # Set timezone (PYTHONUNBUFFERED and MPLCONFIGDIR are set in Dockerfile)
 
     volumes:
       # Mount your config directory - create ~/.mmrelay/config.yaml first
       # See docs/DOCKER.md for setup instructions
+      # Use MMRELAY_HOST_HOME (not MMRELAY_HOME) for host paths to avoid conflict with container env
       # For non-SELinux systems (most common):
-      - ${MMRELAY_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro
-      - ${MMRELAY_HOME:-$HOME}/.mmrelay:/app/data
+      - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay:/data
       # For SELinux systems (RHEL/CentOS/Fedora), add :Z flag to prevent permission denied errors:
-      # - ${MMRELAY_HOME:-$HOME}/.mmrelay/config.yaml:/app/config.yaml:ro,Z
-      # - ${MMRELAY_HOME:-$HOME}/.mmrelay:/app/data:Z
+      # - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay:/data:Z
 
       # For BLE connections, uncomment this line (Linux only):
       # - /var/run/dbus:/var/run/dbus:ro
@@ -29,7 +30,20 @@ services:
     #   - apparmor=unconfined # Recommended for BLE to allow DBus communication
     # privileged: true # Alternative if apparmor=unconfined is not acceptable
 
-    # Tip: For correct permissions and paths, ensure UID, GID, and MMRELAY_HOME are set in a .env file or exported
+    # Tip: For correct permissions and paths, ensure UID, GID, and MMRELAY_HOST_HOME are set in a .env file or exported
+
+    # Readiness check (checks readiness file freshness periodically updated by app)
+    # Note: start_period allows time for slow Matrix login/E2EE key sync
+    healthcheck:
+      test:
+        [
+          CMD-SHELL,
+          "find $${MMRELAY_READY_FILE:-/tmp/mmrelay-ready} -mmin -2 | grep -q .",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
     # Optional: Watchtower for automatic updates (Recommended)
     # Uncomment to check for updates daily at 2 AM

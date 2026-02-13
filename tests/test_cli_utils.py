@@ -316,18 +316,23 @@ class TestCleanupLocalSessionData:
     @patch("os.path.exists")
     @patch("os.remove")
     @patch("shutil.rmtree")
-    @patch("mmrelay.config.get_base_dir", return_value="/test/config")
-    @patch("mmrelay.config.get_e2ee_store_dir", return_value="/test/store")
+    @patch(
+        "mmrelay.paths.resolve_all_paths",
+        return_value={
+            "credentials_path": "/test/config/matrix/credentials.json",
+            "store_dir": "/test/config/matrix/store",
+        },
+    )
     def test_cleanup_success(
-        self, mock_get_e2ee, mock_get_base, mock_rmtree, mock_remove, mock_exists
+        self, _mock_resolve, mock_rmtree, mock_remove, mock_exists
     ):
         from mmrelay.cli_utils import _cleanup_local_session_data
 
         mock_exists.return_value = True
         result = _cleanup_local_session_data()
         assert result is True
-        mock_remove.assert_called_once_with("/test/config/credentials.json")
-        mock_rmtree.assert_called_once_with("/test/store")
+        mock_remove.assert_called_once_with("/test/config/matrix/credentials.json")
+        mock_rmtree.assert_called_once_with("/test/config/matrix/store")
 
     @patch("os.path.exists", return_value=False)
     def test_cleanup_no_files(self, mock_exists):
@@ -339,10 +344,15 @@ class TestCleanupLocalSessionData:
     @patch("os.path.exists", return_value=True)
     @patch("os.remove", side_effect=PermissionError)
     @patch("shutil.rmtree", side_effect=PermissionError)
-    @patch("mmrelay.config.get_base_dir", return_value="/test/config")
-    @patch("mmrelay.config.get_e2ee_store_dir", return_value="/test/store")
+    @patch(
+        "mmrelay.paths.resolve_all_paths",
+        return_value={
+            "credentials_path": "/test/config/matrix/credentials.json",
+            "store_dir": "/test/config/matrix/store",
+        },
+    )
     def test_cleanup_permission_error(
-        self, mock_get_e2ee, mock_get_base, mock_rmtree, mock_remove, mock_exists
+        self, _mock_resolve, _mock_rmtree, _mock_remove, _mock_exists
     ):
         from mmrelay.cli_utils import _cleanup_local_session_data
 
@@ -446,7 +456,8 @@ class TestLogoutMatrixBot:
 
         with (
             patch(
-                "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_credentials),
             ),
             patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
@@ -478,7 +489,8 @@ class TestLogoutMatrixBot:
 
         with (
             patch(
-                "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_credentials),
             ),
             patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
@@ -495,7 +507,9 @@ class TestLogoutMatrixBot:
 
     @pytest.mark.asyncio
     async def test_logout_matrix_bot_fetch_user_id_exception(self):
-        """Test logout when fetching user_id raises exception (lines 621-630)."""
+        """
+        Verify logout_matrix_bot handles an unexpected exception raised while fetching the user's ID from the temporary Matrix client: the exception is logged and the temporary client is closed.
+        """
         from mmrelay.cli_utils import logout_matrix_bot
 
         mock_credentials = {
@@ -523,7 +537,8 @@ class TestLogoutMatrixBot:
 
         with (
             patch(
-                "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_credentials),
             ),
             patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
@@ -546,7 +561,11 @@ class TestLogoutMatrixBot:
 
     @pytest.mark.asyncio
     async def test_logout_matrix_bot_ssl_context_none(self):
-        """Test logout when SSL context creation fails (line 664)."""
+        """
+        Ensure logout_matrix_bot proceeds when SSL context creation returns None and emits a warning.
+
+        Simulates valid credentials and AsyncClient instances, forces _create_ssl_context to return None, and asserts the logout flow completes while a warning is logged.
+        """
         from mmrelay.cli_utils import logout_matrix_bot
 
         mock_credentials = {
@@ -568,7 +587,8 @@ class TestLogoutMatrixBot:
 
         with (
             patch(
-                "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_credentials),
             ),
             patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.cli_utils._create_ssl_context", return_value=None),
@@ -607,7 +627,8 @@ class TestLogoutMatrixBot:
 
         with (
             patch(
-                "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_credentials),
             ),
             patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.cli_utils._create_ssl_context", return_value=MagicMock()),
@@ -649,7 +670,8 @@ class TestLogoutMatrixBot:
 
         with (
             patch(
-                "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_credentials),
             ),
             patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.cli_utils._create_ssl_context", return_value=MagicMock()),
@@ -691,7 +713,8 @@ class TestLogoutMatrixBot:
 
         with (
             patch(
-                "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_credentials),
             ),
             patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.cli_utils._create_ssl_context", return_value=MagicMock()),
@@ -732,7 +755,8 @@ class TestLogoutMatrixBot:
 
         with (
             patch(
-                "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_credentials),
             ),
             patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.cli_utils._create_ssl_context", return_value=MagicMock()),
@@ -779,7 +803,8 @@ class TestLogoutMatrixBot:
 
         with (
             patch(
-                "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_credentials),
             ),
             patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.cli_utils._create_ssl_context", return_value=MagicMock()),
@@ -799,7 +824,11 @@ class TestLogoutMatrixBot:
 
     @pytest.mark.asyncio
     async def test_logout_matrix_bot_close_main_client_timeout(self):
-        """Test logout when closing main client raises TimeoutError (lines 763-764)."""
+        """
+        Verify logout_matrix_bot returns True when closing the main client raises a TimeoutError.
+
+        Patches credential loading, AsyncClient construction, SSL context creation, session cleanup, and logger; simulates a timeout when closing the main AsyncClient and asserts the function completes successfully and logs a debug message.
+        """
         from mmrelay.cli_utils import logout_matrix_bot
 
         mock_credentials = {
@@ -821,7 +850,8 @@ class TestLogoutMatrixBot:
 
         with (
             patch(
-                "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_credentials),
             ),
             patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.cli_utils._create_ssl_context", return_value=MagicMock()),
@@ -840,7 +870,11 @@ class TestLogoutMatrixBot:
 
     @pytest.mark.asyncio
     async def test_logout_matrix_bot_process_exception(self):
-        """Test logout when overall process raises exception (lines 782-785)."""
+        """
+        Ensure logout_matrix_bot handles exceptions raised during AsyncClient construction.
+
+        Patches credential loading and SSL context creation, forces AsyncClient construction to raise an unexpected Exception, and asserts that logout_matrix_bot returns False, calls logger.exception once, and prints an error message.
+        """
         from mmrelay.cli_utils import logout_matrix_bot
 
         mock_credentials = {
@@ -852,7 +886,8 @@ class TestLogoutMatrixBot:
 
         with (
             patch(
-                "mmrelay.matrix_utils.load_credentials", return_value=mock_credentials
+                "mmrelay.config.async_load_credentials",
+                new=AsyncMock(return_value=mock_credentials),
             ),
             patch("mmrelay.cli_utils.AsyncClient") as mock_async_client,
             patch("mmrelay.cli_utils._create_ssl_context", return_value=MagicMock()),

@@ -136,6 +136,37 @@ _ble_timeout_reset_threshold = BLE_TIMEOUT_RESET_THRESHOLD
 _ble_scan_timeout_secs = BLE_SCAN_TIMEOUT_SECS
 
 
+def _normalize_room_channel(room: dict[str, Any]) -> int | None:
+    """
+    Normalize a room's configured `meshtastic_channel` value to an integer.
+
+    Parameters:
+        room (dict[str, Any]): Room configuration dictionary; expected to contain the
+            'meshtastic_channel' key. An optional 'id' key may be used in warnings.
+
+    Returns:
+        int | None: The channel as an `int`, or `None` if the key is missing or the
+        value cannot be converted to an integer.
+
+    Notes:
+        Logs a warning mentioning the room `id` when the channel value is present but
+        invalid.
+    """
+    room_channel = room.get("meshtastic_channel")
+    if room_channel is None:
+        return None
+    try:
+        return int(room_channel)
+    except (ValueError, TypeError):
+        logger.warning(
+            "Invalid meshtastic_channel value %r in room config "
+            "for room %s, skipping this room",
+            room_channel,
+            room.get("id", "unknown"),
+        )
+        return None
+
+
 def _shutdown_shared_executors() -> None:
     """
     Shutdown shared executors on interpreter exit to avoid blocking.
@@ -2439,9 +2470,10 @@ async def reconnect() -> None:
                     )
                     break
                 loop = asyncio.get_running_loop()
-                # Pass force_connect=True without overwriting the global config
+                # Pass the current config during reconnection to ensure matrix_rooms is populated
+                # Using None for passed_config would skip matrix_rooms initialization
                 meshtastic_client = await loop.run_in_executor(
-                    None, connect_meshtastic, None, True
+                    None, connect_meshtastic, config, True
                 )
                 if meshtastic_client:
                     logger.info("Reconnected successfully.")
@@ -2478,6 +2510,15 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     if not packet or not isinstance(packet, dict):
         logger.error("Received malformed packet: packet is None or not a dict")
         return
+
+    # Full packet logging for debugging (when enabled in config)
+    # Check if full packet logging is enabled - accepts boolean True or string "true"
+    debug_settings = config.get("logging", {}).get("debug", {}) if config else {}
+    full_packets_setting = debug_settings.get("full_packets")
+    if full_packets_setting is True or (
+        isinstance(full_packets_setting, str) and full_packets_setting.lower() == "true"
+    ):
+        logger.debug("Full packet: %s", packet)
 
     # Log that we received a message (without the full packet details)
     decoded = packet.get("decoded")
@@ -2543,6 +2584,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         # Filter out reactions if reactions are disabled
         if (
             not interactions["reactions"]
+            and decoded.get("replyId") is not None
             and "emoji" in decoded
             and decoded.get("emoji") == EMOJI_FLAG_VALUE
         ):
@@ -2636,9 +2678,18 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                 ),
                 loop=loop,
             )
+            return
         else:
-            logger.debug("Original message for reaction not found in DB.")
-        return
+            # Original message not found - fall through to normal text handling
+            # This can happen with:
+            # - Replies to messages from before the relay started
+            # - Cross-meshnet replies where original not in our DB
+            # - Signed IDs that don't match (packet from another node/source)
+            logger.warning(
+                "Original message for reaction (replyId=%s) not found in DB. "
+                "Relaying as normal message instead.",
+                replyId,
+            )
 
     # Reply handling (Meshtastic -> Matrix)
     # If replyId is present but emoji is not (or not 1), this is a reply
@@ -2675,9 +2726,18 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                 ),
                 loop=loop,
             )
+            return
         else:
-            logger.debug("Original message for reply not found in DB.")
-        return
+            # Original message not found - fall through to normal text handling
+            # This can happen with:
+            # - Replies to messages from before the relay started
+            # - Cross-meshnet replies where original not in our DB
+            # - Signed IDs that don't match (packet from another node/source)
+            logger.warning(
+                "Original message for reply (replyId=%s) not found in DB. "
+                "Relaying as normal message instead.",
+                replyId,
+            )
 
     # Normal text messages or detection sensor messages
     if text:
@@ -2700,18 +2760,51 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
                 )
                 return
 
+        # Normalize channel to integer to prevent type mismatch issues
+        try:
+            channel = int(channel)
+        except (ValueError, TypeError):
+            logger.warning(
+                f"Invalid channel value {channel!r} (type: {type(channel).__name__}), "
+                f"defaulting to {DEFAULT_CHANNEL_VALUE}"
+            )
+            channel = DEFAULT_CHANNEL_VALUE
+
         # Check if channel is mapped to a Matrix room
         channel_mapped = False
         iterable_rooms = (
             matrix_rooms.values() if isinstance(matrix_rooms, dict) else matrix_rooms
         )
         for room in iterable_rooms:
-            if isinstance(room, dict) and room.get("meshtastic_channel") == channel:
+            if not isinstance(room, dict):
+                continue
+
+            room_channel = _normalize_room_channel(room)
+            if room_channel is None:
+                continue
+
+            if room_channel == channel:
                 channel_mapped = True
+                logger.debug(
+                    f"Channel {channel} mapped to Matrix room {room.get('id', 'unknown')}"
+                )
                 break
 
         if not channel_mapped:
-            logger.debug(f"Skipping message from unmapped channel {channel}")
+            # Use WARNING level so this is visible without debug logging enabled
+            # This helps users diagnose configuration issues
+            available_channels = []
+            for room in iterable_rooms:
+                if isinstance(room, dict):
+                    ch = _normalize_room_channel(room)
+                    if ch is not None:
+                        available_channels.append(ch)
+
+            logger.warning(
+                f"Skipping message from unmapped channel {channel}. "
+                f"Available channels in config: {available_channels}. "
+                f"Check your matrix_rooms configuration to ensure this channel is mapped."
+            )
             return
 
         # If detection_sensor is disabled and this is a detection sensor packet, skip it
@@ -2792,13 +2885,19 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             logger.debug("Message was handled by a plugin. Not relaying to Matrix.")
             return
 
+        # Check if matrix_rooms is empty BEFORE attempting to relay
+        # This can happen during startup race conditions where messages arrive
+        # before matrix_rooms is populated, or during reconnection
+        if not matrix_rooms:
+            logger.warning(
+                f"matrix_rooms is empty - cannot relay message from {longname}. "
+                f"This may indicate a startup race condition or configuration issue. "
+                f"Message will be dropped: {text[:50]}{'...' if len(text) > 50 else ''}"
+            )
+            return
+
         # Relay the message to all Matrix rooms mapped to this channel
         logger.info(f"Relaying Meshtastic message from {longname} to Matrix")
-
-        # Check if matrix_rooms is empty
-        if not matrix_rooms:
-            logger.error("matrix_rooms is empty. Cannot relay message to Matrix.")
-            return
 
         iterable_rooms = (
             matrix_rooms.values() if isinstance(matrix_rooms, dict) else matrix_rooms
@@ -2806,7 +2905,12 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         for room in iterable_rooms:
             if not isinstance(room, dict):
                 continue
-            if room.get("meshtastic_channel") == channel:
+
+            room_channel = _normalize_room_channel(room)
+            if room_channel is None:
+                continue
+
+            if room_channel == channel:
                 # Storing the message_map (if enabled) occurs inside matrix_relay() now,
                 # controlled by relay_reactions.
                 try:

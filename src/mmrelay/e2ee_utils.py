@@ -13,10 +13,12 @@ from typing import Any, Dict, List, Literal, Optional, TypedDict
 from mmrelay.cli_utils import get_command
 from mmrelay.constants.app import (
     CREDENTIALS_FILENAME,
+    MATRIX_DIRNAME,
     PACKAGE_NAME_E2E,
     PYTHON_OLM_PACKAGE,
     WINDOWS_PLATFORM,
 )
+from mmrelay.paths import is_deprecation_window_active, resolve_all_paths
 
 
 class E2EEStatus(TypedDict):
@@ -28,7 +30,7 @@ class E2EEStatus(TypedDict):
     platform_supported: bool
     dependencies_installed: bool
     credentials_available: bool
-    overall_status: Literal["ready", "disabled", "unavailable", "incomplete", "unknown"]
+    overall_status: Literal["ready", "disabled", "unavailable", "incomplete"]
     issues: List[str]
 
 
@@ -36,22 +38,22 @@ def get_e2ee_status(
     config: Dict[str, Any], config_path: Optional[str] = None
 ) -> E2EEStatus:
     """
-    Consolidates E2EE readiness information by inspecting the runtime platform, required crypto dependencies, configuration, and presence of Matrix credentials.
+    Consolidates End-to-End Encryption (E2EE) readiness by checking platform support, required crypto dependencies, configuration flags, and presence of Matrix credentials.
 
     Parameters:
         config (Dict[str, Any]): Parsed application configuration; used to read `matrix.e2ee.enabled` and legacy `matrix.encryption.enabled`.
-        config_path (Optional[str]): Optional path to the configuration file; when provided the directory containing this path is checked first for `credentials.json`, otherwise the application's base directory is used.
+        config_path (Optional[str]): Path to the application config file. When provided, credentials are first searched next to this config directory and then in standard locations; when omitted, only the standard credentials locations are probed.
 
     Returns:
-        E2EEStatus: A dict with the following keys:
+        E2EEStatus: Dictionary describing E2EE readiness with these keys:
           - enabled (bool): E2EE enabled in configuration.
           - available (bool): Platform and dependencies allow E2EE.
           - configured (bool): Authentication/credentials are present.
-          - platform_supported (bool): True unless running on Windows/msys/cygwin.
+          - platform_supported (bool): False when running on unsupported platforms (e.g., Windows/msys/cygwin).
           - dependencies_installed (bool): True if required olm/nio components are importable.
-          - credentials_available (bool): True if `credentials.json` is discovered.
-          - overall_status (str): One of "ready", "disabled", "unavailable", "incomplete", or "unknown".
-          - issues (List[str]): Human-readable issues found that prevent full E2EE readiness.
+          - credentials_available (bool): True if a Matrix `credentials.json` file was discovered in searched locations.
+          - overall_status (str): One of "ready", "disabled", "unavailable", or "incomplete".
+          - issues (List[str]): Human-readable issues that prevent full E2EE readiness.
     """
     status: E2EEStatus = {
         "enabled": False,
@@ -60,7 +62,7 @@ def get_e2ee_status(
         "platform_supported": True,
         "dependencies_installed": False,
         "credentials_available": False,
-        "overall_status": "unknown",
+        "overall_status": "incomplete",
         "issues": [],
     }
 
@@ -100,14 +102,10 @@ def get_e2ee_status(
         status["issues"].append("E2EE is disabled in configuration")
 
     # Check credentials
-    if config_path:
-        status["credentials_available"] = _check_credentials_available(config_path)
-    else:
-        # Fallback to base directory check only
-        from mmrelay.config import get_base_dir
-
-        base_credentials_path = os.path.join(get_base_dir(), CREDENTIALS_FILENAME)
-        status["credentials_available"] = os.path.exists(base_credentials_path)
+    paths_info = resolve_all_paths()
+    status["credentials_available"] = _check_credentials_available(
+        config_path, paths_info
+    )
 
     if not status["credentials_available"]:
         status["issues"].append("Matrix authentication not configured")
@@ -131,60 +129,77 @@ def get_e2ee_status(
     return status
 
 
-def _check_credentials_available(config_path: str) -> bool:
+def _check_credentials_available(
+    config_path: Optional[str] = None, paths_info: Optional[Dict[str, Any]] = None
+) -> bool:
     """
-    Check whether the Matrix credentials file exists in standard locations.
+    Check whether a Matrix credentials file exists in any standard or legacy locations.
 
-    Searches for CREDENTIALS_FILENAME in the directory containing the provided configuration file first, then falls back to the application's base directory (via mmrelay.config.get_base_dir()). If the base directory cannot be resolved (ImportError or OSError), the function returns False.
+    Searches (in order) beside an optional config file's directory, the primary HOME-based credentials location, a legacy same-home location, and legacy source locations while the deprecation window is active.
 
     Parameters:
-        config_path (str): Filesystem path to the configuration file whose directory should be checked.
+        config_path (Optional[str]): Path to the application's configuration file; when provided, the config file's directory is searched for credentials.
+        paths_info (Optional[Dict[str, Any]]): Pre-resolved paths mapping (as returned by resolve_all_paths()); used instead of resolving paths inside the function.
 
     Returns:
-        bool: True if the credentials file exists in either the config directory or the base directory; otherwise False.
+        bool: `True` if a credentials file is found in any checked location, `False` otherwise.
     """
     # Check config directory first
-    config_dir = os.path.dirname(config_path)
-    config_credentials_path = os.path.join(config_dir, CREDENTIALS_FILENAME)
+    if config_path:
+        config_dir = os.path.dirname(config_path)
+        config_candidates = (
+            os.path.join(config_dir, CREDENTIALS_FILENAME),
+            os.path.join(config_dir, MATRIX_DIRNAME, CREDENTIALS_FILENAME),
+        )
+        if any(os.path.exists(path) for path in config_candidates):
+            return True
 
-    if os.path.exists(config_credentials_path):
+    # Resolve paths if not provided
+    if paths_info is None:
+        paths_info = resolve_all_paths()
+
+    # Check HOME location (primary)
+    primary_credentials_path = paths_info["credentials_path"]
+    if os.path.exists(primary_credentials_path):
         return True
 
-    # Fallback to base directory
-    try:
-        from mmrelay.config import get_base_dir
+    # Compatibility fallback for pre-1.3 same-home credentials location.
+    home_root = paths_info.get("home")
+    if isinstance(home_root, str):
+        legacy_same_home_path = os.path.join(home_root, CREDENTIALS_FILENAME)
+        if os.path.exists(legacy_same_home_path):
+            return True
 
-        base_credentials_path = os.path.join(get_base_dir(), CREDENTIALS_FILENAME)
-        return os.path.exists(base_credentials_path)
-    except (ImportError, OSError):
-        # If we can't determine base directory, assume no credentials
-        return False
+    # Check legacy sources during deprecation window
+    if is_deprecation_window_active():
+        for legacy_root in paths_info.get("legacy_sources", []):
+            legacy_candidates = (
+                os.path.join(legacy_root, CREDENTIALS_FILENAME),
+                os.path.join(legacy_root, MATRIX_DIRNAME, CREDENTIALS_FILENAME),
+            )
+            if any(os.path.exists(path) for path in legacy_candidates):
+                return True
+
+    # No credentials found
+    return False
 
 
 def get_room_encryption_warnings(
     rooms: Dict[str, Any], e2ee_status: Dict[str, Any]
 ) -> List[str]:
     """
-    Return user-facing warnings for encrypted rooms when E2EE is not fully ready.
+    Produce user-facing warnings for encrypted rooms when E2EE is not fully configured.
 
-    If the provided E2EE status has overall_status == "ready", returns an empty list.
-    Scans the given rooms mapping for items whose `encrypted` attribute is truthy and
-    produces one or two warning lines per situation:
-    - A line noting how many encrypted rooms were detected and the reason (platform unsupported,
-      disabled, or incomplete).
-    - A follow-up line indicating whether messages to those rooms will be blocked or may be blocked.
+    Inspects the provided rooms mapping for items with a truthy `encrypted` attribute and, when E2EE is not ready, returns one or two formatted warning lines describing the issue and whether messages will be blocked.
 
     Parameters:
-        rooms: Mapping of room_id -> room object. Room objects are expected to expose
-            an `encrypted` attribute and optionally a `display_name` attribute; room_id is
-            used as a fallback name.
-        e2ee_status: E2EE status dictionary as returned by get_e2ee_status(); this function
-            reads the `overall_status` key to decide warning text.
+        rooms (Dict[str, Any]): Mapping of room_id to room object. Room objects should expose an `encrypted` attribute and may provide `display_name`; `room_id` is used as a fallback name.
+        e2ee_status (Dict[str, Any]): E2EE status dictionary (as returned by `get_e2ee_status`) — this function reads the `overall_status` key to determine warning text.
 
     Returns:
-        List[str]: Formatted warning lines (empty if no relevant warnings).
+        List[str]: Formatted warning lines. Returns an empty list if E2EE is ready, there are no encrypted rooms, or the `rooms` input is invalid.
     """
-    warnings: list[str] = []
+    warnings: List[str] = []
 
     if e2ee_status["overall_status"] == "ready":
         # No warnings needed when E2EE is fully ready

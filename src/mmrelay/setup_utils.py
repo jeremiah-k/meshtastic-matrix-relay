@@ -134,33 +134,37 @@ def wait_for_service_start() -> None:
 
     from mmrelay.runtime_utils import is_running_as_service
 
-    Progress: type[Any] | None = None
-    SpinnerColumn: type[Any] | None = None
-    TextColumn: type[Any] | None = None
-    TimeElapsedColumn: type[Any] | None = None
+    progress_cls: type[Any] | None = None
+    spinner_cls: type[Any] | None = None
+    text_cls: type[Any] | None = None
+    elapsed_cls: type[Any] | None = None
     running_as_service = is_running_as_service()
     if not running_as_service:
         try:
-            from rich.progress import (  # type: ignore[no-redef]
-                Progress,
-                SpinnerColumn,
-                TextColumn,
-                TimeElapsedColumn,
-            )
+            from rich.progress import Progress as rich_progress
+            from rich.progress import SpinnerColumn as rich_spinner
+            from rich.progress import TextColumn as rich_text
+            from rich.progress import TimeElapsedColumn as rich_elapsed
+
+            progress_cls = rich_progress
+            spinner_cls = rich_spinner
+            text_cls = rich_text
+            elapsed_cls = rich_elapsed
         except ImportError:
             running_as_service = True
 
     # Create a Rich progress display with spinner and elapsed time
-    if not running_as_service and Progress is not None:
-        assert (
-            SpinnerColumn is not None
-            and TextColumn is not None
-            and TimeElapsedColumn is not None
-        )
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[bold green]Starting mmrelay service..."),
-            TimeElapsedColumn(),
+    if (
+        not running_as_service
+        and progress_cls is not None
+        and spinner_cls is not None
+        and text_cls is not None
+        and elapsed_cls is not None
+    ):
+        with progress_cls(
+            spinner_cls(),
+            text_cls("[bold green]Starting mmrelay service..."),
+            elapsed_cls(),
             transient=True,
         ) as progress:
             # Add a task that will run for approximately 10 seconds
@@ -475,6 +479,7 @@ def service_needs_update() -> tuple[bool, str]:
     - No existing user service file is present.
     - The service's ExecStart line does not contain an acceptable invocation (mmrelay on PATH, "/usr/bin/env mmrelay", or the current Python interpreter using `-m mmrelay`).
     - Environment PATH entries in the unit do not include common user-bin locations ("%h/.local/pipx/venvs/mmrelay/bin" or "%h/.local/bin").
+    - The service file uses legacy flags (--config, --logfile) instead of the v1.3 --home flag.
     - A template service file exists on disk and has a modification time newer than the installed service file.
 
     Returns:
@@ -532,6 +537,19 @@ def service_needs_update() -> tuple[bool, str]:
     )
     if not path_in_environment:
         return True, "Service PATH does not include common user-bin locations"
+
+    # Check if the service file is using legacy flags (--config, --logfile) instead of --home
+    # This ensures migration to v1.3 unified path model
+    if "--config" in exec_start_line or "--logfile" in exec_start_line:
+        return (
+            True,
+            "Service file uses legacy --config/--logfile flags (update to --home)",
+        )
+
+    # Check if the service file is missing the --home flag entirely
+    # A valid v1.3 service file should have --home
+    if "--home" not in exec_start_line:
+        return True, "Service file is missing --home flag (v1.3 unified path model)"
 
     # Check if the service file has been modified recently
     service_path = get_user_service_path()

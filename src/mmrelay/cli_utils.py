@@ -335,29 +335,31 @@ def _create_ssl_context() -> ssl.SSLContext | None:
 
 def _cleanup_local_session_data() -> bool:
     """
-    Remove local Matrix session artifacts including credentials and E2EE store directories.
+    Remove local Matrix session artifacts including the credentials file and any E2EE store directories.
 
-    Removes the credentials file located at the application's base directory and any
-    E2EE store directories (the default store directory and any user-configured
-    overrides under `matrix.e2ee.store_path` or `matrix.encryption.store_path`).
-    The function makes a best-effort attempt to remove all targeted files and
-    directories and continues attempting other removals even if some fail.
+    Performs a best-effort removal using resolved application paths and any configured overrides (e.g. matrix.e2ee.store_path or matrix.encryption.store_path). Skips E2EE removal on platforms where it is not applicable, continues other removals if some fail, and logs successes or partial failures.
 
     Returns:
-        bool: `True` if all targeted files and directories were removed successfully;
-              `False` if any removal failed.
+        bool: `True` if all targeted files and directories were removed successfully, `False` otherwise.
     """
     import shutil
 
-    from mmrelay.config import get_base_dir, get_e2ee_store_dir
+    from mmrelay.paths import resolve_all_paths
 
     _get_logger().info("Clearing local session data...")
+
     success = True
 
-    # Remove credentials.json
-    config_dir = get_base_dir()
-    credentials_path = os.path.join(config_dir, "credentials.json")
+    # Use unified path resolution for credentials
+    paths_info: dict[str, Any] = {}
+    try:
+        paths_info = resolve_all_paths()
+    except (OSError, RuntimeError) as e:
+        _get_logger().debug(
+            "Could not resolve paths for logout cleanup: %s", type(e).__name__
+        )
 
+    credentials_path = paths_info.get("credentials_path", "")
     if os.path.exists(credentials_path):
         try:
             os.remove(credentials_path)
@@ -369,21 +371,39 @@ def _cleanup_local_session_data() -> bool:
         _get_logger().info("No credentials file found to remove")
 
     # Clear E2EE store directory (default and any configured override)
-    candidate_store_paths = {get_e2ee_store_dir()}
+    # Skip on Windows (E2EE not supported); resolve_all_paths handles this safely
+    candidate_store_paths: set[str] = set()
+    store_dir = paths_info.get("store_dir")
+    if store_dir and store_dir != "N/A (Windows)":
+        candidate_store_paths.add(store_dir)
+
+    # Add any configured override from config
     try:
         from mmrelay.config import load_config
 
         cfg = load_config(args=None) or {}
         matrix_cfg = cfg.get("matrix", {})
-        for section in ("e2ee", "encryption"):
-            override = os.path.expanduser(
-                matrix_cfg.get(section, {}).get("store_path", "")
+        if not isinstance(matrix_cfg, dict):
+            _get_logger().warning(
+                "Matrix configuration ('matrix') is not a dictionary; "
+                "cannot resolve E2EE store path from config."
             )
+            matrix_cfg = {}
+        for section in ("e2ee", "encryption"):
+            section_cfg = matrix_cfg.get(section, {})
+            if not isinstance(section_cfg, dict):
+                _get_logger().warning(
+                    "Matrix configuration section '%s' is not a dictionary; "
+                    "cannot resolve E2EE store path.",
+                    section,
+                )
+                continue
+            override = os.path.expanduser(section_cfg.get("store_path", ""))
             if override:
                 candidate_store_paths.add(override)
-    except Exception as e:
+    except (ImportError, OSError) as e:
         _get_logger().debug(
-            f"Could not resolve configured E2EE store path: {type(e).__name__}"
+            "Could not resolve configured E2EE store path: %s", type(e).__name__
         )
 
     any_store_found = False
@@ -564,10 +584,8 @@ async def logout_matrix_bot(password: str) -> bool:
     """
 
     # Import inside function to avoid circular imports
-    from mmrelay.matrix_utils import (  # type: ignore[attr-defined]
-        MATRIX_LOGIN_TIMEOUT,
-        load_credentials,
-    )
+    from mmrelay.config import async_load_credentials
+    from mmrelay.constants.network import MATRIX_LOGIN_TIMEOUT
 
     # Check if matrix-nio is available
     if AsyncClient is None:
@@ -576,7 +594,7 @@ async def logout_matrix_bot(password: str) -> bool:
         return False
 
     # Load current credentials
-    credentials = load_credentials()
+    credentials = await async_load_credentials()
     if not credentials:
         _get_logger().info("No active session found. Already logged out.")
         print("ℹ️  No active session found. Already logged out.")
@@ -672,10 +690,6 @@ async def logout_matrix_bot(password: str) -> bool:
         else:
             print("❌ Local cleanup completed with some errors.")
         return success
-    assert homeserver is not None
-    assert user_id is not None
-    assert access_token is not None
-    assert device_id is not None
     homeserver_str = cast(str, homeserver)
     user_id_str = cast(str, user_id)
     access_token_str = cast(str, access_token)

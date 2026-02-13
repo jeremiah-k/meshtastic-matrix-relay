@@ -514,6 +514,195 @@ class TestMessageQueueMethods(unittest.TestCase):
         self.assertIsNone(queue._processor_task)
 
 
+class TestDequeBasedRequeue(unittest.TestCase):
+    """Tests for deque-based _requeue_message optimization (O(1) prepend)."""
+
+    def test_internal_queue_is_deque(self):
+        """Verify the internal queue uses collections.deque."""
+        from collections import deque
+
+        queue = MessageQueue()
+
+        self.assertIsInstance(queue._queue, deque)
+
+    def test_requeue_prepends_to_front(self):
+        """Test _requeue_message prepends message to front of queue."""
+        queue = MessageQueue()
+        queue.start(message_delay=0.1)
+
+        mock_send = MockSendFunction()
+
+        # Enqueue messages in order
+        msg1 = QueuedMessage(
+            timestamp=1.0,
+            send_function=mock_send,
+            args=("msg1",),
+            kwargs={},
+            description="First message",
+        )
+        msg2 = QueuedMessage(
+            timestamp=2.0,
+            send_function=mock_send,
+            args=("msg2",),
+            kwargs={},
+            description="Second message",
+        )
+        msg3 = QueuedMessage(
+            timestamp=3.0,
+            send_function=mock_send,
+            args=("msg3",),
+            kwargs={},
+            description="Third message",
+        )
+
+        queue._queue.append(msg1)
+        queue._queue.append(msg2)
+        queue._queue.append(msg3)
+
+        # Create a new message to requeue
+        urgent_msg = QueuedMessage(
+            timestamp=0.5,
+            send_function=mock_send,
+            args=("urgent",),
+            kwargs={},
+            description="Urgent message",
+        )
+
+        # Requeue should put it at the front
+        result = queue._requeue_message(urgent_msg)
+
+        self.assertTrue(result)
+        # First item should now be the urgent message
+        self.assertEqual(queue._queue[0].description, "Urgent message")
+        self.assertEqual(queue._queue[1].description, "First message")
+        self.assertEqual(queue._queue[2].description, "Second message")
+        self.assertEqual(queue._queue[3].description, "Third message")
+
+        queue.stop()
+
+    def test_requeue_returns_false_when_queue_full(self):
+        """Test _requeue_message returns False when queue is at max capacity."""
+        queue = MessageQueue()
+        queue.start(message_delay=0.1)
+
+        mock_send = MockSendFunction()
+
+        # Fill the queue to max capacity
+        for i in range(MAX_QUEUE_SIZE):
+            msg = QueuedMessage(
+                timestamp=float(i),
+                send_function=mock_send,
+                args=(f"msg{i}",),
+                kwargs={},
+                description=f"Message {i}",
+            )
+            queue._queue.append(msg)
+
+        self.assertEqual(len(queue._queue), MAX_QUEUE_SIZE)
+
+        # Try to requeue another message
+        urgent_msg = QueuedMessage(
+            timestamp=0.0,
+            send_function=mock_send,
+            args=("urgent",),
+            kwargs={},
+            description="Urgent message",
+        )
+
+        result = queue._requeue_message(urgent_msg)
+
+        # Should fail because queue is full
+        self.assertFalse(result)
+        self.assertEqual(queue._dropped_messages, 1)
+
+        queue.stop()
+
+    def test_requeue_preserves_fifo_after_prepend(self):
+        """Test that after requeue, FIFO order is maintained from the prepended item."""
+        queue = MessageQueue()
+        queue.start(message_delay=0.1)
+
+        mock_send = MockSendFunction()
+
+        # Add messages in order
+        for i in range(3):
+            msg = QueuedMessage(
+                timestamp=float(i),
+                send_function=mock_send,
+                args=(f"msg{i}",),
+                kwargs={},
+                description=f"Message {i}",
+            )
+            queue._queue.append(msg)
+
+        # Requeue a message to the front
+        priority_msg = QueuedMessage(
+            timestamp=0.0,
+            send_function=mock_send,
+            args=("priority",),
+            kwargs={},
+            description="Priority message",
+        )
+        queue._requeue_message(priority_msg)
+
+        # Verify order: priority, msg0, msg1, msg2
+        descriptions = [m.description for m in queue._queue]
+        self.assertEqual(
+            descriptions,
+            ["Priority message", "Message 0", "Message 1", "Message 2"],
+        )
+
+        queue.stop()
+
+    def test_deque_maxlen_behavior(self):
+        """Test that deque with maxlen drops oldest when full via append."""
+        from collections import deque
+
+        # Create a small deque to test maxlen behavior
+        test_deque = deque(maxlen=3)
+        test_deque.append(1)
+        test_deque.append(2)
+        test_deque.append(3)
+        test_deque.append(4)  # Should drop 1
+
+        self.assertEqual(list(test_deque), [2, 3, 4])
+        self.assertEqual(len(test_deque), 3)
+
+    def test_appendleft_does_not_drop_when_not_full(self):
+        """Test that appendleft succeeds when queue is not full."""
+
+        queue = MessageQueue()
+        queue.start(message_delay=0.1)
+
+        mock_send = MockSendFunction()
+
+        # Add one message
+        msg1 = QueuedMessage(
+            timestamp=1.0,
+            send_function=mock_send,
+            args=("msg1",),
+            kwargs={},
+            description="Message 1",
+        )
+        queue._queue.append(msg1)
+
+        # Requeue should succeed
+        urgent = QueuedMessage(
+            timestamp=0.0,
+            send_function=mock_send,
+            args=("urgent",),
+            kwargs={},
+            description="Urgent",
+        )
+        result = queue._requeue_message(urgent)
+
+        self.assertTrue(result)
+        self.assertEqual(len(queue._queue), 2)
+        self.assertEqual(queue._queue[0].description, "Urgent")
+
+        queue.stop()
+
+
 if __name__ == "__main__":
     # Run tests
     unittest.main(verbosity=2)

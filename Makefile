@@ -3,28 +3,129 @@
 # Detect docker compose command (prefer newer 'docker compose' over 'docker-compose')
 DOCKER_COMPOSE := $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
 
-.PHONY: help build build-nocache rebuild run stop logs shell clean config edit setup setup-prebuilt update-compose
+.PHONY: all test help build build-nocache rebuild run stop logs shell clean config edit setup setup-prebuilt update-compose doctor paths use-prebuilt use-source _check_legacy_env _check_legacy_compose _migrate_prompt
+
+# Alias targets for checkmake compliance
+all: help
+
+test:
+	@echo "Run tests with: python -m pytest -v --cov --tb=short"
 
 # Default target
 help:
 	@echo "Available Docker commands:"
-	@echo "  setup   - Copy sample config and open editor (builds from source)"
-	@echo "  setup-prebuilt - Copy sample config for prebuilt images (faster, recommended)"
-	@echo "  config  - Copy sample config to ~/.mmrelay/config.yaml"
-	@echo "  edit    - Edit the config file with your preferred editor"
+	@echo "  setup          - Interactive setup (prompts for prebuilt vs source)"
+	@echo "  setup-prebuilt - Setup with prebuilt image (recommended)"
+	@echo "  use-prebuilt   - Switch to prebuilt image (remove override file)"
+	@echo "  use-source     - Switch to build from source (create override file)"
+	@echo "  config         - Copy sample config to ~/.mmrelay/config.yaml"
+	@echo "  edit           - Edit the config file with your preferred editor"
 	@echo "  update-compose - Update docker-compose.yaml with latest sample"
-	@echo "  build   - Build Docker image from source (uses layer caching)"
-	@echo "  build-nocache - Build Docker image from source with --no-cache"
-	@echo "  rebuild - Stop, rebuild from source with --no-cache, and restart"
-	@echo "  run     - Start the container (prebuilt images or built from source)"
-	@echo "  stop    - Stop the container (keeps container for restart)"
-	@echo "  logs    - Show container logs"
-	@echo "  shell   - Access container shell"
-	@echo "  clean   - Remove containers and networks"
+	@echo "  build          - Build Docker image from source (uses layer caching)"
+	@echo "  build-nocache  - Build Docker image from source with --no-cache"
+	@echo "  rebuild        - Stop, rebuild from source with --no-cache, and restart"
+	@echo "  run            - Start the container (prebuilt or source based on override file)"
+	@echo "  stop           - Stop the container (keeps container for restart)"
+	@echo "  logs           - Show container logs"
+	@echo "  shell          - Access container shell"
+	@echo "  doctor         - Run diagnostics inside the container"
+	@echo "  paths          - Show runtime paths inside the container"
+	@echo "  clean          - Remove containers and networks"
+
+# =============================================================================
+# Legacy Detection and Migration (v1.2.x → v1.3)
+# =============================================================================
+
+# Check for legacy .env file (v1.2.x used MMRELAY_HOME, v1.3 uses MMRELAY_HOST_HOME)
+_check_legacy_env:
+	@if [ -f .env ]; then \
+		if grep -q '^MMRELAY_HOME=' .env 2>/dev/null && ! grep -q '^MMRELAY_HOST_HOME=' .env 2>/dev/null; then \
+			echo "LEGACY_ENV=1"; \
+		fi; \
+	fi
+
+# Check for legacy docker-compose.yaml (v1.2.x used two volume mounts, v1.3 uses single mount)
+# Detection: v1.3 has MMRELAY_HOME=/data in environment AND single /data mount
+# Legacy lacks MMRELAY_HOME=/data OR has /app/ mounts
+_check_legacy_compose:
+	@if [ -f docker-compose.yaml ]; then \
+		if grep -q 'MMRELAY_HOME=/data' docker-compose.yaml 2>/dev/null; then \
+			: v1.3 format detected, not legacy; \
+		elif grep -q ':/app/' docker-compose.yaml 2>/dev/null; then \
+			echo "LEGACY_COMPOSE=1"; \
+		fi; \
+	fi
+
+# Prompt user for migration when legacy detected
+# Note: Informational output redirects to stderr (>&2) to bypass command substitution
+# capture in _setup_with_migration_check, while MIGRATE=... stays on stdout
+_migrate_prompt:
+	@echo "" >&2
+	@echo "╔══════════════════════════════════════════════════════════════════╗" >&2
+	@echo "║           Legacy Setup Detected - Migration Required             ║" >&2
+	@echo "╚══════════════════════════════════════════════════════════════════╝" >&2
+	@echo "" >&2
+	@echo "Your current setup uses the v1.2.x directory layout which is deprecated." >&2
+	@echo "" >&2
+	@echo "Changes needed:" >&2
+	@if [ -f .env ] && grep -q '^MMRELAY_HOME=' .env 2>/dev/null && ! grep -q '^MMRELAY_HOST_HOME=' .env 2>/dev/null; then \
+		echo "  • .env: Replace MMRELAY_HOME with MMRELAY_HOST_HOME" >&2; \
+	fi
+	@if [ -f docker-compose.yaml ] && grep -q ':/app/' docker-compose.yaml 2>/dev/null; then \
+		echo "  • docker-compose.yaml: Update to v1.3 format (single volume mount)" >&2; \
+	fi
+	@echo "" >&2
+	@echo "After updating and starting the container, run:" >&2
+	@echo "  docker compose exec mmrelay mmrelay migrate --dry-run" >&2
+	@echo "  docker compose exec mmrelay mmrelay migrate" >&2
+	@echo "  docker compose exec mmrelay mmrelay verify-migration" >&2
+	@echo "" >&2
+	@echo "[1] Update files automatically (recommended)" >&2
+	@echo "[2] Skip - I'll handle it manually" >&2
+	@echo "" >&2
+	@read -p "Choose [1-2]: " choice; \
+	case "$$choice" in \
+		1) \
+			echo "MIGRATE=yes"; \
+		;; \
+		2) \
+			echo "MIGRATE=no"; \
+		;; \
+		*) \
+			echo "Invalid choice. Skipping migration." >&2; \
+			echo "MIGRATE=no"; \
+		;; \
+	esac
+
+# Internal: Handle legacy detection and prompt for migration
+_setup_with_migration_check:
+	@legacy_env=$$($(MAKE) -s _check_legacy_env); \
+	legacy_compose=$$($(MAKE) -s _check_legacy_compose); \
+	if [ -n "$$legacy_env" ] || [ -n "$$legacy_compose" ]; then \
+		migrate=$$($(MAKE) -s _migrate_prompt); \
+		if echo "$$migrate" | grep -q 'MIGRATE=yes'; then \
+			echo ""; \
+			echo "Updating configuration files..."; \
+			if [ -f .env ] && grep -q '^MMRELAY_HOME=' .env 2>/dev/null && ! grep -q '^MMRELAY_HOST_HOME=' .env 2>/dev/null; then \
+				echo "Updating .env file..."; \
+				sed 's/^\([[:space:]]*\(export[[:space:]]\+\)\?\)MMRELAY_HOME=/\1MMRELAY_HOST_HOME=/' .env > .env.tmp && mv .env.tmp .env; \
+				echo "  ✓ .env updated (MMRELAY_HOME → MMRELAY_HOST_HOME)"; \
+			fi; \
+			if [ -f docker-compose.yaml ] && grep -q ':/app/' docker-compose.yaml 2>/dev/null; then \
+				echo "Backing up legacy docker-compose.yaml..."; \
+				cp docker-compose.yaml docker-compose.yaml.legacy.bak; \
+				echo "  ✓ Backup saved to docker-compose.yaml.legacy.bak"; \
+			fi; \
+		fi; \
+	fi
+
+# =============================================================================
+# Setup Targets
+# =============================================================================
 
 # Internal target for common setup tasks
 _setup_common:
-	@mkdir -p ~/.mmrelay ~/.mmrelay/data ~/.mmrelay/logs
+	@mkdir -p ~/.mmrelay
 	@if [ ! -f ~/.mmrelay/config.yaml ]; then \
 		cp src/mmrelay/tools/sample_config.yaml ~/.mmrelay/config.yaml; \
 		echo "Sample config copied to ~/.mmrelay/config.yaml - please edit it before running"; \
@@ -37,13 +138,16 @@ _setup_common:
 	else \
 		echo ".env file already exists"; \
 	fi
-	@echo "Created directories: ~/.mmrelay/data and ~/.mmrelay/logs with proper ownership"
+	@echo "Host directory ~/.mmrelay created - will be mounted to /data in the container"
 
 # Copy sample config to ~/.mmrelay/config.yaml and create Docker files
-config: _setup_common
-	@if [ ! -f docker-compose.yaml ]; then \
-		cp src/mmrelay/tools/sample-docker-compose.yaml docker-compose.yaml; \
-		echo "docker-compose.yaml created from sample - edit if needed"; \
+config: _setup_common _setup_with_migration_check
+	@if [ -f docker-compose.yaml.legacy.bak ]; then \
+		cp src/mmrelay/tools/sample-docker-compose-prebuilt.yaml docker-compose.yaml; \
+		echo "docker-compose.yaml replaced with v1.3 format (prebuilt base)"; \
+	elif [ ! -f docker-compose.yaml ]; then \
+		cp src/mmrelay/tools/sample-docker-compose-prebuilt.yaml docker-compose.yaml; \
+		echo "docker-compose.yaml created (uses prebuilt image)"; \
 	else \
 		echo "docker-compose.yaml already exists"; \
 	fi
@@ -95,31 +199,94 @@ edit:
 		esac \
 	fi
 
-# Setup: copy config and open editor (builds from source)
-setup:
-	@$(MAKE) config
+# Setup: interactive - prompt for prebuilt vs source build
+setup: _setup_common _setup_with_migration_check
+	@if [ -f docker-compose.yaml.legacy.bak ] || [ ! -f docker-compose.yaml ]; then \
+		echo ""; \
+		echo "Select deployment mode:"; \
+		echo "  [1] Prebuilt image (recommended - faster, auto-updates available)"; \
+		echo "  [2] Build from source (for developers)"; \
+		echo ""; \
+		read -p "Choose [1-2, default=1]: " mode; \
+		case "$$mode" in \
+			2) \
+				cp src/mmrelay/tools/sample-docker-compose-prebuilt.yaml docker-compose.yaml; \
+				cp src/mmrelay/tools/sample-docker-compose-override.yaml docker-compose.override.yaml; \
+				echo "docker-compose.yaml created (base - prebuilt image)"; \
+				echo "docker-compose.override.yaml created (override - build from source)"; \
+			;; \
+			*) \
+				cp src/mmrelay/tools/sample-docker-compose-prebuilt.yaml docker-compose.yaml; \
+				echo "docker-compose.yaml created (prebuilt image)"; \
+			;; \
+		esac; \
+	else \
+		echo "docker-compose.yaml already exists"; \
+		if [ -f docker-compose.override.yaml ]; then \
+			echo "  Current mode: build from source (override file present)"; \
+			echo "  Use 'make use-prebuilt' to switch to prebuilt image"; \
+		else \
+			echo "  Current mode: prebuilt image"; \
+			echo "  Use 'make use-source' to switch to build from source"; \
+		fi; \
+	fi
 	@$(MAKE) edit
 
 # Setup with prebuilt images: copy config and use prebuilt docker-compose
-setup-prebuilt: _setup_common
-	@if [ ! -f docker-compose.yaml ]; then \
+setup-prebuilt: _setup_common _setup_with_migration_check
+	@if [ -f docker-compose.yaml.legacy.bak ] || [ ! -f docker-compose.yaml ]; then \
 		cp src/mmrelay/tools/sample-docker-compose-prebuilt.yaml docker-compose.yaml; \
-		echo "docker-compose.yaml created from prebuilt sample - uses official images"; \
+		echo "docker-compose.yaml created (prebuilt image)"; \
 	else \
 		echo "docker-compose.yaml already exists"; \
+	fi
+	@if [ -f docker-compose.override.yaml ]; then \
+		echo "Removing docker-compose.override.yaml to use prebuilt image"; \
+		rm -f docker-compose.override.yaml; \
 	fi
 	@echo "Using prebuilt images - no building required, just run 'make run'"
 	@$(MAKE) edit
 
-# Update docker-compose.yaml with latest sample
+# Switch to prebuilt image (remove override file)
+use-prebuilt:
+	@if [ ! -f docker-compose.yaml ]; then \
+		echo "No docker-compose.yaml found. Run 'make setup' first."; \
+		exit 1; \
+	fi
+	@if [ -f docker-compose.override.yaml ]; then \
+		echo "Removing docker-compose.override.yaml to use prebuilt image..."; \
+		rm -f docker-compose.override.yaml; \
+		echo "✓ Now using prebuilt image: ghcr.io/jeremiah-k/mmrelay:latest"; \
+		echo "  Run 'make run' to start with the prebuilt image"; \
+	else \
+		echo "Already using prebuilt image (no override file)."; \
+	fi
+
+# Switch to build from source (create override file)
+use-source:
+	@if [ ! -f docker-compose.yaml ]; then \
+		echo "No docker-compose.yaml found. Run 'make setup' first."; \
+		exit 1; \
+	fi
+	@if [ ! -f docker-compose.override.yaml ]; then \
+		echo "Creating docker-compose.override.yaml to build from source..."; \
+		cp src/mmrelay/tools/sample-docker-compose-override.yaml docker-compose.override.yaml; \
+		echo "✓ Now building from source (local Dockerfile)"; \
+		echo "  Run 'make build' then 'make run' to build and start"; \
+	else \
+		echo "Already building from source (override file exists)."; \
+	fi
+
+# Update docker-compose.yaml with latest sample (prebuilt-focused for v1.3+)
 update-compose:
 	@if [ -f docker-compose.yaml ]; then \
 		echo "Backing up existing docker-compose.yaml to docker-compose.yaml.bak"; \
 		cp docker-compose.yaml docker-compose.yaml.bak; \
 	fi
-	@cp src/mmrelay/tools/sample-docker-compose.yaml docker-compose.yaml
-	@echo "Updated docker-compose.yaml with latest sample"
+	@cp src/mmrelay/tools/sample-docker-compose-prebuilt.yaml docker-compose.yaml
+	@echo "Updated docker-compose.yaml with latest sample (prebuilt image)"
 	@echo "Please review and edit for your specific configuration (BLE, serial, etc.)"
+	@echo "To build from source, run 'make use-source'"
 
 # Build the Docker image (uses layer caching for faster builds)
 build:
@@ -154,3 +321,13 @@ shell:
 # Remove containers and networks (data in ~/.mmrelay/ is preserved)
 clean:
 	$(DOCKER_COMPOSE) down
+
+# Run diagnostics inside the container
+doctor:
+	@echo "Running diagnostics inside container..."
+	$(DOCKER_COMPOSE) exec -T mmrelay mmrelay doctor
+
+# Show runtime paths inside the container
+paths:
+	@echo "Showing runtime paths inside container..."
+	$(DOCKER_COMPOSE) exec -T mmrelay mmrelay paths

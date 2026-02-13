@@ -1,0 +1,224 @@
+# yamllint disable-file
+apiVersion: apps/v1
+kind: Deployment
+{{- if not .Values.config.enabled }}
+{{- fail (printf "config.enabled must be true; config is required and will be copied to %s" .Values.configPath) }}
+{{- end }}
+{{- if gt (int .Values.replicaCount) 1 }}
+{{- fail "replicaCount must be 1; mmrelay uses SQLite on a single PVC and does not support concurrent replicas" }}
+{{- end }}
+metadata:
+  name: {{ include "mmrelay.fullname" . }}
+  labels:
+    {{- include "mmrelay.labels" . | nindent 4 }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "mmrelay.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checkov.io/skip1: "CKV_K8S_43=Chart allows tag/digest pinning via values.yaml"
+        checkov.io/skip2: "CKV_K8S_35=Matrix auth uses env vars to bootstrap credentials.json on the PVC."
+        checkov.io/skip3: "CKV_K8S_15=Default uses image.tag=1.3.0; pin via image.digest for production."
+        checkov.io/skip4: "CKV2_K8S_6=NetworkPolicy is provided in networkpolicy.yaml; enable via networkPolicy.enabled in values.yaml."
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "mmrelay.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      terminationGracePeriodSeconds: {{ .Values.lifecycle.terminationGracePeriodSeconds }}
+      automountServiceAccountToken: {{ .Values.automountServiceAccountToken }}
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "mmrelay.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        {{- if and .Values.seccompProfile (not (hasKey .Values.podSecurityContext "seccompProfile")) }}
+        seccompProfile:
+          {{- toYaml .Values.seccompProfile | nindent 10 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.initContainer.enabled }}
+      initContainers:
+        - name: init-mmrelay
+          image: "{{ .Values.initContainer.image.repository }}:{{ .Values.initContainer.image.tag }}{{- if .Values.initContainer.image.digest }}@{{ .Values.initContainer.image.digest }}{{- end }}"
+          imagePullPolicy: {{ .Values.initContainer.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              # Copy config.yaml from Secret/ConfigMap to PVC if not already present
+              if [ ! -f "{{ .Values.configPath }}" ]; then
+                echo "Copying config.yaml to PVC..."
+                cp /config-source/{{ .Values.config.key }} "{{ .Values.configPath }}"
+              else
+                echo "config.yaml already exists on PVC, skipping copy"
+              fi
+              # Create matrix directory for credentials.json
+              mkdir -p "{{ .Values.mmrelayHome }}/matrix"
+              # Fix ownership for non-root app user
+              chown -R {{ .Values.containerSecurityContext.runAsUser }}:{{ default .Values.containerSecurityContext.runAsUser .Values.containerSecurityContext.runAsGroup }} "{{ .Values.mmrelayHome }}"
+              echo "Initialization complete"
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - CHOWN
+                - FOWNER
+                - DAC_OVERRIDE
+          volumeMounts:
+            - name: config-source
+              mountPath: /config-source
+              readOnly: true
+            - name: data
+              mountPath: {{ .Values.mmrelayHome | quote }}
+      {{- end }}
+      containers:
+        - name: mmrelay
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}{{- if .Values.image.digest }}@{{ .Values.image.digest }}{{- end }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - mmrelay
+          env:
+            - name: MMRELAY_HOME
+              value: {{ .Values.mmrelayHome | quote }}
+            - name: MMRELAY_READY_FILE
+              value: {{ .Values.readyFile | quote }}
+            - name: TZ
+              value: UTC
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: MPLCONFIGDIR
+              value: /tmp/matplotlib
+            {{- if .Values.matrixAuth.enabled }}
+            - name: MMRELAY_MATRIX_HOMESERVER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.matrixAuth.secretName }}
+                  key: MMRELAY_MATRIX_HOMESERVER
+            - name: MMRELAY_MATRIX_BOT_USER_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.matrixAuth.secretName }}
+                  key: MMRELAY_MATRIX_BOT_USER_ID
+            - name: MMRELAY_MATRIX_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.matrixAuth.secretName }}
+                  key: MMRELAY_MATRIX_PASSWORD
+            {{- end }}
+            {{- with .Values.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.probes.enabled }}
+          readinessProbe:
+            exec:
+              command:
+                - test
+                - -f
+                - {{ .Values.readyFile }}
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          startupProbe:
+            exec:
+              command:
+                - test
+                - -f
+                - {{ .Values.readyFile }}
+            initialDelaySeconds: {{ .Values.probes.startup.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.startup.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - 'find "$MMRELAY_READY_FILE" -mmin -{{ .Values.probes.liveness.maxReadyFileAgeMinutes }} | grep -q .'
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          {{- end }}
+          {{- if .Values.lifecycle.enabled }}
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - sh
+                  - -c
+                  - "sleep {{ .Values.lifecycle.preStopSleepSeconds }} || true"
+          {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.mmrelayHome | quote }}
+            - name: tmp
+              mountPath: /tmp
+            - name: run
+              mountPath: /run/mmrelay
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: config-source
+          {{- if eq .Values.config.source "configmap" }}
+          configMap:
+            name: {{ .Values.config.name }}
+            items:
+              - key: {{ .Values.config.key }}
+                path: {{ .Values.config.key }}
+          {{- else }}
+          secret:
+            secretName: {{ .Values.config.name }}
+            items:
+              - key: {{ .Values.config.key }}
+                path: {{ .Values.config.key }}
+          {{- end }}
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ if .Values.persistence.existingClaim }}{{ .Values.persistence.existingClaim }}{{ else }}{{ include "mmrelay.fullname" . }}-data{{ end }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir: {}
+        - name: run
+          emptyDir: {}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}

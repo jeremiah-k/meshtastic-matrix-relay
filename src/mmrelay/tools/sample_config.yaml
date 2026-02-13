@@ -16,7 +16,7 @@ matrix:
   # Best for: Kubernetes deployments with secrets, automated CI/CD
   # NO CONFIG FIELDS NEEDED - environment variables provide all authentication data
   # Tip (Kubernetes): set credentials_path to a writable PVC location
-  # credentials_path: /data/credentials.json
+  # credentials_path: /data/matrix/credentials.json
   #
   # Method 3 (LEGACY): Password in config.yaml (NOT RECOMMENDED)
   # Uncomment the fields below. MMRelay will create credentials.json on first run.
@@ -26,7 +26,7 @@ matrix:
   #homeserver: https://example.matrix.org
   #bot_user_id: "@botuser:example.matrix.org"
   #password: your_matrix_password_here
-  #credentials_path: /data/credentials.json
+  #credentials_path: /data/matrix/credentials.json
   #
   # See docs/KUBERNETES.md for Kubernetes-specific authentication setup
   # See docs/E2EE.md for End-to-End Encryption configuration
@@ -98,6 +98,7 @@ logging:
   #  matrix_nio: false      # Suppress matrix-nio logging
   #  bleak: true             # Enable DEBUG level for BLE
   #  meshtastic: "warning"   # Enable warning+ level for meshtastic
+  #  full_packets: false     # Log full packet details at DEBUG level (sanitized: removes keys, encrypted payloads)
 
 #database:
 #  path: ~/.mmrelay/data/meshtastic.sqlite   # Default location
@@ -137,7 +138,7 @@ plugins:
 #  advanced_plugin:
 #    active: false
 #    repository: https://github.com/username/advanced_plugin.git
-#    tag: v1.2.0
+#    tag: v1.3.0
 
 #custom-plugins:
 #  my_custom_plugin:

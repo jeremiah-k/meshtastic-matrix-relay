@@ -54,6 +54,7 @@ from mmrelay.message_queue import (
     start_message_queue,
     stop_message_queue,
 )
+from mmrelay.paths import get_home_dir, get_legacy_dirs, get_legacy_env_vars
 from mmrelay.plugin_loader import load_plugins, shutdown_plugins
 
 # Initialize logger
@@ -543,13 +544,13 @@ async def main(config: dict[str, Any]) -> None:
 
 def run_main(args: Any) -> int:
     """
-    Load configuration, validate required keys, configure logging and modules, and run the main async application loop.
-    
+    Load and validate configuration, initialize logging and modules, and run the main application loop.
+
     Parameters:
         args (Any): Parsed command-line arguments (may be None). Recognized option: `log_level` to override the configured logging level.
-    
+
     Returns:
-        int: Exit code — `0` on successful completion or user-initiated interrupt, `1` for configuration errors or unhandled runtime exceptions.
+        int: `0` on successful completion or user-initiated interrupt, `1` for configuration errors or unhandled runtime exceptions.
     """
     # Load configuration
     from mmrelay.config import load_config
@@ -597,12 +598,7 @@ def run_main(args: Any) -> int:
     log_utils.configure_component_debug_logging()
 
     # Get config path and log file path for logging
-    from mmrelay.config import (
-        config_path,
-        get_base_dir,
-        get_data_dir,
-        is_legacy_layout_enabled,
-    )
+    from mmrelay.config import config_path
     from mmrelay.log_utils import log_file_path
 
     # Create a logger with a different name to avoid conflicts with the one in config.py
@@ -614,13 +610,14 @@ def run_main(args: Any) -> int:
     if log_file_path:
         config_rich_logger.info(f"Log file location: {log_file_path}")
 
-    if is_legacy_layout_enabled():
-        base_dir = get_base_dir()
-        data_dir = get_data_dir()
+    legacy_envs = get_legacy_env_vars()
+    legacy_dirs = get_legacy_dirs()
+    if legacy_envs or legacy_dirs:
         config_rich_logger.warning(
-            "Legacy data layout detected (base_dir=%s, data_dir=%s). This layout is deprecated and will be removed in a future release.",
-            base_dir,
-            data_dir,
+            "Legacy data layout detected (MMRELAY_HOME=%s, legacy_env_vars=%s, legacy_dirs=%s). This layout is deprecated and will be removed in a future release.",
+            str(get_home_dir()),
+            ", ".join(legacy_envs) if legacy_envs else "none",
+            ", ".join(str(p) for p in legacy_dirs) if legacy_dirs else "none",
         )
         config_rich_logger.warning(
             "To migrate to the new layout, see docs/DOCKER.md: Migrating to the New Layout."

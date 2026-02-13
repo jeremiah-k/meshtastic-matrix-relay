@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.cli import check_config
 from mmrelay.config import get_config_paths
+from mmrelay.paths import get_home_dir
 
 
 class TestConfigChecker(unittest.TestCase):
@@ -122,18 +123,22 @@ class TestConfigChecker(unittest.TestCase):
         mock_validate_credentials.assert_called_once()
         mock_get_e2ee_status.assert_called_once()
 
-    @patch("mmrelay.config.os.makedirs")
-    def test_get_config_paths(self, mock_makedirs):
+    def test_get_config_paths(self):
         """
         Verify get_config_paths() returns a list of candidate configuration file paths.
 
-        Asserts that the result is a list with at least three entries and that each returned path ends with "config.yaml".
+        Asserts that the result is a list and that each returned path ends with "config.yaml".
         """
         # Test the actual function behavior
         paths = get_config_paths()
 
         self.assertIsInstance(paths, list)
-        self.assertGreaterEqual(len(paths), 3)  # Should return at least 3 paths
+
+        # Compute expected minimum dynamically based on home vs cwd
+        home_dir = os.path.abspath(str(get_home_dir()))
+        cwd_dir = os.path.abspath(os.getcwd())
+        expected_min = 2 if cwd_dir != home_dir else 1
+        self.assertGreaterEqual(len(paths), expected_min)
 
         # Verify all paths end with config.yaml
         for path in paths:

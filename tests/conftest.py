@@ -24,6 +24,8 @@ import queue
 import threading
 import time
 from concurrent.futures import Future
+from pathlib import Path
+from typing import Generator
 from unittest.mock import MagicMock
 
 import pytest
@@ -608,30 +610,21 @@ ensure_builtins_not_mocked()
 
 
 @pytest.fixture(autouse=True)
-def reset_custom_data_dir():
+def reset_path_overrides():
     """
-    Autouse pytest fixture that resets mmrelay.config custom dir overrides to None for each test and restores their original values afterwards.
+    Autouse pytest fixture that resets CLI and programmatic path overrides before and after each test.
 
-    Before the test runs, stores the current values of mmrelay.config.custom_data_dir
-    and mmrelay.config.custom_base_dir (if any) and sets them to None to ensure tests
-    do not share or depend on persistent overrides. After the test yields, the original
-    values are restored.
+    Ensures CLI overrides (--home, --base-dir, --data-dir) and any programmatic overrides managed by mmrelay.paths are cleared so they do not leak between tests.
     """
-    import mmrelay.config
+    import mmrelay.paths
 
-    # Store original value
-    original_custom_data_dir = getattr(mmrelay.config, "custom_data_dir", None)
-    original_custom_base_dir = getattr(mmrelay.config, "custom_base_dir", None)
-
-    # Reset to None before test
-    mmrelay.config.custom_data_dir = None
-    mmrelay.config.custom_base_dir = None
+    # Reset mmrelay.paths override
+    mmrelay.paths.reset_home_override()
 
     yield
 
-    # Restore original value after test
-    mmrelay.config.custom_data_dir = original_custom_data_dir
-    mmrelay.config.custom_base_dir = original_custom_base_dir
+    # Reset mmrelay.paths override again for safety
+    mmrelay.paths.reset_home_override()
 
 
 @pytest.fixture(autouse=True)
@@ -850,21 +843,14 @@ def mock_event():
 @pytest.fixture
 def test_config():
     """
-    Fixture providing a sample configuration for Meshtastic ↔ Matrix integration used by tests.
+    Provide a sample Meshtastic-Matrix integration configuration for tests.
 
     Returns:
-        dict: Configuration with keys:
-          - meshtastic: dict with
-              - broadcast_enabled (bool): whether broadcasting to mesh is enabled.
-              - prefix_enabled (bool): whether Meshtastic message prefixes are applied.
-              - prefix_format (str): format string for message prefixes (supports truncated vars).
-              - message_interactions (dict): interaction toggles, e.g. {'reactions': bool, 'replies': bool}.
-              - meshnet_name (str): logical mesh network name used in templates.
-          - matrix_rooms: list of room mappings where each item is a dict containing:
-              - id (str): Matrix room ID (e.g. "!room:matrix.org").
-              - meshtastic_channel (int): Meshtastic channel number.
-          - matrix: dict with
-              - bot_user_id (str): Matrix user ID of the bot.
+        dict: A configuration dict with keys:
+          - meshtastic: dict containing broadcast_enabled, prefix_enabled, prefix_format,
+            message_interactions, and meshnet_name.
+          - matrix_rooms: list of room mapping dicts each with `id` and `meshtastic_channel`.
+          - matrix: dict containing `bot_user_id`.
     """
     return {
         "meshtastic": {
@@ -882,3 +868,65 @@ def test_config():
         ],
         "matrix": {"bot_user_id": "@bot:matrix.org"},
     }
+
+
+@pytest.fixture(scope="session", autouse=True)
+def isolate_mmrelay_home(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Generator[Path, None, None]:
+    """
+    Create and set an isolated MMRELAY_HOME directory for the test session and restore the original value afterwards.
+
+    Parameters:
+        tmp_path_factory (pytest.TempPathFactory): Factory used to create a temporary directory for the isolated home.
+
+    Yields:
+        Path: Path to the temporary MMRELAY_HOME directory provided to the test.
+
+    Description:
+        Sets the MMRELAY_HOME environment variable to a temporary directory so tests do not write to the user's real home. Restores the original MMRELAY_HOME value (or unsets it) when the fixture completes.
+    """
+    tmp_home = tmp_path_factory.mktemp("mmrelay_test_home")
+    # Store original if any
+    original_home = os.environ.get("MMRELAY_HOME")
+    os.environ["MMRELAY_HOME"] = str(tmp_home)
+
+    yield tmp_home
+
+    # Restore or unset
+    if original_home is not None:
+        os.environ["MMRELAY_HOME"] = original_home
+    else:
+        os.environ.pop("MMRELAY_HOME", None)
+
+
+@pytest.fixture
+def clean_migration_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Generator[Path, None, None]:
+    """
+    Create and yield a clean temporary home directory for migration tests.
+
+    Creates tmp_path / "clean_migration_home", sets MMRELAY_HOME to it,
+    removes migration_completed.flag if present so tests start without prior migration state,
+    and yields the directory path.
+
+    Yields:
+        Path: Path to the created clean home directory.
+    """
+    home = tmp_path / "clean_migration_home"
+    home.mkdir()
+
+    # Override MMRELAY_HOME for this specific test
+    monkeypatch.setenv("MMRELAY_HOME", str(home))
+
+    # Force paths module to re-resolve home from the updated env var
+    import mmrelay.paths
+
+    mmrelay.paths.reset_home_override()
+
+    # Ensure no migration state file exists
+    state_file = home / "migration_completed.flag"
+    state_file.unlink(missing_ok=True)
+
+    yield home

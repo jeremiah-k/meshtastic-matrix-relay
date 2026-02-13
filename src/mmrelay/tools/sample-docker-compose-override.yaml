@@ -1,0 +1,25 @@
+# docker-compose.override.yaml - Local Development
+#
+# This file overrides docker-compose.yml to build from source instead of using prebuilt images.
+# Place this file as docker-compose.override.yml in the same directory as docker-compose.yml.
+#
+# Docker Compose automatically merges override files when you run:
+#   docker compose up
+#
+# To use prebuilt images (ignore this override):
+#   docker compose -f docker-compose.yml up
+#
+# To switch back to prebuilt permanently:
+#   rm docker-compose.override.yml
+
+services:
+  mmrelay:
+    # Override: Build from source instead of using prebuilt image
+    build: .
+
+    # Keep the container name consistent with base
+    container_name: mmrelay
+
+    # Optional: Development-specific environment overrides
+    # environment:
+    #   - LOG_LEVEL=DEBUG

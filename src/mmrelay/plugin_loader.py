@@ -17,12 +17,9 @@ from types import ModuleType
 from typing import Any, Iterator, NamedTuple, NoReturn
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
+import mmrelay.paths as paths_module
 from mmrelay.config import (
     get_app_path,
-    get_base_dir,
-    get_data_dir,
-    is_legacy_layout_enabled,
-    is_new_layout_enabled,
 )
 from mmrelay.constants.plugins import (
     COMMIT_HASH_PATTERN,
@@ -35,7 +32,7 @@ from mmrelay.constants.plugins import (
 )
 from mmrelay.log_utils import get_logger
 
-schedule: ModuleType | None
+schedule: ModuleType | None = None
 try:
     import schedule as _schedule
 
@@ -47,8 +44,10 @@ except ImportError:
 config = None
 
 logger = get_logger(name="Plugins")
+
 sorted_active_plugins: list[Any] = []
 plugins_loaded = False
+_last_logged_plugin_roots: tuple[str | None, tuple[str, ...]] | None = None
 
 
 class ValidationResult(NamedTuple):
@@ -70,31 +69,133 @@ _global_scheduler_stop_event: threading.Event | None = None
 _PLUGIN_DEPS_DIR: str | None = None
 
 
-def _get_plugin_root_dirs() -> list[str]:
+def _is_safe_plugin_name(name: str) -> bool:
     """
-    Compute an ordered list of candidate plugin root directories.
+    Validate a short plugin name to ensure it contains no path traversal, path separators, or absolute-path references.
 
-    When a base directory exists, returns base_dir/plugins. If either the new or legacy layout is enabled and a distinct data directory exists, includes data_dir/plugins as well; the data directory is inserted at the front if it exists on disk while the base plugins path does not, otherwise it is appended. Duplicate paths are avoided.
+    Intended for short plugin identifiers (for example, "my-plugin"); do not use to validate full filesystem paths.
+
+    Parameters:
+        name (str): Candidate plugin name or identifier to validate.
 
     Returns:
-        list[str]: Ordered list of plugin root directory paths.
+        bool: `True` if the name is non-empty, contains no path separators, contains no "`..`" segments, and is not an absolute path; `False` otherwise.
     """
-    base_dir = get_base_dir()
+    if not name or name.strip() == "":
+        return False
+
+    # Reject path separators
+    for sep in ["/", "\\", os.sep] + ([os.altsep] if os.altsep is not None else []):
+        if sep in name:
+            return False
+
+    # Reject parent directory references
+    if ".." in name:
+        return False
+
+    # Reject absolute paths
+    if os.path.isabs(name):
+        return False
+
+    return True
+
+
+def _is_path_contained(root: str, child: str) -> bool:
+    """
+    Check whether a path is strictly contained within a root directory.
+
+    Both paths are resolved with os.path.realpath and normalized with os.path.normcase before comparison; symbolic links and case differences are therefore accounted for. The function returns True only when the child path is located inside the root (i.e., child is not equal to root and resides within a subpath).
+
+    Parameters:
+        root (str): Root directory path.
+        child (str): Path to test for containment.
+
+    Returns:
+        bool: `True` if `child` is located inside `root` (strict containment), `False` otherwise.
+    """
+    # Normalize both paths for comparison
+    root_normalized = os.path.normcase(os.path.realpath(root))
+    child_normalized = os.path.normcase(os.path.realpath(child))
+
+    # Use os.path.commonpath for platform-independent containment test
+    try:
+        common = os.path.commonpath([root_normalized, child_normalized])
+    except ValueError:
+        return False
+    return common == root_normalized and child_normalized != root_normalized
+
+
+def _get_plugin_root_dirs() -> list[str]:
+    """
+    Compute an ordered list of candidate plugin root directories, preferring the user's HOME/plugins and including existing legacy plugin directories when present.
+
+    Returns:
+        list[str]: Ordered list of filesystem paths to plugin root directories.
+    """
     roots: list[str] = []
-    if base_dir:
-        roots.append(os.path.join(base_dir, "plugins"))
-    if is_new_layout_enabled() or is_legacy_layout_enabled():
-        data_dir = get_data_dir(create=False)
-        if data_dir and data_dir != base_dir:
-            data_root = os.path.join(data_dir, "plugins")
-            if data_root not in roots:
-                if os.path.isdir(data_root) and (
-                    not roots or not os.path.isdir(roots[0])
-                ):
-                    roots.insert(0, data_root)
-                else:
-                    roots.append(data_root)
+    seen: set[str] = set()
+
+    try:
+        home_dir = str(paths_module.get_home_dir())
+        if home_dir:
+            home_plugins = os.path.join(home_dir, "plugins")
+            if home_plugins not in seen:
+                roots.append(home_plugins)
+                seen.add(home_plugins)
+            logger.debug("Using primary plugin root: %s", home_plugins)
+    except (OSError, RuntimeError, ValueError) as e:
+        logger.warning("Could not determine primary plugin root: %s", e)
+
+    try:
+        legacy_dirs_list = paths_module.get_legacy_dirs()
+    except (OSError, RuntimeError, ValueError) as e:
+        logger.warning("Could not determine legacy plugin roots: %s", e)
+        legacy_dirs_list = []
+
+    for legacy_root in legacy_dirs_list:
+        legacy_plugins = os.path.join(str(legacy_root), "plugins")
+        if legacy_plugins not in seen and os.path.exists(legacy_plugins):
+            roots.append(legacy_plugins)
+            seen.add(legacy_plugins)
+            logger.debug("Using legacy plugin root: %s", legacy_plugins)
+
+    primary_root = roots[0] if roots else None
+    legacy_roots = roots[1:] if len(roots) > 1 else []
+    global _last_logged_plugin_roots
+    root_snapshot = (
+        str(primary_root) if primary_root else None,
+        tuple(legacy_roots),
+    )
+    if _last_logged_plugin_roots != root_snapshot:
+        logger.info(
+            "Plugin roots: primary=%s, legacy=%s",
+            str(primary_root) if primary_root else "none",
+            legacy_roots if legacy_roots else [],
+        )
+        _last_logged_plugin_roots = root_snapshot
+
     return roots
+
+
+def _get_legacy_plugin_roots() -> set[str]:
+    """
+    Compute the legacy plugin root directories located under known legacy bases.
+
+    If discovery of legacy bases fails, an empty set is returned and a warning is logged.
+
+    Returns:
+        A set of path strings for legacy "plugins" directories; empty if discovery fails or none are found.
+    """
+    try:
+        legacy_dirs = paths_module.get_legacy_dirs()
+    except (OSError, RuntimeError, ValueError) as e:
+        logger.warning("Could not determine legacy plugin roots: %s", e)
+        return set()
+
+    legacy_roots: set[str] = set()
+    for legacy_root in legacy_dirs:
+        legacy_roots.add(os.path.join(str(legacy_root), "plugins"))
+    return legacy_roots
 
 
 try:
@@ -103,7 +204,14 @@ except (OSError, RuntimeError, ValueError) as exc:  # pragma: no cover
     logger.debug("Unable to resolve base dir for plugin deps at import time: %s", exc)
     _PLUGIN_DEPS_DIR = None
 else:
+    legacy_roots = _get_legacy_plugin_roots()
     for deps_root in deps_roots:
+        if deps_root in legacy_roots:
+            logger.debug(
+                "Skipping legacy plugin root for deps directory creation: %s",
+                deps_root,
+            )
+            continue
         deps_dir = os.path.join(deps_root, "deps")
         try:
             os.makedirs(deps_dir, exist_ok=True)
@@ -829,12 +937,21 @@ def _get_plugin_dirs(plugin_type: str) -> list[str]:
     """
     dirs = []
 
+    legacy_roots = _get_legacy_plugin_roots()
     for root_dir in _get_plugin_root_dirs():
         if os.path.basename(root_dir) == "plugins":
             user_dir = os.path.join(root_dir, plugin_type)
         else:
             user_dir = root_dir
         if user_dir in dirs:
+            continue
+        if root_dir in legacy_roots:
+            if os.path.isdir(user_dir):
+                dirs.append(user_dir)
+            else:
+                logger.debug(
+                    "Skipping legacy plugin directory creation for %s", user_dir
+                )
             continue
         try:
             os.makedirs(user_dir, exist_ok=True)
@@ -1604,7 +1721,7 @@ def _clone_new_repo_to_branch_or_tag(
                         if current == tag_commit:
                             return True
                     except subprocess.CalledProcessError:
-                        pass
+                        pass  # Continue to fetch and checkout
                     success = _try_fetch_and_checkout_tag(
                         repo_path, ref_value, repo_name
                     )
@@ -1730,10 +1847,17 @@ def clone_or_update_repo(repo_url: str, ref: dict[str, str], plugins_dir: str) -
         return False
 
     # Delegate to internal function that assumes inputs are already validated
-    assert validation_result.repo_url is not None
-    assert validation_result.ref_type is not None
-    assert validation_result.ref_value is not None
-    assert validation_result.repo_name is not None
+    if (
+        validation_result.repo_url is None
+        or validation_result.ref_type is None
+        or validation_result.ref_value is None
+        or validation_result.repo_name is None
+    ):
+        logger.error(
+            "Repository validation returned incomplete data for %s",
+            _redact_url(repo_url),
+        )
+        return False
     return _clone_or_update_repo_validated(
         validation_result.repo_url,
         validation_result.ref_type,
@@ -1987,7 +2111,7 @@ def start_global_scheduler() -> None:
         logger.debug("Global scheduler thread started")
         # Capture stop_event locally to avoid races if globals are reset.
         while not stop_event.is_set():
-            if schedule:
+            if schedule is not None:
                 schedule.run_pending()
             # Wait up to 1 second or until stop is requested
             stop_event.wait(1)
@@ -2024,7 +2148,7 @@ def stop_global_scheduler() -> None:
             logger.warning("Global scheduler thread did not stop within timeout")
 
     # Clear all scheduled jobs
-    if schedule:
+    if schedule is not None:
         schedule.clear()
 
     _global_scheduler_thread = None
@@ -2108,9 +2232,27 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
     for plugin_name in active_custom_plugins:
         plugin_found = False
 
+        # Validate plugin name to prevent path traversal attacks
+        if not _is_safe_plugin_name(plugin_name):
+            logger.warning(
+                "Custom plugin name '%s' rejected: contains invalid characters or path traversal",
+                plugin_name,
+            )
+            continue
+
         # Try each directory in order
         for custom_dir in custom_plugin_dirs:
             plugin_path = os.path.join(custom_dir, plugin_name)
+
+            # Validate path containment to prevent symlink escapes
+            if not _is_path_contained(custom_dir, plugin_path):
+                logger.warning(
+                    "Custom plugin path '%s' is not contained within allowed root '%s'",
+                    plugin_path,
+                    custom_dir,
+                )
+                continue
+
             if os.path.exists(plugin_path):
                 logger.debug(f"Loading custom plugin from: {plugin_path}")
                 try:
@@ -2216,17 +2358,42 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                     )
                     continue
                 repo_name = validation_result.repo_name
-                # validation_result.repo_url is guaranteed to be non-None when is_valid is True
-                assert validation_result.repo_url is not None
+                if not _is_safe_plugin_name(repo_name):
+                    logger.error(
+                        "Repository name '%s' rejected: contains invalid characters or path traversal",
+                        repo_name,
+                    )
+                    continue
+                repo_path = os.path.join(community_plugins_dir, repo_name)
+                if not _is_path_contained(community_plugins_dir, repo_path):
+                    logger.error(
+                        "Plugin repo path '%s' is not contained within allowed root '%s'",
+                        repo_path,
+                        community_plugins_dir,
+                    )
+                    continue
+                if (
+                    validation_result.repo_url is None
+                    or validation_result.ref_type is None
+                    or validation_result.ref_value is None
+                ):
+                    logger.error(
+                        "Validation returned no repository URL or ref for community plugin %s",
+                        plugin_name,
+                    )
+                    continue
+
+                # Call public helper so tests and integrations can patch this seam.
                 success = clone_or_update_repo(
-                    validation_result.repo_url, ref, community_plugins_dir
+                    validation_result.repo_url,
+                    ref,
+                    community_plugins_dir,
                 )
                 if not success:
                     logger.warning(
                         f"Failed to clone/update plugin {plugin_name}, skipping"
                     )
                     continue
-                repo_path = os.path.join(community_plugins_dir, repo_name)
                 _install_requirements_for_repo(repo_path, repo_name)
             else:
                 logger.error("Repository URL not specified for a community plugin")
@@ -2247,10 +2414,26 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                 )
                 continue
 
+            # Validate plugin name is safe before trying directories
+            if not _is_safe_plugin_name(repo_name_candidate):
+                logger.error(
+                    "Plugin name '%s' rejected: contains invalid characters or path traversal",
+                    repo_name_candidate,
+                )
+                continue
+
             # Try each directory in order
             plugin_found = False
             for dir_path in community_plugin_dirs:
                 plugin_path = os.path.join(dir_path, repo_name_candidate)
+                # Validate path containment to prevent symlink escapes
+                if not _is_path_contained(dir_path, plugin_path):
+                    logger.warning(
+                        "Plugin path '%s' is not contained within allowed root '%s'",
+                        plugin_path,
+                        dir_path,
+                    )
+                    continue
                 if os.path.exists(plugin_path):
                     logger.info(f"Loading community plugin from: {plugin_path}")
                     try:

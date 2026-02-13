@@ -74,7 +74,7 @@ mmrelay auth login
 This interactive command will:
 
 - Prompt for your Matrix homeserver, username, and password
-- Create secure credentials and save to `~/.mmrelay/credentials.json`
+- Create secure credentials and save to `~/.mmrelay/matrix/credentials.json`
 - Set up encryption keys for secure communication (Linux/macOS)
 - Works for regular Matrix communication on all platforms
 - **Use modern OIDC authentication** compatible with Matrix 2.0 and MAS (Matrix Authentication Service)
@@ -110,43 +110,37 @@ Start the relay with a single command:
 mmrelay
 ```
 
+By default, MMRelay uses `~/.mmrelay` as the home directory for all runtime data on Linux/macOS. On Windows, it uses the platform-specific application data directory (e.g., `%APPDATA%/mmrelay`).
+
 ### Command-Line Options
 
 Customize your setup with command-line options:
 
 ```bash
-mmrelay --config /path/to/config.yaml --logfile /path/to/logfile.log
+mmrelay --config /path/to/config.yaml --home /path/to/mmrelay-home
 ```
 
-```bash
-mmrelay [OPTIONS]
+**Common flags:**
 
-Options:
-  -h, --help            Show this help message and exit
-  --config PATH         Path to the configuration file
-  --base-dir PATH       Base directory for all data (logs, database, plugins)
-  --data-dir PATH       Deprecated alias for --base-dir
-  --log-level {error,warning,info,debug}
-                        Set logging level
-  --logfile PATH        Path to log file. When provided, this overrides any path
-                        derived from --base-dir. If omitted, the log file defaults
-                        to <base-dir>/logs/mmrelay.log. Note that --data-dir is a
-                        deprecated alias for --base-dir and does not override an
-                        explicit --logfile.
-  --version             Show version and exit
-Commands:
-  config                Configuration management
-    generate            Create a sample config.yaml file with default settings
-    check               Validate configuration file syntax and completeness
-  auth                  Authentication management
-    login               Authenticate with Matrix and save credentials for E2EE support
-    logout              Secure session cleanup with server-side token invalidation
-    status              Check current authentication status
-  service               Service management
-    install             Install or update the systemd user service for MMRelay
-```
+- `--config PATH` - Specify a custom configuration file location
+- `--home PATH` - Set the home directory for all runtime data (credentials, logs, database, plugins)
+- `--log-level {error,warning,info,debug}` - Set the logging verbosity
+- `--version` - Show version information and exit
+- `--help` - Display help message
 
-#### Useful Commands
+### Data Locations
+
+MMRelay stores all runtime data in the home directory (`~/.mmrelay` by default, or as specified with `--home` or the `MMRELAY_HOME` environment variable). This directory contains:
+
+- `config.yaml` - Your configuration file
+- `matrix/credentials.json` - Matrix authentication credentials (created by `mmrelay auth login`)
+- `database/meshtastic.sqlite` - SQLite database for node information
+- `logs/` - Application logs
+- `matrix/store/` - E2EE encryption keys (Linux/macOS)
+- `plugins/custom/` - Custom plugins
+- `plugins/community/` - Community plugins
+
+### Useful Commands
 
 ```bash
 # Generate a sample configuration file
@@ -226,6 +220,8 @@ make logs     # View logs
 ```
 
 For detailed Docker commands, configuration options, connection types, and troubleshooting, see the [Docker Guide](DOCKER.md).
+
+If you are upgrading from an older MMRelay layout, see the [Migration Guide for v1.3](MIGRATION_1.3.md).
 
 ## Kubernetes
 

@@ -25,6 +25,7 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.db_utils import (
+    _get_db_manager,
     _parse_bool,
     _parse_int,
     _reset_db_manager,
@@ -103,8 +104,7 @@ class TestDbUtils(unittest.TestCase):
         self.assertEqual(path1, path2)
         self.assertEqual(path1, self.test_db_path)
 
-    @patch("mmrelay.db_utils.get_data_dir")
-    def test_get_db_path_default(self, mock_get_data_dir):
+    def test_get_db_path_default(self):
         """
         Test that `get_db_path()` returns the default database path in the absence of configuration.
 
@@ -120,10 +120,13 @@ class TestDbUtils(unittest.TestCase):
         import tempfile
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            mock_get_data_dir.return_value = temp_dir
-            path = get_db_path()
-            expected_path = os.path.join(temp_dir, "meshtastic.sqlite")
-            self.assertEqual(path, expected_path)
+            with patch(
+                "mmrelay.db_utils.resolve_all_paths",
+                return_value={"database_dir": temp_dir, "legacy_sources": []},
+            ):
+                path = get_db_path()
+                expected_path = os.path.join(temp_dir, "meshtastic.sqlite")
+                self.assertEqual(path, expected_path)
 
     def test_get_db_path_legacy_config(self):
         """
@@ -415,11 +418,13 @@ class TestDbUtils(unittest.TestCase):
         """
         initialize_database()
 
+        manager = _get_db_manager()
+
         async def exercise():
             """
-            Exercise message-map helpers by storing two entries then pruning to keep the most recent one.
+            Store two message-map entries and prune the message map to keep only the most recent entry.
 
-            Stores two message map entries and then prunes the message map to a limit of 1 so that only the latest stored entry remains.
+            Inserts two distinct message-map rows and then trims the table so only the newest row remains.
             """
             await async_store_message_map(
                 "mesh1", "$event1:matrix.org", "!room:matrix.org", "text1"
@@ -429,7 +434,8 @@ class TestDbUtils(unittest.TestCase):
             )
             await async_prune_message_map(1)
 
-        asyncio.run(exercise())
+        with patch("mmrelay.db_utils._get_db_manager", return_value=manager):
+            asyncio.run(exercise())
 
         # Oldest entry should have been pruned
         self.assertIsNone(get_message_map_by_meshtastic_id("mesh1"))
@@ -543,9 +549,9 @@ class TestDbUtils(unittest.TestCase):
 
     def test_get_db_path_data_directory_creation_error(self):
         """
-        Test that get_db_path() handles OSError/PermissionError when creating the default data directory.
+        Verify get_db_path returns a default meshtastic.sqlite path and logs a warning when creating the default data directory fails.
 
-        This test verifies error handling when the default data directory cannot be created.
+        Mocks resolve_all_paths to point to a non-existent data directory and forces os.makedirs to raise PermissionError; asserts the returned path ends with "meshtastic.sqlite" and that a single warning was logged.
         """
         # Clear cache and remove any database config to force default path
         clear_db_path_cache()
@@ -555,8 +561,11 @@ class TestDbUtils(unittest.TestCase):
 
         mmrelay.db_utils.config = mock_config
 
-        # Mock get_data_dir and os.makedirs to raise PermissionError
-        with patch("mmrelay.db_utils.get_data_dir", return_value="/nonexistent/data"):
+        # Mock resolve_all_paths and os.makedirs to raise PermissionError
+        with patch(
+            "mmrelay.db_utils.resolve_all_paths",
+            return_value={"database_dir": "/nonexistent/data", "legacy_sources": []},
+        ):
             with patch("os.makedirs", side_effect=PermissionError("Permission denied")):
                 with patch("mmrelay.db_utils.logger") as mock_logger:
                     path = get_db_path()
@@ -726,12 +735,419 @@ class TestDbUtils(unittest.TestCase):
 
         # Initialize database second time - should also succeed even though
         # ALTER TABLE and CREATE INDEX will fail with OperationalError
-        # because the column and index already exist
+        # because column and index already exist
         try:
             initialize_database()
-            # If we get here, the OperationalError was handled correctly
+            # If we get here, OperationalError was handled correctly
         except sqlite3.OperationalError:
             self.fail("Schema upgrade should handle OperationalError gracefully")
+
+    def test_get_db_path_legacy_database_root_level(self):
+        """
+        Test that get_db_path() returns legacy database path when database exists at root level of legacy directory.
+
+        This test verifies lines 144-164: when default path doesn't exist and deprecation window is active,
+        legacy directories are searched for existing databases.
+        """
+        # Clear cache and config to test default behavior with legacy database
+        clear_db_path_cache()
+        import mmrelay.db_utils
+
+        mmrelay.db_utils.config = None
+
+        # Create temporary directories
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_dir = os.path.join(temp_dir, "database")
+            legacy_dir = os.path.join(temp_dir, "legacy")
+
+            # Create legacy database at root level
+            os.makedirs(legacy_dir, exist_ok=True)
+            legacy_db_path = os.path.join(legacy_dir, "meshtastic.sqlite")
+            with sqlite3.connect(legacy_db_path) as conn:
+                conn.execute("CREATE TABLE test_table (id INTEGER)")
+
+            # Mock paths and deprecation window
+            with patch(
+                "mmrelay.db_utils.resolve_all_paths",
+                return_value={"database_dir": database_dir, "legacy_sources": []},
+            ):
+                with patch(
+                    "mmrelay.db_utils.is_deprecation_window_active", return_value=True
+                ):
+                    with patch(
+                        "mmrelay.db_utils.get_legacy_dirs", return_value=[legacy_dir]
+                    ):
+                        path = get_db_path()
+                        self.assertEqual(path, legacy_db_path)
+
+    def test_get_db_path_legacy_database_data_subdir(self):
+        """
+        Test that get_db_path() returns legacy database path when database exists in data/ subdirectory.
+
+        This test verifies that the legacy path search includes the data/ subdirectory candidate.
+        """
+        clear_db_path_cache()
+        import mmrelay.db_utils
+
+        mmrelay.db_utils.config = None
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_dir = os.path.join(temp_dir, "database")
+            legacy_dir = os.path.join(temp_dir, "legacy")
+
+            # Create legacy database in data/ subdirectory
+            os.makedirs(legacy_dir, exist_ok=True)
+            data_subdir = os.path.join(legacy_dir, "data")
+            os.makedirs(data_subdir, exist_ok=True)
+            legacy_db_path = os.path.join(data_subdir, "meshtastic.sqlite")
+            with sqlite3.connect(legacy_db_path) as conn:
+                conn.execute("CREATE TABLE test_table (id INTEGER)")
+
+            # Mock paths and deprecation window
+            with patch(
+                "mmrelay.db_utils.resolve_all_paths",
+                return_value={"database_dir": database_dir, "legacy_sources": []},
+            ):
+                with patch(
+                    "mmrelay.db_utils.is_deprecation_window_active", return_value=True
+                ):
+                    with patch(
+                        "mmrelay.db_utils.get_legacy_dirs", return_value=[legacy_dir]
+                    ):
+                        path = get_db_path()
+                        self.assertEqual(path, legacy_db_path)
+
+    def test_get_db_path_legacy_database_database_subdir(self):
+        """
+        Test that get_db_path() returns legacy database path when database exists in database/ subdirectory.
+
+        This test verifies that the legacy path search includes the database/ subdirectory candidate.
+        """
+        clear_db_path_cache()
+        import mmrelay.db_utils
+
+        mmrelay.db_utils.config = None
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_dir = os.path.join(temp_dir, "database")
+            legacy_dir = os.path.join(temp_dir, "legacy")
+
+            # Create legacy database in database/ subdirectory
+            os.makedirs(legacy_dir, exist_ok=True)
+            database_subdir = os.path.join(legacy_dir, "database")
+            os.makedirs(database_subdir, exist_ok=True)
+            legacy_db_path = os.path.join(database_subdir, "meshtastic.sqlite")
+            with sqlite3.connect(legacy_db_path) as conn:
+                conn.execute("CREATE TABLE test_table (id INTEGER)")
+
+            # Mock paths and deprecation window
+            with patch(
+                "mmrelay.db_utils.resolve_all_paths",
+                return_value={"database_dir": database_dir, "legacy_sources": []},
+            ):
+                with patch(
+                    "mmrelay.db_utils.is_deprecation_window_active", return_value=True
+                ):
+                    with patch(
+                        "mmrelay.db_utils.get_legacy_dirs", return_value=[legacy_dir]
+                    ):
+                        path = get_db_path()
+                        self.assertEqual(path, legacy_db_path)
+
+    def test_get_db_path_no_legacy_database_returns_default(self):
+        """
+        Test that get_db_path() returns default path when no legacy database exists.
+
+        This test verifies that when legacy directories don't contain a database,
+        the function returns the default path.
+        """
+        clear_db_path_cache()
+        import mmrelay.db_utils
+
+        mmrelay.db_utils.config = None
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_dir = os.path.join(temp_dir, "database")
+            legacy_dir = os.path.join(temp_dir, "legacy")
+
+            # Create empty legacy directory (no database)
+            os.makedirs(legacy_dir, exist_ok=True)
+
+            # Mock paths and deprecation window
+            with patch(
+                "mmrelay.db_utils.resolve_all_paths",
+                return_value={"database_dir": database_dir, "legacy_sources": []},
+            ):
+                with patch(
+                    "mmrelay.db_utils.is_deprecation_window_active", return_value=True
+                ):
+                    with patch(
+                        "mmrelay.db_utils.get_legacy_dirs", return_value=[legacy_dir]
+                    ):
+                        path = get_db_path()
+                        expected_path = os.path.join(database_dir, "meshtastic.sqlite")
+                        self.assertEqual(path, expected_path)
+
+    def test_get_db_path_default_exists_skips_legacy_check(self):
+        """
+        Test that get_db_path() skips legacy check when default database path exists.
+
+        This test verifies that if the default database path exists, the function
+        returns it immediately without checking legacy directories (line 144 condition).
+        """
+        clear_db_path_cache()
+        import mmrelay.db_utils
+
+        mmrelay.db_utils.config = None
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_dir = os.path.join(temp_dir, "database")
+            legacy_dir = os.path.join(temp_dir, "legacy")
+
+            # Create default database
+            os.makedirs(database_dir, exist_ok=True)
+            default_db_path = os.path.join(database_dir, "meshtastic.sqlite")
+            with sqlite3.connect(default_db_path) as conn:
+                conn.execute("CREATE TABLE test_table (id INTEGER)")
+
+            # Create legacy database (should NOT be returned)
+            os.makedirs(legacy_dir, exist_ok=True)
+            legacy_db_path = os.path.join(legacy_dir, "meshtastic.sqlite")
+            with sqlite3.connect(legacy_db_path) as conn:
+                conn.execute("CREATE TABLE test_table (id INTEGER)")
+
+            # Mock paths and deprecation window
+            with patch(
+                "mmrelay.db_utils.resolve_all_paths",
+                return_value={"database_dir": database_dir, "legacy_sources": []},
+            ):
+                with patch(
+                    "mmrelay.db_utils.is_deprecation_window_active", return_value=True
+                ):
+                    with patch(
+                        "mmrelay.db_utils.get_legacy_dirs", return_value=[legacy_dir]
+                    ):
+                        path = get_db_path()
+                        # Should return default path, NOT legacy path
+                        self.assertEqual(path, default_db_path)
+
+    def test_get_db_path_deprecation_inactive_skips_legacy_check(self):
+        """
+        Test that get_db_path() skips legacy check when deprecation window is inactive.
+
+        This test verifies that when is_deprecation_window_active returns False,
+        the function returns the default path without checking legacy directories.
+        """
+        clear_db_path_cache()
+        import mmrelay.db_utils
+
+        mmrelay.db_utils.config = None
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_dir = os.path.join(temp_dir, "database")
+            legacy_dir = os.path.join(temp_dir, "legacy")
+
+            # Create legacy database (should NOT be returned when deprecation inactive)
+            os.makedirs(legacy_dir, exist_ok=True)
+            legacy_db_path = os.path.join(legacy_dir, "meshtastic.sqlite")
+            with sqlite3.connect(legacy_db_path) as conn:
+                conn.execute("CREATE TABLE test_table (id INTEGER)")
+
+            # Mock paths and deprecation window (inactive)
+            with patch(
+                "mmrelay.db_utils.resolve_all_paths",
+                return_value={"database_dir": database_dir, "legacy_sources": []},
+            ):
+                with patch(
+                    "mmrelay.db_utils.is_deprecation_window_active", return_value=False
+                ):
+                    with patch(
+                        "mmrelay.db_utils.get_legacy_dirs", return_value=[legacy_dir]
+                    ):
+                        path = get_db_path()
+                        # Should return default path, NOT legacy path
+                        expected_path = os.path.join(database_dir, "meshtastic.sqlite")
+                        self.assertEqual(path, expected_path)
+
+    def test_get_db_path_legacy_database_logs_warning(self):
+        """
+        Test that get_db_path() logs a warning when legacy database is found.
+
+        This test verifies that the deprecation warning is logged (lines 155-161)
+        when a database is found in a legacy location.
+        """
+        clear_db_path_cache()
+        import mmrelay.db_utils
+
+        mmrelay.db_utils.config = None
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_dir = os.path.join(temp_dir, "database")
+            legacy_dir = os.path.join(temp_dir, "legacy")
+
+            # Create legacy database
+            os.makedirs(legacy_dir, exist_ok=True)
+            legacy_db_path = os.path.join(legacy_dir, "meshtastic.sqlite")
+            with sqlite3.connect(legacy_db_path) as conn:
+                conn.execute("CREATE TABLE test_table (id INTEGER)")
+
+            # Mock paths and deprecation window
+            with patch(
+                "mmrelay.db_utils.resolve_all_paths",
+                return_value={"database_dir": database_dir, "legacy_sources": []},
+            ):
+                with patch(
+                    "mmrelay.db_utils.is_deprecation_window_active", return_value=True
+                ):
+                    with patch(
+                        "mmrelay.db_utils.get_legacy_dirs", return_value=[legacy_dir]
+                    ):
+                        with patch("mmrelay.db_utils.logger") as mock_logger:
+                            path = get_db_path()
+                            self.assertEqual(path, legacy_db_path)
+                            # Verify warning was logged
+                            mock_logger.warning.assert_called_once()
+                            call_args = mock_logger.warning.call_args[0]
+                            self.assertIn(
+                                "Database found in legacy location", call_args[0]
+                            )
+                            self.assertIn("mmrelay migrate", call_args[0])
+
+    def test_get_db_path_first_legacy_directory_wins(self):
+        """
+        Test that get_db_path() returns database from first legacy directory that contains it.
+
+        This test verifies that when multiple legacy directories have databases,
+        the first one (in priority order) is returned.
+        """
+        clear_db_path_cache()
+        import mmrelay.db_utils
+
+        mmrelay.db_utils.config = None
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_dir = os.path.join(temp_dir, "database")
+            legacy_dir1 = os.path.join(temp_dir, "legacy1")
+            legacy_dir2 = os.path.join(temp_dir, "legacy2")
+
+            # Create databases in both legacy directories
+            os.makedirs(legacy_dir1, exist_ok=True)
+            legacy_db_path1 = os.path.join(legacy_dir1, "meshtastic.sqlite")
+            with sqlite3.connect(legacy_db_path1) as conn:
+                conn.execute("CREATE TABLE test_table1 (id INTEGER)")
+
+            os.makedirs(legacy_dir2, exist_ok=True)
+            legacy_db_path2 = os.path.join(legacy_dir2, "meshtastic.sqlite")
+            with sqlite3.connect(legacy_db_path2) as conn:
+                conn.execute("CREATE TABLE test_table2 (id INTEGER)")
+
+            # Mock paths and deprecation window
+            with patch(
+                "mmrelay.db_utils.resolve_all_paths",
+                return_value={"database_dir": database_dir, "legacy_sources": []},
+            ):
+                with patch(
+                    "mmrelay.db_utils.is_deprecation_window_active", return_value=True
+                ):
+                    with patch(
+                        "mmrelay.db_utils.get_legacy_dirs",
+                        return_value=[legacy_dir1, legacy_dir2],
+                    ):
+                        path = get_db_path()
+                        # Should return first legacy database
+                        self.assertEqual(path, legacy_db_path1)
+
+    def test_get_db_path_warning_logged_only_once(self):
+        """
+        Test that get_db_path() logs warning only once due to _db_path_logged cache.
+
+        This test verifies that the deprecation warning is logged only on the first call,
+        and subsequent cached calls do not log again (line 155 condition).
+        """
+        clear_db_path_cache()
+        import mmrelay.db_utils
+
+        mmrelay.db_utils.config = None
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_dir = os.path.join(temp_dir, "database")
+            legacy_dir = os.path.join(temp_dir, "legacy")
+
+            # Create legacy database
+            os.makedirs(legacy_dir, exist_ok=True)
+            legacy_db_path = os.path.join(legacy_dir, "meshtastic.sqlite")
+            with sqlite3.connect(legacy_db_path) as conn:
+                conn.execute("CREATE TABLE test_table (id INTEGER)")
+
+            # Mock paths and deprecation window
+            with patch(
+                "mmrelay.db_utils.resolve_all_paths",
+                return_value={"database_dir": database_dir, "legacy_sources": []},
+            ):
+                with patch(
+                    "mmrelay.db_utils.is_deprecation_window_active", return_value=True
+                ):
+                    with patch(
+                        "mmrelay.db_utils.get_legacy_dirs", return_value=[legacy_dir]
+                    ):
+                        with patch("mmrelay.db_utils.logger") as mock_logger:
+                            # First call - should log warning
+                            path1 = get_db_path()
+                            self.assertEqual(path1, legacy_db_path)
+                            self.assertEqual(mock_logger.warning.call_count, 1)
+
+                            # Second call - should use cache, NOT log warning
+                            path2 = get_db_path()
+                            self.assertEqual(path2, legacy_db_path)
+                            self.assertEqual(mock_logger.warning.call_count, 1)
+
+    def test_get_db_path_warning_skip_when_already_logged(self):
+        """
+        Test that get_db_path() skips logging warning when _db_path_logged is already True.
+
+        Forces re-resolution (clear cache) while keeping _db_path_logged = True
+        to verify the else branch of the _db_path_logged guard.
+        """
+        clear_db_path_cache()
+        import mmrelay.db_utils
+
+        mmrelay.db_utils.config = None
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_dir = os.path.join(temp_dir, "database")
+            legacy_dir = os.path.join(temp_dir, "legacy")
+
+            # Create legacy database
+            os.makedirs(legacy_dir, exist_ok=True)
+            legacy_db_path = os.path.join(legacy_dir, "meshtastic.sqlite")
+            with sqlite3.connect(legacy_db_path) as conn:
+                conn.execute("CREATE TABLE test_table (id INTEGER)")
+
+            with patch(
+                "mmrelay.db_utils.resolve_all_paths",
+                return_value={"database_dir": database_dir, "legacy_sources": []},
+            ):
+                with patch(
+                    "mmrelay.db_utils.is_deprecation_window_active", return_value=True
+                ):
+                    with patch(
+                        "mmrelay.db_utils.get_legacy_dirs",
+                        return_value=[legacy_dir],
+                    ):
+                        with patch("mmrelay.db_utils.logger") as mock_logger:
+                            # Pre-set _db_path_logged to True, then clear only
+                            # the cached path to force re-resolution through
+                            # the legacy branch while skipping the warning.
+                            import mmrelay.db_utils as db_mod
+
+                            db_mod._cached_db_path = None
+                            db_mod._cached_config_hash = None
+                            db_mod._db_path_logged = True
+
+                            path = get_db_path()
+                            self.assertEqual(path, legacy_db_path)
+                            # Warning should NOT have been logged
+                            mock_logger.warning.assert_not_called()
 
 
 if __name__ == "__main__":

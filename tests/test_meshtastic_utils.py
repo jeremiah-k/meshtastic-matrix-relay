@@ -1675,9 +1675,10 @@ def test_reconnect_attempts_connection(
         finally:
             mu.DEFAULT_BACKOFF_TIME = original_backoff
 
-    asyncio.run(_run())
+        asyncio.run(_run())
 
-    mock_connect.assert_called_with(None, True)
+        # Reconnection now passes config to ensure matrix_rooms is re-initialized
+        mock_connect.assert_called_with(mu.config, True)
 
 
 def test_check_connection_function_exists(reset_meshtastic_globals):

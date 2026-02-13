@@ -1,7 +1,9 @@
 """Tests for authentication flow fixes."""
 
+import ntpath
 import os
 import unittest
+from pathlib import Path
 from unittest.mock import mock_open, patch
 
 from mmrelay.config import check_e2ee_enabled_silently, is_e2ee_enabled
@@ -66,8 +68,10 @@ class TestAuthFlowFixes(unittest.TestCase):
         # Mock Windows paths
         with patch("sys.platform", "win32"):
             with patch(
-                "mmrelay.config.get_base_dir",
-                return_value="C:\\Users\\Test\\AppData\\Local\\mmrelay",
+                "mmrelay.config.get_credentials_path",
+                return_value=Path(
+                    "C:\\Users\\Test\\AppData\\Local\\mmrelay\\credentials.json"
+                ),
             ):
                 with patch("os.makedirs") as mock_makedirs:
                     with patch("builtins.open", mock_open()) as mock_file:
@@ -89,9 +93,7 @@ class TestAuthFlowFixes(unittest.TestCase):
                             )
 
                             # Should open the correct path - use os.path.join to get the right separator
-                            import os
-
-                            expected_path = os.path.join(
+                            expected_path = ntpath.join(
                                 "C:\\Users\\Test\\AppData\\Local\\mmrelay",
                                 "credentials.json",
                             )
@@ -100,25 +102,33 @@ class TestAuthFlowFixes(unittest.TestCase):
                             )
 
     def test_credentials_loading_with_debug_info(self):
-        """Test that credentials loading provides debug info on Windows."""
+        """
+        Verify that load_credentials returns None and emits debug information about the config directory when running on Windows and the credentials file is missing.
+
+        The test simulates a Windows environment with the home/config directory present but without a credentials.json file. It asserts that:
+        - load_credentials() returns None,
+        - os.listdir was called for the configuration directory,
+        - logger.debug was called and at least one debug message contains the text "Directory contents".
+        """
         from mmrelay.config import load_credentials
 
         with patch("sys.platform", "win32"):
             config_dir = "C:\\Users\\Test\\AppData\\Local\\mmrelay"
             credentials_path = os.path.join(config_dir, "credentials.json")
 
-            with patch("mmrelay.config.get_base_dir", return_value=config_dir):
+            with patch("mmrelay.config.get_home_dir", return_value=Path(config_dir)):
                 # Mock os.path.exists to return False for credentials.json but True for the directory
                 def mock_exists(path):
                     """
-                    Simulate filesystem existence for tests by returning True only when the checked path equals the test configuration directory.
+                    Simulate filesystem existence checks for tests, treating the credentials file as missing and the config directory as present.
 
                     Parameters:
-                        path (str): Path to check; compared against the outer-scope test variables `credentials_path` and `config_dir`.
+                        path (str | os.PathLike): Path to check; compared against the test-scoped `credentials_path` and `config_dir` variables.
 
                     Returns:
-                        bool: `True` if `path` equals `config_dir`, `False` otherwise.
+                        bool: `True` if `path` equals `config_dir`, `False` otherwise (the `credentials_path` is treated as not existing).
                     """
+                    path = os.fspath(path)
                     if path == credentials_path:
                         return False  # credentials.json doesn't exist
                     elif path == config_dir:

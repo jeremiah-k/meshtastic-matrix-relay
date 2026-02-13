@@ -12,11 +12,14 @@ plugins:
 # Many linters and tools depend on runtimes - configure them here. (https://docs.trunk.io/runtimes)
 runtimes:
   enabled:
+    - go@1.21.0
     - node@22.16.0
     - python@3.10.8
 # This is the section where you manage your linters. (https://docs.trunk.io/check/configuration)
 lint:
   enabled:
+    - shellcheck@0.11.0
+    - shfmt@3.6.0
     - mypy@1.19.1
     - pyright@1.1.408
     - dotenv-linter@4.0.0
@@ -25,14 +28,14 @@ lint:
     - actionlint@1.7.10
     - bandit@1.9.3
     - black@26.1.0
-    - checkov@3.2.499
+    - checkov@3.2.500
     - git-diff-check
     - isort@7.0.0
     - markdownlint@0.47.0
     - osv-scanner@2.3.2
     - prettier@3.8.1
-    - ruff@0.14.14
-    - trufflehog@3.92.5
+    - ruff@0.15.0
+    - trufflehog@3.93.1
     - yamllint@1.38.0
   ignore:
     - linters: [ALL]
@@ -43,11 +46,19 @@ lint:
       paths:
         - src/mmrelay/tools/k8s/*.yaml
         - src/mmrelay/tools/k8s/*.yaml.tpl
+        - deploy/helm/mmrelay/templates/*.yaml
     - linters: [bandit]
       paths:
         - src/mmrelay/setup_utils.py
         - src/mmrelay/cli_utils.py # Ignore B110 for client close error handling during logout
+        - src/mmrelay/migrate.py # Ignore B603 for safe subprocess.run with validated pgrep path
         - tests/** # Ignore all bandit security warnings in test files (hardcoded test passwords, asserts, etc.)
+    - linters: [mypy]
+      paths:
+        - tests/** # Type checking is scoped to src/; tests are out of scope
+    - linters: [markdownlint, prettier]
+      paths:
+        - session-*.md # Session logs are raw artifacts, not project docs
 actions:
   disabled:
     - trunk-announce

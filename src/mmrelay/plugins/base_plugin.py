@@ -4,10 +4,9 @@ import re
 import threading
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
-from typing import Any
+from typing import Any, Protocol, cast
 
-# markdown has stubs in our env; avoid import-untyped so mypy --strict stays clean.
-import markdown  # type: ignore[import-untyped]
+import markdown
 from nio import (
     MatrixRoom,
     ReactionEvent,
@@ -18,7 +17,8 @@ from nio import (
     RoomSendResponse,
 )
 
-from mmrelay.config import get_plugin_data_dir
+# Provide a patchable module attribute for tests while avoiding name confusion.
+from mmrelay.config import get_plugin_data_dir as resolve_plugin_data_dir
 from mmrelay.constants.config import (
     CONFIG_KEY_REQUIRE_BOT_MENTION,
     DEFAULT_REQUIRE_BOT_MENTION,
@@ -43,6 +43,35 @@ from mmrelay.plugin_loader import logger as plugins_logger
 from mmrelay.plugin_loader import (
     schedule_job,
 )
+
+
+class _PluginDataDirGetter(Protocol):
+    def __call__(
+        self,
+        plugin_name: str | None = None,
+        *,
+        subdir: str | None = None,
+        plugin_type: str | None = None,
+    ) -> str:
+        """
+        Resolve the filesystem path for a plugin's data directory.
+
+        Parameters:
+            plugin_name (str | None): Plugin identifier to resolve the directory for.
+            subdir (str | None): Optional subdirectory name inside the plugin data
+                directory to return.
+            plugin_type (str | None): Optional plugin type hint (e.g., "core",
+                "community", "custom") used to select the correct base data
+                directory.
+
+        Returns:
+            str: Absolute filesystem path to the requested plugin data directory
+                or subdirectory.
+        """
+        ...
+
+
+get_plugin_data_dir = resolve_plugin_data_dir
 
 # Global config variable that will be set from main.py
 config: dict[str, Any] | None = None
@@ -187,6 +216,20 @@ class BasePlugin(ABC):
                 ]
         else:
             self.mapped_channels = []
+
+        self.plugin_type: str = "core"
+        if isinstance(config, dict):
+            community_plugins = config.get("community-plugins", {})
+            custom_plugins = config.get("custom-plugins", {})
+            if (
+                isinstance(community_plugins, dict)
+                and self.plugin_name in community_plugins
+            ):
+                self.plugin_type = "community"
+            elif (
+                isinstance(custom_plugins, dict) and self.plugin_name in custom_plugins
+            ):
+                self.plugin_type = "custom"
 
         # Get the channels specified for this plugin, or default to all mapped channels
         self.channels = self.config.get("channels", self.mapped_channels)
@@ -667,25 +710,26 @@ class BasePlugin(ABC):
 
     def get_plugin_data_dir(self, subdir: str | None = None) -> str:
         """
-        Get the filesystem path for this plugin's data directory, creating it if missing.
+        Get the absolute filesystem path for this plugin's data directory, optionally for a named subdirectory; the directory is created if missing and resolution respects the plugin's configured type.
 
         Parameters:
-                subdir (str | None): Optional subdirectory name inside the plugin data directory to create and return. If None, the top-level plugin data directory path is returned.
+            subdir (str | None): Optional subdirectory name inside the plugin data directory. If None, the top-level plugin data directory is returned.
 
         Returns:
-                plugin_path (str): Absolute path to the plugin's data directory or the requested subdirectory.
+            str: Absolute path to the plugin's data directory or the requested subdirectory.
         """
         # Get the plugin-specific data directory
         plugin_name = self._require_plugin_name()
-        plugin_dir: str = get_plugin_data_dir(plugin_name)
-
-        # If a subdirectory is specified, create and return it
+        module_get_plugin_data_dir = cast(
+            _PluginDataDirGetter,
+            globals().get("get_plugin_data_dir", resolve_plugin_data_dir),
+        )
         if subdir:
-            subdir_path = os.path.join(plugin_dir, subdir)
-            os.makedirs(subdir_path, exist_ok=True)
-            return subdir_path
+            return module_get_plugin_data_dir(
+                plugin_name, subdir=subdir, plugin_type=self.plugin_type
+            )
 
-        return plugin_dir
+        return module_get_plugin_data_dir(plugin_name, plugin_type=self.plugin_type)
 
     def matches(
         self,

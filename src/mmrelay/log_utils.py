@@ -88,12 +88,17 @@ _COMPONENT_LOGGERS = {
     ],
 }
 
+# Avoid file logging for loggers that are used during path resolution to
+# prevent recursive logging configuration (paths -> log_utils -> paths).
+# Include both the short name and fully-qualified name for robustness.
+_FILE_LOGGING_EXEMPT_LOGGERS = {"paths", "mmrelay.paths"}
+
 
 def configure_component_debug_logging() -> None:
     """
     Apply per-component debug logging settings from the global configuration.
 
-    Reads config["logging"]["debug"] (expected as a dict) and for each known component enables or suppresses its loggers: a boolean value enables DEBUG, a valid logging level name (string) sets that level, and a falsy or missing value suppresses the component by setting its loggers above CRITICAL. No-op if the global `config` is None.
+    Read config["logging"]["debug"] as a mapping of component names to settings and apply them to the component loggers listed in _COMPONENT_LOGGERS. For a component: a boolean or a valid logging level name enables logging at that level (boolean implies DEBUG; invalid level names fall back to DEBUG); a falsy or missing value sets the component loggers to level CRITICAL+1 to suppress their output. If the global `config` is None, no changes are made.
     """
     global config
 
@@ -187,13 +192,13 @@ def _should_log_to_file(args: argparse.Namespace | None) -> bool:
 
 def _resolve_log_file(args: argparse.Namespace | None) -> str:
     """
-    Choose the log file path using the following precedence: CLI `args.logfile`, configuration `logging.filename`, or the default "<log_dir>/mmrelay.log".
-    
+    Resolve the log file path using the following precedence: CLI `args.logfile`, configuration `logging.filename`, or the default "<log_dir>/mmrelay.log".
+
     Parameters:
-        args (argparse.Namespace | None): Optional argparse-like namespace; if present and has a truthy `logfile` attribute, that value is selected.
-    
+        args (argparse.Namespace | None): Optional namespace that may contain a `logfile` attribute; when present and a non-empty string, that value is selected.
+
     Returns:
-        str: Filesystem path selected for logging.
+        str: Filesystem path chosen for log output.
     """
     logfile = getattr(args, "logfile", None) if args is not None else None
     if isinstance(logfile, str) and logfile:
@@ -206,19 +211,28 @@ def _resolve_log_file(args: argparse.Namespace | None) -> str:
     return os.path.join(get_log_dir(), "mmrelay.log")
 
 
+class LogsDirTypeError(TypeError):
+    """logs_dir must be a string."""
+
+
 def get_log_dir() -> str:
     """
-    Return the filesystem directory to use for application logs, resolved lazily.
-    
-    This function obtains the log directory from the application's configuration helper if available; if the configuration helper cannot be imported, it falls back to the current working directory.
-    
+    Retrieve the filesystem directory used for application logs.
+
+    This resolves paths lazily via mmrelay.paths.resolve_all_paths.
+
     Returns:
-        log_dir (str): Path to the directory where logs should be written."""
-    try:
-        from mmrelay.config import get_log_dir as _get_log_dir
-    except ImportError:
-        return os.getcwd()
-    return _get_log_dir()
+        str: The path to the logs directory.
+
+    Raises:
+        LogsDirTypeError: If the resolved `logs_dir` value is not a string.
+    """
+    from mmrelay.paths import resolve_all_paths
+
+    result = resolve_all_paths()["logs_dir"]
+    if not isinstance(result, str):
+        raise LogsDirTypeError()
+    return result
 
 
 def _configure_logger(
@@ -226,10 +240,10 @@ def _configure_logger(
 ) -> logging.Logger:
     """
     Configure a logger's level and attach console and optional rotating file handlers based on the application's configuration and optional CLI arguments.
-    
+
     Parameters:
         args (argparse.Namespace | None): Optional CLI arguments that can force or override file logging and influence the resolved logfile path.
-    
+
     Returns:
         logging.Logger: The configured logger instance.
     """
@@ -303,7 +317,11 @@ def _configure_logger(
         logger.addHandler(console_handler)
 
     # Determine whether to attach a file handler
-    if _should_log_to_file(effective_args):
+    file_logging_enabled = _should_log_to_file(effective_args)
+    if logger.name in _FILE_LOGGING_EXEMPT_LOGGERS:
+        file_logging_enabled = False
+
+    if file_logging_enabled:
         log_file = _resolve_log_file(effective_args)
 
         # Create log directory if it doesn't exist

@@ -13,6 +13,10 @@ APP_AUTHOR = None  # No author directory for platformdirs
 APP_DISPLAY_NAME = "MMRelay"
 APP_FULL_NAME = "MMRelay - Meshtastic <=> Matrix Relay"
 
+# Windows installer directory name (used by Inno Setup)
+# The installer uses "MM Relay" with a space, not "mmrelay"
+WINDOWS_INSTALLER_DIR_NAME = "MM Relay"
+
 # Matrix client identification
 MATRIX_DEVICE_NAME = "MMRelay"
 
@@ -27,3 +31,4 @@ PYTHON_OLM_PACKAGE = "python-olm"
 CREDENTIALS_FILENAME = "credentials.json"
 CONFIG_FILENAME = "config.yaml"
 STORE_DIRNAME = "store"
+MATRIX_DIRNAME = "matrix"

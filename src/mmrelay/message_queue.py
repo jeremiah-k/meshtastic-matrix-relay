@@ -10,10 +10,10 @@ import asyncio
 import contextlib
 import threading
 import time
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import partial
-from queue import Empty, Full, Queue
 from typing import Any, Callable, Optional, cast
 
 from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
@@ -27,6 +27,20 @@ from mmrelay.constants.queue import (
 from mmrelay.log_utils import get_logger
 
 logger = get_logger(name="MessageQueue")
+
+# Module-level constant for connection error keywords (fallback heuristic)
+# Used when exception types don't match known connection errors.
+_CONNECTION_ERROR_KEYWORDS = frozenset(
+    [
+        "connection",
+        "not connected",
+        "disconnected",
+        "timeout",
+        "broken pipe",
+        "reset by peer",
+        "network",
+    ]
+)
 
 
 @dataclass
@@ -55,9 +69,13 @@ class MessageQueue:
         """
         Initialize the MessageQueue's internal structures and default runtime state.
 
-        Sets up the bounded FIFO queue, timing/state variables for rate limiting and delivery tracking, a thread lock for state transitions, and counters/placeholders for the processor task and executor.
+        Sets up the unbounded FIFO queue with explicit size checks, timing/state variables for rate limiting and delivery tracking, a thread lock for state transitions, and counters/placeholders for the processor task and executor.
+
+        Note: The queue is intentionally unbounded (no maxlen) to ensure all message drops are
+        explicitly logged. Size enforcement is handled in enqueue() with proper logging when
+        messages are dropped, rather than silent eviction by deque's maxlen.
         """
-        self._queue: Queue[QueuedMessage] = Queue(maxsize=MAX_QUEUE_SIZE)
+        self._queue: deque[QueuedMessage] = deque()  # Explicit size checks in enqueue()
         self._processor_task: Optional[asyncio.Task[None]] = None
         self._running = False
         self._lock = threading.Lock()
@@ -70,6 +88,7 @@ class MessageQueue:
         self._in_flight = False
         self._has_current = False
         self._dropped_messages = 0
+        self._last_queue_full_log_time: float | None = None
 
     def start(self, message_delay: float = DEFAULT_MESSAGE_DELAY) -> None:
         """
@@ -205,17 +224,21 @@ class MessageQueue:
         *args: Any,
         description: str = "",
         mapping_info: Optional[dict[str, Any]] = None,
+        wait: bool = False,
+        timeout: Optional[float] = None,
         **kwargs: Any,
     ) -> bool:
         """
-        Add a send operation to the queue for ordered, rate-limited delivery.
+        Enqueues a send operation for ordered, rate-limited delivery.
 
         Parameters:
-            description (str): Human-readable description used for logging.
-            mapping_info (dict[str, Any] | None): Optional metadata to correlate the sent message with an external event (e.g., Matrix IDs); stored after a successful send.
+            description: Human-readable description used for logging.
+            mapping_info: Optional metadata to correlate the sent message with an external event (e.g., Matrix IDs); stored after a successful send.
+            wait: If True, wait for queue space to become available instead of immediately dropping. Defaults to False.
+            timeout: Maximum time in seconds to wait for queue space when `wait` is True; `None` means wait indefinitely.
 
         Returns:
-            bool: `true` if the message was successfully enqueued, `false` if the queue is not running or is full.
+            `true` if the message was successfully enqueued, `false` otherwise.
         """
         # Ensure processor is started if event loop is now available.
         # This is called outside the lock to prevent potential deadlocks.
@@ -238,17 +261,70 @@ class MessageQueue:
                 description=description,
                 mapping_info=mapping_info,
             )
-            # Enforce capacity via bounded queue
-            try:
-                self._queue.put_nowait(message)
-            except Full:
-                logger.warning(
-                    f"Message queue full ({self._queue.qsize()}/{MAX_QUEUE_SIZE}), dropping message: {description}"
-                )
-                self._dropped_messages += 1
-                return False
+
+            # Try to enqueue the message
+            start_time = time.monotonic()
+            while True:
+                queue_size = len(self._queue)
+                if queue_size >= MAX_QUEUE_SIZE:
+                    if wait:
+                        # Check if we've exceeded timeout
+                        if timeout is not None:
+                            elapsed = time.monotonic() - start_time
+                            if elapsed >= timeout:
+                                logger.error(
+                                    f"Message queue full ({queue_size}/{MAX_QUEUE_SIZE}) "
+                                    f"and wait timed out after {timeout}s, dropping message: {description}"
+                                )
+                                self._dropped_messages += 1
+                                return False
+
+                        # Log queue full warning periodically (every 5 seconds)
+                        current_time = time.monotonic()
+                        if (
+                            self._last_queue_full_log_time is None
+                            or current_time - self._last_queue_full_log_time >= 5.0
+                        ):
+                            logger.warning(
+                                f"Message queue full ({queue_size}/{MAX_QUEUE_SIZE}), "
+                                f"waiting for space: {description}"
+                            )
+                            self._last_queue_full_log_time = current_time
+
+                        # Release lock and wait a bit before retrying
+                        # Use try/finally to ensure lock is always reacquired
+                        self._lock.release()
+                        try:
+                            time.sleep(0.5)
+                        finally:
+                            self._lock.acquire()
+
+                        # Re-check queue is still running
+                        if not self._running:
+                            logger.error(
+                                "Queue stopped while waiting; dropping message: %s",
+                                description,
+                            )
+                            return False
+                        continue
+                    else:
+                        # Not waiting - immediately drop the message
+                        logger.error(
+                            f"Message queue full ({queue_size}/{MAX_QUEUE_SIZE}), "
+                            f"dropping message: {description}. "
+                            f"Consider increasing queue size or reducing message rate."
+                        )
+                        self._dropped_messages += 1
+                        return False
+
+                # Queue has space, append the message
+                self._queue.append(message)
+                # Reset the queue full log time since we successfully enqueued
+                self._last_queue_full_log_time = None
+                break
+
             # Only log queue status when there are multiple messages
-            queue_size = self._queue.qsize()
+            queue_size = len(self._queue)
             if queue_size >= 2:
                 logger.debug(
                     f"Queued message ({queue_size}/{MAX_QUEUE_SIZE}): {description}"
@@ -257,19 +333,45 @@ class MessageQueue:
 
     def get_queue_size(self) -> int:
         """
-        Return the number of messages currently in the queue.
+        Get the current number of messages queued.
 
         Returns:
-            int: The current queue size.
+            int: Number of messages in the queue.
         """
-        return self._queue.qsize()
+        return len(self._queue)
+
+    def _requeue_message(self, message: QueuedMessage) -> bool:
+        """
+        Requeue a message at the front of the queue to maintain FIFO order.
+
+        This is used when a message was dequeued but couldn't be sent due to
+        connection issues. The message is put back at the front so it will be
+        the next one processed when connection is restored.
+
+        Parameters:
+            message: The QueuedMessage to requeue.
+
+        Returns:
+            bool: True if successfully requeued, False if queue is full.
+        """
+        with self._lock:
+            # Check if queue is full - use O(1) appendleft for prepend
+            if len(self._queue) >= MAX_QUEUE_SIZE:
+                logger.error(
+                    f"Cannot requeue message - queue full: {message.description}"
+                )
+                self._dropped_messages += 1
+                return False
+            # O(1) prepend using deque's appendleft
+            self._queue.appendleft(message)
+            return True
 
     def is_running(self) -> bool:
         """
-        Report whether the message queue processor is active.
+        Indicates whether the message queue is active.
 
         Returns:
-            True if the processor is running, False otherwise.
+            `true` if the queue is running, `false` otherwise.
         """
         return self._running
 
@@ -291,7 +393,7 @@ class MessageQueue:
         """
         return {
             "running": self._running,
-            "queue_size": self._queue.qsize(),
+            "queue_size": len(self._queue),
             "message_delay": self._message_delay,
             "processor_task_active": self._processor_task is not None
             and not self._processor_task.done(),
@@ -317,7 +419,7 @@ class MessageQueue:
             `True` if the queue drained before being stopped and before the timeout, `False` if the queue was stopped before draining or the timeout was reached.
         """
         deadline = (time.monotonic() + timeout) if timeout is not None else None
-        while (not self._queue.empty()) or self._in_flight or self._has_current:
+        while self._queue or self._in_flight or self._has_current:
             if not self._running:
                 return False
             if deadline is not None and time.monotonic() > deadline:
@@ -345,9 +447,9 @@ class MessageQueue:
 
     async def _process_queue(self) -> None:
         """
-        Process queued messages in FIFO order, sending each when the connection is ready and the configured inter-message delay has elapsed.
+        Process queued messages and send them while respecting connection state and the configured inter-message delay.
 
-        Runs until the queue is stopped or the task is cancelled. After a successful send, updates last-send timestamps and, when provided mapping information is present and the send result exposes an `id`, persists the message mapping. Cancellation may drop an in-flight message.
+        Runs until the queue is stopped or the task is cancelled. On a successful send, updates the queue's last-send timestamps; if a message includes mapping information and the send result exposes an `id`, persists that mapping. Maintains FIFO ordering, requeues messages on transient connection-related failures for later retry, and preserves rate-limiting checks between sends. Cancellation may drop an in-flight message.
         """
         logger.debug("Message queue processor started")
         current_message = None
@@ -357,7 +459,7 @@ class MessageQueue:
                 # Get next message if we don't have one waiting
                 if current_message is None:
                     # Monitor queue depth for operational awareness
-                    queue_size = self._queue.qsize()
+                    queue_size = len(self._queue)
                     if queue_size > QUEUE_HIGH_WATER_MARK:
                         logger.warning(
                             f"Queue depth high: {queue_size} messages pending"
@@ -369,9 +471,9 @@ class MessageQueue:
 
                     # Get next message (non-blocking)
                     try:
-                        current_message = self._queue.get_nowait()
+                        current_message = self._queue.popleft()
                         self._has_current = True
-                    except Empty:
+                    except IndexError:
                         # No messages, wait a bit and continue
                         await asyncio.sleep(0.1)
                         continue
@@ -394,13 +496,43 @@ class MessageQueue:
                             f"Rate limiting: waiting {wait_time:.1f}s before sending"
                         )
                         await asyncio.sleep(wait_time)
-                        continue
+                        # CRITICAL: Re-check connection state after rate limiting sleep
+                        # to avoid race condition where connection drops during the wait
+                        if not self._should_send_message():
+                            logger.debug(
+                                f"Connection dropped during rate limiting, requeueing: {current_message.description}"
+                            )
+                            # Requeue at front to maintain FIFO order
+                            self._requeue_message(current_message)
+                            current_message = None
+                            self._has_current = False
+                            await asyncio.sleep(1.0)
+                            continue
+                        # After successful wait, continue to send
                     elif time_since_last < MINIMUM_MESSAGE_DELAY:
                         # Warn when messages are sent less than MINIMUM_MESSAGE_DELAY seconds apart
                         logger.warning(
-                            f"[Runtime] Messages sent {time_since_last:.1f}s apart, which is below {MINIMUM_MESSAGE_DELAY}s. "
+                            f"Messages sent {time_since_last:.1f}s apart, which is below {MINIMUM_MESSAGE_DELAY}s. "
                             f"Due to rate limiting in the Meshtastic Firmware, messages may be dropped."
                         )
+                elif self._message_delay < MINIMUM_MESSAGE_DELAY:
+                    # Warn on first send if configured delay is below MINIMUM_MESSAGE_DELAY
+                    logger.warning(
+                        f"Messages are being sent with {self._message_delay}s delay, "
+                        f"which is below {MINIMUM_MESSAGE_DELAY}s. "
+                        f"Due to rate limiting in the Meshtastic Firmware, messages may be dropped."
+                    )
+
+                # Final connection check right before sending to catch race conditions
+                if not self._should_send_message():
+                    logger.debug(
+                        f"Connection not ready before send, requeueing: {current_message.description}"
+                    )
+                    self._requeue_message(current_message)
+                    current_message = None
+                    self._has_current = False
+                    await asyncio.sleep(1.0)
+                    continue
 
                 # Send the message
                 try:
@@ -462,12 +594,36 @@ class MessageQueue:
                                 )
 
                 except Exception as e:
-                    logger.error(
-                        f"Error sending queued message '{current_message.description}': {e}"
+                    # Check if this is a connection-related error that should trigger requeue
+                    # First check exception types, then fall back to string matching
+                    is_connection_error = isinstance(
+                        e, (ConnectionError, OSError, TimeoutError)
                     )
+                    if not is_connection_error:
+                        error_msg = str(e).lower()
+                        is_connection_error = any(
+                            keyword in error_msg
+                            for keyword in _CONNECTION_ERROR_KEYWORDS
+                        )
 
-                # Mark task as done and clear current message
-                self._queue.task_done()
+                    if is_connection_error:
+                        logger.warning(
+                            f"Connection error sending message '{current_message.description}': {e}. "
+                            f"Requeueing to retry later."
+                        )
+                        # Requeue the message for retry
+                        self._requeue_message(current_message)
+                        current_message = None
+                        self._has_current = False
+                        self._in_flight = False
+                        await asyncio.sleep(1.0)
+                        continue
+                    else:
+                        logger.exception(
+                            f"Error sending queued message '{current_message.description}'"
+                        )
+
+                # Clear current message
                 current_message = None
                 self._in_flight = False
                 self._has_current = False
@@ -478,8 +634,6 @@ class MessageQueue:
                     logger.warning(
                         f"Message in flight was dropped during shutdown: {current_message.description}"
                     )
-                    with contextlib.suppress(Exception):
-                        self._queue.task_done()
                 self._in_flight = False
                 self._has_current = False
                 break

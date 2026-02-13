@@ -15,7 +15,7 @@ import sys
 from collections.abc import Mapping
 from typing import Any
 
-import yaml  # type: ignore[import-untyped]
+import yaml
 
 # Import version from package
 from mmrelay import __version__
@@ -24,7 +24,6 @@ from mmrelay.cli_utils import (
     get_deprecation_warning,
     msg_for_e2ee_support,
     msg_or_run_auth_login,
-    msg_run_auth_login,
     msg_setup_auth,
     msg_setup_authentication,
     msg_suggest_generate_config,
@@ -55,16 +54,29 @@ from mmrelay.constants.network import (
 )
 from mmrelay.e2ee_utils import E2EEStatus
 from mmrelay.log_utils import get_logger
+from mmrelay.paths import ensure_directories
 from mmrelay.tools import get_sample_config_path
 
 # Lazy-initialized logger to avoid circular imports and filesystem access during import
 _logger: logging.Logger | None = None
-logger: logging.Logger | None = None
+
+
+class MissingModuleAttributeError(AttributeError):
+    """Exception raised when an attribute is missing from the module."""
+
+    def __init__(self, name: str) -> None:
+        """
+        Initialize the MissingModuleAttributeError with the missing module attribute's name.
+
+        Parameters:
+            name (str): The name of the missing attribute used to construct the exception message.
+        """
+        super().__init__(f"module {__name__!r} has no attribute {name!r}")
 
 
 def _get_logger() -> logging.Logger:
     """
-    Return the module-level logger, creating it on first access.
+    Get the module-level logger, creating and caching it on first access.
 
     Returns:
         logging.Logger: The module logger instance.
@@ -75,12 +87,29 @@ def _get_logger() -> logging.Logger:
     global _logger
     if _logger is None:
         _logger = get_logger(__name__)
-    global logger
-    if logger is None:
-        logger = _logger
     if _logger is None:
         raise RuntimeError("Logger must be initialized")
     return _logger
+
+
+def __getattr__(name: str) -> Any:
+    """
+    Provide the module attribute named "logger" via lazy initialization.
+
+    When accessed as module attribute `logger`, returns the module-level logger instance. For any other attribute name, raises MissingModuleAttributeError.
+
+    Parameters:
+        name (str): The attribute name being requested.
+
+    Returns:
+        Any: The module-level logger when `name` is "logger".
+
+    Raises:
+        MissingModuleAttributeError: If the module does not expose the requested attribute.
+    """
+    if name == "logger":
+        return _get_logger()
+    raise MissingModuleAttributeError(name)
 
 
 # =============================================================================
@@ -88,36 +117,117 @@ def _get_logger() -> logging.Logger:
 # =============================================================================
 
 
-def _apply_dir_overrides(args: argparse.Namespace) -> None:
+def _apply_dir_overrides(args: argparse.Namespace | None) -> None:
     """
-    Apply --base-dir/--data-dir overrides to global config and ensure directories exist.
+    Apply CLI directory overrides to the application's unified HOME path.
+
+    Checks CLI flags in priority order: --home, --base-dir, then --data-dir. When an override is provided the function sets the resolved absolute HOME via the paths subsystem, emits deprecation/conflict warnings for legacy flags as appropriate, ensures the target directory exists, and aborts with an error if the target is a protected system directory.
 
     Parameters:
-        args (argparse.Namespace): Parsed CLI arguments.
+        args (argparse.Namespace | None): Parsed CLI arguments that may contain `home`, `base_dir`, or `data_dir`. If `None` or no valid override is present, the function does nothing.
     """
-    if not args or not (args.base_dir or args.data_dir):
+    if not args:
         return
-    import mmrelay.config
 
-    if args.base_dir and args.data_dir:
+    def _is_valid_path(value: object) -> bool:
+        """
+        Check whether the given value is a non-empty string after trimming whitespace.
+
+        Parameters:
+            value (object): The value to test.
+
+        Returns:
+            bool: `True` if `value` is a string containing at least one non-whitespace character, `False` otherwise.
+        """
+        return isinstance(value, str) and value.strip() != ""
+
+    # Determine which path to use for HOME override
+    home_override = None
+    home_source = None
+
+    # Priority 1: --home (recommended flag)
+    home_value = getattr(args, "home", None)
+    base_value = getattr(args, "base_dir", None)
+    data_value = getattr(args, "data_dir", None)
+
+    if _is_valid_path(home_value):
+        if _is_valid_path(base_value) or _is_valid_path(data_value):
+            print(
+                "Warning: --home overrides --base-dir/--data-dir; ignoring legacy flags.",
+                file=sys.stderr,
+            )
+        home_override = home_value
+        home_source = "--home"
+
+    # Priority 2: --base-dir (legacy flag)
+    elif _is_valid_path(base_value):
+        if _is_valid_path(data_value):
+            print(
+                "Warning: --base-dir overrides --data-dir; ignoring --data-dir.",
+                file=sys.stderr,
+            )
+        home_override = base_value
+        home_source = "--base-dir"
         print(
-            "Warning: --data-dir is deprecated and ignored when --base-dir is provided.",
+            "Warning: --base-dir is deprecated; use --home instead.",
             file=sys.stderr,
         )
-    elif args.data_dir:
+
+    # Priority 3: --data-dir (most deprecated flag)
+    elif _is_valid_path(data_value):
+        home_override = data_value
+        home_source = "--data-dir"
         print(
-            "Warning: --data-dir is deprecated. Use --base-dir instead.",
+            "Warning: --data-dir is deprecated. Use --home instead.",
             file=sys.stderr,
         )
 
-    if args.base_dir:
-        expanded_base_dir = os.path.expanduser(args.base_dir)
-        mmrelay.config.custom_base_dir = os.path.abspath(expanded_base_dir)
-        os.makedirs(mmrelay.config.custom_base_dir, exist_ok=True)
-    elif args.data_dir:
-        expanded_data_dir = os.path.expanduser(args.data_dir)
-        mmrelay.config.custom_data_dir = os.path.abspath(expanded_data_dir)
-        os.makedirs(mmrelay.config.custom_data_dir, exist_ok=True)
+    # If no home override is specified, nothing to do
+    if not home_override:
+        return
+
+    # Apply the HOME override to the paths module
+    import mmrelay.paths
+
+    expanded_home = os.path.expanduser(home_override)
+    absolute_home = os.path.abspath(expanded_home)
+
+    # Prevent using critical system directories as the home directory
+    # Note: Only block truly critical paths - containers may use paths like /app or /data
+    # Using lower-case comparison for cross-platform compatibility
+    forbidden_paths = {
+        # Unix system directories
+        "/",
+        "/etc",
+        "/usr",
+        "/bin",
+        "/sbin",
+        "/boot",
+        "/dev",
+        "/proc",
+        "/sys",
+    }
+    # Add Windows-specific system paths dynamically from environment variables
+    # This handles cases where Windows is installed on a different drive
+    if sys.platform == "win32":
+        system_root = os.environ.get("SystemRoot")
+        if system_root:
+            forbidden_paths.add(system_root.lower())
+        program_files = os.environ.get("ProgramFiles")
+        if program_files:
+            forbidden_paths.add(program_files.lower())
+        program_files_x86 = os.environ.get("ProgramFiles(x86)")
+        if program_files_x86:
+            forbidden_paths.add(program_files_x86.lower())
+    if str(absolute_home).lower() in forbidden_paths:
+        print(
+            f"Error: Setting MMRELAY_HOME to a critical system directory ('{absolute_home}') is not allowed.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    mmrelay.paths.set_home_override(absolute_home, source=home_source)
+    os.makedirs(absolute_home, exist_ok=True)
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -134,13 +244,18 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument("--config", help="Path to config file", default=None)
     parser.add_argument(
+        "--home",
+        help="Home directory for all data (logs, database, plugins, credentials)",
+        default=None,
+    )
+    parser.add_argument(
         "--base-dir",
-        help="Base directory for all data (logs, database, plugins)",
+        help="Deprecated: use --home instead",
         default=None,
     )
     parser.add_argument(
         "--data-dir",
-        help="Deprecated: use --base-dir instead",
+        help="Deprecated: use --home instead",
         default=None,
     )
     parser.add_argument(
@@ -180,6 +295,47 @@ def parse_arguments() -> argparse.Namespace:
     # Add grouped subcommands for modern CLI interface
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
+    # PATHS command (top-level)
+    subparsers.add_parser(
+        "paths",
+        help="Show path configuration and diagnostics",
+        description="Display all path information for debugging and verification",
+    )
+
+    # DOCTOR command (top-level)
+    doctor_parser = subparsers.add_parser(
+        "doctor",
+        help="Diagnose path configuration and migration status",
+        description="Display comprehensive diagnostic information about HOME, legacy paths, and migration recommendations",
+    )
+    doctor_parser.add_argument(
+        "--migration",
+        action="store_true",
+        help="Run migration verification checks (read-only)",
+    )
+
+    subparsers.add_parser(
+        "verify-migration",
+        help="Verify migration state and detect legacy data",
+        description="Check that MMRELAY_HOME is the single source of runtime data",
+    )
+
+    migrate_parser = subparsers.add_parser(
+        "migrate",
+        help="Migrate data from legacy directory structure",
+        description="Migrate data from v1.2.x to v1.3 unified layout with safe defaults",
+    )
+    migrate_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview migration without making changes",
+    )
+    migrate_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Allow overwriting existing files at destination (backups will still be created)",
+    )
+
     # CONFIG group
     config_parser = subparsers.add_parser(
         "config",
@@ -200,9 +356,14 @@ def parse_arguments() -> argparse.Namespace:
         description="Check configuration file syntax and completeness",
     )
     config_subparsers.add_parser(
+        "paths",
+        help="Show path configuration and diagnostics",
+        description="Display all path information for debugging and verification",
+    )
+    config_subparsers.add_parser(
         "diagnose",
-        help="Diagnose configuration system issues",
-        description="Test config generation capabilities and troubleshoot platform-specific issues",
+        help="Run configuration diagnostics",
+        description="Run non-destructive configuration diagnostics",
     )
 
     # AUTH group
@@ -270,7 +431,22 @@ def parse_arguments() -> argparse.Namespace:
     service_subparsers.add_parser(
         "install",
         help="Install systemd user service",
-        description="Install or update the systemd user service for MMRelay",
+        description="Install or update systemd user service for MMRelay",
+    )
+    service_migrate_parser = service_subparsers.add_parser(
+        "migrate",
+        help="Migrate data from legacy directory structure",
+        description="Migrate data from v1.2.x to v1.3 unified layout with safe defaults",
+    )
+    service_migrate_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview migration without making changes",
+    )
+    service_migrate_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Allow overwriting existing files at destination (backups will still be created)",
     )
 
     # Use parse_known_args to handle unknown arguments gracefully (e.g., pytest args)
@@ -329,16 +505,12 @@ def _e2ee_dependencies_available() -> bool:
 
 def _validate_e2ee_dependencies() -> bool:
     """
-    Check whether end-to-end encryption (E2EE) is usable on the current platform.
+    Check whether the current platform supports end-to-end encryption (E2EE) and the required Python libraries are available.
+
+    Performs only local checks (platform and importability) and prints user-facing guidance when E2EE is unsupported or dependencies are missing.
 
     Returns:
-        bool: True if the platform is supported and required E2EE libraries can be imported;
-        False otherwise.
-
-    Notes:
-        - This function performs only local checks (platform and importability) and does not perform
-          network I/O.
-        - It emits user-facing messages to indicate missing platform support or missing dependencies.
+        True if the platform supports E2EE and required E2EE libraries can be imported, False otherwise.
     """
     if sys.platform == WINDOWS_PLATFORM:
         print("❌ Error: E2EE is not supported on Windows")
@@ -357,59 +529,100 @@ def _validate_e2ee_dependencies() -> bool:
     return False
 
 
-def _validate_credentials_json(config_path: str) -> bool:
+def _validate_credentials_json(
+    config_path: str, config: Mapping[str, Any] | None = None
+) -> bool:
     """
-    Check for a Matrix credentials.json next to the provided config and validate required fields.
+    Validate a Matrix credentials.json located relative to the given configuration.
 
-    Ensures a credentials.json can be located relative to config_path and that it contains non-empty string values for "homeserver", "access_token", "user_id", and "device_id". On validation failure this function prints a concise error message and guidance to run the authentication login flow.
+    Searches for a credentials.json file (honoring an explicit credentials_path in `config` when present) and verifies it contains non-empty string values for "homeserver", "access_token", and "user_id". The "device_id" field is optional; if missing, a warning is logged noting potential session tracking issues. On validation failure this function prints concise, user-facing error messages and guidance to run the authentication login flow.
 
     Parameters:
-        config_path (str): Path to the configuration file used to determine where to look for credentials.json.
+        config_path (str): Path to the configuration file used to locate credentials.json.
+        config (Mapping[str, Any] | None): Parsed configuration to honor an explicit credentials_path, if provided.
 
     Returns:
-        bool: `True` if credentials.json exists and contains non-empty "homeserver", "access_token", "user_id", and "device_id"; `False` otherwise.
+        bool: `True` if a valid credentials.json was found with the required non-empty fields; `False` otherwise.
     """
     import json
 
+    from mmrelay.config import (
+        InvalidCredentialsPathTypeError,
+        get_credentials_search_paths,
+        get_explicit_credentials_path,
+        relay_config,
+    )
+
     try:
-        # Look for credentials.json using helper function
-        credentials_path = _find_credentials_json_path(config_path)
-        if not credentials_path:
-            return False
+        explicit_path = get_explicit_credentials_path(config or relay_config)
+    except InvalidCredentialsPathTypeError as exc:
+        _get_logger().error("Invalid credentials_path: %s", exc)
+        print(f"❌ Error: {exc}", file=sys.stderr)
+        return False
 
-        # Load and validate credentials
-        with open(credentials_path, "r", encoding="utf-8") as f:
-            credentials = json.load(f)
+    candidate_paths = get_credentials_search_paths(
+        explicit_path=explicit_path,
+        config_paths=[config_path] if config_path else None,
+    )
 
-        # Check for required fields
-        required_fields = ["homeserver", "access_token", "user_id", "device_id"]
+    for credentials_path in candidate_paths:
+        if not os.path.exists(credentials_path):
+            continue
+        try:
+            with open(credentials_path, "r", encoding="utf-8") as f:
+                credentials = json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            _get_logger().warning(
+                "Skipping invalid credentials candidate %s: %s",
+                credentials_path,
+                e,
+            )
+            continue
+
+        if not isinstance(credentials, dict):
+            _get_logger().warning(
+                "Skipping credentials candidate with non-object JSON: %s",
+                credentials_path,
+            )
+            continue
+
+        required_fields = ["homeserver", "access_token", "user_id"]
         missing_fields = [
             field
             for field in required_fields
-            if not _is_valid_non_empty_string((credentials or {}).get(field))
+            if not _is_valid_non_empty_string(credentials.get(field))
         ]
-
         if missing_fields:
-            print(
-                f"❌ Error: credentials.json missing required fields: {', '.join(missing_fields)}"
+            _get_logger().warning(
+                "Skipping credentials candidate missing required fields (%s): %s",
+                ", ".join(missing_fields),
+                credentials_path,
             )
-            print(f"   {msg_run_auth_login()}")
-            return False
+            print(
+                f"⚠️  Warning: credentials.json missing required fields: {', '.join(missing_fields)}",
+                file=sys.stderr,
+            )
+            continue
+
+        # Optional device_id for legacy compatibility
+        if not _is_valid_non_empty_string(credentials.get("device_id")):
+            _get_logger().warning(
+                "Credentials file at %s is missing 'device_id'. "
+                "This may cause issues with session tracking.",
+                credentials_path,
+            )
 
         return True
-    except (OSError, json.JSONDecodeError) as e:
-        _get_logger().exception("Could not validate credentials.json")
-        print(f"❌ Error: Could not validate credentials.json: {e}", file=sys.stderr)
-        print(f"   {msg_run_auth_login()}", file=sys.stderr)
-        return False
+
+    return False
 
 
 def _is_valid_non_empty_string(value: Any) -> bool:
     """
-    Check whether a value contains at least one non-whitespace character.
+    Determine whether a value is a non-empty string containing at least one non-whitespace character.
 
     Returns:
-        `true` if `value` is a `str` and stripping whitespace yields a non-empty string, `false` otherwise.
+        True if `value` is a `str` and contains at least one non-whitespace character, False otherwise.
     """
     return isinstance(value, str) and value.strip() != ""
 
@@ -443,21 +656,24 @@ def _has_valid_password_auth(matrix_section: Mapping[str, Any] | None) -> bool:
 
 
 def _validate_matrix_authentication(
-    config_path: str, matrix_section: Mapping[str, Any] | None
+    config_path: str,
+    matrix_section: Mapping[str, Any] | None,
+    config: Mapping[str, Any] | None = None,
 ) -> bool:
     """
-    Determine whether Matrix authentication is configured and usable.
+    Determine whether a usable Matrix authentication method is available.
 
-    Checks for a credentials.json located relative to config_path and, if absent, falls back to password-based fields or an access_token in matrix_section. Prints which authentication source will be used and whether E2EE support is available.
+    Checks for a credentials.json located relative to config_path (honoring an explicit credentials_path in `config` when present) and, if none is found, falls back to password-based fields or an `access_token` in `matrix_section`.
 
     Parameters:
         config_path (str): Path to the application's YAML config file; used to locate a credentials.json candidate.
-        matrix_section (Mapping[str, Any] | None): The parsed "matrix" configuration section; an `access_token` or password-based fields may provide authentication when credentials.json is not present.
+        matrix_section (Mapping[str, Any] | None): The parsed "matrix" configuration section; may contain `access_token` or password-based fields.
+        config (Mapping[str, Any] | None): Parsed configuration used to honor explicit `credentials_path` values when locating credentials.json.
 
     Returns:
-        bool: `True` if a usable authentication method (credentials.json, password-based config, or access_token) is available, `False` otherwise.
+        `true` if a usable authentication method (credentials.json, password-based config, or access_token) is available, `false` otherwise.
     """
-    has_valid_credentials = _validate_credentials_json(config_path)
+    has_valid_credentials = _validate_credentials_json(config_path, config)
     token = (matrix_section or {}).get(CONFIG_KEY_ACCESS_TOKEN)
     has_access_token = _is_valid_non_empty_string(token)
 
@@ -492,32 +708,27 @@ def _validate_e2ee_config(
     _config: dict[str, Any], matrix_section: Mapping[str, Any] | None, config_path: str
 ) -> bool:
     """
-    Validate end-to-end encryption (E2EE) configuration and Matrix authentication readiness.
+    Validate E2EE settings and Matrix authentication readiness for a configuration file.
 
-    Performs authentication checks for the provided configuration source (credentials.json adjacent to
-    config_path or in-config credentials). If no `matrix_section` is present, validation succeeds. When
-    E2EE/encryption is enabled in the matrix configuration, verifies platform support and required
-    dependencies, and reports the configured store path (prints a note if the store directory does not
-    exist).
+    Performs authentication checks (credentials.json, password, or access_token) and, if E2EE is enabled,
+    verifies platform support and required native dependencies. If a configured E2EE store path does not
+    exist, prints an informational note about its creation.
 
     Parameters:
-        _config (dict[str, Any]): Full parsed configuration (kept for caller compatibility; not used
-            for most checks).
-        matrix_section (Mapping[str, Any] | None): The "matrix" subsection of the parsed config, or
-            None if absent.
-        config_path (str): Path to the active configuration file, used to locate adjacent authentication
-            artifacts (for example, credentials.json).
+        _config (dict[str, Any]): Full parsed configuration (kept for caller compatibility; not used by most checks).
+        matrix_section (Mapping[str, Any] | None): The "matrix" subsection of the parsed config, or None if absent.
+        config_path (str): Path to the active configuration file; used to locate adjacent authentication artifacts
+            such as credentials.json.
 
     Returns:
-        bool: `True` if authentication and any enabled E2EE settings are valid (or if E2EE is not
-        configured), `False` otherwise.
+        bool: `True` if authentication is usable and any enabled E2EE settings are valid (or if E2EE is not configured),
+        `False` otherwise.
 
-    Side effects:
-        Prints informational and error messages describing authentication status, dependency checks,
-        and E2EE store-path notes.
+    Notes:
+        This function prints user-facing status and guidance messages to stdout.
     """
     # First validate authentication
-    if not _validate_matrix_authentication(config_path, matrix_section):
+    if not _validate_matrix_authentication(config_path, matrix_section, _config):
         return False
 
     # Check for E2EE configuration
@@ -552,35 +763,27 @@ def _validate_e2ee_config(
 
 def _analyze_e2ee_setup(config: dict[str, Any], config_path: str) -> dict[str, Any]:
     """
-    Analyze local E2EE readiness without contacting Matrix.
+    Analyze local end-to-end encryption (E2EE) readiness without contacting Matrix.
 
-    Performs an offline inspection of the environment and configuration to determine
-    whether end-to-end encryption (E2EE) can be used. Checks platform support
-    (Windows is considered unsupported), presence of required Python dependencies
-    (olm and selected nio components), whether E2EE is enabled in the provided
-    config, and whether a credentials.json is available adjacent to the supplied
-    config_path or in the standard base directory.
+    Performs an offline inspection of the environment and provided configuration to
+    determine whether E2EE can be used. The check includes platform support,
+    presence of required E2EE dependencies, whether E2EE is enabled in the
+    configuration, and whether a usable credentials.json can be located.
 
     Parameters:
-        config (dict): Parsed configuration (typically from config.yaml). Only the
-            "matrix" section is consulted to detect E2EE/encryption enablement.
-        config_path (str): Path to the configuration file used to locate a
-            credentials.json sibling; also used to resolve an alternate standard
-            credentials location.
+        config (dict): Parsed configuration (usually from config.yaml); the
+            "matrix" section is consulted for E2EE/encryption enablement.
+        config_path (str): Path to the configuration file; used to locate a
+            credentials.json sibling or other standard credential locations.
 
     Returns:
-        dict: Analysis summary with these keys:
+        dict: Analysis summary with the following keys:
           - config_enabled (bool): True if E2EE/encryption is enabled in config.
-          - dependencies_available (bool): True if required E2EE packages are
-            importable.
-          - credentials_available (bool): True if a usable credentials.json was
-            found.
-          - platform_supported (bool): False on unsupported platforms (Windows).
-          - overall_status (str): One of "ready", "disabled", "not_supported",
-            "incomplete", or "unknown" describing the combined readiness.
-          - recommendations (list): Human-actionable strings suggesting fixes or
-            next steps (e.g., enable E2EE in config, install dependencies, run
-            auth login).
+          - dependencies_available (bool): True if required E2EE packages are importable.
+          - credentials_available (bool): True if a usable credentials.json was found.
+          - platform_supported (bool): False when the current platform does not support E2EE (e.g., Windows).
+          - overall_status (str): One of "ready", "disabled", "not_supported", "incomplete", or "unknown".
+          - recommendations (list[str]): Human-actionable suggestions to resolve gaps (e.g., enable E2EE, install dependencies, run auth login).
     """
     analysis: dict[str, Any] = {
         "config_enabled": False,
@@ -619,7 +822,7 @@ def _analyze_e2ee_setup(config: dict[str, Any], config_path: str) -> dict[str, A
         )
 
     # Check credentials file existence
-    credentials_path = _find_credentials_json_path(config_path)
+    credentials_path = _find_credentials_json_path(config_path, config)
     analysis["credentials_available"] = bool(credentials_path)
 
     if not analysis["credentials_available"]:
@@ -644,53 +847,60 @@ def _analyze_e2ee_setup(config: dict[str, Any], config_path: str) -> dict[str, A
     return analysis
 
 
-def _find_credentials_json_path(config_path: str | None) -> str | None:
+def _find_credentials_json_path(
+    config_path: str | None, config: Mapping[str, Any] | None = None
+) -> str | None:
     """
-    Locate a credentials.json file adjacent to the given configuration or in the application's base directory.
-
-    Search order:
-    1. credentials.json in the same directory as `config_path` (if provided).
-    2. credentials.json in the application's base directory (get_base_dir()).
+    Locate the credentials.json file by honoring an explicit credentials_path in the provided configuration and searching prioritized candidate locations.
 
     Parameters:
-        config_path (str | None): Path to the configuration file used to derive the adjacent credentials.json location.
+        config_path (str | None): Optional path to a configuration file; if provided, its directory is considered among candidate locations.
+        config (Mapping[str, Any] | None): Parsed configuration used to honor an explicit `credentials_path` override.
 
     Returns:
-        str | None: Absolute path to the discovered credentials.json, or `None` if no file is found.
+        str | None: Absolute path to the discovered credentials.json, or `None` if no credentials file is found.
     """
-    if not config_path:
-        from mmrelay.config import get_base_dir
+    from mmrelay.config import (
+        InvalidCredentialsPathTypeError,
+        get_credentials_search_paths,
+        get_explicit_credentials_path,
+        relay_config,
+    )
 
-        standard = os.path.join(get_base_dir(), "credentials.json")
-        return standard if os.path.exists(standard) else None
+    try:
+        explicit_path = get_explicit_credentials_path(config or relay_config)
+    except InvalidCredentialsPathTypeError as exc:
+        _get_logger().error("Invalid credentials_path: %s", exc)
+        print(f"❌ Error: {exc}", file=sys.stderr)
+        return None
 
-    config_dir = os.path.dirname(config_path)
-    candidate = os.path.join(config_dir, "credentials.json")
-    if os.path.exists(candidate):
-        return candidate
-    from mmrelay.config import get_base_dir
+    candidate_paths = get_credentials_search_paths(
+        explicit_path=explicit_path,
+        config_paths=[config_path] if config_path else None,
+    )
+    for candidate in candidate_paths:
+        if os.path.exists(candidate):
+            return candidate
 
-    standard = os.path.join(get_base_dir(), "credentials.json")
-    return standard if os.path.exists(standard) else None
+    return None
 
 
 def _print_unified_e2ee_analysis(e2ee_status: E2EEStatus) -> None:
     """
     Print a concise, user-facing analysis of end-to-end encryption (E2EE) readiness.
 
-    Given an E2EE status dictionary, prints platform support, dependency availability,
-    configuration state, credentials presence, and an overall readiness summary. If
-    the overall status is not "ready", prints actionable fix instructions obtained
-    from get_e2ee_fix_instructions().
+    Prints a short report indicating platform support, whether required E2EE dependencies are available,
+    whether E2EE is enabled in the configuration, whether usable credentials are present, an overall status line,
+    and actionable fix instructions when the overall status is not "ready".
 
     Parameters:
-        e2ee_status (E2EEStatus): A status mapping containing at least the following keys:
-            - platform_supported (bool): whether the current OS/platform supports E2EE.
-            - dependencies_installed or dependencies_available (bool): whether required E2EE
-              Python packages and runtime dependencies are present.
-            - enabled or config_enabled (bool): whether E2EE is enabled in the configuration.
-            - credentials_available (bool): whether a usable credentials.json is present.
-            - overall_status (str): high-level status such as "ready", "disabled", or "incomplete".
+        e2ee_status (E2EEStatus): Mapping containing status flags and metadata used to determine readiness.
+            Relevant keys include:
+            - "platform_supported" (bool): True when the OS/platform supports E2EE.
+            - "dependencies_installed" or "dependencies_available" (bool): True when required packages/runtime are present.
+            - "enabled" or "config_enabled" (bool): True when E2EE is enabled in the configuration.
+            - "credentials_available" (bool): True when a usable credentials.json is available.
+            - "overall_status" (str): High-level status such as "ready", "disabled", or "incomplete".
     """
     print("\n🔐 E2EE Configuration Analysis:")
 
@@ -959,6 +1169,13 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
         if os.path.isfile(path):
             config_path = path
             print(f"Found configuration file at: {config_path}")
+        elif os.path.isdir(path):
+            print(f"Warning: Configuration path is a directory, skipping: {path}")
+            continue
+        else:
+            continue
+
+        if config_path:
             try:
                 with open(config_path, "r", encoding="utf-8") as f:
                     config_content = f.read()
@@ -984,7 +1201,7 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                 config = apply_env_config_overrides(config)
 
                 # Check if we have valid credentials.json first
-                has_valid_credentials = _validate_credentials_json(config_path)
+                has_valid_credentials = _validate_credentials_json(config_path, config)
 
                 # Check matrix section requirements based on credentials.json availability
                 if has_valid_credentials:
@@ -1076,7 +1293,7 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                     if not e2ee_status.get("platform_supported", True):
                         print("\n⚠️  Warning: E2EE is not supported on Windows")
                         print("   Messages to encrypted rooms will be blocked")
-                except Exception as e:
+                except (ImportError, OSError) as e:
                     print(f"\n⚠️  Could not perform E2EE analysis: {e}")
                     print("   Falling back to basic E2EE validation...")
                     if not _validate_e2ee_config(config, matrix_section, config_path):
@@ -1347,8 +1564,14 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                     f"Error checking configuration: {e.__class__.__name__}: {e}",
                     file=sys.stderr,
                 )
-            except Exception as e:
-                print(f"Error checking configuration: {e}", file=sys.stderr)
+                config_path = None
+                continue
+            except (yaml.YAMLError, KeyError, TypeError, AttributeError) as e:
+                _get_logger().debug("Unexpected error checking config", exc_info=True)
+                print(
+                    f"Error checking configuration: {e.__class__.__name__}: {e}",
+                    file=sys.stderr,
+                )
                 return False
 
     print("Error: No configuration file found in any of the following locations:")
@@ -1362,10 +1585,10 @@ def main() -> int:
     """
     Run the MMRelay command-line interface, dispatching modern subcommands, deprecated legacy flags, or the main runtime.
 
-    Parses command-line arguments (including --base-dir / deprecated --data-dir), configures runtime directories, and invokes the appropriate handler for config, auth, service subcommands, legacy CLI actions, or the primary application entrypoint. Prints user-facing error messages and maps failures to non-zero exit codes.
+    Parses command-line arguments, applies directory overrides and initialization, and routes execution to the appropriate command handler or the primary application entrypoint; writes user-facing error messages and maps failure conditions to non-zero exit codes.
 
     Returns:
-        int: Exit code — `0` on success, non-zero on failure.
+        Exit code (int): `0` on success, non-zero on failure.
     """
     try:
         # Set up Windows console for better compatibility
@@ -1382,6 +1605,12 @@ def main() -> int:
 
         # Handle the --base-dir/--data-dir options
         _apply_dir_overrides(args)
+
+        # Ensure application directories exist after overrides are applied.
+        # This runs unconditionally (including for read-only commands) to guarantee
+        # a consistent environment and avoid errors if subsequent operations need
+        # to write logs or temporary files.
+        ensure_directories(create_missing=True)
 
         args_dict = vars(args)
         has_modern_command = bool(getattr(args, "command", None))
@@ -1417,7 +1646,7 @@ def main() -> int:
             print(f"Error importing main module: {e}")
             return 1
 
-    except (OSError, PermissionError, KeyboardInterrupt) as e:
+    except (OSError, KeyboardInterrupt) as e:
         # Handle common system-level errors
         print(f"System error: {e.__class__.__name__}: {e}", file=sys.stderr)
         return 1
@@ -1438,9 +1667,9 @@ def main() -> int:
 
 def handle_subcommand(args: argparse.Namespace) -> int:
     """
-    Dispatch the selected CLI subcommand to its handler.
+    Dispatch a top-level CLI subcommand to its handler.
 
-    Supports the "config", "auth", and "service" grouped subcommands and delegates execution to the corresponding handler.
+    Supported commands: config, auth, service, paths, doctor, verify-migration, migrate.
 
     Returns:
         Exit code returned by the invoked handler; `1` if the command is unknown.
@@ -1451,6 +1680,14 @@ def handle_subcommand(args: argparse.Namespace) -> int:
         return handle_auth_command(args)
     elif args.command == "service":
         return handle_service_command(args)
+    elif args.command == "paths":
+        return handle_paths_command(args)
+    elif args.command == "doctor":
+        return handle_doctor_command(args)
+    elif args.command == "verify-migration":
+        return handle_verify_migration_command(args)
+    elif args.command == "migrate":
+        return handle_migrate_command(args)
     else:
         print(f"Unknown command: {args.command}")
         return 1
@@ -1458,15 +1695,16 @@ def handle_subcommand(args: argparse.Namespace) -> int:
 
 def handle_config_command(args: argparse.Namespace) -> int:
     """
-    Dispatch the "config" command group to the selected subcommand handler.
+    Dispatches "config" command group to the selected subcommand handler.
 
     Supported subcommands:
-    - "generate": create or update the sample configuration file at the preferred location.
-    - "check": validate the resolved configuration file (delegates to check_config).
-    - "diagnose": run a sequence of non-destructive diagnostics and print a report (delegates to handle_config_diagnose).
+        - "generate": create or update of sample configuration file at preferred location.
+        - "check": validate of resolved configuration file (delegates to check_config).
+        - "paths": show path configuration (delegates to handle_paths_command).
+        - "diagnose": run a sequence of non-destructive diagnostics and print a report (delegates to handle_config_diagnose).
 
     Parameters:
-        args (argparse.Namespace): CLI namespace containing `config_command` (one of "generate", "check", "diagnose") and any subcommand-specific options.
+        args (argparse.Namespace): CLI namespace containing `config_command` (one of "generate", "check", "paths", "diagnose") and any subcommand-specific options.
 
     Returns:
         int: Exit code (0 on success, 1 on failure or for unknown subcommands).
@@ -1475,6 +1713,8 @@ def handle_config_command(args: argparse.Namespace) -> int:
         return 0 if generate_sample_config() else 1
     elif args.config_command == "check":
         return 0 if check_config(args) else 1
+    elif args.config_command == "paths":
+        return handle_paths_command(args)
     elif args.config_command == "diagnose":
         return handle_config_diagnose(args)
     else:
@@ -1506,11 +1746,323 @@ def handle_auth_command(args: argparse.Namespace) -> int:
         return handle_auth_login(args)
 
 
+def _detect_same_home_legacy_items(paths_info: dict[str, Any]) -> list[dict[str, str]]:
+    """
+    Detect legacy v1.2 layout artifacts still present within HOME directory.
+
+    These are items that are in the wrong location within HOME (e.g., store/ instead of
+    matrix/store/, credentials.json at root instead of matrix/credentials.json).
+
+    Parameters:
+        paths_info (dict[str, Any]): Mapping returned by resolve_all_paths().
+
+    Returns:
+        list[dict[str, str]]: List of detected same-home legacy items, each with
+            'type' and 'path' keys. Empty list if none found.
+    """
+    from pathlib import Path
+
+    from mmrelay.constants.app import CREDENTIALS_FILENAME, STORE_DIRNAME
+
+    home = Path(paths_info.get("home", ""))
+    if not home.exists():
+        return []
+
+    same_home_legacy_items: list[dict[str, str]] = []
+
+    # Check for credentials.json at HOME root (should be in matrix/)
+    credentials_path = paths_info.get("credentials_path", "")
+    legacy_home_credentials = home / CREDENTIALS_FILENAME
+    if (
+        legacy_home_credentials.exists()
+        and str(legacy_home_credentials) != credentials_path
+    ):
+        same_home_legacy_items.append(
+            {"type": "credentials", "path": str(legacy_home_credentials)}
+        )
+
+    # Check for store/ at HOME root (should be in matrix/store/)
+    store_dir = paths_info.get("store_dir", "")
+    # Skip if store_dir is not an absolute path (e.g., placeholder on Windows)
+    if isinstance(store_dir, str) and os.path.isabs(store_dir):
+        legacy_home_store = home / STORE_DIRNAME
+        if legacy_home_store.exists() and str(legacy_home_store) != store_dir:
+            same_home_legacy_items.append(
+                {"type": "e2ee_store", "path": str(legacy_home_store)}
+            )
+
+    return same_home_legacy_items
+
+
+def _print_path_summary(paths_info: dict[str, Any]) -> None:
+    """
+    Print a human-readable summary of resolved MMRelay filesystem paths and related environment overrides.
+
+    Displays the configured HOME directory and its source, key runtime artifact locations (credentials, database, E2EE store, logs), plugin and legacy source locations, detected environment variables, and any CLI path override present in the provided resolution.
+
+    Parameters:
+        paths_info (dict[str, Any]): Mapping returned by resolve_all_paths() containing path entries and metadata (e.g. 'home', 'home_source', 'credentials_path', 'database_dir', 'store_dir', 'logs_dir', 'log_file', 'plugins_dir', 'custom_plugins_dir', 'community_plugins_dir', 'legacy_sources', 'env_vars_detected', 'cli_override').
+    """
+    # Print HOME information
+    print("\n📍 HOME Directory:")
+    print(f"   Location: {paths_info.get('home', '<unknown>')}")
+    print(f"   Source: {paths_info.get('home_source', '<unknown>')}")
+
+    # Print runtime artifact paths
+    print("\n📁 Runtime Artifacts (all in HOME):")
+    print(f"   Credentials: {paths_info.get('credentials_path', '<unknown>')}")
+    print(f"   Database: {paths_info.get('database_dir', '<unknown>')}")
+    print(f"   Store (E2EE): {paths_info.get('store_dir', '<unknown>')}")
+    print(f"   Logs: {paths_info.get('logs_dir', '<unknown>')}")
+    if "log_file" in paths_info:
+        print(f"   Log File: {paths_info['log_file']}")
+
+    # Print plugin paths
+    print("\n📦 Plugins:")
+    print(f"   Plugins: {paths_info.get('plugins_dir', '<unknown>')}")
+    if "custom_plugins_dir" in paths_info:
+        print(f"   Custom: {paths_info['custom_plugins_dir']}")
+    if "community_plugins_dir" in paths_info:
+        print(f"   Community: {paths_info['community_plugins_dir']}")
+
+    # Print legacy sources (external directories with legacy data)
+    print("\n📋 Legacy Sources (read-only):")
+    if paths_info.get("legacy_sources"):
+        for legacy_dir in paths_info["legacy_sources"]:
+            print(f"   - {legacy_dir}")
+    else:
+        print("   (none detected)")
+
+    # Check for same-home legacy items (v1.2 layout artifacts in wrong places)
+    same_home_legacy = _detect_same_home_legacy_items(paths_info)
+    if same_home_legacy:
+        print("\n📂 Legacy Layout in HOME (v1.2):")
+        for item in same_home_legacy:
+            print(f"   ⚠️  {item['type']}: {item['path']}")
+
+    # Print environment variables
+    print("\n🔧 Environment Variables:")
+    if paths_info.get("env_vars_detected"):
+        for var_name, var_value in paths_info["env_vars_detected"].items():
+            print(f"   {var_name}={var_value}")
+    else:
+        print("   (none detected)")
+
+    # Print CLI override
+    print(f"\n⚙️  CLI Override: {paths_info.get('cli_override', 'None')}")
+
+
+def handle_paths_command(_args: argparse.Namespace) -> int:
+    """
+    Display all path configuration and diagnostics.
+
+    Parameters:
+        args (argparse.Namespace): CLI namespace.
+
+    Returns:
+        int: Exit code (0 on success, non-zero on failure).
+    """
+    from mmrelay.paths import resolve_all_paths
+
+    # Get path information
+    paths_info = resolve_all_paths()
+
+    # Print header
+    print("\n" + "=" * 60)
+    print("MMRelay Path Configuration (mmrelay paths)")
+    print("=" * 60)
+
+    # Print shared summary
+    _print_path_summary(paths_info)
+
+    # Print plugin roots searched
+    print("\n   Plugin Roots Searched:")
+    print(f"   Primary: {paths_info['plugins_dir']}")
+
+    # Check for legacy data
+    if paths_info.get("legacy_sources"):
+        print("\n   ⚠️  Legacy data detected!")
+        print(
+            f"   Legacy directories found: {', '.join(str(d) for d in paths_info['legacy_sources'])}"
+        )
+        print("   Migration will scan all legacy roots for data to migrate")
+        print("   💡 Run 'mmrelay migrate --dry-run' to see what would be moved")
+        print("   💡 Run 'mmrelay migrate' to migrate data to new structure")
+
+    return 0
+
+
+# Alias for backward compatibility with existing tests
+handle_config_paths = handle_paths_command
+
+
+def handle_verify_migration_command(_args: argparse.Namespace) -> int:
+    """
+    Verify migration readiness and report legacy data findings in read-only mode.
+
+    Runs the migration verification routine and prints a human-readable report.
+
+    Returns:
+        0 if the verification report indicates success, 1 otherwise.
+    """
+    try:
+        from mmrelay.migrate import print_migration_verification, verify_migration
+    except ImportError as e:
+        print(f"Error importing migration module: {e}")
+        return 1
+
+    report = verify_migration()
+    print_migration_verification(report)
+    return 0 if report["ok"] else 1
+
+
+def handle_doctor_command(args: argparse.Namespace) -> int:
+    """
+    Print a diagnostic summary of resolved runtime paths, legacy sources, environment variables, CLI overrides, and migration status.
+
+    If the provided args has a boolean attribute `migration` set to True, run migration verification and include its warnings/errors in the output.
+
+    Parameters:
+        args (argparse.Namespace): Parsed CLI arguments; may include `migration` (bool) to enable migration verification.
+
+    Returns:
+        int: 0 on success, 1 if migration verification reported errors or detected legacy data requiring action.
+    """
+    try:
+        from mmrelay.migrate import is_migration_needed, verify_migration
+        from mmrelay.paths import resolve_all_paths
+    except ImportError as e:
+        print(f"Error importing required modules: {e}")
+        return 1
+
+    # Get path information
+    paths_info = resolve_all_paths()
+
+    # Print header with version
+    print("\n" + "=" * 60)
+    print("MMRelay Diagnostics (mmrelay doctor)")
+    print("=" * 60)
+
+    # Print version info
+    print("\n🔢 Version:")
+    print(f"   MMRelay: {__version__}")
+    print(f"   Python: {sys.version.split()[0]}")
+    print(f"   Platform: {sys.platform}")
+
+    # Print shared summary
+    _print_path_summary(paths_info)
+
+    # System health checks
+    _print_system_health(paths_info)
+
+    # Check migration status and print recommendations
+    print("\n🔄 Migration Status:")
+    if is_migration_needed():
+        print("   ⚠️  Migration RECOMMENDED:")
+        print("       Legacy data detected in one or more locations.")
+        print("       Run 'mmrelay migrate --dry-run' to preview migration.")
+        print("       Run 'mmrelay migrate' to perform migration.")
+        print(
+            "       Use '--force' to overwrite existing destinations (backups will still be created)."
+        )
+
+    else:
+        print("   ✅ No migration needed (clean install or already migrated)")
+
+    if getattr(args, "migration", False):
+        report = verify_migration()
+        print("\n🧭 Migration Verification:")
+        if report.get("warnings"):
+            for warning in report.get("warnings", []):
+                print(f"   ⚠️  {warning}")
+        else:
+            print("   ✅ No legacy data found")
+        if report.get("errors"):
+            for error in report.get("errors", []):
+                print(f"   ❌ {error}")
+            return 1
+        # Also return 1 if there's any legacy data (even cleanup-only)
+        # to prompt user to take action
+        if report.get("legacy_data_found"):
+            return 1
+
+    # Return success
+    return 0
+
+
+def _print_system_health(paths_info: dict[str, Any]) -> None:
+    """
+    Print system health diagnostics including E2EE status, disk space, and database health.
+
+    Parameters:
+        paths_info (dict[str, Any]): Mapping from resolve_all_paths() containing path entries.
+    """
+    import sqlite3
+
+    from mmrelay.paths import get_database_path
+
+    # E2EE Dependencies
+    print("\n🔐 E2EE Dependencies:")
+    if sys.platform == WINDOWS_PLATFORM:
+        print("   ⚠️  Not supported on Windows")
+    elif _e2ee_dependencies_available():
+        print("   ✅ python-olm and nio crypto available")
+    else:
+        print("   ❌ Missing python-olm or nio crypto libraries")
+        print("       Install with: pip install mmrelay[e2e]")
+
+    # Disk Space
+    print("\n💾 Disk Space:")
+    try:
+        home_path = paths_info.get("home", ".")
+        if home_path and os.path.exists(home_path):
+            usage = shutil.disk_usage(home_path)
+            free_gb = usage.free / (1024**3)
+            total_gb = usage.total / (1024**3)
+            used_pct = (usage.used / usage.total) * 100
+            status = "✅" if free_gb > 1 else "⚠️" if free_gb > 0.1 else "❌"
+            print(
+                f"   {status} {free_gb:.1f} GB free of {total_gb:.1f} GB ({used_pct:.0f}% used)"
+            )
+            if free_gb < 0.5:
+                print("       ⚠️  Low disk space - database/logs may fail")
+        else:
+            print("   ⚠️  HOME directory not accessible")
+    except OSError as e:
+        print(f"   ❌ Could not check disk space: {e}")
+
+    # Database Health
+    print("\n🗄️  Database:")
+    try:
+        db_path = get_database_path()
+        if db_path.exists():
+            db_size_mb = db_path.stat().st_size / (1024**2)
+            print(f"   ✅ Database exists: {db_path}")
+            print(f"      Size: {db_size_mb:.1f} MB")
+
+            # Check WAL mode if possible
+            try:
+                with sqlite3.connect(str(db_path)) as conn:
+                    cursor = conn.execute("PRAGMA journal_mode;")
+                    mode = cursor.fetchone()[0]
+                    if mode.lower() == "wal":
+                        print("      Journal: WAL mode ✅")
+                    else:
+                        print(f"      Journal: {mode} mode")
+            except (sqlite3.Error, OSError):
+                pass  # Don't fail if we can't check
+        else:
+            print(f"   ⚠️  Database not found: {db_path}")
+            print("       Will be created on first run")
+    except (OSError, ValueError, AttributeError) as e:
+        print(f"   ❌ Could not check database: {e}")
+
+
 def handle_auth_login(args: argparse.Namespace) -> int:
     """
-    Run the Matrix bot login flow using either command-line credentials or an interactive prompt.
+    Perform Matrix bot authentication using either non-interactive CLI credentials or an interactive prompt.
 
-    Attempts non-interactive authentication when `args` provides all three of `homeserver`, `username`, and `password`; otherwise initiates an interactive login. Prints user-facing messages for missing parameters and error conditions.
+    If `args` provides all three of `homeserver`, `username`, and `password`, performs a non-interactive login. If none of those parameters are provided, runs an interactive login flow. If some but not all required parameters are supplied, reports the missing parameters and fails.
 
     Parameters:
         args (argparse.Namespace): Parsed CLI namespace; may include `homeserver`, `username`, and `password`.
@@ -1521,6 +2073,13 @@ def handle_auth_login(args: argparse.Namespace) -> int:
     import asyncio
 
     from mmrelay.matrix_utils import login_matrix_bot
+
+    # Ensure the HOME layout exists before interactive/non-interactive auth flows.
+    # This prevents first-run logins from falling back to ad-hoc credential paths.
+    try:
+        ensure_directories(create_missing=True)
+    except OSError as e:
+        _get_logger().warning("Could not pre-create MMRelay directories: %s", e)
 
     # Extract arguments
     homeserver = getattr(args, "homeserver", None)
@@ -1579,7 +2138,7 @@ def handle_auth_login(args: argparse.Namespace) -> int:
                 print("=========================")
         except (OSError, PermissionError, ImportError, ValueError) as e:
             # Fallback if silent checking fails due to config file or import issues
-            _get_logger().debug(f"Failed to silently check E2EE status: {e}")
+            _get_logger().debug("Failed to silently check E2EE status: %s", e)
             print("\nMatrix Bot Authentication")
             print("=========================")
 
@@ -1592,12 +2151,33 @@ def handle_auth_login(args: argparse.Namespace) -> int:
                 logout_others=False,
             )
         )
-        return 0 if result else 1
     except KeyboardInterrupt:
         print("\nAuthentication cancelled by user.")
         return 1
-    except Exception as e:
+    except (
+        ConnectionError,
+        asyncio.TimeoutError,
+        OSError,
+        RuntimeError,
+        ValueError,
+    ) as e:
         print(f"\nError during authentication: {e}")
+        return 1
+    else:
+        if result:
+            from mmrelay.paths import get_credentials_path
+
+            creds_path = get_credentials_path()
+            # Keep non-interactive output quiet for automation and existing CLI behavior.
+            if len(provided_params) == 0:
+                if creds_path.exists():
+                    print(f"✅ credentials.json saved: {creds_path}")
+                else:
+                    print(
+                        "⚠️ Authentication succeeded but credentials file was not found at "
+                        f"expected path: {creds_path}"
+                    )
+            return 0
         return 1
 
 
@@ -1621,6 +2201,7 @@ def handle_auth_status(args: argparse.Namespace) -> int:
     import json
 
     from mmrelay.config import (
+        InvalidCredentialsPathTypeError,
         get_config_paths,
         get_credentials_search_paths,
         get_explicit_credentials_path,
@@ -1632,7 +2213,14 @@ def handle_auth_status(args: argparse.Namespace) -> int:
 
     config_paths = get_config_paths(args)
     config_data = load_config(args=args, config_paths=config_paths)
-    explicit_path = get_explicit_credentials_path(config_data)
+
+    try:
+        explicit_path = get_explicit_credentials_path(config_data)
+    except InvalidCredentialsPathTypeError as exc:
+        _get_logger().error("Invalid credentials_path configuration: %s", exc)
+        print(f"❌ Error: {exc}", file=sys.stderr)
+        return 1
+
     candidate_paths = get_credentials_search_paths(
         explicit_path=explicit_path,
         config_paths=config_paths,
@@ -1644,24 +2232,36 @@ def handle_auth_status(args: argparse.Namespace) -> int:
                 with open(credentials_path, "r", encoding="utf-8") as f:
                     credentials = json.load(f)
 
-                required = ("homeserver", "access_token", "user_id", "device_id")
+                required = ("homeserver", "access_token", "user_id")
                 if not all(
                     isinstance(credentials.get(k), str) and credentials.get(k).strip()
                     for k in required
                 ):
                     print(
-                        f"❌ Error: credentials.json at {credentials_path} is missing required fields"
+                        f"⚠️  Skipping invalid credentials.json at {credentials_path} "
+                        "(missing required fields)"
                     )
-                    print(f"Run '{get_command('auth_login')}' to authenticate")
-                    return 1
+                    continue
+
+                if not (
+                    isinstance(credentials.get("device_id"), str)
+                    and credentials["device_id"].strip()
+                ):
+                    print(
+                        f"⚠️  credentials.json at {credentials_path} is missing 'device_id' "
+                        "(may cause session tracking issues)"
+                    )
+            except (OSError, json.JSONDecodeError, TypeError, ValueError) as e:
+                print(
+                    f"⚠️  Skipping unreadable credentials.json at {credentials_path}: {e}"
+                )
+                continue
+            else:
                 print(f"✅ Found credentials.json at: {credentials_path}")
                 print(f"   Homeserver: {credentials.get('homeserver')}")
                 print(f"   User ID: {credentials.get('user_id')}")
                 print(f"   Device ID: {credentials.get('device_id')}")
                 return 0
-            except Exception as e:
-                print(f"❌ Error reading credentials.json: {e}")
-                return 1
 
     print("❌ No credentials.json found")
     print(f"Run '{get_command('auth_login')}' to authenticate")
@@ -1670,20 +2270,19 @@ def handle_auth_status(args: argparse.Namespace) -> int:
 
 def handle_auth_logout(args: argparse.Namespace) -> int:
     """
-    Log out the Matrix bot and clear local session data.
+    Log out the Matrix bot, clear local session data, and invalidate the bot's access token.
 
-    Prompts for a verification password (unless a non-empty password is supplied via args.password),
-    optionally asks for confirmation (skipped if args.yes is True), and attempts to remove local
-    credentials, clear any E2EE store, and invalidate the bot's access token by calling the logout flow.
+    Prompts for a verification password if args.password is None or empty, and asks for confirmation
+    unless args.yes is True. On success this removes local credentials, clears any E2EE store, and
+    attempts to revoke the remote access token.
 
     Parameters:
-        args (argparse.Namespace): CLI arguments with relevant attributes:
-            password (str | None): If a non-empty string is provided, it is used as the verification
-                password; if None or empty, the function prompts securely.
+        args (argparse.Namespace): CLI arguments. Expected attributes:
+            password (str | None): Verification password; if None or an empty string the function prompts securely.
             yes (bool): If True, skip the interactive confirmation prompt.
 
     Returns:
-        int: 0 on successful logout, 1 if the operation fails or is cancelled (including Ctrl+C).
+        int: 0 on successful logout, 1 if the operation fails or is cancelled.
     """
     import asyncio
 
@@ -1734,8 +2333,110 @@ def handle_auth_logout(args: argparse.Namespace) -> int:
     except KeyboardInterrupt:
         print("\nLogout cancelled by user.")
         return 1
-    except Exception as e:
+    except (
+        ConnectionError,
+        asyncio.TimeoutError,
+        OSError,
+        RuntimeError,
+        ValueError,
+    ) as e:
         print(f"\nError during logout: {e}")
+        return 1
+
+
+def handle_migrate_command(args: argparse.Namespace) -> int:
+    """
+    Run data migration from legacy directory layouts to the unified HOME-based layout.
+
+    Honors CLI flags on `args`: `dry_run` (report actions without changing files) and `force` (override safety checks).
+
+    Parameters:
+        args (argparse.Namespace): Parsed CLI arguments containing optional `dry_run` and `force` attributes.
+
+    Returns:
+        int: `0` on success, `1` on failure.
+    """
+    try:
+        from mmrelay.migrate import is_migration_needed, perform_migration
+        from mmrelay.paths import resolve_all_paths
+
+        dry_run = getattr(args, "dry_run", False)
+        force = getattr(args, "force", False)
+        paths_info = resolve_all_paths()
+        legacy_sources = paths_info.get("legacy_sources", [])
+
+        print("MMRelay Migration")
+        print("=================")
+        print(f"Mode: {'DRY RUN' if dry_run else 'APPLY'}")
+        print(f"Force overwrite: {'yes' if force else 'no'}")
+        print(f"MMRELAY_HOME: {paths_info.get('home')}")
+        if legacy_sources:
+            print("Legacy sources detected:")
+            for source in legacy_sources:
+                print(f"  - {source}")
+        else:
+            if is_migration_needed():
+                print("Legacy sources detected: HOME (same-home legacy data)")
+            else:
+                print("Legacy sources detected: none")
+        print()
+
+        result = perform_migration(dry_run=dry_run, force=force)
+
+        if result.get("success"):
+            print(
+                "✅ Dry-run completed successfully"
+                if dry_run
+                else "✅ Migration completed successfully"
+            )
+            migrated_steps = 0
+            for migration in result.get("migrations", []):
+                mtype = migration.get("type", "unknown")
+                mresult = migration.get("result", {})
+                success = mresult.get("success")
+                if success:
+                    migrated_steps += 1
+                status_icon = "✅" if success else "❌"
+                message = (
+                    mresult.get("message")
+                    or mresult.get("error")
+                    or "No additional details"
+                )
+                print(f"  {status_icon} {mtype}: {message}")
+
+                old_path = mresult.get("old_path")
+                if old_path:
+                    print(f"     from: {old_path}")
+                new_path = mresult.get("new_path")
+                if new_path:
+                    print(f"       to: {new_path}")
+                action = mresult.get("action")
+                if action:
+                    print(f"   action: {str(action).upper()}")
+                migrated_count = mresult.get("migrated_count")
+                if isinstance(migrated_count, int):
+                    print(f"    files: {migrated_count}")
+                migrated_types = mresult.get("migrated_types")
+                if isinstance(migrated_types, list) and migrated_types:
+                    print(f"    types: {', '.join(str(t) for t in migrated_types)}")
+                if mresult.get("dry_run"):
+                    print("     note: no changes were made")
+
+            print(
+                f"\nSummary: {migrated_steps}/{len(result.get('migrations', []))} steps succeeded"
+            )
+            if dry_run:
+                print("Next step: run `mmrelay migrate` to apply changes.")
+            print("Verification: run `mmrelay verify-migration`.")
+            return 0
+        else:
+            print(f"❌ Migration failed: {result.get('error', 'Unknown error')}")
+            return 1
+    except ImportError as e:
+        print(f"Error importing migration module: {e}")
+        return 1
+    except OSError as e:
+        print(f"❌ Migration failed due to filesystem error: {e}")
         return 1
 
 
@@ -1759,6 +2460,8 @@ def handle_service_command(args: argparse.Namespace) -> int:
         except ImportError as e:
             print(f"Error importing setup utilities: {e}")
             return 1
+    elif args.service_command == "migrate":
+        return handle_migrate_command(args)
     else:
         print(f"Unknown service command: {args.service_command}")
         return 1
@@ -2023,12 +2726,11 @@ def handle_cli_commands(args: argparse.Namespace) -> int | None:
     Dispatch legacy CLI flags to their immediate handlers.
 
     Parameters:
-        args (argparse.Namespace): Parsed command-line arguments.
+        args (argparse.Namespace): Parsed command-line arguments from argparse.
 
     Returns:
-        int | None: Exit code (`0` on success, `1` on failure) if a legacy command was handled; `None` if no legacy flag was present.
+        int | None: `0` on success, `1` on failure if a legacy command was handled; `None` if no legacy flag was present.
     """
-    _apply_dir_overrides(args)
     args_dict = vars(args)
 
     # Handle --version
@@ -2079,10 +2781,10 @@ def generate_sample_config() -> bool:
     """
     Generate a sample configuration file at the highest-priority config path when no configuration exists.
 
-    Attempts to copy the bundled sample_config.yaml into the first candidate config path. If the packaged resource is unavailable, falls back to reading the sample from importlib.resources, several standard filesystem locations, and finally writes a minimal built-in template as a last resort. When a file is created, the function will attempt to apply secure owner-only permissions on Unix-like systems. If a config file already exists at any candidate path, no file is created.
+    If no existing config file is found, attempts to create one by copying a packaged sample, reading the bundled resource, checking common filesystem locations, and finally writing a minimal built-in template as a last resort. When a file is created, secure owner-only permissions are applied on Unix-like systems when possible. If a configuration file already exists at any candidate path, no file is created.
 
     Returns:
-        True if a sample configuration file was created, False if no file was created (because a config already existed or an error occurred).
+        True if a sample configuration file was created, False otherwise.
     """
 
     # Get the first config path (highest priority)
@@ -2094,6 +2796,12 @@ def generate_sample_config() -> bool:
         if os.path.isfile(path):
             existing_config = path
             break
+        elif os.path.isdir(path):
+            print(f"Error: Configuration path is a directory: {path}")
+            print(
+                "Please remove the directory or specify a different location with --config"
+            )
+            return False
 
     if existing_config:
         print(f"A config file already exists at: {existing_config}")
@@ -2105,7 +2813,22 @@ def generate_sample_config() -> bool:
     # No config file exists, generate one in the first location
     target_path = config_paths[0]
 
-    # Directory should already exist from get_config_paths() call
+    # Ensure the target directory exists
+    try:
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+    except (IOError, OSError) as e:
+        # Provide Windows-specific error guidance if available
+        try:
+            from mmrelay.windows_utils import get_windows_error_message, is_windows
+
+            if is_windows():
+                error_msg = get_windows_error_message(e)
+                print(f"Error creating config directory: {error_msg}")
+            else:
+                print(f"Error creating config directory: {e}")
+        except ImportError:
+            print(f"Error creating config directory: {e}")
+        return False
 
     # Use the helper function to get the sample config path
     sample_config_path = get_sample_config_path()
