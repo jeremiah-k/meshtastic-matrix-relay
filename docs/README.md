@@ -31,7 +31,7 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 ## Developer Documentation
 
 - **[Constants Reference](dev/CONSTANTS.md)** - Internal configuration constants and values
-- **[E2EE Implementation Notes](dev/E2EE_IMPLEMENTATION_NOTES.md)** - Technical details of E2EE implementation
+- **[E2EE Implementation Notes](dev/archive/E2EE_IMPLEMENTATION_NOTES.md)** - Technical details of E2EE implementation
 
 ## Documentation Structure
 
@@ -49,12 +49,12 @@ docs/
 ├── ADVANCED_CONFIGURATION.md # Advanced configuration options
 └── dev/                     # Developer documentation
     ├── CONSTANTS.md         # Internal configuration constants
-    ├── E2EE_IMPLEMENTATION_NOTES.md  # E2EE technical details
     ├── INNO_SETUP_GUIDE.md  # Windows installer build guide
     ├── TESTING_GUIDE.md     # Testing patterns and practices
     ├── RELEASE_1.3.md       # Release checklist (internal)
     └── archive/             # Historical planning documents
         ├── DATA_LAYOUT_MIGRATION.md
+        ├── E2EE_IMPLEMENTATION_NOTES.md  # E2EE technical details
         ├── V1_3_DIRECTORY_REDESIGN.md
         ├── V1_3_MIGRATION_IMPROVEMENTS_PLAN.md
         ├── UPGRADE_TEST_PLAN.md
