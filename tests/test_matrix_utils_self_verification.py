@@ -194,6 +194,7 @@ async def test_maybe_initiate_internal_self_verification_starts_for_unverified_d
     )
     client.users_for_key_query = set()
     client.should_query_keys = False
+    client.keys_query = AsyncMock(return_value=SimpleNamespace(failures={}))
     client.device_store = MagicMock()
     client.device_store.active_user_devices.return_value = [device_unverified]
     client.get_active_sas = MagicMock(return_value=None)

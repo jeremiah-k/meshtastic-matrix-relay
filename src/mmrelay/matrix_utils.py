@@ -125,6 +125,7 @@ from mmrelay.paths import E2EENotSupportedError, get_credentials_path
 
 # Import nio exception types with error handling for test environments.
 # matrix-nio is not marked py.typed in our env; keep import-untyped for mypy --strict.
+nio_responses: Any = None
 try:
     nio_exceptions = importlib.import_module("nio.exceptions")
     nio_responses = importlib.import_module("nio.responses")
@@ -1120,6 +1121,33 @@ matrix_client = None
 _self_verify_pending_transactions: set[str] = set()
 
 
+def _is_nio_error_response(response: Any) -> bool:
+    """
+    Return True when the provided nio response object is an ErrorResponse.
+    """
+    error_response_cls = getattr(nio_responses, "ErrorResponse", None)
+    return isinstance(error_response_cls, type) and isinstance(
+        response, error_response_cls
+    )
+
+
+def _format_nio_error_response(response: Any) -> str:
+    """
+    Build a concise error summary string for nio ErrorResponse-like objects.
+    """
+    message = getattr(response, "message", None)
+    status_code = getattr(response, "status_code", None)
+    retry_after_ms = getattr(response, "retry_after_ms", None)
+    parts: list[str] = []
+    if status_code is not None:
+        parts.append(f"status={status_code}")
+    if message:
+        parts.append(str(message))
+    if retry_after_ms is not None:
+        parts.append(f"retry_after_ms={retry_after_ms}")
+    return ", ".join(parts) if parts else type(response).__name__
+
+
 def _get_to_device_event_type(event: Any) -> str | None:
     """
     Return the Matrix type string for a to-device event when available.
@@ -1244,12 +1272,19 @@ async def _handle_internal_self_verification_to_device_event(
         )
 
         try:
-            await client.to_device(ready_message)
+            response = await client.to_device(ready_message, tx_id=tx_id)
         except NIO_COMM_EXCEPTIONS:
             logger.debug(
                 "Failed to send m.key.verification.ready for transaction %s",
                 tx_id,
                 exc_info=True,
+            )
+            return
+        if _is_nio_error_response(response):
+            logger.debug(
+                "m.key.verification.ready returned error for tx=%s: %s",
+                tx_id,
+                _format_nio_error_response(response),
             )
             return
 
@@ -1281,12 +1316,20 @@ async def _handle_internal_self_verification_to_device_event(
 
     if event_type == "m.key.verification.start":
         try:
-            await client.accept_key_verification(tx_id)
+            response = await client.accept_key_verification(tx_id)
         except NIO_COMM_EXCEPTIONS:
             logger.debug(
                 "Failed to accept self-verification transaction %s",
                 tx_id,
                 exc_info=True,
+            )
+            _self_verify_pending_transactions.discard(tx_id)
+            return
+        if _is_nio_error_response(response):
+            logger.debug(
+                "accept_key_verification returned error for tx=%s: %s",
+                tx_id,
+                _format_nio_error_response(response),
             )
             _self_verify_pending_transactions.discard(tx_id)
             return
@@ -1308,12 +1351,19 @@ async def _handle_internal_self_verification_to_device_event(
                 )
 
         try:
-            await client.confirm_short_auth_string(tx_id)
+            response = await client.confirm_short_auth_string(tx_id)
         except NIO_COMM_EXCEPTIONS:
             logger.debug(
                 "Failed to confirm self-verification transaction %s",
                 tx_id,
                 exc_info=True,
+            )
+            return
+        if _is_nio_error_response(response):
+            logger.debug(
+                "confirm_short_auth_string returned error for tx=%s: %s",
+                tx_id,
+                _format_nio_error_response(response),
             )
             return
         logger.debug("Confirmed self-verification transaction %s", tx_id)
@@ -1337,7 +1387,15 @@ async def _handle_internal_self_verification_to_device_event(
                     content={"transaction_id": tx_id},
                 )
                 try:
-                    await client.to_device(done_message)
+                    response = await client.to_device(done_message, tx_id=tx_id)
+                    if _is_nio_error_response(response):
+                        logger.debug(
+                            "m.key.verification.done returned error for tx=%s: %s",
+                            tx_id,
+                            _format_nio_error_response(response),
+                        )
+                        _self_verify_pending_transactions.discard(tx_id)
+                        return
                     logger.info(
                         "Completed internal self-verification transaction %s", tx_id
                     )
@@ -1353,6 +1411,61 @@ async def _handle_internal_self_verification_to_device_event(
 
     if tx_id and event_type in ("m.key.verification.cancel", "m.key.verification.done"):
         _self_verify_pending_transactions.discard(tx_id)
+
+
+async def _query_own_keys_for_self_verification(client: AsyncClient) -> None:
+    """
+    Refresh only the current user's device keys for self-verification decisions.
+
+    This avoids draining the full pending key-query set (which may include many
+    remote users/homeservers and unrelated transient failures).
+    """
+    if not isinstance(client.user_id, str) or not client.user_id:
+        return
+
+    users_for_key_query = getattr(client, "users_for_key_query", None)
+    clear_users = getattr(users_for_key_query, "clear", None)
+    add_user = getattr(users_for_key_query, "add", None)
+    update_users = getattr(users_for_key_query, "update", None)
+    if (
+        not callable(clear_users)
+        or not callable(add_user)
+        or not callable(update_users)
+    ):
+        return
+
+    original_users: set[Any] = set()
+    if users_for_key_query is not None:
+        try:
+            original_users = set(cast(Any, users_for_key_query))
+        except TypeError:
+            original_users = set()
+
+    try:
+        clear_users()
+        add_user(client.user_id)
+
+        response = await client.keys_query()
+        if _is_nio_error_response(response):
+            logger.debug(
+                "Own-user keys_query failed during self-verification setup: %s",
+                _format_nio_error_response(response),
+            )
+            return
+
+        failures = getattr(response, "failures", None)
+        if isinstance(failures, dict) and failures:
+            logger.debug(
+                "Own-user keys_query returned partial failures during self-verification setup: %s",
+                ", ".join(sorted(map(str, failures.keys()))),
+            )
+    except (NioLocalProtocolError, NioRemoteProtocolError):
+        logger.debug("Own-user keys_query raised protocol error", exc_info=True)
+    except (NioLocalTransportError, NioRemoteTransportError, asyncio.TimeoutError):
+        logger.debug("Own-user keys_query raised transport error", exc_info=True)
+    finally:
+        clear_users()
+        update_users(original_users)
 
 
 def _register_internal_self_verification_callback(
@@ -1456,19 +1569,7 @@ async def _maybe_initiate_internal_self_verification(
     except NIO_COMM_EXCEPTIONS:
         logger.debug("whoami check failed before self-verification", exc_info=True)
 
-    users_for_key_query = getattr(client, "users_for_key_query", None)
-    add_key_query_user = getattr(users_for_key_query, "add", None)
-    if callable(add_key_query_user) and isinstance(client.user_id, str):
-        try:
-            add_key_query_user(client.user_id)
-        except (AttributeError, TypeError):
-            logger.debug("Failed to queue own user for key query", exc_info=True)
-
-    if bool(getattr(client, "should_query_keys", False)):
-        try:
-            await client.keys_query()
-        except NIO_COMM_EXCEPTIONS:
-            logger.debug("Self-verification keys_query failed", exc_info=True)
+    await _query_own_keys_for_self_verification(client)
 
     try:
         own_devices = list(client.device_store.active_user_devices(client.user_id))
@@ -1483,7 +1584,9 @@ async def _maybe_initiate_internal_self_verification(
             continue
         if device_id == client.device_id:
             continue
-        if bool(getattr(device, "verified", False)):
+        if bool(getattr(device, "deleted", False)):
+            continue
+        if bool(getattr(device, "blacklisted", False)):
             continue
 
         try:
@@ -1499,15 +1602,36 @@ async def _maybe_initiate_internal_self_verification(
         logger.debug("No unverified same-account devices found for self-verification")
         return
 
+    candidates.sort(
+        key=lambda d: (
+            not bool(getattr(d, "verified", False)),
+            str(getattr(d, "id", "")),
+        )
+    )
+    logger.debug(
+        "Self-verification candidate devices: %s",
+        ", ".join(
+            f"{getattr(device, 'id', '<unknown>')}[verified={bool(getattr(device, 'verified', False))}]"
+            for device in candidates
+        ),
+    )
+
     for device in candidates:
         before_tx_ids = set(getattr(client, "key_verifications", {}).keys())
         try:
-            await client.start_key_verification(device)
+            response = await client.start_key_verification(device)
         except NIO_COMM_EXCEPTIONS:
             logger.debug(
                 "Failed to start self-verification with device %s",
                 getattr(device, "id", "<unknown>"),
                 exc_info=True,
+            )
+            continue
+        if _is_nio_error_response(response):
+            logger.debug(
+                "start_key_verification returned error for device %s: %s",
+                getattr(device, "id", "<unknown>"),
+                _format_nio_error_response(response),
             )
             continue
 
@@ -1545,7 +1669,7 @@ async def _maybe_initiate_internal_self_verification(
                 )
 
         logger.info(
-            "Initiated internal self-verification with device %s",
+            "Initiated internal self-verification with device %s; awaiting to-device verification events",
             getattr(device, "id", "<unknown>"),
         )
 
