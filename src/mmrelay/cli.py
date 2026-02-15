@@ -736,11 +736,11 @@ def _validate_e2ee_config(
         return True  # No matrix section means no E2EE config to validate
 
     e2ee_config = matrix_section.get("e2ee", {})
-    encryption_config = matrix_section.get("encryption", {})  # Legacy support
+    if not isinstance(e2ee_config, Mapping):
+        e2ee_config = {}
 
-    e2ee_enabled = e2ee_config.get("enabled", False) or encryption_config.get(
-        "enabled", False
-    )
+    enabled_value = e2ee_config.get("enabled", False)
+    e2ee_enabled = enabled_value if isinstance(enabled_value, bool) else False
 
     if e2ee_enabled:
         # Platform and dependency check
@@ -748,9 +748,7 @@ def _validate_e2ee_config(
             return False
 
         # Store path validation
-        store_path = e2ee_config.get("store_path") or encryption_config.get(
-            "store_path"
-        )
+        store_path = e2ee_config.get("store_path")
         if store_path:
             expanded_path = os.path.expanduser(store_path)
             if not os.path.exists(expanded_path):
@@ -772,13 +770,13 @@ def _analyze_e2ee_setup(config: dict[str, Any], config_path: str) -> dict[str, A
 
     Parameters:
         config (dict): Parsed configuration (usually from config.yaml); the
-            "matrix" section is consulted for E2EE/encryption enablement.
+            "matrix" section is consulted for E2EE enablement.
         config_path (str): Path to the configuration file; used to locate a
             credentials.json sibling or other standard credential locations.
 
     Returns:
         dict: Analysis summary with the following keys:
-          - config_enabled (bool): True if E2EE/encryption is enabled in config.
+          - config_enabled (bool): True if E2EE is enabled in config.
           - dependencies_available (bool): True if required E2EE packages are importable.
           - credentials_available (bool): True if a usable credentials.json was found.
           - platform_supported (bool): False when the current platform does not support E2EE (e.g., Windows).
@@ -810,11 +808,15 @@ def _analyze_e2ee_setup(config: dict[str, Any], config_path: str) -> dict[str, A
 
     # Check config setting
     matrix_section = config.get("matrix", {})
+    if not isinstance(matrix_section, Mapping):
+        matrix_section = {}
     e2ee_config = matrix_section.get("e2ee", {})
-    encryption_config = matrix_section.get("encryption", {})  # Legacy support
-    analysis["config_enabled"] = e2ee_config.get(
-        "enabled", False
-    ) or encryption_config.get("enabled", False)
+    if not isinstance(e2ee_config, Mapping):
+        e2ee_config = {}
+    enabled_value = e2ee_config.get("enabled", False)
+    analysis["config_enabled"] = (
+        enabled_value if isinstance(enabled_value, bool) else False
+    )
 
     if not analysis["config_enabled"]:
         analysis["recommendations"].append(

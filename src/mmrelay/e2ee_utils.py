@@ -41,7 +41,7 @@ def get_e2ee_status(
     Consolidates End-to-End Encryption (E2EE) readiness by checking platform support, required crypto dependencies, configuration flags, and presence of Matrix credentials.
 
     Parameters:
-        config (Dict[str, Any]): Parsed application configuration; used to read `matrix.e2ee.enabled` and legacy `matrix.encryption.enabled`.
+        config (Dict[str, Any]): Parsed application configuration; used to read `matrix.e2ee.enabled`.
         config_path (Optional[str]): Path to the application config file. When provided, credentials are first searched next to this config directory and then in standard locations; when omitted, only the standard credentials locations are probed.
 
     Returns:
@@ -93,10 +93,10 @@ def get_e2ee_status(
     # Check configuration
     matrix_section = config.get("matrix", {})
     e2ee_config = matrix_section.get("e2ee", {})
-    encryption_config = matrix_section.get("encryption", {})  # Legacy support
-    status["enabled"] = e2ee_config.get("enabled", False) or encryption_config.get(
-        "enabled", False
-    )
+    if not isinstance(e2ee_config, dict):
+        e2ee_config = {}
+    enabled_value = e2ee_config.get("enabled", False)
+    status["enabled"] = enabled_value if isinstance(enabled_value, bool) else False
 
     if not status["enabled"]:
         status["issues"].append("E2EE is disabled in configuration")

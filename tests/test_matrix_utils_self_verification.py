@@ -161,13 +161,13 @@ def test_internal_self_verification_can_be_disabled_in_e2ee_section():
     )
 
 
-def test_internal_self_verification_can_be_disabled_in_legacy_section():
+def test_internal_self_verification_ignores_legacy_section():
     assert (
         matrix_utils._is_internal_self_verification_enabled(
             matrix_section={"encryption": {"self_verify": False}},
             e2ee_enabled=True,
         )
-        is False
+        is True
     )
 
 

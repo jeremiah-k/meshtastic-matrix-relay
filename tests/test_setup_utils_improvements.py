@@ -147,18 +147,16 @@ class TestPatchCoverageImprovements(unittest.TestCase):
         # Test with empty string config (line 349)
         self.assertFalse(is_e2ee_enabled(""))
 
-        # Test with encryption enabled (legacy)
+        # Legacy key should be ignored
         config_encryption = {"matrix": {"encryption": {"enabled": True}}}
-        self.assertTrue(is_e2ee_enabled(config_encryption))
+        self.assertFalse(is_e2ee_enabled(config_encryption))
 
         # Test with e2ee enabled (new format)
         config_e2ee = {"matrix": {"e2ee": {"enabled": True}}}
         self.assertTrue(is_e2ee_enabled(config_e2ee))
 
-        # Test with both disabled
-        config_disabled = {
-            "matrix": {"encryption": {"enabled": False}, "e2ee": {"enabled": False}}
-        }
+        # Test with e2ee disabled
+        config_disabled = {"matrix": {"e2ee": {"enabled": False}}}
         self.assertFalse(is_e2ee_enabled(config_disabled))
 
     def test_check_e2ee_enabled_silently_function(self):
@@ -185,12 +183,11 @@ class TestPatchCoverageImprovements(unittest.TestCase):
         no_matrix_config = {"other_section": {"key": "value"}}
         self.assertFalse(is_e2ee_enabled(no_matrix_config))
 
-        # Test with encryption enabled but e2ee disabled (both should be true for OR logic)
+        # Legacy key should not enable E2EE
         mixed_config = {
             "matrix": {"encryption": {"enabled": True}, "e2ee": {"enabled": False}}
         }
-        # Should be True because encryption is enabled (OR logic)
-        self.assertTrue(is_e2ee_enabled(mixed_config))
+        self.assertFalse(is_e2ee_enabled(mixed_config))
 
         # Test with matrix section being None
         none_matrix_config = {"matrix": None}

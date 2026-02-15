@@ -164,8 +164,7 @@ MMRelay also proactively attempts to start self-verification with other unverifi
 
 Configuration:
 
-- `matrix.e2ee.self_verify` (preferred)
-- `matrix.encryption.self_verify` (legacy alias)
+- `matrix.e2ee.self_verify`
 - Default: `true` when E2EE is enabled
 
 **Implementation (`src/mmrelay/matrix_utils.py`):**

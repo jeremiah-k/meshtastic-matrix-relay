@@ -337,7 +337,7 @@ def _cleanup_local_session_data() -> bool:
     """
     Remove local Matrix session artifacts including the credentials file and any E2EE store directories.
 
-    Performs a best-effort removal using resolved application paths and any configured overrides (e.g. matrix.e2ee.store_path or matrix.encryption.store_path). Skips E2EE removal on platforms where it is not applicable, continues other removals if some fail, and logs successes or partial failures.
+    Performs a best-effort removal using resolved application paths and any configured overrides (e.g. matrix.e2ee.store_path). Skips E2EE removal on platforms where it is not applicable, continues other removals if some fail, and logs successes or partial failures.
 
     Returns:
         bool: `True` if all targeted files and directories were removed successfully, `False` otherwise.
@@ -389,18 +389,16 @@ def _cleanup_local_session_data() -> bool:
                 "cannot resolve E2EE store path from config."
             )
             matrix_cfg = {}
-        for section in ("e2ee", "encryption"):
-            section_cfg = matrix_cfg.get(section, {})
-            if not isinstance(section_cfg, dict):
-                _get_logger().warning(
-                    "Matrix configuration section '%s' is not a dictionary; "
-                    "cannot resolve E2EE store path.",
-                    section,
-                )
-                continue
-            override = os.path.expanduser(section_cfg.get("store_path", ""))
-            if override:
-                candidate_store_paths.add(override)
+        e2ee_cfg = matrix_cfg.get("e2ee", {})
+        if not isinstance(e2ee_cfg, dict):
+            _get_logger().warning(
+                "Matrix configuration section 'e2ee' is not a dictionary; "
+                "cannot resolve E2EE store path."
+            )
+            e2ee_cfg = {}
+        override = os.path.expanduser(e2ee_cfg.get("store_path", ""))
+        if override:
+            candidate_store_paths.add(override)
     except (ImportError, OSError) as e:
         _get_logger().debug(
             "Could not resolve configured E2EE store path: %s", type(e).__name__

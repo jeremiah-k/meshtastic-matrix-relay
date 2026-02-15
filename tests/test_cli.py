@@ -3191,10 +3191,10 @@ class TestValidateE2eeConfig(unittest.TestCase):
     @patch("mmrelay.cli._validate_matrix_authentication")
     @patch("mmrelay.cli._validate_e2ee_dependencies")
     @patch("builtins.print")
-    def test_validate_e2ee_config_legacy_encryption_config(
+    def test_validate_e2ee_config_ignores_legacy_encryption_config(
         self, mock_print, mock_validate_deps, mock_validate_auth
     ):
-        """Test E2EE config validation with legacy 'encryption' section."""
+        """Legacy encryption config should be ignored."""
         # Setup mocks
         mock_validate_auth.return_value = True
         mock_validate_deps.return_value = True
@@ -3216,8 +3216,8 @@ class TestValidateE2eeConfig(unittest.TestCase):
         mock_validate_auth.assert_called_once_with(
             self.config_path, matrix_section, self.base_config
         )
-        mock_validate_deps.assert_called_once()
-        mock_print.assert_any_call("✅ E2EE configuration is valid")
+        mock_validate_deps.assert_not_called()
+        mock_print.assert_not_called()
 
     @patch("mmrelay.cli._validate_matrix_authentication")
     @patch("mmrelay.cli._validate_e2ee_dependencies")
@@ -3232,7 +3232,7 @@ class TestValidateE2eeConfig(unittest.TestCase):
         mock_validate_deps,
         mock_validate_auth,
     ):
-        """Test E2EE config validation with legacy 'encryption.store_path'."""
+        """Legacy encryption.store_path should be ignored."""
         # Setup mocks
         mock_validate_auth.return_value = True
         mock_validate_deps.return_value = True
@@ -3259,14 +3259,10 @@ class TestValidateE2eeConfig(unittest.TestCase):
         mock_validate_auth.assert_called_once_with(
             self.config_path, matrix_section, self.base_config
         )
-        mock_validate_deps.assert_called_once()
-        mock_expanduser.assert_called_once_with("~/.mmrelay/legacy_store")
-        # Should not print directory creation message since it exists
-        mock_print.assert_any_call("✅ E2EE configuration is valid")
-        # Should not print directory creation message
-        self.assertNotIn(
-            "Note: E2EE store directory will be created", str(mock_print.call_args_list)
-        )
+        mock_validate_deps.assert_not_called()
+        mock_expanduser.assert_not_called()
+        mock_exists.assert_not_called()
+        mock_print.assert_not_called()
 
 
 class TestAnalyzeE2eeSetup(unittest.TestCase):
@@ -3435,7 +3431,7 @@ class TestAnalyzeE2eeSetup(unittest.TestCase):
     @patch("sys.platform", "darwin")
     @patch("os.path.exists")
     def test_analyze_e2ee_setup_macos_legacy_encryption_config(self, mock_exists):
-        """Test E2EE analysis on macOS with legacy encryption configuration."""
+        """Legacy encryption config should not enable E2EE analysis."""
         # Setup config with legacy encryption section
         config = {
             "matrix": {
@@ -3458,10 +3454,10 @@ class TestAnalyzeE2eeSetup(unittest.TestCase):
         # Verify results
         self.assertIsInstance(result, dict)
         self.assertTrue(result["platform_supported"])
-        self.assertTrue(result["config_enabled"])  # Should detect legacy config
+        self.assertFalse(result["config_enabled"])
         self.assertTrue(result["dependencies_available"])
         self.assertTrue(result["credentials_available"])
-        self.assertEqual(result["overall_status"], "ready")
+        self.assertEqual(result["overall_status"], "disabled")
 
     @patch("sys.platform", "linux")
     @patch("mmrelay.config.get_base_dir")

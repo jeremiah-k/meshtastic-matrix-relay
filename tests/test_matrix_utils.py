@@ -3311,7 +3311,7 @@ async def test_connect_matrix_sync_timeout_closes_client(monkeypatch):
                 "homeserver": "https://example.org",
                 "access_token": "token",
                 "bot_user_id": "@bot:example.org",
-                "encryption": {"enabled": True},
+                "e2ee": {"enabled": True},
             },
             "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
         },
@@ -3879,7 +3879,7 @@ async def test_connect_matrix_uploads_keys_when_needed(monkeypatch):
                 "homeserver": "https://example.org",
                 "access_token": "token",
                 "bot_user_id": "@bot:example.org",
-                "encryption": {"enabled": True},
+                "e2ee": {"enabled": True},
             },
             "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
         },
@@ -4250,7 +4250,7 @@ async def test_connect_matrix_e2ee_windows_disables(monkeypatch):
             "homeserver": "https://example.org",
             "access_token": "token",
             "bot_user_id": "@bot:example.org",
-            "encryption": {"enabled": True},
+            "e2ee": {"enabled": True},
         },
         "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
     }
@@ -4335,7 +4335,7 @@ async def test_connect_matrix_e2ee_store_path_from_config(monkeypatch):
                 "homeserver": "https://example.org",
                 "access_token": "token",
                 "bot_user_id": "@bot:example.org",
-                "encryption": {"enabled": True, "store_path": store_path},
+                "e2ee": {"enabled": True, "store_path": store_path},
             },
             "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
         }
@@ -4347,8 +4347,8 @@ async def test_connect_matrix_e2ee_store_path_from_config(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_connect_matrix_e2ee_store_path_precedence_encryption(monkeypatch):
-    """Encryption store_path should take precedence over e2ee store_path."""
+async def test_connect_matrix_e2ee_store_path_ignores_legacy_encryption(monkeypatch):
+    """Legacy encryption store_path should not override e2ee store_path."""
     mock_client = MagicMock()
     mock_client.rooms = {}
     mock_client.sync = AsyncMock(return_value=SimpleNamespace())
@@ -4388,7 +4388,7 @@ async def test_connect_matrix_e2ee_store_path_precedence_encryption(monkeypatch)
         raising=False,
     )
 
-    encryption_path = os.path.expanduser("~/enc-store")
+    legacy_encryption_path = os.path.expanduser("~/enc-store")
     e2ee_path = os.path.expanduser("~/e2ee-store")
     client_calls = []
 
@@ -4414,8 +4414,8 @@ async def test_connect_matrix_e2ee_store_path_precedence_encryption(monkeypatch)
                 "homeserver": "https://example.org",
                 "access_token": "token",
                 "bot_user_id": "@bot:example.org",
-                "encryption": {"enabled": True, "store_path": encryption_path},
-                "e2ee": {"store_path": e2ee_path},
+                "encryption": {"enabled": True, "store_path": legacy_encryption_path},
+                "e2ee": {"enabled": True, "store_path": e2ee_path},
             },
             "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
         }
@@ -4423,12 +4423,12 @@ async def test_connect_matrix_e2ee_store_path_precedence_encryption(monkeypatch)
         await connect_matrix(config)
 
     assert client_calls
-    assert client_calls[0]["store_path"] == encryption_path
+    assert client_calls[0]["store_path"] == e2ee_path
 
 
 @pytest.mark.asyncio
 async def test_connect_matrix_e2ee_store_path_uses_e2ee_section(monkeypatch):
-    """e2ee store_path should be used when encryption store_path is absent."""
+    """e2ee store_path should be used when no legacy override is provided."""
     mock_client = MagicMock()
     mock_client.rooms = {}
     mock_client.sync = AsyncMock(return_value=SimpleNamespace())
@@ -4576,7 +4576,7 @@ async def test_connect_matrix_e2ee_store_path_default(monkeypatch):
                 "homeserver": "https://example.org",
                 "access_token": "token",
                 "bot_user_id": "@bot:example.org",
-                "encryption": {"enabled": True},
+                "e2ee": {"enabled": True},
             },
             "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
         }
@@ -4829,7 +4829,7 @@ async def test_connect_matrix_keys_upload_failure_logs(monkeypatch):
             "homeserver": "https://example.org",
             "access_token": "token",
             "bot_user_id": "@bot:example.org",
-            "encryption": {"enabled": True},
+            "e2ee": {"enabled": True},
         },
         "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
     }
@@ -5028,7 +5028,7 @@ async def test_connect_matrix_e2ee_store_missing_db_files_warns(
             "homeserver": "https://matrix.example.org",
             "access_token": "test_token",
             "bot_user_id": "@bot:example.org",
-            "encryption": {"enabled": True, "store_path": "/test/store"},
+            "e2ee": {"enabled": True, "store_path": "/test/store"},
         },
         "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
     }
@@ -5153,7 +5153,7 @@ async def test_connect_matrix_e2ee_key_sharing_delay(monkeypatch):
                 "homeserver": "https://example.org",
                 "access_token": "token",
                 "bot_user_id": "@bot:example.org",
-                "encryption": {"enabled": True, "store_path": "/tmp/store"},
+                "e2ee": {"enabled": True, "store_path": "/tmp/store"},
             },
             "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
         }
@@ -6208,7 +6208,7 @@ async def test_connect_matrix_e2ee_missing_nio_crypto():
             "homeserver": "https://matrix.org",
             "access_token": "test_token",
             "bot_user_id": "@bot:matrix.org",
-            "encryption": {"enabled": True},
+            "e2ee": {"enabled": True},
         },
         "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
     }
@@ -6265,7 +6265,7 @@ async def test_connect_matrix_e2ee_missing_sqlite_store():
             "homeserver": "https://matrix.org",
             "access_token": "test_token",
             "bot_user_id": "@bot:matrix.org",
-            "encryption": {"enabled": True},
+            "e2ee": {"enabled": True},
         },
         "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
     }

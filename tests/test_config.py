@@ -869,23 +869,23 @@ class TestE2EESupport(unittest.TestCase):
     def test_is_e2ee_enabled_various_configs(self):
         """Test E2EE enablement detection across various configurations."""
         test_cases = [
-            # Legacy key
+            # Legacy key (ignored)
             (
                 {"matrix": {"encryption": {"enabled": True}}},
-                True,
-                "legacy e2ee enabled",
+                False,
+                "legacy key ignored",
             ),
             (
                 {"matrix": {"encryption": {"enabled": False}}},
                 False,
-                "legacy e2ee disabled",
+                "legacy key false ignored",
             ),
             (
                 {"matrix": {"encryption": {"enabled": "false"}}},
                 False,
-                "legacy e2ee string false",
+                "legacy key string ignored",
             ),
-            # New key
+            # Supported key
             ({"matrix": {"e2ee": {"enabled": True}}}, True, "new e2ee enabled"),
             ({"matrix": {"e2ee": {"enabled": False}}}, False, "new e2ee disabled"),
             (
@@ -893,7 +893,7 @@ class TestE2EESupport(unittest.TestCase):
                 False,
                 "new e2ee string true",
             ),
-            # Mixed keys (OR logic)
+            # Mixed keys (legacy ignored)
             (
                 {
                     "matrix": {
@@ -911,8 +911,8 @@ class TestE2EESupport(unittest.TestCase):
                         "e2ee": {"enabled": False},
                     }
                 },
-                True,
-                "mixed legacy true, new false",
+                False,
+                "mixed legacy true ignored, new false",
             ),
             # Edge cases
             ({}, False, "empty config"),

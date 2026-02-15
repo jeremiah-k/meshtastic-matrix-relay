@@ -572,7 +572,7 @@ def is_e2ee_enabled(config: dict[str, Any] | None) -> bool:
     """
     Determine whether End-to-End Encryption (E2EE) is enabled in the given configuration.
 
-    If the platform does not support E2EE (Windows), this function always reports that E2EE is disabled. The function inspects the top-level `matrix` section and treats E2EE as enabled when either `matrix.encryption.enabled` or `matrix.e2ee.enabled` is true.
+    If the platform does not support E2EE (Windows), this function always reports that E2EE is disabled. The function inspects the top-level `matrix` section and treats E2EE as enabled only when `matrix.e2ee.enabled` is true.
 
     Parameters:
         config (dict[str, Any] | None): Top-level configuration mapping which may be empty or None.
@@ -591,20 +591,11 @@ def is_e2ee_enabled(config: dict[str, Any] | None) -> bool:
     if not isinstance(matrix_cfg, dict) or not matrix_cfg:
         return False
 
-    encryption_cfg = matrix_cfg.get("encryption")
-    if not isinstance(encryption_cfg, dict):
-        encryption_cfg = {}
     e2ee_cfg = matrix_cfg.get("e2ee")
     if not isinstance(e2ee_cfg, dict):
         e2ee_cfg = {}
-    encryption_value = encryption_cfg.get("enabled", False)
-    encryption_enabled = (
-        encryption_value if isinstance(encryption_value, bool) else False
-    )
     e2ee_value = e2ee_cfg.get("enabled", False)
-    e2ee_enabled = e2ee_value if isinstance(e2ee_value, bool) else False
-
-    return encryption_enabled or e2ee_enabled
+    return e2ee_value if isinstance(e2ee_value, bool) else False
 
 
 def check_e2ee_enabled_silently(args: Any = None) -> bool:

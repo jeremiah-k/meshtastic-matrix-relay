@@ -40,6 +40,9 @@ matrix:
     # store_path: ~/.mmrelay/matrix/store
 ```
 
+`mmrelay` now reads E2EE settings only from `matrix.e2ee`. Legacy `matrix.encryption`
+configuration keys are ignored.
+
 ### 3. Set Up Authentication
 
 Use the built-in authentication command to create your bot's E2EE-enabled credentials:

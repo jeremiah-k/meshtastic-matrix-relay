@@ -1382,9 +1382,8 @@ def _is_internal_self_verification_enabled(
     """
     Determine whether internal same-account self verification is enabled.
 
-    Option keys:
-      - `matrix.e2ee.self_verify` (preferred)
-      - `matrix.encryption.self_verify` (legacy alias)
+    Option key:
+      - `matrix.e2ee.self_verify`
 
     Defaults to `True` when E2EE is enabled.
     """
@@ -1405,10 +1404,6 @@ def _is_internal_self_verification_enabled(
     e2ee_section_value = _read_self_verify_value(matrix_section.get("e2ee"))
     if e2ee_section_value is not None:
         return e2ee_section_value
-
-    encryption_section_value = _read_self_verify_value(matrix_section.get("encryption"))
-    if encryption_section_value is not None:
-        return encryption_section_value
 
     return True
 
@@ -2008,7 +2003,7 @@ async def _configure_e2ee(
 
     Parameters:
         config_data (dict[str, Any]): Full application configuration used to detect whether E2EE is enabled.
-        matrix_section (Any): Matrix-specific configuration subsection; when a dict, its "encryption" or "e2ee" keys may provide a `store_path` override.
+        matrix_section (Any): Matrix-specific configuration subsection; when a dict, its "e2ee" key may provide a `store_path` override.
         e2ee_device_id (Optional[str]): Device ID restored from credentials, if any; used to decide whether a device id must be retrieved later.
 
     Returns:
@@ -2070,11 +2065,8 @@ async def _configure_e2ee(
                     if e2ee_enabled:
                         store_override = None
                         if isinstance(matrix_section, dict):
-                            encryption_section = matrix_section.get("encryption")
                             e2ee_section = matrix_section.get("e2ee")
-                            if isinstance(encryption_section, dict):
-                                store_override = encryption_section.get("store_path")
-                            if not store_override and isinstance(e2ee_section, dict):
+                            if isinstance(e2ee_section, dict):
                                 store_override = e2ee_section.get("store_path")
 
                         if isinstance(store_override, str) and store_override:
