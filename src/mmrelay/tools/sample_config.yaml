@@ -45,6 +45,9 @@ matrix:
   #
   e2ee:
     enabled: true
+    # Optional: internal same-account device verification (default: true)
+    # Set to false to disable automatic self-verification workaround.
+    # self_verify: true
 
   # Message prefix customization (Meshtastic → Matrix direction)
   #prefix_enabled: true # Enable prefixes on messages from mesh (e.g., "[Alice/MyMesh]: message")

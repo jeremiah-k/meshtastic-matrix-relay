@@ -148,13 +148,53 @@ content["format"] = "org.matrix.custom.html"
 content["formatted_body"] = formatted_body
 ```
 
+### 6. Internal Same-Account Device Verification Workaround
+
+`matrix-nio` does not currently handle the full `m.key.verification.request` flow automatically for this use case. To prevent the "Encrypted by a device not verified by its owner" shield for MMRelay's own account, MMRelay now registers a dedicated to-device callback that drives the SAS flow internally:
+
+1. Receive `m.key.verification.request` from the same Matrix account.
+2. Send `m.key.verification.ready`.
+3. Accept `m.key.verification.start`.
+4. Confirm the SAS when `m.key.verification.key` arrives.
+5. Send `m.key.verification.done` after a verified MAC.
+
+This is intentionally scoped to same-account events only (`event.sender == client.user_id`) to avoid auto-verifying external users/devices.
+
+Configuration:
+
+- `matrix.e2ee.self_verify` (preferred)
+- `matrix.encryption.self_verify` (legacy alias)
+- Default: `true` when E2EE is enabled
+
+**Implementation (`src/mmrelay/matrix_utils.py`):**
+
+```python
+# connect_matrix()
+await _perform_matrix_login(client, auth_info)
+self_verification_enabled = _is_internal_self_verification_enabled(
+    matrix_section, e2ee_enabled
+)
+_register_internal_self_verification_callback(client, self_verification_enabled)
+
+# to-device handler (simplified):
+if event_type == "m.key.verification.request":
+    await client.to_device(m_key_verification_ready)
+elif event_type == "m.key.verification.start":
+    await client.accept_key_verification(tx_id)
+elif event_type == "m.key.verification.key":
+    await client.confirm_short_auth_string(tx_id)
+elif event_type == "m.key.verification.mac" and sas.verified:
+    await client.to_device(m_key_verification_done)
+```
+
 ## Summary of E2EE Flow
 
 1.  **Startup**: The client is initialized with the E2EE store path. It authenticates using `restore_login()`, which implicitly loads the store. Keys are uploaded if needed.
-2.  **Sync**: The client performs a `sync(full_state=True)`, learning which rooms are encrypted.
-3.  **Outgoing Message**: `matrix_relay` sends a message from Meshtastic to Matrix. It is correctly encrypted by `nio` because the room's encrypted state is known. The message content includes a `formatted_body` to prevent parser errors.
-4.  **Incoming Encrypted Message**: A `MegolmEvent` is received.
+2.  **Verification Hook**: When E2EE is enabled, a to-device callback is registered to handle same-account key verification events (`request/ready/start/key/mac/done`).
+3.  **Sync**: The client performs a `sync(full_state=True)`, learning which rooms are encrypted.
+4.  **Outgoing Message**: `matrix_relay` sends a message from Meshtastic to Matrix. It is correctly encrypted by `nio` because the room's encrypted state is known. The message content includes a `formatted_body` to prevent parser errors.
+5.  **Incoming Encrypted Message**: A `MegolmEvent` is received.
     - **If decryption succeeds**: `nio` automatically generates a `RoomMessageText` event. `on_room_message` is triggered, and the decrypted message is relayed to Meshtastic.
     - **If decryption fails**: `nio` fires the `MegolmEvent` callback. `on_decryption_failure` is triggered. The bot logs the error and sends out an `m.room_key_request`.
-5.  **Key Arrival**: The key request is received by other clients, who send the key back in a `m.forwarded_room_key` to-device event. `nio` automatically processes this key and stores it.
-6.  **Decryption Retry**: The next time the client syncs, it can now decrypt the original message it failed on. The `RoomMessageText` callback will be fired, and the message will be processed.
+6.  **Key Arrival**: The key request is received by other clients, who send the key back in a `m.forwarded_room_key` to-device event. `nio` automatically processes this key and stores it.
+7.  **Decryption Retry**: The next time the client syncs, it can now decrypt the original message it failed on. The `RoomMessageText` callback will be fired, and the message will be processed.

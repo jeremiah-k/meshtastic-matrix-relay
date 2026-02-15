@@ -34,6 +34,8 @@ matrix:
   # E2EE Configuration
   e2ee:
     enabled: true
+    # Optional: internal same-account self verification workaround (default: true)
+    # self_verify: true
     # Optional: Custom store path (default: ~/.mmrelay/matrix/store)
     # store_path: ~/.mmrelay/matrix/store
 ```
@@ -268,7 +270,9 @@ INFO Matrix: Initial sync completed. Found X rooms.
 
 In your Matrix client (Element, etc.):
 
-- **Encrypted messages**: Show with a red shield and a "Encrypted by a device not verified by its owner" (it's the best we've been able to do at the moment, due to upstream verification issues in `matrix-nio`)
+- **Encrypted messages**: MMRelay now performs an internal same-account SAS verification flow to verify its own device and clear the unverified-device shield in normal operation.
+- **If you briefly see a red shield first**: This can happen before the verification handshake completes; it should clear after the next sync.
+- **Disable this behavior if needed**: Set `matrix.e2ee.self_verify: false`.
 - **Unencrypted messages**: Show with a red shield and "Not encrypted" warning.
 
 If messages from MMRelay show as unencrypted in encrypted rooms, check your MMRelay version and configuration.
@@ -343,6 +347,8 @@ Ensure E2EE is enabled in your `config.yaml`:
 matrix:
   e2ee:
     enabled: true
+    # Optional: disable internal same-account self verification workaround
+    # self_verify: false
 ```
 
 The E2EE store directory is automatically created in the mounted data volume.

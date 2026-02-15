@@ -1117,6 +1117,285 @@ bot_start_time = int(
 
 
 matrix_client = None
+_self_verify_pending_transactions: set[str] = set()
+
+
+def _get_to_device_event_type(event: Any) -> str | None:
+    """
+    Return the Matrix type string for a to-device event when available.
+
+    Prefers `event.source["type"]` and falls back to `event.type`.
+    """
+    source = getattr(event, "source", None)
+    if isinstance(source, dict):
+        source_type = source.get("type")
+        if isinstance(source_type, str) and source_type:
+            return source_type
+
+    event_type = getattr(event, "type", None)
+    if isinstance(event_type, str) and event_type:
+        return event_type
+    return None
+
+
+def _get_to_device_event_content(event: Any) -> dict[str, Any]:
+    """
+    Return the event content for a to-device event or an empty dict.
+    """
+    source = getattr(event, "source", None)
+    if not isinstance(source, dict):
+        return {}
+    content = source.get("content")
+    if isinstance(content, dict):
+        return cast(dict[str, Any], content)
+    return {}
+
+
+def _get_verification_transaction_id(event: Any) -> str | None:
+    """
+    Return a key verification transaction ID from a to-device event if present.
+    """
+    tx_id = getattr(event, "transaction_id", None)
+    if isinstance(tx_id, str) and tx_id:
+        return tx_id
+
+    content = _get_to_device_event_content(event)
+    content_tx_id = content.get("transaction_id")
+    if isinstance(content_tx_id, str) and content_tx_id:
+        return content_tx_id
+    return None
+
+
+def _make_to_device_message(
+    event_type: str, recipient: str, recipient_device: str, content: dict[str, Any]
+) -> Any:
+    """
+    Create a nio ToDeviceMessage when available; otherwise return a dict fallback.
+    """
+    try:
+        nio_event_builders = importlib.import_module("nio.event_builders")
+        message_cls = getattr(nio_event_builders, "ToDeviceMessage", None)
+        if isinstance(message_cls, type):
+            return message_cls(event_type, recipient, recipient_device, content)
+    except (ImportError, AttributeError):
+        pass
+
+    return {
+        "type": event_type,
+        "recipient": recipient,
+        "recipient_device": recipient_device,
+        "content": content,
+    }
+
+
+async def _handle_internal_self_verification_to_device_event(
+    client: AsyncClient, event: Any
+) -> None:
+    """
+    Handle self-account key verification events to suppress unverified-device shields.
+
+    This flow intentionally automates verification only for events sent by the same
+    Matrix account as the bot (`event.sender == client.user_id`).
+    """
+    event_type = _get_to_device_event_type(event)
+    if not event_type or not event_type.startswith("m.key.verification."):
+        return
+
+    sender = getattr(event, "sender", None)
+    if not isinstance(sender, str) or sender != client.user_id:
+        return
+
+    tx_id = _get_verification_transaction_id(event)
+
+    if event_type == "m.key.verification.request":
+        if not isinstance(client.device_id, str) or not client.device_id:
+            logger.debug(
+                "Skipping self-verification request: client device_id is unavailable"
+            )
+            return
+
+        content = _get_to_device_event_content(event)
+        from_device = content.get("from_device")
+        if not isinstance(from_device, str) or not from_device:
+            return
+        if from_device == client.device_id:
+            return
+        if not tx_id:
+            return
+
+        methods = content.get("methods")
+        if isinstance(methods, list) and "m.sas.v1" not in methods:
+            logger.debug(
+                "Skipping self-verification request %s: unsupported methods=%s",
+                tx_id,
+                methods,
+            )
+            return
+
+        ready_message = _make_to_device_message(
+            event_type="m.key.verification.ready",
+            recipient=sender,
+            recipient_device=from_device,
+            content={
+                "from_device": client.device_id,
+                "methods": ["m.sas.v1"],
+                "transaction_id": tx_id,
+            },
+        )
+
+        try:
+            await client.to_device(ready_message)
+        except NIO_COMM_EXCEPTIONS:
+            logger.debug(
+                "Failed to send m.key.verification.ready for transaction %s",
+                tx_id,
+                exc_info=True,
+            )
+            return
+
+        _self_verify_pending_transactions.add(tx_id)
+        logger.info(
+            "Started internal self-verification with device %s (tx=%s)",
+            from_device,
+            tx_id,
+        )
+        return
+
+    if not tx_id or tx_id not in _self_verify_pending_transactions:
+        return
+
+    if event_type == "m.key.verification.start":
+        try:
+            await client.accept_key_verification(tx_id)
+        except NIO_COMM_EXCEPTIONS:
+            logger.debug(
+                "Failed to accept self-verification transaction %s",
+                tx_id,
+                exc_info=True,
+            )
+            _self_verify_pending_transactions.discard(tx_id)
+            return
+        logger.debug("Accepted self-verification transaction %s", tx_id)
+        return
+
+    if event_type == "m.key.verification.key":
+        send_queued = getattr(client, "send_to_device_messages", None)
+        if callable(send_queued):
+            try:
+                maybe_awaitable = send_queued()
+                if inspect.isawaitable(maybe_awaitable):
+                    await maybe_awaitable
+            except NIO_COMM_EXCEPTIONS:
+                logger.debug(
+                    "Failed to flush queued to-device messages for tx=%s",
+                    tx_id,
+                    exc_info=True,
+                )
+
+        try:
+            await client.confirm_short_auth_string(tx_id)
+        except NIO_COMM_EXCEPTIONS:
+            logger.debug(
+                "Failed to confirm self-verification transaction %s",
+                tx_id,
+                exc_info=True,
+            )
+            return
+        logger.debug("Confirmed self-verification transaction %s", tx_id)
+        return
+
+    if event_type == "m.key.verification.mac":
+        key_verifications = getattr(client, "key_verifications", {})
+        sas = (
+            key_verifications.get(tx_id)
+            if isinstance(key_verifications, dict)
+            else None
+        )
+        if sas and getattr(sas, "verified", False):
+            other_olm_device = getattr(sas, "other_olm_device", None)
+            recipient_device = getattr(other_olm_device, "id", None)
+            if isinstance(recipient_device, str) and recipient_device:
+                done_message = _make_to_device_message(
+                    event_type="m.key.verification.done",
+                    recipient=sender,
+                    recipient_device=recipient_device,
+                    content={"transaction_id": tx_id},
+                )
+                try:
+                    await client.to_device(done_message)
+                    logger.info(
+                        "Completed internal self-verification transaction %s", tx_id
+                    )
+                except NIO_COMM_EXCEPTIONS:
+                    logger.debug(
+                        "Failed to send m.key.verification.done for tx=%s",
+                        tx_id,
+                        exc_info=True,
+                    )
+
+        _self_verify_pending_transactions.discard(tx_id)
+        return
+
+    if tx_id and event_type in ("m.key.verification.cancel", "m.key.verification.done"):
+        _self_verify_pending_transactions.discard(tx_id)
+
+
+def _register_internal_self_verification_callback(
+    client: AsyncClient, self_verification_enabled: bool
+) -> None:
+    """
+    Register to-device callback for automatic self-account verification when E2EE is on.
+    """
+    if not self_verification_enabled:
+        return
+
+    add_callback = getattr(client, "add_to_device_callback", None)
+    if not callable(add_callback):
+        logger.debug("Skipping self-verification callback registration: unsupported")
+        return
+
+    async def _to_device_cb(event: Any) -> None:
+        await _handle_internal_self_verification_to_device_event(client, event)
+
+    add_callback(cast(Any, _to_device_cb), cast(Any, (object,)))
+    logger.debug("Registered internal self-verification to-device callback")
+
+
+def _is_internal_self_verification_enabled(
+    matrix_section: Any, e2ee_enabled: bool
+) -> bool:
+    """
+    Determine whether internal same-account self verification is enabled.
+
+    Option keys:
+      - `matrix.e2ee.self_verify` (preferred)
+      - `matrix.encryption.self_verify` (legacy alias)
+
+    Defaults to `True` when E2EE is enabled.
+    """
+    if not e2ee_enabled:
+        return False
+
+    if not isinstance(matrix_section, dict):
+        return True
+
+    def _read_self_verify_value(section: Any) -> bool | None:
+        if not isinstance(section, dict):
+            return None
+        value = section.get("self_verify")
+        if isinstance(value, bool):
+            return value
+        return None
+
+    e2ee_section_value = _read_self_verify_value(matrix_section.get("e2ee"))
+    if e2ee_section_value is not None:
+        return e2ee_section_value
+
+    encryption_section_value = _read_self_verify_value(matrix_section.get("encryption"))
+    if encryption_section_value is not None:
+        return encryption_section_value
+
+    return True
 
 
 async def get_displayname(user_id: str) -> str | None:
@@ -2300,6 +2579,11 @@ async def connect_matrix(
     e2ee_enabled, e2ee_store_path = await _configure_e2ee(
         config, matrix_section, e2ee_device_id
     )
+    self_verification_enabled = _is_internal_self_verification_enabled(
+        matrix_section, e2ee_enabled
+    )
+    if e2ee_enabled and not self_verification_enabled:
+        logger.info("Internal self-verification is disabled by configuration.")
 
     if not isinstance(matrix_homeserver, str) or not matrix_homeserver:
         logger.error("Matrix homeserver is missing or invalid.")
@@ -2325,6 +2609,9 @@ async def connect_matrix(
 
     try:
         await _perform_matrix_login(client, auth_info)
+
+        _self_verify_pending_transactions.clear()
+        _register_internal_self_verification_callback(client, self_verification_enabled)
 
         # Re-sync global in case whoami discovered a different user_id
         if auth_info.user_id and auth_info.user_id != bot_user_id:
