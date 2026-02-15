@@ -272,6 +272,7 @@ In your Matrix client (Element, etc.):
 
 - **Encrypted messages**: MMRelay now performs an internal same-account SAS verification flow to verify its own device and clear the unverified-device shield in normal operation.
 - **If you briefly see a red shield first**: This can happen before the verification handshake completes; it should clear after the next sync.
+- **Existing sessions**: On startup, MMRelay now also proactively attempts same-account verification for other unverified devices (using current session identity + device list).
 - **Disable this behavior if needed**: Set `matrix.e2ee.self_verify: false`.
 - **Unencrypted messages**: Show with a red shield and "Not encrypted" warning.
 

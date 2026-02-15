@@ -1264,6 +1264,21 @@ async def _handle_internal_self_verification_to_device_event(
     if not tx_id or tx_id not in _self_verify_pending_transactions:
         return
 
+    if event_type == "m.key.verification.accept":
+        send_queued = getattr(client, "send_to_device_messages", None)
+        if callable(send_queued):
+            try:
+                maybe_awaitable = send_queued()
+                if inspect.isawaitable(maybe_awaitable):
+                    await maybe_awaitable
+            except NIO_COMM_EXCEPTIONS:
+                logger.debug(
+                    "Failed to flush queued verification messages for tx=%s",
+                    tx_id,
+                    exc_info=True,
+                )
+        return
+
     if event_type == "m.key.verification.start":
         try:
             await client.accept_key_verification(tx_id)
@@ -1396,6 +1411,148 @@ def _is_internal_self_verification_enabled(
         return encryption_section_value
 
     return True
+
+
+async def _maybe_initiate_internal_self_verification(
+    client: AsyncClient, self_verification_enabled: bool
+) -> None:
+    """
+    Proactively start same-account device verification for existing sessions.
+
+    This complements passive handling of incoming verification requests by
+    initiating verification with other unverified devices of the same account.
+    """
+    if not self_verification_enabled:
+        return
+
+    if not isinstance(client.user_id, str) or not client.user_id:
+        logger.debug("Skipping self-verification initiation: missing user_id")
+        return
+    if not isinstance(client.device_id, str) or not client.device_id:
+        logger.debug("Skipping self-verification initiation: missing device_id")
+        return
+
+    try:
+        whoami_response = await client.whoami()
+        discovered_user_id = getattr(whoami_response, "user_id", None)
+        discovered_device_id = getattr(whoami_response, "device_id", None)
+        if (
+            isinstance(discovered_user_id, str)
+            and discovered_user_id
+            and discovered_user_id != client.user_id
+        ):
+            logger.warning(
+                "whoami user_id mismatch during self-verification startup: %s -> %s",
+                client.user_id,
+                discovered_user_id,
+            )
+            client.user_id = discovered_user_id
+        if (
+            isinstance(discovered_device_id, str)
+            and discovered_device_id
+            and discovered_device_id != client.device_id
+        ):
+            logger.warning(
+                "whoami device_id mismatch during self-verification startup: %s -> %s",
+                client.device_id,
+                discovered_device_id,
+            )
+            client.device_id = discovered_device_id
+    except NIO_COMM_EXCEPTIONS:
+        logger.debug("whoami check failed before self-verification", exc_info=True)
+
+    users_for_key_query = getattr(client, "users_for_key_query", None)
+    add_key_query_user = getattr(users_for_key_query, "add", None)
+    if callable(add_key_query_user) and isinstance(client.user_id, str):
+        try:
+            add_key_query_user(client.user_id)
+        except (AttributeError, TypeError):
+            logger.debug("Failed to queue own user for key query", exc_info=True)
+
+    if bool(getattr(client, "should_query_keys", False)):
+        try:
+            await client.keys_query()
+        except NIO_COMM_EXCEPTIONS:
+            logger.debug("Self-verification keys_query failed", exc_info=True)
+
+    try:
+        own_devices = list(client.device_store.active_user_devices(client.user_id))
+    except (AttributeError, KeyError, TypeError, ValueError, NioLocalProtocolError):
+        logger.debug("Could not enumerate own devices for self-verification")
+        return
+
+    candidates: list[Any] = []
+    for device in own_devices:
+        device_id = getattr(device, "id", None)
+        if not isinstance(device_id, str) or not device_id:
+            continue
+        if device_id == client.device_id:
+            continue
+        if bool(getattr(device, "verified", False)):
+            continue
+
+        try:
+            active_sas = client.get_active_sas(client.user_id, device_id)
+        except (AttributeError, KeyError, TypeError, ValueError, NioLocalProtocolError):
+            active_sas = None
+        if active_sas and not bool(getattr(active_sas, "canceled", False)):
+            continue
+
+        candidates.append(device)
+
+    if not candidates:
+        logger.debug("No unverified same-account devices found for self-verification")
+        return
+
+    for device in candidates:
+        before_tx_ids = set(getattr(client, "key_verifications", {}).keys())
+        try:
+            await client.start_key_verification(device)
+        except NIO_COMM_EXCEPTIONS:
+            logger.debug(
+                "Failed to start self-verification with device %s",
+                getattr(device, "id", "<unknown>"),
+                exc_info=True,
+            )
+            continue
+
+        after_tx_ids = set(getattr(client, "key_verifications", {}).keys())
+        new_tx_ids = after_tx_ids - before_tx_ids
+        for tx_id in new_tx_ids:
+            _self_verify_pending_transactions.add(tx_id)
+
+        if not new_tx_ids:
+            try:
+                active_sas = client.get_active_sas(client.user_id, device.id)
+            except (
+                AttributeError,
+                KeyError,
+                TypeError,
+                ValueError,
+                NioLocalProtocolError,
+            ):
+                active_sas = None
+            tx_id = getattr(active_sas, "transaction_id", None) if active_sas else None
+            if isinstance(tx_id, str) and tx_id:
+                _self_verify_pending_transactions.add(tx_id)
+
+        send_queued = getattr(client, "send_to_device_messages", None)
+        if callable(send_queued):
+            try:
+                maybe_awaitable = send_queued()
+                if inspect.isawaitable(maybe_awaitable):
+                    await maybe_awaitable
+            except NIO_COMM_EXCEPTIONS:
+                logger.debug(
+                    "Failed to flush queued verification start for device %s",
+                    getattr(device, "id", "<unknown>"),
+                    exc_info=True,
+                )
+
+        logger.info(
+            "Initiated internal self-verification with device %s",
+            getattr(device, "id", "<unknown>"),
+        )
 
 
 async def get_displayname(user_id: str) -> str | None:
@@ -2639,6 +2796,9 @@ async def connect_matrix(
             matrix_homeserver,
             bot_user_id,
             e2ee_enabled,
+        )
+        await _maybe_initiate_internal_self_verification(
+            client, self_verification_enabled
         )
     except BaseException:
         await _close_matrix_client_after_failure(client, "connect_matrix setup")

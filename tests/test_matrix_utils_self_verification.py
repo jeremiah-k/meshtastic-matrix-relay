@@ -179,3 +179,52 @@ def test_internal_self_verification_disabled_when_e2ee_disabled():
         )
         is False
     )
+
+
+@pytest.mark.asyncio
+async def test_maybe_initiate_internal_self_verification_starts_for_unverified_devices():
+    matrix_utils._self_verify_pending_transactions.clear()
+
+    device_unverified = SimpleNamespace(id="OTHER_DEVICE", verified=False)
+    client = MagicMock()
+    client.user_id = "@bot:example.org"
+    client.device_id = "BOT_DEVICE"
+    client.whoami = AsyncMock(
+        return_value=SimpleNamespace(user_id="@bot:example.org", device_id="BOT_DEVICE")
+    )
+    client.users_for_key_query = set()
+    client.should_query_keys = False
+    client.device_store = MagicMock()
+    client.device_store.active_user_devices.return_value = [device_unverified]
+    client.get_active_sas = MagicMock(return_value=None)
+    client.key_verifications = {}
+
+    async def _start(device):
+        client.key_verifications["txn-init"] = SimpleNamespace(
+            transaction_id="txn-init",
+            canceled=False,
+        )
+        return SimpleNamespace()
+
+    client.start_key_verification = AsyncMock(side_effect=_start)
+    client.send_to_device_messages = AsyncMock()
+
+    await matrix_utils._maybe_initiate_internal_self_verification(
+        client, self_verification_enabled=True
+    )
+
+    client.start_key_verification.assert_awaited_once_with(device_unverified)
+    client.send_to_device_messages.assert_awaited_once()
+    assert "txn-init" in matrix_utils._self_verify_pending_transactions
+
+
+@pytest.mark.asyncio
+async def test_maybe_initiate_internal_self_verification_skips_when_disabled():
+    client = MagicMock()
+    client.start_key_verification = AsyncMock()
+
+    await matrix_utils._maybe_initiate_internal_self_verification(
+        client, self_verification_enabled=False
+    )
+
+    client.start_key_verification.assert_not_called()

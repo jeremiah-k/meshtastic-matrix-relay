@@ -160,6 +160,8 @@ content["formatted_body"] = formatted_body
 
 This is intentionally scoped to same-account events only (`event.sender == client.user_id`) to avoid auto-verifying external users/devices.
 
+MMRelay also proactively attempts to start self-verification with other unverified devices of the same account at startup (after initial sync), and uses a `whoami` sanity check to confirm current session identity before initiating.
+
 Configuration:
 
 - `matrix.e2ee.self_verify` (preferred)
