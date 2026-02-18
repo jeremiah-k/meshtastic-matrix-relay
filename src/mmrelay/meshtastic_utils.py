@@ -2357,6 +2357,7 @@ def connect_meshtastic(
 def on_lost_meshtastic_connection(
     interface: Any = None,
     detection_source: str = "unknown",
+    topic: Any = pub.AUTO_TOPIC,
 ) -> None:
     """
     Mark the Meshtastic connection as lost, close the current client, and initiate an asynchronous reconnect.
@@ -2364,10 +2365,13 @@ def on_lost_meshtastic_connection(
     If a shutdown is in progress or a reconnect is already underway this function returns immediately. Otherwise it:
     - sets the module-level `reconnecting` flag,
     - attempts to close and clear the module-level `meshtastic_client` (handles already-closed file descriptors),
+    - resolves a meaningful detection source when the caller provides "unknown" (preferring BLE interface
+      `_last_disconnect_source`, then pubsub topic name),
     - schedules the reconnect() coroutine on the global event loop if that loop exists and is open.
 
     Parameters:
         detection_source (str): Identifier for where or how the loss was detected; used in log messages.
+        topic (Any): Optional pubsub topic object when invoked via pypubsub.
     """
     global meshtastic_client, meshtastic_iface, reconnecting, shutting_down, event_loop, reconnect_task, _ble_future, _ble_future_address
     with meshtastic_lock:
@@ -2379,6 +2383,17 @@ def on_lost_meshtastic_connection(
                 "Reconnection already in progress. Skipping additional reconnection attempt."
             )
             return
+        if detection_source == "unknown":
+            interface_source = getattr(interface, "_last_disconnect_source", None)
+            if isinstance(interface_source, str) and interface_source.strip():
+                detection_source = f"ble.{interface_source}"
+            elif topic is not None:
+                detection_source = str(
+                    getattr(topic, "getName", lambda: getattr(topic, "name", topic))()
+                )
+            else:
+                detection_source = "meshtastic.connection.lost"
+
         reconnecting = True
         logger.error(f"Lost connection ({detection_source}). Reconnecting...")
 
