@@ -2387,11 +2387,14 @@ def on_lost_meshtastic_connection(
             interface_source = getattr(interface, "_last_disconnect_source", None)
             if isinstance(interface_source, str) and interface_source.strip():
                 detection_source = f"ble.{interface_source}"
-            elif topic is not None:
-                detection_source = str(
-                    getattr(topic, "getName", lambda: getattr(topic, "name", topic))()
-                )
+            elif topic is not pub.AUTO_TOPIC:
+                # Real topic object from pypubsub - extract its name
+                detection_source = str(topic)
             else:
+                # Called directly without a topic, or with AUTO_TOPIC sentinel
+                logger.debug(
+                    "_last_disconnect_source unavailable; using default detection source"
+                )
                 detection_source = "meshtastic.connection.lost"
 
         reconnecting = True
