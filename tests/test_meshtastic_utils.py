@@ -1133,8 +1133,8 @@ class TestConnectionLossHandling(unittest.TestCase):
         mmrelay.meshtastic_utils.reconnecting = False
         mmrelay.meshtastic_utils.shutting_down = False
 
-        mock_interface = MagicMock()
-        # No _last_disconnect_source attribute
+        mock_interface = Mock(spec=[])
+        # spec=[] prevents auto-creation of _last_disconnect_source
 
         on_lost_meshtastic_connection(
             mock_interface, detection_source="unknown", topic=pub.AUTO_TOPIC
@@ -1158,22 +1158,24 @@ class TestConnectionLossHandling(unittest.TestCase):
         """
         Test that a real pypubsub topic object's name is extracted as detection_source.
 
-        When called via pypubsub with a real Topic object, the topic's string representation
-        should be used as the detection source.
+        When called via pypubsub with a real Topic object, the topic's getName() method
+        should be used to extract the topic name, not str(topic).
         """
         import mmrelay.meshtastic_utils
 
         mmrelay.meshtastic_utils.reconnecting = False
         mmrelay.meshtastic_utils.shutting_down = False
 
-        mock_interface = MagicMock()
-        # No _last_disconnect_source
+        mock_interface = Mock(spec=[])
+        # spec=[] prevents auto-creation of _last_disconnect_source
 
-        # Create a mock topic object (simulating pypubsub Topic)
-        # Use a simple class with __str__ to simulate a Topic object
+        # Create a mock topic object (simulating pypubsub Topic with getName())
         class MockTopic:
-            def __str__(self):
+            def getName(self):
                 return "meshtastic.connection.lost"
+
+            def __str__(self):
+                return "should.not.be.used"
 
         mock_topic = MockTopic()
 
@@ -1181,9 +1183,10 @@ class TestConnectionLossHandling(unittest.TestCase):
             mock_interface, detection_source="unknown", topic=mock_topic
         )
 
-        # Should use the topic's string representation
+        # Should use the topic's getName() method, not __str__
         error_call = mock_logger.error.call_args[0][0]
         self.assertIn("meshtastic.connection.lost", error_call)
+        self.assertNotIn("should.not.be.used", error_call)
 
     @patch("mmrelay.meshtastic_utils.logger")
     def test_on_lost_meshtastic_connection_topic_str_fallback(self, mock_logger):
@@ -1197,7 +1200,8 @@ class TestConnectionLossHandling(unittest.TestCase):
         mmrelay.meshtastic_utils.reconnecting = False
         mmrelay.meshtastic_utils.shutting_down = False
 
-        mock_interface = MagicMock()
+        mock_interface = Mock(spec=[])
+        # spec=[] prevents auto-creation of _last_disconnect_source
 
         # Test with a simple object that has __str__
         class SimpleTopic:

@@ -2385,8 +2385,10 @@ def on_lost_meshtastic_connection(
             return
         if detection_source == "unknown":
             interface_source = getattr(interface, "_last_disconnect_source", None)
-            if isinstance(interface_source, str) and interface_source.strip():
-                detection_source = interface_source
+            if isinstance(interface_source, str) and (
+                stripped := interface_source.strip()
+            ):
+                detection_source = stripped
                 logger.debug(
                     "Using interface-provided detection source: %s", detection_source
                 )
