@@ -2361,9 +2361,9 @@ def on_lost_meshtastic_connection(
 ) -> None:
     """
     Mark the Meshtastic connection as lost, close the current client, and start an asynchronous reconnect.
-    
+
     If a shutdown is underway or a reconnect is already in progress this function returns immediately. When proceeding it sets the module-level `reconnecting` flag, attempts a best-effort close/cleanup of the current Meshtastic client/interface (with special handling for BLE interfaces), clears any in-flight BLE future state, and schedules the `reconnect()` coroutine on the global event loop.
-    
+
     Parameters:
         detection_source (str): Identifier for where or how the loss was detected; if `"unknown"`, the function will prefer an interface-provided `_last_disconnect_source`, then derive a name from `topic`, and finally fall back to `"meshtastic.connection.lost"`.
         topic (Any): Optional pubsub topic object (from pypubsub); when provided and `detection_source` is `"unknown"`, the topic's name will be used to derive the detection source.

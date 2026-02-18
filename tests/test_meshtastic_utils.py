@@ -1174,7 +1174,7 @@ class TestConnectionLossHandling(unittest.TestCase):
             def getName(self):
                 """
                 Get the canonical name for the Meshtastic connection-lost topic.
-                
+
                 Returns:
                     str: The topic name "meshtastic.connection.lost".
                 """
@@ -1183,7 +1183,7 @@ class TestConnectionLossHandling(unittest.TestCase):
             def __str__(self):
                 """
                 Provide a sentinel string indicating this __str__ implementation is not intended for use.
-                
+
                 Returns:
                     str: The sentinel string "should.not.be.used".
                 """
@@ -1220,7 +1220,7 @@ class TestConnectionLossHandling(unittest.TestCase):
             def __str__(self):
                 """
                 Provide a human-readable string representation of the topic.
-                
+
                 Returns:
                     str: The literal string "custom.topic.name" representing this topic.
                 """
