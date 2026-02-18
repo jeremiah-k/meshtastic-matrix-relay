@@ -1081,9 +1081,8 @@ class TestConnectionLossHandling(unittest.TestCase):
         mmrelay.meshtastic_utils.shutting_down = False
 
         # Simulate official library interface (no _last_disconnect_source)
-        mock_interface = MagicMock()
-        # Explicitly ensure the attribute doesn't exist
-        del mock_interface._last_disconnect_source
+        mock_interface = Mock(spec=[])
+        # No _last_disconnect_source attribute on purpose (official lib shape)
 
         on_lost_meshtastic_connection(
             mock_interface, detection_source="unknown", topic=pub.AUTO_TOPIC
