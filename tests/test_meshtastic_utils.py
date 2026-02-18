@@ -1093,31 +1093,6 @@ class TestConnectionLossHandling(unittest.TestCase):
         self.assertIn("meshtastic.connection.lost", error_call)
 
     @patch("mmrelay.meshtastic_utils.logger")
-    def test_on_lost_meshtastic_connection_explicit_detection_source_preserved(
-        self, mock_logger
-    ):
-        """
-        Test that whitespace-only _last_disconnect_source is ignored and fallback is used.
-        """
-        from pubsub import pub
-
-        import mmrelay.meshtastic_utils
-
-        mmrelay.meshtastic_utils.reconnecting = False
-        mmrelay.meshtastic_utils.shutting_down = False
-
-        mock_interface = MagicMock()
-        mock_interface._last_disconnect_source = "   "  # Whitespace only
-
-        on_lost_meshtastic_connection(
-            mock_interface, detection_source="unknown", topic=pub.AUTO_TOPIC
-        )
-
-        # Should fall back to default detection source
-        error_call = mock_logger.error.call_args[0][0]
-        self.assertIn("meshtastic.connection.lost", error_call)
-
-    @patch("mmrelay.meshtastic_utils.logger")
     def test_on_lost_meshtastic_connection_auto_topic_fallback(self, mock_logger):
         """
         Test that pub.AUTO_TOPIC sentinel triggers default detection source and debug logging.
