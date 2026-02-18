@@ -1172,9 +1172,21 @@ class TestConnectionLossHandling(unittest.TestCase):
         # Create a mock topic object (simulating pypubsub Topic with getName())
         class MockTopic:
             def getName(self):
+                """
+                Get the canonical name for the Meshtastic connection-lost topic.
+                
+                Returns:
+                    str: The topic name "meshtastic.connection.lost".
+                """
                 return "meshtastic.connection.lost"
 
             def __str__(self):
+                """
+                Provide a sentinel string indicating this __str__ implementation is not intended for use.
+                
+                Returns:
+                    str: The sentinel string "should.not.be.used".
+                """
                 return "should.not.be.used"
 
         mock_topic = MockTopic()
@@ -1206,6 +1218,12 @@ class TestConnectionLossHandling(unittest.TestCase):
         # Test with a simple object that has __str__
         class SimpleTopic:
             def __str__(self):
+                """
+                Provide a human-readable string representation of the topic.
+                
+                Returns:
+                    str: The literal string "custom.topic.name" representing this topic.
+                """
                 return "custom.topic.name"
 
         simple_topic = SimpleTopic()
