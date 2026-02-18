@@ -1083,6 +1083,203 @@ class TestConnectionLossHandling(unittest.TestCase):
             "Shutdown in progress. Not attempting to reconnect."
         )
 
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_on_lost_meshtastic_connection_ble_disconnect_source(self, mock_logger):
+        """
+        Test that detection_source is derived from BLE interface _last_disconnect_source when available.
+
+        When a BLE interface has a valid _last_disconnect_source attribute, it should be used
+        directly as the detection source (the BLE interface already includes 'ble.' prefix).
+        """
+        from pubsub import pub
+
+        import mmrelay.meshtastic_utils
+
+        mmrelay.meshtastic_utils.reconnecting = False
+        mmrelay.meshtastic_utils.shutting_down = False
+
+        mock_interface = MagicMock()
+        # BLE interface already prefixes with 'ble.' in _last_disconnect_source
+        mock_interface._last_disconnect_source = "ble.user_disconnect"
+
+        # Call with unknown detection_source and AUTO_TOPIC (default behavior)
+        on_lost_meshtastic_connection(
+            mock_interface, detection_source="unknown", topic=pub.AUTO_TOPIC
+        )
+
+        # Should use the BLE disconnect source (already prefixed by BLE interface)
+        error_call = mock_logger.error.call_args[0][0]
+        self.assertIn("ble.user_disconnect", error_call)
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_on_lost_meshtastic_connection_ble_disconnect_source_whitespace(
+        self, mock_logger
+    ):
+        """
+        Test that whitespace-only _last_disconnect_source is ignored and fallback is used.
+        """
+        from pubsub import pub
+
+        import mmrelay.meshtastic_utils
+
+        mmrelay.meshtastic_utils.reconnecting = False
+        mmrelay.meshtastic_utils.shutting_down = False
+
+        mock_interface = MagicMock()
+        mock_interface._last_disconnect_source = "   "  # Whitespace only
+
+        on_lost_meshtastic_connection(
+            mock_interface, detection_source="unknown", topic=pub.AUTO_TOPIC
+        )
+
+        # Should fall back to default detection source
+        error_call = mock_logger.error.call_args[0][0]
+        self.assertIn("meshtastic.connection.lost", error_call)
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_on_lost_meshtastic_connection_auto_topic_fallback(self, mock_logger):
+        """
+        Test that pub.AUTO_TOPIC sentinel triggers default detection source and debug logging.
+
+        When the function is called directly (not via pypubsub) with the default AUTO_TOPIC,
+        it should use 'meshtastic.connection.lost' as the detection source.
+        """
+        from pubsub import pub
+
+        import mmrelay.meshtastic_utils
+
+        mmrelay.meshtastic_utils.reconnecting = False
+        mmrelay.meshtastic_utils.shutting_down = False
+
+        mock_interface = MagicMock()
+        # No _last_disconnect_source attribute
+
+        on_lost_meshtastic_connection(
+            mock_interface, detection_source="unknown", topic=pub.AUTO_TOPIC
+        )
+
+        # Should use default detection source
+        error_call = mock_logger.error.call_args[0][0]
+        self.assertIn("meshtastic.connection.lost", error_call)
+
+        # Should log debug about fallback
+        debug_calls = [str(call) for call in mock_logger.debug.call_args_list]
+        self.assertTrue(
+            any("_last_disconnect_source unavailable" in call for call in debug_calls),
+            f"Expected debug log about fallback, got: {debug_calls}",
+        )
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_on_lost_meshtastic_connection_real_topic_name_extraction(
+        self, mock_logger
+    ):
+        """
+        Test that a real pypubsub topic object's name is extracted as detection_source.
+
+        When called via pypubsub with a real Topic object, the topic's string representation
+        should be used as the detection source.
+        """
+        import mmrelay.meshtastic_utils
+
+        mmrelay.meshtastic_utils.reconnecting = False
+        mmrelay.meshtastic_utils.shutting_down = False
+
+        mock_interface = MagicMock()
+        # No _last_disconnect_source
+
+        # Create a mock topic object (simulating pypubsub Topic)
+        # Use a simple class with __str__ to simulate a Topic object
+        class MockTopic:
+            def __str__(self):
+                return "meshtastic.connection.lost"
+
+        mock_topic = MockTopic()
+
+        on_lost_meshtastic_connection(
+            mock_interface, detection_source="unknown", topic=mock_topic
+        )
+
+        # Should use the topic's string representation
+        error_call = mock_logger.error.call_args[0][0]
+        self.assertIn("meshtastic.connection.lost", error_call)
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_on_lost_meshtastic_connection_topic_str_fallback(self, mock_logger):
+        """
+        Test that str(topic) works correctly for topic name extraction.
+
+        The code uses str(topic) for simplicity, which should work for all topic-like objects.
+        """
+        import mmrelay.meshtastic_utils
+
+        mmrelay.meshtastic_utils.reconnecting = False
+        mmrelay.meshtastic_utils.shutting_down = False
+
+        mock_interface = MagicMock()
+
+        # Test with a simple object that has __str__
+        class SimpleTopic:
+            def __str__(self):
+                return "custom.topic.name"
+
+        simple_topic = SimpleTopic()
+
+        on_lost_meshtastic_connection(
+            mock_interface, detection_source="unknown", topic=simple_topic
+        )
+
+        # Should use str(topic)
+        error_call = mock_logger.error.call_args[0][0]
+        self.assertIn("custom.topic.name", error_call)
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_on_lost_meshtastic_connection_interface_none(self, mock_logger):
+        """
+        Test that the function handles None interface gracefully.
+
+        When interface is None, _last_disconnect_source check should not raise.
+        """
+        from pubsub import pub
+
+        import mmrelay.meshtastic_utils
+
+        mmrelay.meshtastic_utils.reconnecting = False
+        mmrelay.meshtastic_utils.shutting_down = False
+
+        on_lost_meshtastic_connection(
+            None, detection_source="unknown", topic=pub.AUTO_TOPIC
+        )
+
+        # Should use default detection source without error
+        error_call = mock_logger.error.call_args[0][0]
+        self.assertIn("meshtastic.connection.lost", error_call)
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_on_lost_meshtastic_connection_explicit_detection_source_preserved(
+        self, mock_logger
+    ):
+        """
+        Test that explicit detection_source is preserved when not 'unknown'.
+
+        When a specific detection source is provided, it should be used as-is.
+        """
+        import mmrelay.meshtastic_utils
+
+        mmrelay.meshtastic_utils.reconnecting = False
+        mmrelay.meshtastic_utils.shutting_down = False
+
+        mock_interface = MagicMock()
+        mock_interface._last_disconnect_source = "should_be_ignored"
+
+        on_lost_meshtastic_connection(
+            mock_interface, detection_source="explicit_source"
+        )
+
+        # Should use the explicit source, not _last_disconnect_source
+        error_call = mock_logger.error.call_args[0][0]
+        self.assertIn("explicit_source", error_call)
+        self.assertNotIn("should_be_ignored", error_call)
+
 
 @pytest.mark.usefixtures("reset_meshtastic_globals")
 class TestConnectMeshtasticEdgeCases(unittest.TestCase):
