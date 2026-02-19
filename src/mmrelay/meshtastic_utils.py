@@ -2383,7 +2383,11 @@ def on_lost_meshtastic_connection(
             if isinstance(interface_source, str) and (
                 stripped := interface_source.strip()
             ):
-                detection_source = stripped
+                # Strip 'ble.' prefix to make detection source library-agnostic
+                if stripped.startswith("ble."):
+                    detection_source = stripped[4:]
+                else:
+                    detection_source = stripped
                 logger.debug(
                     "Using interface-provided detection source: %s", detection_source
                 )

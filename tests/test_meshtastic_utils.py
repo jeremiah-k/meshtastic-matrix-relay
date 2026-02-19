@@ -1177,9 +1177,14 @@ class TestConnectionLossHandling(unittest.TestCase):
     @patch("mmrelay.meshtastic_utils.logger")
     def test_on_lost_meshtastic_connection_topic_str_fallback(self, mock_logger):
         """
-        Test that str(topic) works correctly for topic name extraction.
+        Test that str(topic) works correctly as a fallback for topic name extraction.
 
-        The code uses str(topic) for simplicity, which should work for all topic-like objects.
+        The production code in on_lost_meshtastic_connection uses:
+            detection_source = getattr(topic, "getName", lambda: str(topic))()
+
+        This means getName() is the primary mechanism for extracting the topic name,
+        and str(topic) is only used as the lambda fallback when the topic lacks a
+        getName method. This test verifies that fallback behavior works correctly.
         """
         import mmrelay.meshtastic_utils
 
@@ -1257,8 +1262,8 @@ class TestConnectionLossHandling(unittest.TestCase):
         """
         Test that detection_source is derived from BLE interface _last_disconnect_source when available.
 
-        When a BLE interface has a valid _last_disconnect_source attribute, it should be used
-        directly as the detection source (the BLE interface already includes 'ble.' prefix).
+        When a BLE interface has a valid _last_disconnect_source attribute with 'ble.' prefix,
+        the prefix is stripped to make the detection source library-agnostic.
         """
         from pubsub import pub
 
@@ -1268,7 +1273,7 @@ class TestConnectionLossHandling(unittest.TestCase):
         mmrelay.meshtastic_utils.shutting_down = False
 
         mock_interface = MagicMock()
-        # BLE interface already prefixes with 'ble.' in _last_disconnect_source
+        # BLE interface prefixes with 'ble.' in _last_disconnect_source
         mock_interface._last_disconnect_source = "ble.user_disconnect"
 
         # Call with unknown detection_source and AUTO_TOPIC (default behavior)
@@ -1276,9 +1281,10 @@ class TestConnectionLossHandling(unittest.TestCase):
             mock_interface, detection_source="unknown", topic=pub.AUTO_TOPIC
         )
 
-        # Should use the BLE disconnect source (already prefixed by BLE interface)
+        # Should use the BLE disconnect source with 'ble.' prefix stripped
         error_call = mock_logger.error.call_args[0][0]
-        self.assertIn("ble.user_disconnect", error_call)
+        self.assertIn("user_disconnect", error_call)
+        self.assertNotIn("ble.user_disconnect", error_call)
 
     @patch("mmrelay.meshtastic_utils.logger")
     def test_on_lost_meshtastic_connection_ble_disconnect_source_whitespace(
