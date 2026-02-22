@@ -2384,25 +2384,28 @@ def on_lost_meshtastic_connection(
                 stripped := interface_source.strip()
             ):
                 # Strip 'ble.' prefix to make detection source library-agnostic
-                if stripped.startswith("ble."):
-                    detection_source = stripped[4:]
+                res = stripped[4:].strip() if stripped.startswith("ble.") else stripped
+                if res:
+                    detection_source = res
+                    logger.debug(
+                        "Using interface-provided detection source: %s",
+                        detection_source,
+                    )
+
+            if detection_source == "unknown":
+                if topic is not None and topic is not pub.AUTO_TOPIC:
+                    # Real topic object from pypubsub - extract its name
+                    detection_source = getattr(topic, "getName", lambda: str(topic))()
+                    logger.debug(
+                        "Using pubsub topic-derived detection source: %s",
+                        detection_source,
+                    )
                 else:
-                    detection_source = stripped
-                logger.debug(
-                    "Using interface-provided detection source: %s", detection_source
-                )
-            elif topic is not pub.AUTO_TOPIC:
-                # Real topic object from pypubsub - extract its name
-                detection_source = getattr(topic, "getName", lambda: str(topic))()
-                logger.debug(
-                    "Using pubsub topic-derived detection source: %s", detection_source
-                )
-            else:
-                # Called directly without a topic, or with AUTO_TOPIC sentinel
-                logger.debug(
-                    "_last_disconnect_source unavailable; using default detection source"
-                )
-                detection_source = "meshtastic.connection.lost"
+                    # Called directly without a topic, or with AUTO_TOPIC sentinel
+                    logger.debug(
+                        "_last_disconnect_source unavailable; using default detection source"
+                    )
+                    detection_source = "meshtastic.connection.lost"
 
         reconnecting = True
         logger.error(f"Lost connection ({detection_source}). Reconnecting...")
