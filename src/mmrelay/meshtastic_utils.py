@@ -1925,7 +1925,8 @@ def connect_meshtastic(
                             logger.debug(
                                 f"Creating new BLE interface for {ble_address} (sanitized: {sanitized_address})"
                             )
-                            # Check if auto_reconnect parameter is supported (forked version)
+                            # Detect whether this BLEInterface implementation supports
+                            # explicit auto_reconnect control.
                             ble_init_sig = inspect.signature(
                                 meshtastic.ble_interface.BLEInterface.__init__
                             )
@@ -1937,19 +1938,19 @@ def connect_meshtastic(
                                 "timeout": timeout,
                             }
 
-                            # Add auto_reconnect only if supported (forked version)
+                            # Configure auto_reconnect only when supported.
                             supports_auto_reconnect = (
                                 "auto_reconnect" in ble_init_sig.parameters
                             )
                             if supports_auto_reconnect:
                                 ble_kwargs["auto_reconnect"] = False
                                 logger.debug(
-                                    "Using forked meshtastic library with auto_reconnect=False "
-                                    "to ensure sequential connections"
+                                    "BLEInterface supports auto_reconnect; setting auto_reconnect=False "
+                                    "to ensure sequential reconnection control"
                                 )
                             else:
                                 logger.debug(
-                                    "Using official meshtastic library (auto_reconnect not available)"
+                                    "BLEInterface auto_reconnect parameter not available; using compatibility mode"
                                 )
                             if ble_scan_after_failure and not supports_auto_reconnect:
                                 logger.debug(
@@ -2092,10 +2093,9 @@ def connect_meshtastic(
 
                         iface = meshtastic_iface
 
-                    # Connect outside singleton-creation lock to avoid blocking other threads
-                    # Official version connects during init; forked version needs explicit
-                    # connect(). Skipping connect for official avoids calling connect() with
-                    # an implicit None address, which can fail reconnection.
+                    # Connect outside singleton-creation lock to avoid blocking other threads.
+                    # Interfaces that expose auto_reconnect support use explicit connect()
+                    # here; compatibility mode relies on constructor-managed connection.
                     if (
                         iface is not None
                         and supports_auto_reconnect
@@ -2186,8 +2186,8 @@ def connect_meshtastic(
                             ) from err
                     elif iface is not None and hasattr(iface, "connect"):
                         logger.debug(
-                            "Skipping explicit BLE connect for official library; "
-                            "interface connects during init for %s",
+                            "Skipping explicit BLE connect in compatibility mode; "
+                            "interface is expected to connect during initialization for %s",
                             ble_address,
                         )
 
@@ -2357,17 +2357,16 @@ def connect_meshtastic(
 def on_lost_meshtastic_connection(
     interface: Any = None,
     detection_source: str = "unknown",
+    topic: Any = pub.AUTO_TOPIC,
 ) -> None:
     """
-    Mark the Meshtastic connection as lost, close the current client, and initiate an asynchronous reconnect.
+    Mark the Meshtastic connection as lost, close the current client, and start an asynchronous reconnect.
 
-    If a shutdown is in progress or a reconnect is already underway this function returns immediately. Otherwise it:
-    - sets the module-level `reconnecting` flag,
-    - attempts to close and clear the module-level `meshtastic_client` (handles already-closed file descriptors),
-    - schedules the reconnect() coroutine on the global event loop if that loop exists and is open.
+    If a shutdown is underway or a reconnect is already in progress this function returns immediately. When proceeding it sets the module-level `reconnecting` flag, attempts a best-effort close/cleanup of the current Meshtastic client/interface (with special handling for BLE interfaces), clears any in-flight BLE future state, and schedules the `reconnect()` coroutine on the global event loop.
 
     Parameters:
-        detection_source (str): Identifier for where or how the loss was detected; used in log messages.
+        detection_source (str): Identifier for where or how the loss was detected; if `"unknown"`, the function will prefer an interface-provided `_last_disconnect_source`, then derive a name from `topic`, and finally fall back to `"meshtastic.connection.lost"`.
+        topic (Any): Optional pubsub topic object (from pypubsub); when provided and `detection_source` is `"unknown"`, the topic's name will be used to derive the detection source.
     """
     global meshtastic_client, meshtastic_iface, reconnecting, shutting_down, event_loop, reconnect_task, _ble_future, _ble_future_address
     with meshtastic_lock:
@@ -2379,6 +2378,35 @@ def on_lost_meshtastic_connection(
                 "Reconnection already in progress. Skipping additional reconnection attempt."
             )
             return
+        if detection_source == "unknown":
+            interface_source = getattr(interface, "_last_disconnect_source", None)
+            if isinstance(interface_source, str) and (
+                stripped := interface_source.strip()
+            ):
+                # Strip 'ble.' prefix to make detection source library-agnostic
+                res = stripped[4:].strip() if stripped.startswith("ble.") else stripped
+                if res:
+                    detection_source = res
+                    logger.debug(
+                        "Using interface-provided detection source: %s",
+                        detection_source,
+                    )
+
+            if detection_source == "unknown":
+                if topic is not None and topic is not pub.AUTO_TOPIC:
+                    # Real topic object from pypubsub - extract its name
+                    detection_source = getattr(topic, "getName", lambda: str(topic))()
+                    logger.debug(
+                        "Using pubsub topic-derived detection source: %s",
+                        detection_source,
+                    )
+                else:
+                    # Called directly without a topic, or with AUTO_TOPIC sentinel
+                    logger.debug(
+                        "_last_disconnect_source unavailable; using default detection source"
+                    )
+                    detection_source = "meshtastic.connection.lost"
+
         reconnecting = True
         logger.error(f"Lost connection ({detection_source}). Reconnecting...")
 
