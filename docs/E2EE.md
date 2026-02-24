@@ -247,6 +247,17 @@ The `credentials.json` file contains:
 
 **Important**: Keep this file secure as it contains your Matrix access credentials.
 
+## Device Verification Status
+
+In your Matrix client (Element, etc.), MMRelay's messages will show as encrypted but with a warning about unverified devices. This is expected:
+
+- **Encrypted messages**: Show a red shield with "Encrypted by a device not verified by its owner"
+- **Unencrypted messages**: Show a red shield with "Not encrypted" warning
+
+**Why devices appear unverified**: Matrix clients use interactive verification (emoji comparisons, QR codes) to confirm device identity. The matrix-nio library doesn't support this verification protocol, so MMRelay devices cannot be verified. The messages are still encrypted — this just means you can't cryptographically confirm the device identity through the usual Matrix verification flow.
+
+If messages show as completely unencrypted in encrypted rooms, check your MMRelay version and configuration.
+
 ## Troubleshooting
 
 ### Common Issues
@@ -312,15 +323,6 @@ INFO Matrix: Performing initial sync to initialize rooms...
 INFO Matrix: Initial sync completed. Found X rooms.
 ```
 
-#### Verify Message Encryption
-
-In your Matrix client (Element, etc.):
-
-- **Encrypted messages**: Show with a red shield and a "Encrypted by a device not verified by its owner" (it's the best we've been able to do at the moment, due to upstream verification issues in `matrix-nio`)
-- **Unencrypted messages**: Show with a red shield and "Not encrypted" warning.
-
-If messages from MMRelay show as unencrypted in encrypted rooms, check your MMRelay version and configuration.
-
 ## Backward Compatibility
 
 E2EE support is fully backward compatible:
@@ -339,51 +341,6 @@ E2EE support is fully backward compatible:
 
 > **Note**: The Olm/Megolm encryption library (libolm) was deprecated in July 2024. Matrix.org considers it safe for practical use but recommends migrating to vodozemac. matrix-nio (which MMRelay uses) still depends on libolm, though migration work is in progress. We'll continue using the current encryption while it remains supported and stable.
 
-## Docker E2EE Setup
-
-MMRelay supports E2EE in Docker environments using environment variables for easy configuration.
-
-### Prerequisites
-
-- **Linux/macOS host**: E2EE is not supported on Windows due to library limitations
-- **E2EE-enabled image**: Use the official image `ghcr.io/jeremiah-k/mmrelay:latest`
-
-> **Production deployment**: The `:latest` tag is mutable and may change. For production deployments, pin a specific version tag or digest to ensure reproducible deployments.
-
-### Quick Docker E2EE Setup
-
-#### Method 1: Auth System + Docker (Recommended)
-
-For complete Docker E2EE setup instructions with environment variables for operational settings, see the [Docker Guide E2EE Setup section](DOCKER.md#method-1-auth-system--environment-variables-recommended-for-e2ee).
-
-#### Method 2: Mount Credentials File
-
-```bash
-# On host: Create credentials using auth login
-mmrelay auth login
-
-# Then mount the credentials file
-```
-
-```yaml
-volumes:
-  - ${MMRELAY_HOST_HOME:-$HOME}/.mmrelay:/data # Includes matrix/credentials.json and matrix/store
-```
-
-### Configuration
-
-Ensure E2EE is enabled in your `config.yaml`:
-
-```yaml
-matrix:
-  e2ee:
-    enabled: true
-```
-
-The E2EE store directory is automatically created in the mounted data volume.
-
-For complete Docker setup instructions, see the [Docker Guide](DOCKER.md#method-1-auth-system--environment-variables-recommended-for-e2ee).
-
 ### Performance Impact
 
 E2EE adds minimal overhead:
@@ -392,5 +349,3 @@ E2EE adds minimal overhead:
 - **Message latency**: Negligible encryption/decryption time
 - **Memory usage**: Small increase for key storage
 - **Network usage**: Additional sync traffic for key management
-
-For questions or issues with E2EE support, please check the [GitHub Issues](https://github.com/jeremiah-k/meshtastic-matrix-relay/issues) or create a new issue with the `e2ee` label.
