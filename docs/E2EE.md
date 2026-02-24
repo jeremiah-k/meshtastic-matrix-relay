@@ -23,8 +23,13 @@ MMRelay can participate in encrypted Matrix rooms. When E2EE is enabled:
 **What it does NOT mean:**
 
 - It does **not** provide end-to-end encryption from a Meshtastic device all the way to a Matrix user.
+
+**Security implications:**
+
 - The relay host is part of the trusted computing base: it sees message plaintext when translating between platforms.
 - Security limitations of each platform still apply, and combining them can add risk.
+
+> See [Security Considerations](#security-considerations) for a deeper dive.
 
 ## Quick Start
 
