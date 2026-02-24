@@ -1,15 +1,30 @@
 # Matrix End-to-End Encryption (E2EE) Guide
 
-MMRelay includes full support for **Matrix End-to-End Encryption**, enabling secure communication in encrypted Matrix rooms. This guide covers everything you need to set up and use E2EE features.
+MMRelay can participate in **encrypted Matrix rooms** using Matrix End-to-End Encryption (E2EE). This guide covers how to enable that support.
+
+> **Important**: MMRelay is a bridge. Messages are **decrypted/re-encrypted at the relay** when crossing between Meshtastic and Matrix. “E2EE support” here means **MMRelay can join and operate in encrypted Matrix rooms** (like any other Matrix client), not that messages stay end-to-end encrypted across the entire Meshtastic ↔ Matrix path.
 
 ## E2EE in MMRelay
 
-MMRelay can participate in encrypted Matrix rooms, allowing your Meshtastic network to communicate securely through Matrix's end-to-end encryption. When E2EE is enabled:
+MMRelay can participate in encrypted Matrix rooms. When E2EE is enabled:
 
 - Messages from Meshtastic are encrypted before being sent to encrypted Matrix rooms
 - Encrypted messages from Matrix are decrypted before being relayed to Meshtastic
 - MMRelay maintains its own device identity and encryption keys
 - Both encrypted and regular rooms work seamlessly in the same relay
+
+### What this does (and does not) mean
+
+**What it means:**
+
+- On the **Matrix side**, messages are protected using Matrix E2EE (Olm/Megolm) between MMRelay and other Matrix clients in the room.
+- MMRelay behaves like a normal Matrix client in encrypted rooms: it stores keys, requests keys when needed, and decrypts/encrypts messages as appropriate.
+
+**What it does NOT mean:**
+
+- It does **not** provide end-to-end encryption from a Meshtastic device all the way to a Matrix user.
+- The relay host is part of the trusted computing base: it sees message plaintext when translating between platforms.
+- Security limitations of each platform still apply, and combining them can add risk.
 
 ## Quick Start
 
@@ -176,6 +191,41 @@ MMRelay manages encryption devices automatically:
    - On a subsequent sync, the bot receives the key and decrypts the message.
    - Forwards decrypted message to Meshtastic device.
 
+## Security Considerations
+
+### Bridge trust model
+
+MMRelay is effectively an automated “copy/paste” bridge:
+
+- Meshtastic → Matrix: MMRelay reads the Meshtastic payload (as provided by the connected node) and then sends an encrypted Matrix event (for encrypted rooms).
+- Matrix → Meshtastic: MMRelay decrypts Matrix events (for encrypted rooms) and then emits a Meshtastic message via the connected node.
+
+That means the **relay host** (and the OS user running it) can access message plaintext, and anyone who can read the MMRelay config/credentials/store can impersonate the bot.
+
+### Meshtastic encryption is separate
+
+Meshtastic link/channel encryption (and its limitations) are independent of Matrix E2EE.
+
+- MMRelay does not change how Meshtastic encryption works; it connects to a node and uses whatever channels/keys that node is configured with.
+- If your threat model includes things like **channel key leakage**, a compromised node/app, or insecure distribution of channel keys, MMRelay can’t fix that (and may expand your attack surface by adding another host that must be protected).
+
+### Practical hardening
+
+- Treat `~/.mmrelay/matrix/credentials.json` like a password.
+- Treat `~/.mmrelay/matrix/store/` like a long-term private key store.
+- Run MMRelay on a hardened machine/container, keep dependencies updated, and restrict filesystem access to the MMRelay home directory.
+
+### Key storage
+
+- Encryption keys are stored in `~/.mmrelay/matrix/store/`.
+- Back up this directory if you want to preserve the bot’s encryption identity and history.
+- Protect this directory with appropriate file permissions (and consider encrypting the filesystem where it lives).
+
+### Access control
+
+- `~/.mmrelay/matrix/credentials.json` contains sensitive authentication data.
+- Limit access to the MMRelay home directory to the OS user running MMRelay.
+
 ## File Locations
 
 ### Configuration Files
@@ -272,21 +322,6 @@ In your Matrix client (Element, etc.):
 - **Unencrypted messages**: Show with a red shield and "Not encrypted" warning.
 
 If messages from MMRelay show as unencrypted in encrypted rooms, check your MMRelay version and configuration.
-
-## Security Considerations
-
-### Key Storage
-
-- Encryption keys are stored in `~/.mmrelay/matrix/store/`
-- This directory should be backed up to preserve encryption history
-- Protect this directory with appropriate file permissions
-- Consider encrypting the filesystem where this directory is stored
-
-### Access Control
-
-- The `credentials.json` file contains sensitive authentication data
-- Limit access to this file to the user running MMRelay
-- Consider using environment variables for additional security
 
 ## Backward Compatibility
 

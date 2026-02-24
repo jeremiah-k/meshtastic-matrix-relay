@@ -6,7 +6,7 @@ Welcome to the MMRelay documentation! This directory contains comprehensive guid
 
 - **[Installation Guide](INSTRUCTIONS.md)** - Complete setup instructions for MMRelay
 - **[Migration Guide for v1.3](MIGRATION_1.3.md)** - Upgrading from older versions to unified HOME model
-- **[E2EE Guide](E2EE.md)** - Matrix End-to-End Encryption setup and usage
+- **[E2EE Guide](E2EE.md)** - Encrypted Matrix rooms (Matrix E2EE) setup and usage
 - **[Docker Guide](DOCKER.md)** - Docker deployment and configuration
 - **[Helm Guide](HELM.md)** - Kubernetes Helm chart deployment guide
 
@@ -74,4 +74,4 @@ docs/
 - **Current Version**: v1.3+
 - **Python Requirement**: 3.10+
 - **Supported Platforms**: Linux, macOS, Windows (E2EE not available on Windows)
-- **Key Features**: Meshtastic ↔ Matrix relay, E2EE support, Docker deployment, Plugin system
+- **Key Features**: Meshtastic ↔ Matrix relay, encrypted Matrix rooms (Matrix E2EE), Docker deployment, Plugin system
