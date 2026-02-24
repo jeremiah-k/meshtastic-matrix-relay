@@ -55,7 +55,7 @@ setup(
         "platformdirs==4.9.2",
         "py-staticmaps>=0.4.0",
         "psutil>=5.8.0",
-        "rich==14.3.2",
+        "rich==14.3.3",
         "setuptools>=80.9.0",  # Required for console script entry points and Windows compatibility
     ],
     extras_require={
