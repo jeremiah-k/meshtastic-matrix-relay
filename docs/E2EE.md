@@ -256,14 +256,15 @@ The `credentials.json` file contains:
 
 ## Device Verification Status
 
-In your Matrix client (Element, etc.), MMRelay's messages will show as encrypted but with a warning about unverified devices. This is expected:
+In your Matrix client (Element, etc.), MMRelay's messages in encrypted rooms will show a red shield with the warning **"Encrypted by a device not verified by its owner"**. This is expected:
 
-- **Encrypted messages**: Show a red shield with "Encrypted by a device not verified by its owner"
-- **Unencrypted messages**: Show a red shield with "Not encrypted" warning
+- The messages **are encrypted** using Matrix E2EE (Olm/Megolm)
+- matrix-nio (the library MMRelay uses) does not support interactive device verification (emoji comparison, QR code)
+- MMRelay devices cannot be cross-signed through the standard Matrix verification flow
 
-**Why devices appear unverified**: Matrix clients use interactive verification (emoji comparisons, QR codes) to confirm device identity. The matrix-nio library doesn't support this verification protocol, so MMRelay devices cannot be verified. The messages are still encrypted — this just means you can't cryptographically confirm the device identity through the usual Matrix verification flow.
+If you see a **"Not encrypted"** warning on a message in an encrypted room, this indicates a problem: an unencrypted message was sent to an encrypted room. Check your MMRelay version and E2EE configuration.
 
-If messages show as completely unencrypted in encrypted rooms, check your MMRelay version and configuration.
+For other red shield warnings (decryption failures, identity resets), see [Troubleshooting](#troubleshooting).
 
 ## Troubleshooting
 
