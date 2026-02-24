@@ -28,14 +28,14 @@ lint:
     - actionlint@1.7.11
     - bandit@1.9.3
     - black@26.1.0
-    - checkov@3.2.504
+    - checkov@3.2.506
     - git-diff-check
-    - isort@7.0.0
+    - isort@8.0.0
     - markdownlint@0.47.0
     - osv-scanner@2.3.3
     - prettier@3.8.1
-    - ruff@0.15.1
-    - trufflehog@3.93.1
+    - ruff@0.15.2
+    - trufflehog@3.93.4
     - yamllint@1.38.0
   ignore:
     - linters: [ALL]

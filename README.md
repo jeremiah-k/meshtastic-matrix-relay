@@ -20,7 +20,7 @@ A powerful and easy-to-use relay between Meshtastic devices and Matrix chat room
 - 🔐 **Supports encrypted Matrix rooms (Matrix E2EE)** 🔐
 - 📁 **Unified directory structure** 📁 **NEW in v1.3!**
 
-> **Encryption note**: MMRelay can join **encrypted Matrix rooms** (Matrix E2EE). MMRelay is a bridge, so messages are decrypted/re-encrypted at the relay when crossing between Meshtastic and Matrix.
+> **Encryption note**: MMRelay supports encrypted Matrix rooms (Matrix E2EE). For details on how this works and its security implications, see the [E2EE Setup Guide](docs/E2EE.md).
 
 ## Documentation
 

@@ -2,7 +2,7 @@
 
 MMRelay can participate in **encrypted Matrix rooms** using Matrix End-to-End Encryption (E2EE). This guide covers how to enable that support.
 
-> **Important**: MMRelay is a bridge. Messages are **decrypted/re-encrypted at the relay** when crossing between Meshtastic and Matrix. “E2EE support” here means **MMRelay can join and operate in encrypted Matrix rooms** (like any other Matrix client), not that messages stay end-to-end encrypted across the entire Meshtastic ↔ Matrix path.
+> **Important**: MMRelay bridges Meshtastic and Matrix. Messages are **decrypted/re-encrypted at the relay** when crossing between platforms. "E2EE support" here means **MMRelay can join and operate in encrypted Matrix rooms** (like any other Matrix client), not that messages stay end-to-end encrypted across the entire Meshtastic ↔ Matrix path.
 
 ## E2EE in MMRelay
 
@@ -193,9 +193,9 @@ MMRelay manages encryption devices automatically:
 
 ## Security Considerations
 
-### Bridge trust model
+### Trust model
 
-MMRelay is effectively an automated “copy/paste” bridge:
+MMRelay bridges Meshtastic and Matrix:
 
 - Meshtastic → Matrix: MMRelay reads the Meshtastic payload (as provided by the connected node) and then sends an encrypted Matrix event (for encrypted rooms).
 - Matrix → Meshtastic: MMRelay decrypts Matrix events (for encrypted rooms) and then emits a Meshtastic message via the connected node.
@@ -207,24 +207,22 @@ That means the **relay host** (and the OS user running it) can access message pl
 Meshtastic link/channel encryption (and its limitations) are independent of Matrix E2EE.
 
 - MMRelay does not change how Meshtastic encryption works; it connects to a node and uses whatever channels/keys that node is configured with.
-- If your threat model includes things like **channel key leakage**, a compromised node/app, or insecure distribution of channel keys, MMRelay can’t fix that (and may expand your attack surface by adding another host that must be protected).
+- If your threat model includes things like **channel key leakage**, a compromised node/app, or insecure distribution of channel keys, MMRelay can't fix that (and may expand your attack surface by adding another host that must be protected).
 
-### Practical hardening
+### Credentials and key storage
 
-- Treat `~/.mmrelay/matrix/credentials.json` like a password.
-- Treat `~/.mmrelay/matrix/store/` like a long-term private key store.
-- Run MMRelay on a hardened machine/container, keep dependencies updated, and restrict filesystem access to the MMRelay home directory.
+The Matrix credentials and encryption keys are equivalent to any other Matrix client session:
 
-### Key storage
+- `~/.mmrelay/matrix/credentials.json` — Matrix login credentials (access token, device ID)
+- `~/.mmrelay/matrix/store/` — Matrix encryption keys for this session
 
-- Encryption keys are stored in `~/.mmrelay/matrix/store/`.
-- Back up this directory if you want to preserve the bot’s encryption identity and history.
-- Protect this directory with appropriate file permissions (and consider encrypting the filesystem where it lives).
+If these are lost or compromised, the impact is the same as losing any Matrix session: you'd need to log in again and re-verify devices. Protect these files with appropriate file permissions, but they don't require special backup procedures or long-term archival.
 
-### Access control
+### Recommendations
 
-- `~/.mmrelay/matrix/credentials.json` contains sensitive authentication data.
-- Limit access to the MMRelay home directory to the OS user running MMRelay.
+- Limit access to `~/.mmrelay/` to the OS user running MMRelay
+- If the credentials or store are compromised, log out the device from your Matrix server and re-run `mmrelay auth login`
+- Understand that combining platforms may expand your attack surface — each platform's security limitations still apply
 
 ## File Locations
 
@@ -338,6 +336,8 @@ E2EE support is fully backward compatible:
 - Uses matrix-nio library with Olm/Megolm encryption protocols
 - E2EE store loaded before sync operations for proper initialization
 - Automatic key management with `ignore_unverified_devices=True`
+
+> **Note**: The Olm/Megolm encryption library (libolm) was deprecated in July 2024. Matrix.org considers it safe for practical use but recommends migrating to vodozemac. matrix-nio (which MMRelay uses) still depends on libolm, though migration work is in progress. We'll continue using the current encryption while it remains supported and stable.
 
 ## Docker E2EE Setup
 
