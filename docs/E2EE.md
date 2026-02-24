@@ -87,6 +87,8 @@ That's it! MMRelay will automatically encrypt messages for encrypted rooms and d
 - **Linux or macOS** (E2EE is not supported on Windows due to library limitations)
 - **MMRelay v1.2+** with E2EE support: `pipx install 'mmrelay[e2e]'`
 
+> **Note**: The Olm/Megolm encryption library (libolm) was deprecated in July 2024. Matrix.org considers it [safe for practical use](https://matrix.org/blog/2024/08/libolm-deprecation/) but recommends migrating to vodozemac. matrix-nio (which MMRelay uses) still depends on libolm, though migration work is in progress.
+
 ### Windows Limitation
 
 **E2EE is not available on Windows** due to technical limitations with the required cryptographic libraries. The `python-olm` library requires native C libraries that are difficult to compile and install on Windows systems.
@@ -343,8 +345,6 @@ E2EE support is fully backward compatible:
 - Uses matrix-nio library with Olm/Megolm encryption protocols
 - E2EE store loaded before sync operations for proper initialization
 - Automatic key management with `ignore_unverified_devices=True`
-
-> **Note**: The Olm/Megolm encryption library (libolm) was deprecated in July 2024. Matrix.org considers it safe for practical use but recommends migrating to vodozemac. matrix-nio (which MMRelay uses) still depends on libolm, though migration work is in progress. We'll continue using the current encryption while it remains supported and stable.
 
 ### Performance Impact
 
