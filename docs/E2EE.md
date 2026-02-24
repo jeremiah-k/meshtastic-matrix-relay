@@ -9,8 +9,19 @@ Encryption (E2EE).
 > rooms** (like any other Matrix client), not that messages stay end-to-end
 > encrypted across the entire Meshtastic <-> Matrix path.
 
+## Libolm deprecation status
+
+The Olm/Megolm encryption library (`libolm`) was deprecated in July 2024.
+Matrix.org considers it
+[safe for practical use](https://matrix.org/blog/2024/08/libolm-deprecation/)
+but recommends migrating to vodozemac.
+
+MMRelay currently relies on `matrix-nio`, which still depends on `libolm`.
+Migration work is in progress upstream.
+
 ## Index
 
+- [Libolm deprecation status](#libolm-deprecation-status)
 - [What E2EE means in MMRelay](#what-e2ee-means-in-mmrelay)
 - [How MMRelay handles encrypted rooms](#how-mmrelay-handles-encrypted-rooms)
 - [Security considerations](#security-considerations)
@@ -45,8 +56,15 @@ When E2EE is enabled:
 
 - It does **not** provide end-to-end encryption from a Meshtastic device all
   the way to a Matrix user.
-- The relay host is part of the trusted computing base and can see plaintext
-  while translating between platforms.
+
+### Security implications
+
+- MMRelay decrypts and re-encrypts at the bridge boundary, so the relay host
+  and OS account running MMRelay are part of your trusted computing base.
+- Combining Meshtastic and Matrix can expand your attack surface; apply each
+  platform's security practices.
+
+See [Security considerations](#security-considerations) for details.
 
 ## How MMRelay handles encrypted rooms
 
@@ -91,10 +109,6 @@ MMRelay bridges Meshtastic and Matrix:
 - Matrix -> Meshtastic: MMRelay decrypts Matrix events (for encrypted rooms)
   and then emits a Meshtastic message via the connected node
 
-That means the **relay host** (and the OS user running it) can access message
-plaintext, and anyone who can read the MMRelay config/credentials/store can
-impersonate the bot.
-
 ### Meshtastic encryption is separate
 
 Meshtastic link/channel encryption (and its limitations) are independent of
@@ -135,11 +149,6 @@ session: you need to log in again and re-verify devices.
 ```bash
 pipx install 'mmrelay[e2e]'
 ```
-
-> **Note**: The Olm/Megolm encryption library (libolm) was deprecated in July 2024. Matrix.org considers it
-> [safe for practical use](https://matrix.org/blog/2024/08/libolm-deprecation/)
-> but recommends migrating to vodozemac. `matrix-nio` (which MMRelay uses)
-> still depends on libolm, though migration work is in progress.
 
 ### Windows limitation
 
