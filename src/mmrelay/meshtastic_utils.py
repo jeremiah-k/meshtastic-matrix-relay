@@ -999,12 +999,12 @@ def _extract_firmware_version_from_client(client: Any) -> str | None:
         str | None: Firmware version if present in any metadata location.
     """
     local_node = getattr(client, "localNode", None)
-    local_iface = getattr(local_node, "iface", None)
+    local_iface = getattr(local_node, "iface", None) if local_node else None
 
     candidates = (
         getattr(client, "metadata", None),
-        getattr(local_node, "metadata", None),
-        getattr(local_iface, "metadata", None),
+        local_node and getattr(local_node, "metadata", None),
+        local_iface and getattr(local_iface, "metadata", None),
     )
     for candidate in candidates:
         parsed = _extract_firmware_version_from_metadata(candidate)
@@ -1101,6 +1101,8 @@ def _get_device_metadata(
                 # A previous metadata request is still running; avoid piling up
                 # threads and leave the in-flight call to finish in its own time.
                 logger.debug("getMetadata() already running; skipping new request")
+                if raise_on_error:
+                    raise RuntimeError("getMetadata() probe already in progress")
                 return result
 
             try:
@@ -1112,6 +1114,8 @@ def _get_device_metadata(
                     "getMetadata() submission failed; skipping metadata retrieval",
                     exc_info=exc,
                 )
+                if raise_on_error:
+                    raise
                 return result
             _metadata_future = future
         timed_out = False
@@ -3148,15 +3152,17 @@ async def check_connection() -> None:
                     timeout=DEFAULT_MESHTASTIC_OPERATION_TIMEOUT,
                 )
 
-            except Exception as e:
+            except Exception as exc:
                 # Only trigger reconnection if we're not already reconnecting
                 if not reconnecting:
-                    logger.error(
-                        f"{connection_type.capitalize()} connection health check failed: {e}"
+                    logger.exception(
+                        "%s connection health check failed: %s",
+                        connection_type.capitalize(),
+                        exc,
                     )
                     on_lost_meshtastic_connection(
                         interface=meshtastic_client,
-                        detection_source=f"health check failed: {str(e)}",
+                        detection_source=f"health check failed: {exc!s}",
                     )
                 else:
                     logger.debug("Skipping reconnection trigger - already reconnecting")

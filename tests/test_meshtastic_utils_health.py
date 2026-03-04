@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -63,7 +63,8 @@ async def test_check_connection_ble_skips_health_checks(reset_meshtastic_globals
 
 
 @pytest.mark.asyncio
-async def test_check_connection_metadata_probe_succeeds(reset_meshtastic_globals):
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+async def test_check_connection_metadata_probe_succeeds():
     mu.config = _make_health_config(connection_type="tcp")
     mu.meshtastic_client = MagicMock()
 
@@ -112,8 +113,10 @@ async def test_check_connection_triggers_reconnect_on_probe_failure(
         await check_connection()
 
     mock_lost.assert_called_once()
-    mock_logger.error.assert_any_call(
-        "Tcp connection health check failed: probe failed"
+    mock_logger.exception.assert_any_call(
+        "%s connection health check failed: %s",
+        "Tcp",
+        ANY,
     )
 
 
