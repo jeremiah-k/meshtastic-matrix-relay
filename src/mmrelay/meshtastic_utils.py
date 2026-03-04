@@ -1,6 +1,7 @@
 import asyncio
 import atexit
 import contextlib
+import functools
 import importlib.util
 import inspect
 import io
@@ -1012,11 +1013,17 @@ def _extract_firmware_version_from_client(client: Any) -> str | None:
     return None
 
 
-def _get_device_metadata(client: Any) -> dict[str, Any]:
+def _get_device_metadata(
+    client: Any,
+    *,
+    force_refresh: bool = False,
+    raise_on_error: bool = False,
+) -> dict[str, Any]:
     """
     Retrieve firmware version and raw metadata output from a Meshtastic client.
 
-    Prefers structured metadata already present on the client/interface. If no
+    Prefers structured metadata already present on the client/interface unless
+    `force_refresh=True`. If no
     usable firmware version is cached, attempts to call
     `client.localNode.getMetadata()`, captures console output produced by that
     call, and extracts firmware version information from output and any updated
@@ -1024,6 +1031,11 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
 
     Parameters:
         client (Any): Meshtastic client object expected to expose localNode.getMetadata(); if absent, metadata retrieval is skipped.
+        force_refresh (bool): If `True`, always call `getMetadata()` even when
+            structured metadata is already cached. Health checks use this mode
+            intentionally because it issues an on-wire admin request.
+        raise_on_error (bool): If `True`, re-raise metadata probe failures after
+            logging so callers can treat failures as liveness errors.
 
     Returns:
         dict: {
@@ -1037,7 +1049,7 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
 
     try:
         cached_firmware = _extract_firmware_version_from_client(client)
-        if cached_firmware is not None:
+        if cached_firmware is not None and not force_refresh:
             result["firmware_version"] = cached_firmware
             result["success"] = True
             return result
@@ -1046,6 +1058,10 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
         if not getattr(client, "localNode", None) or not hasattr(
             client.localNode, "getMetadata"
         ):
+            if raise_on_error:
+                raise RuntimeError(
+                    "Meshtastic client has no localNode.getMetadata() for metadata probe"
+                )
             logger.debug(
                 "Meshtastic client has no localNode.getMetadata(); skipping metadata retrieval"
             )
@@ -1102,8 +1118,10 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
         future_error: Exception | None = None
         try:
             future.result(timeout=30.0)
-        except FuturesTimeoutError:
+        except FuturesTimeoutError as e:
             timed_out = True
+            if raise_on_error:
+                future_error = e
             logger.debug("getMetadata() timed out after 30 seconds")
             # If the worker is still running, restore stdio immediately so the
             # main process does not keep writing to the captured buffer.
@@ -1176,6 +1194,8 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
         logger.debug(
             "Could not retrieve device metadata via localNode.getMetadata()", exc_info=e
         )
+        if raise_on_error:
+            raise
 
     return result
 
@@ -3069,7 +3089,13 @@ async def check_connection() -> None:
       - `enabled` (bool, default True) — enable or disable checks.
       - `heartbeat_interval` (int, seconds, default 60) — interval between checks. For backward compatibility, a top-level `heartbeat_interval` under `config["meshtastic"]` is supported.
     - BLE connections are excluded from periodic checks because BLE libraries provide real-time disconnect detection; this function returns early for BLE.
-    - For non-BLE connections, performs a liveness probe using `client.getMyNodeInfo()`. If the probe fails and no reconnection is already in progress, calls on_lost_meshtastic_connection(...) to initiate reconnection.
+    - For non-BLE connections, performs a forced metadata admin probe via
+      `localNode.getMetadata()` (through `_get_device_metadata(force_refresh=True)`).
+      If the probe fails and no reconnection is already in progress, calls
+      on_lost_meshtastic_connection(...) to initiate reconnection.
+    - IMPORTANT: Do not use `getMyNodeInfo()` as the primary liveness probe here.
+      In current Meshtastic Python it reads cached local node data and does not
+      guarantee a fresh on-wire round trip.
 
     No return value; side effects are logging and scheduling/triggering reconnection when the device is unresponsive.
     """
@@ -3106,8 +3132,19 @@ async def check_connection() -> None:
         if meshtastic_client and not reconnecting:
             try:
                 loop = asyncio.get_running_loop()
+                # NOTE: Use a forced metadata probe for keepalive/liveness.
+                # `getMyNodeInfo()` is local cached state in Meshtastic Python,
+                # so it can succeed even when the transport is unhealthy.
                 await asyncio.wait_for(
-                    loop.run_in_executor(None, meshtastic_client.getMyNodeInfo),
+                    loop.run_in_executor(
+                        None,
+                        functools.partial(
+                            _get_device_metadata,
+                            meshtastic_client,
+                            force_refresh=True,
+                            raise_on_error=True,
+                        ),
+                    ),
                     timeout=DEFAULT_MESHTASTIC_OPERATION_TIMEOUT,
                 )
 

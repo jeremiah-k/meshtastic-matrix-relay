@@ -2515,6 +2515,25 @@ class TestGetDeviceMetadata(unittest.TestCase):
         self.assertEqual(result["raw_output"], "")
         mock_client.localNode.getMetadata.assert_not_called()
 
+    def test_get_device_metadata_force_refresh_ignores_cached_metadata(self):
+        """force_refresh=True should invoke getMetadata even with cached metadata."""
+        mock_client = MagicMock()
+        mock_client.localNode.iface.metadata = SimpleNamespace(
+            firmware_version="2.7.18"
+        )
+        mock_client.localNode.getMetadata = MagicMock()
+
+        with patch("mmrelay.meshtastic_utils.io.StringIO") as mock_stringio:
+            mock_output = MagicMock()
+            mock_output.getvalue.return_value = "firmware_version: 2.7.19"
+            mock_stringio.return_value = mock_output
+
+            result = _get_device_metadata(mock_client, force_refresh=True)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["firmware_version"], "2.7.19")
+        mock_client.localNode.getMetadata.assert_called_once()
+
     def test_get_device_metadata_success(self):
         """Test successful metadata retrieval and parsing."""
         # Create mock client with localNode.getMetadata()
@@ -2590,6 +2609,14 @@ class TestGetDeviceMetadata(unittest.TestCase):
             self.assertFalse(result["success"])
             self.assertEqual(result["firmware_version"], "unknown")
             mock_logger.debug.assert_called_once()
+
+    def test_get_device_metadata_raise_on_error_reraises(self):
+        """raise_on_error=True should propagate getMetadata probe failures."""
+        mock_client = MagicMock()
+        mock_client.localNode.getMetadata.side_effect = Exception("Device error")
+
+        with self.assertRaisesRegex(Exception, "Device error"):
+            _get_device_metadata(mock_client, raise_on_error=True)
 
     def test_get_device_metadata_quoted_version(self):
         """Test parsing firmware version with quotes."""

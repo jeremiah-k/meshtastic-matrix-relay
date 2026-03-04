@@ -63,7 +63,7 @@ async def test_check_connection_ble_skips_health_checks(reset_meshtastic_globals
 
 
 @pytest.mark.asyncio
-async def test_check_connection_node_info_probe_succeeds(reset_meshtastic_globals):
+async def test_check_connection_metadata_probe_succeeds(reset_meshtastic_globals):
     mu.config = _make_health_config(connection_type="tcp")
     mu.meshtastic_client = MagicMock()
 
@@ -81,9 +81,11 @@ async def test_check_connection_node_info_probe_succeeds(reset_meshtastic_global
     ):
         await check_connection()
 
-    loop.run_in_executor.assert_called_once_with(
-        None, mu.meshtastic_client.getMyNodeInfo
-    )
+    loop.run_in_executor.assert_called_once()
+    _, probe = loop.run_in_executor.call_args.args
+    assert probe.func is mu._get_device_metadata
+    assert probe.args == (mu.meshtastic_client,)
+    assert probe.keywords == {"force_refresh": True, "raise_on_error": True}
     mock_logger.error.assert_not_called()
 
 
