@@ -704,7 +704,9 @@ def update_longnames(nodes: dict[str, Any]) -> None:
     for node in nodes.values():
         user = node.get("user")
         if user:
-            meshtastic_id = user["id"]
+            meshtastic_id = user.get("id")
+            if not meshtastic_id:
+                continue
             current_ids.add(meshtastic_id)
             longname = user.get("longName")
             # Only save if longName is present to avoid overwriting valid names with placeholders
@@ -880,7 +882,9 @@ def update_shortnames(nodes: dict[str, Any]) -> None:
     for node in nodes.values():
         user = node.get("user")
         if user:
-            meshtastic_id = user["id"]
+            meshtastic_id = user.get("id")
+            if not meshtastic_id:
+                continue
             current_ids.add(meshtastic_id)
             shortname = user.get("shortName")
             # Only save if shortName is present to avoid overwriting valid names with placeholders
