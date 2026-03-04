@@ -3048,7 +3048,6 @@ async def check_connection() -> None:
                             logger.debug(
                                 "Metadata parse failed but device responded to getMyNodeInfo(); skipping reconnect this cycle"
                             )
-                            continue
 
                 except Exception as e:
                     # Only trigger reconnection if we're not already reconnecting
