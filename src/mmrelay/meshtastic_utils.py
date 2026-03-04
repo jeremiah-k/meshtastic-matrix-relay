@@ -955,7 +955,7 @@ def _normalize_firmware_version(value: Any) -> str | None:
         value = value.decode("utf-8", errors="ignore")
     if isinstance(value, str):
         normalized = value.strip()
-        if normalized:
+        if normalized and normalized.lower() != "unknown":
             return normalized
     return None
 
