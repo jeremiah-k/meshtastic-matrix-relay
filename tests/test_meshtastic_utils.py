@@ -2498,6 +2498,23 @@ class TestTextReplyFunctionality(unittest.TestCase):
 class TestGetDeviceMetadata(unittest.TestCase):
     """Test cases for _get_device_metadata helper function."""
 
+    def test_get_device_metadata_uses_structured_metadata_first(self):
+        """Use existing structured metadata without invoking getMetadata()."""
+        mock_client = MagicMock()
+        mock_client.localNode.getMetadata.side_effect = AssertionError(
+            "getMetadata() should not be called when metadata is already available"
+        )
+        mock_client.localNode.iface.metadata = SimpleNamespace(
+            firmware_version="2.7.18"
+        )
+
+        result = _get_device_metadata(mock_client)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["firmware_version"], "2.7.18")
+        self.assertEqual(result["raw_output"], "")
+        mock_client.localNode.getMetadata.assert_not_called()
+
     def test_get_device_metadata_success(self):
         """Test successful metadata retrieval and parsing."""
         # Create mock client with localNode.getMetadata()
@@ -2605,6 +2622,29 @@ class TestGetDeviceMetadata(unittest.TestCase):
             # Verify whitespace is handled correctly
             self.assertTrue(result["success"])
             self.assertEqual(result["firmware_version"], "2.3.15.abc123")
+
+    def test_get_device_metadata_structured_fallback_after_getmetadata(self):
+        """Fallback to structured metadata when stdout does not include firmware version."""
+        mock_client = MagicMock()
+        mock_client.localNode.iface.metadata = None
+
+        def _populate_metadata() -> None:
+            mock_client.localNode.iface.metadata = {
+                "firmwareVersion": "2.7.18",
+            }
+
+        mock_client.localNode.getMetadata.side_effect = _populate_metadata
+
+        with patch("mmrelay.meshtastic_utils.io.StringIO") as mock_stringio:
+            mock_output = MagicMock()
+            mock_output.getvalue.return_value = "hw_model: RAK4631"
+            mock_stringio.return_value = mock_output
+
+            result = _get_device_metadata(mock_client)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["firmware_version"], "2.7.18")
+        self.assertIn("hw_model: RAK4631", result["raw_output"])
 
 
 @pytest.mark.parametrize(
