@@ -797,6 +797,10 @@ def _delete_stale_names_core(
     Returns:
         int: Number of rows deleted.
     """
+    allowed_tables = {"longnames", "shortnames"}
+    if table not in allowed_tables:
+        raise ValueError(f"Invalid table name: {table}")
+
     if not current_ids:
         return 0
 

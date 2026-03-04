@@ -1037,13 +1037,12 @@ class TestLongnameShortnameErrors(unittest.TestCase):
         # Both save_longname and delete_stale_longnames will fail with database errors
         self.assertTrue(mock_logger.exception.called)
         # Check that at least one call was for saving a longname
-        found_save_error = False
-        for call in mock_logger.exception.call_args_list:
-            if "Database error saving longname for" in call[0][0]:
-                found_save_error = True
-                break
         self.assertTrue(
-            found_save_error, "Expected 'Database error saving longname' in logs"
+            any(
+                "Database error saving longname for" in call[0][0]
+                for call in mock_logger.exception.call_args_list
+            ),
+            "Expected 'Database error saving longname' in logs",
         )
 
     @patch("mmrelay.db_utils._get_db_manager")
@@ -1097,13 +1096,12 @@ class TestLongnameShortnameErrors(unittest.TestCase):
         # Both save_shortname and delete_stale_shortnames will fail with database errors
         self.assertTrue(mock_logger.exception.called)
         # Check that at least one call was for saving a shortname
-        found_save_error = False
-        for call in mock_logger.exception.call_args_list:
-            if "Database error saving shortname for" in call[0][0]:
-                found_save_error = True
-                break
         self.assertTrue(
-            found_save_error, "Expected 'Database error saving shortname' in logs"
+            any(
+                "Database error saving shortname for" in call[0][0]
+                for call in mock_logger.exception.call_args_list
+            ),
+            "Expected 'Database error saving shortname' in logs",
         )
 
 
