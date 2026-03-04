@@ -1034,10 +1034,17 @@ class TestLongnameShortnameErrors(unittest.TestCase):
         nodes = {"1": {"num": 1, "user": {"id": "!testid", "longName": "Test1"}}}
         update_longnames(nodes)
 
-        mock_logger.exception.assert_called_once()
-        call_args = mock_logger.exception.call_args[0]
-        self.assertIn("Database error saving longname for", call_args[0])
-        self.assertEqual(call_args[1], "!testid")
+        # Both save_longname and delete_stale_longnames will fail with database errors
+        self.assertTrue(mock_logger.exception.called)
+        # Check that at least one call was for saving a longname
+        found_save_error = False
+        for call in mock_logger.exception.call_args_list:
+            if "Database error saving longname for" in call[0][0]:
+                found_save_error = True
+                break
+        self.assertTrue(
+            found_save_error, "Expected 'Database error saving longname' in logs"
+        )
 
     @patch("mmrelay.db_utils._get_db_manager")
     @patch("mmrelay.db_utils.logger")
@@ -1087,10 +1094,17 @@ class TestLongnameShortnameErrors(unittest.TestCase):
         nodes = {"1": {"num": 1, "user": {"id": "!testid", "shortName": "T1"}}}
         update_shortnames(nodes)
 
-        mock_logger.exception.assert_called_once()
-        call_args = mock_logger.exception.call_args[0]
-        self.assertIn("Database error saving shortname for", call_args[0])
-        self.assertEqual(call_args[1], "!testid")
+        # Both save_shortname and delete_stale_shortnames will fail with database errors
+        self.assertTrue(mock_logger.exception.called)
+        # Check that at least one call was for saving a shortname
+        found_save_error = False
+        for call in mock_logger.exception.call_args_list:
+            if "Database error saving shortname for" in call[0][0]:
+                found_save_error = True
+                break
+        self.assertTrue(
+            found_save_error, "Expected 'Database error saving shortname' in logs"
+        )
 
 
 class TestIntegrationWithRealDatabase(unittest.TestCase):
@@ -1252,6 +1266,7 @@ class TestIntegrationWithRealDatabase(unittest.TestCase):
         # Retrieve by meshtastic ID
         result = get_message_map_by_meshtastic_id(123)
         self.assertIsNotNone(result)
+        assert result is not None  # Type narrowing for pyright
         matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet = result
         self.assertEqual(matrix_event_id, "$event123")
         self.assertEqual(matrix_room_id, "!room123")
