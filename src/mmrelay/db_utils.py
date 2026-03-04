@@ -705,13 +705,16 @@ def update_longnames(nodes: dict[str, Any]) -> None:
         user = node.get("user")
         if user:
             meshtastic_id = user.get("id")
-            if not meshtastic_id:
+            if meshtastic_id is None or (
+                isinstance(meshtastic_id, str) and meshtastic_id == ""
+            ):
                 continue
-            current_ids.add(meshtastic_id)
+            id_key = str(meshtastic_id)
+            current_ids.add(id_key)
             longname = user.get("longName")
             # Only save if longName is present to avoid overwriting valid names with placeholders
             if longname:
-                save_longname(meshtastic_id, longname)
+                save_longname(id_key, longname)
 
     # Remove stale entries that are no longer in the device's nodedb
     if current_ids:
@@ -797,8 +800,12 @@ def _delete_stale_names_core(
     Returns:
         int: Number of rows deleted.
     """
-    allowed_tables = {"longnames", "shortnames"}
-    if table not in allowed_tables:
+    sql_by_table = {
+        "longnames": "DELETE FROM longnames WHERE meshtastic_id NOT IN ({})",
+        "shortnames": "DELETE FROM shortnames WHERE meshtastic_id NOT IN ({})",
+    }
+    delete_sql = sql_by_table.get(table)
+    if delete_sql is None:
         raise ValueError(f"Invalid table name: {table}")
 
     if not current_ids:
@@ -806,7 +813,7 @@ def _delete_stale_names_core(
 
     placeholders = ",".join("?" * len(current_ids))
     cursor.execute(
-        f"DELETE FROM {table} WHERE meshtastic_id NOT IN ({placeholders})",
+        delete_sql.format(placeholders),
         tuple(current_ids),
     )
     return cursor.rowcount
@@ -887,13 +894,16 @@ def update_shortnames(nodes: dict[str, Any]) -> None:
         user = node.get("user")
         if user:
             meshtastic_id = user.get("id")
-            if not meshtastic_id:
+            if meshtastic_id is None or (
+                isinstance(meshtastic_id, str) and meshtastic_id == ""
+            ):
                 continue
-            current_ids.add(meshtastic_id)
+            id_key = str(meshtastic_id)
+            current_ids.add(id_key)
             shortname = user.get("shortName")
             # Only save if shortName is present to avoid overwriting valid names with placeholders
             if shortname:
-                save_shortname(meshtastic_id, shortname)
+                save_shortname(id_key, shortname)
 
     # Remove stale entries that are no longer in the device's nodedb
     if current_ids:

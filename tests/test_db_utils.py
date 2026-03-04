@@ -261,6 +261,32 @@ class TestDbUtils(unittest.TestCase):
         self.assertEqual(get_shortname("!12345678"), "AS")
         self.assertEqual(get_shortname("!87654321"), "BJ")
 
+    def test_update_names_preserve_zero_id_for_stale_tracking(self):
+        """
+        Test that numeric zero IDs are treated as valid IDs, not skipped as missing.
+        """
+        initialize_database()
+
+        initial_nodes = {
+            "node_zero": {"user": {"id": 0, "longName": "Zero", "shortName": "ZRO"}},
+            "node_one": {"user": {"id": 1, "longName": "One", "shortName": "ONE"}},
+        }
+        update_longnames(initial_nodes)
+        update_shortnames(initial_nodes)
+
+        updated_nodes = {
+            "node_zero": {
+                "user": {"id": 0, "longName": "Zero Updated", "shortName": "Z0"}
+            }
+        }
+        update_longnames(updated_nodes)
+        update_shortnames(updated_nodes)
+
+        self.assertEqual(get_longname("0"), "Zero Updated")
+        self.assertEqual(get_shortname("0"), "Z0")
+        self.assertIsNone(get_longname("1"))
+        self.assertIsNone(get_shortname("1"))
+
     def test_update_longnames_removes_stale_entries(self):
         """
         Test that update_longnames removes stale entries when nodes are removed from the device nodedb.

@@ -1181,15 +1181,19 @@ def _get_device_metadata(
             r"(?i)\bfirmware[\s_/-]*version\b\s*[:=]\s*['\"]?\s*([^\s\r\n'\"]+)",
             console_output,
         )
-        if match:
-            parsed = match.group(1).strip()
-            if parsed:
-                result["firmware_version"] = parsed
-                result["success"] = True
+        parsed_output_firmware = (
+            _normalize_firmware_version(match.group(1)) if match else None
+        )
+        if parsed_output_firmware is not None:
+            result["firmware_version"] = parsed_output_firmware
+            result["success"] = True
         else:
             refreshed_firmware = _extract_firmware_version_from_client(client)
-            if refreshed_firmware is not None:
-                result["firmware_version"] = refreshed_firmware
+            normalized_refreshed_firmware = _normalize_firmware_version(
+                refreshed_firmware
+            )
+            if normalized_refreshed_firmware is not None:
+                result["firmware_version"] = normalized_refreshed_firmware
                 result["success"] = True
 
     except Exception as e:  # noqa: BLE001 - metadata failures must not block startup
