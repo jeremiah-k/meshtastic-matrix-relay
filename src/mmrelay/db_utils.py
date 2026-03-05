@@ -4,7 +4,7 @@ import json
 import os
 import sqlite3
 import threading
-from typing import Any, Dict, Tuple, cast
+from typing import Any, Callable, Dict, Tuple, cast
 
 from mmrelay.constants.database import (
     DEFAULT_BUSY_TIMEOUT_MS,
@@ -686,16 +686,21 @@ def save_longname(meshtastic_id: int | str, longname: str) -> None:
         logger.exception("Database error saving longname for %s", meshtastic_id)
 
 
-def update_longnames(nodes: dict[str, Any]) -> None:
+def _update_names_core(
+    nodes: dict[str, Any],
+    *,
+    name_key: str,
+    save_name: Callable[[str, str], None],
+    delete_stale_names: Callable[[set[str]], int],
+) -> None:
     """
-    Persist long names from node user entries into the database.
-
-    For each node in `nodes` that contains a `"user"` mapping with a present `"longName"`, save it under the user's `"id"` by calling `save_longname`. Nodes with missing `"longName"` are skipped to avoid overwriting existing database entries with placeholder values.
-
-    After updating, removes stale entries from the database that are no longer present in the device's nodedb.
+    Update persisted node names and remove stale rows for one name type.
 
     Parameters:
-        nodes (dict[str, Any]): Mapping of node identifiers to node dictionaries; each node dictionary may include a `"user"` dict with an `"id"` key and an optional `"longName"` key.
+        nodes (dict[str, Any]): Node mapping containing optional `user` dictionaries.
+        name_key (str): User field to read (`"longName"` or `"shortName"`).
+        save_name (Callable[[str, str], None]): Function that persists one name.
+        delete_stale_names (Callable[[set[str]], int]): Function that removes stale rows.
     """
     if not nodes:
         return
@@ -711,14 +716,31 @@ def update_longnames(nodes: dict[str, Any]) -> None:
                 continue
             id_key = str(meshtastic_id)
             current_ids.add(id_key)
-            longname = user.get("longName")
-            # Only save if longName is present to avoid overwriting valid names with placeholders
-            if longname:
-                save_longname(id_key, longname)
+            name_value = user.get(name_key)
+            if name_value:
+                save_name(id_key, name_value)
 
-    # Remove stale entries that are no longer in the device's nodedb
     if current_ids:
-        delete_stale_longnames(current_ids)
+        delete_stale_names(current_ids)
+
+
+def update_longnames(nodes: dict[str, Any]) -> None:
+    """
+    Persist long names from node user entries into the database.
+
+    For each node in `nodes` that contains a `"user"` mapping with a present `"longName"`, save it under the user's `"id"` by calling `save_longname`. Nodes with missing `"longName"` are skipped to avoid overwriting existing database entries with placeholder values.
+
+    After updating, removes stale entries from the database that are no longer present in the device's nodedb.
+
+    Parameters:
+        nodes (dict[str, Any]): Mapping of node identifiers to node dictionaries; each node dictionary may include a `"user"` dict with an `"id"` key and an optional `"longName"` key.
+    """
+    _update_names_core(
+        nodes,
+        name_key="longName",
+        save_name=save_longname,
+        delete_stale_names=delete_stale_longnames,
+    )
 
 
 def get_shortname(meshtastic_id: int | str) -> str | None:
@@ -886,28 +908,12 @@ def update_shortnames(nodes: dict[str, Any]) -> None:
     Parameters:
         nodes (Mapping): Mapping of node identifiers to node objects; nodes without a `user` entry are ignored.
     """
-    if not nodes:
-        return
-
-    current_ids: set[str] = set()
-    for node in nodes.values():
-        user = node.get("user")
-        if user:
-            meshtastic_id = user.get("id")
-            if meshtastic_id is None or (
-                isinstance(meshtastic_id, str) and meshtastic_id == ""
-            ):
-                continue
-            id_key = str(meshtastic_id)
-            current_ids.add(id_key)
-            shortname = user.get("shortName")
-            # Only save if shortName is present to avoid overwriting valid names with placeholders
-            if shortname:
-                save_shortname(id_key, shortname)
-
-    # Remove stale entries that are no longer in the device's nodedb
-    if current_ids:
-        delete_stale_shortnames(current_ids)
+    _update_names_core(
+        nodes,
+        name_key="shortName",
+        save_name=save_shortname,
+        delete_stale_names=delete_stale_shortnames,
+    )
 
 
 def _store_message_map_core(
