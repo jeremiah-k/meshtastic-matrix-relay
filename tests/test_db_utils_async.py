@@ -1104,6 +1104,19 @@ class TestLongnameShortnameErrors(unittest.TestCase):
             "Expected 'Database error saving shortname' in logs",
         )
 
+    def test_delete_stale_names_core_rejects_invalid_table_name(self):
+        """Reject invalid table names to prevent dynamic-SQL table injection."""
+        mock_cursor = MagicMock()
+
+        with self.assertRaisesRegex(ValueError, "Invalid table name"):
+            mmrelay.db_utils._delete_stale_names_core(
+                mock_cursor,
+                "longnames; DROP TABLE longnames; --",
+                {"!123"},
+            )
+
+        mock_cursor.execute.assert_not_called()
+
 
 class TestIntegrationWithRealDatabase(unittest.TestCase):
     """Integration tests with a real SQLite database."""

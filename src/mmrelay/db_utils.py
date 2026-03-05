@@ -822,12 +822,12 @@ def _delete_stale_names_core(
     Returns:
         int: Number of rows deleted.
     """
-    sql_by_table = {
-        "longnames": "DELETE FROM longnames WHERE meshtastic_id NOT IN ({})",
-        "shortnames": "DELETE FROM shortnames WHERE meshtastic_id NOT IN ({})",
+    sql_prefix_by_table = {
+        "longnames": "DELETE FROM longnames WHERE meshtastic_id NOT IN (",
+        "shortnames": "DELETE FROM shortnames WHERE meshtastic_id NOT IN (",
     }
-    delete_sql = sql_by_table.get(table)
-    if delete_sql is None:
+    delete_sql_prefix = sql_prefix_by_table.get(table)
+    if delete_sql_prefix is None:
         raise ValueError(f"Invalid table name: {table}")
 
     if not current_ids:
@@ -835,7 +835,7 @@ def _delete_stale_names_core(
 
     placeholders = ",".join("?" * len(current_ids))
     cursor.execute(
-        delete_sql.format(placeholders),
+        f"{delete_sql_prefix}{placeholders})",
         tuple(current_ids),
     )
     return cursor.rowcount
