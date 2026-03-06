@@ -34,6 +34,12 @@ _db_manager_lock = threading.Lock()
 
 logger = get_logger(name="db_utils")
 
+# Table name to singular name type mapping for logging
+_NAME_TYPE_BY_TABLE = {
+    "longnames": "longname",
+    "shortnames": "shortname",
+}
+
 
 def clear_db_path_cache() -> None:
     """Clear the cached database path to force re-resolution on next call.
@@ -868,11 +874,11 @@ def _delete_stale_names(table_name: str, current_ids: set[str]) -> int:
         deleted = manager.run_sync(_delete, write=True)
         if deleted > 0:
             # Derive singular name type from table name for logging
-            name_type = table_name.rstrip("s")
+            name_type = _NAME_TYPE_BY_TABLE[table_name]
             logger.debug("Removed %d stale %s entries", deleted, name_type)
         return deleted
     except sqlite3.Error:
-        name_type = table_name.rstrip("s")
+        name_type = _NAME_TYPE_BY_TABLE[table_name]
         logger.exception("Database error deleting stale %ss", name_type)
         return 0
 

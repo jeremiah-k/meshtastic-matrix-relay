@@ -1190,11 +1190,8 @@ def _get_device_metadata(
             result["success"] = True
         else:
             refreshed_firmware = _extract_firmware_version_from_client(client)
-            normalized_refreshed_firmware = _normalize_firmware_version(
-                refreshed_firmware
-            )
-            if normalized_refreshed_firmware is not None:
-                result["firmware_version"] = normalized_refreshed_firmware
+            if refreshed_firmware is not None:
+                result["firmware_version"] = refreshed_firmware
                 result["success"] = True
 
     except Exception as e:  # noqa: BLE001 - metadata failures must not block startup

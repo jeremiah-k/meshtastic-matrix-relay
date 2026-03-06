@@ -1,4 +1,5 @@
-from unittest.mock import ANY, AsyncMock, MagicMock, patch
+import asyncio
+from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -69,7 +70,9 @@ async def test_check_connection_metadata_probe_succeeds():
     mu.meshtastic_client = MagicMock()
 
     loop = MagicMock()
-    loop.run_in_executor = AsyncMock(return_value={})
+    probe_future = asyncio.get_running_loop().create_future()
+    probe_future.set_result({})
+    loop.run_in_executor = Mock(return_value=probe_future)
 
     with (
         patch("mmrelay.meshtastic_utils.asyncio.get_running_loop", return_value=loop),
@@ -98,7 +101,9 @@ async def test_check_connection_triggers_reconnect_on_probe_failure(
     mu.meshtastic_client = MagicMock()
 
     loop = MagicMock()
-    loop.run_in_executor = AsyncMock(side_effect=Exception("probe failed"))
+    probe_future = asyncio.get_running_loop().create_future()
+    probe_future.set_exception(Exception("probe failed"))
+    loop.run_in_executor = Mock(return_value=probe_future)
 
     with (
         patch("mmrelay.meshtastic_utils.asyncio.get_running_loop", return_value=loop),
