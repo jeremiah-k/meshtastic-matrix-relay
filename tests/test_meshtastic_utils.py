@@ -2712,6 +2712,18 @@ class TestGetDeviceMetadata(unittest.TestCase):
             "getMetadata() already running; skipping new request"
         )
 
+    def test_get_device_metadata_raise_on_error_reraises_non_io_value_error(self):
+        """Non-I/O ValueError failures from getMetadata() should propagate."""
+        mock_client = MagicMock()
+        mock_client.localNode.getMetadata.side_effect = ValueError("backend failure")
+
+        with self.assertRaisesRegex(ValueError, "backend failure"):
+            _get_device_metadata(
+                mock_client,
+                force_refresh=True,
+                raise_on_error=True,
+            )
+
     def test_get_device_metadata_structured_fallback_after_getmetadata(self):
         """Fallback to structured metadata when stdout does not include firmware version."""
         mock_client = MagicMock()

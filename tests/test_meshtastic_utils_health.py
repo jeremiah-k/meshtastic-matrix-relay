@@ -64,7 +64,8 @@ async def test_check_connection_ble_skips_health_checks(reset_meshtastic_globals
 
 
 @pytest.mark.asyncio
-async def test_check_connection_metadata_probe_succeeds(reset_meshtastic_globals):
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+async def test_check_connection_metadata_probe_succeeds():
     mu.config = _make_health_config(connection_type="tcp")
     mu.meshtastic_client = MagicMock()
 
@@ -86,16 +87,14 @@ async def test_check_connection_metadata_probe_succeeds(reset_meshtastic_globals
 
     loop.run_in_executor.assert_called_once()
     _, probe = loop.run_in_executor.call_args.args
-    assert probe.func is mu._get_device_metadata
+    assert probe.func is mu._probe_device_connection
     assert probe.args == (mu.meshtastic_client,)
-    assert probe.keywords == {"force_refresh": True, "raise_on_error": True}
     mock_logger.error.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_check_connection_triggers_reconnect_on_probe_failure(
-    reset_meshtastic_globals,
-):
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+async def test_check_connection_triggers_reconnect_on_probe_failure():
     mu.config = _make_health_config(connection_type="tcp")
     mu.meshtastic_client = MagicMock()
 
@@ -126,9 +125,8 @@ async def test_check_connection_triggers_reconnect_on_probe_failure(
 
 
 @pytest.mark.asyncio
-async def test_check_connection_skips_when_metadata_probe_active(
-    reset_meshtastic_globals,
-):
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+async def test_check_connection_skips_when_metadata_probe_active():
     mu.config = _make_health_config(connection_type="tcp")
     mu.meshtastic_client = MagicMock()
     mu._metadata_future = Mock()

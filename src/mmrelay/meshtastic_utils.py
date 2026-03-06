@@ -21,7 +21,7 @@ import meshtastic.serial_interface
 import meshtastic.tcp_interface
 import serial  # For serial port exceptions
 import serial.tools.list_ports  # Import serial tools for port listing
-from meshtastic.protobuf import mesh_pb2, portnums_pb2
+from meshtastic.protobuf import admin_pb2, mesh_pb2, portnums_pb2
 from pubsub import pub
 
 from mmrelay.config import get_meshtastic_config_value
@@ -257,6 +257,28 @@ def _metadata_probe_in_progress() -> bool:
     """
     with _metadata_future_lock:
         return _metadata_future is not None and not _metadata_future.done()
+
+
+def _probe_device_connection(client: Any) -> None:
+    """
+    Send a metadata admin request and wait for an acknowledgment.
+
+    This uses the same `get_device_metadata_request` admin packet as
+    `localNode.getMetadata()`, but avoids the library's print-based response
+    handler so health checks do not redirect process-wide stdout.
+    """
+    local_node = getattr(client, "localNode", None)
+    if (
+        local_node is None
+        or not hasattr(local_node, "_sendAdmin")
+        or not hasattr(client, "waitForAckNak")
+    ):
+        raise RuntimeError("Meshtastic client cannot perform metadata liveness probe")
+
+    request = admin_pb2.AdminMessage()
+    request.get_device_metadata_request = True
+    local_node._sendAdmin(request, wantResponse=False)
+    client.waitForAckNak()
 
 
 def _submit_coro(
@@ -1102,8 +1124,10 @@ def _get_device_metadata(
                         client.localNode.getMetadata()
                     finally:
                         redirect_active.clear()
-            except ValueError:
-                pass
+            except ValueError as exc:
+                if output_capture.closed or "I/O operation on closed file" in str(exc):
+                    return
+                raise
 
         with _metadata_future_lock:
             if _metadata_future and not _metadata_future.done():
@@ -3101,10 +3125,11 @@ async def check_connection() -> None:
       - `enabled` (bool, default True) — enable or disable checks.
       - `heartbeat_interval` (int, seconds, default 60) — interval between checks. For backward compatibility, a top-level `heartbeat_interval` under `config["meshtastic"]` is supported.
     - BLE connections are excluded from periodic checks because BLE libraries provide real-time disconnect detection; this function returns early for BLE.
-    - For non-BLE connections, performs a forced metadata admin probe via
-      `localNode.getMetadata()` (through `_get_device_metadata(force_refresh=True)`).
-      If the probe fails and no reconnection is already in progress, calls
-      on_lost_meshtastic_connection(...) to initiate reconnection.
+    - For non-BLE connections, performs a low-level metadata admin probe using
+      the same `get_device_metadata_request` packet as `localNode.getMetadata()`
+      but without stdout capture. If the probe fails and no reconnection is
+      already in progress, calls on_lost_meshtastic_connection(...) to
+      initiate reconnection.
     - If another metadata probe is already in flight, skips the current cycle
       instead of treating the overlap as a transport failure.
     - IMPORTANT: Do not use `getMyNodeInfo()` as the primary liveness probe here.
@@ -3151,17 +3176,14 @@ async def check_connection() -> None:
             else:
                 try:
                     loop = asyncio.get_running_loop()
-                    # NOTE: Use a forced metadata probe for keepalive/liveness.
+                    # NOTE: Use the metadata admin request for keepalive/liveness.
                     # `getMyNodeInfo()` is local cached state in Meshtastic Python,
                     # so it can succeed even when the transport is unhealthy.
                     await asyncio.wait_for(
                         loop.run_in_executor(
                             None,
                             functools.partial(
-                                _get_device_metadata,
-                                meshtastic_client,
-                                force_refresh=True,
-                                raise_on_error=True,
+                                _probe_device_connection, meshtastic_client
                             ),
                         ),
                         timeout=DEFAULT_MESHTASTIC_OPERATION_TIMEOUT,
