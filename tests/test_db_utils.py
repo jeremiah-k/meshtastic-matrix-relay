@@ -441,6 +441,13 @@ class TestDbUtils(unittest.TestCase):
                     "shortName": "MID",
                 }
             },
+            "node-with-empty-id": {
+                "user": {
+                    "id": "",
+                    "longName": "Empty ID",
+                    "shortName": "EID",
+                }
+            },
         }
         update_longnames(incomplete_nodes)
         update_shortnames(incomplete_nodes)

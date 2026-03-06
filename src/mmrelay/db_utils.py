@@ -832,6 +832,9 @@ def _delete_stale_names_core(
     """
     Delete rows whose `meshtastic_id` is missing from the current node snapshot.
 
+    Uses a chunked delete approach to avoid SQLite's parameter limit (which can be
+    as low as 999 on some systems) when dealing with large meshes.
+
     Parameters:
         cursor (sqlite3.Cursor): Database cursor used to execute the delete.
         table (str): Table name (`"longnames"` or `"shortnames"`).
@@ -843,23 +846,40 @@ def _delete_stale_names_core(
     Raises:
         ValueError: If `table` is not a supported names table.
     """
-    sql_prefix_by_table = {
-        "longnames": "DELETE FROM longnames WHERE meshtastic_id NOT IN (",
-        "shortnames": "DELETE FROM shortnames WHERE meshtastic_id NOT IN (",
+    select_sql_by_table = {
+        "longnames": "SELECT meshtastic_id FROM longnames",
+        "shortnames": "SELECT meshtastic_id FROM shortnames",
     }
-    delete_sql_prefix = sql_prefix_by_table.get(table)
-    if delete_sql_prefix is None:
+    select_sql = select_sql_by_table.get(table)
+    if select_sql is None:
         raise ValueError(f"Invalid table name: {table}")
 
     if not current_ids:
         return 0
 
-    placeholders = ",".join("?" * len(current_ids))
-    cursor.execute(
-        f"{delete_sql_prefix}{placeholders})",
-        tuple(current_ids),
-    )
-    return cursor.rowcount
+    # Fetch all existing IDs from the database
+    cursor.execute(select_sql)
+    all_db_ids = {row[0] for row in cursor.fetchall()}
+
+    # Compute stale IDs (those in DB but not in current snapshot)
+    stale_ids = tuple(all_db_ids - current_ids)
+
+    if not stale_ids:
+        return 0
+
+    # Delete stale IDs in batches to avoid SQLite parameter limits
+    total_deleted = 0
+    chunk_size = 900  # Safe chunk size below SQLite's limit
+    for i in range(0, len(stale_ids), chunk_size):
+        chunk = stale_ids[i : i + chunk_size]
+        placeholders = ",".join("?" * len(chunk))
+        cursor.execute(
+            f"DELETE FROM {table} WHERE meshtastic_id IN ({placeholders})",
+            chunk,
+        )
+        total_deleted += cursor.rowcount
+
+    return total_deleted
 
 
 def _delete_stale_names(table_name: str, current_ids: set[str]) -> int:
@@ -891,7 +911,7 @@ def _delete_stale_names(table_name: str, current_ids: set[str]) -> int:
             logger.debug("Removed %d stale %s entries", deleted, name_type)
         return deleted
     except sqlite3.Error:
-        logger.exception("Database error deleting stale %ss", name_type)
+        logger.exception("Database error deleting stale %s entries", name_type)
         return 0
 
 

@@ -1046,7 +1046,7 @@ class TestLongnameShortnameErrors(unittest.TestCase):
         )
         self.assertTrue(
             any(
-                call[0][0] == "Database error deleting stale %ss"
+                call[0][0] == "Database error deleting stale %s entries"
                 and call[0][1] == "longname"
                 for call in mock_logger.exception.call_args_list
             ),
@@ -1113,7 +1113,7 @@ class TestLongnameShortnameErrors(unittest.TestCase):
         )
         self.assertTrue(
             any(
-                call[0][0] == "Database error deleting stale %ss"
+                call[0][0] == "Database error deleting stale %s entries"
                 and call[0][1] == "shortname"
                 for call in mock_logger.exception.call_args_list
             ),
