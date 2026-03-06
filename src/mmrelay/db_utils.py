@@ -877,7 +877,7 @@ def _delete_stale_names(table_name: str, current_ids: set[str]) -> int:
         return 0
 
     manager = _get_db_manager()
-    name_type = _NAME_TYPE_BY_TABLE[table_name]
+    name_type = _NAME_TYPE_BY_TABLE.get(table_name, table_name)
 
     def _delete(cursor: sqlite3.Cursor) -> int:
         """

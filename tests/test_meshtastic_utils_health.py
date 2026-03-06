@@ -64,8 +64,7 @@ async def test_check_connection_ble_skips_health_checks(reset_meshtastic_globals
 
 
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("reset_meshtastic_globals")
-async def test_check_connection_metadata_probe_succeeds():
+async def test_check_connection_metadata_probe_succeeds(reset_meshtastic_globals):
     mu.config = _make_health_config(connection_type="tcp")
     mu.meshtastic_client = MagicMock()
 
