@@ -701,6 +701,11 @@ def _update_names_core(
     """
     Persist one user name field from a node snapshot and prune stale rows.
 
+    Stale-name pruning runs only when every node in the snapshot has a usable
+    `user.id`. If any node is present without enough identity data, existing
+    names are preserved rather than risking false deletions from an incomplete
+    snapshot.
+
     Parameters:
         nodes (dict[str, Any]): Snapshot of node records containing optional
             `user` dictionaries.
@@ -713,27 +718,36 @@ def _update_names_core(
         return
 
     current_ids: set[str] = set()
+    snapshot_complete = True
     for node in nodes.values():
         user = node.get("user")
-        if user:
-            meshtastic_id = user.get("id")
-            if meshtastic_id is None or (
-                isinstance(meshtastic_id, str) and meshtastic_id == ""
-            ):
-                continue
-            id_key = str(meshtastic_id)
-            current_ids.add(id_key)
-            name_value = user.get(name_key)
-            if name_value:
-                save_name(id_key, name_value)
+        if not user:
+            snapshot_complete = False
+            continue
 
-    if current_ids:
+        meshtastic_id = user.get("id")
+        if meshtastic_id is None or (
+            isinstance(meshtastic_id, str) and meshtastic_id == ""
+        ):
+            snapshot_complete = False
+            continue
+
+        id_key = str(meshtastic_id)
+        current_ids.add(id_key)
+        name_value = user.get(name_key)
+        if name_value:
+            save_name(id_key, name_value)
+
+    if current_ids and snapshot_complete:
         delete_stale_names(current_ids)
 
 
 def update_longnames(nodes: dict[str, Any]) -> None:
     """
     Persist each node's `longName` and prune stale longname rows.
+
+    Pruning runs only when the supplied snapshot has a usable `user.id` for
+    every node.
 
     Parameters:
         nodes (dict[str, Any]): Mapping of node identifiers to node dictionaries;
@@ -863,6 +877,7 @@ def _delete_stale_names(table_name: str, current_ids: set[str]) -> int:
         return 0
 
     manager = _get_db_manager()
+    name_type = _NAME_TYPE_BY_TABLE[table_name]
 
     def _delete(cursor: sqlite3.Cursor) -> int:
         """
@@ -873,12 +888,9 @@ def _delete_stale_names(table_name: str, current_ids: set[str]) -> int:
     try:
         deleted = manager.run_sync(_delete, write=True)
         if deleted > 0:
-            # Derive singular name type from table name for logging
-            name_type = _NAME_TYPE_BY_TABLE[table_name]
             logger.debug("Removed %d stale %s entries", deleted, name_type)
         return deleted
     except sqlite3.Error:
-        name_type = _NAME_TYPE_BY_TABLE[table_name]
         logger.exception("Database error deleting stale %ss", name_type)
         return 0
 
@@ -916,7 +928,8 @@ def update_shortnames(nodes: dict[str, Any]) -> None:
 
     For each node in the provided mapping, if the node contains a `user` dictionary with a present `shortName`, the function uses `user["id"]` as the Meshtastic ID and stores the short name in the database. Nodes with missing `shortName` are skipped to avoid overwriting existing database entries with placeholder values.
 
-    After updating, removes stale entries from the database that are no longer present in the device's nodedb.
+    After updating, removes stale entries from the database only when every node
+    in the snapshot has a usable `user.id`.
 
     Parameters:
         nodes (Mapping): Mapping of node identifiers to node objects; nodes without a `user` entry are ignored.

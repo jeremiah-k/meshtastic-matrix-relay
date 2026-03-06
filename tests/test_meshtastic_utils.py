@@ -2684,6 +2684,34 @@ class TestGetDeviceMetadata(unittest.TestCase):
         self.assertEqual(result["firmware_version"], "unknown")
         mock_client.localNode.getMetadata.assert_called_once()
 
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_get_device_metadata_skips_when_probe_already_running(self, mock_logger):
+        """In-flight metadata probes should not raise or start a duplicate request."""
+        import mmrelay.meshtastic_utils as mu
+
+        mock_client = MagicMock()
+        mock_client.localNode.getMetadata = MagicMock()
+        in_flight_future = MagicMock()
+        in_flight_future.done.return_value = False
+        mu._metadata_future = in_flight_future
+
+        try:
+            result = _get_device_metadata(
+                mock_client,
+                force_refresh=True,
+                raise_on_error=True,
+            )
+        finally:
+            mu._metadata_future = None
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["firmware_version"], "unknown")
+        self.assertEqual(result["raw_output"], "")
+        mock_client.localNode.getMetadata.assert_not_called()
+        mock_logger.debug.assert_called_with(
+            "getMetadata() already running; skipping new request"
+        )
+
     def test_get_device_metadata_structured_fallback_after_getmetadata(self):
         """Fallback to structured metadata when stdout does not include firmware version."""
         mock_client = MagicMock()

@@ -251,6 +251,14 @@ def _get_metadata_executor() -> ThreadPoolExecutor:
     return _metadata_executor
 
 
+def _metadata_probe_in_progress() -> bool:
+    """
+    Return whether a shared getMetadata() probe is already in flight.
+    """
+    with _metadata_future_lock:
+        return _metadata_future is not None and not _metadata_future.done()
+
+
 def _submit_coro(
     coro: Any,
     loop: asyncio.AbstractEventLoop | None = None,
@@ -1102,8 +1110,6 @@ def _get_device_metadata(
                 # A previous metadata request is still running; avoid piling up
                 # threads and leave the in-flight call to finish in its own time.
                 logger.debug("getMetadata() already running; skipping new request")
-                if raise_on_error:
-                    raise RuntimeError("getMetadata() probe already in progress")
                 return result
 
             try:
@@ -3099,6 +3105,8 @@ async def check_connection() -> None:
       `localNode.getMetadata()` (through `_get_device_metadata(force_refresh=True)`).
       If the probe fails and no reconnection is already in progress, calls
       on_lost_meshtastic_connection(...) to initiate reconnection.
+    - If another metadata probe is already in flight, skips the current cycle
+      instead of treating the overlap as a transport failure.
     - IMPORTANT: Do not use `getMyNodeInfo()` as the primary liveness probe here.
       In current Meshtastic Python it reads cached local node data and does not
       guarantee a fresh on-wire round trip.
@@ -3136,39 +3144,46 @@ async def check_connection() -> None:
 
     while not shutting_down:
         if meshtastic_client and not reconnecting:
-            try:
-                loop = asyncio.get_running_loop()
-                # NOTE: Use a forced metadata probe for keepalive/liveness.
-                # `getMyNodeInfo()` is local cached state in Meshtastic Python,
-                # so it can succeed even when the transport is unhealthy.
-                await asyncio.wait_for(
-                    loop.run_in_executor(
-                        None,
-                        functools.partial(
-                            _get_device_metadata,
-                            meshtastic_client,
-                            force_refresh=True,
-                            raise_on_error=True,
-                        ),
-                    ),
-                    timeout=DEFAULT_MESHTASTIC_OPERATION_TIMEOUT,
+            if _metadata_probe_in_progress():
+                logger.debug(
+                    "Skipping connection check - metadata probe already in progress"
                 )
+            else:
+                try:
+                    loop = asyncio.get_running_loop()
+                    # NOTE: Use a forced metadata probe for keepalive/liveness.
+                    # `getMyNodeInfo()` is local cached state in Meshtastic Python,
+                    # so it can succeed even when the transport is unhealthy.
+                    await asyncio.wait_for(
+                        loop.run_in_executor(
+                            None,
+                            functools.partial(
+                                _get_device_metadata,
+                                meshtastic_client,
+                                force_refresh=True,
+                                raise_on_error=True,
+                            ),
+                        ),
+                        timeout=DEFAULT_MESHTASTIC_OPERATION_TIMEOUT,
+                    )
 
-            except Exception as exc:
-                # Only trigger reconnection if we're not already reconnecting
-                if not reconnecting:
-                    logger.error(
-                        "%s connection health check failed: %s",
-                        connection_type.capitalize(),
-                        exc,
-                        exc_info=True,
-                    )
-                    on_lost_meshtastic_connection(
-                        interface=meshtastic_client,
-                        detection_source=f"health check failed: {exc!s}",
-                    )
-                else:
-                    logger.debug("Skipping reconnection trigger - already reconnecting")
+                except Exception as exc:
+                    # Only trigger reconnection if we're not already reconnecting
+                    if not reconnecting:
+                        logger.error(
+                            "%s connection health check failed: %s",
+                            connection_type.capitalize(),
+                            exc,
+                            exc_info=True,
+                        )
+                        on_lost_meshtastic_connection(
+                            interface=meshtastic_client,
+                            detection_source=f"health check failed: {exc!s}",
+                        )
+                    else:
+                        logger.debug(
+                            "Skipping reconnection trigger - already reconnecting"
+                        )
         elif reconnecting:
             logger.debug("Skipping connection check - reconnection in progress")
         elif not meshtastic_client:

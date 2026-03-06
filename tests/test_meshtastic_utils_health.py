@@ -127,6 +127,34 @@ async def test_check_connection_triggers_reconnect_on_probe_failure(
 
 
 @pytest.mark.asyncio
+async def test_check_connection_skips_when_metadata_probe_active(
+    reset_meshtastic_globals,
+):
+    mu.config = _make_health_config(connection_type="tcp")
+    mu.meshtastic_client = MagicMock()
+    mu._metadata_future = Mock()
+    mu._metadata_future.done.return_value = False
+
+    with (
+        patch(
+            "mmrelay.meshtastic_utils.asyncio.sleep",
+            new_callable=AsyncMock,
+            side_effect=_sleep_and_shutdown,
+        ),
+        patch("mmrelay.meshtastic_utils.asyncio.get_running_loop") as mock_loop,
+        patch("mmrelay.meshtastic_utils.on_lost_meshtastic_connection") as mock_lost,
+        patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+    ):
+        await check_connection()
+
+    mock_loop.assert_not_called()
+    mock_lost.assert_not_called()
+    mock_logger.debug.assert_any_call(
+        "Skipping connection check - metadata probe already in progress"
+    )
+
+
+@pytest.mark.asyncio
 async def test_check_connection_skips_when_reconnecting(reset_meshtastic_globals):
     mu.config = _make_health_config(connection_type="tcp")
     mu.meshtastic_client = MagicMock()

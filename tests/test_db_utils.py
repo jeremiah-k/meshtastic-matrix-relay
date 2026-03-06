@@ -394,6 +394,64 @@ class TestDbUtils(unittest.TestCase):
         self.assertEqual(get_longname("!11111111"), "Alice")
         self.assertEqual(get_shortname("!11111111"), "ALI")
 
+    def test_update_names_incomplete_snapshot_preserves_existing_entries(self):
+        """
+        Test that incomplete node snapshots do not trigger stale-name pruning.
+        """
+        initialize_database()
+
+        initial_nodes = {
+            "!11111111": {
+                "user": {
+                    "id": "!11111111",
+                    "longName": "Alice",
+                    "shortName": "ALI",
+                }
+            },
+            "!22222222": {
+                "user": {
+                    "id": "!22222222",
+                    "longName": "Bob",
+                    "shortName": "BOB",
+                }
+            },
+            "!33333333": {
+                "user": {
+                    "id": "!33333333",
+                    "longName": "Charlie",
+                    "shortName": "CHA",
+                }
+            },
+        }
+        update_longnames(initial_nodes)
+        update_shortnames(initial_nodes)
+
+        incomplete_nodes = {
+            "!11111111": {
+                "user": {
+                    "id": "!11111111",
+                    "longName": "Alice Updated",
+                    "shortName": "ALX",
+                }
+            },
+            "node-without-user": {},
+            "node-without-id": {
+                "user": {
+                    "longName": "Missing ID",
+                    "shortName": "MID",
+                }
+            },
+        }
+        update_longnames(incomplete_nodes)
+        update_shortnames(incomplete_nodes)
+
+        self.assertEqual(get_longname("!11111111"), "Alice Updated")
+        self.assertEqual(get_shortname("!11111111"), "ALX")
+        self.assertEqual(get_longname("!22222222"), "Bob")
+        self.assertEqual(get_shortname("!22222222"), "BOB")
+        self.assertEqual(get_longname("!33333333"), "Charlie")
+        self.assertEqual(get_shortname("!33333333"), "CHA")
+
     def test_plugin_data_operations(self):
         """
         Test storing, retrieving, and deleting plugin data for specific nodes and plugins in the database.
