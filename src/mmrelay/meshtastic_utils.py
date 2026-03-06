@@ -990,13 +990,14 @@ def _extract_firmware_version_from_metadata(metadata_source: Any) -> str | None:
 
 def _extract_firmware_version_from_client(client: Any) -> str | None:
     """
-    Read firmware version from known client metadata locations.
+    Return the first normalized firmware version exposed on common client fields.
 
     Parameters:
-        client (Any): Meshtastic client object.
+        client (Any): Meshtastic client object to inspect.
 
     Returns:
-        str | None: Firmware version if present in any metadata location.
+        str | None: Firmware version if present on the client, local node, or
+            local interface metadata.
     """
     local_node = getattr(client, "localNode", None)
     local_iface = getattr(local_node, "iface", None) if local_node else None

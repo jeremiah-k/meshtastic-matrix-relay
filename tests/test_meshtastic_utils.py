@@ -2692,6 +2692,7 @@ class TestGetDeviceMetadata(unittest.TestCase):
         mock_client.localNode.iface.metadata = None
 
         def _populate_metadata() -> None:
+            """Simulate getMetadata() populating structured client metadata."""
             mock_client.localNode.iface.metadata = {
                 "firmwareVersion": "2.7.18",
             }
