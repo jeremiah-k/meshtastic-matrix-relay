@@ -841,11 +841,12 @@ def _delete_stale_names_core(
     return cursor.rowcount
 
 
-def delete_stale_longnames(current_ids: set[str]) -> int:
+def _delete_stale_names(table_name: str, current_ids: set[str]) -> int:
     """
-    Remove long name entries for nodes no longer in the device's nodedb.
+    Remove name entries for nodes no longer in the device's nodedb.
 
     Parameters:
+        table_name (str): The name of the table to prune ('longnames' or 'shortnames').
         current_ids (set[str]): Set of Meshtastic node IDs currently known to the device.
 
     Returns:
@@ -857,16 +858,32 @@ def delete_stale_longnames(current_ids: set[str]) -> int:
     manager = _get_db_manager()
 
     def _delete(cursor: sqlite3.Cursor) -> int:
-        return _delete_stale_names_core(cursor, "longnames", current_ids)
+        return _delete_stale_names_core(cursor, table_name, current_ids)
 
     try:
         deleted = manager.run_sync(_delete, write=True)
         if deleted > 0:
-            logger.debug("Removed %d stale longname entries", deleted)
+            # Derive singular name type from table name for logging
+            name_type = table_name.rstrip("s")
+            logger.debug("Removed %d stale %s entries", deleted, name_type)
         return deleted
     except sqlite3.Error:
-        logger.exception("Database error deleting stale longnames")
+        name_type = table_name.rstrip("s")
+        logger.exception("Database error deleting stale %ss", name_type)
         return 0
+
+
+def delete_stale_longnames(current_ids: set[str]) -> int:
+    """
+    Remove long name entries for nodes no longer in the device's nodedb.
+
+    Parameters:
+        current_ids (set[str]): Set of Meshtastic node IDs currently known to the device.
+
+    Returns:
+        int: Number of stale entries removed.
+    """
+    return _delete_stale_names("longnames", current_ids)
 
 
 def delete_stale_shortnames(current_ids: set[str]) -> int:
@@ -879,22 +896,7 @@ def delete_stale_shortnames(current_ids: set[str]) -> int:
     Returns:
         int: Number of stale entries removed.
     """
-    if not current_ids:
-        return 0
-
-    manager = _get_db_manager()
-
-    def _delete(cursor: sqlite3.Cursor) -> int:
-        return _delete_stale_names_core(cursor, "shortnames", current_ids)
-
-    try:
-        deleted = manager.run_sync(_delete, write=True)
-        if deleted > 0:
-            logger.debug("Removed %d stale shortname entries", deleted)
-        return deleted
-    except sqlite3.Error:
-        logger.exception("Database error deleting stale shortnames")
-        return 0
+    return _delete_stale_names("shortnames", current_ids)
 
 
 def update_shortnames(nodes: dict[str, Any]) -> None:
