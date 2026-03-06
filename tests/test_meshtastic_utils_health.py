@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -54,28 +54,22 @@ async def test_check_connection_ble_skips_health_checks(reset_meshtastic_globals
     mu.config = _make_health_config(connection_type="ble")
     mu.meshtastic_client = MagicMock()
 
-    with (
-        patch(
-            "mmrelay.meshtastic_utils.asyncio.sleep",
-            new_callable=AsyncMock,
-            side_effect=_sleep_and_shutdown,
-        ),
-        patch("mmrelay.meshtastic_utils.logger") as mock_logger,
-    ):
+    with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
         await check_connection()
 
-    mock_logger.info.assert_any_call(
-        "BLE connection uses real-time disconnection detection - health checks disabled"
+    mock_logger.debug.assert_any_call(
+        "BLE connection uses real-time disconnection detection; periodic health checks disabled"
     )
 
 
 @pytest.mark.asyncio
-async def test_check_connection_metadata_fallback_succeeds(reset_meshtastic_globals):
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+async def test_check_connection_metadata_probe_succeeds():
     mu.config = _make_health_config(connection_type="tcp")
     mu.meshtastic_client = MagicMock()
 
     loop = MagicMock()
-    loop.run_in_executor = AsyncMock(side_effect=[{"success": False}, {}])
+    loop.run_in_executor = AsyncMock(return_value={})
 
     with (
         patch("mmrelay.meshtastic_utils.asyncio.get_running_loop", return_value=loop),
@@ -88,9 +82,12 @@ async def test_check_connection_metadata_fallback_succeeds(reset_meshtastic_glob
     ):
         await check_connection()
 
-    mock_logger.debug.assert_any_call(
-        "Metadata parse failed but device responded to getMyNodeInfo(); skipping reconnect this cycle"
-    )
+    loop.run_in_executor.assert_called_once()
+    _, probe = loop.run_in_executor.call_args.args
+    assert probe.func is mu._get_device_metadata
+    assert probe.args == (mu.meshtastic_client,)
+    assert probe.keywords == {"force_refresh": True, "raise_on_error": True}
+    mock_logger.error.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -101,9 +98,7 @@ async def test_check_connection_triggers_reconnect_on_probe_failure(
     mu.meshtastic_client = MagicMock()
 
     loop = MagicMock()
-    loop.run_in_executor = AsyncMock(
-        side_effect=[{"success": False}, Exception("probe failed")]
-    )
+    loop.run_in_executor = AsyncMock(side_effect=Exception("probe failed"))
 
     with (
         patch("mmrelay.meshtastic_utils.asyncio.get_running_loop", return_value=loop),
@@ -118,8 +113,10 @@ async def test_check_connection_triggers_reconnect_on_probe_failure(
         await check_connection()
 
     mock_lost.assert_called_once()
-    mock_logger.error.assert_any_call(
-        "Tcp connection health check failed: Metadata and nodeInfo probes failed"
+    mock_logger.exception.assert_any_call(
+        "%s connection health check failed: %s",
+        "Tcp",
+        ANY,
     )
 
 

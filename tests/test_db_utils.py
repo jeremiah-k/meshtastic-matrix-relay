@@ -261,6 +261,139 @@ class TestDbUtils(unittest.TestCase):
         self.assertEqual(get_shortname("!12345678"), "AS")
         self.assertEqual(get_shortname("!87654321"), "BJ")
 
+    def test_update_names_preserve_zero_id_for_stale_tracking(self):
+        """
+        Test that numeric zero IDs are treated as valid IDs, not skipped as missing.
+        """
+        initialize_database()
+
+        initial_nodes = {
+            "node_zero": {"user": {"id": 0, "longName": "Zero", "shortName": "ZRO"}},
+            "node_one": {"user": {"id": 1, "longName": "One", "shortName": "ONE"}},
+        }
+        update_longnames(initial_nodes)
+        update_shortnames(initial_nodes)
+
+        updated_nodes = {
+            "node_zero": {
+                "user": {"id": 0, "longName": "Zero Updated", "shortName": "Z0"}
+            }
+        }
+        update_longnames(updated_nodes)
+        update_shortnames(updated_nodes)
+
+        self.assertEqual(get_longname("0"), "Zero Updated")
+        self.assertEqual(get_shortname("0"), "Z0")
+        self.assertIsNone(get_longname("1"))
+        self.assertIsNone(get_shortname("1"))
+
+    def test_update_longnames_removes_stale_entries(self):
+        """
+        Test that update_longnames removes stale entries when nodes are removed from the device nodedb.
+
+        Simulates a device nodedb being cleared or nodes leaving the mesh by:
+        1. Adding multiple nodes to the database
+        2. Calling update_longnames with only a subset of nodes
+        3. Verifying that stale entries (nodes not in the new snapshot) are removed
+        """
+        initialize_database()
+
+        # Initial nodes - 3 nodes in the mesh
+        initial_nodes = {
+            "!11111111": {"user": {"id": "!11111111", "longName": "Alice"}},
+            "!22222222": {"user": {"id": "!22222222", "longName": "Bob"}},
+            "!33333333": {"user": {"id": "!33333333", "longName": "Charlie"}},
+        }
+        update_longnames(initial_nodes)
+
+        # Verify all 3 are stored
+        self.assertEqual(get_longname("!11111111"), "Alice")
+        self.assertEqual(get_longname("!22222222"), "Bob")
+        self.assertEqual(get_longname("!33333333"), "Charlie")
+
+        # Update with only 2 nodes (Charlie left the mesh)
+        updated_nodes = {
+            "!11111111": {"user": {"id": "!11111111", "longName": "Alice Updated"}},
+            "!22222222": {"user": {"id": "!22222222", "longName": "Bob"}},
+        }
+        update_longnames(updated_nodes)
+
+        # Verify Alice and Bob are still present (Alice updated)
+        self.assertEqual(get_longname("!11111111"), "Alice Updated")
+        self.assertEqual(get_longname("!22222222"), "Bob")
+        # Verify Charlie was removed as stale entry
+        self.assertIsNone(get_longname("!33333333"))
+
+    def test_update_shortnames_removes_stale_entries(self):
+        """
+        Test that update_shortnames removes stale entries when nodes are removed from the device nodedb.
+
+        Simulates a device nodedb being cleared or nodes leaving the mesh by:
+        1. Adding multiple nodes to the database
+        2. Calling update_shortnames with only a subset of nodes
+        3. Verifying that stale entries (nodes not in the new snapshot) are removed
+        """
+        initialize_database()
+
+        # Initial nodes - 3 nodes in the mesh
+        initial_nodes = {
+            "!11111111": {"user": {"id": "!11111111", "shortName": "ALI"}},
+            "!22222222": {"user": {"id": "!22222222", "shortName": "BOB"}},
+            "!33333333": {"user": {"id": "!33333333", "shortName": "CHA"}},
+        }
+        update_shortnames(initial_nodes)
+
+        # Verify all 3 are stored
+        self.assertEqual(get_shortname("!11111111"), "ALI")
+        self.assertEqual(get_shortname("!22222222"), "BOB")
+        self.assertEqual(get_shortname("!33333333"), "CHA")
+
+        # Update with only 2 nodes (Charlie left the mesh)
+        updated_nodes = {
+            "!11111111": {"user": {"id": "!11111111", "shortName": "ALX"}},
+            "!22222222": {"user": {"id": "!22222222", "shortName": "BOB"}},
+        }
+        update_shortnames(updated_nodes)
+
+        # Verify Alice and Bob are still present (Alice updated)
+        self.assertEqual(get_shortname("!11111111"), "ALX")
+        self.assertEqual(get_shortname("!22222222"), "BOB")
+        # Verify Charlie was removed as stale entry
+        self.assertIsNone(get_shortname("!33333333"))
+
+    def test_update_names_empty_nodes_preserves_existing(self):
+        """
+        Test that calling update_longnames/update_shortnames with empty dict does NOT wipe the database.
+
+        This is important because an empty dict could mean either:
+        - Device nodedb was actually cleared
+        - Transient failure/disconnect where we don't have node data
+
+        We choose to preserve existing data on empty input to avoid data loss.
+        """
+        initialize_database()
+
+        # Add initial nodes
+        initial_nodes = {
+            "!11111111": {
+                "user": {"id": "!11111111", "longName": "Alice", "shortName": "ALI"}
+            },
+        }
+        update_longnames(initial_nodes)
+        update_shortnames(initial_nodes)
+
+        # Verify stored
+        self.assertEqual(get_longname("!11111111"), "Alice")
+        self.assertEqual(get_shortname("!11111111"), "ALI")
+
+        # Call with empty dict (simulating transient issue)
+        update_longnames({})
+        update_shortnames({})
+
+        # Verify data is still present (not wiped)
+        self.assertEqual(get_longname("!11111111"), "Alice")
+        self.assertEqual(get_shortname("!11111111"), "ALI")
+
     def test_plugin_data_operations(self):
         """
         Test storing, retrieving, and deleting plugin data for specific nodes and plugins in the database.
@@ -315,6 +448,7 @@ class TestDbUtils(unittest.TestCase):
         # Retrieve by meshtastic_id
         result = get_message_map_by_meshtastic_id(meshtastic_id)
         self.assertIsNotNone(result)
+        assert result is not None  # Type narrowing for pyright
         self.assertEqual(result[0], matrix_event_id)
         self.assertEqual(result[1], matrix_room_id)
         self.assertEqual(result[2], meshtastic_text)
@@ -323,6 +457,7 @@ class TestDbUtils(unittest.TestCase):
         # Retrieve by matrix_event_id
         result = get_message_map_by_matrix_event_id(matrix_event_id)
         self.assertIsNotNone(result)
+        assert result is not None  # Type narrowing for pyright
         self.assertEqual(result[0], str(meshtastic_id))
         self.assertEqual(result[1], matrix_room_id)
         self.assertEqual(result[2], meshtastic_text)
@@ -441,6 +576,7 @@ class TestDbUtils(unittest.TestCase):
         self.assertIsNone(get_message_map_by_meshtastic_id("mesh1"))
         latest = get_message_map_by_meshtastic_id("mesh2")
         self.assertIsNotNone(latest)
+        assert latest is not None  # Type narrowing for pyright
         self.assertEqual(latest[0], "$event2:matrix.org")
 
     def test_database_manager_keyboard_interrupt(self):

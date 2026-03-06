@@ -4,7 +4,7 @@ import json
 import os
 import sqlite3
 import threading
-from typing import Any, Dict, Tuple, cast
+from typing import Any, Callable, Dict, Tuple, cast
 
 from mmrelay.constants.database import (
     DEFAULT_BUSY_TIMEOUT_MS,
@@ -657,12 +657,11 @@ def get_longname(meshtastic_id: int | str) -> str | None:
 
 def save_longname(meshtastic_id: int | str, longname: str) -> None:
     """
-    Persist the long display name for a Meshtastic node.
-
-    If an entry for the given node exists, its longname is updated; database errors are logged and suppressed.
+    Normalize a node ID and upsert its long display name.
 
     Parameters:
-        meshtastic_id (int | str): Identifier of the Meshtastic node; will be normalized to a string.
+        meshtastic_id (int | str): Identifier of the Meshtastic node; stored as a
+            string key.
         longname (str): Full display name to store for the node.
     """
     manager = _get_db_manager()
@@ -686,24 +685,60 @@ def save_longname(meshtastic_id: int | str, longname: str) -> None:
         logger.exception("Database error saving longname for %s", meshtastic_id)
 
 
-def update_longnames(nodes: dict[str, Any]) -> None:
+def _update_names_core(
+    nodes: dict[str, Any],
+    *,
+    name_key: str,
+    save_name: Callable[[str, str], None],
+    delete_stale_names: Callable[[set[str]], int],
+) -> None:
     """
-    Persist long names from node user entries into the database.
-
-    For each node in `nodes` that contains a `"user"` mapping with a present `"longName"`, save it under the user's `"id"` by calling `save_longname`. Nodes with missing `"longName"` are skipped to avoid overwriting existing database entries with placeholder values.
+    Persist one user name field from a node snapshot and prune stale rows.
 
     Parameters:
-        nodes (dict[str, Any]): Mapping of node identifiers to node dictionaries; each node dictionary may include a `"user"` dict with an `"id"` key and an optional `"longName"` key.
+        nodes (dict[str, Any]): Snapshot of node records containing optional
+            `user` dictionaries.
+        name_key (str): User field to read (`"longName"` or `"shortName"`).
+        save_name (Callable[[str, str], None]): Function used to persist one name.
+        delete_stale_names (Callable[[set[str]], int]): Function used to delete
+            rows whose Meshtastic IDs are absent from the snapshot.
     """
-    if nodes:
-        for node in nodes.values():
-            user = node.get("user")
-            if user:
-                meshtastic_id = user["id"]
-                longname = user.get("longName")
-                # Only save if longName is present to avoid overwriting valid names with placeholders
-                if longname:
-                    save_longname(meshtastic_id, longname)
+    if not nodes:
+        return
+
+    current_ids: set[str] = set()
+    for node in nodes.values():
+        user = node.get("user")
+        if user:
+            meshtastic_id = user.get("id")
+            if meshtastic_id is None or (
+                isinstance(meshtastic_id, str) and meshtastic_id == ""
+            ):
+                continue
+            id_key = str(meshtastic_id)
+            current_ids.add(id_key)
+            name_value = user.get(name_key)
+            if name_value:
+                save_name(id_key, name_value)
+
+    if current_ids:
+        delete_stale_names(current_ids)
+
+
+def update_longnames(nodes: dict[str, Any]) -> None:
+    """
+    Persist each node's `longName` and prune stale longname rows.
+
+    Parameters:
+        nodes (dict[str, Any]): Mapping of node identifiers to node dictionaries;
+            each node may expose a `user` dict with `id` and `longName`.
+    """
+    _update_names_core(
+        nodes,
+        name_key="longName",
+        save_name=save_longname,
+        delete_stale_names=delete_stale_longnames,
+    )
 
 
 def get_shortname(meshtastic_id: int | str) -> str | None:
@@ -771,24 +806,121 @@ def save_shortname(meshtastic_id: int | str, shortname: str) -> None:
         logger.exception("Database error saving shortname for %s", meshtastic_id)
 
 
+def _delete_stale_names_core(
+    cursor: sqlite3.Cursor, table: str, current_ids: set[str]
+) -> int:
+    """
+    Delete rows whose `meshtastic_id` is missing from the current node snapshot.
+
+    Parameters:
+        cursor (sqlite3.Cursor): Database cursor used to execute the delete.
+        table (str): Table name (`"longnames"` or `"shortnames"`).
+        current_ids (set[str]): Set of Meshtastic node IDs that should be kept.
+
+    Returns:
+        int: Number of rows deleted.
+
+    Raises:
+        ValueError: If `table` is not a supported names table.
+    """
+    sql_prefix_by_table = {
+        "longnames": "DELETE FROM longnames WHERE meshtastic_id NOT IN (",
+        "shortnames": "DELETE FROM shortnames WHERE meshtastic_id NOT IN (",
+    }
+    delete_sql_prefix = sql_prefix_by_table.get(table)
+    if delete_sql_prefix is None:
+        raise ValueError(f"Invalid table name: {table}")
+
+    if not current_ids:
+        return 0
+
+    placeholders = ",".join("?" * len(current_ids))
+    cursor.execute(
+        f"{delete_sql_prefix}{placeholders})",
+        tuple(current_ids),
+    )
+    return cursor.rowcount
+
+
+def _delete_stale_names(table_name: str, current_ids: set[str]) -> int:
+    """
+    Remove name entries for nodes no longer in the device's nodedb.
+
+    Parameters:
+        table_name (str): The name of the table to prune ('longnames' or 'shortnames').
+        current_ids (set[str]): Set of Meshtastic node IDs currently known to the device.
+
+    Returns:
+        int: Number of stale entries removed.
+    """
+    if not current_ids:
+        return 0
+
+    manager = _get_db_manager()
+
+    def _delete(cursor: sqlite3.Cursor) -> int:
+        """
+        Delete stale name rows using the bound table name and current ID set.
+        """
+        return _delete_stale_names_core(cursor, table_name, current_ids)
+
+    try:
+        deleted = manager.run_sync(_delete, write=True)
+        if deleted > 0:
+            # Derive singular name type from table name for logging
+            name_type = table_name.rstrip("s")
+            logger.debug("Removed %d stale %s entries", deleted, name_type)
+        return deleted
+    except sqlite3.Error:
+        name_type = table_name.rstrip("s")
+        logger.exception("Database error deleting stale %ss", name_type)
+        return 0
+
+
+def delete_stale_longnames(current_ids: set[str]) -> int:
+    """
+    Delete stored long names for nodes absent from the current snapshot.
+
+    Parameters:
+        current_ids (set[str]): Set of Meshtastic node IDs currently known to the
+            device.
+
+    Returns:
+        int: Number of rows removed from the longnames table.
+    """
+    return _delete_stale_names("longnames", current_ids)
+
+
+def delete_stale_shortnames(current_ids: set[str]) -> int:
+    """
+    Remove short name entries for nodes no longer in the device's nodedb.
+
+    Parameters:
+        current_ids (set[str]): Set of Meshtastic node IDs currently known to the device.
+
+    Returns:
+        int: Number of stale entries removed.
+    """
+    return _delete_stale_names("shortnames", current_ids)
+
+
 def update_shortnames(nodes: dict[str, Any]) -> None:
     """
     Update persisted short names for nodes that include a user object.
 
     For each node in the provided mapping, if the node contains a `user` dictionary with a present `shortName`, the function uses `user["id"]` as the Meshtastic ID and stores the short name in the database. Nodes with missing `shortName` are skipped to avoid overwriting existing database entries with placeholder values.
 
+    After updating, removes stale entries from the database that are no longer present in the device's nodedb.
+
     Parameters:
         nodes (Mapping): Mapping of node identifiers to node objects; nodes without a `user` entry are ignored.
     """
-    if nodes:
-        for node in nodes.values():
-            user = node.get("user")
-            if user:
-                meshtastic_id = user["id"]
-                shortname = user.get("shortName")
-                # Only save if shortName is present to avoid overwriting valid names with placeholders
-                if shortname:
-                    save_shortname(meshtastic_id, shortname)
+    _update_names_core(
+        nodes,
+        name_key="shortName",
+        save_name=save_shortname,
+        delete_stale_names=delete_stale_shortnames,
+    )
 
 
 def _store_message_map_core(
