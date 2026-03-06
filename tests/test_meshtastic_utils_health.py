@@ -113,10 +113,11 @@ async def test_check_connection_triggers_reconnect_on_probe_failure(
         await check_connection()
 
     mock_lost.assert_called_once()
-    mock_logger.exception.assert_any_call(
+    mock_logger.error.assert_any_call(
         "%s connection health check failed: %s",
         "Tcp",
         ANY,
+        exc_info=True,
     )
 
 

@@ -1044,6 +1044,14 @@ class TestLongnameShortnameErrors(unittest.TestCase):
             ),
             "Expected 'Database error saving longname' in logs",
         )
+        self.assertTrue(
+            any(
+                call[0][0] == "Database error deleting stale %ss"
+                and call[0][1] == "longname"
+                for call in mock_logger.exception.call_args_list
+            ),
+            "Expected stale longname delete failure in logs",
+        )
 
     @patch("mmrelay.db_utils._get_db_manager")
     @patch("mmrelay.db_utils.logger")
@@ -1102,6 +1110,14 @@ class TestLongnameShortnameErrors(unittest.TestCase):
                 for call in mock_logger.exception.call_args_list
             ),
             "Expected 'Database error saving shortname' in logs",
+        )
+        self.assertTrue(
+            any(
+                call[0][0] == "Database error deleting stale %ss"
+                and call[0][1] == "shortname"
+                for call in mock_logger.exception.call_args_list
+            ),
+            "Expected stale shortname delete failure in logs",
         )
 
     def test_delete_stale_names_core_rejects_invalid_table_name(self):

@@ -2669,14 +2669,11 @@ class TestGetDeviceMetadata(unittest.TestCase):
         """Refreshed firmware fallback should normalize values before success assignment."""
         mock_client = MagicMock()
         mock_client.localNode.getMetadata = MagicMock()
+        mock_client.localNode.iface.metadata = {
+            "firmwareVersion": "unknown",
+        }
 
-        with (
-            patch("mmrelay.meshtastic_utils.io.StringIO") as mock_stringio,
-            patch(
-                "mmrelay.meshtastic_utils._extract_firmware_version_from_client",
-                return_value="unknown",
-            ),
-        ):
+        with patch("mmrelay.meshtastic_utils.io.StringIO") as mock_stringio:
             mock_output = MagicMock()
             mock_output.getvalue.return_value = "hw_model: HELTEC_V3"
             mock_stringio.return_value = mock_output
@@ -2685,6 +2682,7 @@ class TestGetDeviceMetadata(unittest.TestCase):
 
         self.assertFalse(result["success"])
         self.assertEqual(result["firmware_version"], "unknown")
+        mock_client.localNode.getMetadata.assert_called_once()
 
     def test_get_device_metadata_structured_fallback_after_getmetadata(self):
         """Fallback to structured metadata when stdout does not include firmware version."""
