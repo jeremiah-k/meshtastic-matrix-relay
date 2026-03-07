@@ -2137,9 +2137,13 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
 
         # Get the source module without the mock
         spec = importlib.util.find_spec("mmrelay.meshtastic_utils")
+        if spec is None:
+            raise ImportError("Could not find mmrelay.meshtastic_utils module")
         source_module = importlib.util.module_from_spec(spec)
 
         # Execute the module to get the original function
+        if spec.loader is None:
+            raise ImportError("Module spec has no loader")
         spec.loader.exec_module(source_module)
 
         # Get the original _submit_coro function
@@ -2386,10 +2390,10 @@ class TestBLEExceptionHandling(unittest.TestCase):
         # than the fallback classes, so we test instantiation carefully
         try:
             # Try simple instantiation first (fallback classes)
-            error1 = mu.BleakDBusError("Test error")
+            error1 = mu.BleakDBusError("Test error")  # type: ignore[call-arg]
         except TypeError:
             # If that fails, try the real bleak constructor
-            error1 = mu.BleakDBusError("Test error", "error_body")
+            error1 = mu.BleakDBusError("Test error", ["error_body"])
 
         try:
             error2 = mu.BleakError("Test error")
@@ -3039,7 +3043,13 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
                 "getMetadata() timed out after 30 seconds"
             )
             # Ensure we deferred cleanup when worker is still running.
-            timeout_future.add_done_callback.assert_called_once()
+            # Two callbacks are expected: _clear_metadata_future_if_current and
+            # _finalize_metadata_capture
+            self.assertEqual(
+                timeout_future.add_done_callback.call_count,
+                2,
+                f"Expected 2 callbacks, got {timeout_future.add_done_callback.call_count}",
+            )
             self.assertIs(mu.sys.stdout, orig_stdout)
 
     @patch("mmrelay.meshtastic_utils.logger")
