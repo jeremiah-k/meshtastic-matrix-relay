@@ -251,12 +251,33 @@ def _get_metadata_executor() -> ThreadPoolExecutor:
     return _metadata_executor
 
 
-def _metadata_probe_in_progress() -> bool:
+def _clear_metadata_future_if_current(done_future: Future[Any]) -> None:
     """
-    Return whether a shared getMetadata() probe is already in flight.
+    Clear the shared metadata future if it still refers to `done_future`.
     """
+    global _metadata_future
     with _metadata_future_lock:
-        return _metadata_future is not None and not _metadata_future.done()
+        if _metadata_future is done_future:
+            _metadata_future = None
+
+
+def _submit_metadata_probe(probe: Callable[[], Any]) -> Future[Any] | None:
+    """
+    Submit a metadata-related admin probe unless one is already in flight.
+
+    Returns the shared concurrent future for the submitted probe, or `None`
+    when another metadata operation is already running.
+    """
+    global _metadata_future
+    with _metadata_future_lock:
+        if _metadata_future is not None and not _metadata_future.done():
+            return None
+
+        future = _get_metadata_executor().submit(probe)
+        _metadata_future = future
+
+    future.add_done_callback(_clear_metadata_future_if_current)
+    return future
 
 
 def _probe_device_connection(client: Any) -> None:
@@ -1075,7 +1096,6 @@ def _get_device_metadata(
             "success" (bool): `True` when a firmware version was successfully parsed, `False` otherwise
         }
     """
-    global _metadata_future
     result = {"firmware_version": "unknown", "raw_output": "", "success": False}
 
     try:
@@ -1129,26 +1149,25 @@ def _get_device_metadata(
                     return
                 raise
 
-        with _metadata_future_lock:
-            if _metadata_future and not _metadata_future.done():
-                # A previous metadata request is still running; avoid piling up
-                # threads and leave the in-flight call to finish in its own time.
-                logger.debug("getMetadata() already running; skipping new request")
-                return result
+        try:
+            future = _submit_metadata_probe(call_get_metadata)
+        except RuntimeError as exc:
+            # The shared executor may already be shutting down; treat this as
+            # a non-fatal metadata miss so we don't block connections.
+            logger.debug(
+                "getMetadata() submission failed; skipping metadata retrieval",
+                exc_info=exc,
+            )
+            if raise_on_error:
+                raise
+            return result
 
-            try:
-                future = _get_metadata_executor().submit(call_get_metadata)
-            except RuntimeError as exc:
-                # The shared executor may already be shutting down; treat this as
-                # a non-fatal metadata miss so we don't block connections.
-                logger.debug(
-                    "getMetadata() submission failed; skipping metadata retrieval",
-                    exc_info=exc,
-                )
-                if raise_on_error:
-                    raise
-                return result
-            _metadata_future = future
+        if future is None:
+            # A previous metadata request is still running; avoid piling up
+            # threads and leave the in-flight call to finish in its own time.
+            logger.debug("getMetadata() already running; skipping new request")
+            return result
+
         timed_out = False
         future_error: Exception | None = None
         try:
@@ -1176,16 +1195,12 @@ def _get_device_metadata(
             """
             Finalize capture state for a completed metadata retrieval future.
 
-            If the provided future matches the module-level metadata future, clear that reference.
-            Also close the shared output capture stream if it is still open.
+            Close the shared output capture stream once the worker has fully
+            finished with it.
 
             Parameters:
                 done_future (concurrent.futures.Future | asyncio.Future): The future that has completed and triggered finalization.
             """
-            global _metadata_future
-            with _metadata_future_lock:
-                if _metadata_future is done_future:
-                    _metadata_future = None
             if not output_capture.closed:
                 output_capture.close()
 
@@ -3169,23 +3184,31 @@ async def check_connection() -> None:
 
     while not shutting_down:
         if meshtastic_client and not reconnecting:
-            if _metadata_probe_in_progress():
-                logger.debug(
-                    "Skipping connection check - metadata probe already in progress"
+            probe_submission_failed = False
+            try:
+                probe_future = _submit_metadata_probe(
+                    functools.partial(_probe_device_connection, meshtastic_client)
                 )
+            except RuntimeError as exc:
+                logger.debug(
+                    "Skipping connection check - metadata probe submission failed",
+                    exc_info=exc,
+                )
+                probe_future = None
+                probe_submission_failed = True
+
+            if probe_future is None:
+                if not probe_submission_failed:
+                    logger.debug(
+                        "Skipping connection check - metadata probe already in progress"
+                    )
             else:
                 try:
-                    loop = asyncio.get_running_loop()
                     # NOTE: Use the metadata admin request for keepalive/liveness.
                     # `getMyNodeInfo()` is local cached state in Meshtastic Python,
                     # so it can succeed even when the transport is unhealthy.
                     await asyncio.wait_for(
-                        loop.run_in_executor(
-                            None,
-                            functools.partial(
-                                _probe_device_connection, meshtastic_client
-                            ),
-                        ),
+                        asyncio.wrap_future(probe_future),
                         timeout=DEFAULT_MESHTASTIC_OPERATION_TIMEOUT,
                     )
 

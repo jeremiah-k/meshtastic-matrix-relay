@@ -33,6 +33,8 @@ from mmrelay.db_utils import (
     async_store_message_map,
     clear_db_path_cache,
     delete_plugin_data,
+    delete_stale_longnames,
+    delete_stale_shortnames,
     get_db_path,
     get_longname,
     get_message_map_by_matrix_event_id,
@@ -59,6 +61,8 @@ class TestDbUtils(unittest.TestCase):
         """
         Prepare a temporary test environment by creating a unique directory and database file, clearing cached database paths, and patching the configuration to use the test database.
         """
+        _reset_db_manager()
+
         # Create a temporary directory for test database
         self.test_dir = tempfile.mkdtemp()
         self.test_db_path = os.path.join(self.test_dir, "test_meshtastic.sqlite")
@@ -78,6 +82,8 @@ class TestDbUtils(unittest.TestCase):
         """
         Cleans up the test environment by clearing the database path cache and removing temporary files and directories created during the test.
         """
+        _reset_db_manager()
+
         # Clear cache after each test
         clear_db_path_cache()
 
@@ -361,6 +367,25 @@ class TestDbUtils(unittest.TestCase):
         # Verify Charlie was removed as stale entry
         self.assertIsNone(get_shortname("!33333333"))
 
+    def test_delete_stale_names_empty_current_ids_clears_tables(self):
+        """
+        Test that explicit stale-prune helpers clear stored names when passed an empty keep-set.
+        """
+        initialize_database()
+
+        save_longname("!11111111", "Alice")
+        save_longname("!22222222", "Bob")
+        save_shortname("!11111111", "ALI")
+        save_shortname("!22222222", "BOB")
+
+        self.assertEqual(delete_stale_longnames(set()), 2)
+        self.assertEqual(delete_stale_shortnames(set()), 2)
+
+        self.assertIsNone(get_longname("!11111111"))
+        self.assertIsNone(get_longname("!22222222"))
+        self.assertIsNone(get_shortname("!11111111"))
+        self.assertIsNone(get_shortname("!22222222"))
+
     def test_update_names_empty_nodes_preserves_existing(self):
         """
         Test that calling update_longnames/update_shortnames with empty dict does NOT wipe the database.
@@ -458,6 +483,8 @@ class TestDbUtils(unittest.TestCase):
         self.assertEqual(get_shortname("!22222222"), "BOB")
         self.assertEqual(get_longname("!33333333"), "Charlie")
         self.assertEqual(get_shortname("!33333333"), "CHA")
+        self.assertIsNone(get_longname(""))
+        self.assertIsNone(get_shortname(""))
 
     def test_plugin_data_operations(self):
         """

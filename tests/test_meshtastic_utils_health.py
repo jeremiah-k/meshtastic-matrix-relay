@@ -1,4 +1,4 @@
-import asyncio
+from concurrent.futures import Future
 from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -69,13 +69,13 @@ async def test_check_connection_metadata_probe_succeeds():
     mu.config = _make_health_config(connection_type="tcp")
     mu.meshtastic_client = MagicMock()
 
-    loop = MagicMock()
-    probe_future = asyncio.get_running_loop().create_future()
-    probe_future.set_result({})
-    loop.run_in_executor = Mock(return_value=probe_future)
+    executor = Mock()
+    probe_future: Future[None] = Future()
+    probe_future.set_result(None)
+    executor.submit.return_value = probe_future
 
     with (
-        patch("mmrelay.meshtastic_utils.asyncio.get_running_loop", return_value=loop),
+        patch("mmrelay.meshtastic_utils._get_metadata_executor", return_value=executor),
         patch(
             "mmrelay.meshtastic_utils.asyncio.sleep",
             new_callable=AsyncMock,
@@ -85,8 +85,8 @@ async def test_check_connection_metadata_probe_succeeds():
     ):
         await check_connection()
 
-    loop.run_in_executor.assert_called_once()
-    _, probe = loop.run_in_executor.call_args.args
+    executor.submit.assert_called_once()
+    probe = executor.submit.call_args.args[0]
     assert probe.func is mu._probe_device_connection
     assert probe.args == (mu.meshtastic_client,)
     mock_logger.error.assert_not_called()
@@ -98,13 +98,13 @@ async def test_check_connection_triggers_reconnect_on_probe_failure():
     mu.config = _make_health_config(connection_type="tcp")
     mu.meshtastic_client = MagicMock()
 
-    loop = MagicMock()
-    probe_future = asyncio.get_running_loop().create_future()
+    executor = Mock()
+    probe_future: Future[None] = Future()
     probe_future.set_exception(Exception("probe failed"))
-    loop.run_in_executor = Mock(return_value=probe_future)
+    executor.submit.return_value = probe_future
 
     with (
-        patch("mmrelay.meshtastic_utils.asyncio.get_running_loop", return_value=loop),
+        patch("mmrelay.meshtastic_utils._get_metadata_executor", return_value=executor),
         patch("mmrelay.meshtastic_utils.on_lost_meshtastic_connection") as mock_lost,
         patch(
             "mmrelay.meshtastic_utils.asyncio.sleep",
@@ -126,6 +126,43 @@ async def test_check_connection_triggers_reconnect_on_probe_failure():
 
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("reset_meshtastic_globals")
+async def test_check_connection_tracks_timed_out_probe_until_worker_finishes():
+    mu.config = _make_health_config(connection_type="tcp")
+    mu.meshtastic_client = MagicMock()
+
+    executor = Mock()
+    probe_future: Future[None] = Future()
+    assert probe_future.set_running_or_notify_cancel()
+    executor.submit.return_value = probe_future
+
+    with (
+        patch("mmrelay.meshtastic_utils._get_metadata_executor", return_value=executor),
+        patch.object(mu, "DEFAULT_MESHTASTIC_OPERATION_TIMEOUT", 0.01),
+        patch("mmrelay.meshtastic_utils.on_lost_meshtastic_connection") as mock_lost,
+        patch(
+            "mmrelay.meshtastic_utils.asyncio.sleep",
+            new_callable=AsyncMock,
+            side_effect=_sleep_and_shutdown,
+        ),
+        patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+    ):
+        await check_connection()
+
+    assert mu._metadata_future is probe_future
+    executor.submit.assert_called_once()
+    mock_lost.assert_called_once()
+    mock_logger.error.assert_any_call(
+        "%s connection health check failed: %s",
+        "Tcp",
+        ANY,
+        exc_info=True,
+    )
+
+    probe_future.set_result(None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("reset_meshtastic_globals")
 async def test_check_connection_skips_when_metadata_probe_active():
     mu.config = _make_health_config(connection_type="tcp")
     mu.meshtastic_client = MagicMock()
@@ -138,13 +175,13 @@ async def test_check_connection_skips_when_metadata_probe_active():
             new_callable=AsyncMock,
             side_effect=_sleep_and_shutdown,
         ),
-        patch("mmrelay.meshtastic_utils.asyncio.get_running_loop") as mock_loop,
+        patch("mmrelay.meshtastic_utils._get_metadata_executor") as mock_executor,
         patch("mmrelay.meshtastic_utils.on_lost_meshtastic_connection") as mock_lost,
         patch("mmrelay.meshtastic_utils.logger") as mock_logger,
     ):
         await check_connection()
 
-    mock_loop.assert_not_called()
+    mock_executor.assert_not_called()
     mock_lost.assert_not_called()
     mock_logger.debug.assert_any_call(
         "Skipping connection check - metadata probe already in progress"
