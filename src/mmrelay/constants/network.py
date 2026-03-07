@@ -62,3 +62,6 @@ SYSTEMD_INIT_SYSTEM = "systemd"
 
 # Time conversion
 MILLISECONDS_PER_SECOND = 1000
+
+# Metadata probe watchdog timeout (same as BLE pattern)
+METADATA_WATCHDOG_SECS = 30.0

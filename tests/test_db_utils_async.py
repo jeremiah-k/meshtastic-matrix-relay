@@ -1034,10 +1034,25 @@ class TestLongnameShortnameErrors(unittest.TestCase):
         nodes = {"1": {"num": 1, "user": {"id": "!testid", "longName": "Test1"}}}
         update_longnames(nodes)
 
-        mock_logger.exception.assert_called_once()
-        call_args = mock_logger.exception.call_args[0]
-        self.assertIn("Database error saving longname for", call_args[0])
-        self.assertEqual(call_args[1], "!testid")
+        # Only save_longname will fail - delete_stale_longnames is NOT called when saves fail
+        # This prevents stale deletion on partial upsert errors (data integrity improvement)
+        self.assertTrue(mock_logger.exception.called)
+        # Check that the save failure was logged
+        self.assertTrue(
+            any(
+                "Database error saving longname for" in call[0][0]
+                for call in mock_logger.exception.call_args_list
+            ),
+            "Expected 'Database error saving longname' in logs",
+        )
+        # Verify that delete was NOT called (prevents data loss from partial upserts)
+        self.assertFalse(
+            any(
+                call[0][0] == "Database error deleting stale %s entries"
+                for call in mock_logger.exception.call_args_list
+            ),
+            "Delete should not be called when saves fail (prevents data loss)",
+        )
 
     @patch("mmrelay.db_utils._get_db_manager")
     @patch("mmrelay.db_utils.logger")
@@ -1087,10 +1102,38 @@ class TestLongnameShortnameErrors(unittest.TestCase):
         nodes = {"1": {"num": 1, "user": {"id": "!testid", "shortName": "T1"}}}
         update_shortnames(nodes)
 
-        mock_logger.exception.assert_called_once()
-        call_args = mock_logger.exception.call_args[0]
-        self.assertIn("Database error saving shortname for", call_args[0])
-        self.assertEqual(call_args[1], "!testid")
+        # Only save_shortname will fail - delete_stale_shortnames is NOT called when saves fail
+        # This prevents stale deletion on partial upsert errors (data integrity improvement)
+        self.assertTrue(mock_logger.exception.called)
+        # Check that the save failure was logged
+        self.assertTrue(
+            any(
+                "Database error saving shortname for" in call[0][0]
+                for call in mock_logger.exception.call_args_list
+            ),
+            "Expected 'Database error saving shortname' in logs",
+        )
+        # Verify that delete was NOT called (prevents data loss from partial upserts)
+        self.assertFalse(
+            any(
+                call[0][0] == "Database error deleting stale %s entries"
+                for call in mock_logger.exception.call_args_list
+            ),
+            "Delete should not be called when saves fail (prevents data loss)",
+        )
+
+    def test_delete_stale_names_core_rejects_invalid_table_name(self):
+        """Reject invalid table names to prevent dynamic-SQL table injection."""
+        mock_cursor = MagicMock()
+
+        with self.assertRaisesRegex(ValueError, "Invalid table name"):
+            mmrelay.db_utils._delete_stale_names_core(
+                mock_cursor,
+                "longnames; DROP TABLE longnames; --",
+                {"!123"},
+            )
+
+        mock_cursor.execute.assert_not_called()
 
 
 class TestIntegrationWithRealDatabase(unittest.TestCase):
@@ -1252,6 +1295,7 @@ class TestIntegrationWithRealDatabase(unittest.TestCase):
         # Retrieve by meshtastic ID
         result = get_message_map_by_meshtastic_id(123)
         self.assertIsNotNone(result)
+        assert result is not None  # Type narrowing for pyright
         matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet = result
         self.assertEqual(matrix_event_id, "$event123")
         self.assertEqual(matrix_room_id, "!room123")
