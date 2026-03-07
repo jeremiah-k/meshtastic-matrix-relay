@@ -76,6 +76,7 @@ async def test_check_connection_metadata_probe_succeeds():
 
     with (
         patch("mmrelay.meshtastic_utils._get_metadata_executor", return_value=executor),
+        patch("mmrelay.meshtastic_utils._probe_device_connection") as mock_probe,
         patch(
             "mmrelay.meshtastic_utils.asyncio.sleep",
             new_callable=AsyncMock,
@@ -86,9 +87,10 @@ async def test_check_connection_metadata_probe_succeeds():
         await check_connection()
 
     executor.submit.assert_called_once()
-    probe = executor.submit.call_args.args[0]
-    assert probe.func is mu._probe_device_connection
-    assert probe.args == (mu.meshtastic_client,)
+    # Verify the submission contract by executing the submitted callable and checking mock calls
+    submitted_probe = executor.submit.call_args.args[0]
+    submitted_probe()
+    mock_probe.assert_called_once_with(mu.meshtastic_client)
     mock_logger.error.assert_not_called()
 
 
@@ -159,6 +161,7 @@ async def test_check_connection_tracks_timed_out_probe_until_worker_finishes():
     )
 
     probe_future.set_result(None)
+    assert mu._metadata_future is None
 
 
 @pytest.mark.asyncio

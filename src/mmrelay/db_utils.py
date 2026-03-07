@@ -19,6 +19,14 @@ from mmrelay.paths import (
     resolve_all_paths,
 )
 
+
+class _InvalidNamesTableError(ValueError):
+    """Raised when an invalid table name is provided to stale name deletion functions."""
+
+    def __init__(self, table: str) -> None:
+        super().__init__(f"Invalid table name: {table}")
+
+
 # Global config variable that will be set from main.py
 config = None
 
@@ -671,7 +679,7 @@ def get_longname(meshtastic_id: int | str) -> str | None:
         return None
 
 
-def save_longname(meshtastic_id: int | str, longname: str) -> None:
+def save_longname(meshtastic_id: int | str, longname: str) -> bool:
     """
     Normalize a node ID and upsert its long display name.
 
@@ -679,6 +687,9 @@ def save_longname(meshtastic_id: int | str, longname: str) -> None:
         meshtastic_id (int | str): Identifier of the Meshtastic node; stored as a
             string key.
         longname (str): Full display name to store for the node.
+
+    Returns:
+        bool: True if the save was successful, False if a database error occurred.
     """
     manager = _get_db_manager()
     id_key = str(meshtastic_id)
@@ -697,30 +708,33 @@ def save_longname(meshtastic_id: int | str, longname: str) -> None:
 
     try:
         manager.run_sync(_store, write=True)
+        return True
     except sqlite3.Error:
         logger.exception("Database error saving longname for %s", meshtastic_id)
+        return False
 
 
 def _update_names_core(
     nodes: dict[str, Any],
     *,
     name_key: str,
-    save_name: Callable[[str, str], None],
+    save_name: Callable[[str, str], bool],
     delete_stale_names: Callable[[set[str]], int],
 ) -> None:
     """
     Persist one user name field from a node snapshot and prune stale rows.
 
     Stale-name pruning runs only when every node in the snapshot has a usable
-    `user.id`. If any node is present without enough identity data, existing
-    names are preserved rather than risking false deletions from an incomplete
-    snapshot.
+    `user.id` AND all name saves succeeded. If any node is present without enough
+    identity data, or if any save operation fails, existing names are preserved
+    rather than risking false deletions from an incomplete snapshot.
 
     Parameters:
         nodes (dict[str, Any]): Snapshot of node records containing optional
             `user` dictionaries.
         name_key (str): User field to read (`"longName"` or `"shortName"`).
-        save_name (Callable[[str, str], None]): Function used to persist one name.
+        save_name (Callable[[str, str], bool]): Function used to persist one name.
+            Returns True on success, False on failure.
         delete_stale_names (Callable[[set[str]], int]): Function used to delete
             rows whose Meshtastic IDs are absent from the snapshot.
     """
@@ -729,6 +743,7 @@ def _update_names_core(
 
     current_ids: set[str] = set()
     snapshot_complete = True
+    all_saves_ok = True
     for node in nodes.values():
         user = node.get("user")
         if not user:
@@ -746,9 +761,10 @@ def _update_names_core(
         current_ids.add(id_key)
         name_value = user.get(name_key)
         if name_value:
-            save_name(id_key, name_value)
+            if not save_name(id_key, name_value):
+                all_saves_ok = False
 
-    if current_ids and snapshot_complete:
+    if current_ids and snapshot_complete and all_saves_ok:
         delete_stale_names(current_ids)
 
 
@@ -807,7 +823,7 @@ def get_shortname(meshtastic_id: int | str) -> str | None:
         return None
 
 
-def save_shortname(meshtastic_id: int | str, shortname: str) -> None:
+def save_shortname(meshtastic_id: int | str, shortname: str) -> bool:
     """
     Insert or update the shortname for a Meshtastic node.
 
@@ -816,6 +832,9 @@ def save_shortname(meshtastic_id: int | str, shortname: str) -> None:
     Parameters:
         meshtastic_id (int | str): Node identifier used as the primary key in the shortnames table.
         shortname (str): Display name to store for the node.
+
+    Returns:
+        bool: True if the save was successful, False if a database error occurred.
     """
     manager = _get_db_manager()
     id_key = str(meshtastic_id)
@@ -832,8 +851,10 @@ def save_shortname(meshtastic_id: int | str, shortname: str) -> None:
 
     try:
         manager.run_sync(_store, write=True)
+        return True
     except sqlite3.Error:
         logger.exception("Database error saving shortname for %s", meshtastic_id)
+        return False
 
 
 def _delete_stale_names_core(
@@ -855,12 +876,12 @@ def _delete_stale_names_core(
         int: Number of rows deleted.
 
     Raises:
-        ValueError: If `table` is not a supported names table.
+        _InvalidNamesTableError: If `table` is not a supported names table.
     """
     select_sql = _SELECT_STALE_IDS_SQL_BY_TABLE.get(table)
     delete_sql = _DELETE_STALE_ID_SQL_BY_TABLE.get(table)
     if select_sql is None or delete_sql is None:
-        raise ValueError(f"Invalid table name: {table}")
+        raise _InvalidNamesTableError(table)
 
     # Fetch all existing IDs from the database
     cursor.execute(select_sql)
@@ -873,12 +894,16 @@ def _delete_stale_names_core(
         return 0
 
     # Delete stale IDs in batches to avoid SQLite parameter limits
+    # Use DELETE with IN clause for better performance than executemany
     total_deleted = 0
     chunk_size = 900  # Safe chunk size below SQLite's limit
     for i in range(0, len(stale_ids), chunk_size):
         chunk = stale_ids[i : i + chunk_size]
-        cursor.executemany(delete_sql, ((stale_id,) for stale_id in chunk))
-        total_deleted += len(chunk)
+        placeholders = ", ".join("?" for _ in chunk)
+        # The table name is validated at the start of the function, so this is safe.
+        delete_sql_in = f"DELETE FROM {table} WHERE meshtastic_id IN ({placeholders})"
+        cursor.execute(delete_sql_in, chunk)
+        total_deleted += cursor.rowcount
 
     return total_deleted
 
@@ -905,12 +930,13 @@ def _delete_stale_names(table_name: str, current_ids: set[str]) -> int:
 
     try:
         deleted = manager.run_sync(_delete, write=True)
-        if deleted > 0:
-            logger.debug("Removed %d stale %s entries", deleted, name_type)
-        return deleted
     except sqlite3.Error:
         logger.exception("Database error deleting stale %s entries", name_type)
         return 0
+    else:
+        if deleted > 0:
+            logger.debug("Removed %d stale %s entries", deleted, name_type)
+        return deleted
 
 
 def delete_stale_longnames(current_ids: set[str]) -> int:

@@ -284,21 +284,27 @@ def _probe_device_connection(client: Any) -> None:
     """
     Send a metadata admin request and wait for an acknowledgment.
 
-    This uses the same `get_device_metadata_request` admin packet as
-    `localNode.getMetadata()`, but avoids the library's print-based response
-    handler so health checks do not redirect process-wide stdout.
+    This uses the public sendData API instead of the private _sendAdmin
+    to ensure compatibility across Serial, TCP, and BLE interfaces.
     """
     local_node = getattr(client, "localNode", None)
     if (
         local_node is None
-        or not hasattr(local_node, "_sendAdmin")
+        or not hasattr(client, "sendData")
         or not hasattr(client, "waitForAckNak")
     ):
         raise RuntimeError("Meshtastic client cannot perform metadata liveness probe")
 
     request = admin_pb2.AdminMessage()
     request.get_device_metadata_request = True
-    local_node._sendAdmin(request, wantResponse=False)
+    # Use the public sendData API instead of private _sendAdmin
+    destination_id = getattr(local_node, "nodeNum", None) or "^local"
+    client.sendData(
+        request.SerializeToString(),
+        destinationId=destination_id,
+        portNum=portnums_pb2.PortNum.ADMIN_APP,
+        wantAck=True,
+    )
     client.waitForAckNak()
 
 

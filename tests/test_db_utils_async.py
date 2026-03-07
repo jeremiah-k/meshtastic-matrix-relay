@@ -1034,9 +1034,10 @@ class TestLongnameShortnameErrors(unittest.TestCase):
         nodes = {"1": {"num": 1, "user": {"id": "!testid", "longName": "Test1"}}}
         update_longnames(nodes)
 
-        # Both save_longname and delete_stale_longnames will fail with database errors
+        # Only save_longname will fail - delete_stale_longnames is NOT called when saves fail
+        # This prevents stale deletion on partial upsert errors (data integrity improvement)
         self.assertTrue(mock_logger.exception.called)
-        # Check that at least one call was for saving a longname
+        # Check that the save failure was logged
         self.assertTrue(
             any(
                 "Database error saving longname for" in call[0][0]
@@ -1044,13 +1045,13 @@ class TestLongnameShortnameErrors(unittest.TestCase):
             ),
             "Expected 'Database error saving longname' in logs",
         )
-        self.assertTrue(
+        # Verify that delete was NOT called (prevents data loss from partial upserts)
+        self.assertFalse(
             any(
                 call[0][0] == "Database error deleting stale %s entries"
-                and call[0][1] == "longname"
                 for call in mock_logger.exception.call_args_list
             ),
-            "Expected stale longname delete failure in logs",
+            "Delete should not be called when saves fail (prevents data loss)",
         )
 
     @patch("mmrelay.db_utils._get_db_manager")
@@ -1101,9 +1102,10 @@ class TestLongnameShortnameErrors(unittest.TestCase):
         nodes = {"1": {"num": 1, "user": {"id": "!testid", "shortName": "T1"}}}
         update_shortnames(nodes)
 
-        # Both save_shortname and delete_stale_shortnames will fail with database errors
+        # Only save_shortname will fail - delete_stale_shortnames is NOT called when saves fail
+        # This prevents stale deletion on partial upsert errors (data integrity improvement)
         self.assertTrue(mock_logger.exception.called)
-        # Check that at least one call was for saving a shortname
+        # Check that the save failure was logged
         self.assertTrue(
             any(
                 "Database error saving shortname for" in call[0][0]
@@ -1111,13 +1113,13 @@ class TestLongnameShortnameErrors(unittest.TestCase):
             ),
             "Expected 'Database error saving shortname' in logs",
         )
-        self.assertTrue(
+        # Verify that delete was NOT called (prevents data loss from partial upserts)
+        self.assertFalse(
             any(
                 call[0][0] == "Database error deleting stale %s entries"
-                and call[0][1] == "shortname"
                 for call in mock_logger.exception.call_args_list
             ),
-            "Expected stale shortname delete failure in logs",
+            "Delete should not be called when saves fail (prevents data loss)",
         )
 
     def test_delete_stale_names_core_rejects_invalid_table_name(self):
