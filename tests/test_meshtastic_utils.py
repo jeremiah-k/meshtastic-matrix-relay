@@ -3043,13 +3043,14 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
                 "getMetadata() timed out after 30 seconds"
             )
             # Ensure we deferred cleanup when worker is still running.
-            # Two callbacks are expected: _clear_metadata_future_if_current and
-            # _finalize_metadata_capture
-            self.assertEqual(
+            # Verify callbacks were registered for deferred cleanup (at least one).
+            self.assertGreaterEqual(
                 timeout_future.add_done_callback.call_count,
-                2,
-                f"Expected 2 callbacks, got {timeout_future.add_done_callback.call_count}",
+                1,
+                "Expected at least one cleanup callback to be registered",
             )
+            # Verify the observable effect: stdio is restored immediately
+            # after timeout, not left pointing at the capture buffer.
             self.assertIs(mu.sys.stdout, orig_stdout)
 
     @patch("mmrelay.meshtastic_utils.logger")

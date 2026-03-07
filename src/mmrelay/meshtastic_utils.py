@@ -290,8 +290,8 @@ def _probe_device_connection(client: Any) -> None:
     local_node = getattr(client, "localNode", None)
     if (
         local_node is None
-        or not hasattr(client, "sendData")
-        or not hasattr(client, "waitForAckNak")
+        or not callable(getattr(client, "sendData", None))
+        or not callable(getattr(client, "waitForAckNak", None))
     ):
         raise RuntimeError("Meshtastic client cannot perform metadata liveness probe")
 
@@ -1112,8 +1112,8 @@ def _get_device_metadata(
             return result
 
         # Preflight: client may be a mock without localNode/getMetadata
-        if not getattr(client, "localNode", None) or not hasattr(
-            client.localNode, "getMetadata"
+        if not getattr(client, "localNode", None) or not callable(
+            getattr(client.localNode, "getMetadata", None)
         ):
             if raise_on_error:
                 raise RuntimeError(
