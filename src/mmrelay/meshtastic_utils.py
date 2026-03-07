@@ -60,6 +60,7 @@ from mmrelay.constants.network import (
     ERRNO_BAD_FILE_DESCRIPTOR,
     INFINITE_RETRIES,
     MAX_TIMEOUT_RETRIES_INFINITE,
+    METADATA_WATCHDOG_SECS,
 )
 from mmrelay.db_utils import (
     get_longname,
@@ -1177,12 +1178,14 @@ def _get_device_metadata(
         timed_out = False
         future_error: Exception | None = None
         try:
-            future.result(timeout=30.0)
+            future.result(timeout=METADATA_WATCHDOG_SECS)
         except FuturesTimeoutError as e:
             timed_out = True
             if raise_on_error:
                 future_error = e
-            logger.debug("getMetadata() timed out after 30 seconds")
+            logger.debug(
+                f"getMetadata() timed out after {METADATA_WATCHDOG_SECS} seconds"
+            )
             # If the worker is still running, restore stdio immediately so the
             # main process does not keep writing to the captured buffer.
             if redirect_active.is_set():
@@ -2315,13 +2318,13 @@ def connect_meshtastic(
                             _ble_future_address = ble_address
                         connect_future.add_done_callback(_clear_ble_future)
                         try:
-                            connect_future.result(timeout=30.0)
+                            connect_future.result(timeout=METADATA_WATCHDOG_SECS)
                             logger.info(f"BLE connection established to {ble_address}")
                         except FuturesTimeoutError as err:
                             # Use logger.exception so timeouts include stack context (TRY400),
                             # but raise a short error and keep operator guidance in logs (TRY003).
                             logger.exception(
-                                "BLE connect() call timed out after 30 seconds for %s.",
+                                f"BLE connect() call timed out after {METADATA_WATCHDOG_SECS} seconds for %s.",
                                 ble_address,
                             )
                             logger.warning(

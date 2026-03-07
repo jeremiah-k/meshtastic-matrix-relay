@@ -879,8 +879,7 @@ def _delete_stale_names_core(
         _InvalidNamesTableError: If `table` is not a supported names table.
     """
     select_sql = _SELECT_STALE_IDS_SQL_BY_TABLE.get(table)
-    delete_sql = _DELETE_STALE_ID_SQL_BY_TABLE.get(table)
-    if select_sql is None or delete_sql is None:
+    if select_sql is None:
         raise _InvalidNamesTableError(table)
 
     # Fetch all existing IDs from the database
