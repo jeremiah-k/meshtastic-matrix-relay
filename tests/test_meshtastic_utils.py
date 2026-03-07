@@ -25,6 +25,7 @@ from meshtastic.mesh_interface import BROADCAST_NUM
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.network import METADATA_WATCHDOG_SECS
 from mmrelay.meshtastic_utils import (
     _get_device_metadata,
     _get_packet_details,
@@ -3040,7 +3041,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             self.assertEqual(result["firmware_version"], "2.3.15")
             # Verify timeout was logged
             mock_logger.debug.assert_called_with(
-                "getMetadata() timed out after 30 seconds"
+                f"getMetadata() timed out after {METADATA_WATCHDOG_SECS} seconds"
             )
             # Ensure we deferred cleanup when worker is still running.
             # Verify callbacks were registered for deferred cleanup (at least one).
@@ -3635,7 +3636,8 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             connect_timeout_calls = [
                 call
                 for call in mock_logger.exception.call_args_list
-                if "connect() call timed out after 30 seconds" in str(call)
+                if f"connect() call timed out after {METADATA_WATCHDOG_SECS} seconds"
+                in str(call)
             ]
             self.assertEqual(len(connect_timeout_calls), 1)
 
