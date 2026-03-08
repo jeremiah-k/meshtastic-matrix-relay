@@ -93,6 +93,15 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
         response = f"Nodes: {len(meshtastic_client.nodes)}\n"
 
         for _node, info in meshtastic_client.nodes.items():
+            user_info = (
+                info.get("user", {})
+                if isinstance(info, dict) and isinstance(info.get("user"), dict)
+                else {}
+            )
+            short_name = user_info.get("shortName", "Unknown")
+            long_name = user_info.get("longName", "Unknown")
+            hw_model = user_info.get("hwModel", "Unknown")
+
             hops = "? hops away"
             if "hopsAway" in info and info["hopsAway"] is not None:
                 if info["hopsAway"] == 0:
@@ -124,7 +133,10 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
                 ):
                     battery = f"{info['deviceMetrics']['batteryLevel']}% "
 
-            response += f"{info['user']['shortName']} {info['user']['longName']} / {info['user']['hwModel']} / {battery} {voltage} / {snr} / {hops} / {last_heard}\n"
+            response += (
+                f"{short_name} {long_name} / {hw_model} / "
+                f"{battery} {voltage} / {snr} / {hops} / {last_heard}\n"
+            )
 
         return response
 

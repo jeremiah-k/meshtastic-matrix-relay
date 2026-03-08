@@ -715,14 +715,9 @@ class TestMain(unittest.TestCase):
         mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
         mock_join_room.side_effect = _async_noop
 
-        executor = _ControlledExecutor()
         with (
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
-            patch(
-                "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
-                return_value=executor,
-            ),
         ):
             asyncio.run(main(self.mock_config))
 
@@ -740,7 +735,7 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.shutdown_plugins")
     @patch("mmrelay.main.stop_message_queue")
     @patch("mmrelay.main.meshtastic_logger")
-    def test_main_shutdown_timeout_cancels_future(
+    def test_main_shutdown_timeout_warns_and_continues(
         self,
         mock_meshtastic_logger,
         _mock_stop_queue,
@@ -752,7 +747,7 @@ class TestMain(unittest.TestCase):
         _mock_load_plugins,
         _mock_init_db,
     ):
-        """Shutdown should cancel futures when Meshtastic close times out."""
+        """Shutdown should warn and continue when Meshtastic close times out."""
 
         mock_iface = MagicMock()
 
@@ -777,18 +772,18 @@ class TestMain(unittest.TestCase):
         mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
         mock_join_room.side_effect = _async_noop
 
-        executor = _ControlledExecutor(close_future_factory=_TimeoutCloseFuture)
         with (
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
             patch(
-                "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
-                return_value=executor,
+                "mmrelay.main.meshtastic_utils._run_blocking_with_timeout",
+                side_effect=TimeoutError(
+                    "meshtastic-client-close-shutdown timed out after 10.0s"
+                ),
             ),
         ):
             asyncio.run(main(self.mock_config))
 
-        self.assertTrue(executor.close_future.cancel_called)  # type: ignore[attr-defined]
         mock_meshtastic_logger.warning.assert_any_call(
             "Meshtastic client close timed out - may cause notification errors"
         )
@@ -822,13 +817,12 @@ class TestMain(unittest.TestCase):
         mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
         mock_join_room.side_effect = _async_noop
 
-        executor = _ControlledExecutor(close_future_factory=_ErrorCloseFuture)
         with (
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
             patch(
-                "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
-                return_value=executor,
+                "mmrelay.main.meshtastic_utils._run_blocking_with_timeout",
+                side_effect=ValueError("boom"),
             ),
         ):
             asyncio.run(main(self.mock_config))
@@ -848,8 +842,10 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.join_matrix_room")
     @patch("mmrelay.main.shutdown_plugins")
     @patch("mmrelay.main.stop_message_queue")
-    def test_main_shutdown_shutdown_typeerror_fallback(
+    @patch("mmrelay.main.meshtastic_utils._run_blocking_with_timeout")
+    def test_main_shutdown_uses_blocking_timeout_helper(
         self,
+        mock_run_blocking_with_timeout,
         _mock_stop_queue,
         _mock_shutdown_plugins,
         mock_join_room,
@@ -860,11 +856,7 @@ class TestMain(unittest.TestCase):
         _mock_init_db,
     ):
         """
-        Ensure main retries executor.shutdown without cancel_futures when a TypeError occurs.
-
-        Verifies that if ThreadPoolExecutor.shutdown raises a TypeError when invoked with
-        cancel_futures=True, the shutdown sequence calls executor.shutdown a second time
-        with cancel_futures=False.
+        Ensure main uses daemon-thread timeout helper for Meshtastic close.
         """
 
         mock_connect_meshtastic.return_value = MagicMock()
@@ -873,19 +865,16 @@ class TestMain(unittest.TestCase):
         mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
         mock_join_room.side_effect = _async_noop
 
-        executor = _ControlledExecutor(shutdown_typeerror=True)
         with (
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
-            patch(
-                "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
-                return_value=executor,
-            ),
         ):
             asyncio.run(main(self.mock_config))
 
-        self.assertEqual(executor.calls[0], (False, True))
-        self.assertEqual(executor.calls[1], (False, False))
+        mock_run_blocking_with_timeout.assert_called_once()
+        _, kwargs = mock_run_blocking_with_timeout.call_args
+        self.assertEqual(kwargs.get("timeout"), 10.0)
+        self.assertEqual(kwargs.get("label"), "meshtastic-client-close-shutdown")
 
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
@@ -895,8 +884,10 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.join_matrix_room")
     @patch("mmrelay.main.stop_message_queue")
     @patch("mmrelay.main.meshtastic_logger")
-    def test_main_shutdown_submit_timeout_triggers_outer_warning(
+    @patch("mmrelay.main.meshtastic_utils._run_blocking_with_timeout")
+    def test_main_shutdown_success_logs_close_complete(
         self,
+        mock_run_blocking_with_timeout,
         mock_meshtastic_logger,
         _mock_stop_queue,
         mock_join_room,
@@ -906,7 +897,7 @@ class TestMain(unittest.TestCase):
         _mock_load_plugins,
         _mock_init_db,
     ):
-        """Submit-time timeouts should hit the outer shutdown warning."""
+        """Successful close should log completion."""
 
         mock_connect_meshtastic.return_value = MagicMock()
         mock_matrix_client = MagicMock()
@@ -914,19 +905,15 @@ class TestMain(unittest.TestCase):
         mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
         mock_join_room.side_effect = _async_noop
 
-        executor = _ControlledExecutor(submit_timeout=True)
         with (
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
-            patch(
-                "mmrelay.main.concurrent.futures.ThreadPoolExecutor",
-                return_value=executor,
-            ),
         ):
             asyncio.run(main(self.mock_config))
 
-        mock_meshtastic_logger.warning.assert_any_call(
-            "Meshtastic client close timed out - forcing shutdown"
+        mock_run_blocking_with_timeout.assert_called_once()
+        mock_meshtastic_logger.info.assert_any_call(
+            "Meshtastic client closed successfully"
         )
 
 
