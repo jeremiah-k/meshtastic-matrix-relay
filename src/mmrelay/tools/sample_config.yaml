@@ -68,7 +68,7 @@ meshtastic:
 
   # Connection health monitoring configuration
   #health_check:
-  #  enabled: true                    # Enable/disable periodic health checks (default: true)
+  #  enabled: false                   # Enable/disable periodic health checks (default: false)
   #  heartbeat_interval: 60           # Interval in seconds between health checks (default: 60)
   #  initial_delay: 5                 # Delay in seconds before first health check (default: 5)
   #  probe_timeout: 30                # Timeout in seconds for each health probe (default: 30)

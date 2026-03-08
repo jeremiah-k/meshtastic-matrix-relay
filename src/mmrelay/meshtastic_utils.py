@@ -29,6 +29,7 @@ from mmrelay.constants.config import (
     CONFIG_KEY_MESHNET_NAME,
     CONFIG_SECTION_MESHTASTIC,
     DEFAULT_DETECTION_SENSOR,
+    DEFAULT_HEALTH_CHECK_ENABLED,
 )
 from mmrelay.constants.formats import (
     DETECTION_SENSOR_APP,
@@ -3451,7 +3452,7 @@ async def check_connection() -> None:
 
     # Get health check configuration
     health_config = config["meshtastic"].get("health_check", {})
-    health_check_enabled = health_config.get("enabled", True)
+    health_check_enabled = health_config.get("enabled", DEFAULT_HEALTH_CHECK_ENABLED)
     heartbeat_interval = health_config.get("heartbeat_interval", 60)
     initial_delay = health_config.get("initial_delay", INITIAL_HEALTH_CHECK_DELAY)
     probe_timeout = health_config.get(
