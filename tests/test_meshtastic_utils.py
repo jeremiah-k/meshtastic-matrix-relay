@@ -25,7 +25,10 @@ from meshtastic.mesh_interface import BROADCAST_NUM
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from mmrelay.constants.network import METADATA_WATCHDOG_SECS
+from mmrelay.constants.network import (
+    BLE_CONNECT_TIMEOUT_SECS,
+    METADATA_WATCHDOG_SECS,
+)
 from mmrelay.meshtastic_utils import (
     _get_device_metadata,
     _get_packet_details,
@@ -1810,39 +1813,6 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
 # Meshtastic connection retry tests - converted from unittest.TestCase to standalone pytest functions
 
 
-@pytest.fixture
-def reset_meshtastic_globals():
-    """
-    Reset Meshtastic-related global state before a test and restore it afterward.
-
-    This generator-style fixture clears the shared module-level variables used by
-    connection and BLE logic so tests run in a clean environment. It resets:
-    `meshtastic_client`, `shutting_down`, `reconnecting`, `_ble_future`,
-    `_ble_future_address`, and `_metadata_future`. The fixture yields once to run
-    the test and then performs the same resets as cleanup.
-    """
-    import mmrelay.meshtastic_utils
-
-    mmrelay.meshtastic_utils.meshtastic_client = None
-    mmrelay.meshtastic_utils.shutting_down = False
-    mmrelay.meshtastic_utils.reconnecting = False
-    mmrelay.meshtastic_utils._ble_future = None
-    mmrelay.meshtastic_utils._ble_future_address = None
-    mmrelay.meshtastic_utils._metadata_future = None
-    mmrelay.meshtastic_utils._ble_timeout_counts = {}
-    mmrelay.meshtastic_utils._health_probe_request_deadlines = {}
-    yield
-    # Cleanup after test
-    mmrelay.meshtastic_utils.meshtastic_client = None
-    mmrelay.meshtastic_utils.shutting_down = False
-    mmrelay.meshtastic_utils.reconnecting = False
-    mmrelay.meshtastic_utils._ble_future = None
-    mmrelay.meshtastic_utils._ble_future_address = None
-    mmrelay.meshtastic_utils._metadata_future = None
-    mmrelay.meshtastic_utils._ble_timeout_counts = {}
-    mmrelay.meshtastic_utils._health_probe_request_deadlines = {}
-
-
 @patch("mmrelay.meshtastic_utils.time.sleep")
 @patch("mmrelay.meshtastic_utils.serial_port_exists")
 @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
@@ -2183,18 +2153,18 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
 
         # Import the original function from the source
         # We need to reload the function definition
+        # Get the source module without the mock
+        # We need to reload the function definition
         import importlib
         import importlib.util
 
         # Get the source module without the mock
         spec = importlib.util.find_spec("mmrelay.meshtastic_utils")
-        if spec is None:
-            raise ImportError("Could not find mmrelay.meshtastic_utils module")
+        assert spec is not None
         source_module = importlib.util.module_from_spec(spec)
 
         # Execute the module to get the original function
-        if spec.loader is None:
-            raise ImportError("Module spec has no loader")
+        assert spec.loader is not None
         spec.loader.exec_module(source_module)
 
         # Get the original _submit_coro function
@@ -3686,7 +3656,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             connect_timeout_calls = [
                 call
                 for call in mock_logger.exception.call_args_list
-                if f"connect() call timed out after {METADATA_WATCHDOG_SECS} seconds"
+                if f"connect() call timed out after {BLE_CONNECT_TIMEOUT_SECS} seconds"
                 in str(call)
             ]
             self.assertEqual(len(connect_timeout_calls), 1)

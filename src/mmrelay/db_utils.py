@@ -708,10 +708,11 @@ def save_longname(meshtastic_id: int | str, longname: str) -> bool:
 
     try:
         manager.run_sync(_store, write=True)
-        return True
     except sqlite3.Error:
         logger.exception("Database error saving longname for %s", meshtastic_id)
         return False
+    else:
+        return True
 
 
 def _update_names_core(
@@ -851,10 +852,11 @@ def save_shortname(meshtastic_id: int | str, shortname: str) -> bool:
 
     try:
         manager.run_sync(_store, write=True)
-        return True
     except sqlite3.Error:
         logger.exception("Database error saving shortname for %s", meshtastic_id)
         return False
+    else:
+        return True
 
 
 def _delete_stale_names_core(
@@ -973,7 +975,7 @@ def update_shortnames(nodes: dict[str, Any]) -> None:
     in the snapshot has a usable `user.id`.
 
     Parameters:
-        nodes (Mapping): Mapping of node identifiers to node objects; nodes without a `user` entry are ignored.
+        nodes (dict[str, Any]): Mapping of node identifiers to node objects; nodes without a `user` entry are ignored.
     """
     _update_names_core(
         nodes,
