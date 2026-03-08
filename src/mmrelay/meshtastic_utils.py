@@ -395,7 +395,9 @@ def _wait_for_probe_ack(client: Any, timeout_secs: float) -> None:
     )
 
 
-def _probe_device_connection(client: Any) -> None:
+def _probe_device_connection(
+    client: Any, timeout_secs: float = DEFAULT_MESHTASTIC_OPERATION_TIMEOUT
+) -> None:
     """
     Send a metadata admin request and wait for an acknowledgment.
 
@@ -406,6 +408,12 @@ def _probe_device_connection(client: Any) -> None:
     admin response packets for this request shape. Some Meshtastic versions
     provide callback payloads without `decoded.routing`; this function uses a
     guarded callback plus a bounded ACK wait to avoid long probe stalls.
+
+    Parameters:
+        client (Any): Meshtastic client/interface instance used for probe send and
+            ACK tracking.
+        timeout_secs (float): Maximum seconds to wait for probe ACK/NAK before
+            raising TimeoutError.
     """
     local_node = getattr(client, "localNode", None)
     if local_node is None or not callable(getattr(client, "sendData", None)):
@@ -424,7 +432,7 @@ def _probe_device_connection(client: Any) -> None:
         onResponse=functools.partial(_handle_probe_ack_callback, local_node),
     )
     if getattr(client, "_acknowledgment", None) is not None:
-        _wait_for_probe_ack(client, DEFAULT_MESHTASTIC_OPERATION_TIMEOUT)
+        _wait_for_probe_ack(client, timeout_secs)
         return
 
     if callable(getattr(client, "waitForAckNak", None)):
@@ -3284,8 +3292,10 @@ async def check_connection() -> None:
     - Controlled by config["meshtastic"]["health_check"]:
       - `enabled` (bool, default True) — enable or disable checks.
       - `heartbeat_interval` (int, seconds, default 60) — interval between checks. For backward compatibility, a top-level `heartbeat_interval` under `config["meshtastic"]` is supported.
+      - `initial_delay` (float, seconds, default INITIAL_HEALTH_CHECK_DELAY) — delay before first probe.
+      - `probe_timeout` (float, seconds, default DEFAULT_MESHTASTIC_OPERATION_TIMEOUT) — timeout per probe cycle.
     - BLE connections are excluded from periodic checks because BLE libraries provide real-time disconnect detection; this function returns early for BLE.
-    - Waits one `heartbeat_interval` before the first check to allow the connection to settle,
+    - Waits one `initial_delay` period before the first check to allow the connection to settle,
       particularly important for fast-responding systems like MeshMonitor where ACK handling
       may not be fully initialized immediately after connection.
     - For non-BLE connections, performs a low-level metadata admin probe using
@@ -3314,10 +3324,47 @@ async def check_connection() -> None:
     health_config = config["meshtastic"].get("health_check", {})
     health_check_enabled = health_config.get("enabled", True)
     heartbeat_interval = health_config.get("heartbeat_interval", 60)
+    initial_delay = health_config.get("initial_delay", INITIAL_HEALTH_CHECK_DELAY)
+    probe_timeout = health_config.get(
+        "probe_timeout", DEFAULT_MESHTASTIC_OPERATION_TIMEOUT
+    )
 
     # Support legacy heartbeat_interval configuration for backward compatibility
     if "heartbeat_interval" in config["meshtastic"]:
         heartbeat_interval = config["meshtastic"]["heartbeat_interval"]
+
+    def _coerce_positive_float(value: Any, default: float, setting_name: str) -> float:
+        """
+        Parse and validate a positive float config value.
+
+        Falls back to `default` and logs a warning if conversion fails or if
+        the value is not > 0.
+        """
+        try:
+            parsed = float(value)
+            if parsed > 0:
+                return parsed
+        except (TypeError, ValueError):
+            pass
+        logger.warning(
+            "Invalid meshtastic.health_check.%s value %r; using default %.1f",
+            setting_name,
+            value,
+            default,
+        )
+        return default
+
+    heartbeat_interval = _coerce_positive_float(
+        heartbeat_interval, 60.0, "heartbeat_interval"
+    )
+    initial_delay = _coerce_positive_float(
+        initial_delay, float(INITIAL_HEALTH_CHECK_DELAY), "initial_delay"
+    )
+    probe_timeout = _coerce_positive_float(
+        probe_timeout,
+        float(DEFAULT_MESHTASTIC_OPERATION_TIMEOUT),
+        "probe_timeout",
+    )
 
     # Exit early if health checks are disabled
     if not health_check_enabled:
@@ -3337,14 +3384,18 @@ async def check_connection() -> None:
     logger.debug(
         "Waiting before starting connection health checks to allow connection to settle"
     )
-    await asyncio.sleep(INITIAL_HEALTH_CHECK_DELAY)
+    await asyncio.sleep(initial_delay)
 
     while not shutting_down:
         if meshtastic_client and not reconnecting:
             probe_submission_failed = False
             try:
                 probe_future = _submit_metadata_probe(
-                    functools.partial(_probe_device_connection, meshtastic_client)
+                    functools.partial(
+                        _probe_device_connection,
+                        meshtastic_client,
+                        probe_timeout,
+                    )
                 )
             except RuntimeError as exc:
                 logger.debug(
@@ -3366,7 +3417,7 @@ async def check_connection() -> None:
                     # so it can succeed even when the transport is unhealthy.
                     await asyncio.wait_for(
                         asyncio.wrap_future(probe_future),
-                        timeout=DEFAULT_MESHTASTIC_OPERATION_TIMEOUT,
+                        timeout=probe_timeout,
                     )
 
                 except Exception as exc:

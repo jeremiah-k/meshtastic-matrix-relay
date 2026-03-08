@@ -5,11 +5,20 @@ from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
 import pytest
 
 import mmrelay.meshtastic_utils as mu
-from mmrelay.constants.network import INITIAL_HEALTH_CHECK_DELAY
+from mmrelay.constants.network import (
+    DEFAULT_MESHTASTIC_OPERATION_TIMEOUT,
+    INITIAL_HEALTH_CHECK_DELAY,
+)
 from mmrelay.meshtastic_utils import check_connection
 
 
-def _make_health_config(connection_type="tcp", enabled=True, heartbeat=60):
+def _make_health_config(
+    connection_type="tcp",
+    enabled=True,
+    heartbeat=60,
+    initial_delay=None,
+    probe_timeout=None,
+):
     """
     Builds a nested configuration dictionary for meshtastic connection health checks.
 
@@ -17,15 +26,20 @@ def _make_health_config(connection_type="tcp", enabled=True, heartbeat=60):
         connection_type (str): Connection transport type (e.g., "tcp" or "ble"). Defaults to "tcp".
         enabled (bool): Whether health checks are enabled. Defaults to True.
         heartbeat (int): Heartbeat interval in seconds used for health check scheduling. Defaults to 60.
+        initial_delay (float | None): Optional delay before first health check.
+        probe_timeout (float | None): Optional timeout per health probe.
 
     Returns:
         dict: Configuration mapping with keys "meshtastic" -> {"connection_type", "health_check": {"enabled", "heartbeat_interval"}}.
     """
+    health_check = {"enabled": enabled, "heartbeat_interval": heartbeat}
+    if initial_delay is not None:
+        health_check["initial_delay"] = initial_delay
+    if probe_timeout is not None:
+        health_check["probe_timeout"] = probe_timeout
+
     return {
-        "meshtastic": {
-            "connection_type": connection_type,
-            "health_check": {"enabled": enabled, "heartbeat_interval": heartbeat},
-        }
+        "meshtastic": {"connection_type": connection_type, "health_check": health_check}
     }
 
 
@@ -130,8 +144,80 @@ async def test_check_connection_metadata_probe_succeeds():
         await check_connection()
 
     executor.submit.assert_called_once()
-    mock_probe.assert_called_once_with(mu.meshtastic_client)
+    mock_probe.assert_called_once()
+    assert mock_probe.call_args.args[0] is mu.meshtastic_client
+    assert mock_probe.call_args.args[1] == DEFAULT_MESHTASTIC_OPERATION_TIMEOUT
     mock_logger.error.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+async def test_check_connection_uses_configured_initial_delay():
+    mu.config = _make_health_config(
+        connection_type="tcp",
+        heartbeat=5,
+        initial_delay=2.5,
+    )
+    mu.meshtastic_client = None
+
+    sleep_handler = SleepAndShutdown(
+        shutdown_after=2
+    )  # Shutdown after initial delay + loop sleep
+    with patch(
+        "mmrelay.meshtastic_utils.asyncio.sleep",
+        new_callable=AsyncMock,
+        side_effect=sleep_handler,
+    ) as mock_sleep:
+        await check_connection()
+
+    assert mock_sleep.call_count == 2
+    assert mock_sleep.call_args_list[0].args[0] == 2.5
+    assert mock_sleep.call_args_list[1].args[0] == 5
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+async def test_check_connection_uses_configured_probe_timeout():
+    mu.config = _make_health_config(connection_type="tcp", probe_timeout=7.5)
+    mu.meshtastic_client = MagicMock()
+    mu.meshtastic_client.localNode.onAckNak = Mock()
+
+    executor = Mock()
+
+    def _submit(fn, *args, **kwargs):
+        probe_future: Future[None] = Future()
+        fn(*args, **kwargs)
+        probe_future.set_result(None)
+        return probe_future
+
+    async def _wait_for_passthrough(awaitable, timeout):
+        return await awaitable
+
+    executor.submit.side_effect = _submit
+    sleep_handler = SleepAndShutdown(
+        shutdown_after=2
+    )  # Shutdown after initial delay + loop sleep
+    with (
+        patch("mmrelay.meshtastic_utils._get_metadata_executor", return_value=executor),
+        patch("mmrelay.meshtastic_utils._probe_device_connection") as mock_probe,
+        patch(
+            "mmrelay.meshtastic_utils.asyncio.wait_for",
+            new_callable=AsyncMock,
+            side_effect=_wait_for_passthrough,
+        ) as mock_wait_for,
+        patch(
+            "mmrelay.meshtastic_utils.asyncio.sleep",
+            new_callable=AsyncMock,
+            side_effect=sleep_handler,
+        ),
+    ):
+        await check_connection()
+
+    mock_probe.assert_called_once()
+    assert mock_probe.call_args.args[0] is mu.meshtastic_client
+    assert mock_probe.call_args.args[1] == 7.5
+    assert mock_wait_for.call_count == 1
+    assert mock_wait_for.call_args.kwargs["timeout"] == 7.5
 
 
 @pytest.mark.asyncio
@@ -381,12 +467,9 @@ def test_probe_device_connection_uses_bounded_ack_timeout():
         waitForAckNak=Mock(),
     )
 
-    with (
-        patch.object(mu, "DEFAULT_MESHTASTIC_OPERATION_TIMEOUT", 0.01),
-        patch("mmrelay.meshtastic_utils.time.sleep", return_value=None),
-    ):
+    with patch("mmrelay.meshtastic_utils.time.sleep", return_value=None):
         with pytest.raises(TimeoutError):
-            mu._probe_device_connection(client)
+            mu._probe_device_connection(client, timeout_secs=0.01)
 
     client.sendData.assert_called_once()
     client.waitForAckNak.assert_not_called()

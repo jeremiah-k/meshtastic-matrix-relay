@@ -53,6 +53,11 @@ _SELECT_STALE_IDS_SQL_BY_TABLE = {
     "shortnames": "SELECT meshtastic_id FROM shortnames",
 }
 
+_DELETE_STALE_ID_SQL_BY_TABLE = {
+    "longnames": "DELETE FROM longnames WHERE meshtastic_id = ?",
+    "shortnames": "DELETE FROM shortnames WHERE meshtastic_id = ?",
+}
+
 
 def clear_db_path_cache() -> None:
     """Clear the cached database path to force re-resolution on next call.
@@ -858,9 +863,9 @@ def _delete_stale_names_core(
     """
     Delete rows whose `meshtastic_id` is missing from the current node snapshot.
 
-    Uses a fixed per-table delete statement selected from an allow-list so
-    stale pruning remains parameterized without interpolating SQL identifiers
-    at runtime.
+    Uses fixed per-table SQL statements selected from allow-lists so stale
+    pruning remains parameterized without interpolating SQL identifiers at
+    runtime.
 
     Parameters:
         cursor (sqlite3.Cursor): Database cursor used to execute the delete.
@@ -874,7 +879,8 @@ def _delete_stale_names_core(
         _InvalidNamesTableError: If `table` is not a supported names table.
     """
     select_sql = _SELECT_STALE_IDS_SQL_BY_TABLE.get(table)
-    if select_sql is None:
+    delete_sql = _DELETE_STALE_ID_SQL_BY_TABLE.get(table)
+    if select_sql is None or delete_sql is None:
         raise _InvalidNamesTableError(table)
 
     # Fetch all existing IDs from the database
@@ -887,16 +893,13 @@ def _delete_stale_names_core(
     if not stale_ids:
         return 0
 
-    # Delete stale IDs in batches to avoid SQLite parameter limits
-    # Use DELETE with IN clause for better performance than executemany
+    # Delete stale IDs in batches to avoid SQLite parameter limits.
+    # Use a fixed, parameterized delete statement selected from the allow-list.
     total_deleted = 0
     chunk_size = 900  # Safe chunk size below SQLite's limit
     for i in range(0, len(stale_ids), chunk_size):
         chunk = stale_ids[i : i + chunk_size]
-        placeholders = ", ".join("?" for _ in chunk)
-        # The table name is validated at the start of the function, so this is safe.
-        delete_sql_in = f"DELETE FROM {table} WHERE meshtastic_id IN ({placeholders})"
-        cursor.execute(delete_sql_in, chunk)
+        cursor.executemany(delete_sql, ((stale_id,) for stale_id in chunk))
         total_deleted += cursor.rowcount
 
     return total_deleted
