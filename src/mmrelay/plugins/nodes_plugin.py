@@ -99,9 +99,9 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
 
             user = info.get("user")
             user_info = user if isinstance(user, dict) else {}
-            short_name = user_info.get("shortName", "Unknown")
-            long_name = user_info.get("longName", "Unknown")
-            hw_model = user_info.get("hwModel", "Unknown")
+            short_name = user_info.get("shortName") or "Unknown"
+            long_name = user_info.get("longName") or "Unknown"
+            hw_model = user_info.get("hwModel") or "Unknown"
 
             hops = "? hops away"
             hops_away = info.get("hopsAway")
@@ -137,10 +137,15 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
                 if battery_level is not None:
                     battery = f"{battery_level}%"
 
-            node_lines.append(
-                f"{short_name} {long_name} / {hw_model} / "
-                f"{battery} {voltage} / {snr} / {hops} / {last_heard}\n"
-            )
+            parts = [
+                f"{short_name} {long_name}",
+                hw_model,
+                f"{battery} {voltage}",
+                snr,
+                hops,
+                last_heard,
+            ]
+            node_lines.append(" / ".join(part for part in parts if part) + "\n")
             valid_node_count += 1
 
         response = f"Nodes: {valid_node_count}\n"

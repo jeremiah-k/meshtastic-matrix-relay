@@ -1535,22 +1535,22 @@ def _get_device_metadata(
     """
     result = {"firmware_version": "unknown", "raw_output": "", "success": False}
 
+    # Preflight: client may be a mock without localNode/getMetadata
+    if not getattr(client, "localNode", None) or not callable(
+        getattr(client.localNode, "getMetadata", None)
+    ):
+        if raise_on_error:
+            raise _missing_metadata_probe_error()
+        logger.debug(
+            "Meshtastic client has no localNode.getMetadata(); skipping metadata retrieval"
+        )
+        return result
+
     try:
         cached_firmware = _extract_firmware_version_from_client(client)
         if cached_firmware is not None and not force_refresh:
             result["firmware_version"] = cached_firmware
             result["success"] = True
-            return result
-
-        # Preflight: client may be a mock without localNode/getMetadata
-        if not getattr(client, "localNode", None) or not callable(
-            getattr(client.localNode, "getMetadata", None)
-        ):
-            if raise_on_error:
-                raise _missing_metadata_probe_error()
-            logger.debug(
-                "Meshtastic client has no localNode.getMetadata(); skipping metadata retrieval"
-            )
             return result
 
         # Capture getMetadata() output to extract firmware version.

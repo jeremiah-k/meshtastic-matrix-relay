@@ -917,6 +917,7 @@ class TestMain(unittest.TestCase):
             mock_connect_meshtastic.return_value.close.assert_called_once()
             self.assertEqual(kwargs.get("timeout"), 10.0)
             self.assertEqual(kwargs.get("label"), "meshtastic-client-close-shutdown")
+            self.assertIsNone(kwargs.get("timeout_log_level"))
         finally:
             mu.meshtastic_client = original_client
             mu.meshtastic_iface = original_iface
