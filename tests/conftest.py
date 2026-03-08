@@ -665,6 +665,9 @@ def reset_meshtastic_globals():
         ),
         "_metadata_future": getattr(mu, "_metadata_future", None),
         "_ble_future": getattr(mu, "_ble_future", None),
+        "_health_probe_request_deadlines": dict(
+            getattr(mu, "_health_probe_request_deadlines", {})
+        ),
     }
 
     # Reset mutable globals to a clean state; keep logger and event_loop usable
@@ -677,6 +680,7 @@ def reset_meshtastic_globals():
     mu.subscribed_to_connection_lost = False
     mu._metadata_future = None
     mu._ble_future = None
+    mu._health_probe_request_deadlines = {}
 
     yield
 

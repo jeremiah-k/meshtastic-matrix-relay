@@ -1772,6 +1772,40 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             self.assertIn("channel=0", log_output)
             self.assertIn("id=12345", log_output)
 
+    def test_on_meshtastic_message_health_probe_response_logged_separately(self):
+        """
+        Health probe responses should be logged with HEALTH_CHECK prefix and not
+        processed as regular ADMIN_APP traffic.
+        """
+        packet = {
+            "from": 123456789,
+            "to": 123456789,
+            "decoded": {"portnum": "ADMIN_APP", "requestId": 4242},
+            "channel": 0,
+            "id": 22222,
+            "rxTime": TEST_PACKET_RX_TIME,
+        }
+        mock_interface = MagicMock()
+        mock_interface.myInfo.my_node_num = 123456789
+
+        with (
+            patch.dict(
+                "mmrelay.meshtastic_utils._health_probe_request_deadlines",
+                {4242: 9999999999.0},
+                clear=True,
+            ),
+            patch("mmrelay.meshtastic_utils._run_meshtastic_plugins") as mock_plugins,
+        ):
+            with self.assertLogs("Meshtastic", level="DEBUG") as cm:
+                on_meshtastic_message(packet, mock_interface)
+
+        mock_plugins.assert_not_called()
+        log_output = "\n".join(cm.output)
+        self.assertIn(
+            "[HEALTH_CHECK] Metadata probe response requestId=4242", log_output
+        )
+        self.assertIn("port=ADMIN_APP", log_output)
+
 
 # Meshtastic connection retry tests - converted from unittest.TestCase to standalone pytest functions
 
@@ -1796,6 +1830,7 @@ def reset_meshtastic_globals():
     mmrelay.meshtastic_utils._ble_future_address = None
     mmrelay.meshtastic_utils._metadata_future = None
     mmrelay.meshtastic_utils._ble_timeout_counts = {}
+    mmrelay.meshtastic_utils._health_probe_request_deadlines = {}
     yield
     # Cleanup after test
     mmrelay.meshtastic_utils.meshtastic_client = None
@@ -1805,6 +1840,7 @@ def reset_meshtastic_globals():
     mmrelay.meshtastic_utils._ble_future_address = None
     mmrelay.meshtastic_utils._metadata_future = None
     mmrelay.meshtastic_utils._ble_timeout_counts = {}
+    mmrelay.meshtastic_utils._health_probe_request_deadlines = {}
 
 
 @patch("mmrelay.meshtastic_utils.time.sleep")

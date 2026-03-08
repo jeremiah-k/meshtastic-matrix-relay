@@ -129,6 +129,9 @@ subscribed_to_connection_lost = False
 _metadata_executor = ThreadPoolExecutor(max_workers=1)
 _metadata_future: Future[Any] | None = None
 _metadata_future_lock = threading.Lock()
+_health_probe_request_deadlines: dict[int, float] = {}
+_health_probe_request_lock = threading.Lock()
+_HEALTH_PROBE_TRACK_GRACE_SECS = 60.0
 
 # Shared executor for BLE init/connect to avoid leaking threads across retries.
 # BLE setup is inherently sequential, so a single worker keeps things predictable.
@@ -286,6 +289,101 @@ def _submit_metadata_probe(probe: Callable[[], Any]) -> Future[Any] | None:
     return future
 
 
+def _coerce_positive_int_id(raw_value: Any) -> int | None:
+    """
+    Convert a potential packet identifier value to a positive integer.
+
+    Returns `None` when conversion fails or value is not positive.
+    """
+    try:
+        parsed = int(raw_value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _extract_packet_request_id(packet: Any) -> int | None:
+    """
+    Extract a request ID from a Meshtastic packet dict, if present.
+    """
+    if not isinstance(packet, dict):
+        return None
+
+    candidates: list[Any] = [packet.get("requestId"), packet.get("request_id")]
+    decoded = packet.get("decoded")
+    if isinstance(decoded, dict):
+        candidates.extend(
+            [
+                decoded.get("requestId"),
+                decoded.get("request_id"),
+            ]
+        )
+
+    for candidate in candidates:
+        parsed = _coerce_positive_int_id(candidate)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _prune_health_probe_tracking(now: float | None = None) -> None:
+    """
+    Remove expired health-probe request IDs from the in-memory tracking map.
+    """
+    current = now if now is not None else time.monotonic()
+    expired_ids = [
+        request_id
+        for request_id, deadline in _health_probe_request_deadlines.items()
+        if deadline <= current
+    ]
+    for request_id in expired_ids:
+        _health_probe_request_deadlines.pop(request_id, None)
+
+
+def _track_health_probe_request_id(
+    raw_request_id: Any, timeout_secs: float
+) -> int | None:
+    """
+    Track a newly sent health-probe request ID for response log classification.
+
+    Returns the normalized request ID if tracking succeeded.
+    """
+    request_id = _coerce_positive_int_id(raw_request_id)
+    if request_id is None:
+        return None
+
+    expires_at = (
+        time.monotonic()
+        + max(float(timeout_secs), 1.0)
+        + _HEALTH_PROBE_TRACK_GRACE_SECS
+    )
+    with _health_probe_request_lock:
+        _prune_health_probe_tracking()
+        _health_probe_request_deadlines[request_id] = expires_at
+    return request_id
+
+
+def _is_health_probe_response_packet(packet: dict[str, Any], interface: Any) -> bool:
+    """
+    Determine if an inbound packet is a tracked health-probe response.
+    """
+    request_id = _extract_packet_request_id(packet)
+    if request_id is None:
+        return False
+
+    sender = _coerce_positive_int_id(packet.get("from"))
+    local_num = _coerce_positive_int_id(
+        getattr(getattr(interface, "myInfo", None), "my_node_num", None)
+        or getattr(getattr(interface, "localNode", None), "nodeNum", None)
+    )
+    if sender is not None and local_num is not None and sender != local_num:
+        return False
+
+    with _health_probe_request_lock:
+        _prune_health_probe_tracking()
+        return request_id in _health_probe_request_deadlines
+
+
 def _set_probe_ack_flag_from_packet(local_node: Any, packet: Any) -> bool:
     """
     Best-effort fallback for ACK packets missing routing metadata.
@@ -423,7 +521,7 @@ def _probe_device_connection(
     request.get_device_metadata_request = True
     # Use the public sendData API instead of private _sendAdmin
     destination_id = getattr(local_node, "nodeNum", None) or "^local"
-    client.sendData(
+    sent_packet = client.sendData(
         request.SerializeToString(),
         destinationId=destination_id,
         portNum=portnums_pb2.PortNum.ADMIN_APP,
@@ -431,6 +529,26 @@ def _probe_device_connection(
         wantResponse=True,
         onResponse=functools.partial(_handle_probe_ack_callback, local_node),
     )
+    request_id = _track_health_probe_request_id(
+        (
+            getattr(sent_packet, "id", None)
+            if not isinstance(sent_packet, dict)
+            else sent_packet.get("id")
+        ),
+        timeout_secs,
+    )
+    if request_id is not None:
+        logger.debug(
+            "[HEALTH_CHECK] Sent metadata probe requestId=%s timeout=%.1fs",
+            request_id,
+            timeout_secs,
+        )
+    else:
+        logger.debug(
+            "[HEALTH_CHECK] Sent metadata probe timeout=%.1fs",
+            timeout_secs,
+        )
+
     if getattr(client, "_acknowledgment", None) is not None:
         _wait_for_probe_ack(client, timeout_secs)
         return
@@ -2847,6 +2965,17 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
             "Ignoring old message with rxTime %s (older than start time %s)",
             rx_time,
             RELAY_START_TIME,
+        )
+        return
+
+    if _is_health_probe_response_packet(packet, interface):
+        decoded = packet.get("decoded")
+        portnum = decoded.get("portnum") if isinstance(decoded, dict) else None
+        logger.debug(
+            "[HEALTH_CHECK] Metadata probe response requestId=%s from=%s port=%s",
+            _extract_packet_request_id(packet),
+            packet.get("fromId") or packet.get("from"),
+            _get_portnum_name(portnum),
         )
         return
 

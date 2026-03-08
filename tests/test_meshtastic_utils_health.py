@@ -473,3 +473,23 @@ def test_probe_device_connection_uses_bounded_ack_timeout():
 
     client.sendData.assert_called_once()
     client.waitForAckNak.assert_not_called()
+
+
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_probe_device_connection_tracks_request_id_for_health_logging():
+    local_node = SimpleNamespace(nodeNum=12345)
+    client = SimpleNamespace(
+        localNode=local_node,
+        _acknowledgment=None,
+        sendData=Mock(return_value=SimpleNamespace(id=987654321)),
+        waitForAckNak=Mock(),
+    )
+
+    with patch(
+        "mmrelay.meshtastic_utils._track_health_probe_request_id",
+        return_value=987654321,
+    ) as mock_track:
+        mu._probe_device_connection(client, timeout_secs=7.5)
+
+    mock_track.assert_called_once_with(987654321, 7.5)
+    client.waitForAckNak.assert_called_once()
