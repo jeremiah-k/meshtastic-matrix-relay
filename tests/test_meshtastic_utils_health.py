@@ -5,6 +5,7 @@ from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
 import pytest
 
 import mmrelay.meshtastic_utils as mu
+from mmrelay.constants.network import INITIAL_HEALTH_CHECK_DELAY
 from mmrelay.meshtastic_utils import check_connection
 
 
@@ -104,9 +105,14 @@ async def test_check_connection_metadata_probe_succeeds():
     mu.meshtastic_client.localNode.onAckNak = Mock()
 
     executor = Mock()
-    probe_future: Future[None] = Future()
-    probe_future.set_result(None)
-    executor.submit.return_value = probe_future
+
+    def _submit(fn, *args, **kwargs):
+        probe_future: Future[None] = Future()
+        fn(*args, **kwargs)
+        probe_future.set_result(None)
+        return probe_future
+
+    executor.submit.side_effect = _submit
 
     sleep_handler = SleepAndShutdown(
         shutdown_after=2
@@ -124,9 +130,6 @@ async def test_check_connection_metadata_probe_succeeds():
         await check_connection()
 
     executor.submit.assert_called_once()
-    # Verify the submission contract by executing the submitted callable and checking mock calls
-    submitted_probe = executor.submit.call_args.args[0]
-    submitted_probe()
     mock_probe.assert_called_once_with(mu.meshtastic_client)
     mock_logger.error.assert_not_called()
 
@@ -309,14 +312,16 @@ async def test_check_connection_uses_legacy_heartbeat_interval(
     # 2. Heartbeat interval (5)
     assert mock_sleep.call_count == 2
 
+    # Check the first call specifically (initial delay)
+    assert mock_sleep.call_args_list[0].args[0] == INITIAL_HEALTH_CHECK_DELAY
+
     # Check the second call specifically (the heartbeat)
     # call_args_list[1] is the second call, args[0] is the first arg
     assert mock_sleep.call_args_list[1].args[0] == 5
 
 
-def test_probe_device_connection_handles_admin_response_without_routing(
-    reset_meshtastic_globals,
-):
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_probe_device_connection_handles_admin_response_without_routing():
     class AckState:
         def __init__(self):
             self.receivedAck = False
@@ -330,10 +335,7 @@ def test_probe_device_connection_handles_admin_response_without_routing(
             self.receivedImplAck = False
 
     ack_state = AckState()
-    local_node = SimpleNamespace(
-        nodeNum=12345,
-        onAckNak=Mock(side_effect=KeyError("routing")),
-    )
+    local_node = SimpleNamespace(nodeNum=12345)
     local_node.iface = SimpleNamespace(
         _acknowledgment=ack_state,
         localNode=local_node,
@@ -354,19 +356,19 @@ def test_probe_device_connection_handles_admin_response_without_routing(
     mu._probe_device_connection(client)
 
     client.sendData.assert_called_once()
-    local_node.onAckNak.assert_not_called()
     ack_state.reset.assert_called_once()
     client.waitForAckNak.assert_not_called()
 
 
-def test_probe_device_connection_uses_bounded_ack_timeout(reset_meshtastic_globals):
+@pytest.mark.usefixtures("reset_meshtastic_globals")
+def test_probe_device_connection_uses_bounded_ack_timeout():
     ack_state = SimpleNamespace(
         receivedAck=False,
         receivedNak=False,
         receivedImplAck=False,
         reset=Mock(),
     )
-    local_node = SimpleNamespace(nodeNum=12345, onAckNak=Mock())
+    local_node = SimpleNamespace(nodeNum=12345)
     local_node.iface = SimpleNamespace(
         _acknowledgment=ack_state,
         localNode=local_node,

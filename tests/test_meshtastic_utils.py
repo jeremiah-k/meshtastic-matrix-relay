@@ -41,6 +41,20 @@ from mmrelay.meshtastic_utils import (
     serial_port_exists,
 )
 
+TEST_PACKET_RX_TIME = 1234567890
+
+
+@pytest.fixture(autouse=True)
+def stable_relay_start_time(monkeypatch):
+    """
+    Keep message-processing tests deterministic regardless of wall-clock time.
+
+    Many packet fixtures in this module use fixed historical `rxTime` values.
+    Pinning RELAY_START_TIME prevents accidental stale-message filtering during
+    tests that are unrelated to startup history behavior.
+    """
+    monkeypatch.setattr("mmrelay.meshtastic_utils.RELAY_START_TIME", 0, raising=False)
+
 
 class _FakeEvent:
     """Threading.Event test double for metadata redirect behavior."""
@@ -102,7 +116,7 @@ class TestMeshtasticUtils(unittest.TestCase):
             },
             "channel": 0,
             "id": 12345,
-            "rxTime": 1234567890,
+            "rxTime": TEST_PACKET_RX_TIME,
         }
 
         # Reset global state to avoid test interference
@@ -193,7 +207,6 @@ class TestMeshtasticUtils(unittest.TestCase):
             patch("mmrelay.matrix_utils.message_storage_enabled") as mock_storage,
             patch("mmrelay.plugin_loader.load_plugins", return_value=[]),
             patch("mmrelay.matrix_utils.matrix_client", None),
-            patch("mmrelay.meshtastic_utils.RELAY_START_TIME", 0),
         ):
             mock_get_longname.return_value = "Test User"
             mock_get_shortname.return_value = "TU"
@@ -256,7 +269,6 @@ class TestMeshtasticUtils(unittest.TestCase):
             patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True),
             patch("mmrelay.matrix_utils.matrix_client", None),
             patch("mmrelay.meshtastic_utils.portnums_pb2") as mock_portnums_pb2,
-            patch("mmrelay.meshtastic_utils.RELAY_START_TIME", 0),
         ):
             mock_load_plugins.return_value = []
             mock_portnums_pb2.PortNum.Name.return_value = "REMOTE_HARDWARE_APP"
@@ -324,7 +336,6 @@ class TestMeshtasticUtils(unittest.TestCase):
             ),
             patch("mmrelay.matrix_utils.matrix_relay"),
             patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit,
-            patch("mmrelay.meshtastic_utils.RELAY_START_TIME", 0),
         ):
             with self.assertLogs("Meshtastic", level="DEBUG") as log_cm:
                 result = on_meshtastic_message(packet, mock_interface)
@@ -487,7 +498,6 @@ class TestMeshtasticUtils(unittest.TestCase):
             ),
             patch("mmrelay.meshtastic_utils.event_loop", None),
             patch("mmrelay.meshtastic_utils.logger") as mock_logger,
-            patch("mmrelay.meshtastic_utils.RELAY_START_TIME", 0),
         ):
             mock_interface = MagicMock()
             mock_interface.myInfo.my_node_num = 1
@@ -710,7 +720,6 @@ class TestMeshtasticUtils(unittest.TestCase):
             patch("mmrelay.matrix_utils.message_storage_enabled") as mock_storage,
             patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True),
             patch("mmrelay.matrix_utils.matrix_client", None),
-            patch("mmrelay.meshtastic_utils.RELAY_START_TIME", 0),
         ):
             mock_submit_coro.side_effect = _done_future
             mock_get_longname.return_value = "Test User"
@@ -1654,7 +1663,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             "to": 987654321,
             "channel": 0,
             "id": 12345,
-            "rxTime": 1234567890,
+            "rxTime": TEST_PACKET_RX_TIME,
             # No 'decoded' field
         }
 
@@ -1688,7 +1697,6 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
             patch("mmrelay.meshtastic_utils.is_running_as_service", return_value=True),
             patch("mmrelay.matrix_utils.matrix_client", None),
-            patch("mmrelay.meshtastic_utils.RELAY_START_TIME", 0),
         ):
             mock_submit_coro.side_effect = _done_future
             mock_interface = MagicMock()
@@ -1716,7 +1724,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             "decoded": {"text": "", "portnum": "TEXT_MESSAGE_APP"},  # Empty text
             "channel": 0,
             "id": 12345,
-            "rxTime": 1234567890,
+            "rxTime": TEST_PACKET_RX_TIME,
         }
 
         import inspect
@@ -1747,7 +1755,6 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
                 self.mock_config["matrix_rooms"],
             ),
             patch("mmrelay.meshtastic_utils._submit_coro") as mock_submit_coro,
-            patch("mmrelay.meshtastic_utils.RELAY_START_TIME", 0),
         ):
             mock_submit_coro.side_effect = _done_future
             mock_interface = MagicMock()

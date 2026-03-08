@@ -53,11 +53,6 @@ _SELECT_STALE_IDS_SQL_BY_TABLE = {
     "shortnames": "SELECT meshtastic_id FROM shortnames",
 }
 
-_DELETE_STALE_ID_SQL_BY_TABLE = {
-    "longnames": "DELETE FROM longnames WHERE meshtastic_id = ?",
-    "shortnames": "DELETE FROM shortnames WHERE meshtastic_id = ?",
-}
-
 
 def clear_db_path_cache() -> None:
     """Clear the cached database path to force re-resolution on next call.

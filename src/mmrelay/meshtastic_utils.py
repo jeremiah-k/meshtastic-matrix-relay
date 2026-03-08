@@ -41,6 +41,7 @@ from mmrelay.constants.messages import (
     PORTNUM_TEXT_MESSAGE_APP,
 )
 from mmrelay.constants.network import (
+    BLE_CONNECT_TIMEOUT_SECS,
     BLE_FUTURE_WATCHDOG_SECS,
     BLE_SCAN_TIMEOUT_SECS,
     BLE_TIMEOUT_RESET_THRESHOLD,
@@ -2442,13 +2443,13 @@ def connect_meshtastic(
                             _ble_future_address = ble_address
                         connect_future.add_done_callback(_clear_ble_future)
                         try:
-                            connect_future.result(timeout=METADATA_WATCHDOG_SECS)
+                            connect_future.result(timeout=BLE_CONNECT_TIMEOUT_SECS)
                             logger.info(f"BLE connection established to {ble_address}")
                         except FuturesTimeoutError as err:
                             # Use logger.exception so timeouts include stack context (TRY400),
                             # but raise a short error and keep operator guidance in logs (TRY003).
                             logger.exception(
-                                f"BLE connect() call timed out after {METADATA_WATCHDOG_SECS} seconds for %s.",
+                                f"BLE connect() call timed out after {BLE_CONNECT_TIMEOUT_SECS} seconds for %s.",
                                 ble_address,
                             )
                             logger.warning(

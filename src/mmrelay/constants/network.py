@@ -68,3 +68,6 @@ MILLISECONDS_PER_SECOND = 1000
 
 # Metadata probe watchdog timeout (same as BLE pattern)
 METADATA_WATCHDOG_SECS = 30.0
+
+# Timeout for BLE connect() operation watchdog
+BLE_CONNECT_TIMEOUT_SECS = 30.0
