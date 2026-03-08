@@ -90,7 +90,8 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
         if meshtastic_client is None:
             return "Unable to connect to Meshtastic device."
 
-        response = f"Nodes: {len(meshtastic_client.nodes)}\n"
+        node_lines: list[str] = []
+        valid_node_count = 0
 
         for _node, info in meshtastic_client.nodes.items():
             if not isinstance(info, dict):
@@ -120,7 +121,10 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
             last_heard = "?"
             last_heard_timestamp = info.get("lastHeard")
             if last_heard_timestamp is not None:
-                last_heard = get_relative_time(last_heard_timestamp)
+                try:
+                    last_heard = get_relative_time(float(last_heard_timestamp))
+                except (TypeError, ValueError, OverflowError, OSError):
+                    last_heard = "?"
 
             voltage = "?V"
             battery = "?%"
@@ -133,12 +137,14 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
                 if battery_level is not None:
                     battery = f"{battery_level}%"
 
-            response += (
+            node_lines.append(
                 f"{short_name} {long_name} / {hw_model} / "
                 f"{battery} {voltage} / {snr} / {hops} / {last_heard}\n"
             )
+            valid_node_count += 1
 
-        return response
+        response = f"Nodes: {valid_node_count}\n"
+        return response + "".join(node_lines)
 
     async def handle_meshtastic_message(
         self, packet: Any, formatted_message: str, longname: str, meshnet_name: str

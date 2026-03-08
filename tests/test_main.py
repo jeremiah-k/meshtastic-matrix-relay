@@ -776,6 +776,8 @@ class TestMain(unittest.TestCase):
 
         original_client = mu.meshtastic_client
         original_iface = mu.meshtastic_iface
+        original_shutting_down = mu.shutting_down
+        original_reconnecting = mu.reconnecting
         try:
             with (
                 patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
@@ -793,6 +795,8 @@ class TestMain(unittest.TestCase):
         finally:
             mu.meshtastic_client = original_client
             mu.meshtastic_iface = original_iface
+            mu.shutting_down = original_shutting_down
+            mu.reconnecting = original_reconnecting
 
         mock_meshtastic_logger.warning.assert_any_call(
             "Meshtastic client close timed out - may cause notification errors"
@@ -827,15 +831,29 @@ class TestMain(unittest.TestCase):
         mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
         mock_join_room.side_effect = _async_noop
 
-        with (
-            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
-            patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
-            patch(
-                "mmrelay.main.meshtastic_utils._run_blocking_with_timeout",
-                side_effect=ValueError("boom"),
-            ),
-        ):
-            asyncio.run(main(self.mock_config))
+        import mmrelay.meshtastic_utils as mu
+
+        original_client = mu.meshtastic_client
+        original_iface = mu.meshtastic_iface
+        original_shutting_down = mu.shutting_down
+        original_reconnecting = mu.reconnecting
+        try:
+            with (
+                patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+                patch(
+                    "mmrelay.main.meshtastic_utils.check_connection", new=_async_noop
+                ),
+                patch(
+                    "mmrelay.main.meshtastic_utils._run_blocking_with_timeout",
+                    side_effect=ValueError("boom"),
+                ),
+            ):
+                asyncio.run(main(self.mock_config))
+        finally:
+            mu.meshtastic_client = original_client
+            mu.meshtastic_iface = original_iface
+            mu.shutting_down = original_shutting_down
+            mu.reconnecting = original_reconnecting
 
         self.assertTrue(
             any(
@@ -875,21 +893,35 @@ class TestMain(unittest.TestCase):
         mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
         mock_join_room.side_effect = _async_noop
 
-        with (
-            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
-            patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
-        ):
-            asyncio.run(main(self.mock_config))
+        import mmrelay.meshtastic_utils as mu
 
-        mock_run_blocking_with_timeout.assert_called_once()
-        args, kwargs = mock_run_blocking_with_timeout.call_args
-        close_callable = args[0]
-        self.assertTrue(callable(close_callable))
-        mock_connect_meshtastic.return_value.close.assert_not_called()
-        close_callable()
-        mock_connect_meshtastic.return_value.close.assert_called_once()
-        self.assertEqual(kwargs.get("timeout"), 10.0)
-        self.assertEqual(kwargs.get("label"), "meshtastic-client-close-shutdown")
+        original_client = mu.meshtastic_client
+        original_iface = mu.meshtastic_iface
+        original_shutting_down = mu.shutting_down
+        original_reconnecting = mu.reconnecting
+        try:
+            with (
+                patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+                patch(
+                    "mmrelay.main.meshtastic_utils.check_connection", new=_async_noop
+                ),
+            ):
+                asyncio.run(main(self.mock_config))
+
+            mock_run_blocking_with_timeout.assert_called_once()
+            args, kwargs = mock_run_blocking_with_timeout.call_args
+            close_callable = args[0]
+            self.assertTrue(callable(close_callable))
+            mock_connect_meshtastic.return_value.close.assert_not_called()
+            close_callable()
+            mock_connect_meshtastic.return_value.close.assert_called_once()
+            self.assertEqual(kwargs.get("timeout"), 10.0)
+            self.assertEqual(kwargs.get("label"), "meshtastic-client-close-shutdown")
+        finally:
+            mu.meshtastic_client = original_client
+            mu.meshtastic_iface = original_iface
+            mu.shutting_down = original_shutting_down
+            mu.reconnecting = original_reconnecting
 
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
@@ -920,11 +952,25 @@ class TestMain(unittest.TestCase):
         mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
         mock_join_room.side_effect = _async_noop
 
-        with (
-            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
-            patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
-        ):
-            asyncio.run(main(self.mock_config))
+        import mmrelay.meshtastic_utils as mu
+
+        original_client = mu.meshtastic_client
+        original_iface = mu.meshtastic_iface
+        original_shutting_down = mu.shutting_down
+        original_reconnecting = mu.reconnecting
+        try:
+            with (
+                patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+                patch(
+                    "mmrelay.main.meshtastic_utils.check_connection", new=_async_noop
+                ),
+            ):
+                asyncio.run(main(self.mock_config))
+        finally:
+            mu.meshtastic_client = original_client
+            mu.meshtastic_iface = original_iface
+            mu.shutting_down = original_shutting_down
+            mu.reconnecting = original_reconnecting
 
         mock_run_blocking_with_timeout.assert_called_once()
         mock_meshtastic_logger.info.assert_any_call(

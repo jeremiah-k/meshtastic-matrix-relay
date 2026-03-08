@@ -1811,6 +1811,36 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         )
         self.assertIn("port=ADMIN_APP", log_output)
 
+    def test_is_health_probe_response_packet_handles_zero_sender_id(self):
+        """Sender 0 should not match a non-zero local node id."""
+        import mmrelay.meshtastic_utils as mu
+
+        packet = {"from": 0, "decoded": {"requestId": 4242}}
+        interface = MagicMock()
+        interface.myInfo.my_node_num = 123
+
+        with patch.dict(
+            "mmrelay.meshtastic_utils._health_probe_request_deadlines",
+            {4242: 9999999999.0},
+            clear=True,
+        ):
+            self.assertFalse(mu._is_health_probe_response_packet(packet, interface))
+
+    def test_is_health_probe_response_packet_accepts_zero_local_node_id(self):
+        """Sender 0 should match when the local node id is also 0."""
+        import mmrelay.meshtastic_utils as mu
+
+        packet = {"from": 0, "decoded": {"requestId": 4242}}
+        interface = MagicMock()
+        interface.myInfo.my_node_num = 0
+
+        with patch.dict(
+            "mmrelay.meshtastic_utils._health_probe_request_deadlines",
+            {4242: 9999999999.0},
+            clear=True,
+        ):
+            self.assertTrue(mu._is_health_probe_response_packet(packet, interface))
+
 
 # Meshtastic connection retry tests - converted from unittest.TestCase to standalone pytest functions
 
@@ -2683,6 +2713,7 @@ class TestGetDeviceMetadata(unittest.TestCase):
         """Regex-parsed 'unknown' firmware should not mark metadata retrieval successful."""
         mock_client = MagicMock()
         mock_client.localNode.getMetadata = MagicMock()
+        mock_client.localNode.iface.metadata = None
 
         with patch("mmrelay.meshtastic_utils.io.StringIO") as mock_stringio:
             mock_output = MagicMock()

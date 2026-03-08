@@ -319,9 +319,35 @@ class TestNodesPlugin(unittest.TestCase):
 
         response = self.plugin.generate_response()
 
-        self.assertIn("Nodes: 2", response)
+        self.assertIn("Nodes: 1", response)
         self.assertIn("OK Valid / Unknown", response)
         self.assertNotIn("not-a-dict", response)
+
+    @patch("mmrelay.meshtastic_utils.connect_meshtastic")
+    def test_generate_response_invalid_last_heard_falls_back_unknown(
+        self, mock_connect
+    ):
+        """
+        Test that invalid lastHeard values are safely rendered as unknown.
+        """
+        client = MagicMock()
+        client.nodes = {
+            "node_bad_lastheard": {
+                "user": {
+                    "shortName": "BAD",
+                    "longName": "Bad LastHeard",
+                    "hwModel": "TEST",
+                },
+                "lastHeard": "not-a-timestamp",
+            }
+        }
+        mock_connect.return_value = client
+
+        response = self.plugin.generate_response()
+
+        self.assertIn("Nodes: 1", response)
+        self.assertIn("BAD Bad LastHeard / TEST", response)
+        self.assertIn("/ ?", response)
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_generate_response_with_null_values(self, mock_connect):

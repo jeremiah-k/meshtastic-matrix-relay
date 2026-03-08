@@ -388,6 +388,18 @@ def _coerce_positive_int_id(raw_value: Any) -> int | None:
     return parsed if parsed > 0 else None
 
 
+def _coerce_int_id(raw_value: Any) -> int | None:
+    """
+    Convert a potential identifier value to an integer.
+
+    Returns `None` when conversion fails.
+    """
+    try:
+        return int(raw_value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _coerce_positive_float(value: Any, default: float, setting_name: str) -> float:
     """
     Parse and validate a positive float config value.
@@ -480,11 +492,11 @@ def _is_health_probe_response_packet(packet: dict[str, Any], interface: Any) -> 
     if request_id is None:
         return False
 
-    sender = _coerce_positive_int_id(packet.get("from"))
-    local_num = _coerce_positive_int_id(
-        getattr(getattr(interface, "myInfo", None), "my_node_num", None)
-        or getattr(getattr(interface, "localNode", None), "nodeNum", None)
-    )
+    sender = _coerce_int_id(packet.get("from"))
+    local_num_raw = getattr(getattr(interface, "myInfo", None), "my_node_num", None)
+    if local_num_raw is None:
+        local_num_raw = getattr(getattr(interface, "localNode", None), "nodeNum", None)
+    local_num = _coerce_int_id(local_num_raw)
     if sender is not None and local_num is not None and sender != local_num:
         return False
 
@@ -518,12 +530,7 @@ def _set_probe_ack_flag_from_packet(local_node: Any, packet: Any) -> bool:
     sender_raw = packet.get("from") if isinstance(packet, dict) else None
     local_num = getattr(getattr(iface, "localNode", None), "nodeNum", None)
 
-    sender_num: int | None = None
-    try:
-        if sender_raw is not None:
-            sender_num = int(sender_raw)
-    except (TypeError, ValueError):
-        sender_num = None
+    sender_num = _coerce_int_id(sender_raw)
 
     if (
         sender_num is not None
@@ -541,6 +548,57 @@ def _set_probe_ack_flag_from_packet(local_node: Any, packet: Any) -> bool:
     return False
 
 
+def _missing_local_node_ack_state_error() -> RuntimeError:
+    """
+    Build the error raised when local node ACK state is unavailable.
+    """
+    return RuntimeError("Meshtastic local node missing acknowledgment state")
+
+
+def _missing_received_nak_error() -> RuntimeError:
+    """
+    Build the error raised when ACK state cannot represent NAK responses.
+    """
+    return RuntimeError("Meshtastic acknowledgment state missing receivedNak")
+
+
+def _failed_probe_ack_state_error() -> RuntimeError:
+    """
+    Build the error raised when a probe response cannot set ACK/NAK state.
+    """
+    return RuntimeError("Failed to set ACK state from health probe response")
+
+
+def _missing_ack_state_error() -> RuntimeError:
+    """
+    Build the error raised when client ACK state is unavailable.
+    """
+    return RuntimeError("Meshtastic client missing acknowledgment state")
+
+
+def _metadata_probe_ack_timeout_error(timeout_secs: float) -> TimeoutError:
+    """
+    Build the timeout error raised when metadata probe ACK wait exceeds limit.
+    """
+    return TimeoutError(
+        f"Timed out waiting for metadata probe ACK after {timeout_secs:.1f} seconds"
+    )
+
+
+def _missing_probe_transport_error() -> RuntimeError:
+    """
+    Build the error raised when client cannot send metadata probe packets.
+    """
+    return RuntimeError("Meshtastic client cannot perform metadata liveness probe")
+
+
+def _missing_probe_wait_error() -> RuntimeError:
+    """
+    Build the error raised when client cannot wait for metadata probe ACKs.
+    """
+    return RuntimeError("Meshtastic client cannot wait for metadata probe ACK")
+
+
 def _handle_probe_ack_callback(local_node: Any, packet: Any) -> None:
     """
     Handle health-probe response packets across routing/admin response shapes.
@@ -556,7 +614,7 @@ def _handle_probe_ack_callback(local_node: Any, packet: Any) -> None:
     iface = getattr(local_node, "iface", None)
     ack_state = getattr(iface, "_acknowledgment", None)
     if ack_state is None:
-        raise RuntimeError("Meshtastic local node missing acknowledgment state")
+        raise _missing_local_node_ack_state_error()
 
     decoded = packet.get("decoded") if isinstance(packet, dict) else None
     routing = decoded.get("routing") if isinstance(decoded, dict) else None
@@ -566,12 +624,12 @@ def _handle_probe_ack_callback(local_node: Any, packet: Any) -> None:
             if hasattr(ack_state, "receivedNak"):
                 ack_state.receivedNak = True
                 return
-            raise RuntimeError("Meshtastic acknowledgment state missing receivedNak")
+            raise _missing_received_nak_error()
 
     if _set_probe_ack_flag_from_packet(local_node, packet):
         return
 
-    raise RuntimeError("Failed to set ACK state from health probe response")
+    raise _failed_probe_ack_state_error()
 
 
 def _wait_for_probe_ack(client: Any, timeout_secs: float) -> None:
@@ -583,7 +641,7 @@ def _wait_for_probe_ack(client: Any, timeout_secs: float) -> None:
     """
     ack_state = getattr(client, "_acknowledgment", None)
     if ack_state is None:
-        raise RuntimeError("Meshtastic client missing acknowledgment state")
+        raise _missing_ack_state_error()
 
     deadline = time.monotonic() + timeout_secs
     while time.monotonic() < deadline:
@@ -597,9 +655,7 @@ def _wait_for_probe_ack(client: Any, timeout_secs: float) -> None:
             return
         time.sleep(0.1)
 
-    raise TimeoutError(
-        f"Timed out waiting for metadata probe ACK after {timeout_secs:.1f} seconds"
-    )
+    raise _metadata_probe_ack_timeout_error(timeout_secs)
 
 
 def _probe_device_connection(
@@ -624,7 +680,7 @@ def _probe_device_connection(
     """
     local_node = getattr(client, "localNode", None)
     if local_node is None or not callable(getattr(client, "sendData", None)):
-        raise RuntimeError("Meshtastic client cannot perform metadata liveness probe")
+        raise _missing_probe_transport_error()
 
     request = admin_pb2.AdminMessage()
     request.get_device_metadata_request = True
@@ -671,7 +727,7 @@ def _probe_device_connection(
         )
         return
 
-    raise RuntimeError("Meshtastic client cannot wait for metadata probe ACK")
+    raise _missing_probe_wait_error()
 
 
 def _submit_coro(
