@@ -274,6 +274,29 @@ def _clear_metadata_future_if_current(done_future: Future[Any]) -> None:
             _metadata_future_started_at = None
 
 
+def _reset_metadata_executor_for_stale_probe() -> None:
+    """
+    Replace the shared metadata executor after stale probe detection.
+
+    A wedged single-worker executor can block all later probe submissions.
+    This function abandons the old executor and creates a fresh one so probe
+    retries are not queued behind a stuck worker.
+    """
+    global _metadata_executor, _metadata_future, _metadata_future_started_at
+
+    with _metadata_future_lock:
+        old_executor = _metadata_executor
+        _metadata_future = None
+        _metadata_future_started_at = None
+        _metadata_executor = ThreadPoolExecutor(max_workers=1)
+
+    if old_executor is not None and not getattr(old_executor, "_shutdown", False):
+        try:
+            old_executor.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            old_executor.shutdown(wait=False)
+
+
 def _schedule_metadata_future_cleanup(
     future: Future[Any],
     reason: str,
@@ -301,12 +324,18 @@ def _schedule_metadata_future_cleanup(
             METADATA_WATCHDOG_SECS,
             reason,
         )
-        _clear_metadata_future_if_current(future)
+        _reset_metadata_executor_for_stale_probe()
 
-    timer = threading.Timer(METADATA_WATCHDOG_SECS, _cleanup)
-    timer.daemon = True
-    future.add_done_callback(lambda _f: timer.cancel())
-    timer.start()
+    try:
+        timer = threading.Timer(METADATA_WATCHDOG_SECS, _cleanup)
+        timer.daemon = True
+        future.add_done_callback(lambda _f: timer.cancel())
+        timer.start()
+    except Exception as exc:  # noqa: BLE001 - best-effort watchdog setup
+        logger.debug(
+            "Failed to schedule metadata future cleanup watchdog",
+            exc_info=exc,
+        )
 
 
 def _submit_metadata_probe(probe: Callable[[], Any]) -> Future[Any] | None:
@@ -317,27 +346,29 @@ def _submit_metadata_probe(probe: Callable[[], Any]) -> Future[Any] | None:
     when another metadata operation is already running.
     """
     global _metadata_future, _metadata_future_started_at
-    stale_future: Future[Any] | None = None
+    stale_detected = False
     with _metadata_future_lock:
         if _metadata_future is not None and not _metadata_future.done():
             if _metadata_future_started_at is None or (
                 time.monotonic() - _metadata_future_started_at < METADATA_WATCHDOG_SECS
             ):
                 return None
-            stale_future = _metadata_future
-            _metadata_future = None
-            _metadata_future_started_at = None
+            stale_detected = True
 
-        future = _get_metadata_executor().submit(probe)
-        _metadata_future = future
-        _metadata_future_started_at = time.monotonic()
-
-    if stale_future is not None:
+    if stale_detected:
         logger.warning(
             "Metadata worker still running after %.0fs; clearing stale future (%s)",
             METADATA_WATCHDOG_SECS,
             "submit-retry",
         )
+        _reset_metadata_executor_for_stale_probe()
+
+    with _metadata_future_lock:
+        if _metadata_future is not None and not _metadata_future.done():
+            return None
+        future = _get_metadata_executor().submit(probe)
+        _metadata_future = future
+        _metadata_future_started_at = time.monotonic()
 
     future.add_done_callback(_clear_metadata_future_if_current)
     _schedule_metadata_future_cleanup(future, reason="metadata-probe")
@@ -355,6 +386,29 @@ def _coerce_positive_int_id(raw_value: Any) -> int | None:
     except (TypeError, ValueError):
         return None
     return parsed if parsed > 0 else None
+
+
+def _coerce_positive_float(value: Any, default: float, setting_name: str) -> float:
+    """
+    Parse and validate a positive float config value.
+
+    Falls back to `default` and logs a warning if conversion fails or if the
+    value is not greater than zero.
+    """
+    try:
+        parsed = float(value)
+        if parsed > 0:
+            return parsed
+    except (TypeError, ValueError):
+        pass
+
+    logger.warning(
+        "Invalid %s value %r; using default %.1f",
+        setting_name,
+        value,
+        default,
+    )
+    return default
 
 
 def _extract_packet_request_id(packet: Any) -> int | None:
@@ -1383,6 +1437,15 @@ def _extract_firmware_version_from_client(client: Any) -> str | None:
     return None
 
 
+def _missing_metadata_probe_error() -> RuntimeError:
+    """
+    Build the error raised when metadata probing is unavailable on a client.
+    """
+    return RuntimeError(
+        "Meshtastic client has no localNode.getMetadata() for metadata probe"
+    )
+
+
 def _get_device_metadata(
     client: Any,
     *,
@@ -1428,9 +1491,7 @@ def _get_device_metadata(
             getattr(client.localNode, "getMetadata", None)
         ):
             if raise_on_error:
-                raise RuntimeError(
-                    "Meshtastic client has no localNode.getMetadata() for metadata probe"
-                )
+                raise _missing_metadata_probe_error()
             logger.debug(
                 "Meshtastic client has no localNode.getMetadata(); skipping metadata retrieval"
             )
@@ -3019,7 +3080,17 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
 
     # Filter out old messages (from before relay start) to prevent flooding
     # This handles cases where the node dumps stored history upon connection
-    rx_time = packet.get("rxTime", 0)
+    rx_time_raw = packet.get("rxTime", 0)
+    try:
+        rx_time = float(rx_time_raw)
+    except (TypeError, ValueError):
+        logger.debug(
+            "Ignoring old message with rxTime %s (older than start time %s)",
+            rx_time_raw,
+            RELAY_START_TIME,
+        )
+        return
+
     if rx_time > 0 and rx_time < RELAY_START_TIME:
         logger.debug(
             "Ignoring old message with rxTime %s (older than start time %s)",
@@ -3479,7 +3550,7 @@ async def check_connection() -> None:
 
     Checks run until the module-level `shutting_down` flag is True. Behavior:
     - Controlled by config["meshtastic"]["health_check"]:
-      - `enabled` (bool, default True) — enable or disable checks.
+      - `enabled` (bool, default DEFAULT_HEALTH_CHECK_ENABLED) — enable or disable checks.
       - `heartbeat_interval` (int, seconds, default 60) — interval between checks. For backward compatibility, a top-level `heartbeat_interval` under `config["meshtastic"]` is supported.
       - `initial_delay` (float, seconds, default INITIAL_HEALTH_CHECK_DELAY) — delay before first probe.
       - `probe_timeout` (float, seconds, default DEFAULT_MESHTASTIC_OPERATION_TIMEOUT) — timeout per probe cycle.
@@ -3522,37 +3593,20 @@ async def check_connection() -> None:
     if "heartbeat_interval" in config["meshtastic"]:
         heartbeat_interval = config["meshtastic"]["heartbeat_interval"]
 
-    def _coerce_positive_float(value: Any, default: float, setting_name: str) -> float:
-        """
-        Parse and validate a positive float config value.
-
-        Falls back to `default` and logs a warning if conversion fails or if
-        the value is not > 0.
-        """
-        try:
-            parsed = float(value)
-            if parsed > 0:
-                return parsed
-        except (TypeError, ValueError):
-            pass
-        logger.warning(
-            "Invalid meshtastic.health_check.%s value %r; using default %.1f",
-            setting_name,
-            value,
-            default,
-        )
-        return default
-
     heartbeat_interval = _coerce_positive_float(
-        heartbeat_interval, 60.0, "heartbeat_interval"
+        heartbeat_interval,
+        60.0,
+        "meshtastic.health_check.heartbeat_interval",
     )
     initial_delay = _coerce_positive_float(
-        initial_delay, float(INITIAL_HEALTH_CHECK_DELAY), "initial_delay"
+        initial_delay,
+        float(INITIAL_HEALTH_CHECK_DELAY),
+        "meshtastic.health_check.initial_delay",
     )
     probe_timeout = _coerce_positive_float(
         probe_timeout,
         float(DEFAULT_MESHTASTIC_OPERATION_TIMEOUT),
-        "probe_timeout",
+        "meshtastic.health_check.probe_timeout",
     )
 
     # Exit early if health checks are disabled

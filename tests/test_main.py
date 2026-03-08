@@ -772,17 +772,27 @@ class TestMain(unittest.TestCase):
         mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
         mock_join_room.side_effect = _async_noop
 
-        with (
-            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
-            patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
-            patch(
-                "mmrelay.main.meshtastic_utils._run_blocking_with_timeout",
-                side_effect=TimeoutError(
-                    "meshtastic-client-close-shutdown timed out after 10.0s"
+        import mmrelay.meshtastic_utils as mu
+
+        original_client = mu.meshtastic_client
+        original_iface = mu.meshtastic_iface
+        try:
+            with (
+                patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+                patch(
+                    "mmrelay.main.meshtastic_utils.check_connection", new=_async_noop
                 ),
-            ),
-        ):
-            asyncio.run(main(self.mock_config))
+                patch(
+                    "mmrelay.main.meshtastic_utils._run_blocking_with_timeout",
+                    side_effect=TimeoutError(
+                        "meshtastic-client-close-shutdown timed out after 10.0s"
+                    ),
+                ),
+            ):
+                asyncio.run(main(self.mock_config))
+        finally:
+            mu.meshtastic_client = original_client
+            mu.meshtastic_iface = original_iface
 
         mock_meshtastic_logger.warning.assert_any_call(
             "Meshtastic client close timed out - may cause notification errors"

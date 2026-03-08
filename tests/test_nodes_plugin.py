@@ -231,12 +231,12 @@ class TestNodesPlugin(unittest.TestCase):
         self.assertIn("LORA32_V2_1", response)
 
         # Should contain battery and voltage info for nodes with data
-        self.assertIn("85%  4.2V", response)
-        self.assertIn("45%  3.8V", response)
+        self.assertIn("85% 4.2V", response)
+        self.assertIn("45% 3.8V", response)
 
         # Should contain SNR info for nodes with data
-        self.assertIn("12.5 dB ", response)
-        self.assertIn("-8.0 dB ", response)
+        self.assertIn("12.5 dB", response)
+        self.assertIn("-8.0 dB", response)
 
         # Should contain relative time info
         self.assertIn("minutes ago", response)
@@ -270,7 +270,7 @@ class TestNodesPlugin(unittest.TestCase):
         self.assertIn("MIN Minimal Node", response)
         self.assertIn("UNKNOWN", response)
         self.assertIn("?% ?V", response)  # Default values for missing battery/voltage
-        self.assertIn("None", response)  # No last heard time
+        self.assertIn("/ ?", response)  # No last heard time
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     def test_generate_response_missing_hw_model_defaults_unknown(self, mock_connect):
@@ -349,7 +349,7 @@ class TestNodesPlugin(unittest.TestCase):
         self.assertIn("Nodes: 1", response)
         self.assertIn("NULL Null Node", response)
         self.assertIn("?% ?V", response)  # Default values for null battery/voltage
-        self.assertIn("None", response)  # No last heard time
+        self.assertIn("/ ?", response)  # No last heard time
 
     def test_handle_meshtastic_message_always_false(self):
         """

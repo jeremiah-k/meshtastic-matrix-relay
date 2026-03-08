@@ -115,9 +115,9 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
             snr = ""
             snr_value = info.get("snr")
             if snr_value is not None:
-                snr = f"{snr_value} dB "
+                snr = f"{snr_value} dB"
 
-            last_heard = None
+            last_heard = "?"
             last_heard_timestamp = info.get("lastHeard")
             if last_heard_timestamp is not None:
                 last_heard = get_relative_time(last_heard_timestamp)
@@ -128,10 +128,10 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
             if isinstance(device_metrics, dict):
                 voltage_value = device_metrics.get("voltage")
                 if voltage_value is not None:
-                    voltage = f"{voltage_value}V "
+                    voltage = f"{voltage_value}V"
                 battery_level = device_metrics.get("batteryLevel")
                 if battery_level is not None:
-                    battery = f"{battery_level}% "
+                    battery = f"{battery_level}%"
 
             response += (
                 f"{short_name} {long_name} / {hw_model} / "

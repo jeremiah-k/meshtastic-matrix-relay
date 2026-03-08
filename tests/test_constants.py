@@ -197,6 +197,7 @@ class TestConstantsImports:
         assert isinstance(DEFAULT_MESHTASTIC_PREFIX, str)
         assert isinstance(DEFAULT_MESSAGE_DELAY, (int, float))
         assert isinstance(MAX_QUEUE_SIZE, int)
+        assert isinstance(INITIAL_HEALTH_CHECK_DELAY, (int, float))
         assert INITIAL_HEALTH_CHECK_DELAY > 0
 
     def test_constants_used_in_codebase_are_accessible(self):

@@ -2153,10 +2153,7 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
         # Store the mocked function so we can restore it
         self.mocked_submit_coro = mu._submit_coro
 
-        # Import the original function from the source
-        # We need to reload the function definition
         # Get the source module without the mock
-        # We need to reload the function definition
         import importlib
         import importlib.util
 

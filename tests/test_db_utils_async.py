@@ -19,6 +19,7 @@ from unittest.mock import MagicMock, patch
 
 import mmrelay.db_utils
 from mmrelay.db_utils import (
+    _delete_stale_names_core,
     _get_db_manager,
     _parse_bool,
     _parse_int,
@@ -1127,7 +1128,7 @@ class TestLongnameShortnameErrors(unittest.TestCase):
         mock_cursor = MagicMock()
 
         with self.assertRaisesRegex(ValueError, "Invalid table name"):
-            mmrelay.db_utils._delete_stale_names_core(
+            _delete_stale_names_core(
                 mock_cursor,
                 "longnames; DROP TABLE longnames; --",
                 {"!123"},
