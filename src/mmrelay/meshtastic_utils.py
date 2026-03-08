@@ -285,6 +285,115 @@ def _submit_metadata_probe(probe: Callable[[], Any]) -> Future[Any] | None:
     return future
 
 
+def _set_probe_ack_flag_from_packet(local_node: Any, packet: Any) -> bool:
+    """
+    Best-effort fallback for ACK packets missing routing metadata.
+
+    Some Meshtastic library versions can invoke ACK callbacks with packet shapes
+    that do not include `decoded.routing`, which causes `Node.onAckNak()` to
+    raise `KeyError("routing")`. For health probes we only need an ACK/NAK
+    signal, so this helper sets the same acknowledgment flags used by
+    `waitForAckNak()`.
+
+    Parameters:
+        local_node (Any): Meshtastic local node object expected to expose `iface`.
+        packet (Any): Callback packet payload (typically a dict).
+
+    Returns:
+        bool: True if a fallback ACK flag was set, False otherwise.
+    """
+    iface = getattr(local_node, "iface", None)
+    ack_state = getattr(iface, "_acknowledgment", None)
+    if ack_state is None:
+        return False
+
+    sender_raw = packet.get("from") if isinstance(packet, dict) else None
+    local_num = getattr(getattr(iface, "localNode", None), "nodeNum", None)
+
+    sender_num: int | None = None
+    try:
+        if sender_raw is not None:
+            sender_num = int(sender_raw)
+    except (TypeError, ValueError):
+        sender_num = None
+
+    if (
+        sender_num is not None
+        and local_num is not None
+        and sender_num == local_num
+        and hasattr(ack_state, "receivedImplAck")
+    ):
+        ack_state.receivedImplAck = True
+        return True
+
+    if hasattr(ack_state, "receivedAck"):
+        ack_state.receivedAck = True
+        return True
+
+    return False
+
+
+def _handle_probe_ack_callback(local_node: Any, packet: Any) -> None:
+    """
+    Handle health-probe response packets across routing/admin response shapes.
+
+    For `get_device_metadata_request`, Meshtastic responses may be:
+    - A ROUTING_APP ACK/NAK packet with `decoded.routing.errorReason`, or
+    - An ADMIN_APP response packet that includes `requestId` but no
+      `decoded.routing`.
+
+    We treat either as forward progress for liveness probing by setting the same
+    acknowledgment flags used by `waitForAckNak()`.
+    """
+    iface = getattr(local_node, "iface", None)
+    ack_state = getattr(iface, "_acknowledgment", None)
+    if ack_state is None:
+        raise RuntimeError("Meshtastic local node missing acknowledgment state")
+
+    decoded = packet.get("decoded") if isinstance(packet, dict) else None
+    routing = decoded.get("routing") if isinstance(decoded, dict) else None
+    if isinstance(routing, dict):
+        error_reason = routing.get("errorReason")
+        if error_reason and error_reason != "NONE":
+            if hasattr(ack_state, "receivedNak"):
+                ack_state.receivedNak = True
+                return
+            raise RuntimeError("Meshtastic acknowledgment state missing receivedNak")
+
+    if _set_probe_ack_flag_from_packet(local_node, packet):
+        return
+
+    raise RuntimeError("Failed to set ACK state from health probe response")
+
+
+def _wait_for_probe_ack(client: Any, timeout_secs: float) -> None:
+    """
+    Wait for ACK/NAK flags with a bounded timeout for health probes.
+
+    Uses the interface acknowledgment object directly so probe duration is
+    capped independently of the interface-wide timeout setting.
+    """
+    ack_state = getattr(client, "_acknowledgment", None)
+    if ack_state is None:
+        raise RuntimeError("Meshtastic client missing acknowledgment state")
+
+    deadline = time.monotonic() + timeout_secs
+    while time.monotonic() < deadline:
+        if any(
+            bool(getattr(ack_state, attr, False))
+            for attr in ("receivedAck", "receivedNak", "receivedImplAck")
+        ):
+            reset = getattr(ack_state, "reset", None)
+            if callable(reset):
+                reset()
+            return
+        time.sleep(0.1)
+
+    raise TimeoutError(
+        f"Timed out waiting for metadata probe ACK after {timeout_secs:.1f} seconds"
+    )
+
+
 def _probe_device_connection(client: Any) -> None:
     """
     Send a metadata admin request and wait for an acknowledgment.
@@ -292,17 +401,13 @@ def _probe_device_connection(client: Any) -> None:
     This uses the public sendData API instead of the private _sendAdmin
     to ensure compatibility across Serial, TCP, and BLE interfaces.
 
-    Note: The onResponse callback must be provided to register the onAckNak
-    handler, which sets the acknowledgment flags that waitForAckNak checks.
-    Without this, ACKs arrive but never trigger the callback, causing timeouts.
+    Note: The onResponse callback must handle both routing ACK packets and
+    admin response packets for this request shape. Some Meshtastic versions
+    provide callback payloads without `decoded.routing`; this function uses a
+    guarded callback plus a bounded ACK wait to avoid long probe stalls.
     """
     local_node = getattr(client, "localNode", None)
-    if (
-        local_node is None
-        or not callable(getattr(client, "sendData", None))
-        or not callable(getattr(client, "waitForAckNak", None))
-        or not callable(getattr(local_node, "onAckNak", None))
-    ):
+    if local_node is None or not callable(getattr(client, "sendData", None)):
         raise RuntimeError("Meshtastic client cannot perform metadata liveness probe")
 
     request = admin_pb2.AdminMessage()
@@ -315,9 +420,17 @@ def _probe_device_connection(client: Any) -> None:
         portNum=portnums_pb2.PortNum.ADMIN_APP,
         wantAck=True,
         wantResponse=True,
-        onResponse=local_node.onAckNak,
+        onResponse=functools.partial(_handle_probe_ack_callback, local_node),
     )
-    client.waitForAckNak()
+    if getattr(client, "_acknowledgment", None) is not None:
+        _wait_for_probe_ack(client, DEFAULT_MESHTASTIC_OPERATION_TIMEOUT)
+        return
+
+    if callable(getattr(client, "waitForAckNak", None)):
+        client.waitForAckNak()
+        return
+
+    raise RuntimeError("Meshtastic client cannot wait for metadata probe ACK")
 
 
 def _submit_coro(
@@ -3256,17 +3369,18 @@ async def check_connection() -> None:
                     )
 
                 except Exception as exc:
+                    error_detail = str(exc).strip() or exc.__class__.__name__
                     # Only trigger reconnection if we're not already reconnecting
                     if not reconnecting:
                         logger.error(
                             "%s connection health check failed: %s",
                             connection_type.capitalize(),
-                            exc,
+                            error_detail,
                             exc_info=True,
                         )
                         on_lost_meshtastic_connection(
                             interface=meshtastic_client,
-                            detection_source=f"health check failed: {exc!s}",
+                            detection_source=f"health check failed: {error_detail}",
                         )
                     else:
                         logger.debug(

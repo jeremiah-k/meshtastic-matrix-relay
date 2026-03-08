@@ -1,4 +1,5 @@
 from concurrent.futures import Future
+from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -311,3 +312,79 @@ async def test_check_connection_uses_legacy_heartbeat_interval(
     # Check the second call specifically (the heartbeat)
     # call_args_list[1] is the second call, args[0] is the first arg
     assert mock_sleep.call_args_list[1].args[0] == 5
+
+
+def test_probe_device_connection_handles_admin_response_without_routing(
+    reset_meshtastic_globals,
+):
+    class AckState:
+        def __init__(self):
+            self.receivedAck = False
+            self.receivedNak = False
+            self.receivedImplAck = False
+            self.reset = Mock(side_effect=self._reset)
+
+        def _reset(self):
+            self.receivedAck = False
+            self.receivedNak = False
+            self.receivedImplAck = False
+
+    ack_state = AckState()
+    local_node = SimpleNamespace(
+        nodeNum=12345,
+        onAckNak=Mock(side_effect=KeyError("routing")),
+    )
+    local_node.iface = SimpleNamespace(
+        _acknowledgment=ack_state,
+        localNode=local_node,
+    )
+
+    client = SimpleNamespace(
+        localNode=local_node,
+        _acknowledgment=ack_state,
+        waitForAckNak=Mock(),
+    )
+
+    def _send_data_side_effect(*_args, **kwargs):
+        kwargs["onResponse"]({"from": str(local_node.nodeNum), "decoded": {}})
+        return None
+
+    client.sendData = Mock(side_effect=_send_data_side_effect)
+
+    mu._probe_device_connection(client)
+
+    client.sendData.assert_called_once()
+    local_node.onAckNak.assert_not_called()
+    ack_state.reset.assert_called_once()
+    client.waitForAckNak.assert_not_called()
+
+
+def test_probe_device_connection_uses_bounded_ack_timeout(reset_meshtastic_globals):
+    ack_state = SimpleNamespace(
+        receivedAck=False,
+        receivedNak=False,
+        receivedImplAck=False,
+        reset=Mock(),
+    )
+    local_node = SimpleNamespace(nodeNum=12345, onAckNak=Mock())
+    local_node.iface = SimpleNamespace(
+        _acknowledgment=ack_state,
+        localNode=local_node,
+    )
+
+    client = SimpleNamespace(
+        localNode=local_node,
+        _acknowledgment=ack_state,
+        sendData=Mock(return_value=None),
+        waitForAckNak=Mock(),
+    )
+
+    with (
+        patch.object(mu, "DEFAULT_MESHTASTIC_OPERATION_TIMEOUT", 0.01),
+        patch("mmrelay.meshtastic_utils.time.sleep", return_value=None),
+    ):
+        with pytest.raises(TimeoutError):
+            mu._probe_device_connection(client)
+
+    client.sendData.assert_called_once()
+    client.waitForAckNak.assert_not_called()
