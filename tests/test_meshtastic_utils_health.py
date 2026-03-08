@@ -292,11 +292,22 @@ async def test_check_connection_uses_legacy_heartbeat_interval(
     mu.config["meshtastic"]["heartbeat_interval"] = 5
     mu.meshtastic_client = None
 
+    # We need to survive the first sleep (initial delay) to reach the loop
+    # where the heartbeat interval is used.
+    sleep_handler = SleepAndShutdown(shutdown_after=2)
+
     with patch(
         "mmrelay.meshtastic_utils.asyncio.sleep",
         new_callable=AsyncMock,
-        side_effect=_sleep_and_shutdown,
+        side_effect=sleep_handler,
     ) as mock_sleep:
         await check_connection()
 
-    mock_sleep.assert_awaited_once_with(5)
+    # Should be called twice:
+    # 1. Initial delay (INITIAL_HEALTH_CHECK_DELAY)
+    # 2. Heartbeat interval (5)
+    assert mock_sleep.call_count == 2
+
+    # Check the second call specifically (the heartbeat)
+    # call_args_list[1] is the second call, args[0] is the first arg
+    assert mock_sleep.call_args_list[1].args[0] == 5

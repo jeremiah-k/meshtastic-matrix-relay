@@ -98,6 +98,9 @@ matrix_rooms: list[dict[str, Any]] = []
 # Initialize logger for Meshtastic
 logger = get_logger(name="Meshtastic")
 
+# Capture relay start time to filter out old messages
+RELAY_START_TIME = time.time()
+
 
 # Global variables for the Meshtastic connection and event loop management
 meshtastic_client = None
@@ -2712,6 +2715,17 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     # Validate packet structure
     if not packet or not isinstance(packet, dict):
         logger.error("Received malformed packet: packet is None or not a dict")
+        return
+
+    # Filter out old messages (from before relay start) to prevent flooding
+    # This handles cases where the node dumps stored history upon connection
+    rx_time = packet.get("rxTime", 0)
+    if rx_time > 0 and rx_time < RELAY_START_TIME:
+        logger.debug(
+            "Ignoring old message with rxTime %s (older than start time %s)",
+            rx_time,
+            RELAY_START_TIME,
+        )
         return
 
     # Full packet logging for debugging (when enabled in config)
