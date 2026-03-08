@@ -942,6 +942,10 @@ def delete_stale_longnames(current_ids: set[str]) -> int:
     """
     Delete stored long names for nodes absent from the current snapshot.
 
+    This is a low-level prune helper. Passing an empty set intentionally
+    removes all longname rows. Most callers should prefer `update_longnames()`,
+    which preserves existing rows when the node snapshot is empty or incomplete.
+
     Parameters:
         current_ids (set[str]): Set of Meshtastic node IDs currently known to the
             device.
@@ -955,6 +959,10 @@ def delete_stale_longnames(current_ids: set[str]) -> int:
 def delete_stale_shortnames(current_ids: set[str]) -> int:
     """
     Remove short name entries for nodes no longer in the device's nodedb.
+
+    This is a low-level prune helper. Passing an empty set intentionally
+    removes all shortname rows. Most callers should prefer `update_shortnames()`,
+    which preserves existing rows when the node snapshot is empty or incomplete.
 
     Parameters:
         current_ids (set[str]): Set of Meshtastic node IDs currently known to the device.
