@@ -59,6 +59,7 @@ from mmrelay.constants.network import (
     DEFAULT_MESHTASTIC_TIMEOUT,
     ERRNO_BAD_FILE_DESCRIPTOR,
     INFINITE_RETRIES,
+    INITIAL_HEALTH_CHECK_DELAY,
     MAX_TIMEOUT_RETRIES_INFINITE,
     METADATA_WATCHDOG_SECS,
 )
@@ -287,12 +288,17 @@ def _probe_device_connection(client: Any) -> None:
 
     This uses the public sendData API instead of the private _sendAdmin
     to ensure compatibility across Serial, TCP, and BLE interfaces.
+
+    Note: The onResponse callback must be provided to register the onAckNak
+    handler, which sets the acknowledgment flags that waitForAckNak checks.
+    Without this, ACKs arrive but never trigger the callback, causing timeouts.
     """
     local_node = getattr(client, "localNode", None)
     if (
         local_node is None
         or not callable(getattr(client, "sendData", None))
         or not callable(getattr(client, "waitForAckNak", None))
+        or not callable(getattr(local_node, "onAckNak", None))
     ):
         raise RuntimeError("Meshtastic client cannot perform metadata liveness probe")
 
@@ -305,6 +311,8 @@ def _probe_device_connection(client: Any) -> None:
         destinationId=destination_id,
         portNum=portnums_pb2.PortNum.ADMIN_APP,
         wantAck=True,
+        wantResponse=True,
+        onResponse=local_node.onAckNak,
     )
     client.waitForAckNak()
 
@@ -3149,6 +3157,9 @@ async def check_connection() -> None:
       - `enabled` (bool, default True) — enable or disable checks.
       - `heartbeat_interval` (int, seconds, default 60) — interval between checks. For backward compatibility, a top-level `heartbeat_interval` under `config["meshtastic"]` is supported.
     - BLE connections are excluded from periodic checks because BLE libraries provide real-time disconnect detection; this function returns early for BLE.
+    - Waits one `heartbeat_interval` before the first check to allow the connection to settle,
+      particularly important for fast-responding systems like MeshMonitor where ACK handling
+      may not be fully initialized immediately after connection.
     - For non-BLE connections, performs a low-level metadata admin probe using
       the same `get_device_metadata_request` packet as `localNode.getMetadata()`
       but without stdout capture. If the probe fails and no reconnection is
@@ -3190,6 +3201,15 @@ async def check_connection() -> None:
             "BLE connection uses real-time disconnection detection; periodic health checks disabled"
         )
         return
+
+    # Initial delay before first health check to allow connection to settle.
+    # This is particularly important for fast-responding systems like MeshMonitor
+    # where the connection may be established quickly but ACK handling may not be
+    # fully initialized yet.
+    logger.debug(
+        "Waiting before starting connection health checks to allow connection to settle"
+    )
+    await asyncio.sleep(INITIAL_HEALTH_CHECK_DELAY)
 
     while not shutting_down:
         if meshtastic_client and not reconnecting:

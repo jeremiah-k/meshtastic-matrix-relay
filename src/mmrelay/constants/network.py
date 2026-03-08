@@ -35,6 +35,9 @@ DEFAULT_MESHTASTIC_TIMEOUT = 300  # seconds
 # Timeout for individual Meshtastic operations (e.g., getMetadata, getMyNodeInfo)
 DEFAULT_MESHTASTIC_OPERATION_TIMEOUT = 30  # seconds
 
+# Initial delay before starting the first connection health check
+INITIAL_HEALTH_CHECK_DELAY = 10  # seconds
+
 # Matrix client timeouts
 MATRIX_EARLY_SYNC_TIMEOUT = 2000  # milliseconds
 MATRIX_MAIN_SYNC_TIMEOUT = 5000  # milliseconds

@@ -27,6 +27,38 @@ def _make_health_config(connection_type="tcp", enabled=True, heartbeat=60):
     }
 
 
+class SleepAndShutdown:
+    """
+    Helper to trigger shutdown after a specified number of sleep calls.
+
+    This is used to test the health check loop which has an initial delay
+    before the first check, followed by a loop sleep after each check.
+    """
+
+    def __init__(self, shutdown_after: int = 1):
+        """
+        Initialize the helper.
+
+        Parameters:
+            shutdown_after (int): Number of sleep calls before triggering shutdown.
+                Defaults to 1 (shutdown on first sleep, for tests that don't need initial delay).
+        """
+        self.sleep_count = 0
+        self.shutdown_after = shutdown_after
+
+    def __call__(self, _seconds):
+        """
+        Increment sleep counter and trigger shutdown after configured count.
+
+        Parameters:
+            _seconds (float): Ignored — present only to match the asyncio.sleep signature.
+        """
+        self.sleep_count += 1
+        if self.sleep_count >= self.shutdown_after:
+            mu.shutting_down = True
+        return None
+
+
 def _sleep_and_shutdown(_seconds):
     """
     Mark the application as shutting down; intended as a placeholder to use where asyncio.sleep is expected.
@@ -68,19 +100,23 @@ async def test_check_connection_ble_skips_health_checks(reset_meshtastic_globals
 async def test_check_connection_metadata_probe_succeeds():
     mu.config = _make_health_config(connection_type="tcp")
     mu.meshtastic_client = MagicMock()
+    mu.meshtastic_client.localNode.onAckNak = Mock()
 
     executor = Mock()
     probe_future: Future[None] = Future()
     probe_future.set_result(None)
     executor.submit.return_value = probe_future
 
+    sleep_handler = SleepAndShutdown(
+        shutdown_after=2
+    )  # Shutdown after initial delay + loop sleep
     with (
         patch("mmrelay.meshtastic_utils._get_metadata_executor", return_value=executor),
         patch("mmrelay.meshtastic_utils._probe_device_connection") as mock_probe,
         patch(
             "mmrelay.meshtastic_utils.asyncio.sleep",
             new_callable=AsyncMock,
-            side_effect=_sleep_and_shutdown,
+            side_effect=sleep_handler,
         ),
         patch("mmrelay.meshtastic_utils.logger") as mock_logger,
     ):
@@ -99,19 +135,23 @@ async def test_check_connection_metadata_probe_succeeds():
 async def test_check_connection_triggers_reconnect_on_probe_failure():
     mu.config = _make_health_config(connection_type="tcp")
     mu.meshtastic_client = MagicMock()
+    mu.meshtastic_client.localNode.onAckNak = Mock()
 
     executor = Mock()
     probe_future: Future[None] = Future()
     probe_future.set_exception(Exception("probe failed"))
     executor.submit.return_value = probe_future
 
+    sleep_handler = SleepAndShutdown(
+        shutdown_after=2
+    )  # Shutdown after initial delay + loop sleep
     with (
         patch("mmrelay.meshtastic_utils._get_metadata_executor", return_value=executor),
         patch("mmrelay.meshtastic_utils.on_lost_meshtastic_connection") as mock_lost,
         patch(
             "mmrelay.meshtastic_utils.asyncio.sleep",
             new_callable=AsyncMock,
-            side_effect=_sleep_and_shutdown,
+            side_effect=sleep_handler,
         ),
         patch("mmrelay.meshtastic_utils.logger") as mock_logger,
     ):
@@ -131,12 +171,16 @@ async def test_check_connection_triggers_reconnect_on_probe_failure():
 async def test_check_connection_tracks_timed_out_probe_until_worker_finishes():
     mu.config = _make_health_config(connection_type="tcp")
     mu.meshtastic_client = MagicMock()
+    mu.meshtastic_client.localNode.onAckNak = Mock()
 
     executor = Mock()
     probe_future: Future[None] = Future()
     assert probe_future.set_running_or_notify_cancel()
     executor.submit.return_value = probe_future
 
+    sleep_handler = SleepAndShutdown(
+        shutdown_after=2
+    )  # Shutdown after initial delay + loop sleep
     with (
         patch("mmrelay.meshtastic_utils._get_metadata_executor", return_value=executor),
         patch.object(mu, "DEFAULT_MESHTASTIC_OPERATION_TIMEOUT", 0.01),
@@ -144,7 +188,7 @@ async def test_check_connection_tracks_timed_out_probe_until_worker_finishes():
         patch(
             "mmrelay.meshtastic_utils.asyncio.sleep",
             new_callable=AsyncMock,
-            side_effect=_sleep_and_shutdown,
+            side_effect=sleep_handler,
         ),
         patch("mmrelay.meshtastic_utils.logger") as mock_logger,
     ):
@@ -169,14 +213,18 @@ async def test_check_connection_tracks_timed_out_probe_until_worker_finishes():
 async def test_check_connection_skips_when_metadata_probe_active():
     mu.config = _make_health_config(connection_type="tcp")
     mu.meshtastic_client = MagicMock()
+    mu.meshtastic_client.localNode.onAckNak = Mock()
     mu._metadata_future = Mock()
     mu._metadata_future.done.return_value = False
 
+    sleep_handler = SleepAndShutdown(
+        shutdown_after=2
+    )  # Shutdown after initial delay + loop sleep
     with (
         patch(
             "mmrelay.meshtastic_utils.asyncio.sleep",
             new_callable=AsyncMock,
-            side_effect=_sleep_and_shutdown,
+            side_effect=sleep_handler,
         ),
         patch("mmrelay.meshtastic_utils._get_metadata_executor") as mock_executor,
         patch("mmrelay.meshtastic_utils.on_lost_meshtastic_connection") as mock_lost,
@@ -197,11 +245,14 @@ async def test_check_connection_skips_when_reconnecting(reset_meshtastic_globals
     mu.meshtastic_client = MagicMock()
     mu.reconnecting = True
 
+    sleep_handler = SleepAndShutdown(
+        shutdown_after=2
+    )  # Shutdown after initial delay + loop sleep
     with (
         patch(
             "mmrelay.meshtastic_utils.asyncio.sleep",
             new_callable=AsyncMock,
-            side_effect=_sleep_and_shutdown,
+            side_effect=sleep_handler,
         ),
         patch("mmrelay.meshtastic_utils.logger") as mock_logger,
     ):
@@ -217,11 +268,14 @@ async def test_check_connection_skips_when_no_client(reset_meshtastic_globals):
     mu.config = _make_health_config(connection_type="tcp")
     mu.meshtastic_client = None
 
+    sleep_handler = SleepAndShutdown(
+        shutdown_after=2
+    )  # Shutdown after initial delay + loop sleep
     with (
         patch(
             "mmrelay.meshtastic_utils.asyncio.sleep",
             new_callable=AsyncMock,
-            side_effect=_sleep_and_shutdown,
+            side_effect=sleep_handler,
         ),
         patch("mmrelay.meshtastic_utils.logger") as mock_logger,
     ):

@@ -129,6 +129,8 @@ class TestConstantsValidity:
         Verify that network timeout and error code constants have reasonable and expected values.
         """
         assert network.DEFAULT_BACKOFF_TIME > 0
+        assert network.DEFAULT_MESHTASTIC_OPERATION_TIMEOUT > 0
+        assert network.INITIAL_HEALTH_CHECK_DELAY > 0
         assert network.MINIMUM_MESSAGE_DELAY >= 0
         assert network.MILLISECONDS_PER_SECOND == 1000
         assert network.ERRNO_BAD_FILE_DESCRIPTOR == 9
