@@ -872,7 +872,12 @@ class TestMain(unittest.TestCase):
             asyncio.run(main(self.mock_config))
 
         mock_run_blocking_with_timeout.assert_called_once()
-        _, kwargs = mock_run_blocking_with_timeout.call_args
+        args, kwargs = mock_run_blocking_with_timeout.call_args
+        close_callable = args[0]
+        self.assertTrue(callable(close_callable))
+        mock_connect_meshtastic.return_value.close.assert_not_called()
+        close_callable()
+        mock_connect_meshtastic.return_value.close.assert_called_once()
         self.assertEqual(kwargs.get("timeout"), 10.0)
         self.assertEqual(kwargs.get("label"), "meshtastic-client-close-shutdown")
 

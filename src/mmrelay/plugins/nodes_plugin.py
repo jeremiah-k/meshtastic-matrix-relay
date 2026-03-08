@@ -93,45 +93,45 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
         response = f"Nodes: {len(meshtastic_client.nodes)}\n"
 
         for _node, info in meshtastic_client.nodes.items():
-            user_info = (
-                info.get("user", {})
-                if isinstance(info, dict) and isinstance(info.get("user"), dict)
-                else {}
-            )
+            if not isinstance(info, dict):
+                continue
+
+            user = info.get("user")
+            user_info = user if isinstance(user, dict) else {}
             short_name = user_info.get("shortName", "Unknown")
             long_name = user_info.get("longName", "Unknown")
             hw_model = user_info.get("hwModel", "Unknown")
 
             hops = "? hops away"
-            if "hopsAway" in info and info["hopsAway"] is not None:
-                if info["hopsAway"] == 0:
+            hops_away = info.get("hopsAway")
+            if hops_away is not None:
+                if hops_away == 0:
                     hops = "direct"
-                elif info["hopsAway"] == 1:
+                elif hops_away == 1:
                     hops = "1 hop away"
                 else:
-                    hops = f"{info['hopsAway']} hops away"
+                    hops = f"{hops_away} hops away"
 
             snr = ""
-            if "snr" in info and info["snr"] is not None:
-                snr = f"{info['snr']} dB "
+            snr_value = info.get("snr")
+            if snr_value is not None:
+                snr = f"{snr_value} dB "
 
             last_heard = None
-            if "lastHeard" in info and info["lastHeard"] is not None:
-                last_heard = get_relative_time(info["lastHeard"])
+            last_heard_timestamp = info.get("lastHeard")
+            if last_heard_timestamp is not None:
+                last_heard = get_relative_time(last_heard_timestamp)
 
             voltage = "?V"
             battery = "?%"
-            if "deviceMetrics" in info:
-                if (
-                    "voltage" in info["deviceMetrics"]
-                    and info["deviceMetrics"]["voltage"] is not None
-                ):
-                    voltage = f"{info['deviceMetrics']['voltage']}V "
-                if (
-                    "batteryLevel" in info["deviceMetrics"]
-                    and info["deviceMetrics"]["batteryLevel"] is not None
-                ):
-                    battery = f"{info['deviceMetrics']['batteryLevel']}% "
+            device_metrics = info.get("deviceMetrics")
+            if isinstance(device_metrics, dict):
+                voltage_value = device_metrics.get("voltage")
+                if voltage_value is not None:
+                    voltage = f"{voltage_value}V "
+                battery_level = device_metrics.get("batteryLevel")
+                if battery_level is not None:
+                    battery = f"{battery_level}% "
 
             response += (
                 f"{short_name} {long_name} / {hw_model} / "

@@ -47,7 +47,7 @@ from mmrelay.meshtastic_utils import (
 TEST_PACKET_RX_TIME = 1234567890
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def stable_relay_start_time(monkeypatch):
     """
     Keep message-processing tests deterministic regardless of wall-clock time.
@@ -88,6 +88,7 @@ class _FakeEvent:
         return None
 
 
+@pytest.mark.usefixtures("stable_relay_start_time")
 class TestMeshtasticUtils(unittest.TestCase):
     """Test cases for Meshtastic utilities."""
 
@@ -1640,6 +1641,7 @@ class TestBleHelperFunctions(unittest.TestCase):
             )
 
 
+@pytest.mark.usefixtures("stable_relay_start_time")
 class TestMessageProcessingEdgeCases(unittest.TestCase):
     """Test cases for edge cases in message processing."""
 
@@ -2639,9 +2641,14 @@ class TestGetDeviceMetadata(unittest.TestCase):
         """raise_on_error=True should propagate getMetadata probe failures."""
         mock_client = MagicMock()
         mock_client.localNode.getMetadata.side_effect = Exception("Device error")
+        mock_client.localNode.iface.metadata = None
 
         with self.assertRaisesRegex(Exception, "Device error"):
-            _get_device_metadata(mock_client, raise_on_error=True)
+            _get_device_metadata(
+                mock_client,
+                force_refresh=True,
+                raise_on_error=True,
+            )
 
     def test_get_device_metadata_quoted_version(self):
         """Test parsing firmware version with quotes."""
@@ -2735,6 +2742,49 @@ class TestGetDeviceMetadata(unittest.TestCase):
         mock_client.localNode.getMetadata.assert_not_called()
         mock_logger.debug.assert_called_with(
             "getMetadata() already running; skipping new request"
+        )
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_submit_metadata_probe_clears_stale_future(self, mock_logger):
+        """Stale in-flight metadata futures should be cleared before resubmitting."""
+        import mmrelay.meshtastic_utils as mu
+
+        stale_future = MagicMock()
+        stale_future.done.return_value = False
+        stale_future.add_done_callback = Mock()
+
+        submitted_future = MagicMock()
+        submitted_future.add_done_callback = Mock()
+
+        mock_executor = MagicMock()
+        mock_executor.submit.return_value = submitted_future
+        probe = Mock()
+
+        with (
+            patch(
+                "mmrelay.meshtastic_utils._get_metadata_executor",
+                return_value=mock_executor,
+            ),
+            patch("mmrelay.meshtastic_utils._schedule_metadata_future_cleanup"),
+            patch(
+                "mmrelay.meshtastic_utils.time.monotonic",
+                return_value=METADATA_WATCHDOG_SECS + 1.0,
+            ),
+        ):
+            mu._metadata_future = stale_future
+            mu._metadata_future_started_at = 0.0
+            try:
+                result = mu._submit_metadata_probe(probe)
+            finally:
+                mu._metadata_future = None
+                mu._metadata_future_started_at = None
+
+        self.assertIs(result, submitted_future)
+        mock_executor.submit.assert_called_once_with(probe)
+        mock_logger.warning.assert_any_call(
+            "Metadata worker still running after %.0fs; clearing stale future (%s)",
+            METADATA_WATCHDOG_SECS,
+            "submit-retry",
         )
 
     def test_get_device_metadata_raise_on_error_reraises_non_io_value_error(self):

@@ -129,6 +129,7 @@ subscribed_to_connection_lost = False
 # A single worker is enough because getMetadata() is serialized by design.
 _metadata_executor = ThreadPoolExecutor(max_workers=1)
 _metadata_future: Future[Any] | None = None
+_metadata_future_started_at: float | None = None
 _metadata_future_lock = threading.Lock()
 _health_probe_request_deadlines: dict[int, float] = {}
 _health_probe_request_lock = threading.Lock()
@@ -188,7 +189,7 @@ def _shutdown_shared_executors() -> None:
     Note: This is called via atexit during interpreter shutdown. It performs
     cleanup without waiting to avoid blocking the interpreter exit sequence.
     """
-    global _ble_future, _ble_future_address, _metadata_future
+    global _ble_future, _ble_future_address, _metadata_future, _metadata_future_started_at
 
     # Cancel any pending BLE operation
     with _ble_executor_lock:
@@ -215,6 +216,7 @@ def _shutdown_shared_executors() -> None:
             logger.debug("Cancelling pending metadata future during executor shutdown")
             _metadata_future.cancel()
         _metadata_future = None
+        _metadata_future_started_at = None
 
         executor = _metadata_executor
         if executor is not None and not getattr(executor, "_shutdown", False):
@@ -265,10 +267,46 @@ def _clear_metadata_future_if_current(done_future: Future[Any]) -> None:
     """
     Clear the shared metadata future if it still refers to `done_future`.
     """
-    global _metadata_future
+    global _metadata_future, _metadata_future_started_at
     with _metadata_future_lock:
         if _metadata_future is done_future:
             _metadata_future = None
+            _metadata_future_started_at = None
+
+
+def _schedule_metadata_future_cleanup(
+    future: Future[Any],
+    reason: str,
+) -> None:
+    """
+    Schedule delayed cleanup for a metadata probe future that appears stuck.
+
+    If the future is still the active metadata future after
+    `METADATA_WATCHDOG_SECS`, clear the shared reference so later health checks
+    are not permanently suppressed by a stale in-flight marker.
+    """
+
+    def _cleanup() -> None:
+        if future.done():
+            return
+
+        with _metadata_future_lock:
+            should_clear = _metadata_future is future
+
+        if not should_clear:
+            return
+
+        logger.warning(
+            "Metadata worker still running after %.0fs; clearing stale future (%s)",
+            METADATA_WATCHDOG_SECS,
+            reason,
+        )
+        _clear_metadata_future_if_current(future)
+
+    timer = threading.Timer(METADATA_WATCHDOG_SECS, _cleanup)
+    timer.daemon = True
+    future.add_done_callback(lambda _f: timer.cancel())
+    timer.start()
 
 
 def _submit_metadata_probe(probe: Callable[[], Any]) -> Future[Any] | None:
@@ -278,15 +316,31 @@ def _submit_metadata_probe(probe: Callable[[], Any]) -> Future[Any] | None:
     Returns the shared concurrent future for the submitted probe, or `None`
     when another metadata operation is already running.
     """
-    global _metadata_future
+    global _metadata_future, _metadata_future_started_at
+    stale_future: Future[Any] | None = None
     with _metadata_future_lock:
         if _metadata_future is not None and not _metadata_future.done():
-            return None
+            if _metadata_future_started_at is None or (
+                time.monotonic() - _metadata_future_started_at < METADATA_WATCHDOG_SECS
+            ):
+                return None
+            stale_future = _metadata_future
+            _metadata_future = None
+            _metadata_future_started_at = None
 
         future = _get_metadata_executor().submit(probe)
         _metadata_future = future
+        _metadata_future_started_at = time.monotonic()
+
+    if stale_future is not None:
+        logger.warning(
+            "Metadata worker still running after %.0fs; clearing stale future (%s)",
+            METADATA_WATCHDOG_SECS,
+            "submit-retry",
+        )
 
     future.add_done_callback(_clear_metadata_future_if_current)
+    _schedule_metadata_future_cleanup(future, reason="metadata-probe")
     return future
 
 
@@ -555,7 +609,12 @@ def _probe_device_connection(
         return
 
     if callable(getattr(client, "waitForAckNak", None)):
-        client.waitForAckNak()
+        _run_blocking_with_timeout(
+            cast(Callable[[], Any], client.waitForAckNak),
+            timeout=timeout_secs,
+            label="metadata-probe-waitForAckNak",
+            timeout_log_level=logging.DEBUG,
+        )
         return
 
     raise RuntimeError("Meshtastic client cannot wait for metadata probe ACK")
