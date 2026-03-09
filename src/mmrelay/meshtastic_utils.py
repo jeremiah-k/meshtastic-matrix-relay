@@ -6,6 +6,7 @@ import importlib.util
 import inspect
 import io
 import logging
+import math
 import re
 import sys
 import threading
@@ -405,17 +406,49 @@ def _coerce_positive_float(value: Any, default: float, setting_name: str) -> flo
     Parse and validate a positive float config value.
 
     Falls back to `default` and logs a warning if conversion fails or if the
-    value is not greater than zero.
+    value is not a finite positive number.
     """
     try:
         parsed = float(value)
-        if parsed > 0:
+        if math.isfinite(parsed) and parsed > 0:
             return parsed
     except (TypeError, ValueError):
         pass
 
     logger.warning(
         "Invalid %s value %r; using default %.1f",
+        setting_name,
+        value,
+        default,
+    )
+    return default
+
+
+def _coerce_bool(value: Any, default: bool, setting_name: str) -> bool:
+    """
+    Parse and validate a boolean config value.
+
+    Accepts booleans directly, and normalizes string values:
+    - "true", "1", "yes", "on" (case-insensitive) -> True
+    - "false", "0", "no", "off", "" (case-insensitive) -> False
+
+    Falls back to `default` and logs a warning for unrecognized values.
+    """
+    if isinstance(value, bool):
+        return value
+
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        elif normalized in {"", "0", "false", "no", "off"}:
+            return False
+    elif isinstance(value, (int, float)):
+        # For numeric types, use standard bool conversion
+        return bool(value)
+
+    logger.warning(
+        "Invalid %s value %r; using default %s",
         setting_name,
         value,
         default,
@@ -3660,7 +3693,14 @@ async def check_connection() -> None:
             health_config,
         )
         health_config = {}
-    health_check_enabled = health_config.get("enabled", DEFAULT_HEALTH_CHECK_ENABLED)
+    raw_health_check_enabled = health_config.get(
+        "enabled", DEFAULT_HEALTH_CHECK_ENABLED
+    )
+    health_check_enabled = _coerce_bool(
+        raw_health_check_enabled,
+        DEFAULT_HEALTH_CHECK_ENABLED,
+        "meshtastic.health_check.enabled",
+    )
     heartbeat_interval = health_config.get("heartbeat_interval", 60)
     initial_delay = health_config.get("initial_delay", INITIAL_HEALTH_CHECK_DELAY)
     probe_timeout = health_config.get(
