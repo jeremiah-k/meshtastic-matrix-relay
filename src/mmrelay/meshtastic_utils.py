@@ -128,7 +128,7 @@ subscribed_to_connection_lost = False
 
 # Shared executor for getMetadata() to avoid leaking threads when metadata calls hang.
 # A single worker is enough because getMetadata() is serialized by design.
-_metadata_executor = ThreadPoolExecutor(max_workers=1)
+_metadata_executor: ThreadPoolExecutor | None = ThreadPoolExecutor(max_workers=1)
 _metadata_future: Future[Any] | None = None
 _metadata_future_started_at: float | None = None
 _metadata_future_lock = threading.Lock()
@@ -138,7 +138,7 @@ _HEALTH_PROBE_TRACK_GRACE_SECS = 60.0
 
 # Shared executor for BLE init/connect to avoid leaking threads across retries.
 # BLE setup is inherently sequential, so a single worker keeps things predictable.
-_ble_executor = ThreadPoolExecutor(max_workers=1)
+_ble_executor: ThreadPoolExecutor | None = ThreadPoolExecutor(max_workers=1)
 _ble_executor_lock = threading.Lock()
 _ble_future: Future[Any] | None = None
 _ble_future_address: str | None = None
