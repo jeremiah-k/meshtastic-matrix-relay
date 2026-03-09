@@ -685,7 +685,8 @@ def _probe_device_connection(
     request = admin_pb2.AdminMessage()
     request.get_device_metadata_request = True
     # Use the public sendData API instead of private _sendAdmin
-    destination_id = getattr(local_node, "nodeNum", None) or "^local"
+    node_num = getattr(local_node, "nodeNum", None)
+    destination_id = node_num if node_num is not None else "^local"
     sent_packet = client.sendData(
         request.SerializeToString(),
         destinationId=destination_id,
@@ -3638,6 +3639,12 @@ async def check_connection() -> None:
 
     # Get health check configuration
     health_config = config["meshtastic"].get("health_check", {})
+    if not isinstance(health_config, dict):
+        logger.warning(
+            "meshtastic.health_check config is not a dictionary (got %r); using defaults",
+            health_config,
+        )
+        health_config = {}
     health_check_enabled = health_config.get("enabled", DEFAULT_HEALTH_CHECK_ENABLED)
     heartbeat_interval = health_config.get("heartbeat_interval", 60)
     initial_delay = health_config.get("initial_delay", INITIAL_HEALTH_CHECK_DELAY)
