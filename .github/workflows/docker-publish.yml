@@ -87,7 +87,7 @@ jobs:
             org.opencontainers.image.created=${{ steps.get_version.outputs.build_date }}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
