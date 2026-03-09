@@ -3141,12 +3141,7 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     try:
         rx_time = float(rx_time_raw)
     except (TypeError, ValueError):
-        logger.debug(
-            "Ignoring old message with rxTime %s (older than start time %s)",
-            rx_time_raw,
-            RELAY_START_TIME,
-        )
-        return
+        rx_time = 0
 
     if rx_time > 0 and rx_time < RELAY_START_TIME:
         logger.debug(
