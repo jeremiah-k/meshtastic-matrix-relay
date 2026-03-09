@@ -62,6 +62,8 @@ class TestExecutorShutdown:
         assert "AA:BB:CC:DD:EE:FF" not in mu._ble_timeout_counts
         # Verify executor was shut down
         mock_executor.shutdown.assert_called_once_with(wait=False, cancel_futures=True)
+        # Shared reference should be cleared to avoid repeated shutdown calls at exit.
+        assert mu._ble_executor is None
 
     def test_shutdown_shared_executors_cancels_metadata_future(self):
         """Test metadata future cancellation during shutdown."""
@@ -84,6 +86,8 @@ class TestExecutorShutdown:
         mock_future.cancel.assert_called_once()
         # Verify executor was shut down
         mock_executor.shutdown.assert_called_once_with(wait=False, cancel_futures=True)
+        # Shared reference should be cleared to avoid repeated shutdown calls at exit.
+        assert mu._metadata_executor is None
 
     def test_shutdown_shared_executors_handles_type_error(self):
         """Test executor shutdown handles TypeError on older Python."""
@@ -101,6 +105,7 @@ class TestExecutorShutdown:
 
         # Should have called shutdown twice (once with cancel_futures, once without)
         assert mock_executor.shutdown.call_count == 2
+        assert mu._ble_executor is None
 
 
 class TestMetadataFutureCleanup:

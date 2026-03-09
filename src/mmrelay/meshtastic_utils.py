@@ -190,7 +190,8 @@ def _shutdown_shared_executors() -> None:
     Note: This is called via atexit during interpreter shutdown. It performs
     cleanup without waiting to avoid blocking the interpreter exit sequence.
     """
-    global _ble_future, _ble_future_address, _metadata_future, _metadata_future_started_at
+    global _ble_executor, _ble_future, _ble_future_address
+    global _metadata_executor, _metadata_future, _metadata_future_started_at
 
     # Cancel any pending BLE operation
     with _ble_executor_lock:
@@ -205,6 +206,7 @@ def _shutdown_shared_executors() -> None:
                 _ble_timeout_counts.pop(stale_address, None)
 
         executor = _ble_executor
+        _ble_executor = None
         if executor is not None and not getattr(executor, "_shutdown", False):
             try:
                 executor.shutdown(wait=False, cancel_futures=True)
@@ -220,6 +222,7 @@ def _shutdown_shared_executors() -> None:
         _metadata_future_started_at = None
 
         executor = _metadata_executor
+        _metadata_executor = None
         if executor is not None and not getattr(executor, "_shutdown", False):
             try:
                 executor.shutdown(wait=False, cancel_futures=True)
@@ -632,6 +635,23 @@ def _missing_probe_wait_error() -> RuntimeError:
     return RuntimeError("Meshtastic client cannot wait for metadata probe ACK")
 
 
+def _reset_probe_ack_state(ack_state: Any) -> None:
+    """
+    Reset health-probe acknowledgment flags on a Meshtastic ACK state object.
+
+    Uses the object's `reset()` method when available; otherwise manually clears
+    known ACK/NAK flags for compatibility with test doubles and older interfaces.
+    """
+    reset = getattr(ack_state, "reset", None)
+    if callable(reset):
+        reset()
+        return
+
+    for attr in ("receivedAck", "receivedNak", "receivedImplAck"):
+        if hasattr(ack_state, attr):
+            setattr(ack_state, attr, False)
+
+
 def _handle_probe_ack_callback(local_node: Any, packet: Any) -> None:
     """
     Handle health-probe response packets across routing/admin response shapes.
@@ -682,13 +702,7 @@ def _wait_for_probe_ack(client: Any, timeout_secs: float) -> None:
             bool(getattr(ack_state, attr, False))
             for attr in ("receivedAck", "receivedNak", "receivedImplAck")
         ):
-            reset = getattr(ack_state, "reset", None)
-            if callable(reset):
-                reset()
-            else:
-                for attr in ("receivedAck", "receivedNak", "receivedImplAck"):
-                    if hasattr(ack_state, attr):
-                        setattr(ack_state, attr, False)
+            _reset_probe_ack_state(ack_state)
             return
         time.sleep(0.1)
 
@@ -724,13 +738,7 @@ def _probe_device_connection(
     if ack_state is None:
         ack_state = getattr(getattr(local_node, "iface", None), "_acknowledgment", None)
     if ack_state is not None:
-        reset_ack = getattr(ack_state, "reset", None)
-        if callable(reset_ack):
-            reset_ack()
-        else:
-            for attr in ("receivedAck", "receivedNak", "receivedImplAck"):
-                if hasattr(ack_state, attr):
-                    setattr(ack_state, attr, False)
+        _reset_probe_ack_state(ack_state)
 
     request = admin_pb2.AdminMessage()
     request.get_device_metadata_request = True
