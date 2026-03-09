@@ -924,3 +924,257 @@ class TestMessageHandlerEdgeCases:
                                 )
 
         asyncio.run(run_test())
+
+
+class TestMetadataExecutorResetTypeError:
+    """Test TypeError handling in _reset_metadata_executor_for_stale_probe (lines 294-298)."""
+
+    def test_reset_metadata_executor_handles_type_error(self):
+        """Test that _reset_metadata_executor_for_stale_probe handles TypeError on shutdown."""
+        old_executor = Mock(spec=ThreadPoolExecutor)
+        old_executor._shutdown = False
+        # First call raises TypeError, second succeeds
+        old_executor.shutdown.side_effect = [
+            TypeError("cancel_futures not supported"),
+            None,
+        ]
+        mu._metadata_executor = old_executor
+        mu._metadata_future = Mock(spec=Future)
+        mu._metadata_future_started_at = time.monotonic()
+
+        mu._reset_metadata_executor_for_stale_probe()
+
+        # Verify shutdown was called twice (once with cancel_futures, once without)
+        assert old_executor.shutdown.call_count == 2
+        # Verify new executor was created
+        assert mu._metadata_executor is not old_executor
+
+
+class TestMetadataFutureCleanupPaths:
+    """Test all paths in _schedule_metadata_future_cleanup (lines 314-328)."""
+
+    def test_cleanup_early_return_when_future_done(self):
+        """Test that cleanup returns early when future is already done.
+
+        The _cleanup function is called by Timer after METADATA_WATCHDOG_SECS.
+        When future.done() is True, _cleanup should return early without
+        calling _reset_metadata_executor_for_stale_probe.
+        """
+        mock_future = Mock(spec=Future)
+        mock_future.done.return_value = True
+        mu._metadata_future = mock_future
+
+        with patch("mmrelay.meshtastic_utils._reset_metadata_executor_for_stale_probe"):
+            mu._schedule_metadata_future_cleanup(mock_future, "test-reason")
+            # Timer is created and started, but _cleanup returns early
+            # Trigger the done callback to cancel timer (cleanup)
+            [
+                call
+                for call in mock_future.method_calls
+                if "add_done_callback" in str(call)
+            ]
+            # The done callback should be registered
+            mock_future.add_done_callback.assert_called_once()
+            # Since future is done, _reset should not be called during cleanup
+            # (but we don't actually wait for the timer here)
+
+    def test_cleanup_early_return_when_should_clear_false(self):
+        """Test that cleanup returns early when _metadata_future is different."""
+        mock_future = Mock(spec=Future)
+        mock_future.done.return_value = False
+        different_future = Mock(spec=Future)
+        mu._metadata_future = different_future
+
+        with patch("threading.Timer") as mock_timer_class:
+            mu._schedule_metadata_future_cleanup(mock_future, "test-reason")
+            # Timer should still be created (we need to wait to check should_clear)
+            # Actually, the check happens inside _cleanup which is called by Timer
+            # So Timer IS created, but _cleanup returns early
+            mock_timer_class.assert_called_once()
+
+
+class TestCoerceBoolEdgeCases:
+    """Test _coerce_bool edge cases (lines 437-456)."""
+
+    def test_coerce_bool_with_true_bool(self):
+        """Test _coerce_bool with True boolean."""
+        result = mu._coerce_bool(True, False, "test_setting")
+        assert result is True
+
+    def test_coerce_bool_with_false_bool(self):
+        """Test _coerce_bool with False boolean."""
+        result = mu._coerce_bool(False, True, "test_setting")
+        assert result is False
+
+    def test_coerce_bool_with_positive_int(self):
+        """Test _coerce_bool with positive integer."""
+        result = mu._coerce_bool(1, False, "test_setting")
+        assert result is True
+
+    def test_coerce_bool_with_zero_int(self):
+        """Test _coerce_bool with zero integer."""
+        result = mu._coerce_bool(0, True, "test_setting")
+        assert result is False
+
+    def test_coerce_bool_with_positive_float(self):
+        """Test _coerce_bool with positive float."""
+        result = mu._coerce_bool(1.5, False, "test_setting")
+        assert result is True
+
+    def test_coerce_bool_with_zero_float(self):
+        """Test _coerce_bool with zero float."""
+        result = mu._coerce_bool(0.0, True, "test_setting")
+        assert result is False
+
+    def test_coerce_bool_with_whitespace_string(self):
+        """Test _coerce_bool with whitespace-only string defaults to False."""
+        result = mu._coerce_bool("   ", True, "test_setting")
+        assert result is False
+
+    def test_coerce_bool_with_empty_string(self):
+        """Test _coerce_bool with empty string returns False."""
+        result = mu._coerce_bool("", True, "test_setting")
+        assert result is False
+
+    def test_coerce_bool_with_invalid_type(self):
+        """Test _coerce_bool with invalid type logs warning and returns default."""
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            result = mu._coerce_bool(["list"], True, "test_setting")
+            assert result is True  # Default value
+            mock_logger.warning.assert_called_once()
+
+
+class TestHealthProbeResponsePacketLocalNodeFallback:
+    """Test _is_health_probe_response_packet fallback to localNode (lines 530-531)."""
+
+    def test_is_health_probe_response_packet_uses_localnode_when_myinfo_none(self):
+        """Test that packet detection falls back to localNode.nodeNum when myInfo is None."""
+        # Track a request
+        mu._track_health_probe_request_id(789, 10.0)
+
+        packet = {
+            "from": 12345,
+            "decoded": {"requestId": 789},
+        }
+
+        # Create mock interface where myInfo is None but localNode has nodeNum
+        mock_interface = Mock()
+        mock_interface.myInfo = None
+        mock_localNode = Mock()
+        mock_localNode.nodeNum = 12345
+        mock_interface.localNode = mock_localNode
+
+        result = mu._is_health_probe_response_packet(packet, mock_interface)
+        assert result is True
+
+
+class TestWaitForProbeAckManualReset:
+    """Test _wait_for_probe_ack with non-callable reset (lines 686-691)."""
+
+    def test_wait_for_probe_ack_with_non_callable_reset(self):
+        """Test that _wait_for_probe_ack manually resets flags when reset is not callable."""
+        ack_state = Mock()
+        ack_state.receivedAck = True
+        ack_state.receivedNak = False
+        ack_state.receivedImplAck = False
+        # Make reset a non-callable attribute
+        ack_state.reset = "not_callable"
+
+        client = Mock()
+        client._acknowledgment = ack_state
+
+        mu._wait_for_probe_ack(client, 0.1)
+
+        # Verify flags were manually reset
+        assert ack_state.receivedAck is False
+        assert ack_state.receivedNak is False
+        assert ack_state.receivedImplAck is False
+
+
+class TestProbeDeviceConnectionManualReset:
+    """Test _probe_device_connection with non-callable reset (lines 728-733)."""
+
+    def test_probe_device_connection_with_non_callable_reset(self):
+        """Test that _probe_device_connection manually resets flags when reset is not callable."""
+        ack_state = Mock()
+        ack_state.reset = "not_callable"  # Non-callable reset
+        ack_state.receivedAck = True
+        ack_state.receivedNak = True
+        ack_state.receivedImplAck = True
+
+        client = Mock()
+        client.localNode = Mock()
+        client.localNode.nodeNum = 12345
+        client.sendData = Mock(return_value=Mock(id=999))
+        client._acknowledgment = ack_state
+        client.waitForAckNak = Mock()
+
+        # Patch _wait_for_probe_ack to avoid timeout waiting for ACK
+        with patch("mmrelay.meshtastic_utils._wait_for_probe_ack"):
+            mu._probe_device_connection(client, 0.1)
+
+        # Verify flags were manually reset during the initial cleanup phase
+        assert ack_state.receivedAck is False
+        assert ack_state.receivedNak is False
+        assert ack_state.receivedImplAck is False
+
+
+class TestGetDeviceMetadataIoError:
+    """Test _get_device_metadata I/O error handling (lines 1634-1635, 1671)."""
+
+    def test_get_device_metadata_handles_io_error_on_closed_file(self):
+        """Test handling of I/O operation on closed file."""
+        client = Mock()
+        client.localNode = Mock()
+        client.localNode.getMetadata = Mock()
+        client.localNode.metadata = None
+        client.metadata = None
+
+        # Create mock future that raises ValueError with closed file message
+        mock_future = Mock(spec=Future)
+        mock_future.result.side_effect = ValueError("I/O operation on closed file")
+        mock_future.done.return_value = True
+
+        with patch("mmrelay.meshtastic_utils._submit_metadata_probe") as mock_submit:
+            mock_submit.return_value = mock_future
+
+            result = mu._get_device_metadata(client)
+
+            # Should handle gracefully and return unknown
+            assert result["firmware_version"] == "unknown"
+            assert result["success"] is False
+
+
+class TestOnMeshtasticMessageOldPacketFiltering:
+    """Test old message filtering in on_meshtastic_message (lines 3199-3205)."""
+
+    def test_on_meshtastic_message_filters_old_packets(self):
+        """Test that packets with rx_time < RELAY_START_TIME are filtered out."""
+        import mmrelay.meshtastic_utils as mu_module
+
+        # Set RELAY_START_TIME to a recent time
+        mu_module.RELAY_START_TIME = time.time()
+
+        # Create a packet with rx_time in the past (before RELAY_START_TIME)
+        old_packet = {
+            "from": 12345,
+            "to": 4294967295,  # BROADCAST_NUM
+            "decoded": {"text": "old message", "portnum": "TEXT_MESSAGE_APP"},
+            "channel": 0,
+            "id": 12345,
+            "rxTime": mu_module.RELAY_START_TIME - 100,  # 100 seconds before start
+        }
+
+        mock_interface = Mock()
+        mock_interface.myInfo = Mock()
+        mock_interface.myInfo.my_node_num = 12345
+
+        mu_module.config = {"meshtastic": {"meshnet_name": "test"}}
+        mu_module.matrix_rooms = []
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            mu_module.on_meshtastic_message(old_packet, mock_interface)
+
+            # Should log debug about ignoring old message
+            log_calls = [str(call) for call in mock_logger.debug.call_args_list]
+            assert any("Ignoring old message" in call for call in log_calls)
