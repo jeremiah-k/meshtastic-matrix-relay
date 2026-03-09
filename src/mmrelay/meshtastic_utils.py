@@ -1,10 +1,12 @@
 import asyncio
 import atexit
 import contextlib
+import functools
 import importlib.util
 import inspect
 import io
 import logging
+import math
 import re
 import sys
 import threading
@@ -20,7 +22,7 @@ import meshtastic.serial_interface
 import meshtastic.tcp_interface
 import serial  # For serial port exceptions
 import serial.tools.list_ports  # Import serial tools for port listing
-from meshtastic.protobuf import mesh_pb2, portnums_pb2
+from meshtastic.protobuf import admin_pb2, mesh_pb2, portnums_pb2
 from pubsub import pub
 
 from mmrelay.config import get_meshtastic_config_value
@@ -28,6 +30,7 @@ from mmrelay.constants.config import (
     CONFIG_KEY_MESHNET_NAME,
     CONFIG_SECTION_MESHTASTIC,
     DEFAULT_DETECTION_SENSOR,
+    DEFAULT_HEALTH_CHECK_ENABLED,
 )
 from mmrelay.constants.formats import (
     DETECTION_SENSOR_APP,
@@ -40,6 +43,7 @@ from mmrelay.constants.messages import (
     PORTNUM_TEXT_MESSAGE_APP,
 )
 from mmrelay.constants.network import (
+    BLE_CONNECT_TIMEOUT_SECS,
     BLE_FUTURE_WATCHDOG_SECS,
     BLE_SCAN_TIMEOUT_SECS,
     BLE_TIMEOUT_RESET_THRESHOLD,
@@ -58,7 +62,9 @@ from mmrelay.constants.network import (
     DEFAULT_MESHTASTIC_TIMEOUT,
     ERRNO_BAD_FILE_DESCRIPTOR,
     INFINITE_RETRIES,
+    INITIAL_HEALTH_CHECK_DELAY,
     MAX_TIMEOUT_RETRIES_INFINITE,
+    METADATA_WATCHDOG_SECS,
 )
 from mmrelay.db_utils import (
     get_longname,
@@ -95,6 +101,9 @@ matrix_rooms: list[dict[str, Any]] = []
 # Initialize logger for Meshtastic
 logger = get_logger(name="Meshtastic")
 
+# Session cutoff used to filter out backlog packets; reset on each new connection.
+RELAY_START_TIME = time.time()
+
 
 # Global variables for the Meshtastic connection and event loop management
 meshtastic_client = None
@@ -119,13 +128,17 @@ subscribed_to_connection_lost = False
 
 # Shared executor for getMetadata() to avoid leaking threads when metadata calls hang.
 # A single worker is enough because getMetadata() is serialized by design.
-_metadata_executor = ThreadPoolExecutor(max_workers=1)
+_metadata_executor: ThreadPoolExecutor | None = ThreadPoolExecutor(max_workers=1)
 _metadata_future: Future[Any] | None = None
+_metadata_future_started_at: float | None = None
 _metadata_future_lock = threading.Lock()
+_health_probe_request_deadlines: dict[int, float] = {}
+_health_probe_request_lock = threading.Lock()
+_HEALTH_PROBE_TRACK_GRACE_SECS = 60.0
 
 # Shared executor for BLE init/connect to avoid leaking threads across retries.
 # BLE setup is inherently sequential, so a single worker keeps things predictable.
-_ble_executor = ThreadPoolExecutor(max_workers=1)
+_ble_executor: ThreadPoolExecutor | None = ThreadPoolExecutor(max_workers=1)
 _ble_executor_lock = threading.Lock()
 _ble_future: Future[Any] | None = None
 _ble_future_address: str | None = None
@@ -177,7 +190,8 @@ def _shutdown_shared_executors() -> None:
     Note: This is called via atexit during interpreter shutdown. It performs
     cleanup without waiting to avoid blocking the interpreter exit sequence.
     """
-    global _ble_future, _ble_future_address, _metadata_future
+    global _ble_executor, _ble_future, _ble_future_address
+    global _metadata_executor, _metadata_future, _metadata_future_started_at
 
     # Cancel any pending BLE operation
     with _ble_executor_lock:
@@ -192,6 +206,7 @@ def _shutdown_shared_executors() -> None:
                 _ble_timeout_counts.pop(stale_address, None)
 
         executor = _ble_executor
+        _ble_executor = None
         if executor is not None and not getattr(executor, "_shutdown", False):
             try:
                 executor.shutdown(wait=False, cancel_futures=True)
@@ -204,8 +219,10 @@ def _shutdown_shared_executors() -> None:
             logger.debug("Cancelling pending metadata future during executor shutdown")
             _metadata_future.cancel()
         _metadata_future = None
+        _metadata_future_started_at = None
 
         executor = _metadata_executor
+        _metadata_executor = None
         if executor is not None and not getattr(executor, "_shutdown", False):
             try:
                 executor.shutdown(wait=False, cancel_futures=True)
@@ -248,6 +265,528 @@ def _get_metadata_executor() -> ThreadPoolExecutor:
     if _metadata_executor is None or getattr(_metadata_executor, "_shutdown", False):
         _metadata_executor = ThreadPoolExecutor(max_workers=1)
     return _metadata_executor
+
+
+def _clear_metadata_future_if_current(done_future: Future[Any]) -> None:
+    """
+    Clear the shared metadata future if it still refers to `done_future`.
+    """
+    global _metadata_future, _metadata_future_started_at
+    with _metadata_future_lock:
+        if _metadata_future is done_future:
+            _metadata_future = None
+            _metadata_future_started_at = None
+
+
+def _reset_metadata_executor_for_stale_probe() -> None:
+    """
+    Replace the shared metadata executor after stale probe detection.
+
+    A wedged single-worker executor can block all later probe submissions.
+    This function abandons the old executor and creates a fresh one so probe
+    retries are not queued behind a stuck worker.
+    """
+    global _metadata_executor, _metadata_future, _metadata_future_started_at
+
+    with _metadata_future_lock:
+        old_executor = _metadata_executor
+        _metadata_future = None
+        _metadata_future_started_at = None
+        _metadata_executor = ThreadPoolExecutor(max_workers=1)
+
+    if old_executor is not None and not getattr(old_executor, "_shutdown", False):
+        try:
+            old_executor.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            old_executor.shutdown(wait=False)
+
+
+def _schedule_metadata_future_cleanup(
+    future: Future[Any],
+    reason: str,
+) -> None:
+    """
+    Schedule delayed cleanup for a metadata probe future that appears stuck.
+
+    If the future is still the active metadata future after
+    `METADATA_WATCHDOG_SECS`, clear the shared reference so later health checks
+    are not permanently suppressed by a stale in-flight marker.
+    """
+
+    def _cleanup() -> None:
+        if future.done():
+            return
+
+        with _metadata_future_lock:
+            should_clear = _metadata_future is future
+
+        if not should_clear:
+            return
+
+        logger.warning(
+            "Metadata worker still running after %.0fs; clearing stale future (%s)",
+            METADATA_WATCHDOG_SECS,
+            reason,
+        )
+        _reset_metadata_executor_for_stale_probe()
+
+    try:
+        timer = threading.Timer(METADATA_WATCHDOG_SECS, _cleanup)
+        timer.daemon = True
+        future.add_done_callback(lambda _f: timer.cancel())
+        timer.start()
+    except Exception as exc:  # noqa: BLE001 - best-effort watchdog setup
+        logger.debug(
+            "Failed to schedule metadata future cleanup watchdog",
+            exc_info=exc,
+        )
+
+
+def _submit_metadata_probe(probe: Callable[[], Any]) -> Future[Any] | None:
+    """
+    Submit a metadata-related admin probe unless one is already in flight.
+
+    Returns the shared concurrent future for the submitted probe, or `None`
+    when another metadata operation is already running.
+    """
+    global _metadata_future, _metadata_future_started_at
+    stale_detected = False
+    with _metadata_future_lock:
+        if _metadata_future is not None and not _metadata_future.done():
+            if _metadata_future_started_at is None or (
+                time.monotonic() - _metadata_future_started_at < METADATA_WATCHDOG_SECS
+            ):
+                return None
+            stale_detected = True
+
+    if stale_detected:
+        logger.warning(
+            "Metadata worker still running after %.0fs; clearing stale future (%s)",
+            METADATA_WATCHDOG_SECS,
+            "submit-retry",
+        )
+        _reset_metadata_executor_for_stale_probe()
+
+    with _metadata_future_lock:
+        if _metadata_future is not None and not _metadata_future.done():
+            return None
+        future = _get_metadata_executor().submit(probe)
+        _metadata_future = future
+        _metadata_future_started_at = time.monotonic()
+
+    future.add_done_callback(_clear_metadata_future_if_current)
+    _schedule_metadata_future_cleanup(future, reason="metadata-probe")
+    return future
+
+
+def _coerce_positive_int_id(raw_value: Any) -> int | None:
+    """
+    Convert a potential packet identifier value to a positive integer.
+
+    Returns `None` when conversion fails or value is not positive.
+    """
+    try:
+        parsed = int(raw_value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _coerce_int_id(raw_value: Any) -> int | None:
+    """
+    Convert a potential identifier value to an integer.
+
+    Returns `None` when conversion fails.
+    """
+    try:
+        return int(raw_value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_positive_float(value: Any, default: float, setting_name: str) -> float:
+    """
+    Parse and validate a positive float config value.
+
+    Falls back to `default` and logs a warning if conversion fails or if the
+    value is not a finite positive number.
+    """
+    try:
+        parsed = float(value)
+        if math.isfinite(parsed) and parsed > 0:
+            return parsed
+    except (TypeError, ValueError):
+        pass
+
+    logger.warning(
+        "Invalid %s value %r; using default %.1f",
+        setting_name,
+        value,
+        default,
+    )
+    return default
+
+
+def _coerce_bool(value: Any, default: bool, setting_name: str) -> bool:
+    """
+    Parse and validate a boolean config value.
+
+    Accepts booleans directly, and normalizes string values:
+    - "true", "1", "yes", "on" (case-insensitive) -> True
+    - "false", "0", "no", "off", "" (case-insensitive) -> False
+
+    Falls back to `default` and logs a warning for unrecognized values.
+    """
+    if isinstance(value, bool):
+        return value
+
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        elif normalized in {"", "0", "false", "no", "off"}:
+            return False
+    elif isinstance(value, (int, float)):
+        # For numeric types, use standard bool conversion
+        return bool(value)
+
+    logger.warning(
+        "Invalid %s value %r; using default %s",
+        setting_name,
+        value,
+        default,
+    )
+    return default
+
+
+def _extract_packet_request_id(packet: Any) -> int | None:
+    """
+    Extract a request ID from a Meshtastic packet dict, if present.
+    """
+    if not isinstance(packet, dict):
+        return None
+
+    candidates: list[Any] = [packet.get("requestId"), packet.get("request_id")]
+    decoded = packet.get("decoded")
+    if isinstance(decoded, dict):
+        candidates.extend(
+            [
+                decoded.get("requestId"),
+                decoded.get("request_id"),
+            ]
+        )
+
+    for candidate in candidates:
+        parsed = _coerce_positive_int_id(candidate)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _prune_health_probe_tracking(now: float | None = None) -> None:
+    """
+    Remove expired health-probe request IDs from the in-memory tracking map.
+    """
+    current = now if now is not None else time.monotonic()
+    expired_ids = [
+        request_id
+        for request_id, deadline in _health_probe_request_deadlines.items()
+        if deadline <= current
+    ]
+    for request_id in expired_ids:
+        _health_probe_request_deadlines.pop(request_id, None)
+
+
+def _track_health_probe_request_id(
+    raw_request_id: Any, timeout_secs: float
+) -> int | None:
+    """
+    Track a newly sent health-probe request ID for response log classification.
+
+    Returns the normalized request ID if tracking succeeded.
+    """
+    request_id = _coerce_positive_int_id(raw_request_id)
+    if request_id is None:
+        return None
+
+    expires_at = (
+        time.monotonic()
+        + max(float(timeout_secs), 1.0)
+        + _HEALTH_PROBE_TRACK_GRACE_SECS
+    )
+    with _health_probe_request_lock:
+        _prune_health_probe_tracking()
+        _health_probe_request_deadlines[request_id] = expires_at
+    return request_id
+
+
+def _is_health_probe_response_packet(packet: dict[str, Any], interface: Any) -> bool:
+    """
+    Determine if an inbound packet is a tracked health-probe response.
+    """
+    request_id = _extract_packet_request_id(packet)
+    if request_id is None:
+        return False
+
+    sender = _coerce_int_id(packet.get("from"))
+    local_num_raw = getattr(getattr(interface, "myInfo", None), "my_node_num", None)
+    if local_num_raw is None:
+        local_num_raw = getattr(getattr(interface, "localNode", None), "nodeNum", None)
+    local_num = _coerce_int_id(local_num_raw)
+    if sender is not None and local_num is not None and sender != local_num:
+        return False
+
+    with _health_probe_request_lock:
+        _prune_health_probe_tracking()
+        return request_id in _health_probe_request_deadlines
+
+
+def _set_probe_ack_flag_from_packet(local_node: Any, packet: Any) -> bool:
+    """
+    Best-effort fallback for ACK packets missing routing metadata.
+
+    Some Meshtastic library versions can invoke ACK callbacks with packet shapes
+    that do not include `decoded.routing`, which causes `Node.onAckNak()` to
+    raise `KeyError("routing")`. For health probes we only need an ACK/NAK
+    signal, so this helper sets the same acknowledgment flags used by
+    `waitForAckNak()`.
+
+    Parameters:
+        local_node (Any): Meshtastic local node object expected to expose `iface`.
+        packet (Any): Callback packet payload (typically a dict).
+
+    Returns:
+        bool: True if a fallback ACK flag was set, False otherwise.
+    """
+    iface = getattr(local_node, "iface", None)
+    ack_state = getattr(iface, "_acknowledgment", None)
+    if ack_state is None:
+        return False
+
+    sender_raw = packet.get("from") if isinstance(packet, dict) else None
+    local_num = getattr(getattr(iface, "localNode", None), "nodeNum", None)
+
+    sender_num = _coerce_int_id(sender_raw)
+
+    if (
+        sender_num is not None
+        and local_num is not None
+        and sender_num == local_num
+        and hasattr(ack_state, "receivedImplAck")
+    ):
+        ack_state.receivedImplAck = True
+        return True
+
+    if hasattr(ack_state, "receivedAck"):
+        ack_state.receivedAck = True
+        return True
+
+    return False
+
+
+def _missing_local_node_ack_state_error() -> RuntimeError:
+    """
+    Build the error raised when local node ACK state is unavailable.
+    """
+    return RuntimeError("Meshtastic local node missing acknowledgment state")
+
+
+def _missing_received_nak_error() -> RuntimeError:
+    """
+    Build the error raised when ACK state cannot represent NAK responses.
+    """
+    return RuntimeError("Meshtastic acknowledgment state missing receivedNak")
+
+
+def _failed_probe_ack_state_error() -> RuntimeError:
+    """
+    Build the error raised when a probe response cannot set ACK/NAK state.
+    """
+    return RuntimeError("Failed to set ACK state from health probe response")
+
+
+def _missing_ack_state_error() -> RuntimeError:
+    """
+    Build the error raised when client ACK state is unavailable.
+    """
+    return RuntimeError("Meshtastic client missing acknowledgment state")
+
+
+def _metadata_probe_ack_timeout_error(timeout_secs: float) -> TimeoutError:
+    """
+    Build the timeout error raised when metadata probe ACK wait exceeds limit.
+    """
+    return TimeoutError(
+        f"Timed out waiting for metadata probe ACK after {timeout_secs:.1f} seconds"
+    )
+
+
+def _missing_probe_transport_error() -> RuntimeError:
+    """
+    Build the error raised when client cannot send metadata probe packets.
+    """
+    return RuntimeError("Meshtastic client cannot perform metadata liveness probe")
+
+
+def _missing_probe_wait_error() -> RuntimeError:
+    """
+    Build the error raised when client cannot wait for metadata probe ACKs.
+    """
+    return RuntimeError("Meshtastic client cannot wait for metadata probe ACK")
+
+
+def _reset_probe_ack_state(ack_state: Any) -> None:
+    """
+    Reset health-probe acknowledgment flags on a Meshtastic ACK state object.
+
+    Uses the object's `reset()` method when available; otherwise manually clears
+    known ACK/NAK flags for compatibility with test doubles and older interfaces.
+    """
+    reset = getattr(ack_state, "reset", None)
+    if callable(reset):
+        reset()
+        return
+
+    for attr in ("receivedAck", "receivedNak", "receivedImplAck"):
+        if hasattr(ack_state, attr):
+            setattr(ack_state, attr, False)
+
+
+def _handle_probe_ack_callback(local_node: Any, packet: Any) -> None:
+    """
+    Handle health-probe response packets across routing/admin response shapes.
+
+    For `get_device_metadata_request`, Meshtastic responses may be:
+    - A ROUTING_APP ACK/NAK packet with `decoded.routing.errorReason`, or
+    - An ADMIN_APP response packet that includes `requestId` but no
+      `decoded.routing`.
+
+    We treat either as forward progress for liveness probing by setting the same
+    acknowledgment flags used by `waitForAckNak()`.
+    """
+    iface = getattr(local_node, "iface", None)
+    ack_state = getattr(iface, "_acknowledgment", None)
+    if ack_state is None:
+        raise _missing_local_node_ack_state_error()
+
+    decoded = packet.get("decoded") if isinstance(packet, dict) else None
+    routing = decoded.get("routing") if isinstance(decoded, dict) else None
+    if isinstance(routing, dict):
+        error_reason = routing.get("errorReason")
+        if error_reason and error_reason != "NONE":
+            if hasattr(ack_state, "receivedNak"):
+                ack_state.receivedNak = True
+                return
+            raise _missing_received_nak_error()
+
+    if _set_probe_ack_flag_from_packet(local_node, packet):
+        return
+
+    raise _failed_probe_ack_state_error()
+
+
+def _wait_for_probe_ack(client: Any, timeout_secs: float) -> None:
+    """
+    Wait for ACK/NAK flags with a bounded timeout for health probes.
+
+    Uses the interface acknowledgment object directly so probe duration is
+    capped independently of the interface-wide timeout setting.
+    """
+    ack_state = getattr(client, "_acknowledgment", None)
+    if ack_state is None:
+        raise _missing_ack_state_error()
+
+    deadline = time.monotonic() + timeout_secs
+    while time.monotonic() < deadline:
+        if any(
+            bool(getattr(ack_state, attr, False))
+            for attr in ("receivedAck", "receivedNak", "receivedImplAck")
+        ):
+            _reset_probe_ack_state(ack_state)
+            return
+        time.sleep(0.1)
+
+    raise _metadata_probe_ack_timeout_error(timeout_secs)
+
+
+def _probe_device_connection(
+    client: Any, timeout_secs: float = DEFAULT_MESHTASTIC_OPERATION_TIMEOUT
+) -> None:
+    """
+    Send a metadata admin request and wait for an acknowledgment.
+
+    This uses the public sendData API instead of the private _sendAdmin
+    to ensure compatibility across Serial, TCP, and BLE interfaces.
+
+    Note: The onResponse callback must handle both routing ACK packets and
+    admin response packets for this request shape. Some Meshtastic versions
+    provide callback payloads without `decoded.routing`; this function uses a
+    guarded callback plus a bounded ACK wait to avoid long probe stalls.
+
+    Parameters:
+        client (Any): Meshtastic client/interface instance used for probe send and
+            ACK tracking.
+        timeout_secs (float): Maximum seconds to wait for probe ACK/NAK before
+            raising TimeoutError.
+    """
+    local_node = getattr(client, "localNode", None)
+    if local_node is None or not callable(getattr(client, "sendData", None)):
+        raise _missing_probe_transport_error()
+
+    # Clear stale ACK/NAK flags so this probe cannot "pass" on prior traffic.
+    ack_state = getattr(client, "_acknowledgment", None)
+    if ack_state is None:
+        ack_state = getattr(getattr(local_node, "iface", None), "_acknowledgment", None)
+    if ack_state is not None:
+        _reset_probe_ack_state(ack_state)
+
+    request = admin_pb2.AdminMessage()
+    request.get_device_metadata_request = True
+    # Use the public sendData API instead of private _sendAdmin
+    node_num = getattr(local_node, "nodeNum", None)
+    destination_id = node_num if node_num is not None else "^local"
+    sent_packet = client.sendData(
+        request.SerializeToString(),
+        destinationId=destination_id,
+        portNum=portnums_pb2.PortNum.ADMIN_APP,
+        wantAck=True,
+        wantResponse=True,
+        onResponse=functools.partial(_handle_probe_ack_callback, local_node),
+    )
+    request_id = _track_health_probe_request_id(
+        (
+            getattr(sent_packet, "id", None)
+            if not isinstance(sent_packet, dict)
+            else sent_packet.get("id")
+        ),
+        timeout_secs,
+    )
+    if request_id is not None:
+        logger.debug(
+            "[HEALTH_CHECK] Sent metadata probe requestId=%s timeout=%.1fs",
+            request_id,
+            timeout_secs,
+        )
+    else:
+        logger.debug(
+            "[HEALTH_CHECK] Sent metadata probe timeout=%.1fs",
+            timeout_secs,
+        )
+
+    if getattr(client, "_acknowledgment", None) is not None:
+        _wait_for_probe_ack(client, timeout_secs)
+        return
+
+    if callable(getattr(client, "waitForAckNak", None)):
+        _run_blocking_with_timeout(
+            cast(Callable[[], Any], client.waitForAckNak),
+            timeout=timeout_secs,
+            label="metadata-probe-waitForAckNak",
+            timeout_log_level=logging.DEBUG,
+        )
+        return
+
+    raise _missing_probe_wait_error()
 
 
 def _submit_coro(
@@ -940,14 +1479,111 @@ def _get_name_or_none(
         return None
 
 
-def _get_device_metadata(client: Any) -> dict[str, Any]:
+def _normalize_firmware_version(value: Any) -> str | None:
+    """
+    Normalize a firmware version candidate into a non-empty string.
+
+    Parameters:
+        value (Any): Candidate firmware value from metadata sources.
+
+    Returns:
+        str | None: Trimmed firmware version string when valid, otherwise None.
+    """
+    if isinstance(value, bytes):
+        value = value.decode("utf-8", errors="ignore")
+    if isinstance(value, str):
+        normalized = value.strip()
+        if normalized and normalized.lower() != "unknown":
+            return normalized
+    return None
+
+
+def _extract_firmware_version_from_metadata(metadata_source: Any) -> str | None:
+    """
+    Extract firmware version from a metadata object or mapping.
+
+    Supports both snake_case and camelCase field names for compatibility with
+    different Meshtastic payload shapes.
+
+    Parameters:
+        metadata_source (Any): Metadata container (protobuf-like object or dict).
+
+    Returns:
+        str | None: Firmware version if available, else None.
+    """
+    if metadata_source is None:
+        return None
+
+    if isinstance(metadata_source, dict):
+        return _normalize_firmware_version(
+            metadata_source.get("firmware_version")
+            or metadata_source.get("firmwareVersion")
+        )
+
+    return _normalize_firmware_version(
+        getattr(metadata_source, "firmware_version", None)
+        or getattr(metadata_source, "firmwareVersion", None)
+    )
+
+
+def _extract_firmware_version_from_client(client: Any) -> str | None:
+    """
+    Return the first normalized firmware version exposed on common client fields.
+
+    Parameters:
+        client (Any): Meshtastic client object to inspect.
+
+    Returns:
+        str | None: Firmware version if present on the client, local node, or
+            local interface metadata.
+    """
+    local_node = getattr(client, "localNode", None)
+    local_iface = getattr(local_node, "iface", None) if local_node else None
+
+    candidates = (
+        getattr(client, "metadata", None),
+        local_node and getattr(local_node, "metadata", None),
+        local_iface and getattr(local_iface, "metadata", None),
+    )
+    for candidate in candidates:
+        parsed = _extract_firmware_version_from_metadata(candidate)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _missing_metadata_probe_error() -> RuntimeError:
+    """
+    Build the error raised when metadata probing is unavailable on a client.
+    """
+    return RuntimeError(
+        "Meshtastic client has no localNode.getMetadata() for metadata probe"
+    )
+
+
+def _get_device_metadata(
+    client: Any,
+    *,
+    force_refresh: bool = False,
+    raise_on_error: bool = False,
+) -> dict[str, Any]:
     """
     Retrieve firmware version and raw metadata output from a Meshtastic client.
 
-    Attempts to call client.localNode.getMetadata() (when present), captures any console output produced, and extracts a firmware version string if available.
+    Prefers structured metadata already present on the client/interface unless
+    `force_refresh=True`. If no
+    usable firmware version is cached, attempts to call
+    `client.localNode.getMetadata()`, captures console output produced by that
+    call, and extracts firmware version information from output and any updated
+    structured metadata.
 
     Parameters:
         client (Any): Meshtastic client object expected to expose localNode.getMetadata(); if absent, metadata retrieval is skipped.
+        force_refresh (bool): If `True`, always call `getMetadata()` even when
+            structured metadata is already cached. Health checks use this mode
+            intentionally because it issues an on-wire admin request.
+        raise_on_error (bool): If `True`, re-raise metadata probe failures after
+            logging so callers can treat failures as liveness errors.
 
     Returns:
         dict: {
@@ -956,19 +1592,26 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
             "success" (bool): `True` when a firmware version was successfully parsed, `False` otherwise
         }
     """
-    global _metadata_future
     result = {"firmware_version": "unknown", "raw_output": "", "success": False}
 
-    try:
-        # Preflight: client may be a mock without localNode/getMetadata
-        if not getattr(client, "localNode", None) or not hasattr(
-            client.localNode, "getMetadata"
-        ):
-            logger.debug(
-                "Meshtastic client has no localNode.getMetadata(); skipping metadata retrieval"
-            )
-            return result
+    cached_firmware = _extract_firmware_version_from_client(client)
+    if cached_firmware is not None and not force_refresh:
+        result["firmware_version"] = cached_firmware
+        result["success"] = True
+        return result
 
+    # Preflight: client may be a mock without localNode/getMetadata
+    if not getattr(client, "localNode", None) or not callable(
+        getattr(client.localNode, "getMetadata", None)
+    ):
+        if raise_on_error:
+            raise _missing_metadata_probe_error()
+        logger.debug(
+            "Meshtastic client has no localNode.getMetadata(); skipping metadata retrieval"
+        )
+        return result
+
+    try:
         # Capture getMetadata() output to extract firmware version.
         # Use a shared executor to prevent thread leaks if getMetadata() hangs.
         output_capture = io.StringIO()
@@ -995,34 +1638,41 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
                         client.localNode.getMetadata()
                     finally:
                         redirect_active.clear()
-            except ValueError:
-                pass
+            except ValueError as exc:
+                if output_capture.closed or "I/O operation on closed file" in str(exc):
+                    return
+                raise
 
-        with _metadata_future_lock:
-            if _metadata_future and not _metadata_future.done():
-                # A previous metadata request is still running; avoid piling up
-                # threads and leave the in-flight call to finish in its own time.
-                logger.debug("getMetadata() already running; skipping new request")
-                return result
+        try:
+            future = _submit_metadata_probe(call_get_metadata)
+        except RuntimeError as exc:
+            # The shared executor may already be shutting down; treat this as
+            # a non-fatal metadata miss so we don't block connections.
+            logger.debug(
+                "getMetadata() submission failed; skipping metadata retrieval",
+                exc_info=exc,
+            )
+            if raise_on_error:
+                raise
+            return result
 
-            try:
-                future = _get_metadata_executor().submit(call_get_metadata)
-            except RuntimeError as exc:
-                # The shared executor may already be shutting down; treat this as
-                # a non-fatal metadata miss so we don't block connections.
-                logger.debug(
-                    "getMetadata() submission failed; skipping metadata retrieval",
-                    exc_info=exc,
-                )
-                return result
-            _metadata_future = future
+        if future is None:
+            # A previous metadata request is still running; avoid piling up
+            # threads and leave the in-flight call to finish in its own time.
+            logger.debug("getMetadata() already running; skipping new request")
+            return result
+
         timed_out = False
         future_error: Exception | None = None
         try:
-            future.result(timeout=30.0)
-        except FuturesTimeoutError:
+            future.result(timeout=METADATA_WATCHDOG_SECS)
+        except FuturesTimeoutError as e:
             timed_out = True
-            logger.debug("getMetadata() timed out after 30 seconds")
+            if raise_on_error:
+                future_error = e
+            logger.debug(
+                f"getMetadata() timed out after {METADATA_WATCHDOG_SECS} seconds"
+            )
             # If the worker is still running, restore stdio immediately so the
             # main process does not keep writing to the captured buffer.
             if redirect_active.is_set():
@@ -1041,16 +1691,12 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
             """
             Finalize capture state for a completed metadata retrieval future.
 
-            If the provided future matches the module-level metadata future, clear that reference.
-            Also close the shared output capture stream if it is still open.
+            Close the shared output capture stream once the worker has fully
+            finished with it.
 
             Parameters:
                 done_future (concurrent.futures.Future | asyncio.Future): The future that has completed and triggered finalization.
             """
-            global _metadata_future
-            with _metadata_future_lock:
-                if _metadata_future is done_future:
-                    _metadata_future = None
             if not output_capture.closed:
                 output_capture.close()
 
@@ -1077,10 +1723,16 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
             r"(?i)\bfirmware[\s_/-]*version\b\s*[:=]\s*['\"]?\s*([^\s\r\n'\"]+)",
             console_output,
         )
-        if match:
-            parsed = match.group(1).strip()
-            if parsed:
-                result["firmware_version"] = parsed
+        parsed_output_firmware = (
+            _normalize_firmware_version(match.group(1)) if match else None
+        )
+        if parsed_output_firmware is not None:
+            result["firmware_version"] = parsed_output_firmware
+            result["success"] = True
+        else:
+            refreshed_firmware = _extract_firmware_version_from_client(client)
+            if refreshed_firmware is not None:
+                result["firmware_version"] = refreshed_firmware
                 result["success"] = True
 
     except Exception as e:  # noqa: BLE001 - metadata failures must not block startup
@@ -1089,6 +1741,8 @@ def _get_device_metadata(client: Any) -> dict[str, Any]:
         logger.debug(
             "Could not retrieve device metadata via localNode.getMetadata()", exc_info=e
         )
+        if raise_on_error:
+            raise
 
     return result
 
@@ -1741,6 +2395,7 @@ def connect_meshtastic(
         The connected Meshtastic client instance on success, or `None` if a connection could not be established or shutdown is in progress.
     """
     global meshtastic_client, meshtastic_iface, shutting_down, reconnecting, config
+    global RELAY_START_TIME
     global matrix_rooms, _ble_future, _ble_future_address
     if shutting_down:
         logger.debug("Shutdown in progress. Not attempting to connect.")
@@ -2151,13 +2806,13 @@ def connect_meshtastic(
                             _ble_future_address = ble_address
                         connect_future.add_done_callback(_clear_ble_future)
                         try:
-                            connect_future.result(timeout=30.0)
+                            connect_future.result(timeout=BLE_CONNECT_TIMEOUT_SECS)
                             logger.info(f"BLE connection established to {ble_address}")
                         except FuturesTimeoutError as err:
                             # Use logger.exception so timeouts include stack context (TRY400),
                             # but raise a short error and keep operator guidance in logs (TRY003).
                             logger.exception(
-                                "BLE connect() call timed out after 30 seconds for %s.",
+                                f"BLE connect() call timed out after {BLE_CONNECT_TIMEOUT_SECS} seconds for %s.",
                                 ble_address,
                             )
                             logger.warning(
@@ -2220,6 +2875,8 @@ def connect_meshtastic(
             # Acquire lock only for the final setup and subscription
             with meshtastic_lock:
                 meshtastic_client = client
+                # Use connection start time (not module import time) for stale rxTime filtering.
+                RELAY_START_TIME = time.time()
 
                 # CRITICAL VALIDATION: Verify we're connected to the correct BLE device.
                 # This prevents connection to wrong device due to substring matching
@@ -2537,6 +3194,33 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
     # Validate packet structure
     if not packet or not isinstance(packet, dict):
         logger.error("Received malformed packet: packet is None or not a dict")
+        return
+
+    # Filter out old messages (from before relay start) to prevent flooding
+    # This handles cases where the node dumps stored history upon connection
+    rx_time_raw = packet.get("rxTime", 0)
+    try:
+        rx_time = float(rx_time_raw)
+    except (TypeError, ValueError):
+        rx_time = 0
+
+    if rx_time > 0 and rx_time < RELAY_START_TIME:
+        logger.debug(
+            "Ignoring old message with rxTime %s (older than start time %s)",
+            rx_time,
+            RELAY_START_TIME,
+        )
+        return
+
+    if _is_health_probe_response_packet(packet, interface):
+        decoded = packet.get("decoded")
+        portnum = decoded.get("portnum") if isinstance(decoded, dict) else None
+        logger.debug(
+            "[HEALTH_CHECK] Metadata probe response requestId=%s from=%s port=%s",
+            _extract_packet_request_id(packet),
+            packet.get("fromId") or packet.get("from"),
+            _get_portnum_name(portnum),
+        )
         return
 
     # Full packet logging for debugging (when enabled in config)
@@ -2979,10 +3663,24 @@ async def check_connection() -> None:
 
     Checks run until the module-level `shutting_down` flag is True. Behavior:
     - Controlled by config["meshtastic"]["health_check"]:
-      - `enabled` (bool, default True) — enable or disable checks.
+      - `enabled` (bool, default DEFAULT_HEALTH_CHECK_ENABLED) — enable or disable checks.
       - `heartbeat_interval` (int, seconds, default 60) — interval between checks. For backward compatibility, a top-level `heartbeat_interval` under `config["meshtastic"]` is supported.
-    - BLE connections are excluded from periodic checks because BLE libraries provide real-time disconnect detection.
-    - For non-BLE connections, attempts a metadata probe (via _get_device_metadata) and, if parsing fails, a fallback probe using `client.getMyNodeInfo()`. If both probes fail and no reconnection is already in progress, calls on_lost_meshtastic_connection(...) to initiate reconnection.
+      - `initial_delay` (float, seconds, default INITIAL_HEALTH_CHECK_DELAY) — delay before first probe.
+      - `probe_timeout` (float, seconds, default DEFAULT_MESHTASTIC_OPERATION_TIMEOUT) — timeout per probe cycle.
+    - BLE connections are excluded from periodic checks because BLE libraries provide real-time disconnect detection; this function returns early for BLE.
+    - Waits one `initial_delay` period before the first check to allow the connection to settle,
+      particularly important for fast-responding systems like MeshMonitor where ACK handling
+      may not be fully initialized immediately after connection.
+    - For non-BLE connections, performs a low-level metadata admin probe using
+      the same `get_device_metadata_request` packet as `localNode.getMetadata()`
+      but without stdout capture. If the probe fails and no reconnection is
+      already in progress, calls on_lost_meshtastic_connection(...) to
+      initiate reconnection.
+    - If another metadata probe is already in flight, skips the current cycle
+      instead of treating the overlap as a transport failure.
+    - IMPORTANT: Do not use `getMyNodeInfo()` as the primary liveness probe here.
+      In current Meshtastic Python it reads cached local node data and does not
+      guarantee a fresh on-wire round trip.
 
     No return value; side effects are logging and scheduling/triggering reconnection when the device is unresponsive.
     """
@@ -2997,72 +3695,118 @@ async def check_connection() -> None:
 
     # Get health check configuration
     health_config = config["meshtastic"].get("health_check", {})
-    health_check_enabled = health_config.get("enabled", True)
+    if not isinstance(health_config, dict):
+        logger.warning(
+            "meshtastic.health_check config is not a dictionary (got %r); using defaults",
+            health_config,
+        )
+        health_config = {}
+    raw_health_check_enabled = health_config.get(
+        "enabled", DEFAULT_HEALTH_CHECK_ENABLED
+    )
+    health_check_enabled = _coerce_bool(
+        raw_health_check_enabled,
+        DEFAULT_HEALTH_CHECK_ENABLED,
+        "meshtastic.health_check.enabled",
+    )
     heartbeat_interval = health_config.get("heartbeat_interval", 60)
+    initial_delay = health_config.get("initial_delay", INITIAL_HEALTH_CHECK_DELAY)
+    probe_timeout = health_config.get(
+        "probe_timeout", DEFAULT_MESHTASTIC_OPERATION_TIMEOUT
+    )
 
     # Support legacy heartbeat_interval configuration for backward compatibility
     if "heartbeat_interval" in config["meshtastic"]:
         heartbeat_interval = config["meshtastic"]["heartbeat_interval"]
+
+    heartbeat_interval = _coerce_positive_float(
+        heartbeat_interval,
+        60.0,
+        "meshtastic.health_check.heartbeat_interval",
+    )
+    initial_delay = _coerce_positive_float(
+        initial_delay,
+        float(INITIAL_HEALTH_CHECK_DELAY),
+        "meshtastic.health_check.initial_delay",
+    )
+    probe_timeout = _coerce_positive_float(
+        probe_timeout,
+        float(DEFAULT_MESHTASTIC_OPERATION_TIMEOUT),
+        "meshtastic.health_check.probe_timeout",
+    )
 
     # Exit early if health checks are disabled
     if not health_check_enabled:
         logger.info("Connection health checks are disabled in configuration")
         return
 
-    ble_skip_logged = False
+    if connection_type == CONNECTION_TYPE_BLE:
+        logger.debug(
+            "BLE connection uses real-time disconnection detection; periodic health checks disabled"
+        )
+        return
+
+    # Initial delay before first health check to allow connection to settle.
+    # This is particularly important for fast-responding systems like MeshMonitor
+    # where the connection may be established quickly but ACK handling may not be
+    # fully initialized yet.
+    logger.debug(
+        "Waiting before starting connection health checks to allow connection to settle"
+    )
+    await asyncio.sleep(initial_delay)
 
     while not shutting_down:
         if meshtastic_client and not reconnecting:
-            # BLE has real-time disconnection detection in the library
-            # Skip periodic health checks to avoid duplicate reconnection attempts
-            if connection_type == CONNECTION_TYPE_BLE:
-                if not ble_skip_logged:
-                    logger.info(
-                        "BLE connection uses real-time disconnection detection - health checks disabled"
+            submitted_client = meshtastic_client
+            probe_submission_failed = False
+            try:
+                probe_future = _submit_metadata_probe(
+                    functools.partial(
+                        _probe_device_connection,
+                        submitted_client,
+                        probe_timeout,
                     )
-                    ble_skip_logged = True
+                )
+            except RuntimeError as exc:
+                logger.debug(
+                    "Skipping connection check - metadata probe submission failed",
+                    exc_info=exc,
+                )
+                probe_future = None
+                probe_submission_failed = True
+
+            if probe_future is None:
+                if not probe_submission_failed:
+                    logger.debug(
+                        "Skipping connection check - metadata probe already in progress"
+                    )
             else:
                 try:
-                    loop = asyncio.get_running_loop()
-                    # Use helper function to get device metadata, run in executor with timeout
-                    metadata = await asyncio.wait_for(
-                        loop.run_in_executor(
-                            None, _get_device_metadata, meshtastic_client
-                        ),
-                        timeout=DEFAULT_MESHTASTIC_OPERATION_TIMEOUT,
+                    # NOTE: Use the metadata admin request for keepalive/liveness.
+                    # `getMyNodeInfo()` is local cached state in Meshtastic Python,
+                    # so it can succeed even when the transport is unhealthy.
+                    await asyncio.wait_for(
+                        asyncio.wrap_future(probe_future),
+                        timeout=probe_timeout,
                     )
-                    if not metadata["success"]:
-                        # Fallback probe: device responding at all?
-                        try:
-                            _ = await asyncio.wait_for(
-                                loop.run_in_executor(
-                                    None, meshtastic_client.getMyNodeInfo
-                                ),
-                                timeout=DEFAULT_MESHTASTIC_OPERATION_TIMEOUT,
-                            )
-                        except Exception as probe_err:
-                            raise Exception(
-                                "Metadata and nodeInfo probes failed"
-                            ) from probe_err
-                        else:
-                            logger.debug(
-                                "Metadata parse failed but device responded to getMyNodeInfo(); skipping reconnect this cycle"
-                            )
-                            continue
 
-                except Exception as e:
+                except Exception as exc:
+                    error_detail = str(exc).strip() or exc.__class__.__name__
                     # Only trigger reconnection if we're not already reconnecting
-                    if not reconnecting:
+                    if not reconnecting and meshtastic_client is submitted_client:
                         logger.error(
-                            f"{connection_type.capitalize()} connection health check failed: {e}"
+                            "%s connection health check failed: %s",
+                            connection_type.capitalize(),
+                            error_detail,
+                            exc_info=True,
                         )
                         on_lost_meshtastic_connection(
-                            interface=meshtastic_client,
-                            detection_source=f"health check failed: {str(e)}",
+                            interface=submitted_client,
+                            detection_source=f"health check failed: {error_detail}",
                         )
                     else:
                         logger.debug(
-                            "Skipping reconnection trigger - already reconnecting"
+                            "Skipping reconnection trigger - already reconnecting or client changed"
                         )
         elif reconnecting:
             logger.debug("Skipping connection check - reconnection in progress")

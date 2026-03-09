@@ -272,7 +272,7 @@ Keep this file secure; it contains Matrix session credentials.
 In Matrix clients (Element, etc.), MMRelay messages in encrypted rooms are
 expected to show a red shield warning:
 
-**"Encrypted by a device not verified by its owner"**
+### "Encrypted by a device not verified by its owner"
 
 This is expected because:
 

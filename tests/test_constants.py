@@ -129,6 +129,9 @@ class TestConstantsValidity:
         Verify that network timeout and error code constants have reasonable and expected values.
         """
         assert network.DEFAULT_BACKOFF_TIME > 0
+        assert network.BLE_CONNECT_TIMEOUT_SECS > 0
+        assert network.DEFAULT_MESHTASTIC_OPERATION_TIMEOUT > 0
+        assert network.INITIAL_HEALTH_CHECK_DELAY > 0
         assert network.MINIMUM_MESSAGE_DELAY >= 0
         assert network.MILLISECONDS_PER_SECOND == 1000
         assert network.ERRNO_BAD_FILE_DESCRIPTOR == 9
@@ -176,15 +179,26 @@ class TestConstantsImports:
         """
         Verify that commonly used constants are accessible directly from the mmrelay.constants package's __init__.py.
         """
-        from mmrelay.constants import (  # noqa: F401
+        from mmrelay.constants import (
             APP_NAME,
             CONFIG_SECTION_MATRIX,
             CONFIG_SECTION_MESHTASTIC,
             DEFAULT_MATRIX_PREFIX,
             DEFAULT_MESHTASTIC_PREFIX,
             DEFAULT_MESSAGE_DELAY,
+            INITIAL_HEALTH_CHECK_DELAY,
             MAX_QUEUE_SIZE,
         )
+
+        assert isinstance(APP_NAME, str)
+        assert isinstance(CONFIG_SECTION_MATRIX, str)
+        assert isinstance(CONFIG_SECTION_MESHTASTIC, str)
+        assert isinstance(DEFAULT_MATRIX_PREFIX, str)
+        assert isinstance(DEFAULT_MESHTASTIC_PREFIX, str)
+        assert isinstance(DEFAULT_MESSAGE_DELAY, (int, float))
+        assert isinstance(MAX_QUEUE_SIZE, int)
+        assert isinstance(INITIAL_HEALTH_CHECK_DELAY, (int, float))
+        assert INITIAL_HEALTH_CHECK_DELAY > 0
 
     def test_constants_used_in_codebase_are_accessible(self):
         """

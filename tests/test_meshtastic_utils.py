@@ -25,6 +25,10 @@ from meshtastic.mesh_interface import BROADCAST_NUM
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.network import (
+    BLE_CONNECT_TIMEOUT_SECS,
+    METADATA_WATCHDOG_SECS,
+)
 from mmrelay.meshtastic_utils import (
     _get_device_metadata,
     _get_packet_details,
@@ -39,6 +43,20 @@ from mmrelay.meshtastic_utils import (
     send_text_reply,
     serial_port_exists,
 )
+
+TEST_PACKET_RX_TIME = 1234567890
+
+
+@pytest.fixture
+def stable_relay_start_time(monkeypatch):
+    """
+    Keep message-processing tests deterministic regardless of wall-clock time.
+
+    Many packet fixtures in this module use fixed historical `rxTime` values.
+    Pinning RELAY_START_TIME prevents accidental stale-message filtering during
+    tests that are unrelated to startup history behavior.
+    """
+    monkeypatch.setattr("mmrelay.meshtastic_utils.RELAY_START_TIME", 0, raising=False)
 
 
 class _FakeEvent:
@@ -70,6 +88,7 @@ class _FakeEvent:
         return None
 
 
+@pytest.mark.usefixtures("stable_relay_start_time")
 class TestMeshtasticUtils(unittest.TestCase):
     """Test cases for Meshtastic utilities."""
 
@@ -101,7 +120,7 @@ class TestMeshtasticUtils(unittest.TestCase):
             },
             "channel": 0,
             "id": 12345,
-            "rxTime": 1234567890,
+            "rxTime": TEST_PACKET_RX_TIME,
         }
 
         # Reset global state to avoid test interference
@@ -1622,6 +1641,7 @@ class TestBleHelperFunctions(unittest.TestCase):
             )
 
 
+@pytest.mark.usefixtures("stable_relay_start_time")
 class TestMessageProcessingEdgeCases(unittest.TestCase):
     """Test cases for edge cases in message processing."""
 
@@ -1648,7 +1668,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             "to": 987654321,
             "channel": 0,
             "id": 12345,
-            "rxTime": 1234567890,
+            "rxTime": TEST_PACKET_RX_TIME,
             # No 'decoded' field
         }
 
@@ -1709,7 +1729,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             "decoded": {"text": "", "portnum": "TEXT_MESSAGE_APP"},  # Empty text
             "channel": 0,
             "id": 12345,
-            "rxTime": 1234567890,
+            "rxTime": TEST_PACKET_RX_TIME,
         }
 
         import inspect
@@ -1757,39 +1777,72 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             self.assertIn("channel=0", log_output)
             self.assertIn("id=12345", log_output)
 
+    def test_on_meshtastic_message_health_probe_response_logged_separately(self):
+        """
+        Health probe responses should be logged with HEALTH_CHECK prefix and not
+        processed as regular ADMIN_APP traffic.
+        """
+        packet = {
+            "from": 123456789,
+            "to": 123456789,
+            "decoded": {"portnum": "ADMIN_APP", "requestId": 4242},
+            "channel": 0,
+            "id": 22222,
+            "rxTime": TEST_PACKET_RX_TIME,
+        }
+        mock_interface = MagicMock()
+        mock_interface.myInfo.my_node_num = 123456789
+
+        with (
+            patch.dict(
+                "mmrelay.meshtastic_utils._health_probe_request_deadlines",
+                {4242: 9999999999.0},
+                clear=True,
+            ),
+            patch("mmrelay.meshtastic_utils._run_meshtastic_plugins") as mock_plugins,
+        ):
+            with self.assertLogs("Meshtastic", level="DEBUG") as cm:
+                on_meshtastic_message(packet, mock_interface)
+
+        mock_plugins.assert_not_called()
+        log_output = "\n".join(cm.output)
+        self.assertIn(
+            "[HEALTH_CHECK] Metadata probe response requestId=4242", log_output
+        )
+        self.assertIn("port=ADMIN_APP", log_output)
+
+    def test_is_health_probe_response_packet_handles_zero_sender_id(self):
+        """Sender 0 should not match a non-zero local node id."""
+        import mmrelay.meshtastic_utils as mu
+
+        packet = {"from": 0, "decoded": {"requestId": 4242}}
+        interface = MagicMock()
+        interface.myInfo.my_node_num = 123
+
+        with patch.dict(
+            "mmrelay.meshtastic_utils._health_probe_request_deadlines",
+            {4242: 9999999999.0},
+            clear=True,
+        ):
+            self.assertFalse(mu._is_health_probe_response_packet(packet, interface))
+
+    def test_is_health_probe_response_packet_accepts_zero_local_node_id(self):
+        """Sender 0 should match when the local node id is also 0."""
+        import mmrelay.meshtastic_utils as mu
+
+        packet = {"from": 0, "decoded": {"requestId": 4242}}
+        interface = MagicMock()
+        interface.myInfo.my_node_num = 0
+
+        with patch.dict(
+            "mmrelay.meshtastic_utils._health_probe_request_deadlines",
+            {4242: 9999999999.0},
+            clear=True,
+        ):
+            self.assertTrue(mu._is_health_probe_response_packet(packet, interface))
+
 
 # Meshtastic connection retry tests - converted from unittest.TestCase to standalone pytest functions
-
-
-@pytest.fixture
-def reset_meshtastic_globals():
-    """
-    Reset Meshtastic-related global state before a test and restore it afterward.
-
-    This generator-style fixture clears the shared module-level variables used by
-    connection and BLE logic so tests run in a clean environment. It resets:
-    `meshtastic_client`, `shutting_down`, `reconnecting`, `_ble_future`,
-    `_ble_future_address`, and `_metadata_future`. The fixture yields once to run
-    the test and then performs the same resets as cleanup.
-    """
-    import mmrelay.meshtastic_utils
-
-    mmrelay.meshtastic_utils.meshtastic_client = None
-    mmrelay.meshtastic_utils.shutting_down = False
-    mmrelay.meshtastic_utils.reconnecting = False
-    mmrelay.meshtastic_utils._ble_future = None
-    mmrelay.meshtastic_utils._ble_future_address = None
-    mmrelay.meshtastic_utils._metadata_future = None
-    mmrelay.meshtastic_utils._ble_timeout_counts = {}
-    yield
-    # Cleanup after test
-    mmrelay.meshtastic_utils.meshtastic_client = None
-    mmrelay.meshtastic_utils.shutting_down = False
-    mmrelay.meshtastic_utils.reconnecting = False
-    mmrelay.meshtastic_utils._ble_future = None
-    mmrelay.meshtastic_utils._ble_future_address = None
-    mmrelay.meshtastic_utils._metadata_future = None
-    mmrelay.meshtastic_utils._ble_timeout_counts = {}
 
 
 @patch("mmrelay.meshtastic_utils.time.sleep")
@@ -2130,16 +2183,17 @@ class TestSubmitCoroActualImplementation(unittest.TestCase):
         # Store the mocked function so we can restore it
         self.mocked_submit_coro = mu._submit_coro
 
-        # Import the original function from the source
-        # We need to reload the function definition
+        # Get the source module without the mock
         import importlib
         import importlib.util
 
         # Get the source module without the mock
         spec = importlib.util.find_spec("mmrelay.meshtastic_utils")
+        assert spec is not None
         source_module = importlib.util.module_from_spec(spec)
 
         # Execute the module to get the original function
+        assert spec.loader is not None
         spec.loader.exec_module(source_module)
 
         # Get the original _submit_coro function
@@ -2386,10 +2440,10 @@ class TestBLEExceptionHandling(unittest.TestCase):
         # than the fallback classes, so we test instantiation carefully
         try:
             # Try simple instantiation first (fallback classes)
-            error1 = mu.BleakDBusError("Test error")
+            error1 = mu.BleakDBusError("Test error")  # type: ignore[call-arg]
         except TypeError:
             # If that fails, try the real bleak constructor
-            error1 = mu.BleakDBusError("Test error", "error_body")
+            error1 = mu.BleakDBusError("Test error", ["error_body"])
 
         try:
             error2 = mu.BleakError("Test error")
@@ -2498,6 +2552,42 @@ class TestTextReplyFunctionality(unittest.TestCase):
 class TestGetDeviceMetadata(unittest.TestCase):
     """Test cases for _get_device_metadata helper function."""
 
+    def test_get_device_metadata_uses_structured_metadata_first(self):
+        """Use existing structured metadata without invoking getMetadata()."""
+        mock_client = MagicMock()
+        mock_client.localNode.getMetadata.side_effect = AssertionError(
+            "getMetadata() should not be called when metadata is already available"
+        )
+        mock_client.localNode.iface.metadata = SimpleNamespace(
+            firmware_version="2.7.18"
+        )
+
+        result = _get_device_metadata(mock_client)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["firmware_version"], "2.7.18")
+        self.assertEqual(result["raw_output"], "")
+        mock_client.localNode.getMetadata.assert_not_called()
+
+    def test_get_device_metadata_force_refresh_ignores_cached_metadata(self):
+        """force_refresh=True should invoke getMetadata even with cached metadata."""
+        mock_client = MagicMock()
+        mock_client.localNode.iface.metadata = SimpleNamespace(
+            firmware_version="2.7.18"
+        )
+        mock_client.localNode.getMetadata = MagicMock()
+
+        with patch("mmrelay.meshtastic_utils.io.StringIO") as mock_stringio:
+            mock_output = MagicMock()
+            mock_output.getvalue.return_value = "firmware_version: 2.7.19"
+            mock_stringio.return_value = mock_output
+
+            result = _get_device_metadata(mock_client, force_refresh=True)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["firmware_version"], "2.7.19")
+        mock_client.localNode.getMetadata.assert_called_once()
+
     def test_get_device_metadata_success(self):
         """Test successful metadata retrieval and parsing."""
         # Create mock client with localNode.getMetadata()
@@ -2574,6 +2664,19 @@ class TestGetDeviceMetadata(unittest.TestCase):
             self.assertEqual(result["firmware_version"], "unknown")
             mock_logger.debug.assert_called_once()
 
+    def test_get_device_metadata_raise_on_error_reraises(self):
+        """raise_on_error=True should propagate getMetadata probe failures."""
+        mock_client = MagicMock()
+        mock_client.localNode.getMetadata.side_effect = Exception("Device error")
+        mock_client.localNode.iface.metadata = None
+
+        with self.assertRaisesRegex(Exception, "Device error"):
+            _get_device_metadata(
+                mock_client,
+                force_refresh=True,
+                raise_on_error=True,
+            )
+
     def test_get_device_metadata_quoted_version(self):
         """Test parsing firmware version with quotes."""
         mock_client = MagicMock()
@@ -2605,6 +2708,148 @@ class TestGetDeviceMetadata(unittest.TestCase):
             # Verify whitespace is handled correctly
             self.assertTrue(result["success"])
             self.assertEqual(result["firmware_version"], "2.3.15.abc123")
+
+    def test_get_device_metadata_ignores_unknown_regex_firmware(self):
+        """Regex-parsed 'unknown' firmware should not mark metadata retrieval successful."""
+        mock_client = MagicMock()
+        mock_client.localNode.getMetadata = MagicMock()
+        mock_client.localNode.iface.metadata = None
+
+        with patch("mmrelay.meshtastic_utils.io.StringIO") as mock_stringio:
+            mock_output = MagicMock()
+            mock_output.getvalue.return_value = "firmware_version: unknown"
+            mock_stringio.return_value = mock_output
+
+            result = _get_device_metadata(mock_client, force_refresh=True)
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["firmware_version"], "unknown")
+
+    def test_get_device_metadata_normalizes_refreshed_firmware(self):
+        """Refreshed firmware fallback should normalize values before success assignment."""
+        mock_client = MagicMock()
+        mock_client.localNode.getMetadata = MagicMock()
+        mock_client.localNode.iface.metadata = {
+            "firmwareVersion": "unknown",
+        }
+
+        with patch("mmrelay.meshtastic_utils.io.StringIO") as mock_stringio:
+            mock_output = MagicMock()
+            mock_output.getvalue.return_value = "hw_model: HELTEC_V3"
+            mock_stringio.return_value = mock_output
+
+            result = _get_device_metadata(mock_client, force_refresh=True)
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["firmware_version"], "unknown")
+        mock_client.localNode.getMetadata.assert_called_once()
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_get_device_metadata_skips_when_probe_already_running(self, mock_logger):
+        """In-flight metadata probes should not raise or start a duplicate request."""
+        import mmrelay.meshtastic_utils as mu
+
+        mock_client = MagicMock()
+        mock_client.localNode.getMetadata = MagicMock()
+        in_flight_future = MagicMock()
+        in_flight_future.done.return_value = False
+        mu._metadata_future = in_flight_future
+
+        try:
+            result = _get_device_metadata(
+                mock_client,
+                force_refresh=True,
+                raise_on_error=True,
+            )
+        finally:
+            mu._metadata_future = None
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["firmware_version"], "unknown")
+        self.assertEqual(result["raw_output"], "")
+        mock_client.localNode.getMetadata.assert_not_called()
+        mock_logger.debug.assert_called_with(
+            "getMetadata() already running; skipping new request"
+        )
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_submit_metadata_probe_clears_stale_future(self, mock_logger):
+        """Stale in-flight metadata futures should be cleared before resubmitting."""
+        import mmrelay.meshtastic_utils as mu
+
+        stale_future = MagicMock()
+        stale_future.done.return_value = False
+        stale_future.add_done_callback = Mock()
+
+        submitted_future = MagicMock()
+        submitted_future.add_done_callback = Mock()
+
+        mock_executor = MagicMock()
+        mock_executor.submit.return_value = submitted_future
+        probe = Mock()
+
+        with (
+            patch(
+                "mmrelay.meshtastic_utils._get_metadata_executor",
+                return_value=mock_executor,
+            ),
+            patch("mmrelay.meshtastic_utils._schedule_metadata_future_cleanup"),
+            patch(
+                "mmrelay.meshtastic_utils.time.monotonic",
+                return_value=METADATA_WATCHDOG_SECS + 1.0,
+            ),
+        ):
+            mu._metadata_future = stale_future
+            mu._metadata_future_started_at = 0.0
+            try:
+                result = mu._submit_metadata_probe(probe)
+            finally:
+                mu._metadata_future = None
+                mu._metadata_future_started_at = None
+
+        self.assertIs(result, submitted_future)
+        mock_executor.submit.assert_called_once_with(probe)
+        mock_logger.warning.assert_any_call(
+            "Metadata worker still running after %.0fs; clearing stale future (%s)",
+            METADATA_WATCHDOG_SECS,
+            "submit-retry",
+        )
+
+    def test_get_device_metadata_raise_on_error_reraises_non_io_value_error(self):
+        """Non-I/O ValueError failures from getMetadata() should propagate."""
+        mock_client = MagicMock()
+        mock_client.localNode.getMetadata.side_effect = ValueError("backend failure")
+
+        with self.assertRaisesRegex(ValueError, "backend failure"):
+            _get_device_metadata(
+                mock_client,
+                force_refresh=True,
+                raise_on_error=True,
+            )
+
+    def test_get_device_metadata_structured_fallback_after_getmetadata(self):
+        """Fallback to structured metadata when stdout does not include firmware version."""
+        mock_client = MagicMock()
+        mock_client.localNode.iface.metadata = None
+
+        def _populate_metadata() -> None:
+            """Simulate getMetadata() populating structured client metadata."""
+            mock_client.localNode.iface.metadata = {
+                "firmwareVersion": "2.7.18",
+            }
+
+        mock_client.localNode.getMetadata.side_effect = _populate_metadata
+
+        with patch("mmrelay.meshtastic_utils.io.StringIO") as mock_stringio:
+            mock_output = MagicMock()
+            mock_output.getvalue.return_value = "hw_model: RAK4631"
+            mock_stringio.return_value = mock_output
+
+            result = _get_device_metadata(mock_client)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["firmware_version"], "2.7.18")
+        self.assertIn("hw_model: RAK4631", result["raw_output"])
 
 
 @pytest.mark.parametrize(
@@ -2894,10 +3139,17 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             self.assertEqual(result["firmware_version"], "2.3.15")
             # Verify timeout was logged
             mock_logger.debug.assert_called_with(
-                "getMetadata() timed out after 30 seconds"
+                f"getMetadata() timed out after {METADATA_WATCHDOG_SECS} seconds"
             )
             # Ensure we deferred cleanup when worker is still running.
-            timeout_future.add_done_callback.assert_called_once()
+            # Verify callbacks were registered for deferred cleanup (at least one).
+            self.assertGreaterEqual(
+                timeout_future.add_done_callback.call_count,
+                1,
+                "Expected at least one cleanup callback to be registered",
+            )
+            # Verify the observable effect: stdio is restored immediately
+            # after timeout, not left pointing at the capture buffer.
             self.assertIs(mu.sys.stdout, orig_stdout)
 
     @patch("mmrelay.meshtastic_utils.logger")
@@ -3482,7 +3734,8 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             connect_timeout_calls = [
                 call
                 for call in mock_logger.exception.call_args_list
-                if "connect() call timed out after 30 seconds" in str(call)
+                if f"connect() call timed out after {BLE_CONNECT_TIMEOUT_SECS} seconds"
+                in str(call)
             ]
             self.assertEqual(len(connect_timeout_calls), 1)
 

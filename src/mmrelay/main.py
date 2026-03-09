@@ -4,7 +4,6 @@ It uses Meshtastic-python and Matrix nio client library to interface with the ra
 """
 
 import asyncio
-import concurrent.futures
 import functools
 import os
 import signal
@@ -469,50 +468,22 @@ async def main(config: dict[str, Any]) -> None:
                             meshtastic_utils.meshtastic_client.close()
                         meshtastic_utils.meshtastic_client = None
 
-                # Avoid the context manager here: __exit__ would wait for the
-                # worker thread and could block forever if BLE shutdown hangs,
-                # negating the timeout protection.
-                executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-                future = executor.submit(_close_meshtastic)
-                close_timed_out = False
-                try:
-                    future.result(timeout=10.0)  # 10-second timeout
-                except concurrent.futures.TimeoutError:
-                    close_timed_out = True
-                    meshtastic_logger.warning(
-                        "Meshtastic client close timed out - may cause notification errors"
-                    )
-                    # Best-effort cancellation; the underlying close may be
-                    # stuck in BLE/DBus, but we cannot block shutdown.
-                    future.cancel()
-                except Exception:  # noqa: BLE001 - shutdown must keep going
-                    meshtastic_logger.exception(
-                        "Unexpected error during Meshtastic client close"
-                    )
-                else:
-                    meshtastic_logger.info("Meshtastic client closed successfully")
-                finally:
-                    if not future.done():
-                        if not close_timed_out:
-                            meshtastic_logger.warning(
-                                "Meshtastic client close timed out - may cause notification errors"
-                            )
-                        future.cancel()
-                    try:
-                        # Do not wait for shutdown; if close hangs we still
-                        # want the process to exit promptly.
-                        executor.shutdown(wait=False, cancel_futures=True)
-                    except TypeError:
-                        # cancel_futures is unsupported on older Python versions.
-                        executor.shutdown(wait=False)
-            except concurrent.futures.TimeoutError:
-                meshtastic_logger.warning(
-                    "Meshtastic client close timed out - forcing shutdown"
+                # Run close on a daemon worker so a hung library close call
+                # cannot block interpreter shutdown.
+                meshtastic_utils._run_blocking_with_timeout(
+                    _close_meshtastic,
+                    timeout=10.0,
+                    label="meshtastic-client-close-shutdown",
+                    timeout_log_level=None,
                 )
-            except Exception as e:
-                meshtastic_logger.error(
-                    f"Unexpected error during Meshtastic client close: {e}",
-                    exc_info=True,
+                meshtastic_logger.info("Meshtastic client closed successfully")
+            except TimeoutError:
+                meshtastic_logger.warning(
+                    "Meshtastic client close timed out - may cause notification errors"
+                )
+            except Exception:  # noqa: BLE001 - shutdown must keep going
+                meshtastic_logger.exception(
+                    "Unexpected error during Meshtastic client close"
                 )
 
         # Attempt to wipe message_map on shutdown if enabled

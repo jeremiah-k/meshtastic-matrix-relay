@@ -90,43 +90,69 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
         if meshtastic_client is None:
             return "Unable to connect to Meshtastic device."
 
-        response = f"Nodes: {len(meshtastic_client.nodes)}\n"
+        node_lines: list[str] = []
+        valid_node_count = 0
 
         for _node, info in meshtastic_client.nodes.items():
+            if not isinstance(info, dict):
+                continue
+
+            user = info.get("user")
+            user_info = user if isinstance(user, dict) else {}
+            short_name = user_info.get("shortName") or "Unknown"
+            long_name = user_info.get("longName") or "Unknown"
+            hw_model = user_info.get("hwModel") or "Unknown"
+
             hops = "? hops away"
-            if "hopsAway" in info and info["hopsAway"] is not None:
-                if info["hopsAway"] == 0:
+            hops_away = info.get("hopsAway")
+            if hops_away is not None:
+                if hops_away == 0:
                     hops = "direct"
-                elif info["hopsAway"] == 1:
+                elif hops_away == 1:
                     hops = "1 hop away"
                 else:
-                    hops = f"{info['hopsAway']} hops away"
+                    hops = f"{hops_away} hops away"
 
             snr = ""
-            if "snr" in info and info["snr"] is not None:
-                snr = f"{info['snr']} dB "
+            snr_value = info.get("snr")
+            if snr_value is not None:
+                snr = f"{snr_value} dB"
 
-            last_heard = None
-            if "lastHeard" in info and info["lastHeard"] is not None:
-                last_heard = get_relative_time(info["lastHeard"])
+            last_heard = "?"
+            last_heard_timestamp = info.get("lastHeard")
+            if last_heard_timestamp is not None:
+                try:
+                    parsed_last_heard = float(last_heard_timestamp)
+                    now_ts = datetime.now().timestamp()
+                    if 0 < parsed_last_heard <= now_ts:
+                        last_heard = get_relative_time(parsed_last_heard)
+                except (TypeError, ValueError, OverflowError, OSError):
+                    last_heard = "?"
 
             voltage = "?V"
             battery = "?%"
-            if "deviceMetrics" in info:
-                if (
-                    "voltage" in info["deviceMetrics"]
-                    and info["deviceMetrics"]["voltage"] is not None
-                ):
-                    voltage = f"{info['deviceMetrics']['voltage']}V "
-                if (
-                    "batteryLevel" in info["deviceMetrics"]
-                    and info["deviceMetrics"]["batteryLevel"] is not None
-                ):
-                    battery = f"{info['deviceMetrics']['batteryLevel']}% "
+            device_metrics = info.get("deviceMetrics")
+            if isinstance(device_metrics, dict):
+                voltage_value = device_metrics.get("voltage")
+                if voltage_value is not None:
+                    voltage = f"{voltage_value}V"
+                battery_level = device_metrics.get("batteryLevel")
+                if battery_level is not None:
+                    battery = f"{battery_level}%"
 
-            response += f"{info['user']['shortName']} {info['user']['longName']} / {info['user']['hwModel']} / {battery} {voltage} / {snr} / {hops} / {last_heard}\n"
+            parts = [
+                f"{short_name} {long_name}",
+                hw_model,
+                f"{battery} {voltage}",
+                snr,
+                hops,
+                last_heard,
+            ]
+            node_lines.append(" / ".join(part for part in parts if part) + "\n")
+            valid_node_count += 1
 
-        return response
+        response = f"Nodes: {valid_node_count}\n"
+        return response + "".join(node_lines)
 
     async def handle_meshtastic_message(
         self, packet: Any, formatted_message: str, longname: str, meshnet_name: str

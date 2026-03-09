@@ -35,6 +35,9 @@ DEFAULT_MESHTASTIC_TIMEOUT = 300  # seconds
 # Timeout for individual Meshtastic operations (e.g., getMetadata, getMyNodeInfo)
 DEFAULT_MESHTASTIC_OPERATION_TIMEOUT = 30  # seconds
 
+# Initial delay before starting the first connection health check
+INITIAL_HEALTH_CHECK_DELAY = 5  # seconds
+
 # Matrix client timeouts
 MATRIX_EARLY_SYNC_TIMEOUT = 2000  # milliseconds
 MATRIX_MAIN_SYNC_TIMEOUT = 5000  # milliseconds
@@ -62,3 +65,9 @@ SYSTEMD_INIT_SYSTEM = "systemd"
 
 # Time conversion
 MILLISECONDS_PER_SECOND = 1000
+
+# Metadata probe watchdog timeout (same as BLE pattern)
+METADATA_WATCHDOG_SECS = 30.0
+
+# Timeout for BLE connect() operation watchdog
+BLE_CONNECT_TIMEOUT_SECS = 30.0
