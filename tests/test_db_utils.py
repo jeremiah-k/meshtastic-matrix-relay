@@ -1377,6 +1377,50 @@ class TestDbUtils(unittest.TestCase):
                             # Warning should NOT have been logged
                             mock_logger.warning.assert_not_called()
 
+    @patch("mmrelay.db_utils._get_db_manager")
+    @patch("mmrelay.db_utils.logger")
+    def test_delete_stale_longnames_database_error(self, mock_logger, mock_get_manager):
+        """
+        Test delete_stale_longnames handles sqlite3.Error gracefully.
+
+        Covers lines 932-934: exception handling in _delete_stale_names.
+        """
+        mock_manager = MagicMock()
+        mock_get_manager.return_value = mock_manager
+        mock_manager.run_sync.side_effect = sqlite3.Error("Database locked")
+
+        result = delete_stale_longnames({"!test123"})
+
+        # Should return 0 on error
+        self.assertEqual(result, 0)
+        # Should log exception
+        mock_logger.exception.assert_called_once()
+        call_args = mock_logger.exception.call_args[0]
+        self.assertIn("Database error deleting stale", call_args[0])
+
+    @patch("mmrelay.db_utils._get_db_manager")
+    @patch("mmrelay.db_utils.logger")
+    def test_delete_stale_shortnames_database_error(
+        self, mock_logger, mock_get_manager
+    ):
+        """
+        Test delete_stale_shortnames handles sqlite3.Error gracefully.
+
+        Covers lines 932-934: exception handling in _delete_stale_names.
+        """
+        mock_manager = MagicMock()
+        mock_get_manager.return_value = mock_manager
+        mock_manager.run_sync.side_effect = sqlite3.Error("Database is full")
+
+        result = delete_stale_shortnames({"!test456"})
+
+        # Should return 0 on error
+        self.assertEqual(result, 0)
+        # Should log exception
+        mock_logger.exception.assert_called_once()
+        call_args = mock_logger.exception.call_args[0]
+        self.assertIn("Database error deleting stale", call_args[0])
+
 
 if __name__ == "__main__":
     unittest.main()

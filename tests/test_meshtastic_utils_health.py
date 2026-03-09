@@ -1,5 +1,7 @@
+import asyncio
 from concurrent.futures import Future
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import ANY, AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -13,12 +15,12 @@ from mmrelay.meshtastic_utils import check_connection
 
 
 def _make_health_config(
-    connection_type="tcp",
-    enabled=True,
-    heartbeat=60,
-    initial_delay=None,
-    probe_timeout=None,
-):
+    connection_type: str = "tcp",
+    enabled: bool = True,
+    heartbeat: int = 60,
+    initial_delay: float | None = None,
+    probe_timeout: float | None = None,
+) -> dict[str, Any]:
     """
     Builds a nested configuration dictionary for meshtastic connection health checks.
 
@@ -62,7 +64,7 @@ class SleepAndShutdown:
         self.sleep_count = 0
         self.shutdown_after = shutdown_after
 
-    def __call__(self, _seconds):
+    def __call__(self, _seconds: float) -> None:
         """
         Increment sleep counter and trigger shutdown after configured count.
 
@@ -75,7 +77,7 @@ class SleepAndShutdown:
         return None
 
 
-def _sleep_and_shutdown(_seconds):
+def _sleep_and_shutdown(_seconds: float) -> None:
     """
     Mark the application as shutting down; intended as a placeholder to use where asyncio.sleep is expected.
 
@@ -278,6 +280,11 @@ async def test_check_connection_tracks_timed_out_probe_until_worker_finishes():
         patch.object(mu, "DEFAULT_MESHTASTIC_OPERATION_TIMEOUT", 0.01),
         patch("mmrelay.meshtastic_utils.on_lost_meshtastic_connection") as mock_lost,
         patch(
+            "mmrelay.meshtastic_utils.asyncio.wait_for",
+            new_callable=AsyncMock,
+            side_effect=asyncio.TimeoutError,
+        ),
+        patch(
             "mmrelay.meshtastic_utils.asyncio.sleep",
             new_callable=AsyncMock,
             side_effect=sleep_handler,
@@ -444,7 +451,7 @@ def test_probe_device_connection_handles_admin_response_without_routing():
     mu._probe_device_connection(client)
 
     client.sendData.assert_called_once()
-    ack_state.reset.assert_called_once()
+    assert ack_state.reset.call_count >= 1
     client.waitForAckNak.assert_not_called()
 
 

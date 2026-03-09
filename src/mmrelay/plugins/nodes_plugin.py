@@ -122,7 +122,10 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
             last_heard_timestamp = info.get("lastHeard")
             if last_heard_timestamp is not None:
                 try:
-                    last_heard = get_relative_time(float(last_heard_timestamp))
+                    parsed_last_heard = float(last_heard_timestamp)
+                    now_ts = datetime.now().timestamp()
+                    if 0 < parsed_last_heard <= now_ts:
+                        last_heard = get_relative_time(parsed_last_heard)
                 except (TypeError, ValueError, OverflowError, OSError):
                     last_heard = "?"
 

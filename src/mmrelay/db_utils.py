@@ -746,6 +746,10 @@ def _update_names_core(
     snapshot_complete = True
     all_saves_ok = True
     for node in nodes.values():
+        if not isinstance(node, dict):
+            snapshot_complete = False
+            continue
+
         user = node.get("user")
         if not isinstance(user, dict):
             snapshot_complete = False

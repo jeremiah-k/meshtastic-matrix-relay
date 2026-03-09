@@ -100,7 +100,7 @@ matrix_rooms: list[dict[str, Any]] = []
 # Initialize logger for Meshtastic
 logger = get_logger(name="Meshtastic")
 
-# Capture relay start time to filter out old messages
+# Session cutoff used to filter out backlog packets; reset on each new connection.
 RELAY_START_TIME = time.time()
 
 
@@ -681,6 +681,19 @@ def _probe_device_connection(
     local_node = getattr(client, "localNode", None)
     if local_node is None or not callable(getattr(client, "sendData", None)):
         raise _missing_probe_transport_error()
+
+    # Clear stale ACK/NAK flags so this probe cannot "pass" on prior traffic.
+    ack_state = getattr(client, "_acknowledgment", None)
+    if ack_state is None:
+        ack_state = getattr(getattr(local_node, "iface", None), "_acknowledgment", None)
+    if ack_state is not None:
+        reset_ack = getattr(ack_state, "reset", None)
+        if callable(reset_ack):
+            reset_ack()
+        else:
+            for attr in ("receivedAck", "receivedNak", "receivedImplAck"):
+                if hasattr(ack_state, attr):
+                    setattr(ack_state, attr, False)
 
     request = admin_pb2.AdminMessage()
     request.get_device_metadata_request = True
@@ -1536,6 +1549,12 @@ def _get_device_metadata(
     """
     result = {"firmware_version": "unknown", "raw_output": "", "success": False}
 
+    cached_firmware = _extract_firmware_version_from_client(client)
+    if cached_firmware is not None and not force_refresh:
+        result["firmware_version"] = cached_firmware
+        result["success"] = True
+        return result
+
     # Preflight: client may be a mock without localNode/getMetadata
     if not getattr(client, "localNode", None) or not callable(
         getattr(client.localNode, "getMetadata", None)
@@ -1548,12 +1567,6 @@ def _get_device_metadata(
         return result
 
     try:
-        cached_firmware = _extract_firmware_version_from_client(client)
-        if cached_firmware is not None and not force_refresh:
-            result["firmware_version"] = cached_firmware
-            result["success"] = True
-            return result
-
         # Capture getMetadata() output to extract firmware version.
         # Use a shared executor to prevent thread leaks if getMetadata() hangs.
         output_capture = io.StringIO()
@@ -2337,6 +2350,7 @@ def connect_meshtastic(
         The connected Meshtastic client instance on success, or `None` if a connection could not be established or shutdown is in progress.
     """
     global meshtastic_client, meshtastic_iface, shutting_down, reconnecting, config
+    global RELAY_START_TIME
     global matrix_rooms, _ble_future, _ble_future_address
     if shutting_down:
         logger.debug("Shutdown in progress. Not attempting to connect.")
@@ -2816,6 +2830,8 @@ def connect_meshtastic(
             # Acquire lock only for the final setup and subscription
             with meshtastic_lock:
                 meshtastic_client = client
+                # Use connection start time (not module import time) for stale rxTime filtering.
+                RELAY_START_TIME = time.time()
 
                 # CRITICAL VALIDATION: Verify we're connected to the correct BLE device.
                 # This prevents connection to wrong device due to substring matching
@@ -3689,12 +3705,13 @@ async def check_connection() -> None:
 
     while not shutting_down:
         if meshtastic_client and not reconnecting:
+            submitted_client = meshtastic_client
             probe_submission_failed = False
             try:
                 probe_future = _submit_metadata_probe(
                     functools.partial(
                         _probe_device_connection,
-                        meshtastic_client,
+                        submitted_client,
                         probe_timeout,
                     )
                 )
@@ -3724,7 +3741,7 @@ async def check_connection() -> None:
                 except Exception as exc:
                     error_detail = str(exc).strip() or exc.__class__.__name__
                     # Only trigger reconnection if we're not already reconnecting
-                    if not reconnecting:
+                    if not reconnecting and meshtastic_client is submitted_client:
                         logger.error(
                             "%s connection health check failed: %s",
                             connection_type.capitalize(),
@@ -3732,12 +3749,12 @@ async def check_connection() -> None:
                             exc_info=True,
                         )
                         on_lost_meshtastic_connection(
-                            interface=meshtastic_client,
+                            interface=submitted_client,
                             detection_source=f"health check failed: {error_detail}",
                         )
                     else:
                         logger.debug(
-                            "Skipping reconnection trigger - already reconnecting"
+                            "Skipping reconnection trigger - already reconnecting or client changed"
                         )
         elif reconnecting:
             logger.debug("Skipping connection check - reconnection in progress")

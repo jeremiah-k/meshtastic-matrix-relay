@@ -470,27 +470,20 @@ async def main(config: dict[str, Any]) -> None:
 
                 # Run close on a daemon worker so a hung library close call
                 # cannot block interpreter shutdown.
-                try:
-                    meshtastic_utils._run_blocking_with_timeout(
-                        _close_meshtastic,
-                        timeout=10.0,
-                        label="meshtastic-client-close-shutdown",
-                        timeout_log_level=None,
-                    )
-                except TimeoutError:
-                    meshtastic_logger.warning(
-                        "Meshtastic client close timed out - may cause notification errors"
-                    )
-                except Exception:  # noqa: BLE001 - shutdown must keep going
-                    meshtastic_logger.exception(
-                        "Unexpected error during Meshtastic client close"
-                    )
-                else:
-                    meshtastic_logger.info("Meshtastic client closed successfully")
-            except Exception as e:
-                meshtastic_logger.error(
-                    f"Unexpected error during Meshtastic client close: {e}",
-                    exc_info=True,
+                meshtastic_utils._run_blocking_with_timeout(
+                    _close_meshtastic,
+                    timeout=10.0,
+                    label="meshtastic-client-close-shutdown",
+                    timeout_log_level=None,
+                )
+                meshtastic_logger.info("Meshtastic client closed successfully")
+            except TimeoutError:
+                meshtastic_logger.warning(
+                    "Meshtastic client close timed out - may cause notification errors"
+                )
+            except Exception:  # noqa: BLE001 - shutdown must keep going
+                meshtastic_logger.exception(
+                    "Unexpected error during Meshtastic client close"
                 )
 
         # Attempt to wipe message_map on shutdown if enabled

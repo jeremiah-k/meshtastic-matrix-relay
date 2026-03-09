@@ -801,6 +801,8 @@ class TestMain(unittest.TestCase):
         mock_meshtastic_logger.warning.assert_any_call(
             "Meshtastic client close timed out - may cause notification errors"
         )
+        _mock_stop_queue.assert_called_once()
+        mock_matrix_client.close.assert_awaited_once()
 
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
@@ -895,6 +897,13 @@ class TestMain(unittest.TestCase):
 
         import mmrelay.meshtastic_utils as mu
 
+        def _run_helper_side_effect(close_callable, *args, **kwargs):
+            _ = args, kwargs
+            close_callable()
+            return None
+
+        mock_run_blocking_with_timeout.side_effect = _run_helper_side_effect
+
         original_client = mu.meshtastic_client
         original_iface = mu.meshtastic_iface
         original_shutting_down = mu.shutting_down
@@ -912,8 +921,6 @@ class TestMain(unittest.TestCase):
             args, kwargs = mock_run_blocking_with_timeout.call_args
             close_callable = args[0]
             self.assertTrue(callable(close_callable))
-            mock_connect_meshtastic.return_value.close.assert_not_called()
-            close_callable()
             mock_connect_meshtastic.return_value.close.assert_called_once()
             self.assertEqual(kwargs.get("timeout"), 10.0)
             self.assertEqual(kwargs.get("label"), "meshtastic-client-close-shutdown")
@@ -954,6 +961,13 @@ class TestMain(unittest.TestCase):
         mock_join_room.side_effect = _async_noop
 
         import mmrelay.meshtastic_utils as mu
+
+        def _run_helper_side_effect(close_callable, *args, **kwargs):
+            _ = args, kwargs
+            close_callable()
+            return None
+
+        mock_run_blocking_with_timeout.side_effect = _run_helper_side_effect
 
         original_client = mu.meshtastic_client
         original_iface = mu.meshtastic_iface
