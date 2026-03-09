@@ -652,6 +652,10 @@ def _wait_for_probe_ack(client: Any, timeout_secs: float) -> None:
             reset = getattr(ack_state, "reset", None)
             if callable(reset):
                 reset()
+            else:
+                for attr in ("receivedAck", "receivedNak", "receivedImplAck"):
+                    if hasattr(ack_state, attr):
+                        setattr(ack_state, attr, False)
             return
         time.sleep(0.1)
 
