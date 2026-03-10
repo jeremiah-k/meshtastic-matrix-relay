@@ -12,10 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 import pytest
 from nio import SyncError, ToDeviceError, ToDeviceResponse
 
-from mmrelay.constants.config import (
-    E2EE_KEY_REQUEST_BASE_DELAY,
-    E2EE_KEY_REQUEST_MAX_DELAY,
-)
+import mmrelay.matrix_utils as matrix_utils_module
 from mmrelay.matrix_utils import (
     ImageUploadError,
     NioLocalTransportError,
@@ -6600,7 +6597,7 @@ async def test_on_decryption_failure():
         assert mock_logger.info.call_count == 1  # Success message
         # Verify single sleep after success with correct delay (E2EE_KEY_REQUEST_BASE_DELAY = 2)
         assert [call.args[0] for call in mock_sleep.await_args_list] == [
-            E2EE_KEY_REQUEST_BASE_DELAY
+            matrix_utils_module.E2EE_KEY_REQUEST_BASE_DELAY
         ]
 
         # Reset mocks for error case
@@ -6684,9 +6681,12 @@ async def test_on_decryption_failure_retry_on_exception():
         assert mock_logger.info.call_count == 1
         # Verify exponential backoff delays: 2s after attempt 1, 4s after attempt 2, 2s after success
         assert [call.args[0] for call in mock_sleep.await_args_list] == [
-            E2EE_KEY_REQUEST_BASE_DELAY,
-            min(E2EE_KEY_REQUEST_BASE_DELAY * 2, E2EE_KEY_REQUEST_MAX_DELAY),
-            E2EE_KEY_REQUEST_BASE_DELAY,
+            matrix_utils_module.E2EE_KEY_REQUEST_BASE_DELAY,
+            min(
+                matrix_utils_module.E2EE_KEY_REQUEST_BASE_DELAY * 2,
+                matrix_utils_module.E2EE_KEY_REQUEST_MAX_DELAY,
+            ),
+            matrix_utils_module.E2EE_KEY_REQUEST_BASE_DELAY,
         ]
 
 
@@ -6730,8 +6730,11 @@ async def test_on_decryption_failure_all_retries_fail():
         # Verify exponential backoff delays for first two attempts (2s, 4s)
         # No backoff after final failure
         assert [call.args[0] for call in mock_sleep.await_args_list] == [
-            E2EE_KEY_REQUEST_BASE_DELAY,
-            min(E2EE_KEY_REQUEST_BASE_DELAY * 2, E2EE_KEY_REQUEST_MAX_DELAY),
+            matrix_utils_module.E2EE_KEY_REQUEST_BASE_DELAY,
+            min(
+                matrix_utils_module.E2EE_KEY_REQUEST_BASE_DELAY * 2,
+                matrix_utils_module.E2EE_KEY_REQUEST_MAX_DELAY,
+            ),
         ]
 
 
@@ -6777,8 +6780,8 @@ async def test_on_decryption_failure_to_device_error():
         assert mock_logger.info.call_count == 1
         # Verify backoff after error (2s) and success sleep (2s)
         assert [call.args[0] for call in mock_sleep.await_args_list] == [
-            E2EE_KEY_REQUEST_BASE_DELAY,
-            E2EE_KEY_REQUEST_BASE_DELAY,
+            matrix_utils_module.E2EE_KEY_REQUEST_BASE_DELAY,
+            matrix_utils_module.E2EE_KEY_REQUEST_BASE_DELAY,
         ]
 
 
@@ -6819,8 +6822,13 @@ async def test_on_decryption_failure_backoff_caps_at_max_delay():
         mock_event.as_key_request.assert_called_once_with(
             "@bot:matrix.org", "DEVICE123"
         )
-        # Attempt 1 backoff = 20, attempt 2 backoff would be 40 but is capped at 30.
-        assert [call.args[0] for call in mock_sleep.await_args_list] == [20, 30.0]
+        assert [call.args[0] for call in mock_sleep.await_args_list] == [
+            matrix_utils_module.E2EE_KEY_REQUEST_BASE_DELAY,
+            min(
+                matrix_utils_module.E2EE_KEY_REQUEST_BASE_DELAY * 2,
+                matrix_utils_module.E2EE_KEY_REQUEST_MAX_DELAY,
+            ),
+        ]
 
 
 @pytest.mark.asyncio
@@ -6853,8 +6861,11 @@ async def test_on_decryption_failure_unexpected_response_type():
         assert mock_client.to_device.call_count == 3
         # Two retries should back off; final attempt should log terminal error without sleeping.
         assert [call.args[0] for call in mock_sleep.await_args_list] == [
-            E2EE_KEY_REQUEST_BASE_DELAY,
-            min(E2EE_KEY_REQUEST_BASE_DELAY * 2, E2EE_KEY_REQUEST_MAX_DELAY),
+            matrix_utils_module.E2EE_KEY_REQUEST_BASE_DELAY,
+            min(
+                matrix_utils_module.E2EE_KEY_REQUEST_BASE_DELAY * 2,
+                matrix_utils_module.E2EE_KEY_REQUEST_MAX_DELAY,
+            ),
         ]
         assert mock_logger.warning.call_count == 3
         assert (

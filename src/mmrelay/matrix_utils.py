@@ -3932,6 +3932,16 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
     request = event.as_key_request(matrix_client.user_id, matrix_client.device_id)
 
     for attempt in range(E2EE_KEY_REQUEST_MAX_ATTEMPTS):
+        is_last_attempt = attempt >= E2EE_KEY_REQUEST_MAX_ATTEMPTS - 1
+        backoff_delay = (
+            _retry_backoff_delay(
+                attempt,
+                E2EE_KEY_REQUEST_BASE_DELAY,
+                E2EE_KEY_REQUEST_MAX_DELAY,
+            )
+            if not is_last_attempt
+            else None
+        )
         try:
             response = await matrix_client.to_device(request)
             # Check response type - to_device returns ToDeviceResponse or ToDeviceError
@@ -3953,20 +3963,14 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
                     E2EE_KEY_REQUEST_MAX_ATTEMPTS,
                     error_details,
                 )
-                if attempt < E2EE_KEY_REQUEST_MAX_ATTEMPTS - 1:
-                    backoff_delay = _retry_backoff_delay(
-                        attempt,
-                        E2EE_KEY_REQUEST_BASE_DELAY,
-                        E2EE_KEY_REQUEST_MAX_DELAY,
-                    )
-                    await asyncio.sleep(backoff_delay)
-                else:
+                if is_last_attempt:
                     logger.error(
                         "Failed to request keys for event %s after %s attempts. Last error: %s",
                         event.event_id,
                         E2EE_KEY_REQUEST_MAX_ATTEMPTS,
                         error_details,
                     )
+                    return
             else:
                 response_type = type(response).__name__
                 logger.warning(
@@ -3976,38 +3980,33 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
                     attempt + 1,
                     E2EE_KEY_REQUEST_MAX_ATTEMPTS,
                 )
-                if attempt < E2EE_KEY_REQUEST_MAX_ATTEMPTS - 1:
-                    backoff_delay = _retry_backoff_delay(
-                        attempt,
-                        E2EE_KEY_REQUEST_BASE_DELAY,
-                        E2EE_KEY_REQUEST_MAX_DELAY,
-                    )
-                    await asyncio.sleep(backoff_delay)
-                else:
+                if is_last_attempt:
                     logger.error(
                         "Failed to request keys for event %s after %s attempts due to unexpected response type %s",
                         event.event_id,
                         E2EE_KEY_REQUEST_MAX_ATTEMPTS,
                         response_type,
                     )
+                    return
         except NIO_COMM_EXCEPTIONS:
-            if attempt < E2EE_KEY_REQUEST_MAX_ATTEMPTS - 1:
-                logger.warning(
-                    f"Key request attempt {attempt + 1} failed for event {event.event_id}, retrying..."
-                )
-                logger.debug("Key request failure details", exc_info=True)
-                # Backoff before retry
-                backoff_delay = _retry_backoff_delay(
-                    attempt,
-                    E2EE_KEY_REQUEST_BASE_DELAY,
-                    E2EE_KEY_REQUEST_MAX_DELAY,
-                )
-                await asyncio.sleep(backoff_delay)
-            else:
+            if is_last_attempt:
                 logger.exception(
                     f"Failed to request keys for event {event.event_id} "
                     f"after {E2EE_KEY_REQUEST_MAX_ATTEMPTS} attempts"
                 )
+                return
+            logger.warning(
+                f"Key request attempt {attempt + 1} failed for event {event.event_id}, retrying..."
+            )
+            logger.debug("Key request failure details", exc_info=True)
+            # Backoff before retry
+            if backoff_delay is not None:
+                await asyncio.sleep(backoff_delay)
+            continue
+
+        # Backoff before retry on non-success responses
+        if backoff_delay is not None:
+            await asyncio.sleep(backoff_delay)
 
 
 # Callback for new messages in Matrix room
