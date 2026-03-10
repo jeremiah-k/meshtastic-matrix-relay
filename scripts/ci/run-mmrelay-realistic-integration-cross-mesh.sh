@@ -104,6 +104,15 @@ MATRIX_RUNTIME_JSON="${SHARED_DIR}/matrix-runtime.json"
 MMRELAY_PID_A=""
 MMRELAY_PID_B=""
 LOGS_PRINTED=false
+OBSERVABILITY_WRITTEN=false
+SUITE_START_MS=0
+CURRENT_TEST_NAME=""
+CURRENT_TEST_START_MS=0
+
+declare -a TEST_RESULT_NAMES=()
+declare -a TEST_RESULT_STATUS=()
+declare -a TEST_RESULT_DURATION_MS=()
+declare -a TEST_RESULT_NOTES=()
 
 # =============================================================================
 # Utility Functions
@@ -150,9 +159,217 @@ print_logs_if_needed() {
 	[[ -f ${SYNAPSE_LOG_PATH} ]] && cat "${SYNAPSE_LOG_PATH}" || true
 }
 
+count_pattern_in_file() {
+	local file_path=$1
+	local pattern=$2
+	if [[ ! -f ${file_path} ]]; then
+		echo 0
+		return
+	fi
+	grep -F -c "${pattern}" "${file_path}" || true
+}
+
+count_message_map_rows() {
+	local db_path=$1
+	if [[ ! -f ${db_path} ]]; then
+		echo 0
+		return
+	fi
+	"${PYTHON_BIN}" - "${db_path}" <<'PY'
+import sqlite3
+import sys
+
+db_path = sys.argv[1]
+try:
+    conn = sqlite3.connect(db_path, timeout=5)
+    try:
+        row = conn.execute("SELECT COUNT(*) FROM message_map").fetchone()
+    finally:
+        conn.close()
+    print(int(row[0]) if row and row[0] is not None else 0)
+except sqlite3.Error:
+    print(0)
+PY
+}
+
+record_test_result() {
+	local status=$1
+	local note="${2-}"
+	local end_ms
+	end_ms=$(date +%s%3N)
+	local duration_ms=$((end_ms - CURRENT_TEST_START_MS))
+	TEST_RESULT_NAMES+=("${CURRENT_TEST_NAME}")
+	TEST_RESULT_STATUS+=("${status}")
+	TEST_RESULT_DURATION_MS+=("${duration_ms}")
+	TEST_RESULT_NOTES+=("${note}")
+}
+
+start_test() {
+	local test_name=$1
+	local test_label=$2
+	CURRENT_TEST_NAME="${test_name}"
+	CURRENT_TEST_START_MS=$(date +%s%3N)
+	echo ""
+	echo "${test_label}"
+}
+
+pass_test() {
+	local note=$1
+	record_test_result "PASSED" "${note}"
+	echo "✓ ${CURRENT_TEST_NAME} PASSED: ${note}"
+}
+
+write_observability_report() {
+	if [[ ${OBSERVABILITY_WRITTEN} == true ]]; then
+		return
+	fi
+	OBSERVABILITY_WRITTEN=true
+
+	local suite_end_ms
+	suite_end_ms=$(date +%s%3N)
+	local suite_duration_ms=$((suite_end_ms - SUITE_START_MS))
+	local total_tests=${#TEST_RESULT_NAMES[@]}
+	local passed_tests=0
+	local failed_tests=0
+
+	local status
+	for status in "${TEST_RESULT_STATUS[@]}"; do
+		if [[ ${status} == "PASSED" ]]; then
+			passed_tests=$((passed_tests + 1))
+		else
+			failed_tests=$((failed_tests + 1))
+		fi
+	done
+
+	local mesh_log_a_live="${INSTANCE_A_LOG_DIR}/meshtasticd-live.log"
+	local mesh_log_b_live="${INSTANCE_B_LOG_DIR}/meshtasticd-live.log"
+	if docker ps -a --format '{{.Names}}' | grep -Fxq "${MESHTASTICD_CONTAINER_A}"; then
+		docker logs "${MESHTASTICD_CONTAINER_A}" >"${mesh_log_a_live}" 2>&1 || true
+	fi
+	if docker ps -a --format '{{.Names}}' | grep -Fxq "${MESHTASTICD_CONTAINER_B}"; then
+		docker logs "${MESHTASTICD_CONTAINER_B}" >"${mesh_log_b_live}" 2>&1 || true
+	fi
+
+	local relay_messages_a
+	local relay_messages_b
+	local relay_replies_a
+	local relay_replies_b
+	local relay_reactions_a
+	local relay_reactions_b
+	local remote_mesh_a
+	local remote_mesh_b
+	local relay_reconnects_a
+	local relay_reconnects_b
+	local message_map_a
+	local message_map_b
+	local force_close_a
+	local force_close_b
+	local incoming_api_a
+	local incoming_api_b
+	local lost_phone_a
+	local lost_phone_b
+	local stability_note_a="stable"
+	local stability_note_b="stable"
+
+	relay_messages_a=$(count_pattern_in_file "${MMRELAY_LOG_PATH_A}" "Relaying message from")
+	relay_messages_b=$(count_pattern_in_file "${MMRELAY_LOG_PATH_B}" "Relaying message from")
+	relay_replies_a=$(count_pattern_in_file "${MMRELAY_LOG_PATH_A}" "Relaying Matrix reply from")
+	relay_replies_b=$(count_pattern_in_file "${MMRELAY_LOG_PATH_B}" "Relaying Matrix reply from")
+	relay_reactions_a=$(count_pattern_in_file "${MMRELAY_LOG_PATH_A}" "Relaying reaction from")
+	relay_reactions_b=$(count_pattern_in_file "${MMRELAY_LOG_PATH_B}" "Relaying reaction from")
+	remote_mesh_a=$(count_pattern_in_file "${MMRELAY_LOG_PATH_A}" "Processing message from remote meshnet:")
+	remote_mesh_b=$(count_pattern_in_file "${MMRELAY_LOG_PATH_B}" "Processing message from remote meshnet:")
+	relay_reconnects_a=$(count_pattern_in_file "${MMRELAY_LOG_PATH_A}" "Lost connection (")
+	relay_reconnects_b=$(count_pattern_in_file "${MMRELAY_LOG_PATH_B}" "Lost connection (")
+	message_map_a=$(count_message_map_rows "${MMRELAY_DB_PATH_A}")
+	message_map_b=$(count_message_map_rows "${MMRELAY_DB_PATH_B}")
+	force_close_a=$(count_pattern_in_file "${mesh_log_a_live}" "Force close previous TCP connection")
+	force_close_b=$(count_pattern_in_file "${mesh_log_b_live}" "Force close previous TCP connection")
+	incoming_api_a=$(count_pattern_in_file "${mesh_log_a_live}" "Incoming API connection")
+	incoming_api_b=$(count_pattern_in_file "${mesh_log_b_live}" "Incoming API connection")
+	lost_phone_a=$(count_pattern_in_file "${mesh_log_a_live}" "Lost phone connection")
+	lost_phone_b=$(count_pattern_in_file "${mesh_log_b_live}" "Lost phone connection")
+	if ((relay_reconnects_a > 0 || force_close_a > 0 || lost_phone_a > 0)); then
+		stability_note_a="connection churn observed"
+	fi
+	if ((relay_reconnects_b > 0 || force_close_b > 0 || lost_phone_b > 0)); then
+		stability_note_b="connection churn observed"
+	fi
+
+	local summary_md="${SHARED_DIR}/observability-summary.md"
+	{
+		echo "## Cross-Mesh CI Observability Summary"
+		echo
+		echo "- Suite duration: ${suite_duration_ms} ms"
+		echo "- Tests: ${passed_tests}/${total_tests} passed, ${failed_tests} failed"
+		echo
+		echo "### Test Results"
+		echo "| Test | Status | Duration (ms) | Note |"
+		echo "|---|---|---:|---|"
+		local idx
+		for idx in "${!TEST_RESULT_NAMES[@]}"; do
+			echo "| ${TEST_RESULT_NAMES[$idx]} | ${TEST_RESULT_STATUS[$idx]} | ${TEST_RESULT_DURATION_MS[$idx]} | ${TEST_RESULT_NOTES[$idx]} |"
+		done
+		echo
+		echo "### Relay Flow Metrics"
+		echo "| Metric | Instance A | Instance B |"
+		echo "|---|---:|---:|"
+		echo "| Relaying message from | ${relay_messages_a} | ${relay_messages_b} |"
+		echo "| Relaying Matrix reply from | ${relay_replies_a} | ${relay_replies_b} |"
+		echo "| Relaying reaction from | ${relay_reactions_a} | ${relay_reactions_b} |"
+		echo "| Processing message from remote meshnet | ${remote_mesh_a} | ${remote_mesh_b} |"
+		echo "| Lost connection (reconnect triggers) | ${relay_reconnects_a} | ${relay_reconnects_b} |"
+		echo "| message_map rows | ${message_map_a} | ${message_map_b} |"
+		echo
+		echo "### Meshtasticd Connection Metrics"
+		echo "| Metric | Node A | Node B |"
+		echo "|---|---:|---:|"
+		echo "| Incoming API connection | ${incoming_api_a} | ${incoming_api_b} |"
+		echo "| Force close previous TCP connection | ${force_close_a} | ${force_close_b} |"
+		echo "| Lost phone connection | ${lost_phone_a} | ${lost_phone_b} |"
+		echo "| Stability status | ${stability_note_a} | ${stability_note_b} |"
+		echo
+		echo "### Artifacts"
+		echo "- MMRelay A log: \`${MMRELAY_LOG_PATH_A}\`"
+		echo "- MMRelay B log: \`${MMRELAY_LOG_PATH_B}\`"
+		echo "- meshtasticd A live log snapshot: \`${mesh_log_a_live}\`"
+		echo "- meshtasticd B live log snapshot: \`${mesh_log_b_live}\`"
+		echo "- meshtasticd A final log: \`${MESHTASTICD_LOG_PATH_A}\`"
+		echo "- meshtasticd B final log: \`${MESHTASTICD_LOG_PATH_B}\`"
+		echo "- Synapse log: \`${SYNAPSE_LOG_PATH}\`"
+	} >"${summary_md}"
+
+	echo ""
+	echo "============================================================================"
+	echo "Observability Summary"
+	echo "============================================================================"
+	echo "Suite: ${passed_tests}/${total_tests} passed, ${failed_tests} failed, ${suite_duration_ms} ms"
+	echo "Relay A: msg=${relay_messages_a} reply=${relay_replies_a} reaction=${relay_reactions_a} remote=${remote_mesh_a} reconnect=${relay_reconnects_a} map=${message_map_a}"
+	echo "Relay B: msg=${relay_messages_b} reply=${relay_replies_b} reaction=${relay_reactions_b} remote=${remote_mesh_b} reconnect=${relay_reconnects_b} map=${message_map_b}"
+	echo "Node A: incoming=${incoming_api_a} force-close=${force_close_a} lost-phone=${lost_phone_a} status=${stability_note_a}"
+	echo "Node B: incoming=${incoming_api_b} force-close=${force_close_b} lost-phone=${lost_phone_b} status=${stability_note_b}"
+	echo "Detailed summary: ${summary_md}"
+
+	if [[ -n ${GITHUB_STEP_SUMMARY-} ]]; then
+		cat "${summary_md}" >>"${GITHUB_STEP_SUMMARY}" || true
+	fi
+}
+
+fail_test() {
+	local note=$1
+	record_test_result "FAILED" "${note}"
+	echo "✗ ${CURRENT_TEST_NAME} FAILED: ${note}" >&2
+	write_observability_report
+	exit 1
+}
+
 cleanup() {
 	local exit_code=$?
 	local shutdown_timeout=10
+
+	if ((SUITE_START_MS > 0)); then
+		write_observability_report || true
+	fi
 
 	# Graceful MMRelay A shutdown
 	if [[ -n ${MMRELAY_PID_A} ]] && kill -0 "${MMRELAY_PID_A}" >/dev/null 2>&1; then
@@ -1214,6 +1431,7 @@ echo "==========================================================================
 echo "Running Test Scenarios"
 echo "============================================================================"
 
+SUITE_START_MS=$(date +%s%3N)
 SYNC_CURSOR_USER1="${SYNC_SINCE_USER}"
 
 # Test 1: Matrix user message in shared room → Mesh A + Mesh B
@@ -1221,8 +1439,7 @@ MATRIX_TO_SHARED_TEXT="MMRELAY_CI_M2SHARED_$(date +%s)_${RANDOM}"
 log_offset_before_m2shared_a=$(wc -c <"${MMRELAY_LOG_PATH_A}")
 log_offset_before_m2shared_b=$(wc -c <"${MMRELAY_LOG_PATH_B}")
 
-echo ""
-echo "Test 1: Matrix user message in shared room → Mesh A + Mesh B..."
+start_test "Test 1" "Test 1: Matrix user message in shared room → Mesh A + Mesh B..."
 matrix_send_message \
 	"${USER_ACCESS_TOKEN}" \
 	"${ROOM_ID}" \
@@ -1233,26 +1450,23 @@ if ! wait_for_log_pattern_since \
 	"Relaying message from" \
 	"${log_offset_before_m2shared_a}" \
 	45; then
-	echo "✗ Test 1 FAILED: Message was not relayed to Mesh A" >&2
-	exit 1
+	fail_test "Message was not relayed to Mesh A"
 fi
 if ! wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_B}" \
 	"Relaying message from" \
 	"${log_offset_before_m2shared_b}" \
 	45; then
-	echo "✗ Test 1 FAILED: Message was not relayed to Mesh B" >&2
-	exit 1
+	fail_test "Message was not relayed to Mesh B"
 fi
-echo "✓ Test 1 PASSED: Matrix user message relayed to both meshes"
+pass_test "Matrix user message relayed to both meshes"
 
 # Test 2: Simulated Mesh A event in Matrix → cross-mesh relay path in MMRelay B
 MESH_A_TO_MATRIX_TEXT="MMRELAY_CI_A2M_$(date +%s)_${RANDOM}"
 MESH_A_SIM_ID=$((2000000000 + RANDOM))
 log_offset_before_a2m_b=$(wc -c <"${MMRELAY_LOG_PATH_B}")
 
-echo ""
-echo "Test 2: Simulated Mesh A event in Matrix → cross-mesh relay to Mesh B..."
+start_test "Test 2" "Test 2: Simulated Mesh A event in Matrix → cross-mesh relay to Mesh B..."
 MESH_A_MATRIX_EVENT_ID="$(
 	matrix_send_meshtastic_message \
 		"${BOT_A_ACCESS_TOKEN}" \
@@ -1284,18 +1498,16 @@ if ! wait_for_log_pattern_since \
 	"Processing message from remote meshnet:" \
 	"${log_offset_before_a2m_b}" \
 	60; then
-	echo "✗ Test 2 FAILED: MMRelay B did not process simulated remote mesh event from ${MESHNET_NAME_A}" >&2
-	exit 1
+	fail_test "MMRelay B did not process simulated remote mesh event from ${MESHNET_NAME_A}"
 fi
-echo "✓ Test 2 PASSED: Simulated Mesh A event reached Matrix and crossed to Mesh B path"
+pass_test "Simulated Mesh A event reached Matrix and crossed to Mesh B path"
 
 # Test 3: Simulated Mesh B event in Matrix → cross-mesh relay path in MMRelay A
 MESH_B_TO_MATRIX_TEXT="MMRELAY_CI_B2M_$(date +%s)_${RANDOM}"
 MESH_B_SIM_ID=$((2100000000 + RANDOM))
 log_offset_before_b2m_a=$(wc -c <"${MMRELAY_LOG_PATH_A}")
 
-echo ""
-echo "Test 3: Simulated Mesh B event in Matrix → cross-mesh relay to Mesh A..."
+start_test "Test 3" "Test 3: Simulated Mesh B event in Matrix → cross-mesh relay to Mesh A..."
 MESH_B_MATRIX_EVENT_ID="$(
 	matrix_send_meshtastic_message \
 		"${BOT_B_ACCESS_TOKEN}" \
@@ -1327,18 +1539,16 @@ if ! wait_for_log_pattern_since \
 	"Processing message from remote meshnet:" \
 	"${log_offset_before_b2m_a}" \
 	60; then
-	echo "✗ Test 3 FAILED: MMRelay A did not process simulated remote mesh event from ${MESHNET_NAME_B}" >&2
-	exit 1
+	fail_test "MMRelay A did not process simulated remote mesh event from ${MESHNET_NAME_B}"
 fi
-echo "✓ Test 3 PASSED: Simulated Mesh B event reached Matrix and crossed to Mesh A path"
+pass_test "Simulated Mesh B event reached Matrix and crossed to Mesh A path"
 
 # Test 4: Secondary Matrix user message → Mesh A + Mesh B
 MATRIX_USER2_TEXT="MMRELAY_CI_U2_MSG_$(date +%s)_${RANDOM}"
 log_offset_before_u2msg_a=$(wc -c <"${MMRELAY_LOG_PATH_A}")
 log_offset_before_u2msg_b=$(wc -c <"${MMRELAY_LOG_PATH_B}")
 
-echo ""
-echo "Test 4: Secondary Matrix user message → Mesh A + Mesh B..."
+start_test "Test 4" "Test 4: Secondary Matrix user message → Mesh A + Mesh B..."
 MATRIX_USER2_EVENT_ID="$(
 	matrix_send_message \
 		"${USER2_ACCESS_TOKEN}" \
@@ -1351,38 +1561,39 @@ if ! wait_for_log_pattern_since \
 	"Relaying message from" \
 	"${log_offset_before_u2msg_a}" \
 	45; then
-	echo "✗ Test 4 FAILED: Secondary user message did not relay to Mesh A" >&2
-	exit 1
+	fail_test "Secondary user message did not relay to Mesh A"
 fi
 if ! wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_B}" \
 	"Relaying message from" \
 	"${log_offset_before_u2msg_b}" \
 	45; then
-	echo "✗ Test 4 FAILED: Secondary user message did not relay to Mesh B" >&2
-	exit 1
+	fail_test "Secondary user message did not relay to Mesh B"
 fi
-echo "✓ Test 4 PASSED: Secondary user message relayed to both meshes"
+pass_test "Secondary user message relayed to both meshes"
+
+start_test "Test 5" "Test 5: Secondary user reply to prior Matrix event → both meshes..."
 
 # Ensure both relay instances have persisted the mapping for the replied-to event.
 # Without this gate, a fast reply can race ahead of DB persistence and be treated
 # as a plain message instead of a Meshtastic reply.
-wait_for_message_map_meshtastic_id \
+if ! wait_for_message_map_meshtastic_id \
 	"${MMRELAY_DB_PATH_A}" \
 	"${MATRIX_USER2_EVENT_ID}" \
-	"${MESSAGE_MAP_WAIT_TIMEOUT_SECONDS}" >/dev/null
-wait_for_message_map_meshtastic_id \
+	"${MESSAGE_MAP_WAIT_TIMEOUT_SECONDS}" >/dev/null; then
+	fail_test "Timed out waiting for message_map row in instance A for replied-to Matrix event"
+fi
+if ! wait_for_message_map_meshtastic_id \
 	"${MMRELAY_DB_PATH_B}" \
 	"${MATRIX_USER2_EVENT_ID}" \
-	"${MESSAGE_MAP_WAIT_TIMEOUT_SECONDS}" >/dev/null
+	"${MESSAGE_MAP_WAIT_TIMEOUT_SECONDS}" >/dev/null; then
+	fail_test "Timed out waiting for message_map row in instance B for replied-to Matrix event"
+fi
 
 # Test 5: Secondary Matrix user reply to prior Matrix event → both meshes as structured replies
 MATRIX_USER2_REPLY_TEXT="MMRELAY_CI_U2_REPLY_$(date +%s)_${RANDOM}"
 log_offset_before_u2reply_a=$(wc -c <"${MMRELAY_LOG_PATH_A}")
 log_offset_before_u2reply_b=$(wc -c <"${MMRELAY_LOG_PATH_B}")
-
-echo ""
-echo "Test 5: Secondary user reply to prior Matrix event → both meshes..."
 MATRIX_USER2_REPLY_EVENT_ID="$(
 	matrix_send_message \
 		"${USER2_ACCESS_TOKEN}" \
@@ -1411,26 +1622,23 @@ if ! wait_for_log_pattern_since \
 	"Relaying Matrix reply from" \
 	"${log_offset_before_u2reply_a}" \
 	60; then
-	echo "✗ Test 5 FAILED: Reply did not relay to Mesh A" >&2
-	exit 1
+	fail_test "Reply did not relay to Mesh A"
 fi
 if ! wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_B}" \
 	"Relaying Matrix reply from" \
 	"${log_offset_before_u2reply_b}" \
 	60; then
-	echo "✗ Test 5 FAILED: Reply did not relay to Mesh B" >&2
-	exit 1
+	fail_test "Reply did not relay to Mesh B"
 fi
-echo "✓ Test 5 PASSED: Secondary user reply relayed to both meshes"
+pass_test "Secondary user reply relayed to both meshes"
 
 # Test 6: Secondary Matrix user reaction to prior Matrix event → both meshes
 MATRIX_USER2_REACTION_KEY="👍"
 log_offset_before_u2react_a=$(wc -c <"${MMRELAY_LOG_PATH_A}")
 log_offset_before_u2react_b=$(wc -c <"${MMRELAY_LOG_PATH_B}")
 
-echo ""
-echo "Test 6: Secondary user reaction to prior Matrix event → both meshes..."
+start_test "Test 6" "Test 6: Secondary user reaction to prior Matrix event → both meshes..."
 MATRIX_USER2_REACTION_EVENT_ID="$(
 	matrix_send_reaction \
 		"${USER2_ACCESS_TOKEN}" \
@@ -1459,18 +1667,17 @@ if ! wait_for_log_pattern_since \
 	"Relaying reaction from" \
 	"${log_offset_before_u2react_a}" \
 	60; then
-	echo "✗ Test 6 FAILED: Reaction did not relay to Mesh A" >&2
-	exit 1
+	fail_test "Reaction did not relay to Mesh A"
 fi
 if ! wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_B}" \
 	"Relaying reaction from" \
 	"${log_offset_before_u2react_b}" \
 	60; then
-	echo "✗ Test 6 FAILED: Reaction did not relay to Mesh B" >&2
-	exit 1
+	fail_test "Reaction did not relay to Mesh B"
 fi
-echo "✓ Test 6 PASSED: Secondary user reaction relayed to both meshes"
+pass_test "Secondary user reaction relayed to both meshes"
+write_observability_report
 
 # =============================================================================
 # Success
