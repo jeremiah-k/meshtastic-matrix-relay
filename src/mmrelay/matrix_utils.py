@@ -88,6 +88,7 @@ from mmrelay.constants.config import (
     DEFAULT_DETECTION_SENSOR,
     E2EE_KEY_REQUEST_BASE_DELAY,
     E2EE_KEY_REQUEST_MAX_ATTEMPTS,
+    E2EE_KEY_REQUEST_MAX_DELAY,
     E2EE_KEY_SHARING_DELAY_SECONDS,
 )
 from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
@@ -3911,8 +3912,11 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
 
     request = event.as_key_request(matrix_client.user_id, matrix_client.device_id)
 
-    # Cap exponential backoff to prevent unreasonably long delays
-    MAX_BACKOFF_DELAY = 30.0
+    def _retry_backoff_delay(attempt_index: int) -> float:
+        return min(
+            E2EE_KEY_REQUEST_BASE_DELAY * (2**attempt_index),
+            E2EE_KEY_REQUEST_MAX_DELAY,
+        )
 
     for attempt in range(E2EE_KEY_REQUEST_MAX_ATTEMPTS):
         try:
@@ -3932,15 +3936,13 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
                     f"Key request for event {event.event_id} returned error: {response}"
                 )
                 if attempt < E2EE_KEY_REQUEST_MAX_ATTEMPTS - 1:
-                    backoff_delay = min(
-                        E2EE_KEY_REQUEST_BASE_DELAY * (2**attempt),
-                        MAX_BACKOFF_DELAY,
-                    )
+                    backoff_delay = _retry_backoff_delay(attempt)
                     await asyncio.sleep(backoff_delay)
                 else:
                     logger.error(
                         f"Failed to request keys for event {event.event_id} "
-                        f"after {E2EE_KEY_REQUEST_MAX_ATTEMPTS} attempts"
+                        f"after {E2EE_KEY_REQUEST_MAX_ATTEMPTS} attempts. "
+                        f"Last error: {response}"
                     )
         except NIO_COMM_EXCEPTIONS:
             if attempt < E2EE_KEY_REQUEST_MAX_ATTEMPTS - 1:
@@ -3949,10 +3951,7 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
                 )
                 logger.debug("Key request failure details", exc_info=True)
                 # Backoff before retry
-                backoff_delay = min(
-                    E2EE_KEY_REQUEST_BASE_DELAY * (2**attempt),
-                    MAX_BACKOFF_DELAY,
-                )
+                backoff_delay = _retry_backoff_delay(attempt)
                 await asyncio.sleep(backoff_delay)
             else:
                 logger.exception(

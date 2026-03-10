@@ -6757,6 +6757,40 @@ async def test_on_decryption_failure_to_device_error():
 
 
 @pytest.mark.asyncio
+async def test_on_decryption_failure_backoff_caps_at_max_delay():
+    """Backoff delay should be capped when exponential retry delay exceeds max."""
+
+    mock_room = MagicMock()
+    mock_room.room_id = "!room123:matrix.org"
+    mock_event = MagicMock()
+    mock_event.event_id = "$event123"
+    mock_event.as_key_request.return_value = {"type": "m.room_key_request"}
+
+    with (
+        patch("mmrelay.matrix_utils.matrix_client") as mock_client,
+        patch("mmrelay.matrix_utils.logger"),
+        patch("mmrelay.matrix_utils.E2EE_KEY_REQUEST_MAX_ATTEMPTS", 3),
+        patch("mmrelay.matrix_utils.E2EE_KEY_REQUEST_BASE_DELAY", 20),
+        patch("mmrelay.matrix_utils.E2EE_KEY_REQUEST_MAX_DELAY", 30.0),
+        patch(
+            "mmrelay.matrix_utils.asyncio.sleep", new_callable=AsyncMock
+        ) as mock_sleep,
+    ):
+        mock_client.user_id = "@bot:matrix.org"
+        mock_client.device_id = "DEVICE123"
+        # Keep returning ToDeviceError so retries continue until max attempts.
+        mock_error = type("MockError", (), {"__class__": ToDeviceError})()
+        mock_client.to_device = AsyncMock(
+            side_effect=[mock_error, mock_error, mock_error]
+        )
+
+        await on_decryption_failure(mock_room, mock_event)
+
+        # Attempt 1 backoff = 20, attempt 2 backoff would be 40 but is capped at 30.
+        assert [call.args[0] for call in mock_sleep.await_args_list] == [20, 30.0]
+
+
+@pytest.mark.asyncio
 async def test_on_room_member():
     """Test on_room_member handles room member events."""
 

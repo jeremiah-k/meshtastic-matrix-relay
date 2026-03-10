@@ -84,3 +84,4 @@ E2EE_KEY_REQUEST_MAX_ATTEMPTS = (
     3  # Maximum number of attempts for key requests on decryption failure
 )
 E2EE_KEY_REQUEST_BASE_DELAY = 2  # Base delay in seconds for exponential backoff
+E2EE_KEY_REQUEST_MAX_DELAY = 30.0  # Cap exponential backoff to avoid long waits

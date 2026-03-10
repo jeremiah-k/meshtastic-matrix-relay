@@ -241,10 +241,10 @@ class MockToDeviceResponse:
 class MockToDeviceError:
     """Mock ToDeviceError for testing."""
 
-    def __init__(self, message="Error"):
-        self.message = message
+    def __init__(self, message: str = "Error") -> None:
+        self.message: str = message
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.message
 
 
