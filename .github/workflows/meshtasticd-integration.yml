@@ -19,10 +19,11 @@ permissions:
 jobs:
   meshtasticd-integration:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 15
     env:
-      MESHTASTICD_IMAGE: meshtastic/meshtasticd:latest
-      SYNAPSE_IMAGE: matrixdotorg/synapse:latest
+      # Pinned, validated image digests for deterministic CI behavior.
+      MESHTASTICD_IMAGE: meshtastic/meshtasticd@sha256:1b8d88cd63991bfecb8b8ff1801b9ee806447299b849eff19d03bc6ae0edcd65 # 2.7.15
+      SYNAPSE_IMAGE: matrixdotorg/synapse@sha256:f223f5fc532600801284fededefca82288fb71551bf4fcc89cd0b3363a3461cc # v1.149.0
       CI_ARTIFACT_DIR: ${{ github.workspace }}/.ci-artifacts/meshtasticd-integration
       MMRELAY_LOG_ON_SUCCESS: "true"
       MESHNET_NAME_A: "Backcountry Alpha"
@@ -53,7 +54,7 @@ jobs:
 
       - name: Run meshtasticd integration checks
         run: |
-          bash scripts/ci/run-mmrelay-meshtasticd-integration.sh
+          timeout --foreground 13m bash scripts/ci/run-mmrelay-meshtasticd-integration.sh
 
       - name: Display integration summary
         if: always()
