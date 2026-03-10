@@ -7,20 +7,21 @@ set -euo pipefail
 # =============================================================================
 #
 # This script tests MMRelay's ability to relay messages between two isolated mesh networks
-# via a shared Matrix room. This is the core use case for MMRelay: bridging multiple meshnets.
+# through Matrix using both a plaintext room and an encrypted room.
 #
 # Architecture:
 #   - meshtasticd relay-A (port 4403) ← MMRelay A ←─┐
-#                                                    └──→ Shared Matrix Room
+#                                                    ├──→ Shared plaintext Matrix room
+#                                                    └──→ Shared encrypted Matrix room
 #   - meshtasticd relay-B (port 4404) ← MMRelay B ←─┘
 #
 # Test Scenarios:
-#   1. Matrix user message in shared room → Mesh A + Mesh B
-#   2. Injected Mesh A-origin event in shared room → remote meshnet processing in MMRelay B
-#   3. Injected Mesh B-origin event in shared room → remote meshnet processing in MMRelay A
-#   4. Secondary Matrix user message → Mesh A + Mesh B
-#   5. Secondary Matrix user reply → both meshes as structured replies
-#   6. Secondary Matrix user reaction → both meshes
+#   1. Matrix user message in plaintext room → Mesh A + Mesh B
+#   2. Injected Mesh A-origin event in plaintext room → remote meshnet processing in MMRelay B
+#   3. Injected Mesh B-origin event in plaintext room → remote meshnet processing in MMRelay A
+#   4. E2EE Matrix user message in encrypted room → Mesh A + Mesh B
+#   5. E2EE Matrix user reply in encrypted room → both meshes as structured replies
+#   6. E2EE Matrix user reaction in encrypted room → both meshes
 #
 # Environment Variables:
 #   MESHTASTICD_IMAGE: Docker image for meshtasticd (default: meshtastic/meshtasticd:latest)
@@ -157,6 +158,23 @@ print_logs_if_needed() {
 	[[ -f ${MESHTASTICD_LOG_PATH_B} ]] && cat "${MESHTASTICD_LOG_PATH_B}" || true
 	echo "===== Synapse log ====="
 	[[ -f ${SYNAPSE_LOG_PATH} ]] && cat "${SYNAPSE_LOG_PATH}" || true
+}
+
+stop_process() {
+	local pid=$1
+	local name=$2
+	local shutdown_timeout=10
+
+	if [[ -n ${pid} ]] && kill -0 "${pid}" >/dev/null 2>&1; then
+		echo "Stopping ${name} (PID ${pid})..."
+		kill -TERM "${pid}" 2>/dev/null || true
+		for _ in $(seq 1 $shutdown_timeout); do
+			kill -0 "${pid}" 2>/dev/null || break
+			sleep 1
+		done
+		kill -0 "${pid}" 2>/dev/null && kill -KILL "${pid}" 2>/dev/null || true
+		wait "${pid}" 2>/dev/null || true
+	fi
 }
 
 count_pattern_in_file() {
@@ -377,35 +395,13 @@ fail_test() {
 
 cleanup() {
 	local exit_code=$?
-	local shutdown_timeout=10
 
 	if ((SUITE_START_MS > 0)); then
 		write_observability_report || true
 	fi
 
-	# Graceful MMRelay A shutdown
-	if [[ -n ${MMRELAY_PID_A} ]] && kill -0 "${MMRELAY_PID_A}" >/dev/null 2>&1; then
-		echo "Stopping MMRelay A (PID ${MMRELAY_PID_A})..."
-		kill -TERM "${MMRELAY_PID_A}" 2>/dev/null || true
-		for i in $(seq 1 $shutdown_timeout); do
-			kill -0 "${MMRELAY_PID_A}" 2>/dev/null || break
-			sleep 1
-		done
-		kill -0 "${MMRELAY_PID_A}" 2>/dev/null && kill -KILL "${MMRELAY_PID_A}" 2>/dev/null || true
-		wait "${MMRELAY_PID_A}" 2>/dev/null || true
-	fi
-
-	# Graceful MMRelay B shutdown
-	if [[ -n ${MMRELAY_PID_B} ]] && kill -0 "${MMRELAY_PID_B}" >/dev/null 2>&1; then
-		echo "Stopping MMRelay B (PID ${MMRELAY_PID_B})..."
-		kill -TERM "${MMRELAY_PID_B}" 2>/dev/null || true
-		for i in $(seq 1 $shutdown_timeout); do
-			kill -0 "${MMRELAY_PID_B}" 2>/dev/null || break
-			sleep 1
-		done
-		kill -0 "${MMRELAY_PID_B}" 2>/dev/null && kill -KILL "${MMRELAY_PID_B}" 2>/dev/null || true
-		wait "${MMRELAY_PID_B}" 2>/dev/null || true
-	fi
+	stop_process "${MMRELAY_PID_A}" "MMRelay A"
+	stop_process "${MMRELAY_PID_B}" "MMRelay B"
 
 	# Capture Docker logs before cleanup
 	if docker ps -a --format '{{.Names}}' | grep -Fxq "${MESHTASTICD_CONTAINER_A}"; then
@@ -575,6 +571,71 @@ else:
 PY
 }
 
+write_matrix_credentials_json() {
+	local output_path=$1
+	local homeserver=$2
+	local user_id=$3
+	local access_token=$4
+	local device_id=$5
+	"${PYTHON_BIN}" - "${output_path}" "${homeserver}" "${user_id}" "${access_token}" "${device_id}" <<'PY'
+import json
+import pathlib
+import sys
+
+output_path = pathlib.Path(sys.argv[1])
+homeserver = sys.argv[2]
+user_id = sys.argv[3]
+access_token = sys.argv[4]
+device_id = sys.argv[5]
+
+output_path.parent.mkdir(parents=True, exist_ok=True)
+output_path.write_text(
+    json.dumps(
+        {
+            "homeserver": homeserver,
+            "user_id": user_id,
+            "access_token": access_token,
+            "device_id": device_id,
+        },
+        indent=2,
+    )
+    + "\n",
+    encoding="utf-8",
+)
+PY
+}
+
+write_e2ee_auth_state_json() {
+	local output_path=$1
+	local access_token=$2
+	local user_id=$3
+	local device_id=$4
+	"${PYTHON_BIN}" - "${output_path}" "${access_token}" "${user_id}" "${device_id}" <<'PY'
+import json
+import pathlib
+import sys
+
+output_path = pathlib.Path(sys.argv[1])
+access_token = sys.argv[2]
+user_id = sys.argv[3]
+device_id = sys.argv[4]
+
+output_path.parent.mkdir(parents=True, exist_ok=True)
+output_path.write_text(
+    json.dumps(
+        {
+            "access_token": access_token,
+            "user_id": user_id,
+            "device_id": device_id,
+        },
+        indent=2,
+    )
+    + "\n",
+    encoding="utf-8",
+)
+PY
+}
+
 matrix_send_message() {
 	local access_token=$1
 	local room_id=$2
@@ -685,56 +746,238 @@ print(event_id)
 PY
 }
 
-matrix_send_reaction() {
-	local access_token=$1
-	local room_id=$2
-	local target_event_id=$3
-	local reaction_key=$4
-	local txn_prefix=$5
-	"${PYTHON_BIN}" - "${MATRIX_BASE_URL}" "${access_token}" "${room_id}" "${target_event_id}" "${reaction_key}" "${txn_prefix}" <<'PY'
-import os
+matrix_send_e2ee_message() {
+	local user_id=$1
+	local password=$2
+	local room_id=$3
+	local message_text=$4
+	local store_path=$5
+	local auth_state_path=$6
+	local reply_to_event_id="${7-}"
+	"${PYTHON_BIN}" - "${MATRIX_BASE_URL}" "${user_id}" "${password}" "${room_id}" "${message_text}" "${store_path}" "${auth_state_path}" "${reply_to_event_id}" <<'PY'
+import asyncio
+import json
+import pathlib
 import sys
-import time
 import urllib.parse
 
-import requests
+from nio import AsyncClient, AsyncClientConfig, LoginError
 
-base_url = sys.argv[1]
-access_token = sys.argv[2]
-room_id = sys.argv[3]
-target_event_id = sys.argv[4]
-reaction_key = sys.argv[5]
-txn_prefix = sys.argv[6]
+(
+    base_url,
+    user_id,
+    password,
+    room_id,
+    message_text,
+    store_path_raw,
+    auth_state_path_raw,
+    reply_to_event_id,
+) = sys.argv[1:9]
 
-txn_id = f"{txn_prefix}-{int(time.time() * 1000)}-{os.getpid()}"
-quoted_room_id = urllib.parse.quote(room_id, safe="")
-quoted_txn_id = urllib.parse.quote(txn_id, safe="")
-url = (
-    f"{base_url}/_matrix/client/v3/rooms/{quoted_room_id}/"
-    f"send/m.reaction/{quoted_txn_id}"
-)
-content = {
-    "m.relates_to": {
-        "event_id": target_event_id,
-        "rel_type": "m.annotation",
-        "key": reaction_key,
-    }
-}
-response = requests.put(
-    url,
-    headers={"Authorization": f"Bearer {access_token}"},
-    json=content,
-    timeout=20,
-)
-if response.status_code >= 400:
-    raise RuntimeError(
-        f"Failed to send Matrix reaction ({response.status_code}): {response.text}"
+parsed = urllib.parse.urlparse(base_url)
+homeserver = f"{parsed.scheme}://{parsed.netloc}"
+store_path = pathlib.Path(store_path_raw)
+auth_state_path = pathlib.Path(auth_state_path_raw)
+store_path.mkdir(parents=True, exist_ok=True)
+auth_state_path.parent.mkdir(parents=True, exist_ok=True)
+
+
+async def _run() -> str:
+    client = AsyncClient(
+        homeserver=homeserver,
+        user=user_id,
+        store_path=str(store_path),
+        config=AsyncClientConfig(encryption_enabled=True, store_sync_tokens=True),
     )
 
-event_id = response.json().get("event_id")
-if not isinstance(event_id, str) or not event_id:
-    raise RuntimeError("Matrix reaction response missing event_id")
-print(event_id)
+    try:
+        restored = False
+        if auth_state_path.is_file():
+            try:
+                saved = json.loads(auth_state_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                saved = {}
+            access_token = saved.get("access_token")
+            saved_user = saved.get("user_id")
+            device_id = saved.get("device_id")
+            if (
+                isinstance(access_token, str)
+                and access_token
+                and isinstance(saved_user, str)
+                and saved_user == user_id
+                and isinstance(device_id, str)
+                and device_id
+            ):
+                client.restore_login(
+                    user_id=saved_user,
+                    device_id=device_id,
+                    access_token=access_token,
+                )
+                restored = True
+
+        if not restored:
+            login_response = await client.login(
+                password=password,
+                device_name="mmrelay-ci-e2ee-user2",
+            )
+            if isinstance(login_response, LoginError):
+                raise RuntimeError(
+                    f"E2EE login failed ({login_response.status_code}): {login_response.message}"
+                )
+            auth_state_path.write_text(
+                json.dumps(
+                    {
+                        "access_token": login_response.access_token,
+                        "user_id": login_response.user_id,
+                        "device_id": login_response.device_id,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+        if client.should_upload_keys:
+            await client.keys_upload()
+
+        # Load room state and device keys before sending encrypted events.
+        await client.sync(timeout=3000, full_state=True)
+
+        content = {"msgtype": "m.text", "body": message_text}
+        if reply_to_event_id:
+            content["m.relates_to"] = {"m.in_reply_to": {"event_id": reply_to_event_id}}
+
+        response = await client.room_send(
+            room_id=room_id,
+            message_type="m.room.message",
+            content=content,
+            ignore_unverified_devices=True,
+        )
+        event_id = getattr(response, "event_id", None)
+        if not isinstance(event_id, str) or not event_id:
+            raise RuntimeError("Encrypted Matrix message send response missing event_id")
+        return event_id
+    finally:
+        await client.close()
+
+
+result = asyncio.run(_run())
+print(result)
+PY
+}
+
+matrix_send_e2ee_reaction() {
+	local user_id=$1
+	local password=$2
+	local room_id=$3
+	local target_event_id=$4
+	local reaction_key=$5
+	local store_path=$6
+	local auth_state_path=$7
+	"${PYTHON_BIN}" - "${MATRIX_BASE_URL}" "${user_id}" "${password}" "${room_id}" "${target_event_id}" "${reaction_key}" "${store_path}" "${auth_state_path}" <<'PY'
+import asyncio
+import json
+import pathlib
+import sys
+import urllib.parse
+
+from nio import AsyncClient, AsyncClientConfig, LoginError
+
+(
+    base_url,
+    user_id,
+    password,
+    room_id,
+    target_event_id,
+    reaction_key,
+    store_path_raw,
+    auth_state_path_raw,
+) = sys.argv[1:9]
+
+parsed = urllib.parse.urlparse(base_url)
+homeserver = f"{parsed.scheme}://{parsed.netloc}"
+store_path = pathlib.Path(store_path_raw)
+auth_state_path = pathlib.Path(auth_state_path_raw)
+store_path.mkdir(parents=True, exist_ok=True)
+auth_state_path.parent.mkdir(parents=True, exist_ok=True)
+
+
+async def _run() -> str:
+    client = AsyncClient(
+        homeserver=homeserver,
+        user=user_id,
+        store_path=str(store_path),
+        config=AsyncClientConfig(encryption_enabled=True, store_sync_tokens=True),
+    )
+    try:
+        restored = False
+        if auth_state_path.is_file():
+            try:
+                saved = json.loads(auth_state_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                saved = {}
+            access_token = saved.get("access_token")
+            saved_user = saved.get("user_id")
+            device_id = saved.get("device_id")
+            if (
+                isinstance(access_token, str)
+                and access_token
+                and isinstance(saved_user, str)
+                and saved_user == user_id
+                and isinstance(device_id, str)
+                and device_id
+            ):
+                client.restore_login(
+                    user_id=saved_user,
+                    device_id=device_id,
+                    access_token=access_token,
+                )
+                restored = True
+
+        if not restored:
+            login_response = await client.login(
+                password=password,
+                device_name="mmrelay-ci-e2ee-user2",
+            )
+            if isinstance(login_response, LoginError):
+                raise RuntimeError(
+                    f"E2EE login failed ({login_response.status_code}): {login_response.message}"
+                )
+            auth_state_path.write_text(
+                json.dumps(
+                    {
+                        "access_token": login_response.access_token,
+                        "user_id": login_response.user_id,
+                        "device_id": login_response.device_id,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+        if client.should_upload_keys:
+            await client.keys_upload()
+
+        await client.sync(timeout=3000, full_state=True)
+        response = await client.room_send(
+            room_id=room_id,
+            message_type="m.reaction",
+            content={
+                "m.relates_to": {
+                    "event_id": target_event_id,
+                    "rel_type": "m.annotation",
+                    "key": reaction_key,
+                }
+            },
+            ignore_unverified_devices=True,
+        )
+        event_id = getattr(response, "event_id", None)
+        if not isinstance(event_id, str) or not event_id:
+            raise RuntimeError("Encrypted Matrix reaction send response missing event_id")
+        return event_id
+    finally:
+        await client.close()
+
+
+result = asyncio.run(_run())
+print(result)
 PY
 }
 
@@ -867,6 +1110,91 @@ if recent:
     print(json.dumps(recent, indent=2), file=sys.stderr)
 else:
     print("Timed out waiting for Matrix event. No recent events found.", file=sys.stderr)
+raise SystemExit(1)
+PY
+}
+
+matrix_wait_event_by_id() {
+	local access_token=$1
+	local room_id=$2
+	local event_id=$3
+	local timeout_seconds=$4
+	local expected_sender="${5-}"
+	local allowed_types_csv="${6-}"
+
+	"${PYTHON_BIN}" - "${MATRIX_BASE_URL}" "${access_token}" "${room_id}" "${event_id}" "${timeout_seconds}" "${expected_sender}" "${allowed_types_csv}" <<'PY'
+import json
+import sys
+import time
+import urllib.parse
+
+import requests
+
+(
+    base_url,
+    access_token,
+    room_id,
+    event_id,
+    timeout_seconds_raw,
+    expected_sender,
+    allowed_types_csv,
+) = sys.argv[1:8]
+
+timeout_seconds = int(timeout_seconds_raw)
+allowed_types = {t for t in allowed_types_csv.split(",") if t}
+quoted_room_id = urllib.parse.quote(room_id, safe="")
+quoted_event_id = urllib.parse.quote(event_id, safe="")
+url = f"{base_url}/_matrix/client/v3/rooms/{quoted_room_id}/event/{quoted_event_id}"
+headers = {"Authorization": f"Bearer {access_token}"}
+deadline = time.monotonic() + timeout_seconds
+last_status = None
+last_body = ""
+
+while time.monotonic() < deadline:
+    try:
+        response = requests.get(url, headers=headers, timeout=20)
+    except requests.RequestException:
+        time.sleep(1)
+        continue
+
+    last_status = response.status_code
+    last_body = response.text[:300]
+
+    if response.status_code == 200:
+        event = response.json()
+        event_sender = event.get("sender")
+        event_type = event.get("type")
+
+        if expected_sender and event_sender != expected_sender:
+            raise RuntimeError(
+                f"Event sender mismatch: expected '{expected_sender}', got '{event_sender}'"
+            )
+        if allowed_types and event_type not in allowed_types:
+            raise RuntimeError(
+                f"Event type mismatch: expected one of {sorted(allowed_types)}, got '{event_type}'"
+            )
+
+        print(json.dumps(event))
+        raise SystemExit(0)
+
+    if response.status_code in (403, 404):
+        time.sleep(1)
+        continue
+
+    raise RuntimeError(
+        f"Failed to fetch Matrix event by ID ({response.status_code}): {response.text[:300]}"
+    )
+
+if last_status is None:
+    print(
+        f"Timed out waiting for Matrix event {event_id}: request did not succeed",
+        file=sys.stderr,
+    )
+else:
+    print(
+        f"Timed out waiting for Matrix event {event_id}: last status={last_status}, body={last_body}",
+        file=sys.stderr,
+    )
 raise SystemExit(1)
 PY
 }
@@ -1101,9 +1429,24 @@ docker run --rm \
 	"${SYNAPSE_IMAGE}" generate >/dev/null
 
 cat >>"${SYNAPSE_DATA_DIR}/homeserver.yaml" <<'YAML'
+# Test-only shared secret for ephemeral CI Synapse instance.
 registration_shared_secret: "mmrelay-ci-shared-secret"
 enable_registration: true
 enable_registration_without_verification: true
+# Relax CI rate limits to avoid transient 429s during bursty encrypted relay traffic.
+rc_message:
+  per_second: 25
+  burst_count: 100
+rc_login:
+  address:
+    per_second: 5
+    burst_count: 30
+  account:
+    per_second: 5
+    burst_count: 30
+  failed_attempts:
+    per_second: 5
+    burst_count: 30
 YAML
 
 echo "Starting Synapse container..."
@@ -1195,6 +1538,7 @@ def login(localpart: str, password: str) -> dict[str, str]:
     return {
         "access_token": body["access_token"],
         "user_id": body["user_id"],
+        "device_id": body["device_id"],
     }
 
 def post(path: str, token: str, payload: dict) -> dict:
@@ -1207,16 +1551,31 @@ def post(path: str, token: str, payload: dict) -> dict:
     _raise_for_status(response, f"POST {path}")
     return response.json()
 
-def create_room(user_token: str, name: str, topic: str, alias_name: str) -> str:
+def create_room(
+    user_token: str,
+    name: str,
+    topic: str,
+    alias_name: str,
+    encrypted: bool = False,
+) -> str:
+    payload = {
+        "preset": "private_chat",
+        "name": name,
+        "topic": topic,
+        "room_alias_name": alias_name,
+    }
+    if encrypted:
+        payload["initial_state"] = [
+            {
+                "type": "m.room.encryption",
+                "state_key": "",
+                "content": {"algorithm": "m.megolm.v1.aes-sha2"},
+            }
+        ]
     room_create = post(
         "/_matrix/client/v3/createRoom",
         user_token,
-        {
-            "preset": "private_chat",
-            "name": name,
-            "topic": topic,
-            "room_alias_name": alias_name,
-        },
+        payload,
     )
     room_id = room_create.get("room_id")
     if not isinstance(room_id, str):
@@ -1242,16 +1601,25 @@ user1 = login(user1_localpart, user1_password)
 user2 = login(user2_localpart, user2_password)
 
 room_suffix = int(time.time())
-room_id = create_room(
+room_id_plaintext = create_room(
     user1["access_token"],
-    "MMRelay CI Integration Room",
-    "Shared room for MMRelay integration tests",
-    f"mmrelay-ci-integration-{room_suffix}",
+    "MMRelay CI Plaintext Room",
+    "Plaintext room for integration tests",
+    f"mmrelay-ci-plain-{room_suffix}",
+    encrypted=False,
+)
+room_id_encrypted = create_room(
+    user1["access_token"],
+    "MMRelay CI Encrypted Room",
+    "Encrypted room for integration tests",
+    f"mmrelay-ci-e2ee-{room_suffix}",
+    encrypted=True,
 )
 
-# Shared room members: user1 + user2 + bot_a + bot_b
-for account in [bot_a, bot_b, user2]:
-    invite_and_join(room_id, user1["access_token"], account)
+# Shared room members: user1 + user2 + bot_a + bot_b in both rooms.
+for room_id in [room_id_plaintext, room_id_encrypted]:
+    for account in [bot_a, bot_b, user2]:
+        invite_and_join(room_id, user1["access_token"], account)
 
 sync_response = requests.get(
     f"{base_url}/_matrix/client/v3/sync",
@@ -1263,14 +1631,18 @@ _raise_for_status(sync_response, "initial user1 sync")
 initial_sync_user1 = sync_response.json()
 
 runtime = {
-    "room_id": room_id,
+    "room_id_plaintext": room_id_plaintext,
+    "room_id_encrypted": room_id_encrypted,
     "bot_a_user_id": bot_a["user_id"],
     "bot_a_access_token": bot_a["access_token"],
+    "bot_a_device_id": bot_a["device_id"],
     "bot_b_user_id": bot_b["user_id"],
     "bot_b_access_token": bot_b["access_token"],
+    "bot_b_device_id": bot_b["device_id"],
     "user_access_token": user1["access_token"],
-    "user2_access_token": user2["access_token"],
     "user2_user_id": user2["user_id"],
+    "user2_access_token": user2["access_token"],
+    "user2_device_id": user2["device_id"],
     "sync_since_user": initial_sync_user1.get("next_batch", ""),
 }
 
@@ -1279,23 +1651,56 @@ PY
 
 BOT_A_USER_ID="$(load_json_value bot_a_user_id)"
 BOT_A_ACCESS_TOKEN="$(load_json_value bot_a_access_token)"
+BOT_A_DEVICE_ID="$(load_json_value bot_a_device_id)"
 BOT_B_USER_ID="$(load_json_value bot_b_user_id)"
 BOT_B_ACCESS_TOKEN="$(load_json_value bot_b_access_token)"
+BOT_B_DEVICE_ID="$(load_json_value bot_b_device_id)"
 USER_ACCESS_TOKEN="$(load_json_value user_access_token)"
-USER2_ACCESS_TOKEN="$(load_json_value user2_access_token)"
 USER2_USER_ID="$(load_json_value user2_user_id)"
-ROOM_ID="$(load_json_value room_id)"
+USER2_ACCESS_TOKEN="$(load_json_value user2_access_token)"
+USER2_DEVICE_ID="$(load_json_value user2_device_id)"
+ROOM_ID_PLAINTEXT="$(load_json_value room_id_plaintext)"
+ROOM_ID_ENCRYPTED="$(load_json_value room_id_encrypted)"
 SYNC_SINCE_USER="$(load_json_value sync_since_user)"
 
 export BOT_A_USER_ID
 export BOT_A_ACCESS_TOKEN
+export BOT_A_DEVICE_ID
 export BOT_B_USER_ID
 export BOT_B_ACCESS_TOKEN
+export BOT_B_DEVICE_ID
 export USER_ACCESS_TOKEN
-export USER2_ACCESS_TOKEN
 export USER2_USER_ID
-export ROOM_ID
+export USER2_ACCESS_TOKEN
+export USER2_DEVICE_ID
+export ROOM_ID_PLAINTEXT
+export ROOM_ID_ENCRYPTED
 export SYNC_SINCE_USER
+
+E2EE_USER2_STORE_DIR="${SHARED_DIR}/user2-e2ee-store"
+E2EE_USER2_AUTH_STATE="${SHARED_DIR}/user2-e2ee-auth.json"
+
+# Seed user2 auth state so encrypted sends reuse the existing Matrix login.
+write_e2ee_auth_state_json \
+	"${E2EE_USER2_AUTH_STATE}" \
+	"${USER2_ACCESS_TOKEN}" \
+	"${USER2_USER_ID}" \
+	"${USER2_DEVICE_ID}"
+
+# Seed bot credentials so each MMRelay instance restores a session instead of
+# performing a new login (avoids Synapse login rate-limit churn in CI).
+write_matrix_credentials_json \
+	"${MMRELAY_HOME_DIR_A}/matrix/credentials.json" \
+	"${MATRIX_BASE_URL}" \
+	"${BOT_A_USER_ID}" \
+	"${BOT_A_ACCESS_TOKEN}" \
+	"${BOT_A_DEVICE_ID}"
+write_matrix_credentials_json \
+	"${MMRELAY_HOME_DIR_B}/matrix/credentials.json" \
+	"${MATRIX_BASE_URL}" \
+	"${BOT_B_USER_ID}" \
+	"${BOT_B_ACCESS_TOKEN}" \
+	"${BOT_B_DEVICE_ID}"
 
 # =============================================================================
 # Create MMRelay Configurations
@@ -1308,10 +1713,14 @@ echo "Creating MMRelay configurations..."
 cat >"${MMRELAY_CONFIG_PATH_A}" <<EOF_CONFIG
 matrix:
   homeserver: "${MATRIX_BASE_URL}"
-  access_token: "${BOT_A_ACCESS_TOKEN}"
   bot_user_id: "${BOT_A_USER_ID}"
+  e2ee:
+    enabled: true
+    store_path: "${MMRELAY_HOME_DIR_A}/matrix/store"
 matrix_rooms:
-  - id: "${ROOM_ID}"
+  - id: "${ROOM_ID_PLAINTEXT}"
+    meshtastic_channel: 0
+  - id: "${ROOM_ID_ENCRYPTED}"
     meshtastic_channel: 0
 meshtastic:
   connection_type: tcp
@@ -1336,10 +1745,14 @@ EOF_CONFIG
 cat >"${MMRELAY_CONFIG_PATH_B}" <<EOF_CONFIG
 matrix:
   homeserver: "${MATRIX_BASE_URL}"
-  access_token: "${BOT_B_ACCESS_TOKEN}"
   bot_user_id: "${BOT_B_USER_ID}"
+  e2ee:
+    enabled: true
+    store_path: "${MMRELAY_HOME_DIR_B}/matrix/store"
 matrix_rooms:
-  - id: "${ROOM_ID}"
+  - id: "${ROOM_ID_PLAINTEXT}"
+    meshtastic_channel: 0
+  - id: "${ROOM_ID_ENCRYPTED}"
     meshtastic_channel: 0
 meshtastic:
   connection_type: tcp
@@ -1424,15 +1837,15 @@ echo "==========================================================================
 SUITE_START_MS=$(date +%s%3N)
 SYNC_CURSOR_USER1="${SYNC_SINCE_USER}"
 
-# Test 1: Matrix user message in shared room → Mesh A + Mesh B
+# Test 1: Matrix user message in plaintext room → Mesh A + Mesh B
 MATRIX_TO_SHARED_TEXT="MMRELAY_CI_M2SHARED_$(date +%s)_${RANDOM}"
 log_offset_before_m2shared_a=$(wc -c <"${MMRELAY_LOG_PATH_A}")
 log_offset_before_m2shared_b=$(wc -c <"${MMRELAY_LOG_PATH_B}")
 
-start_test "Test 1" "Test 1: Matrix user message in shared room → Mesh A + Mesh B..."
+start_test "Test 1" "Test 1: Matrix user message in plaintext room → Mesh A + Mesh B..."
 matrix_send_message \
 	"${USER_ACCESS_TOKEN}" \
-	"${ROOM_ID}" \
+	"${ROOM_ID_PLAINTEXT}" \
 	"${MATRIX_TO_SHARED_TEXT}" \
 	"mmrelay-ci-m2shared" >/dev/null
 if ! wait_for_log_pattern_since \
@@ -1451,7 +1864,7 @@ if ! wait_for_log_pattern_since \
 fi
 pass_test "Matrix user message relayed to both meshes"
 
-# Test 2: Injected Mesh A-origin event in Matrix → remote meshnet processing in MMRelay B
+# Test 2: Injected Mesh A-origin event in plaintext room → remote meshnet processing in MMRelay B
 #
 # Keep one API client per meshtasticd node (the relay itself) to avoid transport churn.
 # We inject the same mesh-origin Matrix event shape that MMRelay publishes so we still
@@ -1460,22 +1873,24 @@ MESH_A_TO_MATRIX_TEXT="MMRELAY_CI_A2M_$(date +%s)_${RANDOM}"
 MESH_A_SIM_ID=$((2000000000 + RANDOM))
 log_offset_before_a2m_b=$(wc -c <"${MMRELAY_LOG_PATH_B}")
 
-start_test "Test 2" "Test 2: Injected Mesh A-origin event in Matrix → remote processing in Mesh B relay..."
-MESH_A_MATRIX_EVENT_ID="$(
+start_test "Test 2" "Test 2: Injected Mesh A-origin event in plaintext room → remote processing in Mesh B relay..."
+if ! MESH_A_MATRIX_EVENT_ID="$(
 	matrix_send_mesh_origin_message \
 		"${BOT_A_ACCESS_TOKEN}" \
-		"${ROOM_ID}" \
+		"${ROOM_ID_PLAINTEXT}" \
 		"${MESH_A_TO_MATRIX_TEXT}" \
 		"${MESHNET_NAME_A}" \
 		"CI Field Node A" \
 		"CFA" \
 		"${MESH_A_SIM_ID}" \
 		"mmrelay-ci-sim-a2m"
-)"
-mesh_a_event_json="$(
+)"; then
+	fail_test "Failed to inject Mesh A-origin Matrix event"
+fi
+if ! mesh_a_event_json="$(
 	matrix_wait_event \
 		"${USER_ACCESS_TOKEN}" \
-		"${ROOM_ID}" \
+		"${ROOM_ID_PLAINTEXT}" \
 		"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
 		"m.room.message" \
 		"${BOT_A_USER_ID}" \
@@ -1485,8 +1900,12 @@ mesh_a_event_json="$(
 		"${MESH_A_MATRIX_EVENT_ID}" \
 		"" \
 		"${SYNC_CURSOR_USER1}"
-)"
-SYNC_CURSOR_USER1="$(json_extract "${mesh_a_event_json}" "next_batch")"
+)"; then
+	fail_test "Injected Mesh A-origin Matrix event was not observed in plaintext room"
+fi
+if ! SYNC_CURSOR_USER1="$(json_extract "${mesh_a_event_json}" "next_batch")"; then
+	fail_test "Failed to update Matrix sync cursor after Test 2"
+fi
 if ! wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_B}" \
 	"Processing message from remote meshnet:" \
@@ -1496,27 +1915,29 @@ if ! wait_for_log_pattern_since \
 fi
 pass_test "Injected Mesh A-origin event reached Matrix and processed in Mesh B relay"
 
-# Test 3: Injected Mesh B-origin event in Matrix → remote meshnet processing in MMRelay A
+# Test 3: Injected Mesh B-origin event in plaintext room → remote meshnet processing in MMRelay A
 MESH_B_TO_MATRIX_TEXT="MMRELAY_CI_B2M_$(date +%s)_${RANDOM}"
 MESH_B_SIM_ID=$((2100000000 + RANDOM))
 log_offset_before_b2m_a=$(wc -c <"${MMRELAY_LOG_PATH_A}")
 
-start_test "Test 3" "Test 3: Injected Mesh B-origin event in Matrix → remote processing in Mesh A relay..."
-MESH_B_MATRIX_EVENT_ID="$(
+start_test "Test 3" "Test 3: Injected Mesh B-origin event in plaintext room → remote processing in Mesh A relay..."
+if ! MESH_B_MATRIX_EVENT_ID="$(
 	matrix_send_mesh_origin_message \
 		"${BOT_B_ACCESS_TOKEN}" \
-		"${ROOM_ID}" \
+		"${ROOM_ID_PLAINTEXT}" \
 		"${MESH_B_TO_MATRIX_TEXT}" \
 		"${MESHNET_NAME_B}" \
 		"CI Field Node B" \
 		"CFB" \
 		"${MESH_B_SIM_ID}" \
 		"mmrelay-ci-sim-b2m"
-)"
-mesh_b_event_json="$(
+)"; then
+	fail_test "Failed to inject Mesh B-origin Matrix event"
+fi
+if ! mesh_b_event_json="$(
 	matrix_wait_event \
 		"${USER_ACCESS_TOKEN}" \
-		"${ROOM_ID}" \
+		"${ROOM_ID_PLAINTEXT}" \
 		"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
 		"m.room.message" \
 		"${BOT_B_USER_ID}" \
@@ -1526,8 +1947,12 @@ mesh_b_event_json="$(
 		"${MESH_B_MATRIX_EVENT_ID}" \
 		"" \
 		"${SYNC_CURSOR_USER1}"
-)"
-SYNC_CURSOR_USER1="$(json_extract "${mesh_b_event_json}" "next_batch")"
+)"; then
+	fail_test "Injected Mesh B-origin Matrix event was not observed in plaintext room"
+fi
+if ! SYNC_CURSOR_USER1="$(json_extract "${mesh_b_event_json}" "next_batch")"; then
+	fail_test "Failed to update Matrix sync cursor after Test 3"
+fi
 if ! wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_A}" \
 	"Processing message from remote meshnet:" \
@@ -1537,19 +1962,32 @@ if ! wait_for_log_pattern_since \
 fi
 pass_test "Injected Mesh B-origin event reached Matrix and processed in Mesh A relay"
 
-# Test 4: Secondary Matrix user message → Mesh A + Mesh B
+# Test 4: Encrypted-room Matrix user message → Mesh A + Mesh B
 MATRIX_USER2_TEXT="MMRELAY_CI_U2_MSG_$(date +%s)_${RANDOM}"
 log_offset_before_u2msg_a=$(wc -c <"${MMRELAY_LOG_PATH_A}")
 log_offset_before_u2msg_b=$(wc -c <"${MMRELAY_LOG_PATH_B}")
 
-start_test "Test 4" "Test 4: Secondary Matrix user message → Mesh A + Mesh B..."
-MATRIX_USER2_EVENT_ID="$(
-	matrix_send_message \
-		"${USER2_ACCESS_TOKEN}" \
-		"${ROOM_ID}" \
+start_test "Test 4" "Test 4: Encrypted-room Matrix user message → Mesh A + Mesh B..."
+if ! MATRIX_USER2_EVENT_ID="$(
+	matrix_send_e2ee_message \
+		"${USER2_USER_ID}" \
+		"${MATRIX_USER2_PASSWORD}" \
+		"${ROOM_ID_ENCRYPTED}" \
 		"${MATRIX_USER2_TEXT}" \
-		"mmrelay-ci-u2-msg"
-)"
+		"${E2EE_USER2_STORE_DIR}" \
+		"${E2EE_USER2_AUTH_STATE}"
+)"; then
+	fail_test "Failed to send encrypted user message in Test 4"
+fi
+if ! matrix_wait_event_by_id \
+	"${USER_ACCESS_TOKEN}" \
+	"${ROOM_ID_ENCRYPTED}" \
+	"${MATRIX_USER2_EVENT_ID}" \
+	"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
+	"${USER2_USER_ID}" \
+	"m.room.encrypted" >/dev/null; then
+	fail_test "Encrypted user message event was not visible in Matrix room for Test 4"
+fi
 if ! wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_A}" \
 	"Relaying message from" \
@@ -1564,9 +2002,9 @@ if ! wait_for_log_pattern_since \
 	45; then
 	fail_test "Secondary user message did not relay to Mesh B"
 fi
-pass_test "Secondary user message relayed to both meshes"
+pass_test "Encrypted-room user message relayed to both meshes"
 
-start_test "Test 5" "Test 5: Secondary user reply to prior Matrix event → both meshes..."
+start_test "Test 5" "Test 5: Encrypted-room user reply to prior Matrix event → both meshes..."
 
 # Ensure both relay instances have persisted the mapping for the replied-to event.
 # Without this gate, a fast reply can race ahead of DB persistence and be treated
@@ -1584,33 +2022,31 @@ if ! wait_for_message_map_meshtastic_id \
 	fail_test "Timed out waiting for message_map row in instance B for replied-to Matrix event"
 fi
 
-# Test 5: Secondary Matrix user reply to prior Matrix event → both meshes as structured replies
+# Test 5: Encrypted-room Matrix user reply to prior Matrix event → both meshes as structured replies
 MATRIX_USER2_REPLY_TEXT="MMRELAY_CI_U2_REPLY_$(date +%s)_${RANDOM}"
 log_offset_before_u2reply_a=$(wc -c <"${MMRELAY_LOG_PATH_A}")
 log_offset_before_u2reply_b=$(wc -c <"${MMRELAY_LOG_PATH_B}")
-MATRIX_USER2_REPLY_EVENT_ID="$(
-	matrix_send_message \
-		"${USER2_ACCESS_TOKEN}" \
-		"${ROOM_ID}" \
-		"${MATRIX_USER2_REPLY_TEXT}" \
-		"mmrelay-ci-u2-reply" \
-		"${MATRIX_USER2_EVENT_ID}"
-)"
-reply_event_json="$(
-	matrix_wait_event \
-		"${USER_ACCESS_TOKEN}" \
-		"${ROOM_ID}" \
-		"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
-		"m.room.message" \
+if ! MATRIX_USER2_REPLY_EVENT_ID="$(
+	matrix_send_e2ee_message \
 		"${USER2_USER_ID}" \
-		"" \
-		"m.text" \
-		"${MATRIX_USER2_EVENT_ID}" \
-		"${MATRIX_USER2_REPLY_EVENT_ID}" \
-		"" \
-		"${SYNC_CURSOR_USER1}"
-)"
-SYNC_CURSOR_USER1="$(json_extract "${reply_event_json}" "next_batch")"
+		"${MATRIX_USER2_PASSWORD}" \
+		"${ROOM_ID_ENCRYPTED}" \
+		"${MATRIX_USER2_REPLY_TEXT}" \
+		"${E2EE_USER2_STORE_DIR}" \
+		"${E2EE_USER2_AUTH_STATE}" \
+		"${MATRIX_USER2_EVENT_ID}"
+)"; then
+	fail_test "Failed to send encrypted user reply in Test 5"
+fi
+if ! matrix_wait_event_by_id \
+	"${USER_ACCESS_TOKEN}" \
+	"${ROOM_ID_ENCRYPTED}" \
+	"${MATRIX_USER2_REPLY_EVENT_ID}" \
+	"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
+	"${USER2_USER_ID}" \
+	"m.room.encrypted" >/dev/null; then
+	fail_test "Encrypted user reply event was not visible in Matrix room for Test 5"
+fi
 if ! wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_A}" \
 	"Relaying Matrix reply from" \
@@ -1625,37 +2061,35 @@ if ! wait_for_log_pattern_since \
 	60; then
 	fail_test "Reply did not relay to Mesh B"
 fi
-pass_test "Secondary user reply relayed to both meshes"
+pass_test "Encrypted-room user reply relayed to both meshes"
 
-# Test 6: Secondary Matrix user reaction to prior Matrix event → both meshes
+# Test 6: Encrypted-room Matrix user reaction to prior Matrix event → both meshes
 MATRIX_USER2_REACTION_KEY="👍"
 log_offset_before_u2react_a=$(wc -c <"${MMRELAY_LOG_PATH_A}")
 log_offset_before_u2react_b=$(wc -c <"${MMRELAY_LOG_PATH_B}")
 
-start_test "Test 6" "Test 6: Secondary user reaction to prior Matrix event → both meshes..."
-MATRIX_USER2_REACTION_EVENT_ID="$(
-	matrix_send_reaction \
-		"${USER2_ACCESS_TOKEN}" \
-		"${ROOM_ID}" \
+start_test "Test 6" "Test 6: Encrypted-room user reaction to prior Matrix event → both meshes..."
+if ! MATRIX_USER2_REACTION_EVENT_ID="$(
+	matrix_send_e2ee_reaction \
+		"${USER2_USER_ID}" \
+		"${MATRIX_USER2_PASSWORD}" \
+		"${ROOM_ID_ENCRYPTED}" \
 		"${MATRIX_USER2_EVENT_ID}" \
 		"${MATRIX_USER2_REACTION_KEY}" \
-		"mmrelay-ci-u2-react"
-)"
-reaction_event_json="$(
-	matrix_wait_event \
-		"${USER_ACCESS_TOKEN}" \
-		"${ROOM_ID}" \
-		"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
-		"m.reaction" \
-		"${USER2_USER_ID}" \
-		"" \
-		"" \
-		"${MATRIX_USER2_EVENT_ID}" \
-		"${MATRIX_USER2_REACTION_EVENT_ID}" \
-		"" \
-		"${SYNC_CURSOR_USER1}"
-)"
-SYNC_CURSOR_USER1="$(json_extract "${reaction_event_json}" "next_batch")"
+		"${E2EE_USER2_STORE_DIR}" \
+		"${E2EE_USER2_AUTH_STATE}"
+)"; then
+	fail_test "Failed to send encrypted user reaction in Test 6"
+fi
+if ! matrix_wait_event_by_id \
+	"${USER_ACCESS_TOKEN}" \
+	"${ROOM_ID_ENCRYPTED}" \
+	"${MATRIX_USER2_REACTION_EVENT_ID}" \
+	"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
+	"${USER2_USER_ID}" \
+	"m.room.encrypted,m.reaction" >/dev/null; then
+	fail_test "Encrypted user reaction event was not visible in Matrix room for Test 6"
+fi
 if ! wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_A}" \
 	"Relaying reaction from" \
@@ -1670,7 +2104,7 @@ if ! wait_for_log_pattern_since \
 	60; then
 	fail_test "Reaction did not relay to Mesh B"
 fi
-pass_test "Secondary user reaction relayed to both meshes"
+pass_test "Encrypted-room user reaction relayed to both meshes"
 write_observability_report
 
 # =============================================================================

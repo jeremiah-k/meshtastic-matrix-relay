@@ -1449,6 +1449,7 @@ async def _resolve_and_load_credentials(
                 username=username,
                 password=password,
                 logout_others=False,
+                config_for_paths=config_data if isinstance(config_data, dict) else None,
             )
 
             if success:
@@ -2367,6 +2368,7 @@ async def login_matrix_bot(
     username: str | None = None,
     password: str | None = None,
     logout_others: bool | None = None,
+    config_for_paths: dict[str, Any] | None = None,
 ) -> bool:
     """
     Authenticate the bot with a Matrix homeserver and persist the resulting session credentials.
@@ -2378,6 +2380,7 @@ async def login_matrix_bot(
         username (str | None): Bot username (localpart or full MXID); when None the user is prompted.
         password (str | None): Account password; when None the user is prompted.
         logout_others (bool | None): If True attempt to log out other sessions; if False do not; if None the user is prompted when running interactively (treated as False in non-interactive calls).
+        config_for_paths (dict[str, Any] | None): Optional in-memory config used to resolve credentials and E2EE settings without reloading config from disk.
 
     Returns:
         bool: `True` if login succeeded and credentials were saved, `False` otherwise.
@@ -2533,19 +2536,20 @@ async def login_matrix_bot(
 
         from mmrelay.config import is_e2ee_enabled, load_config
 
-        config_for_paths: dict[str, Any] | None = None
+        loaded_config_for_paths = config_for_paths
         e2ee_enabled = False
-        try:
-            config_for_paths = await asyncio.to_thread(load_config)
-        except (OSError, ValueError, KeyError, TypeError, RuntimeError) as e:
-            logger.debug("Could not load config for credentials path: %s", e)
+        if loaded_config_for_paths is None:
+            try:
+                loaded_config_for_paths = await asyncio.to_thread(load_config)
+            except (OSError, ValueError, KeyError, TypeError, RuntimeError) as e:
+                logger.debug("Could not load config for credentials path: %s", e)
 
         # Check for existing credentials to reuse device_id
         existing_device_id = None
         credentials_path = None
         try:
             credentials_path = await asyncio.to_thread(
-                _resolve_credentials_save_path, config_for_paths
+                _resolve_credentials_save_path, loaded_config_for_paths
             )
 
             if credentials_path:
@@ -2585,9 +2589,9 @@ async def login_matrix_bot(
             logger.debug(f"Could not load existing credentials: {e}")
 
         # Check if E2EE is enabled in configuration
-        if config_for_paths is not None:
+        if loaded_config_for_paths is not None:
             try:
-                e2ee_enabled = is_e2ee_enabled(config_for_paths)
+                e2ee_enabled = is_e2ee_enabled(loaded_config_for_paths)
             except (KeyError, TypeError, ValueError) as e:
                 logger.debug(f"Could not load config for E2EE check: {e}")
                 e2ee_enabled = False

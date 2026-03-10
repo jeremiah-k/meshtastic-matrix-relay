@@ -50,11 +50,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -e .
-          if [[ -f requirements-e2e.txt ]]; then
-            pip install -r requirements-e2e.txt
-          fi
+          pip install -e '.[e2e]'
 
       - name: Run meshtasticd integration checks
         run: |
