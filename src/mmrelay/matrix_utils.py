@@ -84,6 +84,8 @@ from mmrelay.constants.config import (
     CONFIG_SECTION_MATRIX,
     DEFAULT_BROADCAST_ENABLED,
     DEFAULT_DETECTION_SENSOR,
+    E2EE_KEY_REQUEST_BASE_DELAY,
+    E2EE_KEY_REQUEST_MAX_RETRIES,
     E2EE_KEY_SHARING_DELAY_SECONDS,
 )
 from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
@@ -3874,9 +3876,10 @@ async def handle_matrix_reply(
 
 async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
     """
-    Handle a MegolmEvent that could not be decrypted by requesting missing session keys.
+    Handle a MegolmEvent that could not be decrypted by requesting missing session keys with exponential backoff retry.
 
-    If the module-level Matrix client is available, this sets the event's room_id, constructs a to-device key request for the missing Megolm session, and sends it to the device that holds the keys. Logs outcomes and returns without action if no matrix client or device id is available.
+    If the module-level Matrix client is available, this sets the event's room_id, constructs a to-device key request for the missing Megolm session, and and sends it to the device that holds the keys. Uses exponential backoff retry
+    to handle transient federation delays. Logs outcomes and returns without action if no matrix client or device id is available.
 
     Parameters:
         room (MatrixRoom): The room where the decryption failure occurred.
@@ -3889,26 +3892,46 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
         f"{msg_retry_auth_login()}."
     )
 
-    # Attempt to request the keys for the failed event
-    try:
-        if not matrix_client:
-            logger.error("Matrix client not available, cannot request keys.")
-            return
+    # Attempt to request the keys for the failed event with retry logic
+    if not matrix_client:
+        logger.error("Matrix client not available, cannot request keys.")
+        return
 
-        # Monkey-patch the event object with the correct room_id
-        event.room_id = room.room_id
+    # Monkey-patch the event object with the correct room_id
+    event.room_id = room.room_id
 
-        if not matrix_client.device_id:
-            logger.error(
-                "Cannot request keys for event %s: client has no device_id",
-                event.event_id,
+    if not matrix_client.device_id:
+        logger.error(
+            "Cannot request keys for event %s: client has no device_id",
+            event.event_id,
+        )
+        return
+
+    request = event.as_key_request(matrix_client.user_id, matrix_client.device_id)
+
+    for attempt in range(E2EE_KEY_REQUEST_MAX_RETRIES):
+        try:
+            await matrix_client.to_device(request)
+            logger.info(
+                f"Requested keys for failed decryption of event {event.event_id} "
+                f"(attempt {attempt + 1}/{E2EE_KEY_REQUEST_MAX_RETRIES})"
             )
-            return
-        request = event.as_key_request(matrix_client.user_id, matrix_client.device_id)
-        await matrix_client.to_device(request)
-        logger.info(f"Requested keys for failed decryption of event {event.event_id}")
-    except NIO_COMM_EXCEPTIONS:
-        logger.exception(f"Failed to request keys for event {event.event_id}")
+            # Success - wait once for key to arrive via federation
+            await asyncio.sleep(E2EE_KEY_REQUEST_BASE_DELAY)
+            return  # Exit after successful request
+        except NIO_COMM_EXCEPTIONS:
+            if attempt < E2EE_KEY_REQUEST_MAX_RETRIES - 1:
+                logger.warning(
+                    f"Key request attempt {attempt + 1} failed for event {event.event_id}, retrying..."
+                )
+                # Backoff before retry
+                backoff_delay = E2EE_KEY_REQUEST_BASE_DELAY * (2**attempt)
+                await asyncio.sleep(backoff_delay)
+            else:
+                logger.error(
+                    f"Failed to request keys for event {event.event_id} "
+                    f"after {E2EE_KEY_REQUEST_MAX_RETRIES} attempts"
+                )
 
 
 # Callback for new messages in Matrix room

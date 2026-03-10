@@ -15,6 +15,7 @@ from nio import SyncError
 from mmrelay.matrix_utils import (
     ImageUploadError,
     NioLocalTransportError,
+    NioRemoteTransportError,
     _can_auto_create_credentials,
     _create_mapping_info,
     _extract_localpart_from_mxid,
@@ -6557,7 +6558,7 @@ async def test_handle_matrix_reply_original_not_found():
 
 @pytest.mark.asyncio
 async def test_on_decryption_failure():
-    """Test on_decryption_failure handles decryption failures."""
+    """Test on_decryption_failure handles decryption failures with retry logic."""
 
     # Create mock room and event
     mock_room = MagicMock()
@@ -6569,28 +6570,33 @@ async def test_on_decryption_failure():
     with (
         patch("mmrelay.matrix_utils.matrix_client") as mock_client,
         patch("mmrelay.matrix_utils.logger") as mock_logger,
+        patch(
+            "mmrelay.matrix_utils.asyncio.sleep", new_callable=AsyncMock
+        ) as mock_sleep,
     ):
         mock_client.user_id = "@bot:matrix.org"
         mock_client.device_id = "DEVICE123"
         mock_client.to_device = AsyncMock()  # Make it async
 
-        # Test successful key request
+        # Test successful key request - should exit after first success
         await on_decryption_failure(mock_room, mock_event)
 
         # Verify the event was patched with room_id
         assert mock_event.room_id == "!room123:matrix.org"
-        # Verify key request was created and sent
-        mock_event.as_key_request.assert_called_once_with(
-            "@bot:matrix.org", "DEVICE123"
-        )
-        mock_client.to_device.assert_called_once_with({"type": "m.room_key_request"})
-        # Verify logging
-        mock_logger.error.assert_called_once()  # Error about decryption failure
-        mock_logger.info.assert_called_once()  # Success message
+        # Verify key request was created and sent (only 1 call on success)
+        mock_event.as_key_request.assert_called_with("@bot:matrix.org", "DEVICE123")
+        assert mock_client.to_device.call_count == 1
+        mock_client.to_device.assert_called_with({"type": "m.room_key_request"})
+        # Verify logging - error about decryption failure, 1 info message on success
+        assert mock_logger.error.call_count == 1  # Initial decryption failure
+        assert mock_logger.info.call_count == 1  # Success message
+        # Verify single sleep after success to allow key arrival
+        assert mock_sleep.call_count == 1
 
         # Reset mocks for error case
         mock_client.reset_mock()
         mock_logger.reset_mock()
+        mock_sleep.reset_mock()
 
         # Test when matrix client is None
         with patch("mmrelay.matrix_utils.matrix_client", None):
@@ -6623,6 +6629,88 @@ async def test_on_decryption_failure_missing_device_id():
             "$event123",
         )
         mock_client.to_device.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_on_decryption_failure_retry_on_exception():
+    """Test on_decryption_failure retries with exponential backoff on communication exceptions."""
+
+    mock_room = MagicMock()
+    mock_room.room_id = "!room123:matrix.org"
+    mock_event = MagicMock()
+    mock_event.event_id = "$event123"
+    mock_event.as_key_request.return_value = {"type": "m.room_key_request"}
+
+    with (
+        patch("mmrelay.matrix_utils.matrix_client") as mock_client,
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+        patch(
+            "mmrelay.matrix_utils.asyncio.sleep", new_callable=AsyncMock
+        ) as mock_sleep,
+    ):
+        mock_client.user_id = "@bot:matrix.org"
+        mock_client.device_id = "DEVICE123"
+        # First two attempts fail, third succeeds
+        mock_client.to_device = AsyncMock(
+            side_effect=[
+                NioRemoteTransportError("Network error"),
+                NioRemoteTransportError("Network error"),
+                None,  # Success on third attempt
+            ]
+        )
+
+        await on_decryption_failure(mock_room, mock_event)
+
+        # Verify all 3 attempts were made
+        assert mock_client.to_device.call_count == 3
+        # Verify warnings were logged for first two failures
+        assert mock_logger.warning.call_count == 2
+        # Verify success info message (only on third successful attempt)
+        assert mock_logger.info.call_count == 1
+        # Verify exponential backoff delays (2s, 4s, 8s)
+        # Backoff after attempt 1 (fail), attempt 2 (fail), and attempt 3 (success)
+        assert mock_sleep.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_on_decryption_failure_all_retries_fail():
+    """Test on_decryption_failure logs error after all retries are exhausted."""
+
+    mock_room = MagicMock()
+    mock_room.room_id = "!room123:matrix.org"
+    mock_event = MagicMock()
+    mock_event.event_id = "$event123"
+    mock_event.as_key_request.return_value = {"type": "m.room_key_request"}
+
+    with (
+        patch("mmrelay.matrix_utils.matrix_client") as mock_client,
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+        patch(
+            "mmrelay.matrix_utils.asyncio.sleep", new_callable=AsyncMock
+        ) as mock_sleep,
+    ):
+        mock_client.user_id = "@bot:matrix.org"
+        mock_client.device_id = "DEVICE123"
+        # All attempts fail
+        mock_client.to_device = AsyncMock(
+            side_effect=NioRemoteTransportError("Network error")
+        )
+
+        await on_decryption_failure(mock_room, mock_event)
+
+        # Verify all 3 attempts were made
+        assert mock_client.to_device.call_count == 3
+        # Verify warnings for first two failures, error for final failure
+        assert mock_logger.warning.call_count == 2
+        # Check that the final error message was logged (f-string format)
+        mock_logger.error.assert_any_call(
+            "Failed to request keys for event $event123 after 3 attempts"
+        )
+        # No info messages since all requests failed
+        assert mock_logger.info.call_count == 0
+        # Verify exponential backoff delays for first two attempts (2s, 4s)
+        # No backoff after final failure
+        assert mock_sleep.call_count == 2
 
 
 @pytest.mark.asyncio

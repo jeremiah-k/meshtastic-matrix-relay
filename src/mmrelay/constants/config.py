@@ -77,4 +77,10 @@ DEFAULT_WIPE_ON_RESTART = False
 DEFAULT_REQUIRE_BOT_MENTION = True
 
 # E2EE constants
-E2EE_KEY_SHARING_DELAY_SECONDS = 5
+E2EE_KEY_SHARING_DELAY_SECONDS = (
+    5  # Default delay after initial sync to allow key sharing
+)
+E2EE_KEY_REQUEST_MAX_RETRIES = (
+    3  # Number of retries for key requests on decryption failure
+)
+E2EE_KEY_REQUEST_BASE_DELAY = 2  # Base delay in seconds for exponential backoff
