@@ -6681,7 +6681,7 @@ async def test_on_decryption_failure_retry_on_exception():
         )
         # Compute expected values from constants
         max_attempts = matrix_utils_module.E2EE_KEY_REQUEST_MAX_ATTEMPTS
-        # Verify all attempts were made (3 failures then success on 3rd retry = 4 calls)
+        # Verify all attempts were made.
         assert mock_client.to_device.await_count == max_attempts
         # Verify warnings were logged for failures before success
         assert mock_logger.warning.call_count == max_attempts - 1
@@ -6921,13 +6921,18 @@ async def test_on_decryption_failure_timeout_on_to_device():
         patch(
             "mmrelay.matrix_utils.asyncio.sleep", new_callable=AsyncMock
         ) as mock_sleep,
+        patch("mmrelay.matrix_utils.asyncio.wait_for") as mock_wait_for,
     ):
         mock_client.user_id = "@bot:matrix.org"
         mock_client.device_id = "DEVICE123"
-        # Simulate timeout on to_device call by making to_device raise TimeoutError
-        # This exercises the same code path as wait_for timing out, since TimeoutError
-        # is caught by NIO_COMM_EXCEPTIONS in the implementation
-        mock_client.to_device = AsyncMock(side_effect=asyncio.TimeoutError())
+        mock_client.to_device = AsyncMock(return_value=MagicMock(spec=ToDeviceResponse))
+
+        async def mock_wait_for_impl(coro, timeout):
+            assert timeout == matrix_utils_module.MATRIX_TO_DEVICE_TIMEOUT
+            await coro
+            raise asyncio.TimeoutError()
+
+        mock_wait_for.side_effect = mock_wait_for_impl
 
         await on_decryption_failure(mock_room, mock_event)
 
@@ -6937,6 +6942,7 @@ async def test_on_decryption_failure_timeout_on_to_device():
 
         # Compute expected values from constants
         max_attempts = matrix_utils_module.E2EE_KEY_REQUEST_MAX_ATTEMPTS
+        assert mock_wait_for.await_count == max_attempts
         # Verify all attempts were made via to_device calls
         assert mock_client.to_device.await_count == max_attempts
         # Verify warnings for failures before final attempt
@@ -7319,30 +7325,21 @@ async def test_handle_detection_sensor_packet_success():
     mock_queue.get_queue_size.return_value = 1
 
     with (
-        patch("mmrelay.matrix_utils.matrix_client") as mock_client,
-        patch("mmrelay.matrix_utils.logger") as mock_logger,
+        patch("mmrelay.matrix_utils.get_meshtastic_config_value") as mock_get_config,
         patch(
-            "mmrelay.matrix_utils.asyncio.sleep", new_callable=AsyncMock
-        ) as mock_sleep,
-        patch("mmrelay.matrix_utils.asyncio.wait_for") as mock_wait_for,
+            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
+            new_callable=AsyncMock,
+        ) as mock_get_iface,
+        patch("mmrelay.matrix_utils.queue_message") as mock_queue_message,
+        patch("mmrelay.matrix_utils.get_message_queue") as mock_get_queue,
     ):
-        mock_client.user_id = "@bot:matrix.org"
-        mock_client.device_id = "DEVICE123"
+        mock_get_config.side_effect = [True, True]
+        mock_get_iface.return_value = (mock_interface, 0)
+        mock_queue_message.return_value = True
+        mock_get_queue.return_value = mock_queue
 
-        # Simulate timeout on to_device call by making wait_for raise TimeoutError
-        # The coroutine is awaited (so to_device gets called), but wait_for raises
-        async def mock_wait_for_impl(coro, timeout):
-            # First await the coroutine so to_device gets called
-            await coro
-            # Then raise the timeout
-            raise asyncio.TimeoutError()
-
-        mock_wait_for.side_effect = mock_wait_for_impl
-
-        # Keep references for assertions
-        from mmrelay.matrix_utils import (
-            MATRIX_TO_DEVICE_TIMEOUT,
-            on_decryption_failure,
+        await _handle_detection_sensor_packet(
+            config, room_config, full_display_name, text
         )
 
         mock_queue_message.assert_called_once()
