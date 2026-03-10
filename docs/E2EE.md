@@ -84,7 +84,7 @@ MMRelay manages encryption devices automatically:
 - Stores encryption keys in `~/.mmrelay/matrix/store/`
 - Uploads encryption keys when needed
 - Uses `ignore_unverified_devices=True` for reliable room operation
-- Automatically requests missing room keys after a temporary decrypt failure
+- Automatically requests missing room keys when an event cannot be decrypted
 
 ### Message flow
 
@@ -317,11 +317,14 @@ pip install -e '.[e2e]'
 
 **Problem**: You see `ERROR Matrix: Failed to decrypt event...`.
 
-**Explanation**: Usually temporary. MMRelay has not received the room key yet.
+**Explanation**: MMRelay could not decrypt the event with the keys currently available.
+This can happen when required room keys are unavailable, session data is stale, or
+key sharing has not completed.
 
 **What to do**:
 
-- Wait for the next sync; MMRelay requests missing keys automatically
+- Check subsequent logs for key-request activity; MMRelay requests missing keys automatically
+- Let sync complete, then verify whether decryption succeeds on the next event pass
 - If failures persist, reset session data:
 
 ```bash

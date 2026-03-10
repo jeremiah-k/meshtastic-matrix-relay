@@ -90,7 +90,7 @@ sync_response = await asyncio.wait_for(
 A single callback for all message types is not sufficient to handle the nuances of E2EE. The final implementation uses two separate callbacks for handling encrypted messages:
 
 - **`on_room_message`**: This callback is registered for `RoomMessageText` and other decrypted event types. It is only triggered after a message has been successfully decrypted by `matrix-nio`.
-- **`on_decryption_failure`**: This new, dedicated callback is registered for `MegolmEvent`. It is triggered when an encrypted message is received but cannot be decrypted (usually due to a missing key).
+- **`on_decryption_failure`**: This new, dedicated callback is registered for `MegolmEvent`. It is triggered when an encrypted message is received but cannot be decrypted (for example, due to missing keys or session mismatch).
 
 **Registration (`src/mmrelay/main.py`):**
 
