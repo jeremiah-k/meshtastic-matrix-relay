@@ -229,6 +229,27 @@ nio_mock.MegolmEvent = MockMegolmEvent
 nio_mock.UploadResponse = MagicMock()
 nio_mock.WhoamiError = MockWhoamiError
 nio_mock.SyncError = MockSyncError
+
+
+# Mock ToDevice response classes for isinstance checks
+class MockToDeviceResponse:
+    """Mock ToDeviceResponse for testing."""
+
+    pass
+
+
+class MockToDeviceError:
+    """Mock ToDeviceError for testing."""
+
+    def __init__(self, message="Error"):
+        self.message = message
+
+    def __str__(self):
+        return self.message
+
+
+nio_mock.ToDeviceResponse = MockToDeviceResponse
+nio_mock.ToDeviceError = MockToDeviceError
 sys.modules["nio.events.room_events"].RoomMemberEvent = MagicMock()  # type: ignore[attr-defined]
 
 

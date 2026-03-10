@@ -46,6 +46,8 @@ from nio import (
     RoomMessageNotice,
     RoomMessageText,
     SyncError,
+    ToDeviceError,
+    ToDeviceResponse,
     UploadError,
     UploadResponse,
 )
@@ -85,7 +87,7 @@ from mmrelay.constants.config import (
     DEFAULT_BROADCAST_ENABLED,
     DEFAULT_DETECTION_SENSOR,
     E2EE_KEY_REQUEST_BASE_DELAY,
-    E2EE_KEY_REQUEST_MAX_RETRIES,
+    E2EE_KEY_REQUEST_MAX_ATTEMPTS,
     E2EE_KEY_SHARING_DELAY_SECONDS,
 )
 from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
@@ -3909,28 +3911,53 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
 
     request = event.as_key_request(matrix_client.user_id, matrix_client.device_id)
 
-    for attempt in range(E2EE_KEY_REQUEST_MAX_RETRIES):
+    # Cap exponential backoff to prevent unreasonably long delays
+    MAX_BACKOFF_DELAY = 30.0
+
+    for attempt in range(E2EE_KEY_REQUEST_MAX_ATTEMPTS):
         try:
-            await matrix_client.to_device(request)
-            logger.info(
-                f"Requested keys for failed decryption of event {event.event_id} "
-                f"(attempt {attempt + 1}/{E2EE_KEY_REQUEST_MAX_RETRIES})"
-            )
-            # Success - wait once for key to arrive via federation
-            await asyncio.sleep(E2EE_KEY_REQUEST_BASE_DELAY)
-            return  # Exit after successful request
+            response = await matrix_client.to_device(request)
+            # Check response type - to_device returns ToDeviceResponse or ToDeviceError
+            if isinstance(response, ToDeviceResponse):
+                logger.info(
+                    f"Requested keys for failed decryption of event {event.event_id} "
+                    f"(attempt {attempt + 1}/{E2EE_KEY_REQUEST_MAX_ATTEMPTS})"
+                )
+                # Success - wait once for key to arrive via federation
+                await asyncio.sleep(E2EE_KEY_REQUEST_BASE_DELAY)
+                return  # Exit after successful request
+            elif isinstance(response, ToDeviceError):
+                # Server-side error - treat as failure and retry
+                logger.warning(
+                    f"Key request for event {event.event_id} returned error: {response}"
+                )
+                if attempt < E2EE_KEY_REQUEST_MAX_ATTEMPTS - 1:
+                    backoff_delay = min(
+                        E2EE_KEY_REQUEST_BASE_DELAY * (2**attempt),
+                        MAX_BACKOFF_DELAY,
+                    )
+                    await asyncio.sleep(backoff_delay)
+                else:
+                    logger.error(
+                        f"Failed to request keys for event {event.event_id} "
+                        f"after {E2EE_KEY_REQUEST_MAX_ATTEMPTS} attempts"
+                    )
         except NIO_COMM_EXCEPTIONS:
-            if attempt < E2EE_KEY_REQUEST_MAX_RETRIES - 1:
+            if attempt < E2EE_KEY_REQUEST_MAX_ATTEMPTS - 1:
                 logger.warning(
                     f"Key request attempt {attempt + 1} failed for event {event.event_id}, retrying..."
                 )
+                logger.debug("Key request failure details", exc_info=True)
                 # Backoff before retry
-                backoff_delay = E2EE_KEY_REQUEST_BASE_DELAY * (2**attempt)
+                backoff_delay = min(
+                    E2EE_KEY_REQUEST_BASE_DELAY * (2**attempt),
+                    MAX_BACKOFF_DELAY,
+                )
                 await asyncio.sleep(backoff_delay)
             else:
-                logger.error(
+                logger.exception(
                     f"Failed to request keys for event {event.event_id} "
-                    f"after {E2EE_KEY_REQUEST_MAX_RETRIES} attempts"
+                    f"after {E2EE_KEY_REQUEST_MAX_ATTEMPTS} attempts"
                 )
 
 
