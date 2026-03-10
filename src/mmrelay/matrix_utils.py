@@ -112,6 +112,7 @@ from mmrelay.constants.network import (
     MATRIX_LOGIN_TIMEOUT,
     MATRIX_ROOM_SEND_TIMEOUT,
     MATRIX_SYNC_OPERATION_TIMEOUT,
+    MATRIX_TO_DEVICE_TIMEOUT,
     MILLISECONDS_PER_SECOND,
 )
 from mmrelay.db_utils import (
@@ -3943,7 +3944,10 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
             else None
         )
         try:
-            response = await matrix_client.to_device(request)
+            response = await asyncio.wait_for(
+                matrix_client.to_device(request),
+                timeout=MATRIX_TO_DEVICE_TIMEOUT,
+            )
             # Check response type - to_device returns ToDeviceResponse or ToDeviceError
             if isinstance(response, ToDeviceResponse):
                 logger.info(
@@ -3951,7 +3955,7 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
                     f"(attempt {attempt + 1}/{E2EE_KEY_REQUEST_MAX_ATTEMPTS})"
                 )
                 # Success - wait once for key to arrive via federation
-                await asyncio.sleep(E2EE_KEY_REQUEST_BASE_DELAY)
+                await asyncio.sleep(E2EE_KEY_SHARING_DELAY_SECONDS)
                 return  # Exit after successful request
             elif isinstance(response, ToDeviceError):
                 error_details = getattr(response, "message", str(response))
@@ -3999,10 +4003,6 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
                 f"Key request attempt {attempt + 1} failed for event {event.event_id}, retrying..."
             )
             logger.debug("Key request failure details", exc_info=True)
-            # Backoff before retry
-            if backoff_delay is not None:
-                await asyncio.sleep(backoff_delay)
-            continue
 
         # Backoff before retry on non-success responses
         if backoff_delay is not None:
