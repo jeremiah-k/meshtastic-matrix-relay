@@ -6580,9 +6580,8 @@ async def test_on_decryption_failure():
     ):
         mock_client.user_id = "@bot:matrix.org"
         mock_client.device_id = "DEVICE123"
-        # Create a mock response that passes isinstance(response, ToDeviceResponse)
-        # Use type() to create a simple object with the right class
-        mock_response = type("MockResponse", (), {"__class__": ToDeviceResponse})()
+        # Create a response mock that satisfies isinstance(response, ToDeviceResponse)
+        mock_response = MagicMock(spec=ToDeviceResponse)
         mock_client.to_device = AsyncMock(return_value=mock_response)
 
         # Test successful key request - should exit after first success
@@ -6661,8 +6660,8 @@ async def test_on_decryption_failure_retry_on_exception():
     ):
         mock_client.user_id = "@bot:matrix.org"
         mock_client.device_id = "DEVICE123"
-        # Create a mock response that passes isinstance(response, ToDeviceResponse)
-        mock_response = type("MockResponse", (), {"__class__": ToDeviceResponse})()
+        # Create a response mock that satisfies isinstance(response, ToDeviceResponse)
+        mock_response = MagicMock(spec=ToDeviceResponse)
         # First two attempts raise exception, third returns ToDeviceResponse
         mock_client.to_device = AsyncMock(
             side_effect=[
@@ -6756,8 +6755,8 @@ async def test_on_decryption_failure_to_device_error():
         mock_client.user_id = "@bot:matrix.org"
         mock_client.device_id = "DEVICE123"
         # First returns ToDeviceError (server error), second returns ToDeviceResponse (success)
-        mock_error = type("MockError", (), {"__class__": ToDeviceError})()
-        mock_response = type("MockResponse", (), {"__class__": ToDeviceResponse})()
+        mock_error = MagicMock(spec=ToDeviceError)
+        mock_response = MagicMock(spec=ToDeviceResponse)
         mock_client.to_device = AsyncMock(
             side_effect=[
                 mock_error,  # Server error on first attempt
@@ -6806,7 +6805,7 @@ async def test_on_decryption_failure_backoff_caps_at_max_delay():
         mock_client.user_id = "@bot:matrix.org"
         mock_client.device_id = "DEVICE123"
         # Keep returning ToDeviceError so retries continue until max attempts.
-        mock_error = type("MockError", (), {"__class__": ToDeviceError})()
+        mock_error = MagicMock(spec=ToDeviceError)
         mock_client.to_device = AsyncMock(
             side_effect=[mock_error, mock_error, mock_error]
         )
