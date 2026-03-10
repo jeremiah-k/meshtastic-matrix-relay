@@ -3049,6 +3049,15 @@ async def _get_e2ee_error_message() -> str:
     return get_e2ee_error_message(dict(e2ee_status))
 
 
+def _retry_backoff_delay(
+    attempt_index: int,
+    base_delay: float,
+    max_delay: float,
+) -> float:
+    """Return exponential backoff delay capped by max_delay."""
+    return min(base_delay * (2**attempt_index), max_delay)
+
+
 async def _send_matrix_message_with_retry(
     matrix_client: Any,
     room_id: str,
@@ -3114,7 +3123,7 @@ async def _send_matrix_message_with_retry(
         except asyncio.TimeoutError:
             if attempt < max_retries:
                 # Exponential backoff with jitter
-                delay = min(base_delay * (2**attempt), max_delay)
+                delay = _retry_backoff_delay(attempt, base_delay, max_delay)
                 jitter = rng.uniform(0, delay * 0.1)  # 10% jitter
                 total_delay = delay + jitter
                 logger.warning(
@@ -3130,7 +3139,7 @@ async def _send_matrix_message_with_retry(
         except NIO_COMM_EXCEPTIONS as e:
             if attempt < max_retries:
                 # Exponential backoff with jitter for network errors
-                delay = min(base_delay * (2**attempt), max_delay)
+                delay = _retry_backoff_delay(attempt, base_delay, max_delay)
                 jitter = rng.uniform(0, delay * 0.1)  # 10% jitter
                 total_delay = delay + jitter
                 logger.warning(
@@ -3912,12 +3921,6 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
 
     request = event.as_key_request(matrix_client.user_id, matrix_client.device_id)
 
-    def _retry_backoff_delay(attempt_index: int) -> float:
-        return min(
-            E2EE_KEY_REQUEST_BASE_DELAY * (2**attempt_index),
-            E2EE_KEY_REQUEST_MAX_DELAY,
-        )
-
     for attempt in range(E2EE_KEY_REQUEST_MAX_ATTEMPTS):
         try:
             response = await matrix_client.to_device(request)
@@ -3931,18 +3934,51 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
                 await asyncio.sleep(E2EE_KEY_REQUEST_BASE_DELAY)
                 return  # Exit after successful request
             elif isinstance(response, ToDeviceError):
+                error_details = getattr(response, "message", str(response))
                 # Server-side error - treat as failure and retry
                 logger.warning(
-                    f"Key request for event {event.event_id} returned error: {response}"
+                    "Key request for event %s failed on attempt %s/%s: %s",
+                    event.event_id,
+                    attempt + 1,
+                    E2EE_KEY_REQUEST_MAX_ATTEMPTS,
+                    error_details,
                 )
                 if attempt < E2EE_KEY_REQUEST_MAX_ATTEMPTS - 1:
-                    backoff_delay = _retry_backoff_delay(attempt)
+                    backoff_delay = _retry_backoff_delay(
+                        attempt,
+                        E2EE_KEY_REQUEST_BASE_DELAY,
+                        E2EE_KEY_REQUEST_MAX_DELAY,
+                    )
                     await asyncio.sleep(backoff_delay)
                 else:
                     logger.error(
-                        f"Failed to request keys for event {event.event_id} "
-                        f"after {E2EE_KEY_REQUEST_MAX_ATTEMPTS} attempts. "
-                        f"Last error: {response}"
+                        "Failed to request keys for event %s after %s attempts. Last error: %s",
+                        event.event_id,
+                        E2EE_KEY_REQUEST_MAX_ATTEMPTS,
+                        error_details,
+                    )
+            else:
+                response_type = type(response).__name__
+                logger.warning(
+                    "Unexpected key request response type %s for event %s (attempt %s/%s)",
+                    response_type,
+                    event.event_id,
+                    attempt + 1,
+                    E2EE_KEY_REQUEST_MAX_ATTEMPTS,
+                )
+                if attempt < E2EE_KEY_REQUEST_MAX_ATTEMPTS - 1:
+                    backoff_delay = _retry_backoff_delay(
+                        attempt,
+                        E2EE_KEY_REQUEST_BASE_DELAY,
+                        E2EE_KEY_REQUEST_MAX_DELAY,
+                    )
+                    await asyncio.sleep(backoff_delay)
+                else:
+                    logger.error(
+                        "Failed to request keys for event %s after %s attempts due to unexpected response type %s",
+                        event.event_id,
+                        E2EE_KEY_REQUEST_MAX_ATTEMPTS,
+                        response_type,
                     )
         except NIO_COMM_EXCEPTIONS:
             if attempt < E2EE_KEY_REQUEST_MAX_ATTEMPTS - 1:
@@ -3951,7 +3987,11 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
                 )
                 logger.debug("Key request failure details", exc_info=True)
                 # Backoff before retry
-                backoff_delay = _retry_backoff_delay(attempt)
+                backoff_delay = _retry_backoff_delay(
+                    attempt,
+                    E2EE_KEY_REQUEST_BASE_DELAY,
+                    E2EE_KEY_REQUEST_MAX_DELAY,
+                )
                 await asyncio.sleep(backoff_delay)
             else:
                 logger.exception(
