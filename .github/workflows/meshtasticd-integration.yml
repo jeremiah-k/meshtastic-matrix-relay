@@ -72,5 +72,11 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: meshtasticd-integration-logs
-          path: ${{ env.CI_ARTIFACT_DIR }}
+          path: |
+            ${{ env.CI_ARTIFACT_DIR }}/instance-a/logs/**
+            ${{ env.CI_ARTIFACT_DIR }}/instance-b/logs/**
+            ${{ env.CI_ARTIFACT_DIR }}/shared/logs/**
+            ${{ env.CI_ARTIFACT_DIR }}/shared/observability-summary.md
+            ${{ env.CI_ARTIFACT_DIR }}/instance-a/config.yaml
+            ${{ env.CI_ARTIFACT_DIR }}/instance-b/config.yaml
           if-no-files-found: warn
