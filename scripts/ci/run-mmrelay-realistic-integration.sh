@@ -486,9 +486,6 @@ PYTHONUNBUFFERED=1 "${PYTHON_BIN}" -m mmrelay.cli \
 MMRELAY_PID=$!
 
 startup_offset=0
-if [[ -f ${MMRELAY_LOG_PATH} ]]; then
-	startup_offset=$(wc -c <"${MMRELAY_LOG_PATH}")
-fi
 wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH}" \
 	"Listening for inbound Matrix messages..." \

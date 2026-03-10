@@ -52,7 +52,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e .
-          pip install -r requirements-e2e.txt || true
+          if [[ -f requirements-e2e.txt ]]; then
+            pip install -r requirements-e2e.txt
+          fi
 
       - name: Run cross-mesh integration checks
         run: |

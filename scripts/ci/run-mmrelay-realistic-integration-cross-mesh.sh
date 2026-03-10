@@ -318,12 +318,13 @@ PY
 json_extract() {
 	local json_payload=$1
 	local key_path=$2
-	"${PYTHON_BIN}" - "${key_path}" <<'PY' <<<"${json_payload}"
+	JSON_PAYLOAD="${json_payload}" "${PYTHON_BIN}" - "${key_path}" <<'PY'
 import json
+import os
 import sys
 
 path = sys.argv[1]
-data = json.loads(sys.stdin.read())
+data = json.loads(os.environ["JSON_PAYLOAD"])
 current = data
 for segment in path.split("."):
     if not segment:

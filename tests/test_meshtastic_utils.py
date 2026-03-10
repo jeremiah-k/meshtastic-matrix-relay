@@ -586,7 +586,7 @@ class TestMeshtasticUtils(unittest.TestCase):
     @patch("mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface")
     @patch("mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface")
     def test_connect_meshtastic_tcp_uses_configured_port(
-        self, mock_tcp, mock_ble, mock_serial
+        self, mock_tcp, _mock_ble, _mock_serial
     ):
         """
         Tests that the Meshtastic TCP connector honors meshtastic.port when configured.
