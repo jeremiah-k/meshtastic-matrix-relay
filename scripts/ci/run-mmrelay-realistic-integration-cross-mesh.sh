@@ -251,6 +251,14 @@ wait_for_log_pattern_since() {
 				return 0
 			fi
 		fi
+		if [[ -n ${MMRELAY_PID_A} ]] && ! kill -0 "${MMRELAY_PID_A}" >/dev/null 2>&1; then
+			echo "MMRelay A process exited unexpectedly while waiting for '${pattern}'." >&2
+			return 1
+		fi
+		if [[ -n ${MMRELAY_PID_B} ]] && ! kill -0 "${MMRELAY_PID_B}" >/dev/null 2>&1; then
+			echo "MMRelay B process exited unexpectedly while waiting for '${pattern}'." >&2
+			return 1
+		fi
 		sleep 1
 	done
 
@@ -342,7 +350,7 @@ if [[ -d ${CI_ARTIFACT_DIR} ]]; then
 		rm -rf "${CI_ARTIFACT_DIR}"
 	fi
 fi
-mkdir -p "${CI_ARTIFACT_DIR}" "${SYNAPSE_DATA_DIR}" "${MMRELAY_HOME_DIR_A}" "${MMRELAY_HOME_DIR_B}"
+mkdir -p "${CI_ARTIFACT_DIR}" "${SYNAPSE_DATA_DIR}" "${MMRELAY_HOME_DIR_A}" "${MMRELAY_HOME_DIR_B}" "${INSTANCE_A_LOG_DIR}" "${INSTANCE_B_LOG_DIR}" "${SYNAPSE_LOG_DIR}"
 
 MATRIX_BASE_URL="http://localhost:${SYNAPSE_PORT_DEC}"
 
