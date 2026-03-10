@@ -1323,3 +1323,131 @@ async def test_logout_matrix_bot_timeout():
 
     assert result is False
     mock_temp_client.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+@patch("mmrelay.matrix_utils.save_credentials")
+@patch("mmrelay.matrix_utils.AsyncClient")
+@patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
+@patch("mmrelay.matrix_utils._normalize_bot_user_id", return_value="@user:matrix.org")
+async def test_login_matrix_bot_uses_loaded_config_for_save_path(
+    _mock_normalize,
+    _mock_ssl_context,
+    mock_async_client,
+    mock_save_credentials,
+):
+    """Both credentials path resolutions should use the loaded config mapping."""
+    mock_discovery_client = AsyncMock()
+    mock_main_client = AsyncMock()
+    mock_async_client.side_effect = [mock_discovery_client, mock_main_client]
+
+    mock_discovery_client.discovery_info.return_value = SimpleNamespace(
+        homeserver_url="https://matrix.org"
+    )
+    mock_discovery_client.close = AsyncMock()
+    mock_main_client.login.return_value = MagicMock(
+        access_token="token", device_id="DEV", user_id="@user:matrix.org"
+    )
+    mock_main_client.whoami.return_value = MagicMock(user_id="@user:matrix.org")
+    mock_main_client.close = AsyncMock()
+
+    loaded_config = {"matrix": {"credentials_path": "/tmp/explicit-creds.json"}}
+    resolved_configs = []
+
+    def _capture_resolve_config(config_data):
+        """
+        Capture a configuration object for test-side inspection and return a credential file path that differs on first vs subsequent calls.
+
+        Appends the provided config_data to the module-level resolved_configs list. On the first invocation returns "/tmp/existing-creds.json"; on all later invocations returns "/tmp/saved-creds.json".
+
+        Parameters:
+            config_data (Any): Configuration object to record for later inspection.
+
+        Returns:
+            str: "/tmp/existing-creds.json" for the first call, "/tmp/saved-creds.json" for subsequent calls.
+        """
+        resolved_configs.append(config_data)
+        if len(resolved_configs) == 1:
+            return "/tmp/existing-creds.json"
+        return "/tmp/saved-creds.json"
+
+    with (
+        patch("mmrelay.config.load_config", return_value=loaded_config),
+        patch("mmrelay.config.is_e2ee_enabled", return_value=False),
+        patch(
+            "mmrelay.matrix_utils._resolve_credentials_save_path",
+            side_effect=_capture_resolve_config,
+        ),
+        patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+    ):
+        result = await login_matrix_bot(
+            homeserver="https://matrix.org",
+            username="user",
+            password="pass",
+            logout_others=False,
+            config_for_paths=None,
+        )
+
+    assert result is True
+    assert resolved_configs == [loaded_config, loaded_config]
+    assert (
+        mock_save_credentials.call_args.kwargs["credentials_path"]
+        == "/tmp/saved-creds.json"
+    )
+
+
+@pytest.mark.asyncio
+@patch("mmrelay.matrix_utils.save_credentials")
+@patch("mmrelay.matrix_utils.AsyncClient")
+@patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
+@patch("mmrelay.matrix_utils._normalize_bot_user_id", return_value="@user:matrix.org")
+async def test_login_matrix_bot_existing_credentials_and_e2ee_check_exceptions(
+    _mock_normalize,
+    _mock_ssl_context,
+    mock_async_client,
+    _mock_save_credentials,
+):
+    """Credential load and E2EE-check failures should be logged and continue."""
+    mock_discovery_client = AsyncMock()
+    mock_main_client = AsyncMock()
+    mock_async_client.side_effect = [mock_discovery_client, mock_main_client]
+
+    mock_discovery_client.discovery_info.return_value = SimpleNamespace(
+        homeserver_url="https://matrix.org"
+    )
+    mock_discovery_client.close = AsyncMock()
+    mock_main_client.login.return_value = MagicMock(
+        access_token="token", device_id="DEV", user_id="@user:matrix.org"
+    )
+    mock_main_client.whoami.return_value = MagicMock(user_id="@user:matrix.org")
+    mock_main_client.close = AsyncMock()
+
+    with (
+        patch("mmrelay.config.load_config", return_value={}),
+        patch("mmrelay.config.is_e2ee_enabled", side_effect=ValueError("bad-e2ee")),
+        patch(
+            "mmrelay.matrix_utils._resolve_credentials_save_path",
+            return_value="/tmp/creds.json",
+        ),
+        patch(
+            "mmrelay.matrix_utils.os.path.exists", side_effect=OSError("exists-fail")
+        ),
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+    ):
+        result = await login_matrix_bot(
+            homeserver="https://matrix.org",
+            username="user",
+            password="pass",
+            logout_others=False,
+            config_for_paths=None,
+        )
+
+    assert result is True
+    assert any(
+        "Could not load existing credentials" in call.args[0]
+        for call in mock_logger.debug.call_args_list
+    )
+    assert any(
+        "Could not load config for E2EE check" in call.args[0]
+        for call in mock_logger.debug.call_args_list
+    )

@@ -13,6 +13,8 @@ __pycache__/
 src/mmrelay.egg-info
 .opencode/
 /build/
+/.ci-artifacts/
+coderabbit_actionable_items.md
 
 # Docker files (use samples from src/mmrelay/tools/)
 docker-compose.yaml

@@ -1,0 +1,82 @@
+name: Meshtasticd Integration
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+      - "**-review"
+  push:
+    branches:
+      - main
+      - develop
+      - "**-review"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  meshtasticd-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Pinned, validated image digests for deterministic CI behavior.
+      MESHTASTICD_IMAGE: meshtastic/meshtasticd@sha256:1b8d88cd63991bfecb8b8ff1801b9ee806447299b849eff19d03bc6ae0edcd65 # 2.7.15
+      SYNAPSE_IMAGE: matrixdotorg/synapse@sha256:f223f5fc532600801284fededefca82288fb71551bf4fcc89cd0b3363a3461cc # v1.149.0
+      CI_ARTIFACT_DIR: ${{ github.workspace }}/.ci-artifacts/meshtasticd-integration
+      MMRELAY_LOG_ON_SUCCESS: "true"
+      MESHNET_NAME_A: Backcountry Alpha
+      MESHNET_NAME_B: Backcountry Bravo
+      MATRIX_EVENT_TIMEOUT_SECONDS: "75"
+      MESSAGE_MAP_WAIT_TIMEOUT_SECONDS: "75"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-meshtasticd-integration-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[e2e]'
+
+      - name: Run meshtasticd integration checks
+        run: |
+          timeout --foreground 13m bash scripts/ci/run-mmrelay-meshtasticd-integration.sh
+
+      - name: Display integration summary
+        if: always()
+        run: |
+          SUMMARY_PATH="${CI_ARTIFACT_DIR}/shared/observability-summary.md"
+          echo "===== Meshtasticd Integration Summary ====="
+          if [[ -f "${SUMMARY_PATH}" ]]; then
+            cat "${SUMMARY_PATH}"
+          else
+            echo "Summary file not found at ${SUMMARY_PATH}"
+          fi
+
+      - name: Upload integration artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: meshtasticd-integration-logs
+          path: |
+            ${{ env.CI_ARTIFACT_DIR }}/instance-a/logs/**
+            ${{ env.CI_ARTIFACT_DIR }}/instance-b/logs/**
+            ${{ env.CI_ARTIFACT_DIR }}/shared/logs/**
+            ${{ env.CI_ARTIFACT_DIR }}/shared/observability-summary.md
+            ${{ env.CI_ARTIFACT_DIR }}/instance-a/config.yaml
+            ${{ env.CI_ARTIFACT_DIR }}/instance-b/config.yaml
+          if-no-files-found: warn

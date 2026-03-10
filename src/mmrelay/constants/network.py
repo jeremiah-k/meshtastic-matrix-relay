@@ -19,6 +19,10 @@ CONFIG_KEY_SERIAL_PORT = "serial_port"
 CONFIG_KEY_HOST = "host"
 CONFIG_KEY_CONNECTION_TYPE = "connection_type"
 CONFIG_KEY_TIMEOUT = "timeout"
+CONFIG_KEY_PORT = "port"
+
+# Meshtastic TCP defaults
+DEFAULT_TCP_PORT = 4403
 
 # Connection retry and timing
 DEFAULT_BACKOFF_TIME = 10  # seconds

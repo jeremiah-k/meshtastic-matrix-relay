@@ -5,6 +5,7 @@ import serial
 import mmrelay.meshtastic_utils as mu
 from mmrelay.constants.network import (
     DEFAULT_MESHTASTIC_TIMEOUT,
+    DEFAULT_TCP_PORT,
     ERRNO_BAD_FILE_DESCRIPTOR,
 )
 from mmrelay.meshtastic_utils import connect_meshtastic, on_lost_meshtastic_connection
@@ -47,7 +48,9 @@ def test_connect_meshtastic_network_alias_warns_and_uses_tcp(reset_meshtastic_gl
 
     assert result is mock_client
     mock_tcp.assert_called_once_with(
-        hostname="127.0.0.1", timeout=DEFAULT_MESHTASTIC_TIMEOUT
+        hostname="127.0.0.1",
+        portNumber=DEFAULT_TCP_PORT,
+        timeout=DEFAULT_MESHTASTIC_TIMEOUT,
     )
     mock_logger.warning.assert_any_call(
         "Using 'network' connection type (legacy). 'tcp' is now the preferred name and 'network' will be deprecated in a future version."
@@ -139,6 +142,45 @@ def test_connect_meshtastic_tcp_missing_host_returns_none(
     assert result is None
     mock_logger.error.assert_any_call(
         "No host specified in Meshtastic configuration for TCP connection."
+    )
+
+
+def test_connect_meshtastic_tcp_invalid_port_uses_default(reset_meshtastic_globals):
+    mock_client = MagicMock()
+    mock_client.getMyNodeInfo.return_value = {
+        "user": {"shortName": "Node", "hwModel": "HW"}
+    }
+
+    with (
+        patch(
+            "mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface",
+            return_value=mock_client,
+        ) as mock_tcp,
+        patch(
+            "mmrelay.meshtastic_utils._get_device_metadata",
+            return_value={"firmware_version": "unknown", "success": False},
+        ),
+        patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+    ):
+        config = {
+            "meshtastic": {
+                "connection_type": "tcp",
+                "host": "127.0.0.1",
+                "port": 70000,
+            }
+        }
+        result = connect_meshtastic(passed_config=config)
+
+    assert result is mock_client
+    mock_tcp.assert_called_once_with(
+        hostname="127.0.0.1",
+        portNumber=DEFAULT_TCP_PORT,
+        timeout=DEFAULT_MESHTASTIC_TIMEOUT,
+    )
+    mock_logger.warning.assert_any_call(
+        "Invalid meshtastic.port value %r; using default TCP port %s",
+        70000,
+        DEFAULT_TCP_PORT,
     )
 
 
