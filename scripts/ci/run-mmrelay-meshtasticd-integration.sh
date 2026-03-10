@@ -117,7 +117,7 @@ declare -a TEST_RESULT_NOTES=()
 
 # =============================================================================
 # Utility Functions
-# =============================================================================
+# require_regex validates a value against a regular expression PATTERN and exits with an error message containing NAME if the value does not match.
 
 require_regex() {
 	local value=$1
@@ -129,6 +129,9 @@ require_regex() {
 	fi
 }
 
+# print_logs_if_needed prints collected component logs to stdout when the test suite failed or when MMRELAY_LOG_ON_SUCCESS enables log-on-success; it avoids printing logs more than once.
+# It takes a single argument: the numeric exit code used to determine whether logs should be printed.
+# exit_code: numeric exit status of the test suite; logs are printed if this is non-zero or if MMRELAY_LOG_ON_SUCCESS is set to 1/true/yes/on.
 print_logs_if_needed() {
 	local exit_code=$1
 	local print_logs=false
@@ -160,6 +163,7 @@ print_logs_if_needed() {
 	[[ -f ${SYNAPSE_LOG_PATH} ]] && cat "${SYNAPSE_LOG_PATH}" || true
 }
 
+# stop_process stops a process given its PID: sends SIGTERM, waits up to 10 seconds for it to exit, then sends SIGKILL if still running and waits to reap it. Parameters: $1 — PID of the process; $2 — human-readable name used in log messages.
 stop_process() {
 	local pid=$1
 	local name=$2
@@ -177,6 +181,7 @@ stop_process() {
 	fi
 }
 
+# count_pattern_in_file counts occurrences of a literal string pattern in a file and echoes the count; echoes 0 if the file does not exist.
 count_pattern_in_file() {
 	local file_path=$1
 	local pattern=$2
@@ -187,6 +192,7 @@ count_pattern_in_file() {
 	grep -F -c "${pattern}" "${file_path}" || true
 }
 
+# count_pattern_in_file_since counts occurrences of a literal pattern in a file starting at the given byte offset and echoes the count.
 count_pattern_in_file_since() {
 	local file_path=$1
 	local pattern=$2
@@ -198,6 +204,7 @@ count_pattern_in_file_since() {
 	tail -c +$((start_byte + 1)) "${file_path}" | grep -F -c "${pattern}" || true
 }
 
+# count_message_map_rows counts rows in the `message_map` table of the given SQLite database and echoes the integer count to stdout; echoes 0 if the file does not exist or an error occurs.
 count_message_map_rows() {
 	local db_path=$1
 	if [[ ! -f ${db_path} ]]; then
@@ -221,6 +228,10 @@ except sqlite3.Error:
 PY
 }
 
+# record_test_result records a test's outcome, computes its duration since CURRENT_TEST_START_MS, and appends the test name, status, duration (milliseconds), and optional note to the global result arrays.
+# Arguments:
+#   status - status string for the test (e.g., "PASSED", "FAILED").
+#   note   - optional brief note or context to record with the result.
 record_test_result() {
 	local status=$1
 	local note="${2-}"
@@ -233,6 +244,7 @@ record_test_result() {
 	TEST_RESULT_NOTES+=("${note}")
 }
 
+# start_test records the start of a test by setting CURRENT_TEST_NAME and CURRENT_TEST_START_MS (epoch milliseconds) and echoes a blank line followed by the provided human-readable test label.
 start_test() {
 	local test_name=$1
 	local test_label=$2
@@ -242,12 +254,16 @@ start_test() {
 	echo "${test_label}"
 }
 
+# pass_test records a test as passed with an optional note and prints a success message.
 pass_test() {
 	local note=$1
 	record_test_result "PASSED" "${note}"
 	echo "✓ ${CURRENT_TEST_NAME} PASSED: ${note}"
 }
 
+# write_observability_report writes an observability Markdown summary of the test suite and prints a concise report to stdout.
+# It gathers test results and runtime metrics (relay flow counts, message_map rows, meshtasticd connection events), captures live meshtasticd logs, writes the summary to "${SHARED_DIR}/observability-summary.md", and appends that file to GITHUB_STEP_SUMMARY when available.
+# The function is idempotent and will do nothing if the observability summary has already been written.
 write_observability_report() {
 	if [[ ${OBSERVABILITY_WRITTEN} == true ]]; then
 		return
@@ -385,6 +401,7 @@ write_observability_report() {
 	fi
 }
 
+# fail_test records a failed test with a note, writes the observability report, and exits the script with status 1.
 fail_test() {
 	local note=$1
 	record_test_result "FAILED" "${note}"
@@ -393,6 +410,7 @@ fail_test() {
 	exit 1
 }
 
+# cleanup performs final test-suite teardown by writing the observability report (if started), stopping MMRelay processes, capturing and removing Meshtasticd and Synapse container logs, conditionally printing logs, and exiting with the original exit code.
 cleanup() {
 	local exit_code=$?
 
@@ -426,6 +444,7 @@ cleanup() {
 	exit "${exit_code}"
 }
 
+# wait_for_meshtasticd_ready waits until the Meshtastic daemon at the given endpoint responds to the Meshtastic CLI; parameters: `endpoint` (host[:port]) and `container` (Docker container name); returns non-zero if the container exits before becoming ready or if readiness does not occur within MESHTASTICD_READY_TIMEOUT_SECONDS.
 wait_for_meshtasticd_ready() {
 	local endpoint=$1
 	local container=$2
@@ -444,6 +463,7 @@ wait_for_meshtasticd_ready() {
 	echo "${container} is ready."
 }
 
+# configure_mesh_channel sets the Meshtastic channel name and pre-shared key (PSK) on the specified endpoint.
 configure_mesh_channel() {
 	local endpoint=$1
 	local channel_name=$2
@@ -494,6 +514,14 @@ PY
 	echo "Synapse is ready."
 }
 
+# wait_for_log_pattern_since waits until `pattern` appears in `log_file` after `start_byte` or until `timeout_seconds` elapse.
+# It checks the file size relative to `start_byte` and searches only the new content; returns 0 if the pattern is found.
+# Returns 1 and prints an error if the timeout is reached or if either MMRelay process (MMRELAY_PID_A or MMRELAY_PID_B) exits while waiting.
+# Arguments:
+#   $1 - path to the log file to monitor
+#   $2 - literal pattern to search for (grep -F style)
+#   $3 - start byte offset (search begins at byte offset +1)
+#   $4 - timeout in seconds to wait before failing
 wait_for_log_pattern_since() {
 	local log_file=$1
 	local pattern=$2
@@ -522,6 +550,8 @@ wait_for_log_pattern_since() {
 	return 1
 }
 
+# load_json_value reads MATRIX_RUNTIME_JSON and echoes the value of the given top-level JSON key.
+# key is the top-level key to extract; the function prints the value to stdout and exits with status 1 if the key is not present.
 load_json_value() {
 	local key=$1
 	"${PYTHON_BIN}" - "${MATRIX_RUNTIME_JSON}" "${key}" <<'PY'
@@ -540,6 +570,7 @@ print(value)
 PY
 }
 
+# json_extract extracts the JSON value specified by a dot-separated key path from the given JSON payload and echoes it; exits with status 1 if the path is missing or the value is null.
 json_extract() {
 	local json_payload=$1
 	local key_path=$2
@@ -571,6 +602,7 @@ else:
 PY
 }
 
+# write_matrix_credentials_json writes a Matrix credential JSON file to the given path containing the homeserver, user_id, access_token, and device_id.
 write_matrix_credentials_json() {
 	local output_path=$1
 	local homeserver=$2
@@ -605,6 +637,7 @@ output_path.write_text(
 PY
 }
 
+# write_e2ee_auth_state_json writes a JSON auth state file at the given path containing `access_token`, `user_id`, and `device_id`, creating parent directories as needed.
 write_e2ee_auth_state_json() {
 	local output_path=$1
 	local access_token=$2
@@ -636,6 +669,7 @@ output_path.write_text(
 PY
 }
 
+# matrix_send_message sends a message to a Matrix room (optionally as a reply) and echoes the resulting event ID.
 matrix_send_message() {
 	local access_token=$1
 	local room_id=$2
@@ -686,6 +720,7 @@ print(event_id)
 PY
 }
 
+# matrix_send_mesh_origin_message sends an event to a Matrix room that represents a Meshtastic-origin message and prints the created event_id.
 matrix_send_mesh_origin_message() {
 	local access_token=$1
 	local room_id=$2
@@ -746,6 +781,7 @@ print(event_id)
 PY
 }
 
+# matrix_send_e2ee_message sends an end-to-end encrypted message into a Matrix room (optionally as a reply), restoring or saving local encryption auth state and printing the created event ID to stdout.
 matrix_send_e2ee_message() {
 	local user_id=$1
 	local password=$2
@@ -864,6 +900,8 @@ print(result)
 PY
 }
 
+# matrix_send_e2ee_reaction sends an end-to-end encrypted reaction into a Matrix room and echoes the created Matrix event ID to stdout.
+# Arguments: user_id, password, room_id, target_event_id, reaction_key, store_path, auth_state_path — where store_path is the client store directory for encryption state and auth_state_path is the JSON file path used to persist/restore access token and device info.
 matrix_send_e2ee_reaction() {
 	local user_id=$1
 	local password=$2
@@ -981,6 +1019,7 @@ print(result)
 PY
 }
 
+# matrix_wait_event waits for a Matrix event in a room that matches optional filters (type, sender, content, msgtype, relation, event IDs, meshtastic reply id) within a timeout and echoes the matched event JSON plus the next_batch sync token on success; exits nonzero on timeout or sync error.
 matrix_wait_event() {
 	local access_token=$1
 	local room_id=$2
@@ -1114,6 +1153,7 @@ raise SystemExit(1)
 PY
 }
 
+# matrix_wait_event_by_id waits for a specific Matrix event by ID in a room and echoes the event JSON to stdout when found; optionally validates the event sender and allowed event types and exits non-zero on timeout or on validation/fetch errors.
 matrix_wait_event_by_id() {
 	local access_token=$1
 	local room_id=$2
@@ -1199,6 +1239,7 @@ raise SystemExit(1)
 PY
 }
 
+# wait_for_message_map_meshtastic_id waits for a Meshtastic ID mapped to a given Matrix event ID to appear in the message_map SQLite table, prints the Meshtastic ID to stdout on success, and exits non‑zero if the row is not found within the provided timeout.
 wait_for_message_map_meshtastic_id() {
 	local db_path=$1
 	local matrix_event_id=$2

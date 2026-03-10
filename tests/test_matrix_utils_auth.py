@@ -1355,6 +1355,17 @@ async def test_login_matrix_bot_uses_loaded_config_for_save_path(
     resolved_configs = []
 
     def _capture_resolve_config(config_data):
+        """
+        Capture a configuration object for test-side inspection and return a credential file path that differs on first vs subsequent calls.
+
+        Appends the provided config_data to the module-level resolved_configs list. On the first invocation returns "/tmp/existing-creds.json"; on all later invocations returns "/tmp/saved-creds.json".
+
+        Parameters:
+            config_data (Any): Configuration object to record for later inspection.
+
+        Returns:
+            str: "/tmp/existing-creds.json" for the first call, "/tmp/saved-creds.json" for subsequent calls.
+        """
         resolved_configs.append(config_data)
         if len(resolved_configs) == 1:
             return "/tmp/existing-creds.json"

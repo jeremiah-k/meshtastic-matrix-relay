@@ -2371,16 +2371,14 @@ async def login_matrix_bot(
     config_for_paths: dict[str, Any] | None = None,
 ) -> bool:
     """
-    Authenticate the bot with a Matrix homeserver and persist the resulting session credentials.
-
-    Prompts interactively for any missing homeserver, username, or password, performs server discovery, logs in (optionally reusing an existing device_id), and saves credentials to the configured credentials path on success.
+    Perform an interactive login to a Matrix homeserver, persist the obtained session credentials, and prepare an optional E2EE store when enabled.
 
     Parameters:
-        homeserver (str | None): Homeserver URL (e.g., "https://matrix.org"); when None the user is prompted.
-        username (str | None): Bot username (localpart or full MXID); when None the user is prompted.
-        password (str | None): Account password; when None the user is prompted.
-        logout_others (bool | None): If True attempt to log out other sessions; if False do not; if None the user is prompted when running interactively (treated as False in non-interactive calls).
-        config_for_paths (dict[str, Any] | None): Optional in-memory config used to resolve credentials and E2EE settings without reloading config from disk.
+        homeserver (str | None): Homeserver URL to use; when None the user will be prompted.
+        username (str | None): Bot username or full MXID; when None the user will be prompted and the value will be normalized to a full MXID.
+        password (str | None): Account password; when None the user will be prompted.
+        logout_others (bool | None): If True attempt to log out other sessions; if False do not; if None and running interactively the user will be prompted (treated as False for non-interactive calls).
+        config_for_paths (dict[str, Any] | None): Optional in-memory configuration used to resolve credential and E2EE file paths without reloading configuration from disk.
 
     Returns:
         bool: `True` if login succeeded and credentials were saved, `False` otherwise.
