@@ -6612,11 +6612,16 @@ async def test_on_decryption_failure_without_matrix_client_logs_and_returns():
     with (
         patch("mmrelay.matrix_utils.matrix_client", None),
         patch("mmrelay.matrix_utils.logger") as mock_logger,
+        patch(
+            "mmrelay.matrix_utils.asyncio.sleep", new_callable=AsyncMock
+        ) as mock_sleep,
     ):
         await on_decryption_failure(mock_room, mock_event)
 
         # Initial decrypt error + unavailable matrix client error.
         assert mock_logger.error.call_count == 2
+        mock_event.as_key_request.assert_not_called()
+        mock_sleep.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -6661,16 +6666,19 @@ async def test_on_decryption_failure_retry_on_exception():
             "mmrelay.matrix_utils.asyncio.sleep", new_callable=AsyncMock
         ) as mock_sleep,
     ):
+        max_attempts = matrix_utils_module.E2EE_KEY_REQUEST_MAX_ATTEMPTS
         mock_client.user_id = "@bot:matrix.org"
         mock_client.device_id = "DEVICE123"
         # Create a response mock that satisfies isinstance(response, ToDeviceResponse)
         mock_response = MagicMock(spec=ToDeviceResponse)
-        # First two attempts raise exception, third returns ToDeviceResponse
+        # Fail until the final allowed attempt, then succeed.
         mock_client.to_device = AsyncMock(
             side_effect=[
-                NioRemoteTransportError("Network error"),
-                NioRemoteTransportError("Network error"),
-                mock_response,  # Success on third attempt
+                *[
+                    NioRemoteTransportError("Network error")
+                    for _ in range(max_attempts - 1)
+                ],
+                mock_response,
             ]
         )
 
@@ -6679,8 +6687,6 @@ async def test_on_decryption_failure_retry_on_exception():
         mock_event.as_key_request.assert_called_once_with(
             "@bot:matrix.org", "DEVICE123"
         )
-        # Compute expected values from constants
-        max_attempts = matrix_utils_module.E2EE_KEY_REQUEST_MAX_ATTEMPTS
         # Verify all attempts were made.
         assert mock_client.to_device.await_count == max_attempts
         # Verify warnings were logged for failures before success
@@ -7327,14 +7333,13 @@ async def test_handle_detection_sensor_packet_success():
     with (
         patch("mmrelay.matrix_utils.get_meshtastic_config_value") as mock_get_config,
         patch(
-            "mmrelay.matrix_utils._get_meshtastic_interface_and_channel",
-            new_callable=AsyncMock,
-        ) as mock_get_iface,
+            "mmrelay.matrix_utils._connect_meshtastic", new_callable=AsyncMock
+        ) as mock_connect,
         patch("mmrelay.matrix_utils.queue_message") as mock_queue_message,
         patch("mmrelay.matrix_utils.get_message_queue") as mock_get_queue,
     ):
         mock_get_config.side_effect = [True, True]
-        mock_get_iface.return_value = (mock_interface, 0)
+        mock_connect.return_value = mock_interface
         mock_queue_message.return_value = True
         mock_get_queue.return_value = mock_queue
 

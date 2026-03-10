@@ -105,7 +105,6 @@ from mmrelay.constants.messages import (
     MESSAGE_PREVIEW_LENGTH,
     PORTNUM_DETECTION_SENSOR_APP,
     SHORTNAME_FALLBACK_LENGTH,
-    TRUNCATION_LOG_LIMIT,
 )
 from mmrelay.constants.network import (
     MATRIX_EARLY_SYNC_TIMEOUT,
@@ -913,14 +912,11 @@ def _add_truncated_vars(
     """
     # Always add truncated variables, even for empty text (to prevent KeyError)
     text = text or ""  # Convert None to empty string
-    logger.debug(f"Adding truncated vars for prefix='{prefix}', text='{text}'")
     for i in range(
         1, MAX_TRUNCATION_LENGTH + 1
     ):  # Support up to MAX_TRUNCATION_LENGTH chars, always add all variants
         truncated_value = text[:i]
         format_vars[f"{prefix}{i}"] = truncated_value
-        if i <= TRUNCATION_LOG_LIMIT:  # Only log first few to avoid spam
-            logger.debug(f"  {prefix}{i} = '{truncated_value}'")
 
 
 _PREFIX_DEFINITION_PATTERN = re.compile(r"^\[(.+?)\]:(\s*)")
@@ -1021,7 +1017,17 @@ def get_meshtastic_prefix(
     _add_truncated_vars(format_vars, "display", display_name)
 
     try:
-        return prefix_format.format(**format_vars)
+        result = prefix_format.format(**format_vars)
+        logger.debug(
+            "Meshtastic prefix generated (%s): %s",
+            (
+                "custom format"
+                if prefix_format != DEFAULT_MESHTASTIC_PREFIX
+                else "default format"
+            ),
+            result,
+        )
+        return result
     except (KeyError, ValueError) as e:
         # Fallback to default format if custom format is invalid
         logger.warning(
@@ -1051,15 +1057,8 @@ def get_matrix_prefix(
     """
     matrix_config = config.get(CONFIG_SECTION_MATRIX, {})
 
-    # Enhanced debug logging for configuration troubleshooting
-    logger.debug(
-        f"get_matrix_prefix called with longname='{longname}', shortname='{shortname}', meshnet_name='{meshnet_name}'"
-    )
-    logger.debug(f"Matrix config section: {matrix_config}")
-
     # Check if prefixes are enabled for Matrix direction
     if not matrix_config.get("prefix_enabled", True):
-        logger.debug("Matrix prefixes are disabled, returning empty string")
         return ""
 
     # Get custom format or use default
@@ -1071,10 +1070,6 @@ def get_matrix_prefix(
         if matrix_prefix_format_value is not None
         else DEFAULT_MATRIX_PREFIX
     )
-    logger.debug(
-        f"Using matrix prefix format: '{matrix_prefix_format}' (default: '{DEFAULT_MATRIX_PREFIX}')"
-    )
-
     # Available variables for formatting with variable length support
     format_vars = {
         "long": longname,
@@ -1089,13 +1084,14 @@ def get_matrix_prefix(
     try:
         result = matrix_prefix_format.format(**format_vars)
         logger.debug(
-            f"Matrix prefix generated: '{result}' using format '{matrix_prefix_format}' with vars {format_vars}"
+            "Matrix prefix generated (%s): %s",
+            (
+                "custom format"
+                if matrix_prefix_format != DEFAULT_MATRIX_PREFIX
+                else "default format"
+            ),
+            result,
         )
-        # Additional debug to help identify the issue
-        if result == f"[{longname}/{meshnet_name}]: ":
-            logger.debug(
-                "Generated prefix matches default format - check if custom configuration is being loaded correctly"
-            )
         return result
     except (KeyError, ValueError) as e:
         # Fallback to default format if custom format is invalid
