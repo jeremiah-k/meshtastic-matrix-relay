@@ -3054,7 +3054,17 @@ def _retry_backoff_delay(
     base_delay: float,
     max_delay: float,
 ) -> float:
-    """Return exponential backoff delay capped by max_delay."""
+    """
+    Compute the exponential backoff delay for a retry attempt, capped at a maximum.
+    
+    Parameters:
+        attempt_index (int): Zero-based index of the retry attempt (0 yields base_delay).
+        base_delay (float): Initial delay in seconds used as the multiplier base.
+        max_delay (float): Upper bound in seconds for the returned delay.
+    
+    Returns:
+        float: Delay in seconds to wait before the next retry; equals base_delay * 2**attempt_index capped at max_delay.
+    """
     return min(base_delay * (2**attempt_index), max_delay)
 
 

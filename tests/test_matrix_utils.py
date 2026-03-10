@@ -6784,7 +6784,11 @@ async def test_on_decryption_failure_to_device_error():
 
 @pytest.mark.asyncio
 async def test_on_decryption_failure_backoff_caps_at_max_delay():
-    """Backoff delay should be capped when exponential retry delay exceeds max."""
+    """
+    Verify exponential backoff caps at the configured maximum delay when repeated to-device failures occur.
+    
+    This test simulates repeated ToDeviceError responses from the Matrix client's to_device call and asserts that on_decryption_failure schedules retries with asyncio.sleep delays that respect E2EE_KEY_REQUEST_BASE_DELAY and do not exceed E2EE_KEY_REQUEST_MAX_DELAY (expected sleep calls: 20, then capped 30.0). It also verifies the key request is created for the configured bot user and device.
+    """
 
     mock_room = MagicMock()
     mock_room.room_id = "!room123:matrix.org"

@@ -242,9 +242,21 @@ class MockToDeviceError:
     """Mock ToDeviceError for testing."""
 
     def __init__(self, message: str = "Error") -> None:
+        """
+        Initialize the MockToDeviceError with a human-readable message.
+        
+        Parameters:
+            message (str): Error message stored on the instance and returned by `__str__`.
+        """
         self.message: str = message
 
     def __str__(self) -> str:
+        """
+        Provide the exception's message as its string representation.
+        
+        @returns
+            str: The error message stored on the exception.
+        """
         return self.message
 
 
