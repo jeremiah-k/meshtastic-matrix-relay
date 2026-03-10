@@ -43,7 +43,7 @@ setup(
     ],
     python_requires=">=3.10",
     install_requires=[
-        "meshtastic>=2.7.4",
+        "meshtastic>=2.7.8",
         "Pillow==12.1.1",
         "matrix-nio==0.25.2",
         "matplotlib==3.10.8",
