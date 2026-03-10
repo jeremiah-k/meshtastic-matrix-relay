@@ -3,7 +3,7 @@
 set -euo pipefail
 
 # =============================================================================
-# Cross-Mesh Integration Test for MMRelay
+# Meshtasticd Integration Test for MMRelay
 # =============================================================================
 #
 # This script tests MMRelay's ability to relay messages between two isolated mesh networks
@@ -16,8 +16,8 @@ set -euo pipefail
 #
 # Test Scenarios:
 #   1. Matrix user message in shared room → Mesh A + Mesh B
-#   2. Simulated Mesh A event in shared room → cross-mesh relay path in MMRelay B
-#   3. Simulated Mesh B event in shared room → cross-mesh relay path in MMRelay A
+#   2. Injected Mesh A-origin event in shared room → remote meshnet processing in MMRelay B
+#   3. Injected Mesh B-origin event in shared room → remote meshnet processing in MMRelay A
 #   4. Secondary Matrix user message → Mesh A + Mesh B
 #   5. Secondary Matrix user reply → both meshes as structured replies
 #   6. Secondary Matrix user reaction → both meshes
@@ -25,7 +25,6 @@ set -euo pipefail
 # Environment Variables:
 #   MESHTASTICD_IMAGE: Docker image for meshtasticd (default: meshtastic/meshtasticd:latest)
 #   SYNAPSE_IMAGE: Docker image for Synapse (default: matrixdotorg/synapse:latest)
-#   STRICT_MESH_TO_MATRIX: Fail CI if Mesh→Matrix tests fail (default: true)
 #   MMRELAY_LOG_ON_SUCCESS: Always show logs (default: false)
 #   MESHNET_NAME_A / MESHNET_NAME_B: Meshnet labels used by each relay instance
 #   MESH_CHANNEL_NAME_A / MESH_CHANNEL_NAME_B: Channel names for isolated meshnets
@@ -59,7 +58,6 @@ SYNAPSE_READY_TIMEOUT_SECONDS="${SYNAPSE_READY_TIMEOUT_SECONDS:-180}"
 # MMRelay Configuration
 MMRELAY_READY_TIMEOUT_SECONDS="${MMRELAY_READY_TIMEOUT_SECONDS:-120}"
 MMRELAY_LOG_ON_SUCCESS="${MMRELAY_LOG_ON_SUCCESS:-false}"
-STRICT_MESH_TO_MATRIX="${STRICT_MESH_TO_MATRIX:-true}"
 MESHNET_NAME_A="${MESHNET_NAME_A:-Mesh A}"
 MESHNET_NAME_B="${MESHNET_NAME_B:-Mesh B}"
 MATRIX_EVENT_TIMEOUT_SECONDS="${MATRIX_EVENT_TIMEOUT_SECONDS:-60}"
@@ -67,7 +65,7 @@ MESSAGE_MAP_WAIT_TIMEOUT_SECONDS="${MESSAGE_MAP_WAIT_TIMEOUT_SECONDS:-60}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 
 # Artifacts and Logging - Separated by Instance
-CI_ARTIFACT_DIR="${CI_ARTIFACT_DIR:-${PWD}/.ci-artifacts/cross-mesh-integration}"
+CI_ARTIFACT_DIR="${CI_ARTIFACT_DIR:-${PWD}/.ci-artifacts/meshtasticd-integration}"
 
 # Instance A directories
 INSTANCE_A_DIR="${CI_ARTIFACT_DIR}/instance-a"
@@ -108,6 +106,8 @@ OBSERVABILITY_WRITTEN=false
 SUITE_START_MS=0
 CURRENT_TEST_NAME=""
 CURRENT_TEST_START_MS=0
+MESHTASTICD_LOG_OFFSET_A=0
+MESHTASTICD_LOG_OFFSET_B=0
 
 declare -a TEST_RESULT_NAMES=()
 declare -a TEST_RESULT_STATUS=()
@@ -167,6 +167,17 @@ count_pattern_in_file() {
 		return
 	fi
 	grep -F -c "${pattern}" "${file_path}" || true
+}
+
+count_pattern_in_file_since() {
+	local file_path=$1
+	local pattern=$2
+	local start_byte=$3
+	if [[ ! -f ${file_path} ]] || (($(wc -c <"${file_path}") <= start_byte)); then
+		echo 0
+		return
+	fi
+	tail -c +$((start_byte + 1)) "${file_path}" | grep -F -c "${pattern}" || true
 }
 
 count_message_map_rows() {
@@ -283,12 +294,12 @@ write_observability_report() {
 	relay_reconnects_b=$(count_pattern_in_file "${MMRELAY_LOG_PATH_B}" "Lost connection (")
 	message_map_a=$(count_message_map_rows "${MMRELAY_DB_PATH_A}")
 	message_map_b=$(count_message_map_rows "${MMRELAY_DB_PATH_B}")
-	force_close_a=$(count_pattern_in_file "${mesh_log_a_live}" "Force close previous TCP connection")
-	force_close_b=$(count_pattern_in_file "${mesh_log_b_live}" "Force close previous TCP connection")
-	incoming_api_a=$(count_pattern_in_file "${mesh_log_a_live}" "Incoming API connection")
-	incoming_api_b=$(count_pattern_in_file "${mesh_log_b_live}" "Incoming API connection")
-	lost_phone_a=$(count_pattern_in_file "${mesh_log_a_live}" "Lost phone connection")
-	lost_phone_b=$(count_pattern_in_file "${mesh_log_b_live}" "Lost phone connection")
+	force_close_a=$(count_pattern_in_file_since "${mesh_log_a_live}" "Force close previous TCP connection" "${MESHTASTICD_LOG_OFFSET_A}")
+	force_close_b=$(count_pattern_in_file_since "${mesh_log_b_live}" "Force close previous TCP connection" "${MESHTASTICD_LOG_OFFSET_B}")
+	incoming_api_a=$(count_pattern_in_file_since "${mesh_log_a_live}" "Incoming API connection" "${MESHTASTICD_LOG_OFFSET_A}")
+	incoming_api_b=$(count_pattern_in_file_since "${mesh_log_b_live}" "Incoming API connection" "${MESHTASTICD_LOG_OFFSET_B}")
+	lost_phone_a=$(count_pattern_in_file_since "${mesh_log_a_live}" "Lost phone connection" "${MESHTASTICD_LOG_OFFSET_A}")
+	lost_phone_b=$(count_pattern_in_file_since "${mesh_log_b_live}" "Lost phone connection" "${MESHTASTICD_LOG_OFFSET_B}")
 	if ((relay_reconnects_a > 0 || force_close_a > 0 || lost_phone_a > 0)); then
 		stability_note_a="connection churn observed"
 	fi
@@ -298,7 +309,7 @@ write_observability_report() {
 
 	local summary_md="${SHARED_DIR}/observability-summary.md"
 	{
-		echo "## Cross-Mesh CI Observability Summary"
+		echo "## Meshtasticd CI Observability Summary"
 		echo
 		echo "- Suite duration: ${suite_duration_ms} ms"
 		echo "- Tests: ${passed_tests}/${total_tests} passed, ${failed_tests} failed"
@@ -328,6 +339,7 @@ write_observability_report() {
 		echo "| Force close previous TCP connection | ${force_close_a} | ${force_close_b} |"
 		echo "| Lost phone connection | ${lost_phone_a} | ${lost_phone_b} |"
 		echo "| Stability status | ${stability_note_a} | ${stability_note_b} |"
+		echo "| Metrics scope | test phase only | test phase only |"
 		echo
 		echo "### Artifacts"
 		echo "- MMRelay A log: \`${MMRELAY_LOG_PATH_A}\`"
@@ -613,7 +625,7 @@ print(event_id)
 PY
 }
 
-matrix_send_meshtastic_message() {
+matrix_send_mesh_origin_message() {
 	local access_token=$1
 	local room_id=$2
 	local message_text=$3
@@ -664,11 +676,11 @@ response = requests.put(
 )
 if response.status_code >= 400:
     raise RuntimeError(
-        f"Failed to send simulated mesh message ({response.status_code}): {response.text}"
+        f"Failed to send injected mesh-origin message ({response.status_code}): {response.text}"
     )
 event_id = response.json().get("event_id")
 if not isinstance(event_id, str) or not event_id:
-    raise RuntimeError("Simulated mesh send response missing event_id")
+    raise RuntimeError("Injected mesh-origin send response missing event_id")
 print(event_id)
 PY
 }
@@ -902,44 +914,6 @@ raise SystemExit(1)
 PY
 }
 
-assert_message_map_absent() {
-	local db_path=$1
-	local matrix_event_id=$2
-	local timeout_seconds=$3
-	"${PYTHON_BIN}" - "${db_path}" "${matrix_event_id}" "${timeout_seconds}" <<'PY'
-import sqlite3
-import sys
-import time
-
-db_path = sys.argv[1]
-matrix_event_id = sys.argv[2]
-timeout_seconds = int(sys.argv[3])
-
-deadline = time.monotonic() + timeout_seconds
-while time.monotonic() < deadline:
-    try:
-        conn = sqlite3.connect(db_path, timeout=5)
-        try:
-            row = conn.execute(
-                "SELECT 1 FROM message_map WHERE matrix_event_id=?",
-                (matrix_event_id,),
-            ).fetchone()
-            if row:
-                print(
-                    f"Unexpected message_map row found for matrix_event_id={matrix_event_id}",
-                    file=sys.stderr,
-                )
-                raise SystemExit(1)
-        finally:
-            conn.close()
-    except sqlite3.Error:
-        pass
-    time.sleep(1)
-
-raise SystemExit(0)
-PY
-}
-
 # =============================================================================
 # Validation
 # =============================================================================
@@ -947,7 +921,7 @@ PY
 trap cleanup EXIT
 
 if ! command -v docker >/dev/null 2>&1; then
-	echo "docker is required for cross-mesh integration tests." >&2
+	echo "docker is required for meshtasticd integration tests." >&2
 	exit 1
 fi
 
@@ -957,7 +931,7 @@ if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
 fi
 
 if [[ "$(uname -s)" != "Linux" ]]; then
-	echo "cross-mesh integration currently requires Linux (Docker host networking)." >&2
+	echo "meshtasticd integration currently requires Linux (Docker host networking)." >&2
 	exit 1
 fi
 
@@ -1027,7 +1001,7 @@ MESHTASTICD_ENDPOINT_B="${MESHTASTICD_HOST_B}:${MESHTASTICD_PORT_B_DEC}"
 # Setup
 # =============================================================================
 
-echo "Cross-Mesh Integration Test - Testing MMRelay's core use case"
+echo "Meshtasticd Integration Test - Testing MMRelay's core use case"
 echo "============================================================================"
 echo ""
 
@@ -1270,9 +1244,9 @@ user2 = login(user2_localpart, user2_password)
 room_suffix = int(time.time())
 room_id = create_room(
     user1["access_token"],
-    "MMRelay Cross-Mesh CI Room",
-    "Shared room for cross-mesh relay tests",
-    f"mmrelay-ci-cross-mesh-{room_suffix}",
+    "MMRelay CI Integration Room",
+    "Shared room for MMRelay integration tests",
+    f"mmrelay-ci-integration-{room_suffix}",
 )
 
 # Shared room members: user1 + user2 + bot_a + bot_b
@@ -1422,6 +1396,22 @@ wait_for_log_pattern_since \
 	$((10#${MMRELAY_READY_TIMEOUT_SECONDS}))
 echo "MMRelay B is ready (PID ${MMRELAY_PID_B})"
 
+# Capture meshtasticd log baselines so churn metrics reflect test-phase behavior only.
+mesh_log_baseline_a="${INSTANCE_A_LOG_DIR}/meshtasticd-pre-suite.log"
+mesh_log_baseline_b="${INSTANCE_B_LOG_DIR}/meshtasticd-pre-suite.log"
+if docker ps -a --format '{{.Names}}' | grep -Fxq "${MESHTASTICD_CONTAINER_A}"; then
+	docker logs "${MESHTASTICD_CONTAINER_A}" >"${mesh_log_baseline_a}" 2>&1 || true
+	if [[ -f ${mesh_log_baseline_a} ]]; then
+		MESHTASTICD_LOG_OFFSET_A=$(wc -c <"${mesh_log_baseline_a}")
+	fi
+fi
+if docker ps -a --format '{{.Names}}' | grep -Fxq "${MESHTASTICD_CONTAINER_B}"; then
+	docker logs "${MESHTASTICD_CONTAINER_B}" >"${mesh_log_baseline_b}" 2>&1 || true
+	if [[ -f ${mesh_log_baseline_b} ]]; then
+		MESHTASTICD_LOG_OFFSET_B=$(wc -c <"${mesh_log_baseline_b}")
+	fi
+fi
+
 # =============================================================================
 # Test Scenarios
 # =============================================================================
@@ -1461,14 +1451,18 @@ if ! wait_for_log_pattern_since \
 fi
 pass_test "Matrix user message relayed to both meshes"
 
-# Test 2: Simulated Mesh A event in Matrix → cross-mesh relay path in MMRelay B
+# Test 2: Injected Mesh A-origin event in Matrix → remote meshnet processing in MMRelay B
+#
+# Keep one API client per meshtasticd node (the relay itself) to avoid transport churn.
+# We inject the same mesh-origin Matrix event shape that MMRelay publishes so we still
+# exercise MMRelay's remote-meshnet processing path end-to-end through Matrix.
 MESH_A_TO_MATRIX_TEXT="MMRELAY_CI_A2M_$(date +%s)_${RANDOM}"
 MESH_A_SIM_ID=$((2000000000 + RANDOM))
 log_offset_before_a2m_b=$(wc -c <"${MMRELAY_LOG_PATH_B}")
 
-start_test "Test 2" "Test 2: Simulated Mesh A event in Matrix → cross-mesh relay to Mesh B..."
+start_test "Test 2" "Test 2: Injected Mesh A-origin event in Matrix → remote processing in Mesh B relay..."
 MESH_A_MATRIX_EVENT_ID="$(
-	matrix_send_meshtastic_message \
+	matrix_send_mesh_origin_message \
 		"${BOT_A_ACCESS_TOKEN}" \
 		"${ROOM_ID}" \
 		"${MESH_A_TO_MATRIX_TEXT}" \
@@ -1498,18 +1492,18 @@ if ! wait_for_log_pattern_since \
 	"Processing message from remote meshnet:" \
 	"${log_offset_before_a2m_b}" \
 	60; then
-	fail_test "MMRelay B did not process simulated remote mesh event from ${MESHNET_NAME_A}"
+	fail_test "MMRelay B did not process injected remote mesh event from ${MESHNET_NAME_A}"
 fi
-pass_test "Simulated Mesh A event reached Matrix and crossed to Mesh B path"
+pass_test "Injected Mesh A-origin event reached Matrix and processed in Mesh B relay"
 
-# Test 3: Simulated Mesh B event in Matrix → cross-mesh relay path in MMRelay A
+# Test 3: Injected Mesh B-origin event in Matrix → remote meshnet processing in MMRelay A
 MESH_B_TO_MATRIX_TEXT="MMRELAY_CI_B2M_$(date +%s)_${RANDOM}"
 MESH_B_SIM_ID=$((2100000000 + RANDOM))
 log_offset_before_b2m_a=$(wc -c <"${MMRELAY_LOG_PATH_A}")
 
-start_test "Test 3" "Test 3: Simulated Mesh B event in Matrix → cross-mesh relay to Mesh A..."
+start_test "Test 3" "Test 3: Injected Mesh B-origin event in Matrix → remote processing in Mesh A relay..."
 MESH_B_MATRIX_EVENT_ID="$(
-	matrix_send_meshtastic_message \
+	matrix_send_mesh_origin_message \
 		"${BOT_B_ACCESS_TOKEN}" \
 		"${ROOM_ID}" \
 		"${MESH_B_TO_MATRIX_TEXT}" \
@@ -1539,9 +1533,9 @@ if ! wait_for_log_pattern_since \
 	"Processing message from remote meshnet:" \
 	"${log_offset_before_b2m_a}" \
 	60; then
-	fail_test "MMRelay A did not process simulated remote mesh event from ${MESHNET_NAME_B}"
+	fail_test "MMRelay A did not process injected remote mesh event from ${MESHNET_NAME_B}"
 fi
-pass_test "Simulated Mesh B event reached Matrix and crossed to Mesh A path"
+pass_test "Injected Mesh B-origin event reached Matrix and processed in Mesh A relay"
 
 # Test 4: Secondary Matrix user message → Mesh A + Mesh B
 MATRIX_USER2_TEXT="MMRELAY_CI_U2_MSG_$(date +%s)_${RANDOM}"
@@ -1688,5 +1682,5 @@ echo "==========================================================================
 echo "All test scenarios passed!"
 echo "============================================================================"
 echo ""
-echo "Cross-mesh integration tests completed successfully."
+echo "Meshtasticd integration tests completed successfully."
 echo "Artifacts written to: ${CI_ARTIFACT_DIR}"
