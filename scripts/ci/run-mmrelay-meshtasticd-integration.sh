@@ -129,6 +129,51 @@ require_regex() {
 	fi
 }
 
+# run_with_status executes a command with errexit temporarily disabled and returns its exit status.
+run_with_status() {
+	set +e
+	"$@"
+	local status=$?
+	set -e
+	return "${status}"
+}
+
+# run_capture_with_status executes a command with errexit temporarily disabled, captures stdout into the named variable, and returns command status.
+run_capture_with_status() {
+	local output_var=$1
+	shift
+	local output
+	set +e
+	output="$("$@")"
+	local status=$?
+	set -e
+	printf -v "${output_var}" "%s" "${output}"
+	return "${status}"
+}
+
+# run_or_fail executes a command and fails the current test with failure_note if the command exits non-zero.
+run_or_fail() {
+	local failure_note=$1
+	shift
+	run_with_status "$@"
+	local status=$?
+	if ((status != 0)); then
+		fail_test "${failure_note}"
+	fi
+}
+
+# run_capture_or_fail captures command output into output_var and fails the current test with failure_note if the command exits non-zero.
+run_capture_or_fail() {
+	local output_var=$1
+	local failure_note=$2
+	shift 2
+	run_capture_with_status "${output_var}" "$@"
+	local status=$?
+	if ((status != 0)); then
+		fail_test "${failure_note}"
+	fi
+}
+
 # print_logs_if_needed prints collected component logs to stdout when the test suite failed or when MMRELAY_LOG_ON_SUCCESS enables log-on-success; it avoids printing logs more than once.
 # It takes a single argument: the numeric exit code used to determine whether logs should be printed.
 # exit_code: numeric exit status of the test suite; logs are printed if this is non-zero or if MMRELAY_LOG_ON_SUCCESS is set to 1/true/yes/on.
@@ -172,7 +217,7 @@ stop_process() {
 	if [[ -n ${pid} ]] && kill -0 "${pid}" >/dev/null 2>&1; then
 		echo "Stopping ${name} (PID ${pid})..."
 		kill -TERM "${pid}" 2>/dev/null || true
-		for _ in $(seq 1 $shutdown_timeout); do
+		for _ in $(seq 1 "${shutdown_timeout}"); do
 			kill -0 "${pid}" 2>/dev/null || break
 			sleep 1
 		done
@@ -197,7 +242,13 @@ count_pattern_in_file_since() {
 	local file_path=$1
 	local pattern=$2
 	local start_byte=$3
-	if [[ ! -f ${file_path} ]] || (($(wc -c <"${file_path}") <= start_byte)); then
+	if [[ ! -f ${file_path} ]]; then
+		echo 0
+		return
+	fi
+	local file_size
+	file_size=$(wc -c <"${file_path}")
+	if ((file_size <= start_byte)); then
 		echo 0
 		return
 	fi
@@ -353,7 +404,7 @@ write_observability_report() {
 		echo "|---|---|---:|---|"
 		local idx
 		for idx in "${!TEST_RESULT_NAMES[@]}"; do
-			echo "| ${TEST_RESULT_NAMES[$idx]} | ${TEST_RESULT_STATUS[$idx]} | ${TEST_RESULT_DURATION_MS[$idx]} | ${TEST_RESULT_NOTES[$idx]} |"
+			echo "| ${TEST_RESULT_NAMES[${idx}]} | ${TEST_RESULT_STATUS[${idx}]} | ${TEST_RESULT_DURATION_MS[${idx}]} | ${TEST_RESULT_NOTES[${idx}]} |"
 		done
 		echo
 		echo "### Relay Flow Metrics"
@@ -415,7 +466,7 @@ cleanup() {
 	local exit_code=$?
 
 	if ((SUITE_START_MS > 0)); then
-		write_observability_report || true
+		run_with_status write_observability_report
 	fi
 
 	stop_process "${MMRELAY_PID_A}" "MMRelay A"
@@ -530,7 +581,11 @@ wait_for_log_pattern_since() {
 	local deadline=$((SECONDS + timeout_seconds))
 
 	while ((SECONDS < deadline)); do
-		if [[ -f ${log_file} ]] && (($(wc -c <"${log_file}") > start_byte)); then
+		local log_size=0
+		if [[ -f ${log_file} ]]; then
+			log_size=$(wc -c <"${log_file}")
+		fi
+		if ((log_size > start_byte)); then
 			if tail -c +$((start_byte + 1)) "${log_file}" | grep -Fq "${pattern}"; then
 				return 0
 			fi
@@ -1299,7 +1354,8 @@ if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
 	exit 1
 fi
 
-if [[ "$(uname -s)" != "Linux" ]]; then
+kernel_name=$(uname -s)
+if [[ ${kernel_name} != "Linux" ]]; then
 	echo "meshtasticd integration currently requires Linux (Docker host networking)." >&2
 	exit 1
 fi
@@ -1329,6 +1385,8 @@ require_regex "${MESH_PRIMARY_PSK_B}" '^0x[0-9A-Fa-f]{64}$' "MESH_PRIMARY_PSK_B"
 MESHTASTICD_PORT_A_DEC=$((10#${MESHTASTICD_PORT_A}))
 MESHTASTICD_PORT_B_DEC=$((10#${MESHTASTICD_PORT_B}))
 SYNAPSE_PORT_DEC=$((10#${SYNAPSE_PORT}))
+HOST_UID=$(id -u)
+HOST_GID=$(id -g)
 
 if ((MESHTASTICD_PORT_A_DEC < 1 || MESHTASTICD_PORT_A_DEC > 65535)); then
 	echo "MESHTASTICD_PORT_A must be between 1 and 65535." >&2
@@ -1382,7 +1440,7 @@ if [[ -d ${CI_ARTIFACT_DIR} ]]; then
 			--user root \
 			-v "${CI_ARTIFACT_DIR}:/work" \
 			"alpine:3.22" \
-			/bin/sh -c "chown -R $(id -u):$(id -g) /work" >/dev/null
+			/bin/sh -c "chown -R ${HOST_UID}:${HOST_GID} /work" >/dev/null
 		rm -rf "${CI_ARTIFACT_DIR}"
 	fi
 fi
@@ -1463,7 +1521,7 @@ docker pull "${SYNAPSE_IMAGE}"
 echo ""
 echo "Generating Synapse config..."
 docker run --rm \
-	--user "$(id -u):$(id -g)" \
+	--user "${HOST_UID}:${HOST_GID}" \
 	-e SYNAPSE_SERVER_NAME="${SYNAPSE_SERVER_NAME}" \
 	-e SYNAPSE_REPORT_STATS=no \
 	-v "${SYNAPSE_DATA_DIR}:/data" \
@@ -1493,7 +1551,7 @@ YAML
 echo "Starting Synapse container..."
 docker run -d \
 	--name "${SYNAPSE_CONTAINER}" \
-	--user "$(id -u):$(id -g)" \
+	--user "${HOST_UID}:${HOST_GID}" \
 	-e SYNAPSE_SERVER_NAME="${SYNAPSE_SERVER_NAME}" \
 	-e SYNAPSE_REPORT_STATS=no \
 	-p "${SYNAPSE_PORT_DEC}":8008 \
@@ -1889,20 +1947,18 @@ matrix_send_message \
 	"${ROOM_ID_PLAINTEXT}" \
 	"${MATRIX_TO_SHARED_TEXT}" \
 	"mmrelay-ci-m2shared" >/dev/null
-if ! wait_for_log_pattern_since \
+run_or_fail "Message was not relayed to Mesh A" \
+	wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_A}" \
 	"Relaying message from" \
 	"${log_offset_before_m2shared_a}" \
-	45; then
-	fail_test "Message was not relayed to Mesh A"
-fi
-if ! wait_for_log_pattern_since \
+	45
+run_or_fail "Message was not relayed to Mesh B" \
+	wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_B}" \
 	"Relaying message from" \
 	"${log_offset_before_m2shared_b}" \
-	45; then
-	fail_test "Message was not relayed to Mesh B"
-fi
+	45
 pass_test "Matrix user message relayed to both meshes"
 
 # Test 2: Injected Mesh A-origin event in plaintext room → remote meshnet processing in MMRelay B
@@ -1915,45 +1971,45 @@ MESH_A_SIM_ID=$((2000000000 + RANDOM))
 log_offset_before_a2m_b=$(wc -c <"${MMRELAY_LOG_PATH_B}")
 
 start_test "Test 2" "Test 2: Injected Mesh A-origin event in plaintext room → remote processing in Mesh B relay..."
-if ! MESH_A_MATRIX_EVENT_ID="$(
+run_capture_or_fail \
+	MESH_A_MATRIX_EVENT_ID \
+	"Failed to inject Mesh A-origin Matrix event" \
 	matrix_send_mesh_origin_message \
-		"${BOT_A_ACCESS_TOKEN}" \
-		"${ROOM_ID_PLAINTEXT}" \
-		"${MESH_A_TO_MATRIX_TEXT}" \
-		"${MESHNET_NAME_A}" \
-		"CI Field Node A" \
-		"CFA" \
-		"${MESH_A_SIM_ID}" \
-		"mmrelay-ci-sim-a2m"
-)"; then
-	fail_test "Failed to inject Mesh A-origin Matrix event"
-fi
-if ! mesh_a_event_json="$(
+	"${BOT_A_ACCESS_TOKEN}" \
+	"${ROOM_ID_PLAINTEXT}" \
+	"${MESH_A_TO_MATRIX_TEXT}" \
+	"${MESHNET_NAME_A}" \
+	"CI Field Node A" \
+	"CFA" \
+	"${MESH_A_SIM_ID}" \
+	"mmrelay-ci-sim-a2m"
+run_capture_or_fail \
+	mesh_a_event_json \
+	"Injected Mesh A-origin Matrix event was not observed in plaintext room" \
 	matrix_wait_event \
-		"${USER_ACCESS_TOKEN}" \
-		"${ROOM_ID_PLAINTEXT}" \
-		"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
-		"m.room.message" \
-		"${BOT_A_USER_ID}" \
-		"${MESH_A_TO_MATRIX_TEXT}" \
-		"m.text" \
-		"" \
-		"${MESH_A_MATRIX_EVENT_ID}" \
-		"" \
-		"${SYNC_CURSOR_USER1}"
-)"; then
-	fail_test "Injected Mesh A-origin Matrix event was not observed in plaintext room"
-fi
-if ! SYNC_CURSOR_USER1="$(json_extract "${mesh_a_event_json}" "next_batch")"; then
-	fail_test "Failed to update Matrix sync cursor after Test 2"
-fi
-if ! wait_for_log_pattern_since \
+	"${USER_ACCESS_TOKEN}" \
+	"${ROOM_ID_PLAINTEXT}" \
+	"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
+	"m.room.message" \
+	"${BOT_A_USER_ID}" \
+	"${MESH_A_TO_MATRIX_TEXT}" \
+	"m.text" \
+	"" \
+	"${MESH_A_MATRIX_EVENT_ID}" \
+	"" \
+	"${SYNC_CURSOR_USER1}"
+run_capture_or_fail \
+	SYNC_CURSOR_USER1 \
+	"Failed to update Matrix sync cursor after Test 2" \
+	json_extract \
+	"${mesh_a_event_json}" \
+	"next_batch"
+run_or_fail "MMRelay B did not process injected remote mesh event from ${MESHNET_NAME_A}" \
+	wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_B}" \
 	"Processing message from remote meshnet:" \
 	"${log_offset_before_a2m_b}" \
-	60; then
-	fail_test "MMRelay B did not process injected remote mesh event from ${MESHNET_NAME_A}"
-fi
+	60
 pass_test "Injected Mesh A-origin event reached Matrix and processed in Mesh B relay"
 
 # Test 3: Injected Mesh B-origin event in plaintext room → remote meshnet processing in MMRelay A
@@ -1962,45 +2018,45 @@ MESH_B_SIM_ID=$((2100000000 + RANDOM))
 log_offset_before_b2m_a=$(wc -c <"${MMRELAY_LOG_PATH_A}")
 
 start_test "Test 3" "Test 3: Injected Mesh B-origin event in plaintext room → remote processing in Mesh A relay..."
-if ! MESH_B_MATRIX_EVENT_ID="$(
+run_capture_or_fail \
+	MESH_B_MATRIX_EVENT_ID \
+	"Failed to inject Mesh B-origin Matrix event" \
 	matrix_send_mesh_origin_message \
-		"${BOT_B_ACCESS_TOKEN}" \
-		"${ROOM_ID_PLAINTEXT}" \
-		"${MESH_B_TO_MATRIX_TEXT}" \
-		"${MESHNET_NAME_B}" \
-		"CI Field Node B" \
-		"CFB" \
-		"${MESH_B_SIM_ID}" \
-		"mmrelay-ci-sim-b2m"
-)"; then
-	fail_test "Failed to inject Mesh B-origin Matrix event"
-fi
-if ! mesh_b_event_json="$(
+	"${BOT_B_ACCESS_TOKEN}" \
+	"${ROOM_ID_PLAINTEXT}" \
+	"${MESH_B_TO_MATRIX_TEXT}" \
+	"${MESHNET_NAME_B}" \
+	"CI Field Node B" \
+	"CFB" \
+	"${MESH_B_SIM_ID}" \
+	"mmrelay-ci-sim-b2m"
+run_capture_or_fail \
+	mesh_b_event_json \
+	"Injected Mesh B-origin Matrix event was not observed in plaintext room" \
 	matrix_wait_event \
-		"${USER_ACCESS_TOKEN}" \
-		"${ROOM_ID_PLAINTEXT}" \
-		"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
-		"m.room.message" \
-		"${BOT_B_USER_ID}" \
-		"${MESH_B_TO_MATRIX_TEXT}" \
-		"m.text" \
-		"" \
-		"${MESH_B_MATRIX_EVENT_ID}" \
-		"" \
-		"${SYNC_CURSOR_USER1}"
-)"; then
-	fail_test "Injected Mesh B-origin Matrix event was not observed in plaintext room"
-fi
-if ! SYNC_CURSOR_USER1="$(json_extract "${mesh_b_event_json}" "next_batch")"; then
-	fail_test "Failed to update Matrix sync cursor after Test 3"
-fi
-if ! wait_for_log_pattern_since \
+	"${USER_ACCESS_TOKEN}" \
+	"${ROOM_ID_PLAINTEXT}" \
+	"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
+	"m.room.message" \
+	"${BOT_B_USER_ID}" \
+	"${MESH_B_TO_MATRIX_TEXT}" \
+	"m.text" \
+	"" \
+	"${MESH_B_MATRIX_EVENT_ID}" \
+	"" \
+	"${SYNC_CURSOR_USER1}"
+run_capture_or_fail \
+	SYNC_CURSOR_USER1 \
+	"Failed to update Matrix sync cursor after Test 3" \
+	json_extract \
+	"${mesh_b_event_json}" \
+	"next_batch"
+run_or_fail "MMRelay A did not process injected remote mesh event from ${MESHNET_NAME_B}" \
+	wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_A}" \
 	"Processing message from remote meshnet:" \
 	"${log_offset_before_b2m_a}" \
-	60; then
-	fail_test "MMRelay A did not process injected remote mesh event from ${MESHNET_NAME_B}"
-fi
+	60
 pass_test "Injected Mesh B-origin event reached Matrix and processed in Mesh A relay"
 
 # Test 4: Encrypted-room Matrix user message → Mesh A + Mesh B
@@ -2009,40 +2065,39 @@ log_offset_before_u2msg_a=$(wc -c <"${MMRELAY_LOG_PATH_A}")
 log_offset_before_u2msg_b=$(wc -c <"${MMRELAY_LOG_PATH_B}")
 
 start_test "Test 4" "Test 4: Encrypted-room Matrix user message → Mesh A + Mesh B..."
-if ! MATRIX_USER2_EVENT_ID="$(
+run_capture_or_fail \
+	MATRIX_USER2_EVENT_ID \
+	"Failed to send encrypted user message in Test 4" \
 	matrix_send_e2ee_message \
-		"${USER2_USER_ID}" \
-		"${MATRIX_USER2_PASSWORD}" \
-		"${ROOM_ID_ENCRYPTED}" \
-		"${MATRIX_USER2_TEXT}" \
-		"${E2EE_USER2_STORE_DIR}" \
-		"${E2EE_USER2_AUTH_STATE}"
-)"; then
-	fail_test "Failed to send encrypted user message in Test 4"
-fi
-if ! matrix_wait_event_by_id \
+	"${USER2_USER_ID}" \
+	"${MATRIX_USER2_PASSWORD}" \
+	"${ROOM_ID_ENCRYPTED}" \
+	"${MATRIX_USER2_TEXT}" \
+	"${E2EE_USER2_STORE_DIR}" \
+	"${E2EE_USER2_AUTH_STATE}"
+run_with_status matrix_wait_event_by_id \
 	"${USER_ACCESS_TOKEN}" \
 	"${ROOM_ID_ENCRYPTED}" \
 	"${MATRIX_USER2_EVENT_ID}" \
 	"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
 	"${USER2_USER_ID}" \
-	"m.room.encrypted" >/dev/null; then
+	"m.room.encrypted" >/dev/null
+matrix_wait_status=$?
+if ((matrix_wait_status != 0)); then
 	fail_test "Encrypted user message event was not visible in Matrix room for Test 4"
 fi
-if ! wait_for_log_pattern_since \
+run_or_fail "Secondary user message did not relay to Mesh A" \
+	wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_A}" \
 	"Relaying message from" \
 	"${log_offset_before_u2msg_a}" \
-	45; then
-	fail_test "Secondary user message did not relay to Mesh A"
-fi
-if ! wait_for_log_pattern_since \
+	45
+run_or_fail "Secondary user message did not relay to Mesh B" \
+	wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_B}" \
 	"Relaying message from" \
 	"${log_offset_before_u2msg_b}" \
-	45; then
-	fail_test "Secondary user message did not relay to Mesh B"
-fi
+	45
 pass_test "Encrypted-room user message relayed to both meshes"
 
 start_test "Test 5" "Test 5: Encrypted-room user reply to prior Matrix event → both meshes..."
@@ -2050,16 +2105,20 @@ start_test "Test 5" "Test 5: Encrypted-room user reply to prior Matrix event →
 # Ensure both relay instances have persisted the mapping for the replied-to event.
 # Without this gate, a fast reply can race ahead of DB persistence and be treated
 # as a plain message instead of a Meshtastic reply.
-if ! wait_for_message_map_meshtastic_id \
+run_with_status wait_for_message_map_meshtastic_id \
 	"${MMRELAY_DB_PATH_A}" \
 	"${MATRIX_USER2_EVENT_ID}" \
-	"${MESSAGE_MAP_WAIT_TIMEOUT_SECONDS}" >/dev/null; then
+	"${MESSAGE_MAP_WAIT_TIMEOUT_SECONDS}" >/dev/null
+message_map_wait_status=$?
+if ((message_map_wait_status != 0)); then
 	fail_test "Timed out waiting for message_map row in instance A for replied-to Matrix event"
 fi
-if ! wait_for_message_map_meshtastic_id \
+run_with_status wait_for_message_map_meshtastic_id \
 	"${MMRELAY_DB_PATH_B}" \
 	"${MATRIX_USER2_EVENT_ID}" \
-	"${MESSAGE_MAP_WAIT_TIMEOUT_SECONDS}" >/dev/null; then
+	"${MESSAGE_MAP_WAIT_TIMEOUT_SECONDS}" >/dev/null
+message_map_wait_status=$?
+if ((message_map_wait_status != 0)); then
 	fail_test "Timed out waiting for message_map row in instance B for replied-to Matrix event"
 fi
 
@@ -2067,41 +2126,40 @@ fi
 MATRIX_USER2_REPLY_TEXT="MMRELAY_CI_U2_REPLY_$(date +%s)_${RANDOM}"
 log_offset_before_u2reply_a=$(wc -c <"${MMRELAY_LOG_PATH_A}")
 log_offset_before_u2reply_b=$(wc -c <"${MMRELAY_LOG_PATH_B}")
-if ! MATRIX_USER2_REPLY_EVENT_ID="$(
+run_capture_or_fail \
+	MATRIX_USER2_REPLY_EVENT_ID \
+	"Failed to send encrypted user reply in Test 5" \
 	matrix_send_e2ee_message \
-		"${USER2_USER_ID}" \
-		"${MATRIX_USER2_PASSWORD}" \
-		"${ROOM_ID_ENCRYPTED}" \
-		"${MATRIX_USER2_REPLY_TEXT}" \
-		"${E2EE_USER2_STORE_DIR}" \
-		"${E2EE_USER2_AUTH_STATE}" \
-		"${MATRIX_USER2_EVENT_ID}"
-)"; then
-	fail_test "Failed to send encrypted user reply in Test 5"
-fi
-if ! matrix_wait_event_by_id \
+	"${USER2_USER_ID}" \
+	"${MATRIX_USER2_PASSWORD}" \
+	"${ROOM_ID_ENCRYPTED}" \
+	"${MATRIX_USER2_REPLY_TEXT}" \
+	"${E2EE_USER2_STORE_DIR}" \
+	"${E2EE_USER2_AUTH_STATE}" \
+	"${MATRIX_USER2_EVENT_ID}"
+run_with_status matrix_wait_event_by_id \
 	"${USER_ACCESS_TOKEN}" \
 	"${ROOM_ID_ENCRYPTED}" \
 	"${MATRIX_USER2_REPLY_EVENT_ID}" \
 	"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
 	"${USER2_USER_ID}" \
-	"m.room.encrypted" >/dev/null; then
+	"m.room.encrypted" >/dev/null
+matrix_wait_status=$?
+if ((matrix_wait_status != 0)); then
 	fail_test "Encrypted user reply event was not visible in Matrix room for Test 5"
 fi
-if ! wait_for_log_pattern_since \
+run_or_fail "Reply did not relay to Mesh A" \
+	wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_A}" \
 	"Relaying Matrix reply from" \
 	"${log_offset_before_u2reply_a}" \
-	60; then
-	fail_test "Reply did not relay to Mesh A"
-fi
-if ! wait_for_log_pattern_since \
+	60
+run_or_fail "Reply did not relay to Mesh B" \
+	wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_B}" \
 	"Relaying Matrix reply from" \
 	"${log_offset_before_u2reply_b}" \
-	60; then
-	fail_test "Reply did not relay to Mesh B"
-fi
+	60
 pass_test "Encrypted-room user reply relayed to both meshes"
 
 # Test 6: Encrypted-room Matrix user reaction to prior Matrix event → both meshes
@@ -2110,41 +2168,40 @@ log_offset_before_u2react_a=$(wc -c <"${MMRELAY_LOG_PATH_A}")
 log_offset_before_u2react_b=$(wc -c <"${MMRELAY_LOG_PATH_B}")
 
 start_test "Test 6" "Test 6: Encrypted-room user reaction to prior Matrix event → both meshes..."
-if ! MATRIX_USER2_REACTION_EVENT_ID="$(
+run_capture_or_fail \
+	MATRIX_USER2_REACTION_EVENT_ID \
+	"Failed to send encrypted user reaction in Test 6" \
 	matrix_send_e2ee_reaction \
-		"${USER2_USER_ID}" \
-		"${MATRIX_USER2_PASSWORD}" \
-		"${ROOM_ID_ENCRYPTED}" \
-		"${MATRIX_USER2_EVENT_ID}" \
-		"${MATRIX_USER2_REACTION_KEY}" \
-		"${E2EE_USER2_STORE_DIR}" \
-		"${E2EE_USER2_AUTH_STATE}"
-)"; then
-	fail_test "Failed to send encrypted user reaction in Test 6"
-fi
-if ! matrix_wait_event_by_id \
+	"${USER2_USER_ID}" \
+	"${MATRIX_USER2_PASSWORD}" \
+	"${ROOM_ID_ENCRYPTED}" \
+	"${MATRIX_USER2_EVENT_ID}" \
+	"${MATRIX_USER2_REACTION_KEY}" \
+	"${E2EE_USER2_STORE_DIR}" \
+	"${E2EE_USER2_AUTH_STATE}"
+run_with_status matrix_wait_event_by_id \
 	"${USER_ACCESS_TOKEN}" \
 	"${ROOM_ID_ENCRYPTED}" \
 	"${MATRIX_USER2_REACTION_EVENT_ID}" \
 	"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
 	"${USER2_USER_ID}" \
-	"m.room.encrypted,m.reaction" >/dev/null; then
+	"m.room.encrypted,m.reaction" >/dev/null
+matrix_wait_status=$?
+if ((matrix_wait_status != 0)); then
 	fail_test "Encrypted user reaction event was not visible in Matrix room for Test 6"
 fi
-if ! wait_for_log_pattern_since \
+run_or_fail "Reaction did not relay to Mesh A" \
+	wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_A}" \
 	"Relaying reaction from" \
 	"${log_offset_before_u2react_a}" \
-	60; then
-	fail_test "Reaction did not relay to Mesh A"
-fi
-if ! wait_for_log_pattern_since \
+	60
+run_or_fail "Reaction did not relay to Mesh B" \
+	wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_B}" \
 	"Relaying reaction from" \
 	"${log_offset_before_u2react_b}" \
-	60; then
-	fail_test "Reaction did not relay to Mesh B"
-fi
+	60
 pass_test "Encrypted-room user reaction relayed to both meshes"
 write_observability_report
 

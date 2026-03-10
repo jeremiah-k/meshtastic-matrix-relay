@@ -26,8 +26,8 @@ jobs:
       SYNAPSE_IMAGE: matrixdotorg/synapse@sha256:f223f5fc532600801284fededefca82288fb71551bf4fcc89cd0b3363a3461cc # v1.149.0
       CI_ARTIFACT_DIR: ${{ github.workspace }}/.ci-artifacts/meshtasticd-integration
       MMRELAY_LOG_ON_SUCCESS: "true"
-      MESHNET_NAME_A: "Backcountry Alpha"
-      MESHNET_NAME_B: "Backcountry Bravo"
+      MESHNET_NAME_A: Backcountry Alpha
+      MESHNET_NAME_B: Backcountry Bravo
       MATRIX_EVENT_TIMEOUT_SECONDS: "75"
       MESSAGE_MAP_WAIT_TIMEOUT_SECONDS: "75"
 

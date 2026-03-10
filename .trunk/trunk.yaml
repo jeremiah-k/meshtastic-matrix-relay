@@ -7,7 +7,7 @@ cli:
 plugins:
   sources:
     - id: trunk
-      ref: v1.7.5
+      ref: v1.7.6
       uri: https://github.com/trunk-io/plugins
 # Many linters and tools depend on runtimes - configure them here. (https://docs.trunk.io/runtimes)
 runtimes:
@@ -35,7 +35,7 @@ lint:
     - osv-scanner@2.3.3
     - prettier@3.8.1
     - ruff@0.15.5
-    - trufflehog@3.93.7
+    - trufflehog@3.93.8
     - yamllint@1.38.0
   ignore:
     - linters: [ALL]
