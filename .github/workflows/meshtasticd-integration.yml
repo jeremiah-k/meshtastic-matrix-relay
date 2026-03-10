@@ -45,7 +45,6 @@ jobs:
           key: ${{ runner.os }}-pip-meshtasticd-integration-${{ hashFiles('**/requirements.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-
-            ${{ runner.os }}-pip-
 
       - name: Install dependencies
         run: |

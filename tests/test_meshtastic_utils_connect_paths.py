@@ -145,6 +145,45 @@ def test_connect_meshtastic_tcp_missing_host_returns_none(
     )
 
 
+def test_connect_meshtastic_tcp_invalid_port_uses_default(reset_meshtastic_globals):
+    mock_client = MagicMock()
+    mock_client.getMyNodeInfo.return_value = {
+        "user": {"shortName": "Node", "hwModel": "HW"}
+    }
+
+    with (
+        patch(
+            "mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface",
+            return_value=mock_client,
+        ) as mock_tcp,
+        patch(
+            "mmrelay.meshtastic_utils._get_device_metadata",
+            return_value={"firmware_version": "unknown", "success": False},
+        ),
+        patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+    ):
+        config = {
+            "meshtastic": {
+                "connection_type": "tcp",
+                "host": "127.0.0.1",
+                "port": 70000,
+            }
+        }
+        result = connect_meshtastic(passed_config=config)
+
+    assert result is mock_client
+    mock_tcp.assert_called_once_with(
+        hostname="127.0.0.1",
+        portNumber=DEFAULT_TCP_PORT,
+        timeout=DEFAULT_MESHTASTIC_TIMEOUT,
+    )
+    mock_logger.warning.assert_any_call(
+        "Invalid meshtastic.port value %r; using default TCP port %s",
+        70000,
+        DEFAULT_TCP_PORT,
+    )
+
+
 def test_connect_meshtastic_logs_firmware_version_on_success(
     reset_meshtastic_globals,
 ):

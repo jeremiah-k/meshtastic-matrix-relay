@@ -2832,7 +2832,7 @@ async def login_matrix_bot(
 
             # save_credentials() now uses unified HOME location
             credentials_path = await asyncio.to_thread(
-                _resolve_credentials_save_path, config_for_paths
+                _resolve_credentials_save_path, loaded_config_for_paths
             )
             if not credentials_path:
                 logger.error("Could not resolve credentials save path")
