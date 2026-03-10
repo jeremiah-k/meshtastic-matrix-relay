@@ -10,23 +10,27 @@ set -euo pipefail
 # via a shared Matrix room. This is the core use case for MMRelay: bridging multiple meshnets.
 #
 # Architecture:
-#   - meshtasticd-A (port 4403) ← MMRelay A ←─┐
-#                                              └──→ Matrix Room ←──┐
-#   - meshtasticd-B (port 4404) ← MMRelay B ←─┘
+#   - meshtasticd relay-A (port 4403) ← MMRelay A ←─┐
+#                                                    └──→ Shared Matrix Room
+#   - meshtasticd relay-B (port 4404) ← MMRelay B ←─┘
 #
 # Test Scenarios:
-#   1. Matrix → Mesh A
-#   2. Matrix → Mesh B
-#   3. Mesh A → Matrix
-#   4. Mesh B → Matrix
-#   5. Mesh A → Mesh B (via Matrix bridge)
-#   6. Mesh B → Mesh A (via Matrix bridge)
+#   1. Matrix user message in shared room → Mesh A + Mesh B
+#   2. Simulated Mesh A event in shared room → cross-mesh relay path in MMRelay B
+#   3. Simulated Mesh B event in shared room → cross-mesh relay path in MMRelay A
+#   4. Secondary Matrix user message → Mesh A + Mesh B
+#   5. Secondary Matrix user reply → both meshes as structured replies
+#   6. Secondary Matrix user reaction → both meshes
 #
 # Environment Variables:
 #   MESHTASTICD_IMAGE: Docker image for meshtasticd (default: meshtastic/meshtasticd:latest)
 #   SYNAPSE_IMAGE: Docker image for Synapse (default: matrixdotorg/synapse:latest)
 #   STRICT_MESH_TO_MATRIX: Fail CI if Mesh→Matrix tests fail (default: true)
-#   MMRELAY_LOG_ON_SUCCESS: Always show logs (default: true for CI)
+#   MMRELAY_LOG_ON_SUCCESS: Always show logs (default: false)
+#   MESHNET_NAME_A / MESHNET_NAME_B: Meshnet labels used by each relay instance
+#   MESH_CHANNEL_NAME_A / MESH_CHANNEL_NAME_B: Channel names for isolated meshnets
+#   MESH_PRIMARY_PSK_A / MESH_PRIMARY_PSK_B: Primary channel keys for isolated meshnets
+#   MATRIX_EVENT_TIMEOUT_SECONDS: Matrix event polling timeout per assertion
 # =============================================================================
 
 # Meshtasticd Configuration
@@ -40,6 +44,10 @@ MESHTASTICD_PORT_B="${MESHTASTICD_PORT_B:-4404}"
 MESHTASTICD_HWID_A="${MESHTASTICD_HWID_A:-11}"
 MESHTASTICD_HWID_B="${MESHTASTICD_HWID_B:-22}"
 MESHTASTICD_READY_TIMEOUT_SECONDS="${MESHTASTICD_READY_TIMEOUT_SECONDS:-180}"
+MESH_CHANNEL_NAME_A="${MESH_CHANNEL_NAME_A:-MMRelayMeshA}"
+MESH_CHANNEL_NAME_B="${MESH_CHANNEL_NAME_B:-MMRelayMeshB}"
+MESH_PRIMARY_PSK_A="${MESH_PRIMARY_PSK_A:-0x00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff}"
+MESH_PRIMARY_PSK_B="${MESH_PRIMARY_PSK_B:-0xffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100}"
 
 # Synapse Configuration
 SYNAPSE_IMAGE="${SYNAPSE_IMAGE:-matrixdotorg/synapse:latest}"
@@ -50,8 +58,12 @@ SYNAPSE_READY_TIMEOUT_SECONDS="${SYNAPSE_READY_TIMEOUT_SECONDS:-180}"
 
 # MMRelay Configuration
 MMRELAY_READY_TIMEOUT_SECONDS="${MMRELAY_READY_TIMEOUT_SECONDS:-120}"
-MMRELAY_LOG_ON_SUCCESS="${MMRELAY_LOG_ON_SUCCESS:-true}"
+MMRELAY_LOG_ON_SUCCESS="${MMRELAY_LOG_ON_SUCCESS:-false}"
 STRICT_MESH_TO_MATRIX="${STRICT_MESH_TO_MATRIX:-true}"
+MESHNET_NAME_A="${MESHNET_NAME_A:-Mesh A}"
+MESHNET_NAME_B="${MESHNET_NAME_B:-Mesh B}"
+MATRIX_EVENT_TIMEOUT_SECONDS="${MATRIX_EVENT_TIMEOUT_SECONDS:-60}"
+MESSAGE_MAP_WAIT_TIMEOUT_SECONDS="${MESSAGE_MAP_WAIT_TIMEOUT_SECONDS:-60}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 
 # Artifacts and Logging - Separated by Instance
@@ -84,6 +96,8 @@ MMRELAY_CONFIG_PATH_A="${INSTANCE_A_DIR}/config.yaml"
 MMRELAY_CONFIG_PATH_B="${INSTANCE_B_DIR}/config.yaml"
 MMRELAY_HOME_DIR_A="${INSTANCE_A_DATA_DIR}/mmrelay-home"
 MMRELAY_HOME_DIR_B="${INSTANCE_B_DATA_DIR}/mmrelay-home"
+MMRELAY_DB_PATH_A="${MMRELAY_HOME_DIR_A}/database/meshtastic.sqlite"
+MMRELAY_DB_PATH_B="${MMRELAY_HOME_DIR_B}/database/meshtastic.sqlite"
 MATRIX_RUNTIME_JSON="${SHARED_DIR}/matrix-runtime.json"
 
 # Process tracking
@@ -188,11 +202,10 @@ cleanup() {
 }
 
 wait_for_meshtasticd_ready() {
-	local host=$1
-	local port=$2
-	local container=$3
+	local endpoint=$1
+	local container=$2
 	local deadline=$((SECONDS + 10#${MESHTASTICD_READY_TIMEOUT_SECONDS}))
-	until "${PYTHON_BIN}" -m meshtastic --timeout 5 --host "${host}" --port "${port}" --info >/dev/null 2>&1; do
+	until "${PYTHON_BIN}" -m meshtastic --timeout 5 --host "${endpoint}" --info >/dev/null 2>&1; do
 		if ! docker ps --format '{{.Names}}' | grep -Fxq "${container}"; then
 			echo "${container} exited before becoming ready." >&2
 			return 1
@@ -204,6 +217,24 @@ wait_for_meshtasticd_ready() {
 		sleep 2
 	done
 	echo "${container} is ready."
+}
+
+configure_mesh_channel() {
+	local endpoint=$1
+	local channel_name=$2
+	local psk_hex=$3
+
+	"${PYTHON_BIN}" -m meshtastic \
+		--timeout 25 \
+		--host "${endpoint}" \
+		--ch-set name "${channel_name}" \
+		--ch-index 0 >/dev/null
+
+	"${PYTHON_BIN}" -m meshtastic \
+		--timeout 25 \
+		--host "${endpoint}" \
+		--ch-set psk "${psk_hex}" \
+		--ch-index 0 >/dev/null
 }
 
 wait_for_synapse_ready() {
@@ -284,6 +315,413 @@ print(value)
 PY
 }
 
+json_extract() {
+	local json_payload=$1
+	local key_path=$2
+	"${PYTHON_BIN}" - "${key_path}" <<'PY' <<<"${json_payload}"
+import json
+import sys
+
+path = sys.argv[1]
+data = json.loads(sys.stdin.read())
+current = data
+for segment in path.split("."):
+    if not segment:
+        continue
+    if isinstance(current, list):
+        current = current[int(segment)]
+        continue
+    if not isinstance(current, dict) or segment not in current:
+        raise SystemExit(1)
+    current = current[segment]
+
+if current is None:
+    raise SystemExit(1)
+
+if isinstance(current, (dict, list)):
+    print(json.dumps(current))
+else:
+    print(current)
+PY
+}
+
+matrix_send_message() {
+	local access_token=$1
+	local room_id=$2
+	local message_text=$3
+	local txn_prefix=$4
+	local reply_to_event_id="${5-}"
+	"${PYTHON_BIN}" - "${MATRIX_BASE_URL}" "${access_token}" "${room_id}" "${message_text}" "${txn_prefix}" "${reply_to_event_id}" <<'PY'
+import os
+import sys
+import time
+import urllib.parse
+
+import requests
+
+base_url = sys.argv[1]
+access_token = sys.argv[2]
+room_id = sys.argv[3]
+message_text = sys.argv[4]
+txn_prefix = sys.argv[5]
+reply_to_event_id = sys.argv[6]
+
+txn_id = f"{txn_prefix}-{int(time.time() * 1000)}-{os.getpid()}"
+quoted_room_id = urllib.parse.quote(room_id, safe="")
+quoted_txn_id = urllib.parse.quote(txn_id, safe="")
+url = (
+    f"{base_url}/_matrix/client/v3/rooms/{quoted_room_id}/"
+    f"send/m.room.message/{quoted_txn_id}"
+)
+content = {"msgtype": "m.text", "body": message_text}
+if reply_to_event_id:
+    content["m.relates_to"] = {"m.in_reply_to": {"event_id": reply_to_event_id}}
+
+response = requests.put(
+    url,
+    headers={"Authorization": f"Bearer {access_token}"},
+    json=content,
+    timeout=20,
+)
+if response.status_code >= 400:
+    raise RuntimeError(
+        f"Failed to send Matrix message ({response.status_code}): {response.text}"
+    )
+
+event_id = response.json().get("event_id")
+if not isinstance(event_id, str) or not event_id:
+    raise RuntimeError("Matrix send response missing event_id")
+print(event_id)
+PY
+}
+
+matrix_send_meshtastic_message() {
+	local access_token=$1
+	local room_id=$2
+	local message_text=$3
+	local meshnet_name=$4
+	local longname=$5
+	local shortname=$6
+	local meshtastic_id=$7
+	local txn_prefix=$8
+	"${PYTHON_BIN}" - "${MATRIX_BASE_URL}" "${access_token}" "${room_id}" "${message_text}" "${meshnet_name}" "${longname}" "${shortname}" "${meshtastic_id}" "${txn_prefix}" <<'PY'
+import os
+import sys
+import time
+import urllib.parse
+
+import requests
+
+base_url = sys.argv[1]
+access_token = sys.argv[2]
+room_id = sys.argv[3]
+message_text = sys.argv[4]
+meshnet_name = sys.argv[5]
+longname = sys.argv[6]
+shortname = sys.argv[7]
+meshtastic_id = int(sys.argv[8])
+txn_prefix = sys.argv[9]
+
+txn_id = f"{txn_prefix}-{int(time.time() * 1000)}-{os.getpid()}"
+quoted_room_id = urllib.parse.quote(room_id, safe="")
+quoted_txn_id = urllib.parse.quote(txn_id, safe="")
+url = (
+    f"{base_url}/_matrix/client/v3/rooms/{quoted_room_id}/"
+    f"send/m.room.message/{quoted_txn_id}"
+)
+content = {
+    "msgtype": "m.text",
+    "body": message_text,
+    "meshtastic_text": message_text,
+    "meshtastic_meshnet": meshnet_name,
+    "meshtastic_longname": longname,
+    "meshtastic_shortname": shortname,
+    "meshtastic_id": meshtastic_id,
+}
+response = requests.put(
+    url,
+    headers={"Authorization": f"Bearer {access_token}"},
+    json=content,
+    timeout=20,
+)
+if response.status_code >= 400:
+    raise RuntimeError(
+        f"Failed to send simulated mesh message ({response.status_code}): {response.text}"
+    )
+event_id = response.json().get("event_id")
+if not isinstance(event_id, str) or not event_id:
+    raise RuntimeError("Simulated mesh send response missing event_id")
+print(event_id)
+PY
+}
+
+matrix_send_reaction() {
+	local access_token=$1
+	local room_id=$2
+	local target_event_id=$3
+	local reaction_key=$4
+	local txn_prefix=$5
+	"${PYTHON_BIN}" - "${MATRIX_BASE_URL}" "${access_token}" "${room_id}" "${target_event_id}" "${reaction_key}" "${txn_prefix}" <<'PY'
+import os
+import sys
+import time
+import urllib.parse
+
+import requests
+
+base_url = sys.argv[1]
+access_token = sys.argv[2]
+room_id = sys.argv[3]
+target_event_id = sys.argv[4]
+reaction_key = sys.argv[5]
+txn_prefix = sys.argv[6]
+
+txn_id = f"{txn_prefix}-{int(time.time() * 1000)}-{os.getpid()}"
+quoted_room_id = urllib.parse.quote(room_id, safe="")
+quoted_txn_id = urllib.parse.quote(txn_id, safe="")
+url = (
+    f"{base_url}/_matrix/client/v3/rooms/{quoted_room_id}/"
+    f"send/m.reaction/{quoted_txn_id}"
+)
+content = {
+    "m.relates_to": {
+        "event_id": target_event_id,
+        "rel_type": "m.annotation",
+        "key": reaction_key,
+    }
+}
+response = requests.put(
+    url,
+    headers={"Authorization": f"Bearer {access_token}"},
+    json=content,
+    timeout=20,
+)
+if response.status_code >= 400:
+    raise RuntimeError(
+        f"Failed to send Matrix reaction ({response.status_code}): {response.text}"
+    )
+
+event_id = response.json().get("event_id")
+if not isinstance(event_id, str) or not event_id:
+    raise RuntimeError("Matrix reaction response missing event_id")
+print(event_id)
+PY
+}
+
+matrix_wait_event() {
+	local access_token=$1
+	local room_id=$2
+	local timeout_seconds=$3
+	local event_type="${4-}"
+	local sender="${5-}"
+	local body_contains="${6-}"
+	local msgtype="${7-}"
+	local relates_to_event_id="${8-}"
+	local event_id_filter="${9-}"
+	local meshtastic_reply_id="${10-}"
+	local since_token="${11-}"
+
+	"${PYTHON_BIN}" - "${MATRIX_BASE_URL}" "${access_token}" "${room_id}" "${timeout_seconds}" "${event_type}" "${sender}" "${body_contains}" "${msgtype}" "${relates_to_event_id}" "${event_id_filter}" "${meshtastic_reply_id}" "${since_token}" <<'PY'
+import json
+import sys
+import time
+
+import requests
+
+(
+    base_url,
+    access_token,
+    room_id,
+    timeout_seconds_raw,
+    event_type,
+    sender,
+    body_contains,
+    msgtype,
+    relates_to_event_id,
+    event_id_filter,
+    meshtastic_reply_id,
+    since,
+) = sys.argv[1:13]
+
+timeout_seconds = int(timeout_seconds_raw)
+deadline = time.monotonic() + timeout_seconds
+headers = {"Authorization": f"Bearer {access_token}"}
+recent = []
+
+def _matches(event: dict) -> bool:
+    if event_type and event.get("type") != event_type:
+        return False
+    if sender and event.get("sender") != sender:
+        return False
+    if event_id_filter and event.get("event_id") != event_id_filter:
+        return False
+
+    content = event.get("content", {})
+    if not isinstance(content, dict):
+        return False
+
+    if msgtype and content.get("msgtype") != msgtype:
+        return False
+
+    if body_contains:
+        body = content.get("body", "")
+        if not isinstance(body, str) or body_contains not in body:
+            return False
+
+    if relates_to_event_id:
+        relates_to = content.get("m.relates_to") or {}
+        related_event_id = None
+        if isinstance(relates_to, dict):
+            event_id = relates_to.get("event_id")
+            if isinstance(event_id, str):
+                related_event_id = event_id
+            in_reply_to = relates_to.get("m.in_reply_to")
+            if isinstance(in_reply_to, dict):
+                reply_event_id = in_reply_to.get("event_id")
+                if isinstance(reply_event_id, str):
+                    related_event_id = reply_event_id
+        if related_event_id != relates_to_event_id:
+            return False
+
+    if meshtastic_reply_id:
+        reply_id = content.get("meshtastic_replyId")
+        if str(reply_id) != meshtastic_reply_id:
+            return False
+
+    return True
+
+while time.monotonic() < deadline:
+    params = {"timeout": 5000}
+    if since:
+        params["since"] = since
+
+    response = requests.get(
+        f"{base_url}/_matrix/client/v3/sync",
+        headers=headers,
+        params=params,
+        timeout=30,
+    )
+    if response.status_code >= 400:
+        raise RuntimeError(
+            f"Sync failed ({response.status_code}): {response.text[:300]}"
+        )
+
+    payload = response.json()
+    since = payload.get("next_batch", since)
+    events = (
+        payload.get("rooms", {})
+        .get("join", {})
+        .get(room_id, {})
+        .get("timeline", {})
+        .get("events", [])
+    )
+    for event in events:
+        content = event.get("content", {})
+        if isinstance(content, dict):
+            recent.append(
+                {
+                    "event_id": event.get("event_id"),
+                    "type": event.get("type"),
+                    "sender": event.get("sender"),
+                    "msgtype": content.get("msgtype"),
+                    "body": content.get("body"),
+                }
+            )
+            recent = recent[-15:]
+        if _matches(event):
+            print(json.dumps({"event": event, "next_batch": since}))
+            raise SystemExit(0)
+
+if recent:
+    print("Timed out waiting for Matrix event. Recent events:", file=sys.stderr)
+    print(json.dumps(recent, indent=2), file=sys.stderr)
+else:
+    print("Timed out waiting for Matrix event. No recent events found.", file=sys.stderr)
+raise SystemExit(1)
+PY
+}
+
+wait_for_message_map_meshtastic_id() {
+	local db_path=$1
+	local matrix_event_id=$2
+	local timeout_seconds=$3
+	"${PYTHON_BIN}" - "${db_path}" "${matrix_event_id}" "${timeout_seconds}" <<'PY'
+import sqlite3
+import sys
+import time
+
+db_path = sys.argv[1]
+matrix_event_id = sys.argv[2]
+timeout_seconds = int(sys.argv[3])
+
+deadline = time.monotonic() + timeout_seconds
+last_error = None
+while time.monotonic() < deadline:
+    try:
+        conn = sqlite3.connect(db_path, timeout=5)
+        try:
+            conn.execute("PRAGMA busy_timeout = 5000")
+            row = conn.execute(
+                "SELECT meshtastic_id FROM message_map WHERE matrix_event_id=?",
+                (matrix_event_id,),
+            ).fetchone()
+            if row and row[0] not in (None, ""):
+                print(row[0])
+                raise SystemExit(0)
+        finally:
+            conn.close()
+    except sqlite3.Error as exc:  # pragma: no cover - retry loop
+        last_error = str(exc)
+    time.sleep(1)
+
+if last_error:
+    print(f"Last SQLite error: {last_error}", file=sys.stderr)
+print(
+    f"Timed out waiting for message_map row for matrix_event_id={matrix_event_id}",
+    file=sys.stderr,
+)
+raise SystemExit(1)
+PY
+}
+
+assert_message_map_absent() {
+	local db_path=$1
+	local matrix_event_id=$2
+	local timeout_seconds=$3
+	"${PYTHON_BIN}" - "${db_path}" "${matrix_event_id}" "${timeout_seconds}" <<'PY'
+import sqlite3
+import sys
+import time
+
+db_path = sys.argv[1]
+matrix_event_id = sys.argv[2]
+timeout_seconds = int(sys.argv[3])
+
+deadline = time.monotonic() + timeout_seconds
+while time.monotonic() < deadline:
+    try:
+        conn = sqlite3.connect(db_path, timeout=5)
+        try:
+            row = conn.execute(
+                "SELECT 1 FROM message_map WHERE matrix_event_id=?",
+                (matrix_event_id,),
+            ).fetchone()
+            if row:
+                print(
+                    f"Unexpected message_map row found for matrix_event_id={matrix_event_id}",
+                    file=sys.stderr,
+                )
+                raise SystemExit(1)
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        pass
+    time.sleep(1)
+
+raise SystemExit(0)
+PY
+}
+
 # =============================================================================
 # Validation
 # =============================================================================
@@ -300,10 +738,17 @@ if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
 	exit 1
 fi
 
+if [[ "$(uname -s)" != "Linux" ]]; then
+	echo "cross-mesh integration currently requires Linux (Docker host networking)." >&2
+	exit 1
+fi
+
 # Validate all configuration parameters
 require_regex "${MESHTASTICD_CONTAINER_A}" '^[A-Za-z0-9][A-Za-z0-9_.-]*$' "MESHTASTICD_CONTAINER_A"
 require_regex "${MESHTASTICD_CONTAINER_B}" '^[A-Za-z0-9][A-Za-z0-9_.-]*$' "MESHTASTICD_CONTAINER_B"
 require_regex "${MESHTASTICD_IMAGE}" '^[^[:space:]]+$' "MESHTASTICD_IMAGE"
+require_regex "${MESHTASTICD_HOST_A}" '^[A-Za-z0-9._-]+$' "MESHTASTICD_HOST_A"
+require_regex "${MESHTASTICD_HOST_B}" '^[A-Za-z0-9._-]+$' "MESHTASTICD_HOST_B"
 require_regex "${MESHTASTICD_PORT_A}" '^[0-9]+$' "MESHTASTICD_PORT_A"
 require_regex "${MESHTASTICD_PORT_B}" '^[0-9]+$' "MESHTASTICD_PORT_B"
 require_regex "${MESHTASTICD_HWID_A}" '^[0-9]+$' "MESHTASTICD_HWID_A"
@@ -311,6 +756,13 @@ require_regex "${MESHTASTICD_HWID_B}" '^[0-9]+$' "MESHTASTICD_HWID_B"
 require_regex "${SYNAPSE_CONTAINER}" '^[A-Za-z0-9][A-Za-z0-9_.-]*$' "SYNAPSE_CONTAINER"
 require_regex "${SYNAPSE_IMAGE}" '^[^[:space:]]+$' "SYNAPSE_IMAGE"
 require_regex "${SYNAPSE_PORT}" '^[0-9]+$' "SYNAPSE_PORT"
+require_regex "${MMRELAY_READY_TIMEOUT_SECONDS}" '^[0-9]+$' "MMRELAY_READY_TIMEOUT_SECONDS"
+require_regex "${MATRIX_EVENT_TIMEOUT_SECONDS}" '^[0-9]+$' "MATRIX_EVENT_TIMEOUT_SECONDS"
+require_regex "${MESSAGE_MAP_WAIT_TIMEOUT_SECONDS}" '^[0-9]+$' "MESSAGE_MAP_WAIT_TIMEOUT_SECONDS"
+require_regex "${MESH_CHANNEL_NAME_A}" '^[[:print:]]+$' "MESH_CHANNEL_NAME_A"
+require_regex "${MESH_CHANNEL_NAME_B}" '^[[:print:]]+$' "MESH_CHANNEL_NAME_B"
+require_regex "${MESH_PRIMARY_PSK_A}" '^0x[0-9A-Fa-f]{64}$' "MESH_PRIMARY_PSK_A"
+require_regex "${MESH_PRIMARY_PSK_B}" '^0x[0-9A-Fa-f]{64}$' "MESH_PRIMARY_PSK_B"
 
 # Port validation
 MESHTASTICD_PORT_A_DEC=$((10#${MESHTASTICD_PORT_A}))
@@ -325,10 +777,33 @@ if ((MESHTASTICD_PORT_B_DEC < 1 || MESHTASTICD_PORT_B_DEC > 65535)); then
 	echo "MESHTASTICD_PORT_B must be between 1 and 65535." >&2
 	exit 1
 fi
+if ((MESHTASTICD_PORT_A_DEC == MESHTASTICD_PORT_B_DEC)); then
+	echo "MESHTASTICD_PORT_A and MESHTASTICD_PORT_B must be different." >&2
+	exit 1
+fi
 if ((SYNAPSE_PORT_DEC < 1 || SYNAPSE_PORT_DEC > 65535)); then
 	echo "SYNAPSE_PORT must be between 1 and 65535." >&2
 	exit 1
 fi
+if ((10#${MMRELAY_READY_TIMEOUT_SECONDS} <= 0)); then
+	echo "MMRELAY_READY_TIMEOUT_SECONDS must be greater than zero." >&2
+	exit 1
+fi
+if ((10#${MATRIX_EVENT_TIMEOUT_SECONDS} <= 0)); then
+	echo "MATRIX_EVENT_TIMEOUT_SECONDS must be greater than zero." >&2
+	exit 1
+fi
+if ((10#${MESSAGE_MAP_WAIT_TIMEOUT_SECONDS} <= 0)); then
+	echo "MESSAGE_MAP_WAIT_TIMEOUT_SECONDS must be greater than zero." >&2
+	exit 1
+fi
+if [[ -z ${MESHNET_NAME_A} || -z ${MESHNET_NAME_B} ]]; then
+	echo "MESHNET_NAME_A and MESHNET_NAME_B must be non-empty." >&2
+	exit 1
+fi
+
+MESHTASTICD_ENDPOINT_A="${MESHTASTICD_HOST_A}:${MESHTASTICD_PORT_A_DEC}"
+MESHTASTICD_ENDPOINT_B="${MESHTASTICD_HOST_B}:${MESHTASTICD_PORT_B_DEC}"
 
 # =============================================================================
 # Setup
@@ -358,17 +833,21 @@ MATRIX_BASE_URL="http://localhost:${SYNAPSE_PORT_DEC}"
 MATRIX_BOT_USER_A_LOCALPART="mmrelaybot-a"
 MATRIX_BOT_USER_B_LOCALPART="mmrelaybot-b"
 MATRIX_USER_LOCALPART="mmrelayuser"
+MATRIX_USER2_LOCALPART="mmrelayuser2"
 MATRIX_BOT_A_PASSWORD="mmrelay-bot-a-pass"
 MATRIX_BOT_B_PASSWORD="mmrelay-bot-b-pass"
 MATRIX_USER_PASSWORD="mmrelay-user-pass"
+MATRIX_USER2_PASSWORD="mmrelay-user2-pass"
 
 export MATRIX_BASE_URL
 export MATRIX_BOT_USER_A_LOCALPART
 export MATRIX_BOT_USER_B_LOCALPART
 export MATRIX_USER_LOCALPART
+export MATRIX_USER2_LOCALPART
 export MATRIX_BOT_A_PASSWORD
 export MATRIX_BOT_B_PASSWORD
 export MATRIX_USER_PASSWORD
+export MATRIX_USER2_PASSWORD
 
 # =============================================================================
 # Start Infrastructure
@@ -398,16 +877,23 @@ docker run -d \
 	--name "${MESHTASTICD_CONTAINER_A}" \
 	--network host \
 	"${MESHTASTICD_IMAGE}" \
-	meshtasticd -s --fsdir=/var/lib/meshtasticd-a -p "${MESHTASTICD_PORT_A_DEC}" -h "${MESHTASTICD_HWID_A}" >/dev/null
+	meshtasticd -s --fsdir=/var/lib/meshtasticd-relay-a -p "${MESHTASTICD_PORT_A_DEC}" -h "${MESHTASTICD_HWID_A}" >/dev/null
 
 docker run -d \
 	--name "${MESHTASTICD_CONTAINER_B}" \
 	--network host \
 	"${MESHTASTICD_IMAGE}" \
-	meshtasticd -s --fsdir=/var/lib/meshtasticd-b -p "${MESHTASTICD_PORT_B_DEC}" -h "${MESHTASTICD_HWID_B}" >/dev/null
+	meshtasticd -s --fsdir=/var/lib/meshtasticd-relay-b -p "${MESHTASTICD_PORT_B_DEC}" -h "${MESHTASTICD_HWID_B}" >/dev/null
 
-wait_for_meshtasticd_ready "${MESHTASTICD_HOST_A}" "${MESHTASTICD_PORT_A}" "${MESHTASTICD_CONTAINER_A}"
-wait_for_meshtasticd_ready "${MESHTASTICD_HOST_B}" "${MESHTASTICD_PORT_B}" "${MESHTASTICD_CONTAINER_B}"
+wait_for_meshtasticd_ready "${MESHTASTICD_ENDPOINT_A}" "${MESHTASTICD_CONTAINER_A}"
+wait_for_meshtasticd_ready "${MESHTASTICD_ENDPOINT_B}" "${MESHTASTICD_CONTAINER_B}"
+
+echo ""
+echo "Configuring isolated meshnets (one relay node per meshnet)..."
+configure_mesh_channel "${MESHTASTICD_ENDPOINT_A}" "${MESH_CHANNEL_NAME_A}" "${MESH_PRIMARY_PSK_A}"
+configure_mesh_channel "${MESHTASTICD_ENDPOINT_B}" "${MESH_CHANNEL_NAME_B}" "${MESH_PRIMARY_PSK_B}"
+wait_for_meshtasticd_ready "${MESHTASTICD_ENDPOINT_A}" "${MESHTASTICD_CONTAINER_A}"
+wait_for_meshtasticd_ready "${MESHTASTICD_ENDPOINT_B}" "${MESHTASTICD_CONTAINER_B}"
 
 echo ""
 echo "Pulling Synapse image: ${SYNAPSE_IMAGE}"
@@ -467,6 +953,13 @@ docker exec "${SYNAPSE_CONTAINER}" register_new_matrix_user \
 	-c /data/homeserver.yaml \
 	"http://localhost:8008" >/dev/null
 
+docker exec "${SYNAPSE_CONTAINER}" register_new_matrix_user \
+	-u "${MATRIX_USER2_LOCALPART}" \
+	-p "${MATRIX_USER2_PASSWORD}" \
+	--no-admin \
+	-c /data/homeserver.yaml \
+	"http://localhost:8008" >/dev/null
+
 echo ""
 echo "Preparing Matrix room and runtime credentials..."
 "${PYTHON_BIN}" - <<'PY' >"${MATRIX_RUNTIME_JSON}"
@@ -481,10 +974,12 @@ import requests
 base_url = os.environ["MATRIX_BASE_URL"]
 bot_a_localpart = os.environ["MATRIX_BOT_USER_A_LOCALPART"]
 bot_b_localpart = os.environ["MATRIX_BOT_USER_B_LOCALPART"]
-user_localpart = os.environ["MATRIX_USER_LOCALPART"]
+user1_localpart = os.environ["MATRIX_USER_LOCALPART"]
+user2_localpart = os.environ["MATRIX_USER2_LOCALPART"]
 bot_a_password = os.environ["MATRIX_BOT_A_PASSWORD"]
 bot_b_password = os.environ["MATRIX_BOT_B_PASSWORD"]
-user_password = os.environ["MATRIX_USER_PASSWORD"]
+user1_password = os.environ["MATRIX_USER_PASSWORD"]
+user2_password = os.environ["MATRIX_USER2_PASSWORD"]
 
 def _raise_for_status(resp: requests.Response, context: str) -> None:
     if resp.status_code >= 400:
@@ -520,42 +1015,60 @@ def post(path: str, token: str, payload: dict) -> dict:
     _raise_for_status(response, f"POST {path}")
     return response.json()
 
-bot_a = login(bot_a_localpart, bot_a_password)
-bot_b = login(bot_b_localpart, bot_b_password)
-user = login(user_localpart, user_password)
+def create_room(user_token: str, name: str, topic: str, alias_name: str) -> str:
+    room_create = post(
+        "/_matrix/client/v3/createRoom",
+        user_token,
+        {
+            "preset": "private_chat",
+            "name": name,
+            "topic": topic,
+            "room_alias_name": alias_name,
+        },
+    )
+    room_id = room_create.get("room_id")
+    if not isinstance(room_id, str):
+        raise RuntimeError(f"createRoom missing room_id for alias {alias_name}")
+    return room_id
 
-room_suffix = int(time.time())
-create_payload = {
-    "preset": "private_chat",
-    "name": "MMRelay Cross-Mesh CI Room",
-    "topic": "MMRelay cross-mesh integration test",
-    "room_alias_name": f"mmrelay-ci-cross-mesh-{room_suffix}",
-}
-room_create = post("/_matrix/client/v3/createRoom", user["access_token"], create_payload)
-room_id = room_create["room_id"]
-
-# Invite both bots
-for bot in [bot_a, bot_b]:
+def invite_and_join(room_id: str, inviter_token: str, account: dict[str, str]) -> None:
     quoted_room_id = urllib.parse.quote(room_id, safe="")
     post(
         f"/_matrix/client/v3/rooms/{quoted_room_id}/invite",
-        user["access_token"],
-        {"user_id": bot["user_id"]},
+        inviter_token,
+        {"user_id": account["user_id"]},
     )
     post(
         f"/_matrix/client/v3/join/{quoted_room_id}",
-        bot["access_token"],
+        account["access_token"],
         {},
     )
 
+bot_a = login(bot_a_localpart, bot_a_password)
+bot_b = login(bot_b_localpart, bot_b_password)
+user1 = login(user1_localpart, user1_password)
+user2 = login(user2_localpart, user2_password)
+
+room_suffix = int(time.time())
+room_id = create_room(
+    user1["access_token"],
+    "MMRelay Cross-Mesh CI Room",
+    "Shared room for cross-mesh relay tests",
+    f"mmrelay-ci-cross-mesh-{room_suffix}",
+)
+
+# Shared room members: user1 + user2 + bot_a + bot_b
+for account in [bot_a, bot_b, user2]:
+    invite_and_join(room_id, user1["access_token"], account)
+
 sync_response = requests.get(
     f"{base_url}/_matrix/client/v3/sync",
-    headers={"Authorization": f"Bearer {user['access_token']}"},
+    headers={"Authorization": f"Bearer {user1['access_token']}"},
     params={"timeout": 0},
     timeout=20,
 )
-_raise_for_status(sync_response, "initial user sync")
-initial_sync = sync_response.json()
+_raise_for_status(sync_response, "initial user1 sync")
+initial_sync_user1 = sync_response.json()
 
 runtime = {
     "room_id": room_id,
@@ -563,8 +1076,10 @@ runtime = {
     "bot_a_access_token": bot_a["access_token"],
     "bot_b_user_id": bot_b["user_id"],
     "bot_b_access_token": bot_b["access_token"],
-    "user_access_token": user["access_token"],
-    "sync_since": initial_sync.get("next_batch", ""),
+    "user_access_token": user1["access_token"],
+    "user2_access_token": user2["access_token"],
+    "user2_user_id": user2["user_id"],
+    "sync_since_user": initial_sync_user1.get("next_batch", ""),
 }
 
 json.dump(runtime, fp=sys.stdout)
@@ -575,16 +1090,20 @@ BOT_A_ACCESS_TOKEN="$(load_json_value bot_a_access_token)"
 BOT_B_USER_ID="$(load_json_value bot_b_user_id)"
 BOT_B_ACCESS_TOKEN="$(load_json_value bot_b_access_token)"
 USER_ACCESS_TOKEN="$(load_json_value user_access_token)"
+USER2_ACCESS_TOKEN="$(load_json_value user2_access_token)"
+USER2_USER_ID="$(load_json_value user2_user_id)"
 ROOM_ID="$(load_json_value room_id)"
-SYNC_SINCE="$(load_json_value sync_since)"
+SYNC_SINCE_USER="$(load_json_value sync_since_user)"
 
 export BOT_A_USER_ID
 export BOT_A_ACCESS_TOKEN
 export BOT_B_USER_ID
 export BOT_B_ACCESS_TOKEN
 export USER_ACCESS_TOKEN
+export USER2_ACCESS_TOKEN
+export USER2_USER_ID
 export ROOM_ID
-export SYNC_SINCE
+export SYNC_SINCE_USER
 
 # =============================================================================
 # Create MMRelay Configurations
@@ -606,8 +1125,17 @@ meshtastic:
   connection_type: tcp
   host: "${MESHTASTICD_HOST_A}"
   port: ${MESHTASTICD_PORT_A_DEC}
-  meshnet_name: "Mesh A"
+  meshnet_name: "${MESHNET_NAME_A}"
+  health_check:
+    enabled: false
   broadcast_enabled: true
+  message_interactions:
+    reactions: true
+    replies: true
+database:
+  msg_map:
+    msgs_to_keep: 1500
+    wipe_on_restart: false
 logging:
   level: debug
 EOF_CONFIG
@@ -625,8 +1153,17 @@ meshtastic:
   connection_type: tcp
   host: "${MESHTASTICD_HOST_B}"
   port: ${MESHTASTICD_PORT_B_DEC}
-  meshnet_name: "Mesh B"
+  meshnet_name: "${MESHNET_NAME_B}"
+  health_check:
+    enabled: false
   broadcast_enabled: true
+  message_interactions:
+    reactions: true
+    replies: true
+database:
+  msg_map:
+    msgs_to_keep: 1500
+    wipe_on_restart: false
 logging:
   level: debug
 EOF_CONFIG
@@ -644,7 +1181,6 @@ PYTHONUNBUFFERED=1 "${PYTHON_BIN}" -m mmrelay.cli \
 MMRELAY_PID_A=$!
 
 startup_offset_a=0
-[[ -f ${MMRELAY_LOG_PATH_A} ]] && startup_offset_a=$(wc -c <"${MMRELAY_LOG_PATH_A}")
 wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_A}" \
 	"Listening for inbound Matrix messages..." \
@@ -661,7 +1197,6 @@ PYTHONUNBUFFERED=1 "${PYTHON_BIN}" -m mmrelay.cli \
 MMRELAY_PID_B=$!
 
 startup_offset_b=0
-[[ -f ${MMRELAY_LOG_PATH_B} ]] && startup_offset_b=$(wc -c <"${MMRELAY_LOG_PATH_B}")
 wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_B}" \
 	"Listening for inbound Matrix messages..." \
@@ -678,369 +1213,263 @@ echo "==========================================================================
 echo "Running Test Scenarios"
 echo "============================================================================"
 
-# Test 1: Matrix → Mesh A
-MATRIX_TO_MESH_A_TEXT="MMRELAY_CI_M2A_$(date +%s)_${RANDOM}"
-export MATRIX_TO_MESH_A_TEXT
-log_offset_before_m2a=$(wc -c <"${MMRELAY_LOG_PATH_A}")
+SYNC_CURSOR_USER1="${SYNC_SINCE_USER}"
+
+# Test 1: Matrix user message in shared room → Mesh A + Mesh B
+MATRIX_TO_SHARED_TEXT="MMRELAY_CI_M2SHARED_$(date +%s)_${RANDOM}"
+log_offset_before_m2shared_a=$(wc -c <"${MMRELAY_LOG_PATH_A}")
+log_offset_before_m2shared_b=$(wc -c <"${MMRELAY_LOG_PATH_B}")
 
 echo ""
-echo "Test 1: Matrix → Mesh A..."
-"${PYTHON_BIN}" - <<'PY'
-import os
-import urllib.parse
-import requests
-
-base_url = os.environ["MATRIX_BASE_URL"]
-room_id = os.environ["ROOM_ID"]
-user_access_token = os.environ["USER_ACCESS_TOKEN"]
-message_text = os.environ["MATRIX_TO_MESH_A_TEXT"]
-
-txn_id = f"mmrelay-ci-m2a-{message_text}"
-quoted_room_id = urllib.parse.quote(room_id, safe="")
-quoted_txn_id = urllib.parse.quote(txn_id, safe="")
-response = requests.put(
-    f"{base_url}/_matrix/client/v3/rooms/{quoted_room_id}/send/m.room.message/{quoted_txn_id}",
-    headers={"Authorization": f"Bearer {user_access_token}"},
-    json={"msgtype": "m.text", "body": message_text},
-    timeout=20,
-)
-if response.status_code >= 400:
-    raise RuntimeError(
-        f"Failed to send Matrix test message ({response.status_code}): {response.text}"
-    )
-PY
-
-if wait_for_log_pattern_since \
+echo "Test 1: Matrix user message in shared room → Mesh A + Mesh B..."
+matrix_send_message \
+	"${USER_ACCESS_TOKEN}" \
+	"${ROOM_ID}" \
+	"${MATRIX_TO_SHARED_TEXT}" \
+	"mmrelay-ci-m2shared" >/dev/null
+if ! wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_A}" \
 	"Relaying message from" \
-	"${log_offset_before_m2a}" \
+	"${log_offset_before_m2shared_a}" \
 	45; then
-	echo "✓ Test 1 PASSED: Matrix → Mesh A"
-else
-	echo "✗ Test 1 FAILED: Matrix → Mesh A" >&2
+	echo "✗ Test 1 FAILED: Message was not relayed to Mesh A" >&2
 	exit 1
 fi
-
-# Test 2: Matrix → Mesh B
-MATRIX_TO_MESH_B_TEXT="MMRELAY_CI_M2B_$(date +%s)_${RANDOM}"
-export MATRIX_TO_MESH_B_TEXT
-log_offset_before_m2b=$(wc -c <"${MMRELAY_LOG_PATH_B}")
-
-echo ""
-echo "Test 2: Matrix → Mesh B..."
-"${PYTHON_BIN}" - <<'PY'
-import os
-import urllib.parse
-import requests
-
-base_url = os.environ["MATRIX_BASE_URL"]
-room_id = os.environ["ROOM_ID"]
-user_access_token = os.environ["USER_ACCESS_TOKEN"]
-message_text = os.environ["MATRIX_TO_MESH_B_TEXT"]
-
-txn_id = f"mmrelay-ci-m2b-{message_text}"
-quoted_room_id = urllib.parse.quote(room_id, safe="")
-quoted_txn_id = urllib.parse.quote(txn_id, safe="")
-response = requests.put(
-    f"{base_url}/_matrix/client/v3/rooms/{quoted_room_id}/send/m.room.message/{quoted_txn_id}",
-    headers={"Authorization": f"Bearer {user_access_token}"},
-    json={"msgtype": "m.text", "body": message_text},
-    timeout=20,
-)
-if response.status_code >= 400:
-    raise RuntimeError(
-        f"Failed to send Matrix test message ({response.status_code}): {response.text}"
-    )
-PY
-
-if wait_for_log_pattern_since \
+if ! wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_B}" \
 	"Relaying message from" \
-	"${log_offset_before_m2b}" \
+	"${log_offset_before_m2shared_b}" \
 	45; then
-	echo "✓ Test 2 PASSED: Matrix → Mesh B"
-else
-	echo "✗ Test 2 FAILED: Matrix → Mesh B" >&2
+	echo "✗ Test 1 FAILED: Message was not relayed to Mesh B" >&2
 	exit 1
 fi
+echo "✓ Test 1 PASSED: Matrix user message relayed to both meshes"
 
-# Test 3: Mesh A → Matrix
+# Test 2: Simulated Mesh A event in Matrix → cross-mesh relay path in MMRelay B
 MESH_A_TO_MATRIX_TEXT="MMRELAY_CI_A2M_$(date +%s)_${RANDOM}"
-export MESH_A_TO_MATRIX_TEXT
-log_offset_before_a2m=$(wc -c <"${MMRELAY_LOG_PATH_A}")
+MESH_A_SIM_ID=$((2000000000 + RANDOM))
+log_offset_before_a2m_b=$(wc -c <"${MMRELAY_LOG_PATH_B}")
 
 echo ""
-echo "Test 3: Mesh A → Matrix..."
-"${PYTHON_BIN}" -m meshtastic \
-	--timeout 10 \
-	--host "${MESHTASTICD_HOST_A}" \
-	--port "${MESHTASTICD_PORT_A}" \
-	--sendtext "${MESH_A_TO_MATRIX_TEXT}" >/dev/null
-
-if wait_for_log_pattern_since \
-	"${MMRELAY_LOG_PATH_A}" \
-	"[SIMULATOR_APP]" \
-	"${log_offset_before_a2m}" \
-	45; then
-	echo "  MMRelay A received packet from Mesh A"
-else
-	echo "  MMRelay A did not receive packet from Mesh A" >&2
+echo "Test 2: Simulated Mesh A event in Matrix → cross-mesh relay to Mesh B..."
+MESH_A_MATRIX_EVENT_ID="$(
+	matrix_send_meshtastic_message \
+		"${BOT_A_ACCESS_TOKEN}" \
+		"${ROOM_ID}" \
+		"${MESH_A_TO_MATRIX_TEXT}" \
+		"${MESHNET_NAME_A}" \
+		"CI Field Node A" \
+		"CFA" \
+		"${MESH_A_SIM_ID}" \
+		"mmrelay-ci-sim-a2m"
+)"
+mesh_a_event_json="$(
+	matrix_wait_event \
+		"${USER_ACCESS_TOKEN}" \
+		"${ROOM_ID}" \
+		"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
+		"m.room.message" \
+		"${BOT_A_USER_ID}" \
+		"${MESH_A_TO_MATRIX_TEXT}" \
+		"m.text" \
+		"" \
+		"${MESH_A_MATRIX_EVENT_ID}" \
+		"" \
+		"${SYNC_CURSOR_USER1}"
+)"
+SYNC_CURSOR_USER1="$(json_extract "${mesh_a_event_json}" "next_batch")"
+if ! wait_for_log_pattern_since \
+	"${MMRELAY_LOG_PATH_B}" \
+	"Processing message from remote meshnet:" \
+	"${log_offset_before_a2m_b}" \
+	60; then
+	echo "✗ Test 2 FAILED: MMRelay B did not process simulated remote mesh event from ${MESHNET_NAME_A}" >&2
 	exit 1
 fi
+echo "✓ Test 2 PASSED: Simulated Mesh A event reached Matrix and crossed to Mesh B path"
 
-# Verify message reached Matrix
-echo "  Checking Matrix timeline..."
-if ! "${PYTHON_BIN}" - <<'PY'; then
-import os
-import time
-import requests
-
-base_url = os.environ["MATRIX_BASE_URL"]
-room_id = os.environ["ROOM_ID"]
-user_access_token = os.environ["USER_ACCESS_TOKEN"]
-message_text = os.environ["MESH_A_TO_MATRIX_TEXT"]
-since = os.environ.get("SYNC_SINCE", "")
-
-headers = {"Authorization": f"Bearer {user_access_token}"}
-deadline = time.monotonic() + 45
-last_events: list[str] = []
-
-while time.monotonic() < deadline:
-    params = {"timeout": 5000}
-    if since:
-        params["since"] = since
-
-    response = requests.get(
-        f"{base_url}/_matrix/client/v3/sync",
-        headers=headers,
-        params=params,
-        timeout=30,
-    )
-    if response.status_code >= 400:
-        raise RuntimeError(
-            f"Sync failed ({response.status_code}): {response.text[:300]}"
-        )
-
-    body = response.json()
-    since = body.get("next_batch", since)
-    rooms = body.get("rooms", {}).get("join", {})
-    room_data = rooms.get(room_id, {})
-    events = room_data.get("timeline", {}).get("events", [])
-
-    for event in events:
-        if event.get("type") != "m.room.message":
-            continue
-        content = event.get("content", {})
-        body_text = content.get("body", "")
-        if isinstance(body_text, str):
-            last_events.append(body_text)
-            if message_text in body_text:
-                raise SystemExit(0)
-
-    if len(last_events) > 10:
-        last_events = last_events[-10:]
-
-raise SystemExit(1)
-PY
-	echo "✓ Test 3 PASSED: Mesh A → Matrix"
-else
-	echo "✗ Test 3 FAILED: Mesh A → Matrix" >&2
-	case "${STRICT_MESH_TO_MATRIX,,}" in
-	1 | true | yes | on)
-		exit 1
-		;;
-	*)
-		echo "  [WARNING] STRICT_MESH_TO_MATRIX is disabled, continuing..."
-		;;
-	esac
-fi
-
-# Test 4: Mesh B → Matrix
+# Test 3: Simulated Mesh B event in Matrix → cross-mesh relay path in MMRelay A
 MESH_B_TO_MATRIX_TEXT="MMRELAY_CI_B2M_$(date +%s)_${RANDOM}"
-export MESH_B_TO_MATRIX_TEXT
-log_offset_before_b2m=$(wc -c <"${MMRELAY_LOG_PATH_B}")
+MESH_B_SIM_ID=$((2100000000 + RANDOM))
+log_offset_before_b2m_a=$(wc -c <"${MMRELAY_LOG_PATH_A}")
 
 echo ""
-echo "Test 4: Mesh B → Matrix..."
-"${PYTHON_BIN}" -m meshtastic \
-	--timeout 10 \
-	--host "${MESHTASTICD_HOST_B}" \
-	--port "${MESHTASTICD_PORT_B}" \
-	--sendtext "${MESH_B_TO_MATRIX_TEXT}" >/dev/null
+echo "Test 3: Simulated Mesh B event in Matrix → cross-mesh relay to Mesh A..."
+MESH_B_MATRIX_EVENT_ID="$(
+	matrix_send_meshtastic_message \
+		"${BOT_B_ACCESS_TOKEN}" \
+		"${ROOM_ID}" \
+		"${MESH_B_TO_MATRIX_TEXT}" \
+		"${MESHNET_NAME_B}" \
+		"CI Field Node B" \
+		"CFB" \
+		"${MESH_B_SIM_ID}" \
+		"mmrelay-ci-sim-b2m"
+)"
+mesh_b_event_json="$(
+	matrix_wait_event \
+		"${USER_ACCESS_TOKEN}" \
+		"${ROOM_ID}" \
+		"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
+		"m.room.message" \
+		"${BOT_B_USER_ID}" \
+		"${MESH_B_TO_MATRIX_TEXT}" \
+		"m.text" \
+		"" \
+		"${MESH_B_MATRIX_EVENT_ID}" \
+		"" \
+		"${SYNC_CURSOR_USER1}"
+)"
+SYNC_CURSOR_USER1="$(json_extract "${mesh_b_event_json}" "next_batch")"
+if ! wait_for_log_pattern_since \
+	"${MMRELAY_LOG_PATH_A}" \
+	"Processing message from remote meshnet:" \
+	"${log_offset_before_b2m_a}" \
+	60; then
+	echo "✗ Test 3 FAILED: MMRelay A did not process simulated remote mesh event from ${MESHNET_NAME_B}" >&2
+	exit 1
+fi
+echo "✓ Test 3 PASSED: Simulated Mesh B event reached Matrix and crossed to Mesh A path"
 
-if wait_for_log_pattern_since \
-	"${MMRELAY_LOG_PATH_B}" \
-	"[SIMULATOR_APP]" \
-	"${log_offset_before_b2m}" \
+# Test 4: Secondary Matrix user message → Mesh A + Mesh B
+MATRIX_USER2_TEXT="MMRELAY_CI_U2_MSG_$(date +%s)_${RANDOM}"
+log_offset_before_u2msg_a=$(wc -c <"${MMRELAY_LOG_PATH_A}")
+log_offset_before_u2msg_b=$(wc -c <"${MMRELAY_LOG_PATH_B}")
+
+echo ""
+echo "Test 4: Secondary Matrix user message → Mesh A + Mesh B..."
+MATRIX_USER2_EVENT_ID="$(
+	matrix_send_message \
+		"${USER2_ACCESS_TOKEN}" \
+		"${ROOM_ID}" \
+		"${MATRIX_USER2_TEXT}" \
+		"mmrelay-ci-u2-msg"
+)"
+if ! wait_for_log_pattern_since \
+	"${MMRELAY_LOG_PATH_A}" \
+	"Relaying message from" \
+	"${log_offset_before_u2msg_a}" \
 	45; then
-	echo "  MMRelay B received packet from Mesh B"
-else
-	echo "  MMRelay B did not receive packet from Mesh B" >&2
+	echo "✗ Test 4 FAILED: Secondary user message did not relay to Mesh A" >&2
 	exit 1
 fi
-
-# Verify message reached Matrix
-echo "  Checking Matrix timeline..."
-if ! "${PYTHON_BIN}" - <<'PY'; then
-import os
-import time
-import requests
-
-base_url = os.environ["MATRIX_BASE_URL"]
-room_id = os.environ["ROOM_ID"]
-user_access_token = os.environ["USER_ACCESS_TOKEN"]
-message_text = os.environ["MESH_B_TO_MATRIX_TEXT"]
-since = os.environ.get("SYNC_SINCE", "")
-
-headers = {"Authorization": f"Bearer {user_access_token}"}
-deadline = time.monotonic() + 45
-last_events: list[str] = []
-
-while time.monotonic() < deadline:
-    params = {"timeout": 5000}
-    if since:
-        params["since"] = since
-
-    response = requests.get(
-        f"{base_url}/_matrix/client/v3/sync",
-        headers=headers,
-        params=params,
-        timeout=30,
-    )
-    if response.status_code >= 400:
-        raise RuntimeError(
-            f"Sync failed ({response.status_code}): {response.text[:300]}"
-        )
-
-    body = response.json()
-    since = body.get("next_batch", since)
-    rooms = body.get("rooms", {}).get("join", {})
-    room_data = rooms.get(room_id, {})
-    events = room_data.get("timeline", {}).get("events", [])
-
-    for event in events:
-        if event.get("type") != "m.room.message":
-            continue
-        content = event.get("content", {})
-        body_text = content.get("body", "")
-        if isinstance(body_text, str):
-            last_events.append(body_text)
-            if message_text in body_text:
-                raise SystemExit(0)
-
-    if len(last_events) > 10:
-        last_events = last_events[-10:]
-
-raise SystemExit(1)
-PY
-	echo "✓ Test 4 PASSED: Mesh B → Matrix"
-else
-	echo "✗ Test 4 FAILED: Mesh B → Matrix" >&2
-	case "${STRICT_MESH_TO_MATRIX,,}" in
-	1 | true | yes | on)
-		exit 1
-		;;
-	*)
-		echo "  [WARNING] STRICT_MESH_TO_MATRIX is disabled, continuing..."
-		;;
-	esac
-fi
-
-# Test 5: Mesh A → Mesh B (via Matrix bridge)
-MESH_A_TO_B_TEXT="MMRELAY_CI_A2B_$(date +%s)_${RANDOM}"
-export MESH_A_TO_B_TEXT
-log_offset_before_a2b_a=$(wc -c <"${MMRELAY_LOG_PATH_A}")
-log_offset_before_a2b_b=$(wc -c <"${MMRELAY_LOG_PATH_B}")
-
-echo ""
-echo "Test 5: Mesh A → Mesh B (cross-mesh via Matrix bridge)..."
-echo "  Sending from Mesh A..."
-"${PYTHON_BIN}" -m meshtastic \
-	--timeout 10 \
-	--host "${MESHTASTICD_HOST_A}" \
-	--port "${MESHTASTICD_PORT_A}" \
-	--sendtext "${MESH_A_TO_B_TEXT}" >/dev/null
-
-# Wait for MMRelay A to receive and relay to Matrix
-if wait_for_log_pattern_since \
-	"${MMRELAY_LOG_PATH_A}" \
-	"[SIMULATOR_APP]" \
-	"${log_offset_before_a2b_a}" \
-	60; then
-	echo "  MMRelay A received packet from Mesh A"
-else
-	echo "  MMRelay A did not receive packet from Mesh A" >&2
-	exit 1
-fi
-
-# Wait for MMRelay B to receive from Matrix and relay to Mesh B
-if wait_for_log_pattern_since \
+if ! wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_B}" \
 	"Relaying message from" \
-	"${log_offset_before_a2b_b}" \
-	60; then
-	echo "  MMRelay B relayed to Mesh B"
-else
-	echo "  MMRelay B did not relay to Mesh B" >&2
-	case "${STRICT_MESH_TO_MATRIX,,}" in
-	1 | true | yes | on)
-		exit 1
-		;;
-	*)
-		echo "  [WARNING] STRICT_MESH_TO_MATRIX is disabled, continuing..."
-		;;
-	esac
-fi
-
-echo "✓ Test 5 PASSED: Mesh A → Mesh B"
-
-# Test 6: Mesh B → Mesh A (via Matrix bridge)
-MESH_B_TO_A_TEXT="MMRELAY_CI_B2A_$(date +%s)_${RANDOM}"
-export MESH_B_TO_A_TEXT
-log_offset_before_b2a_a=$(wc -c <"${MMRELAY_LOG_PATH_A}")
-log_offset_before_b2a_b=$(wc -c <"${MMRELAY_LOG_PATH_B}")
-
-echo ""
-echo "Test 6: Mesh B → Mesh A (cross-mesh via Matrix bridge)..."
-echo "  Sending from Mesh B..."
-"${PYTHON_BIN}" -m meshtastic \
-	--timeout 10 \
-	--host "${MESHTASTICD_HOST_B}" \
-	--port "${MESHTASTICD_PORT_B}" \
-	--sendtext "${MESH_B_TO_A_TEXT}" >/dev/null
-
-# Wait for MMRelay B to receive and relay to Matrix
-if wait_for_log_pattern_since \
-	"${MMRELAY_LOG_PATH_B}" \
-	"[SIMULATOR_APP]" \
-	"${log_offset_before_b2a_b}" \
-	60; then
-	echo "  MMRelay B received packet from Mesh B"
-else
-	echo "  MMRelay B did not receive packet from Mesh B" >&2
+	"${log_offset_before_u2msg_b}" \
+	45; then
+	echo "✗ Test 4 FAILED: Secondary user message did not relay to Mesh B" >&2
 	exit 1
 fi
+echo "✓ Test 4 PASSED: Secondary user message relayed to both meshes"
 
-# Wait for MMRelay A to receive from Matrix and relay to Mesh A
-if wait_for_log_pattern_since \
+# Ensure both relay instances have persisted the mapping for the replied-to event.
+# Without this gate, a fast reply can race ahead of DB persistence and be treated
+# as a plain message instead of a Meshtastic reply.
+wait_for_message_map_meshtastic_id \
+	"${MMRELAY_DB_PATH_A}" \
+	"${MATRIX_USER2_EVENT_ID}" \
+	"${MESSAGE_MAP_WAIT_TIMEOUT_SECONDS}" >/dev/null
+wait_for_message_map_meshtastic_id \
+	"${MMRELAY_DB_PATH_B}" \
+	"${MATRIX_USER2_EVENT_ID}" \
+	"${MESSAGE_MAP_WAIT_TIMEOUT_SECONDS}" >/dev/null
+
+# Test 5: Secondary Matrix user reply to prior Matrix event → both meshes as structured replies
+MATRIX_USER2_REPLY_TEXT="MMRELAY_CI_U2_REPLY_$(date +%s)_${RANDOM}"
+log_offset_before_u2reply_a=$(wc -c <"${MMRELAY_LOG_PATH_A}")
+log_offset_before_u2reply_b=$(wc -c <"${MMRELAY_LOG_PATH_B}")
+
+echo ""
+echo "Test 5: Secondary user reply to prior Matrix event → both meshes..."
+MATRIX_USER2_REPLY_EVENT_ID="$(
+	matrix_send_message \
+		"${USER2_ACCESS_TOKEN}" \
+		"${ROOM_ID}" \
+		"${MATRIX_USER2_REPLY_TEXT}" \
+		"mmrelay-ci-u2-reply" \
+		"${MATRIX_USER2_EVENT_ID}"
+)"
+reply_event_json="$(
+	matrix_wait_event \
+		"${USER_ACCESS_TOKEN}" \
+		"${ROOM_ID}" \
+		"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
+		"m.room.message" \
+		"${USER2_USER_ID}" \
+		"" \
+		"m.text" \
+		"${MATRIX_USER2_EVENT_ID}" \
+		"${MATRIX_USER2_REPLY_EVENT_ID}" \
+		"" \
+		"${SYNC_CURSOR_USER1}"
+)"
+SYNC_CURSOR_USER1="$(json_extract "${reply_event_json}" "next_batch")"
+if ! wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_A}" \
-	"Relaying message from" \
-	"${log_offset_before_b2a_a}" \
+	"Relaying Matrix reply from" \
+	"${log_offset_before_u2reply_a}" \
 	60; then
-	echo "  MMRelay A relayed to Mesh A"
-else
-	echo "  MMRelay A did not relay to Mesh A" >&2
-	case "${STRICT_MESH_TO_MATRIX,,}" in
-	1 | true | yes | on)
-		exit 1
-		;;
-	*)
-		echo "  [WARNING] STRICT_MESH_TO_MATRIX is disabled, continuing..."
-		;;
-	esac
+	echo "✗ Test 5 FAILED: Reply did not relay to Mesh A" >&2
+	exit 1
 fi
+if ! wait_for_log_pattern_since \
+	"${MMRELAY_LOG_PATH_B}" \
+	"Relaying Matrix reply from" \
+	"${log_offset_before_u2reply_b}" \
+	60; then
+	echo "✗ Test 5 FAILED: Reply did not relay to Mesh B" >&2
+	exit 1
+fi
+echo "✓ Test 5 PASSED: Secondary user reply relayed to both meshes"
 
-echo "✓ Test 6 PASSED: Mesh B → Mesh A"
+# Test 6: Secondary Matrix user reaction to prior Matrix event → both meshes
+MATRIX_USER2_REACTION_KEY="👍"
+log_offset_before_u2react_a=$(wc -c <"${MMRELAY_LOG_PATH_A}")
+log_offset_before_u2react_b=$(wc -c <"${MMRELAY_LOG_PATH_B}")
+
+echo ""
+echo "Test 6: Secondary user reaction to prior Matrix event → both meshes..."
+MATRIX_USER2_REACTION_EVENT_ID="$(
+	matrix_send_reaction \
+		"${USER2_ACCESS_TOKEN}" \
+		"${ROOM_ID}" \
+		"${MATRIX_USER2_EVENT_ID}" \
+		"${MATRIX_USER2_REACTION_KEY}" \
+		"mmrelay-ci-u2-react"
+)"
+reaction_event_json="$(
+	matrix_wait_event \
+		"${USER_ACCESS_TOKEN}" \
+		"${ROOM_ID}" \
+		"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
+		"m.reaction" \
+		"${USER2_USER_ID}" \
+		"" \
+		"" \
+		"${MATRIX_USER2_EVENT_ID}" \
+		"${MATRIX_USER2_REACTION_EVENT_ID}" \
+		"" \
+		"${SYNC_CURSOR_USER1}"
+)"
+SYNC_CURSOR_USER1="$(json_extract "${reaction_event_json}" "next_batch")"
+if ! wait_for_log_pattern_since \
+	"${MMRELAY_LOG_PATH_A}" \
+	"Relaying reaction from" \
+	"${log_offset_before_u2react_a}" \
+	60; then
+	echo "✗ Test 6 FAILED: Reaction did not relay to Mesh A" >&2
+	exit 1
+fi
+if ! wait_for_log_pattern_since \
+	"${MMRELAY_LOG_PATH_B}" \
+	"Relaying reaction from" \
+	"${log_offset_before_u2react_b}" \
+	60; then
+	echo "✗ Test 6 FAILED: Reaction did not relay to Mesh B" >&2
+	exit 1
+fi
+echo "✓ Test 6 PASSED: Secondary user reaction relayed to both meshes"
 
 # =============================================================================
 # Success

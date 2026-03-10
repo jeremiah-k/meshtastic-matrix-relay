@@ -19,13 +19,17 @@ permissions:
 jobs:
   cross-mesh-integration:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       MESHTASTICD_IMAGE: meshtastic/meshtasticd:latest
       SYNAPSE_IMAGE: matrixdotorg/synapse:latest
       CI_ARTIFACT_DIR: ${{ github.workspace }}/.ci-artifacts/cross-mesh-integration
       MMRELAY_LOG_ON_SUCCESS: "true"
       STRICT_MESH_TO_MATRIX: "true"
+      MESHNET_NAME_A: "Backcountry Alpha"
+      MESHNET_NAME_B: "Backcountry Bravo"
+      MATRIX_EVENT_TIMEOUT_SECONDS: "75"
+      MESSAGE_MAP_WAIT_TIMEOUT_SECONDS: "75"
 
     steps:
       - uses: actions/checkout@v6

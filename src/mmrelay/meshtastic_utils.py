@@ -51,6 +51,7 @@ from mmrelay.constants.network import (
     CONFIG_KEY_BLE_ADDRESS,
     CONFIG_KEY_CONNECTION_TYPE,
     CONFIG_KEY_HOST,
+    CONFIG_KEY_PORT,
     CONFIG_KEY_SERIAL_PORT,
     CONFIG_KEY_TIMEOUT,
     CONNECTION_TYPE_BLE,
@@ -60,6 +61,7 @@ from mmrelay.constants.network import (
     DEFAULT_BACKOFF_TIME,
     DEFAULT_MESHTASTIC_OPERATION_TIMEOUT,
     DEFAULT_MESHTASTIC_TIMEOUT,
+    DEFAULT_TCP_PORT,
     ERRNO_BAD_FILE_DESCRIPTOR,
     INFINITE_RETRIES,
     INITIAL_HEALTH_CHECK_DELAY,
@@ -2860,11 +2862,26 @@ def connect_meshtastic(
                     )
                     return None
 
-                logger.info(f"Connecting to host {target_host}")
+                target_port = DEFAULT_TCP_PORT
+                configured_port = config["meshtastic"].get(CONFIG_KEY_PORT)
+                if configured_port is not None:
+                    try:
+                        parsed_port = int(configured_port)
+                        if parsed_port <= 0 or parsed_port > 65535:
+                            raise ValueError
+                        target_port = parsed_port
+                    except (TypeError, ValueError):
+                        logger.warning(
+                            "Invalid meshtastic.port value %r; using default TCP port %s",
+                            configured_port,
+                            DEFAULT_TCP_PORT,
+                        )
+
+                logger.info(f"Connecting to host {target_host}:{target_port}")
 
                 # Connect without progress indicator
                 client = meshtastic.tcp_interface.TCPInterface(
-                    hostname=target_host, timeout=timeout
+                    hostname=target_host, portNumber=target_port, timeout=timeout
                 )
             else:
                 logger.error(f"Unknown connection type: {connection_type}")

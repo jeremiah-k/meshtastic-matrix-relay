@@ -576,7 +576,50 @@ class TestMeshtasticUtils(unittest.TestCase):
         result = connect_meshtastic(passed_config=config)
 
         self.assertEqual(result, mock_client)
-        mock_tcp.assert_called_once_with(hostname="192.168.1.100", timeout=300)
+        mock_tcp.assert_called_once_with(
+            hostname="192.168.1.100",
+            portNumber=4403,
+            timeout=300,
+        )
+
+    @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
+    @patch("mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface")
+    @patch("mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface")
+    def test_connect_meshtastic_tcp_uses_configured_port(
+        self, mock_tcp, mock_ble, mock_serial
+    ):
+        """
+        Tests that the Meshtastic TCP connector honors meshtastic.port when configured.
+        """
+        mock_client = MagicMock()
+        mock_client.getMyNodeInfo.return_value = {
+            "user": {"shortName": "test", "hwModel": "test"}
+        }
+        mock_tcp.return_value = mock_client
+
+        config = {
+            "meshtastic": {
+                "connection_type": "tcp",
+                "host": "192.168.1.101",
+                "port": 4404,
+            }
+        }
+
+        # Reset global state
+        import mmrelay.meshtastic_utils
+
+        mmrelay.meshtastic_utils.meshtastic_client = None
+        mmrelay.meshtastic_utils.shutting_down = False
+        mmrelay.meshtastic_utils.reconnecting = False
+
+        result = connect_meshtastic(passed_config=config)
+
+        self.assertEqual(result, mock_client)
+        mock_tcp.assert_called_once_with(
+            hostname="192.168.1.101",
+            portNumber=4404,
+            timeout=300,
+        )
 
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
     @patch("mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface")
