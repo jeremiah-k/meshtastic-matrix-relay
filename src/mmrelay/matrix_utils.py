@@ -46,6 +46,8 @@ from nio import (
     RoomMessageNotice,
     RoomMessageText,
     SyncError,
+    ToDeviceError,
+    ToDeviceResponse,
     UploadError,
     UploadResponse,
 )
@@ -84,6 +86,9 @@ from mmrelay.constants.config import (
     CONFIG_SECTION_MATRIX,
     DEFAULT_BROADCAST_ENABLED,
     DEFAULT_DETECTION_SENSOR,
+    E2EE_KEY_REQUEST_BASE_DELAY,
+    E2EE_KEY_REQUEST_MAX_ATTEMPTS,
+    E2EE_KEY_REQUEST_MAX_DELAY,
     E2EE_KEY_SHARING_DELAY_SECONDS,
 )
 from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
@@ -100,13 +105,13 @@ from mmrelay.constants.messages import (
     MESSAGE_PREVIEW_LENGTH,
     PORTNUM_DETECTION_SENSOR_APP,
     SHORTNAME_FALLBACK_LENGTH,
-    TRUNCATION_LOG_LIMIT,
 )
 from mmrelay.constants.network import (
     MATRIX_EARLY_SYNC_TIMEOUT,
     MATRIX_LOGIN_TIMEOUT,
     MATRIX_ROOM_SEND_TIMEOUT,
     MATRIX_SYNC_OPERATION_TIMEOUT,
+    MATRIX_TO_DEVICE_TIMEOUT,
     MILLISECONDS_PER_SECOND,
 )
 from mmrelay.db_utils import (
@@ -907,14 +912,11 @@ def _add_truncated_vars(
     """
     # Always add truncated variables, even for empty text (to prevent KeyError)
     text = text or ""  # Convert None to empty string
-    logger.debug(f"Adding truncated vars for prefix='{prefix}', text='{text}'")
     for i in range(
         1, MAX_TRUNCATION_LENGTH + 1
     ):  # Support up to MAX_TRUNCATION_LENGTH chars, always add all variants
         truncated_value = text[:i]
         format_vars[f"{prefix}{i}"] = truncated_value
-        if i <= TRUNCATION_LOG_LIMIT:  # Only log first few to avoid spam
-            logger.debug(f"  {prefix}{i} = '{truncated_value}'")
 
 
 _PREFIX_DEFINITION_PATTERN = re.compile(r"^\[(.+?)\]:(\s*)")
@@ -1015,7 +1017,17 @@ def get_meshtastic_prefix(
     _add_truncated_vars(format_vars, "display", display_name)
 
     try:
-        return prefix_format.format(**format_vars)
+        result = prefix_format.format(**format_vars)
+        logger.debug(
+            "Meshtastic prefix generated (%s): %s",
+            (
+                "custom format"
+                if prefix_format != DEFAULT_MESHTASTIC_PREFIX
+                else "default format"
+            ),
+            result,
+        )
+        return result
     except (KeyError, ValueError) as e:
         # Fallback to default format if custom format is invalid
         logger.warning(
@@ -1045,15 +1057,8 @@ def get_matrix_prefix(
     """
     matrix_config = config.get(CONFIG_SECTION_MATRIX, {})
 
-    # Enhanced debug logging for configuration troubleshooting
-    logger.debug(
-        f"get_matrix_prefix called with longname='{longname}', shortname='{shortname}', meshnet_name='{meshnet_name}'"
-    )
-    logger.debug(f"Matrix config section: {matrix_config}")
-
     # Check if prefixes are enabled for Matrix direction
     if not matrix_config.get("prefix_enabled", True):
-        logger.debug("Matrix prefixes are disabled, returning empty string")
         return ""
 
     # Get custom format or use default
@@ -1065,10 +1070,6 @@ def get_matrix_prefix(
         if matrix_prefix_format_value is not None
         else DEFAULT_MATRIX_PREFIX
     )
-    logger.debug(
-        f"Using matrix prefix format: '{matrix_prefix_format}' (default: '{DEFAULT_MATRIX_PREFIX}')"
-    )
-
     # Available variables for formatting with variable length support
     format_vars = {
         "long": longname,
@@ -1083,13 +1084,14 @@ def get_matrix_prefix(
     try:
         result = matrix_prefix_format.format(**format_vars)
         logger.debug(
-            f"Matrix prefix generated: '{result}' using format '{matrix_prefix_format}' with vars {format_vars}"
+            "Matrix prefix generated (%s): %s",
+            (
+                "custom format"
+                if matrix_prefix_format != DEFAULT_MATRIX_PREFIX
+                else "default format"
+            ),
+            result,
         )
-        # Additional debug to help identify the issue
-        if result == f"[{longname}/{meshnet_name}]: ":
-            logger.debug(
-                "Generated prefix matches default format - check if custom configuration is being loaded correctly"
-            )
         return result
     except (KeyError, ValueError) as e:
         # Fallback to default format if custom format is invalid
@@ -3044,6 +3046,25 @@ async def _get_e2ee_error_message() -> str:
     return get_e2ee_error_message(dict(e2ee_status))
 
 
+def _retry_backoff_delay(
+    attempt_index: int,
+    base_delay: float,
+    max_delay: float,
+) -> float:
+    """
+    Compute the exponential backoff delay for a retry attempt, capped at a maximum.
+
+    Parameters:
+        attempt_index (int): Zero-based index of the retry attempt (0 yields base_delay).
+        base_delay (float): Initial delay in seconds used as the multiplier base.
+        max_delay (float): Upper bound in seconds for the returned delay.
+
+    Returns:
+        float: Delay in seconds to wait before the next retry; equals base_delay * 2**attempt_index capped at max_delay.
+    """
+    return min(base_delay * (2**attempt_index), max_delay)
+
+
 async def _send_matrix_message_with_retry(
     matrix_client: Any,
     room_id: str,
@@ -3109,7 +3130,7 @@ async def _send_matrix_message_with_retry(
         except asyncio.TimeoutError:
             if attempt < max_retries:
                 # Exponential backoff with jitter
-                delay = min(base_delay * (2**attempt), max_delay)
+                delay = _retry_backoff_delay(attempt, base_delay, max_delay)
                 jitter = rng.uniform(0, delay * 0.1)  # 10% jitter
                 total_delay = delay + jitter
                 logger.warning(
@@ -3125,7 +3146,7 @@ async def _send_matrix_message_with_retry(
         except NIO_COMM_EXCEPTIONS as e:
             if attempt < max_retries:
                 # Exponential backoff with jitter for network errors
-                delay = min(base_delay * (2**attempt), max_delay)
+                delay = _retry_backoff_delay(attempt, base_delay, max_delay)
                 jitter = rng.uniform(0, delay * 0.1)  # 10% jitter
                 total_delay = delay + jitter
                 logger.warning(
@@ -3874,9 +3895,10 @@ async def handle_matrix_reply(
 
 async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
     """
-    Handle a MegolmEvent that could not be decrypted by requesting missing session keys.
+    Handle a MegolmEvent that could not be decrypted by requesting missing session keys with exponential backoff retry.
 
-    If the module-level Matrix client is available, this sets the event's room_id, constructs a to-device key request for the missing Megolm session, and sends it to the device that holds the keys. Logs outcomes and returns without action if no matrix client or device id is available.
+    If the module-level Matrix client is available, this sets the event's room_id, constructs a to-device key request for the missing Megolm session, and and sends it to the device that holds the keys. Uses exponential backoff retry
+    to handle transient federation delays. Logs outcomes and returns without action if no matrix client or device id is available.
 
     Parameters:
         room (MatrixRoom): The room where the decryption failure occurred.
@@ -3889,26 +3911,98 @@ async def on_decryption_failure(room: MatrixRoom, event: MegolmEvent) -> None:
         f"{msg_retry_auth_login()}."
     )
 
-    # Attempt to request the keys for the failed event
-    try:
-        if not matrix_client:
-            logger.error("Matrix client not available, cannot request keys.")
-            return
+    # Attempt to request the keys for the failed event with retry logic
+    if not matrix_client:
+        logger.error("Matrix client not available, cannot request keys.")
+        return
 
-        # Monkey-patch the event object with the correct room_id
-        event.room_id = room.room_id
+    # Monkey-patch the event object with the correct room_id
+    event.room_id = room.room_id
 
-        if not matrix_client.device_id:
-            logger.error(
-                "Cannot request keys for event %s: client has no device_id",
-                event.event_id,
+    if not matrix_client.device_id:
+        logger.error(
+            "Cannot request keys for event %s: client has no device_id",
+            event.event_id,
+        )
+        return
+
+    request = event.as_key_request(matrix_client.user_id, matrix_client.device_id)
+
+    for attempt in range(E2EE_KEY_REQUEST_MAX_ATTEMPTS):
+        is_last_attempt = attempt >= E2EE_KEY_REQUEST_MAX_ATTEMPTS - 1
+        backoff_delay = (
+            _retry_backoff_delay(
+                attempt,
+                E2EE_KEY_REQUEST_BASE_DELAY,
+                E2EE_KEY_REQUEST_MAX_DELAY,
             )
-            return
-        request = event.as_key_request(matrix_client.user_id, matrix_client.device_id)
-        await matrix_client.to_device(request)
-        logger.info(f"Requested keys for failed decryption of event {event.event_id}")
-    except NIO_COMM_EXCEPTIONS:
-        logger.exception(f"Failed to request keys for event {event.event_id}")
+            if not is_last_attempt
+            else None
+        )
+        try:
+            response = await asyncio.wait_for(
+                matrix_client.to_device(request),
+                timeout=MATRIX_TO_DEVICE_TIMEOUT,
+            )
+            # Check response type - to_device returns ToDeviceResponse or ToDeviceError
+            if isinstance(response, ToDeviceResponse):
+                logger.info(
+                    f"Requested keys for failed decryption of event {event.event_id} "
+                    f"(attempt {attempt + 1}/{E2EE_KEY_REQUEST_MAX_ATTEMPTS})"
+                )
+                # Success - wait once for key to arrive via federation
+                await asyncio.sleep(E2EE_KEY_SHARING_DELAY_SECONDS)
+                return  # Exit after successful request
+            elif isinstance(response, ToDeviceError):
+                error_details = getattr(response, "message", str(response))
+                # Server-side error - treat as failure and retry
+                logger.warning(
+                    "Key request for event %s failed on attempt %s/%s: %s",
+                    event.event_id,
+                    attempt + 1,
+                    E2EE_KEY_REQUEST_MAX_ATTEMPTS,
+                    error_details,
+                )
+                if is_last_attempt:
+                    logger.error(
+                        "Failed to request keys for event %s after %s attempts. Last error: %s",
+                        event.event_id,
+                        E2EE_KEY_REQUEST_MAX_ATTEMPTS,
+                        error_details,
+                    )
+                    return
+            else:
+                response_type = type(response).__name__
+                logger.warning(
+                    "Unexpected key request response type %s for event %s (attempt %s/%s)",
+                    response_type,
+                    event.event_id,
+                    attempt + 1,
+                    E2EE_KEY_REQUEST_MAX_ATTEMPTS,
+                )
+                if is_last_attempt:
+                    logger.error(
+                        "Failed to request keys for event %s after %s attempts due to unexpected response type %s",
+                        event.event_id,
+                        E2EE_KEY_REQUEST_MAX_ATTEMPTS,
+                        response_type,
+                    )
+                    return
+        except NIO_COMM_EXCEPTIONS:
+            if is_last_attempt:
+                logger.exception(
+                    f"Failed to request keys for event {event.event_id} "
+                    f"after {E2EE_KEY_REQUEST_MAX_ATTEMPTS} attempts"
+                )
+                return
+            logger.warning(
+                f"Key request attempt {attempt + 1} failed for event {event.event_id}, retrying..."
+            )
+            logger.debug("Key request failure details", exc_info=True)
+
+        # Backoff before retry on non-success responses
+        if backoff_delay is not None:
+            await asyncio.sleep(backoff_delay)
 
 
 # Callback for new messages in Matrix room

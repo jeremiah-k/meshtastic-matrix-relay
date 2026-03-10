@@ -142,7 +142,6 @@ def _get_plugin_root_dirs() -> list[str]:
             if home_plugins not in seen:
                 roots.append(home_plugins)
                 seen.add(home_plugins)
-            logger.debug("Using primary plugin root: %s", home_plugins)
     except (OSError, RuntimeError, ValueError) as e:
         logger.warning("Could not determine primary plugin root: %s", e)
 
@@ -157,7 +156,6 @@ def _get_plugin_root_dirs() -> list[str]:
         if legacy_plugins not in seen and os.path.exists(legacy_plugins):
             roots.append(legacy_plugins)
             seen.add(legacy_plugins)
-            logger.debug("Using legacy plugin root: %s", legacy_plugins)
 
     primary_root = roots[0] if roots else None
     legacy_roots = roots[1:] if len(roots) > 1 else []
