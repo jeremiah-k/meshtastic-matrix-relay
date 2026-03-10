@@ -6679,21 +6679,26 @@ async def test_on_decryption_failure_retry_on_exception():
         mock_event.as_key_request.assert_called_once_with(
             "@bot:matrix.org", "DEVICE123"
         )
-        # Verify all 3 attempts were made
-        assert mock_client.to_device.await_count == 3
-        # Verify warnings were logged for first two failures
-        assert mock_logger.warning.call_count == 2
-        # Verify success info message (only on third successful attempt)
+        # Compute expected values from constants
+        max_attempts = matrix_utils_module.E2EE_KEY_REQUEST_MAX_ATTEMPTS
+        # Verify all attempts were made (3 failures then success on 3rd retry = 4 calls)
+        assert mock_client.to_device.await_count == max_attempts
+        # Verify warnings were logged for failures before success
+        assert mock_logger.warning.call_count == max_attempts - 1
+        # Verify success info message (only on final successful attempt)
         assert mock_logger.info.call_count == 1
-        # Verify exponential backoff delays: 2s after attempt 1, 4s after attempt 2, then key-sharing delay.
-        assert [call.args[0] for call in mock_sleep.await_args_list] == [
-            matrix_utils_module.E2EE_KEY_REQUEST_BASE_DELAY,
-            min(
-                matrix_utils_module.E2EE_KEY_REQUEST_BASE_DELAY * 2,
+        # Compute expected sleep list: exponential backoff for first (max_attempts-1) retries, then key-sharing delay
+        expected_sleep_list = []
+        for attempt in range(1, max_attempts):  # attempts 1 to max_attempts-1
+            delay = min(
+                matrix_utils_module.E2EE_KEY_REQUEST_BASE_DELAY * (2 ** (attempt - 1)),
                 matrix_utils_module.E2EE_KEY_REQUEST_MAX_DELAY,
-            ),
-            matrix_utils_module.E2EE_KEY_SHARING_DELAY_SECONDS,
-        ]
+            )
+            expected_sleep_list.append(delay)
+        expected_sleep_list.append(matrix_utils_module.E2EE_KEY_SHARING_DELAY_SECONDS)
+        assert [
+            call.args[0] for call in mock_sleep.await_args_list
+        ] == expected_sleep_list
 
 
 @pytest.mark.asyncio
@@ -6725,23 +6730,28 @@ async def test_on_decryption_failure_all_retries_fail():
         mock_event.as_key_request.assert_called_once_with(
             "@bot:matrix.org", "DEVICE123"
         )
-        # Verify all 3 attempts were made
-        assert mock_client.to_device.await_count == 3
-        # Verify warnings for first two failures, exception for final failure
-        assert mock_logger.warning.call_count == 2
+        # Compute expected values from constants
+        max_attempts = matrix_utils_module.E2EE_KEY_REQUEST_MAX_ATTEMPTS
+        # Verify all attempts were made
+        assert mock_client.to_device.await_count == max_attempts
+        # Verify warnings for failures before final attempt
+        assert mock_logger.warning.call_count == max_attempts - 1
         # Check that the final error message was logged (f-string format)
         mock_logger.exception.assert_called_once()
         # No info messages since all requests failed
         assert mock_logger.info.call_count == 0
-        # Verify exponential backoff delays for first two attempts (2s, 4s)
+        # Compute expected sleep list: exponential backoff for first (max_attempts-1) retries
         # No backoff after final failure
-        assert [call.args[0] for call in mock_sleep.await_args_list] == [
-            matrix_utils_module.E2EE_KEY_REQUEST_BASE_DELAY,
-            min(
-                matrix_utils_module.E2EE_KEY_REQUEST_BASE_DELAY * 2,
+        expected_sleep_list = []
+        for attempt in range(1, max_attempts):  # attempts 1 to max_attempts-1
+            delay = min(
+                matrix_utils_module.E2EE_KEY_REQUEST_BASE_DELAY * (2 ** (attempt - 1)),
                 matrix_utils_module.E2EE_KEY_REQUEST_MAX_DELAY,
-            ),
-        ]
+            )
+            expected_sleep_list.append(delay)
+        assert [
+            call.args[0] for call in mock_sleep.await_args_list
+        ] == expected_sleep_list
 
 
 @pytest.mark.asyncio
@@ -6778,17 +6788,20 @@ async def test_on_decryption_failure_to_device_error():
         mock_event.as_key_request.assert_called_once_with(
             "@bot:matrix.org", "DEVICE123"
         )
-        # Verify 2 attempts were made
+        # Verify 2 attempts were made (error on first, success on second)
         assert mock_client.to_device.await_count == 2
         # Verify warning for the server error
         assert mock_logger.warning.call_count == 1
         # Verify success info message
         assert mock_logger.info.call_count == 1
-        # Verify backoff after error (2s) and success key-sharing delay.
-        assert [call.args[0] for call in mock_sleep.await_args_list] == [
+        # Verify backoff after error and success key-sharing delay.
+        expected_sleep_list = [
             matrix_utils_module.E2EE_KEY_REQUEST_BASE_DELAY,
             matrix_utils_module.E2EE_KEY_SHARING_DELAY_SECONDS,
         ]
+        assert [
+            call.args[0] for call in mock_sleep.await_args_list
+        ] == expected_sleep_list
 
 
 @pytest.mark.asyncio
@@ -6864,26 +6877,86 @@ async def test_on_decryption_failure_unexpected_response_type():
         mock_client.user_id = "@bot:matrix.org"
         mock_client.device_id = "DEVICE123"
         # Return an unexpected type for all attempts to exercise fallback handling.
-        mock_client.to_device = AsyncMock(side_effect=[object(), object(), object()])
+        max_attempts = matrix_utils_module.E2EE_KEY_REQUEST_MAX_ATTEMPTS
+        mock_client.to_device = AsyncMock(side_effect=[object()] * max_attempts)
 
         await on_decryption_failure(mock_room, mock_event)
 
         mock_event.as_key_request.assert_called_once_with(
             "@bot:matrix.org", "DEVICE123"
         )
-        assert mock_client.to_device.await_count == 3
-        # Two retries should back off; final attempt should log terminal error without sleeping.
-        assert [call.args[0] for call in mock_sleep.await_args_list] == [
-            matrix_utils_module.E2EE_KEY_REQUEST_BASE_DELAY,
-            min(
-                matrix_utils_module.E2EE_KEY_REQUEST_BASE_DELAY * 2,
+        assert mock_client.to_device.await_count == max_attempts
+        # Compute expected sleep list: exponential backoff for first (max_attempts-1) retries
+        # No backoff after final failure
+        expected_sleep_list = []
+        for attempt in range(1, max_attempts):  # attempts 1 to max_attempts-1
+            delay = min(
+                matrix_utils_module.E2EE_KEY_REQUEST_BASE_DELAY * (2 ** (attempt - 1)),
                 matrix_utils_module.E2EE_KEY_REQUEST_MAX_DELAY,
-            ),
-        ]
-        assert mock_logger.warning.call_count == 3
+            )
+            expected_sleep_list.append(delay)
+        assert [
+            call.args[0] for call in mock_sleep.await_args_list
+        ] == expected_sleep_list
+        # Warning for each unexpected response
+        assert mock_logger.warning.call_count == max_attempts
         assert (
             mock_logger.error.call_count == 2
         )  # initial decryption + final retry failure
+
+
+@pytest.mark.asyncio
+async def test_on_decryption_failure_timeout_on_to_device():
+    """Test on_decryption_failure handles asyncio.TimeoutError from the to-device wrapper."""
+
+    mock_room = MagicMock()
+    mock_room.room_id = "!room123:matrix.org"
+    mock_event = MagicMock()
+    mock_event.event_id = "$event123"
+    mock_event.as_key_request.return_value = {"type": "m.room_key_request"}
+
+    with (
+        patch("mmrelay.matrix_utils.matrix_client") as mock_client,
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+        patch(
+            "mmrelay.matrix_utils.asyncio.sleep", new_callable=AsyncMock
+        ) as mock_sleep,
+    ):
+        mock_client.user_id = "@bot:matrix.org"
+        mock_client.device_id = "DEVICE123"
+        # Simulate timeout on to_device call by making to_device raise TimeoutError
+        # This exercises the same code path as wait_for timing out, since TimeoutError
+        # is caught by NIO_COMM_EXCEPTIONS in the implementation
+        mock_client.to_device = AsyncMock(side_effect=asyncio.TimeoutError())
+
+        await on_decryption_failure(mock_room, mock_event)
+
+        mock_event.as_key_request.assert_called_once_with(
+            "@bot:matrix.org", "DEVICE123"
+        )
+
+        # Compute expected values from constants
+        max_attempts = matrix_utils_module.E2EE_KEY_REQUEST_MAX_ATTEMPTS
+        # Verify all attempts were made via to_device calls
+        assert mock_client.to_device.await_count == max_attempts
+        # Verify warnings for failures before final attempt
+        assert mock_logger.warning.call_count == max_attempts - 1
+        # Verify final exception was logged
+        mock_logger.exception.assert_called_once()
+        # No info messages since all requests failed
+        assert mock_logger.info.call_count == 0
+        # Compute expected sleep list: exponential backoff for first (max_attempts-1) retries
+        # No backoff after final failure
+        expected_sleep_list = []
+        for attempt in range(1, max_attempts):  # attempts 1 to max_attempts-1
+            delay = min(
+                matrix_utils_module.E2EE_KEY_REQUEST_BASE_DELAY * (2 ** (attempt - 1)),
+                matrix_utils_module.E2EE_KEY_REQUEST_MAX_DELAY,
+            )
+            expected_sleep_list.append(delay)
+        assert [
+            call.args[0] for call in mock_sleep.await_args_list
+        ] == expected_sleep_list
 
 
 @pytest.mark.asyncio
@@ -7246,18 +7319,30 @@ async def test_handle_detection_sensor_packet_success():
     mock_queue.get_queue_size.return_value = 1
 
     with (
-        patch("mmrelay.matrix_utils.get_meshtastic_config_value") as mock_get_config,
-        patch("mmrelay.matrix_utils._connect_meshtastic") as mock_connect,
-        patch("mmrelay.matrix_utils.queue_message") as mock_queue_message,
-        patch("mmrelay.matrix_utils.get_message_queue") as mock_get_queue,
+        patch("mmrelay.matrix_utils.matrix_client") as mock_client,
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+        patch(
+            "mmrelay.matrix_utils.asyncio.sleep", new_callable=AsyncMock
+        ) as mock_sleep,
+        patch("mmrelay.matrix_utils.asyncio.wait_for") as mock_wait_for,
     ):
-        mock_get_config.side_effect = [True, True]
-        mock_connect.return_value = mock_interface
-        mock_queue_message.return_value = True
-        mock_get_queue.return_value = mock_queue
+        mock_client.user_id = "@bot:matrix.org"
+        mock_client.device_id = "DEVICE123"
 
-        await _handle_detection_sensor_packet(
-            config, room_config, full_display_name, text
+        # Simulate timeout on to_device call by making wait_for raise TimeoutError
+        # The coroutine is awaited (so to_device gets called), but wait_for raises
+        async def mock_wait_for_impl(coro, timeout):
+            # First await the coroutine so to_device gets called
+            await coro
+            # Then raise the timeout
+            raise asyncio.TimeoutError()
+
+        mock_wait_for.side_effect = mock_wait_for_impl
+
+        # Keep references for assertions
+        from mmrelay.matrix_utils import (
+            MATRIX_TO_DEVICE_TIMEOUT,
+            on_decryption_failure,
         )
 
         mock_queue_message.assert_called_once()
