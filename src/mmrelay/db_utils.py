@@ -76,6 +76,17 @@ _SELECT_NAME_VALUES_SQL_BY_TABLE = {
     ),
 }
 
+_UPSERT_NAME_SQL_BY_TABLE = {
+    NAMES_TABLE_LONGNAMES: (
+        "INSERT INTO longnames (meshtastic_id, longname) VALUES (?, ?) "
+        "ON CONFLICT(meshtastic_id) DO UPDATE SET longname=excluded.longname"
+    ),
+    NAMES_TABLE_SHORTNAMES: (
+        "INSERT INTO shortnames (meshtastic_id, shortname) VALUES (?, ?) "
+        "ON CONFLICT(meshtastic_id) DO UPDATE SET shortname=excluded.shortname"
+    ),
+}
+
 
 def clear_db_path_cache() -> None:
     """Clear the cached database path to force re-resolution on next call.
@@ -802,25 +813,13 @@ def _normalize_node_name_value(name_value: Any) -> str | None:
     """
     if name_value is None:
         return None
-    if isinstance(name_value, str):
-        return name_value or None
-    try:
-        normalized = str(name_value)
-    except (TypeError, ValueError):
+    if not isinstance(name_value, str):
         logger.warning(
-            "Ignoring non-string node-name value of type %s due to conversion failure",
+            "Ignoring non-string node-name value of type %s",
             type(name_value).__name__,
-            exc_info=True,
         )
         return None
-    except Exception:  # noqa: BLE001 - defensive guard for custom __str__
-        logger.warning(
-            "Ignoring non-string node-name value of type %s due to unexpected conversion failure",
-            type(name_value).__name__,
-            exc_info=True,
-        )
-        return None
-    return normalized or None
+    return name_value or None
 
 
 def _read_name_values_for_ids(
@@ -865,7 +864,8 @@ def _read_name_values_for_ids(
         return rows_by_id
 
     try:
-        return manager.run_sync(_fetch)
+        rows = manager.run_sync(_fetch)
+        return cast(dict[str, str | None], rows)
     except sqlite3.Error:
         logger.exception(
             "Database error reading %s values for drift check", column_name
@@ -981,14 +981,10 @@ def _collect_node_name_snapshot(
             state_by_id[id_key] = (long_name, short_name)
             continue
 
-        # Duplicate IDs can appear in transient snapshots; merge by filling
-        # missing fields rather than adding duplicate state rows.
-        merged_long_name = (
-            existing_entry[0] if existing_entry[0] is not None else long_name
-        )
-        merged_short_name = (
-            existing_entry[1] if existing_entry[1] is not None else short_name
-        )
+        # Duplicate IDs can appear in transient snapshots. Merge deterministically
+        # so state and DB writes are order-independent.
+        merged_long_name = _merge_node_name_values(existing_entry[0], long_name)
+        merged_short_name = _merge_node_name_values(existing_entry[1], short_name)
         state_by_id[id_key] = (merged_long_name, merged_short_name)
 
     state_entries = [
@@ -997,6 +993,59 @@ def _collect_node_name_snapshot(
     ]
     state_entries.sort(key=lambda entry: entry[0])
     return tuple(state_entries), current_ids, snapshot_complete
+
+
+def _merge_node_name_values(
+    existing_value: str | None, incoming_value: str | None
+) -> str | None:
+    """
+    Merge duplicate-ID name values into a deterministic canonical value.
+
+    For conflicting non-empty values, choose lexicographically smallest so
+    results do not depend on iteration order.
+    """
+    if existing_value is None:
+        return incoming_value
+    if incoming_value is None:
+        return existing_value
+    return min(existing_value, incoming_value)
+
+
+def _sync_name_tables_atomic(nodes: dict[str, Any]) -> bool:
+    """
+    Persist longname/shortname rows for one snapshot in a single transaction.
+
+    This keeps names tables consistent if any write fails mid-sync.
+    """
+    state, current_ids, snapshot_complete = _collect_node_name_snapshot(nodes)
+    manager = _get_db_manager()
+    long_delete_sql = _DELETE_STALE_ID_SQL_BY_TABLE[NAMES_TABLE_LONGNAMES]
+    short_delete_sql = _DELETE_STALE_ID_SQL_BY_TABLE[NAMES_TABLE_SHORTNAMES]
+    long_upsert_sql = _UPSERT_NAME_SQL_BY_TABLE[NAMES_TABLE_LONGNAMES]
+    short_upsert_sql = _UPSERT_NAME_SQL_BY_TABLE[NAMES_TABLE_SHORTNAMES]
+
+    def _sync(cursor: sqlite3.Cursor) -> None:
+        for id_key, long_name, short_name in state:
+            if long_name is None:
+                cursor.execute(long_delete_sql, (id_key,))
+            else:
+                cursor.execute(long_upsert_sql, (id_key, long_name))
+
+            if short_name is None:
+                cursor.execute(short_delete_sql, (id_key,))
+            else:
+                cursor.execute(short_upsert_sql, (id_key, short_name))
+
+        if current_ids and snapshot_complete:
+            _delete_stale_names_core(cursor, NAMES_TABLE_LONGNAMES, current_ids)
+            _delete_stale_names_core(cursor, NAMES_TABLE_SHORTNAMES, current_ids)
+
+    try:
+        manager.run_sync(_sync, write=True)
+    except sqlite3.Error:
+        logger.exception("Database error syncing longname/shortname tables")
+        return False
+    return True
 
 
 def build_node_name_state(nodes: dict[str, Any] | None) -> NodeNameState:
@@ -1038,18 +1087,24 @@ def sync_name_tables_if_changed(
 
     if previous_state is not None and current_state == previous_state:
         if snapshot_complete and current_ids:
-            delete_stale_longnames(current_ids)
-            delete_stale_shortnames(current_ids)
+            longnames_deleted = _delete_stale_names(
+                NAMES_TABLE_LONGNAMES,
+                current_ids,
+                return_none_on_error=True,
+            )
+            shortnames_deleted = _delete_stale_names(
+                NAMES_TABLE_SHORTNAMES,
+                current_ids,
+                return_none_on_error=True,
+            )
+            if longnames_deleted is None or shortnames_deleted is None:
+                return previous_state
             if not _name_tables_match_state(current_state):
-                longnames_updated = update_longnames(nodes_dict)
-                shortnames_updated = update_shortnames(nodes_dict)
-                if not (longnames_updated and shortnames_updated):
+                if not _sync_name_tables_atomic(nodes_dict):
                     return previous_state
         return current_state
 
-    longnames_updated = update_longnames(nodes_dict)
-    shortnames_updated = update_shortnames(nodes_dict)
-    if longnames_updated and shortnames_updated:
+    if _sync_name_tables_atomic(nodes_dict):
         return current_state
     return previous_state
 
@@ -1060,7 +1115,7 @@ def _update_names_core(
     name_key: str,
     save_name: Callable[[str, str], bool],
     delete_name: Callable[[str], bool],
-    delete_stale_names: Callable[[set[str]], int],
+    delete_stale_names: Callable[[set[str]], int | None],
 ) -> bool:
     """
     Persist one user name field from a node snapshot and prune stale rows.
@@ -1106,7 +1161,9 @@ def _update_names_core(
             all_saves_ok = False
 
     if current_ids and snapshot_complete and all_saves_ok:
-        delete_stale_names(current_ids)
+        stale_delete_count = delete_stale_names(current_ids)
+        if stale_delete_count is None:
+            all_saves_ok = False
     return all_saves_ok
 
 
@@ -1130,7 +1187,11 @@ def update_longnames(nodes: dict[str, Any]) -> bool:
         name_key=NODE_NAME_FIELD_LONG,
         save_name=save_longname,
         delete_name=delete_longname,
-        delete_stale_names=delete_stale_longnames,
+        delete_stale_names=lambda current_ids: _delete_stale_names(
+            NAMES_TABLE_LONGNAMES,
+            current_ids,
+            return_none_on_error=True,
+        ),
     )
 
 
@@ -1253,7 +1314,12 @@ def _delete_stale_names_core(
     return total_deleted
 
 
-def _delete_stale_names(table_name: str, current_ids: set[str]) -> int:
+def _delete_stale_names(
+    table_name: str,
+    current_ids: set[str],
+    *,
+    return_none_on_error: bool = False,
+) -> int | None:
     """
     Remove name entries for nodes no longer in the device's nodedb.
 
@@ -1262,7 +1328,8 @@ def _delete_stale_names(table_name: str, current_ids: set[str]) -> int:
         current_ids (set[str]): Set of Meshtastic node IDs currently known to the device.
 
     Returns:
-        int: Number of stale entries removed.
+        int | None: Number of stale entries removed, or `None` when
+        `return_none_on_error=True` and a database error occurs.
     """
     manager = _get_db_manager()
     name_type = _NAME_FIELD_BY_TABLE.get(table_name, table_name)
@@ -1277,11 +1344,12 @@ def _delete_stale_names(table_name: str, current_ids: set[str]) -> int:
         deleted = manager.run_sync(_delete, write=True)
     except sqlite3.Error:
         logger.exception("Database error deleting stale %s entries", name_type)
-        return 0
+        return None if return_none_on_error else 0
     else:
-        if deleted > 0:
-            logger.debug("Removed %d stale %s entries", deleted, name_type)
-        return deleted
+        deleted_count = cast(int, deleted)
+        if deleted_count > 0:
+            logger.debug("Removed %d stale %s entries", deleted_count, name_type)
+        return deleted_count
 
 
 def delete_stale_longnames(current_ids: set[str]) -> int:
@@ -1299,7 +1367,8 @@ def delete_stale_longnames(current_ids: set[str]) -> int:
     Returns:
         int: Number of rows removed from the longnames table.
     """
-    return _delete_stale_names(NAMES_TABLE_LONGNAMES, current_ids)
+    deleted = _delete_stale_names(NAMES_TABLE_LONGNAMES, current_ids)
+    return 0 if deleted is None else deleted
 
 
 def delete_stale_shortnames(current_ids: set[str]) -> int:
@@ -1316,7 +1385,8 @@ def delete_stale_shortnames(current_ids: set[str]) -> int:
     Returns:
         int: Number of stale entries removed.
     """
-    return _delete_stale_names(NAMES_TABLE_SHORTNAMES, current_ids)
+    deleted = _delete_stale_names(NAMES_TABLE_SHORTNAMES, current_ids)
+    return 0 if deleted is None else deleted
 
 
 def update_shortnames(nodes: dict[str, Any]) -> bool:
@@ -1343,7 +1413,11 @@ def update_shortnames(nodes: dict[str, Any]) -> bool:
         name_key=NODE_NAME_FIELD_SHORT,
         save_name=save_shortname,
         delete_name=delete_shortname,
-        delete_stale_names=delete_stale_shortnames,
+        delete_stale_names=lambda current_ids: _delete_stale_names(
+            NAMES_TABLE_SHORTNAMES,
+            current_ids,
+            return_none_on_error=True,
+        ),
     )
 
 

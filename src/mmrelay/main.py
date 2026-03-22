@@ -306,8 +306,12 @@ async def main(config: dict[str, Any]) -> None:
     )
 
     # Start message queue with configured message delay
-    message_delay = config.get(CONFIG_SECTION_MESHTASTIC, {}).get(
-        CONFIG_KEY_MESSAGE_DELAY, DEFAULT_MESSAGE_DELAY
+    meshtastic_config = config.get(CONFIG_SECTION_MESHTASTIC)
+    if not isinstance(meshtastic_config, dict):
+        meshtastic_config = {}
+    message_delay = meshtastic_config.get(
+        CONFIG_KEY_MESSAGE_DELAY,
+        DEFAULT_MESSAGE_DELAY,
     )
     start_message_queue(message_delay=message_delay)
 

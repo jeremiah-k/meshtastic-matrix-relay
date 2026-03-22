@@ -310,16 +310,24 @@ class TestDbUtils(unittest.TestCase):
     def test_sync_name_tables_if_changed_uses_canonical_snapshot_for_duplicate_ids(
         self,
     ):
-        """Duplicate IDs with conflicting names should write the canonical merged snapshot."""
+        """Duplicate IDs should merge to the same canonical snapshot regardless of input order."""
         initialize_database()
         nodes = {
             "node_first": {"user": {"id": "!1", "shortName": "ONE"}},
             "node_second": {"user": {"id": "!1", "shortName": "TWO"}},
         }
+        nodes_reversed = {
+            "node_second": {"user": {"id": "!1", "shortName": "TWO"}},
+            "node_first": {"user": {"id": "!1", "shortName": "ONE"}},
+        }
 
         state = sync_name_tables_if_changed(nodes, previous_state=None)
+        state_reversed = sync_name_tables_if_changed(
+            nodes_reversed, previous_state=None
+        )
 
         self.assertEqual(state, (("!1", None, "ONE"),))
+        self.assertEqual(state_reversed, (("!1", None, "ONE"),))
         self.assertEqual(get_shortname("!1"), "ONE")
 
     def test_sync_name_tables_if_changed_skips_redundant_updates(self):
@@ -407,7 +415,7 @@ class TestDbUtils(unittest.TestCase):
         self.assertEqual(get_shortname("!1"), "A1")
 
     def test_sync_name_tables_if_changed_retries_after_write_failure(self):
-        """Changed snapshots should not advance state when a names-table update fails."""
+        """Changed snapshots should not advance or partially persist when a names-table update fails."""
         initialize_database()
         nodes = {
             "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
@@ -420,12 +428,12 @@ class TestDbUtils(unittest.TestCase):
             },
         }
         original_run_sync = DatabaseManager.run_sync
+        write_failed = False
 
         def fail_longname_insert_once(self, func, *, write=False):
-            if write and any(
-                isinstance(constant, str) and "INSERT INTO longnames" in constant
-                for constant in func.__code__.co_consts
-            ):
+            nonlocal write_failed
+            if write and not write_failed:
+                write_failed = True
                 raise sqlite3.Error("forced longname write failure")
             return original_run_sync(self, func, write=write)
 
@@ -441,7 +449,7 @@ class TestDbUtils(unittest.TestCase):
 
         self.assertEqual(second_state, first_state)
         self.assertEqual(get_longname("!1"), "Alpha")
-        self.assertEqual(get_shortname("!1"), "A1")
+        self.assertEqual(get_shortname("!1"), "A")
 
         retry_state = sync_name_tables_if_changed(
             updated_nodes, previous_state=second_state
@@ -451,18 +459,18 @@ class TestDbUtils(unittest.TestCase):
         self.assertEqual(get_shortname("!1"), "A1")
 
     def test_sync_name_tables_if_changed_retries_from_cold_start_on_write_failure(self):
-        """A first-run write failure should keep state unset so next loop retries."""
+        """A first-run write failure should keep state unset and avoid partial writes."""
         initialize_database()
         nodes = {
             "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
         }
         original_run_sync = DatabaseManager.run_sync
+        write_failed = False
 
         def fail_longname_insert_once(self, func, *, write=False):
-            if write and any(
-                isinstance(constant, str) and "INSERT INTO longnames" in constant
-                for constant in func.__code__.co_consts
-            ):
+            nonlocal write_failed
+            if write and not write_failed:
+                write_failed = True
                 raise sqlite3.Error("forced longname write failure")
             return original_run_sync(self, func, write=write)
 
@@ -476,7 +484,7 @@ class TestDbUtils(unittest.TestCase):
 
         self.assertIsNone(state)
         self.assertIsNone(get_longname("!1"))
-        self.assertEqual(get_shortname("!1"), "A")
+        self.assertIsNone(get_shortname("!1"))
 
         retry_state = sync_name_tables_if_changed(nodes, previous_state=state)
         self.assertEqual(retry_state, (("!1", "Alpha", "A"),))

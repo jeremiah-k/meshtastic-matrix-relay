@@ -5,6 +5,8 @@ import asyncio
 from collections.abc import Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 import mmrelay.main as main_module
 from tests.helpers import InlineExecutorLoop
 
@@ -107,7 +109,8 @@ def test_coerce_config_bool_normalizes_common_values() -> None:
     assert main_module._coerce_config_bool(None) is False
 
 
-def test_main_cleans_up_ready_task_on_shutdown(tmp_path, monkeypatch) -> None:
+@pytest.mark.asyncio
+async def test_main_cleans_up_ready_task_on_shutdown(tmp_path, monkeypatch) -> None:
     """Configured ready heartbeat task should be cancelled/awaited during shutdown."""
     config = {
         "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
@@ -163,16 +166,13 @@ def test_main_cleans_up_ready_task_on_shutdown(tmp_path, monkeypatch) -> None:
         mock_queue.ensure_processor_started = MagicMock()
         mock_get_queue.return_value = mock_queue
 
-        async def _exercise() -> None:
-            main_task = asyncio.create_task(main_module.main(config))
-            await _wait_until(lambda: bool(event_factory.created))
-            await _wait_until(
-                lambda: ready_path.exists() and mock_touch_ready_file.call_count > 0
-            )
-            event_factory.created[0].set()
-            await asyncio.wait_for(main_task, timeout=5)
-
-        asyncio.run(_exercise())
+        main_task = asyncio.create_task(main_module.main(config))
+        await _wait_until(lambda: bool(event_factory.created))
+        await _wait_until(
+            lambda: ready_path.exists() and mock_touch_ready_file.call_count > 0
+        )
+        event_factory.created[0].set()
+        await asyncio.wait_for(main_task, timeout=5)
 
     mock_matrix_client.close.assert_awaited_once()
     assert not ready_path.exists()

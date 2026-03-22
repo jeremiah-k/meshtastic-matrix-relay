@@ -15,6 +15,7 @@ import pytest
 
 import mmrelay.db_utils as dbu
 from mmrelay.constants.database import NAMES_TABLE_LONGNAMES
+from mmrelay.db_runtime import DatabaseManager
 from mmrelay.db_utils import (
     _collect_node_name_snapshot,
     _delete_name_by_id,
@@ -65,7 +66,7 @@ def test_normalize_node_name_value_handles_value_error() -> None:
             raise ValueError("cannot stringify")
 
     assert _normalize_node_name_value("Alpha") == "Alpha"
-    assert _normalize_node_name_value(123) == "123"
+    assert _normalize_node_name_value(123) is None
     assert _normalize_node_name_value(_BadString()) is None
 
 
@@ -161,7 +162,22 @@ def test_sync_unchanged_snapshot_repair_failure_keeps_previous_state(
 
     assert get_longname("!1") is None
 
-    with patch("mmrelay.db_utils.save_longname", return_value=False):
+    original_run_sync = DatabaseManager.run_sync
+    write_failed = False
+
+    def fail_first_write(self, func, *, write=False):
+        nonlocal write_failed
+        if write and not write_failed:
+            write_failed = True
+            raise sqlite3.Error("forced write failure")
+        return original_run_sync(self, func, write=write)
+
+    with patch.object(
+        DatabaseManager,
+        "run_sync",
+        autospec=True,
+        side_effect=fail_first_write,
+    ):
         second_state = sync_name_tables_if_changed(nodes, previous_state=first_state)
 
     assert second_state == first_state
