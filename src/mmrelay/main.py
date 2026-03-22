@@ -215,9 +215,19 @@ def _coerce_config_bool(value: Any) -> bool:
             return True
         if normalized in {"", "0", "false", "no", "off"}:
             return False
+        logger.debug(
+            "Unrecognized boolean config value %r; treating as False",
+            value,
+        )
         return False
     if isinstance(value, (int, float)):
         return bool(value)
+    if value is not None:
+        logger.debug(
+            "Unexpected config value type %s for %r; treating as False",
+            type(value).__name__,
+            value,
+        )
     return False
 
 

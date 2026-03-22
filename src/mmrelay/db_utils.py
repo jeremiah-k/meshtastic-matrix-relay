@@ -1087,29 +1087,17 @@ def _update_names_core(
     if not nodes:
         return True
 
-    current_ids: set[str] = set()
-    snapshot_complete = True
+    if name_key == NODE_NAME_FIELD_LONG:
+        value_index = 1
+    elif name_key == NODE_NAME_FIELD_SHORT:
+        value_index = 2
+    else:
+        raise ValueError(f"Unsupported node name key: {name_key}")
+    state, current_ids, snapshot_complete = _collect_node_name_snapshot(nodes)
     all_saves_ok = True
-    for node in nodes.values():
-        if not isinstance(node, dict):
-            snapshot_complete = False
-            continue
-
-        user = node.get("user")
-        if not isinstance(user, dict):
-            snapshot_complete = False
-            continue
-
-        meshtastic_id = user.get("id")
-        if meshtastic_id is None or (
-            isinstance(meshtastic_id, str) and meshtastic_id == ""
-        ):
-            snapshot_complete = False
-            continue
-
-        id_key = str(meshtastic_id)
-        current_ids.add(id_key)
-        normalized_name = _normalize_node_name_value(user.get(name_key))
+    for state_row in state:
+        id_key = state_row[0]
+        normalized_name = state_row[value_index]
         if normalized_name is None:
             if not delete_name(id_key):
                 all_saves_ok = False
@@ -1335,10 +1323,13 @@ def update_shortnames(nodes: dict[str, Any]) -> bool:
     """
     Update persisted short names for nodes that include a user object.
 
-    For each node in the provided mapping, if the node contains a `user` dictionary with a present `shortName`, the function uses `user["id"]` as the Meshtastic ID and stores the short name in the database. Nodes with missing `shortName` are skipped to avoid overwriting existing database entries with placeholder values.
+    For each node in the provided mapping, if the node contains `user["id"]`, the
+    normalized `user["shortName"]` value is applied to the corresponding shortnames
+    row. When `user["shortName"]` normalizes to `None`, the existing shortnames row
+    for that Meshtastic ID is deleted.
 
     After updating, removes stale entries from the database only when every node
-    in the snapshot has a usable `user.id`.
+    in the snapshot has a usable `user["id"]`.
 
     Parameters:
         nodes (dict[str, Any]): Mapping of node identifiers to node objects; nodes without a `user` entry are ignored.

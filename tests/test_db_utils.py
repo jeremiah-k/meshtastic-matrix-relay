@@ -307,6 +307,21 @@ class TestDbUtils(unittest.TestCase):
             ),
         )
 
+    def test_sync_name_tables_if_changed_uses_canonical_snapshot_for_duplicate_ids(
+        self,
+    ):
+        """Duplicate IDs with conflicting names should write the canonical merged snapshot."""
+        initialize_database()
+        nodes = {
+            "node_first": {"user": {"id": "!1", "shortName": "ONE"}},
+            "node_second": {"user": {"id": "!1", "shortName": "TWO"}},
+        }
+
+        state = sync_name_tables_if_changed(nodes, previous_state=None)
+
+        self.assertEqual(state, (("!1", None, "ONE"),))
+        self.assertEqual(get_shortname("!1"), "ONE")
+
     def test_sync_name_tables_if_changed_skips_redundant_updates(self):
         """A matching previous state should avoid full long/short upserts."""
         initialize_database()
