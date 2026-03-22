@@ -1512,6 +1512,22 @@ PY
 	echo "NODE_NAME_REFRESH_INTERVAL_SECONDS must be a finite value greater than zero." >&2
 	exit 1
 fi
+if ! "${PYTHON_BIN}" - "${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" "${NODE_NAME_REFRESH_INTERVAL_SECONDS}" <<'PY'; then
+import math
+import sys
+
+name_prune_wait_timeout = float(sys.argv[1])
+node_name_refresh_interval = float(sys.argv[2])
+if (
+    not math.isfinite(name_prune_wait_timeout)
+    or not math.isfinite(node_name_refresh_interval)
+    or name_prune_wait_timeout <= node_name_refresh_interval
+):
+    raise SystemExit(1)
+PY
+	echo "NAME_PRUNE_WAIT_TIMEOUT_SECONDS must be greater than NODE_NAME_REFRESH_INTERVAL_SECONDS." >&2
+	exit 1
+fi
 if [[ -z ${MESHNET_NAME_A} || -z ${MESHNET_NAME_B} ]]; then
 	echo "MESHNET_NAME_A and MESHNET_NAME_B must be non-empty." >&2
 	exit 1

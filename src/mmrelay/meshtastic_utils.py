@@ -479,22 +479,17 @@ def get_node_name_refresh_interval_seconds() -> float:
     )
     try:
         interval = float(raw_interval)
+        if math.isfinite(interval):
+            return interval
     except (TypeError, ValueError):
-        logger.warning(
-            "Invalid meshtastic.node_name_refresh_interval=%r; defaulting to %.1f",
-            raw_interval,
-            DEFAULT_NODE_NAME_REFRESH_INTERVAL,
-        )
-        return DEFAULT_NODE_NAME_REFRESH_INTERVAL
+        pass
 
-    if not math.isfinite(interval):
-        logger.warning(
-            "Invalid meshtastic.node_name_refresh_interval=%r; defaulting to %.1f",
-            raw_interval,
-            DEFAULT_NODE_NAME_REFRESH_INTERVAL,
-        )
-        return DEFAULT_NODE_NAME_REFRESH_INTERVAL
-    return interval
+    logger.warning(
+        "Invalid meshtastic.node_name_refresh_interval=%r; defaulting to %.1f",
+        raw_interval,
+        DEFAULT_NODE_NAME_REFRESH_INTERVAL,
+    )
+    return DEFAULT_NODE_NAME_REFRESH_INTERVAL
 
 
 async def refresh_node_name_tables(

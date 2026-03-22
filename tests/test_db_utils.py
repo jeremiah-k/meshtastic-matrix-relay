@@ -309,6 +309,31 @@ class TestDbUtils(unittest.TestCase):
         mock_delete_longnames.assert_called_once_with({"!1"})
         mock_delete_shortnames.assert_called_once_with({"!1"})
 
+    def test_sync_name_tables_if_partial_snapshot_skips_pruning(self):
+        """Unchanged partial snapshots should skip stale-row pruning for safety."""
+        initialize_database()
+        nodes = {
+            "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
+            "bad_node": {"user": {"longName": "Missing ID"}},
+        }
+        first_state = sync_name_tables_if_changed(nodes, previous_state=None)
+
+        with (
+            patch("mmrelay.db_utils.update_longnames") as mock_update_longnames,
+            patch("mmrelay.db_utils.update_shortnames") as mock_update_shortnames,
+            patch("mmrelay.db_utils.delete_stale_longnames") as mock_delete_longnames,
+            patch("mmrelay.db_utils.delete_stale_shortnames") as mock_delete_shortnames,
+        ):
+            second_state = sync_name_tables_if_changed(
+                nodes, previous_state=first_state
+            )
+
+        self.assertEqual(second_state, first_state)
+        mock_update_longnames.assert_not_called()
+        mock_update_shortnames.assert_not_called()
+        mock_delete_longnames.assert_not_called()
+        mock_delete_shortnames.assert_not_called()
+
     def test_sync_name_tables_if_changed_updates_on_change(self):
         """State changes should trigger table updates and return the new state."""
         initialize_database()

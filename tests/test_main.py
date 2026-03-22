@@ -1488,6 +1488,63 @@ def test_main_database_wipe_config(
         mock_queue.ensure_processor_started.assert_called()
 
 
+@patch("mmrelay.main.initialize_database")
+@patch("mmrelay.main.load_plugins")
+@patch("mmrelay.main.start_message_queue")
+@patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
+@patch("mmrelay.main.connect_meshtastic")
+@patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
+def test_main_database_wipe_preferred_false_wins_over_legacy_true(
+    mock_join,
+    mock_connect_mesh,
+    mock_connect_matrix,
+    mock_start_queue,
+    mock_load_plugins,
+    mock_init_db,
+):
+    """
+    Verify explicit database.msg_map.wipe_on_restart=false is not overridden by legacy config.
+    """
+    config = {
+        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+        "database": {"msg_map": {"wipe_on_restart": False}},
+        "db": {"msg_map": {"wipe_on_restart": True}},
+    }
+
+    mock_matrix_client = AsyncMock()
+    mock_matrix_client.add_event_callback = MagicMock()
+    mock_matrix_client.close = AsyncMock()
+    mock_connect_matrix.return_value = mock_matrix_client
+    mock_connect_mesh.return_value = MagicMock()
+
+    with (
+        patch(
+            "mmrelay.main.asyncio.get_running_loop",
+            side_effect=_make_patched_get_running_loop(),
+        ),
+        patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+        patch("mmrelay.main.get_message_queue") as mock_get_queue,
+        patch(
+            "mmrelay.main.meshtastic_utils.check_connection", new_callable=AsyncMock
+        ) as mock_check_conn,
+        patch("mmrelay.main.shutdown_plugins") as mock_shutdown_plugins,
+        patch("mmrelay.main.stop_message_queue") as mock_stop_queue,
+        patch("mmrelay.main.wipe_message_map") as mock_wipe,
+    ):
+        mock_queue = MagicMock()
+        mock_queue.ensure_processor_started = MagicMock()
+        mock_get_queue.return_value = mock_queue
+        mock_check_conn.return_value = True
+        mock_shutdown_plugins.return_value = None
+        mock_stop_queue.return_value = None
+
+        with contextlib.suppress(KeyboardInterrupt):
+            asyncio.run(main(config))
+
+        mock_wipe.assert_not_called()
+        mock_queue.ensure_processor_started.assert_called()
+
+
 class TestDatabaseConfiguration(unittest.TestCase):
     """Test cases for database configuration handling."""
 
