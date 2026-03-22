@@ -19,6 +19,7 @@ import sqlite3
 import sys
 import tempfile
 import unittest
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 # Add src to path for imports
@@ -455,7 +456,8 @@ class TestDbUtils(unittest.TestCase):
         """Non-dict node snapshots should be treated as empty dict snapshots."""
         initialize_database()
 
-        state = sync_name_tables_if_changed([], previous_state=None)  # type: ignore[arg-type]
+        bad_nodes: Any = []
+        state = sync_name_tables_if_changed(bad_nodes, previous_state=None)
 
         self.assertEqual(state, ())
         with sqlite3.connect(self.test_db_path) as conn:

@@ -70,6 +70,12 @@ NAME_PRUNE_WAIT_TIMEOUT_SECONDS="${NAME_PRUNE_WAIT_TIMEOUT_SECONDS:-75}"
 NODE_NAME_REFRESH_INTERVAL_SECONDS="${NODE_NAME_REFRESH_INTERVAL_SECONDS:-5}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 
+# Node-name table constants (must stay aligned with src/mmrelay/constants/database.py).
+NAMES_TABLE_LONGNAMES="${NAMES_TABLE_LONGNAMES:-longnames}"
+NAMES_TABLE_SHORTNAMES="${NAMES_TABLE_SHORTNAMES:-shortnames}"
+NAMES_FIELD_LONGNAME="${NAMES_FIELD_LONGNAME:-longname}"
+NAMES_FIELD_SHORTNAME="${NAMES_FIELD_SHORTNAME:-shortname}"
+
 # Artifacts and Logging - Separated by Instance
 CI_ARTIFACT_DIR="${CI_ARTIFACT_DIR:-${PWD}/.ci-artifacts/meshtasticd-integration}"
 
@@ -1350,14 +1356,33 @@ upsert_name_entry() {
 	local column_name=$3
 	local meshtastic_id=$4
 	local name_value=$5
-	"${PYTHON_BIN}" - "${db_path}" "${table_name}" "${column_name}" "${meshtastic_id}" "${name_value}" <<'PY'
+	"${PYTHON_BIN}" - \
+		"${db_path}" \
+		"${table_name}" \
+		"${column_name}" \
+		"${meshtastic_id}" \
+		"${name_value}" \
+		"${NAMES_TABLE_LONGNAMES}" \
+		"${NAMES_FIELD_LONGNAME}" \
+		"${NAMES_TABLE_SHORTNAMES}" \
+		"${NAMES_FIELD_SHORTNAME}" <<'PY'
 import sqlite3
 import sys
 
-db_path, table_name, column_name, meshtastic_id, name_value = sys.argv[1:6]
+(
+    db_path,
+    table_name,
+    column_name,
+    meshtastic_id,
+    name_value,
+    longnames_table,
+    longname_column,
+    shortnames_table,
+    shortname_column,
+) = sys.argv[1:10]
 allowed_columns = {
-    "longnames": "longname",
-    "shortnames": "shortname",
+    longnames_table: longname_column,
+    shortnames_table: shortname_column,
 }
 expected_column = allowed_columns.get(table_name)
 if expected_column is None or expected_column != column_name:
@@ -1382,7 +1407,16 @@ wait_for_name_entry_absent() {
 	local relay_pid=${5-}
 	local relay_name=${6:-MMRelay}
 	local relay_log_path=${7-}
-	"${PYTHON_BIN}" - "${db_path}" "${table_name}" "${meshtastic_id}" "${timeout_seconds}" "${relay_pid}" "${relay_name}" "${relay_log_path}" <<'PY'
+	"${PYTHON_BIN}" - \
+		"${db_path}" \
+		"${table_name}" \
+		"${meshtastic_id}" \
+		"${timeout_seconds}" \
+		"${relay_pid}" \
+		"${relay_name}" \
+		"${relay_log_path}" \
+		"${NAMES_TABLE_LONGNAMES}" \
+		"${NAMES_TABLE_SHORTNAMES}" <<'PY'
 import os
 import sqlite3
 import sys
@@ -1396,9 +1430,11 @@ import time
     relay_pid_raw,
     relay_name,
     relay_log_path,
-) = sys.argv[1:8]
+    longnames_table,
+    shortnames_table,
+) = sys.argv[1:10]
 timeout_seconds = int(timeout_seconds_raw)
-allowed_tables = {"longnames", "shortnames"}
+allowed_tables = {longnames_table, shortnames_table}
 if table_name not in allowed_tables:
     raise SystemExit(f"Invalid table name: {table_name}")
 
@@ -2387,36 +2423,36 @@ start_test "Test 7" "Test 7: stale name rows are pruned to match current node DB
 run_or_fail "Failed to seed stale longname in instance A" \
 	upsert_name_entry \
 	"${MMRELAY_DB_PATH_A}" \
-	"longnames" \
-	"longname" \
+	"${NAMES_TABLE_LONGNAMES}" \
+	"${NAMES_FIELD_LONGNAME}" \
 	"${STALE_NAME_ID_A}" \
 	"CI stale longname A"
 run_or_fail "Failed to seed stale shortname in instance A" \
 	upsert_name_entry \
 	"${MMRELAY_DB_PATH_A}" \
-	"shortnames" \
-	"shortname" \
+	"${NAMES_TABLE_SHORTNAMES}" \
+	"${NAMES_FIELD_SHORTNAME}" \
 	"${STALE_NAME_ID_A}" \
 	"CSA"
 run_or_fail "Failed to seed stale longname in instance B" \
 	upsert_name_entry \
 	"${MMRELAY_DB_PATH_B}" \
-	"longnames" \
-	"longname" \
+	"${NAMES_TABLE_LONGNAMES}" \
+	"${NAMES_FIELD_LONGNAME}" \
 	"${STALE_NAME_ID_B}" \
 	"CI stale longname B"
 run_or_fail "Failed to seed stale shortname in instance B" \
 	upsert_name_entry \
 	"${MMRELAY_DB_PATH_B}" \
-	"shortnames" \
-	"shortname" \
+	"${NAMES_TABLE_SHORTNAMES}" \
+	"${NAMES_FIELD_SHORTNAME}" \
 	"${STALE_NAME_ID_B}" \
 	"CSB"
 
 run_or_fail "Stale longname row in instance A was not pruned" \
 	wait_for_name_entry_absent \
 	"${MMRELAY_DB_PATH_A}" \
-	"longnames" \
+	"${NAMES_TABLE_LONGNAMES}" \
 	"${STALE_NAME_ID_A}" \
 	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" \
 	"${MMRELAY_PID_A}" \
@@ -2425,7 +2461,7 @@ run_or_fail "Stale longname row in instance A was not pruned" \
 run_or_fail "Stale shortname row in instance A was not pruned" \
 	wait_for_name_entry_absent \
 	"${MMRELAY_DB_PATH_A}" \
-	"shortnames" \
+	"${NAMES_TABLE_SHORTNAMES}" \
 	"${STALE_NAME_ID_A}" \
 	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" \
 	"${MMRELAY_PID_A}" \
@@ -2434,7 +2470,7 @@ run_or_fail "Stale shortname row in instance A was not pruned" \
 run_or_fail "Stale longname row in instance B was not pruned" \
 	wait_for_name_entry_absent \
 	"${MMRELAY_DB_PATH_B}" \
-	"longnames" \
+	"${NAMES_TABLE_LONGNAMES}" \
 	"${STALE_NAME_ID_B}" \
 	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" \
 	"${MMRELAY_PID_B}" \
@@ -2443,7 +2479,7 @@ run_or_fail "Stale longname row in instance B was not pruned" \
 run_or_fail "Stale shortname row in instance B was not pruned" \
 	wait_for_name_entry_absent \
 	"${MMRELAY_DB_PATH_B}" \
-	"shortnames" \
+	"${NAMES_TABLE_SHORTNAMES}" \
 	"${STALE_NAME_ID_B}" \
 	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" \
 	"${MMRELAY_PID_B}" \

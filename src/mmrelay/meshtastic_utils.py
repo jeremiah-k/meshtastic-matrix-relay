@@ -528,10 +528,10 @@ async def refresh_node_name_tables(
                 if client is None:
                     nodes_snapshot = None
                 else:
-                    raw_nodes = getattr(client, "nodes", {})
+                    raw_nodes = getattr(client, "nodes", None)
                     if not isinstance(raw_nodes, dict):
                         logger.debug(
-                            "Skipping node-name refresh because client.nodes is not a dict"
+                            "Skipping node-name refresh because client.nodes is unavailable or not a dict"
                         )
                         nodes_snapshot = None
                     else:
@@ -543,6 +543,10 @@ async def refresh_node_name_tables(
                 if client is None:
                     logger.debug(
                         "Skipping node-name table refresh because Meshtastic client is unavailable"
+                    )
+                else:
+                    logger.debug(
+                        "Skipping node-name table refresh because client.nodes is unavailable"
                     )
             else:
                 previous_state = await asyncio.to_thread(
