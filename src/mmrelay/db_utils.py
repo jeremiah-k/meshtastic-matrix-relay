@@ -49,13 +49,11 @@ logger = get_logger(name="db_utils")
 
 NodeNameState = tuple[tuple[str, str | None, str | None], ...]
 
-# Table name to singular name type mapping for logging
-_NAME_TYPE_BY_TABLE = {
+# Table name to singular field-name mapping used for logging and column lookup.
+_NAME_FIELD_BY_TABLE = {
     NAMES_TABLE_LONGNAMES: "longname",
     NAMES_TABLE_SHORTNAMES: "shortname",
 }
-
-_NAME_COLUMN_BY_TABLE = _NAME_TYPE_BY_TABLE
 
 _SELECT_STALE_IDS_SQL_BY_TABLE = {
     NAMES_TABLE_LONGNAMES: "SELECT meshtastic_id FROM longnames",
@@ -750,7 +748,7 @@ def _delete_name_by_id(table: str, meshtastic_id: int | str) -> bool:
     if delete_sql is None:
         raise _InvalidNamesTableError(table)
 
-    name_type = _NAME_TYPE_BY_TABLE.get(table, table)
+    name_type = _NAME_FIELD_BY_TABLE.get(table, table)
     id_key = str(meshtastic_id)
     manager = _get_db_manager()
 
@@ -808,9 +806,16 @@ def _normalize_node_name_value(name_value: Any) -> str | None:
         return name_value or None
     try:
         normalized = str(name_value)
-    except Exception:  # noqa: BLE001 - defensive normalization for unknown types
+    except (TypeError, ValueError):
         logger.warning(
             "Ignoring non-string node-name value of type %s due to conversion failure",
+            type(name_value).__name__,
+            exc_info=True,
+        )
+        return None
+    except Exception:  # noqa: BLE001 - defensive guard for custom __str__
+        logger.warning(
+            "Ignoring non-string node-name value of type %s due to unexpected conversion failure",
             type(name_value).__name__,
             exc_info=True,
         )
@@ -835,7 +840,7 @@ def _read_name_values_for_ids(
     if not current_ids:
         return {}
 
-    column_name = _NAME_COLUMN_BY_TABLE.get(table)
+    column_name = _NAME_FIELD_BY_TABLE.get(table)
     select_sql = _SELECT_NAME_VALUES_SQL_BY_TABLE.get(table)
     if column_name is None or select_sql is None:
         raise _InvalidNamesTableError(table)
@@ -944,7 +949,7 @@ def _collect_node_name_snapshot(
 
     snapshot_complete = True
     current_ids: set[str] = set()
-    state_entries: list[tuple[str, str | None, str | None]] = []
+    state_by_id: dict[str, tuple[str | None, str | None]] = {}
 
     for node in nodes.values():
         if not isinstance(node, dict):
@@ -968,15 +973,29 @@ def _collect_node_name_snapshot(
 
         id_key = str(meshtastic_id)
         current_ids.add(id_key)
-        state_entries.append(
-            (
-                id_key,
-                _normalize_node_name_value(user.get(NODE_NAME_FIELD_LONG)),
-                _normalize_node_name_value(user.get(NODE_NAME_FIELD_SHORT)),
-            )
-        )
+        long_name = _normalize_node_name_value(user.get(NODE_NAME_FIELD_LONG))
+        short_name = _normalize_node_name_value(user.get(NODE_NAME_FIELD_SHORT))
 
-    state_entries.sort()
+        existing_entry = state_by_id.get(id_key)
+        if existing_entry is None:
+            state_by_id[id_key] = (long_name, short_name)
+            continue
+
+        # Duplicate IDs can appear in transient snapshots; merge by filling
+        # missing fields rather than adding duplicate state rows.
+        merged_long_name = (
+            existing_entry[0] if existing_entry[0] is not None else long_name
+        )
+        merged_short_name = (
+            existing_entry[1] if existing_entry[1] is not None else short_name
+        )
+        state_by_id[id_key] = (merged_long_name, merged_short_name)
+
+    state_entries = [
+        (id_key, long_name, short_name)
+        for id_key, (long_name, short_name) in state_by_id.items()
+    ]
+    state_entries.sort(key=lambda entry: entry[0])
     return tuple(state_entries), current_ids, snapshot_complete
 
 
@@ -1258,7 +1277,7 @@ def _delete_stale_names(table_name: str, current_ids: set[str]) -> int:
         int: Number of stale entries removed.
     """
     manager = _get_db_manager()
-    name_type = _NAME_TYPE_BY_TABLE.get(table_name, table_name)
+    name_type = _NAME_FIELD_BY_TABLE.get(table_name, table_name)
 
     def _delete(cursor: sqlite3.Cursor) -> int:
         """

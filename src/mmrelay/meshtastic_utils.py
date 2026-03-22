@@ -533,16 +533,17 @@ async def refresh_node_name_tables(
                         logger.debug(
                             "Skipping node-name refresh because client.nodes is not a dict"
                         )
-                        nodes_snapshot = {}
+                        nodes_snapshot = None
                     else:
                         typed_nodes = cast(dict[str, Any], raw_nodes)
                         # Deep-copy nested node payloads so sync work operates on a stable snapshot.
                         nodes_snapshot = copy.deepcopy(typed_nodes)
 
             if nodes_snapshot is None:
-                logger.debug(
-                    "Skipping node-name table refresh because Meshtastic client is unavailable"
-                )
+                if client is None:
+                    logger.debug(
+                        "Skipping node-name table refresh because Meshtastic client is unavailable"
+                    )
             else:
                 previous_state = await asyncio.to_thread(
                     sync_name_tables_if_changed,

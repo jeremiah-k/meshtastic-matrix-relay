@@ -225,28 +225,32 @@ async def main(config: dict[str, Any]) -> None:
     initialize_database()
 
     # Check database config for wipe_on_restart (preferred format)
-    database_config = config.get(CONFIG_SECTION_DATABASE, {})
+    database_config = config.get(CONFIG_SECTION_DATABASE)
     msg_map_config = (
-        database_config.get(CONFIG_KEY_MSG_MAP, {})
+        database_config.get(CONFIG_KEY_MSG_MAP)
         if isinstance(database_config, dict)
-        else {}
+        else None
+    )
+    preferred_msg_map_config = (
+        msg_map_config if isinstance(msg_map_config, dict) else {}
     )
     has_preferred_wipe_on_restart = (
-        isinstance(msg_map_config, dict)
-        and CONFIG_KEY_WIPE_ON_RESTART in msg_map_config
+        CONFIG_KEY_WIPE_ON_RESTART in preferred_msg_map_config
     )
     wipe_on_restart = (
-        msg_map_config.get(CONFIG_KEY_WIPE_ON_RESTART, False)
+        preferred_msg_map_config.get(CONFIG_KEY_WIPE_ON_RESTART, False)
         if has_preferred_wipe_on_restart
         else False
     )
 
     # If not found in database config, check legacy db config
     if not has_preferred_wipe_on_restart:
-        db_config = config.get(CONFIG_SECTION_DATABASE_LEGACY, {})
+        db_config = config.get(CONFIG_SECTION_DATABASE_LEGACY)
         legacy_msg_map_config = (
-            db_config.get(CONFIG_KEY_MSG_MAP, {}) if isinstance(db_config, dict) else {}
+            db_config.get(CONFIG_KEY_MSG_MAP) if isinstance(db_config, dict) else None
         )
+        if not isinstance(legacy_msg_map_config, dict):
+            legacy_msg_map_config = {}
         legacy_wipe_on_restart = legacy_msg_map_config.get(
             CONFIG_KEY_WIPE_ON_RESTART, False
         )

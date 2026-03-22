@@ -285,6 +285,26 @@ class TestDbUtils(unittest.TestCase):
             ),
         )
 
+    def test_build_node_name_state_deduplicates_duplicate_ids(self):
+        """Duplicate Meshtastic IDs should be merged into one stable state row."""
+        nodes = {
+            "node_first": {"user": {"id": "!1", "longName": None, "shortName": "A"}},
+            "node_second": {
+                "user": {"id": "!1", "longName": "Alpha", "shortName": None}
+            },
+            "node_other": {"user": {"id": "!2", "longName": "Beta", "shortName": "B"}},
+        }
+
+        state = build_node_name_state(nodes)
+
+        self.assertEqual(
+            state,
+            (
+                ("!1", "Alpha", "A"),
+                ("!2", "Beta", "B"),
+            ),
+        )
+
     def test_sync_name_tables_if_changed_skips_redundant_updates(self):
         """A matching previous state should avoid full long/short upserts."""
         initialize_database()
@@ -292,22 +312,18 @@ class TestDbUtils(unittest.TestCase):
             "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
         }
         first_state = sync_name_tables_if_changed(nodes, previous_state=None)
+        save_longname("!stale", "Stale Longname")
+        save_shortname("!stale", "STL")
+        self.assertEqual(get_longname("!stale"), "Stale Longname")
+        self.assertEqual(get_shortname("!stale"), "STL")
 
-        with (
-            patch("mmrelay.db_utils.update_longnames") as mock_update_longnames,
-            patch("mmrelay.db_utils.update_shortnames") as mock_update_shortnames,
-            patch("mmrelay.db_utils.delete_stale_longnames") as mock_delete_longnames,
-            patch("mmrelay.db_utils.delete_stale_shortnames") as mock_delete_shortnames,
-        ):
-            second_state = sync_name_tables_if_changed(
-                nodes, previous_state=first_state
-            )
+        second_state = sync_name_tables_if_changed(nodes, previous_state=first_state)
 
         self.assertEqual(second_state, first_state)
-        mock_update_longnames.assert_not_called()
-        mock_update_shortnames.assert_not_called()
-        mock_delete_longnames.assert_called_once_with({"!1"})
-        mock_delete_shortnames.assert_called_once_with({"!1"})
+        self.assertEqual(get_longname("!1"), "Alpha")
+        self.assertEqual(get_shortname("!1"), "A")
+        self.assertIsNone(get_longname("!stale"))
+        self.assertIsNone(get_shortname("!stale"))
 
     def test_sync_name_tables_if_partial_snapshot_skips_pruning(self):
         """Unchanged partial snapshots should skip stale-row pruning for safety."""
@@ -317,22 +333,18 @@ class TestDbUtils(unittest.TestCase):
             "bad_node": {"user": {"longName": "Missing ID"}},
         }
         first_state = sync_name_tables_if_changed(nodes, previous_state=None)
+        save_longname("!stale", "Stale Longname")
+        save_shortname("!stale", "STL")
+        self.assertEqual(get_longname("!stale"), "Stale Longname")
+        self.assertEqual(get_shortname("!stale"), "STL")
 
-        with (
-            patch("mmrelay.db_utils.update_longnames") as mock_update_longnames,
-            patch("mmrelay.db_utils.update_shortnames") as mock_update_shortnames,
-            patch("mmrelay.db_utils.delete_stale_longnames") as mock_delete_longnames,
-            patch("mmrelay.db_utils.delete_stale_shortnames") as mock_delete_shortnames,
-        ):
-            second_state = sync_name_tables_if_changed(
-                nodes, previous_state=first_state
-            )
+        second_state = sync_name_tables_if_changed(nodes, previous_state=first_state)
 
         self.assertEqual(second_state, first_state)
-        mock_update_longnames.assert_not_called()
-        mock_update_shortnames.assert_not_called()
-        mock_delete_longnames.assert_not_called()
-        mock_delete_shortnames.assert_not_called()
+        self.assertEqual(get_longname("!1"), "Alpha")
+        self.assertEqual(get_shortname("!1"), "A")
+        self.assertEqual(get_longname("!stale"), "Stale Longname")
+        self.assertEqual(get_shortname("!stale"), "STL")
 
     def test_sync_name_tables_if_changed_heals_missing_row_on_unchanged_state(self):
         """Unchanged snapshots should repair missing per-ID name rows when drift is detected."""
@@ -365,21 +377,17 @@ class TestDbUtils(unittest.TestCase):
                 "user": {"id": "!1", "longName": "Alpha Prime", "shortName": "A1"}
             },
         }
-        with (
-            patch(
-                "mmrelay.db_utils.update_longnames", return_value=True
-            ) as mock_update_longnames,
-            patch(
-                "mmrelay.db_utils.update_shortnames", return_value=True
-            ) as mock_update_shortnames,
-        ):
-            second_state = sync_name_tables_if_changed(
-                updated_nodes, previous_state=first_state
-            )
+        second_state = sync_name_tables_if_changed(
+            updated_nodes, previous_state=first_state
+        )
 
         self.assertNotEqual(second_state, first_state)
-        mock_update_longnames.assert_called_once_with(updated_nodes)
-        mock_update_shortnames.assert_called_once_with(updated_nodes)
+        self.assertEqual(
+            second_state,
+            (("!1", "Alpha Prime", "A1"),),
+        )
+        self.assertEqual(get_longname("!1"), "Alpha Prime")
+        self.assertEqual(get_shortname("!1"), "A1")
 
     def test_sync_name_tables_if_changed_retries_after_write_failure(self):
         """Changed snapshots should not advance state when a names-table update fails."""
@@ -394,21 +402,21 @@ class TestDbUtils(unittest.TestCase):
                 "user": {"id": "!1", "longName": "Alpha Prime", "shortName": "A1"}
             },
         }
-        with (
-            patch(
-                "mmrelay.db_utils.update_longnames", return_value=False
-            ) as mock_update_longnames,
-            patch(
-                "mmrelay.db_utils.update_shortnames", return_value=True
-            ) as mock_update_shortnames,
-        ):
+        with patch("mmrelay.db_utils.save_longname", return_value=False):
             second_state = sync_name_tables_if_changed(
                 updated_nodes, previous_state=first_state
             )
 
         self.assertEqual(second_state, first_state)
-        mock_update_longnames.assert_called_once_with(updated_nodes)
-        mock_update_shortnames.assert_called_once_with(updated_nodes)
+        self.assertEqual(get_longname("!1"), "Alpha")
+        self.assertEqual(get_shortname("!1"), "A1")
+
+        retry_state = sync_name_tables_if_changed(
+            updated_nodes, previous_state=second_state
+        )
+        self.assertEqual(retry_state, (("!1", "Alpha Prime", "A1"),))
+        self.assertEqual(get_longname("!1"), "Alpha Prime")
+        self.assertEqual(get_shortname("!1"), "A1")
 
     def test_sync_name_tables_if_changed_retries_from_cold_start_on_write_failure(self):
         """A first-run write failure should keep state unset so next loop retries."""
@@ -416,55 +424,47 @@ class TestDbUtils(unittest.TestCase):
         nodes = {
             "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
         }
-        with (
-            patch(
-                "mmrelay.db_utils.update_longnames", return_value=False
-            ) as mock_update_longnames,
-            patch(
-                "mmrelay.db_utils.update_shortnames", return_value=True
-            ) as mock_update_shortnames,
-        ):
+        with patch("mmrelay.db_utils.save_longname", return_value=False):
             state = sync_name_tables_if_changed(nodes, previous_state=None)
 
         self.assertIsNone(state)
-        mock_update_longnames.assert_called_once_with(nodes)
-        mock_update_shortnames.assert_called_once_with(nodes)
+        self.assertIsNone(get_longname("!1"))
+        self.assertEqual(get_shortname("!1"), "A")
+
+        retry_state = sync_name_tables_if_changed(nodes, previous_state=state)
+        self.assertEqual(retry_state, (("!1", "Alpha", "A"),))
+        self.assertEqual(get_longname("!1"), "Alpha")
+        self.assertEqual(get_shortname("!1"), "A")
 
     def test_sync_name_tables_if_changed_handles_none_nodes(self):
         """None node snapshots should be treated as empty dict snapshots."""
         initialize_database()
 
-        with (
-            patch(
-                "mmrelay.db_utils.update_longnames", return_value=True
-            ) as mock_update_longnames,
-            patch(
-                "mmrelay.db_utils.update_shortnames", return_value=True
-            ) as mock_update_shortnames,
-        ):
-            state = sync_name_tables_if_changed(None, previous_state=None)
+        state = sync_name_tables_if_changed(None, previous_state=None)
 
         self.assertEqual(state, ())
-        mock_update_longnames.assert_called_once_with({})
-        mock_update_shortnames.assert_called_once_with({})
+        with sqlite3.connect(self.test_db_path) as conn:
+            longname_rows = conn.execute("SELECT COUNT(*) FROM longnames").fetchone()
+            shortname_rows = conn.execute("SELECT COUNT(*) FROM shortnames").fetchone()
+        self.assertIsNotNone(longname_rows)
+        self.assertIsNotNone(shortname_rows)
+        self.assertEqual(longname_rows[0], 0)
+        self.assertEqual(shortname_rows[0], 0)
 
     def test_sync_name_tables_if_changed_handles_non_dict_nodes(self):
         """Non-dict node snapshots should be treated as empty dict snapshots."""
         initialize_database()
 
-        with (
-            patch(
-                "mmrelay.db_utils.update_longnames", return_value=True
-            ) as mock_update_longnames,
-            patch(
-                "mmrelay.db_utils.update_shortnames", return_value=True
-            ) as mock_update_shortnames,
-        ):
-            state = sync_name_tables_if_changed([], previous_state=None)  # type: ignore[arg-type]
+        state = sync_name_tables_if_changed([], previous_state=None)  # type: ignore[arg-type]
 
         self.assertEqual(state, ())
-        mock_update_longnames.assert_called_once_with({})
-        mock_update_shortnames.assert_called_once_with({})
+        with sqlite3.connect(self.test_db_path) as conn:
+            longname_rows = conn.execute("SELECT COUNT(*) FROM longnames").fetchone()
+            shortname_rows = conn.execute("SELECT COUNT(*) FROM shortnames").fetchone()
+        self.assertIsNotNone(longname_rows)
+        self.assertIsNotNone(shortname_rows)
+        self.assertEqual(longname_rows[0], 0)
+        self.assertEqual(shortname_rows[0], 0)
 
     def test_update_names_preserve_zero_id_for_stale_tracking(self):
         """
