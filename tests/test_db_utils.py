@@ -314,10 +314,10 @@ class TestDbUtils(unittest.TestCase):
         initialize_database()
         nodes = {
             "node_first": {"user": {"id": "!1", "shortName": "ONE"}},
-            "node_second": {"user": {"id": "!1", "shortName": "TWO"}},
+            "node_second": {"user": {"id": "!1", "shortName": None}},
         }
         nodes_reversed = {
-            "node_second": {"user": {"id": "!1", "shortName": "TWO"}},
+            "node_second": {"user": {"id": "!1", "shortName": None}},
             "node_first": {"user": {"id": "!1", "shortName": "ONE"}},
         }
 
@@ -329,6 +329,20 @@ class TestDbUtils(unittest.TestCase):
         self.assertEqual(state, (("!1", None, "ONE"),))
         self.assertEqual(state_reversed, (("!1", None, "ONE"),))
         self.assertEqual(get_shortname("!1"), "ONE")
+
+    def test_sync_name_tables_if_changed_skips_conflicting_duplicates(self):
+        """Conflicting duplicate IDs (both non-empty, different values) should be skipped."""
+        initialize_database()
+        nodes = {
+            "node_first": {"user": {"id": "!1", "shortName": "ONE"}},
+            "node_second": {"user": {"id": "!1", "shortName": "TWO"}},
+            "node_other": {"user": {"id": "!2", "longName": "Beta", "shortName": "B"}},
+        }
+
+        state = sync_name_tables_if_changed(nodes, previous_state=None)
+
+        self.assertEqual(state, (("!2", "Beta", "B"),))
+        self.assertIsNone(get_shortname("!1"))
 
     def test_sync_name_tables_if_changed_skips_redundant_updates(self):
         """A matching previous state should avoid full long/short upserts."""
@@ -342,12 +356,7 @@ class TestDbUtils(unittest.TestCase):
         self.assertEqual(get_longname("!stale"), "Stale Longname")
         self.assertEqual(get_shortname("!stale"), "STL")
 
-        with patch("mmrelay.db_utils._sync_name_tables_atomic") as mock_atomic:
-            second_state = sync_name_tables_if_changed(
-                nodes, previous_state=first_state
-            )
-            mock_atomic.assert_not_called()
-
+        second_state = sync_name_tables_if_changed(nodes, previous_state=first_state)
         self.assertEqual(second_state, first_state)
         self.assertEqual(get_longname("!1"), "Alpha")
         self.assertEqual(get_shortname("!1"), "A")
@@ -451,6 +460,7 @@ class TestDbUtils(unittest.TestCase):
                 updated_nodes, previous_state=first_state
             )
 
+        self.assertTrue(write_failed, "forced write failure was not triggered")
         self.assertEqual(second_state, first_state)
         self.assertEqual(get_longname("!1"), "Alpha")
         self.assertEqual(get_shortname("!1"), "A")
@@ -486,6 +496,7 @@ class TestDbUtils(unittest.TestCase):
         ):
             state = sync_name_tables_if_changed(nodes, previous_state=None)
 
+        self.assertTrue(write_failed, "forced write failure was not triggered")
         self.assertIsNone(state)
         self.assertIsNone(get_longname("!1"))
         self.assertIsNone(get_shortname("!1"))

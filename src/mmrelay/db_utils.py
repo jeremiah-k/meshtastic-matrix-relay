@@ -49,6 +49,8 @@ logger = get_logger(name="db_utils")
 
 NodeNameState = tuple[tuple[str, str | None, str | None], ...]
 
+_CONFLICT_SENTINEL = object()
+
 # Table name to singular field-name mapping used for logging and column lookup.
 _NAME_FIELD_BY_TABLE = {
     NAMES_TABLE_LONGNAMES: "longname",
@@ -987,7 +989,24 @@ def _collect_node_name_snapshot(
         # so state and DB writes are order-independent.
         merged_long_name = _merge_node_name_values(existing_entry[0], long_name)
         merged_short_name = _merge_node_name_values(existing_entry[1], short_name)
-        state_by_id[id_key] = (merged_long_name, merged_short_name)
+
+        # If either field has a conflict, skip this ID entirely to avoid
+        # writing incorrect data. The conflict will clear in a future snapshot.
+        if (
+            merged_long_name is _CONFLICT_SENTINEL
+            or merged_short_name is _CONFLICT_SENTINEL
+        ):
+            logger.warning(
+                "Skipping node %s due to conflicting duplicate names in snapshot",
+                id_key,
+            )
+            del state_by_id[id_key]
+            current_ids.discard(id_key)
+        else:
+            state_by_id[id_key] = cast(
+                tuple[str | None, str | None],
+                (merged_long_name, merged_short_name),
+            )
 
     state_entries = [
         (id_key, long_name, short_name)
@@ -999,18 +1018,21 @@ def _collect_node_name_snapshot(
 
 def _merge_node_name_values(
     existing_value: str | None, incoming_value: str | None
-) -> str | None:
+) -> str | None | object:
     """
     Merge duplicate-ID name values into a deterministic canonical value.
 
-    For conflicting non-empty values, choose lexicographically smallest so
-    results do not depend on iteration order.
+    When both values are non-empty and different, returns _CONFLICT_SENTINEL
+    to signal that the conflict cannot be resolved safely and the field
+    should be skipped for this ID.
     """
     if existing_value is None:
         return incoming_value
     if incoming_value is None:
         return existing_value
-    return min(existing_value, incoming_value)
+    if existing_value == incoming_value:
+        return existing_value
+    return _CONFLICT_SENTINEL
 
 
 def _sync_name_tables_atomic(
@@ -1111,11 +1133,11 @@ def sync_name_tables_if_changed(
             )
             if longnames_deleted is None or shortnames_deleted is None:
                 return previous_state
-            if not _name_tables_match_state(current_state):
-                if not _sync_name_tables_atomic(
-                    current_state, current_ids, snapshot_complete
-                ):
-                    return previous_state
+        if not _name_tables_match_state(current_state):
+            if not _sync_name_tables_atomic(
+                current_state, current_ids, snapshot_complete
+            ):
+                return previous_state
         return current_state
 
     if _sync_name_tables_atomic(current_state, current_ids, snapshot_complete):

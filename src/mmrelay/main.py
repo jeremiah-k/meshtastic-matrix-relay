@@ -488,8 +488,12 @@ async def main(config: dict[str, Any]) -> None:
         shutdown()
     finally:
         node_name_refresh_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
+        try:
             await node_name_refresh_task
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            matrix_logger.exception("Error during node name refresh task cleanup")
         if ready_task is not None:
             ready_task.cancel()
             try:
