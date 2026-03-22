@@ -1379,20 +1379,53 @@ wait_for_name_entry_absent() {
 	local table_name=$2
 	local meshtastic_id=$3
 	local timeout_seconds=$4
-	"${PYTHON_BIN}" - "${db_path}" "${table_name}" "${meshtastic_id}" "${timeout_seconds}" <<'PY'
+	local relay_pid=${5-}
+	local relay_name=${6:-MMRelay}
+	local relay_log_path=${7-}
+	"${PYTHON_BIN}" - "${db_path}" "${table_name}" "${meshtastic_id}" "${timeout_seconds}" "${relay_pid}" "${relay_name}" "${relay_log_path}" <<'PY'
+import os
 import sqlite3
 import sys
 import time
 
-db_path, table_name, meshtastic_id, timeout_seconds_raw = sys.argv[1:5]
+(
+    db_path,
+    table_name,
+    meshtastic_id,
+    timeout_seconds_raw,
+    relay_pid_raw,
+    relay_name,
+    relay_log_path,
+) = sys.argv[1:8]
 timeout_seconds = int(timeout_seconds_raw)
 allowed_tables = {"longnames", "shortnames"}
 if table_name not in allowed_tables:
     raise SystemExit(f"Invalid table name: {table_name}")
 
+relay_pid = int(relay_pid_raw) if relay_pid_raw else None
 deadline = time.monotonic() + timeout_seconds
 last_error = None
+attempts = 0
 while time.monotonic() < deadline:
+    attempts += 1
+    if relay_pid is not None:
+        try:
+            os.kill(relay_pid, 0)
+        except OSError:
+            print(
+                f"{relay_name} process (pid={relay_pid}) exited while waiting for stale row pruning",
+                file=sys.stderr,
+            )
+            if relay_log_path and os.path.exists(relay_log_path):
+                print(
+                    f"Last 20 lines from {relay_name} log ({relay_log_path}):",
+                    file=sys.stderr,
+                )
+                with open(relay_log_path, encoding="utf-8", errors="replace") as handle:
+                    lines = handle.readlines()
+                for line in lines[-20:]:
+                    print(line.rstrip("\n"), file=sys.stderr)
+            raise SystemExit(1)
     try:
         with sqlite3.connect(db_path, timeout=5) as conn:
             conn.execute("PRAGMA busy_timeout = 5000")
@@ -1408,12 +1441,40 @@ while time.monotonic() < deadline:
 
 if last_error:
     print(f"Last SQLite error: {last_error}", file=sys.stderr)
+try:
+    with sqlite3.connect(db_path, timeout=5) as conn:
+        conn.execute("PRAGMA busy_timeout = 5000")
+        target_row = conn.execute(
+            f"SELECT * FROM {table_name} WHERE meshtastic_id=? LIMIT 1",
+            (meshtastic_id,),
+        ).fetchone()
+        row_count = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()
+except sqlite3.Error as exc:
+    target_row = None
+    row_count = None
+    print(f"Failed to read debug rows from {table_name}: {exc}", file=sys.stderr)
 print(
     f"Timed out waiting for stale names row removal in {table_name} "
-    f"for meshtastic_id={meshtastic_id}",
+    f"for meshtastic_id={meshtastic_id} after {attempts} checks",
     file=sys.stderr,
 )
+if row_count is not None:
+    print(f"{table_name} row count at timeout: {row_count[0]}", file=sys.stderr)
+if target_row is not None:
+    print(f"Remaining target row: {target_row}", file=sys.stderr)
 raise SystemExit(1)
+PY
+}
+
+# generate_unique_test_id returns a reproducibly prefixed random ID for test rows.
+generate_unique_test_id() {
+	local prefix=$1
+	"${PYTHON_BIN}" - "${prefix}" <<'PY'
+import secrets
+import sys
+
+prefix = sys.argv[1]
+print(f"!{prefix}_{secrets.token_hex(12)}")
 PY
 }
 
@@ -1518,14 +1579,15 @@ import sys
 
 name_prune_wait_timeout = float(sys.argv[1])
 node_name_refresh_interval = float(sys.argv[2])
+minimum_timeout = node_name_refresh_interval + 2.0
 if (
     not math.isfinite(name_prune_wait_timeout)
     or not math.isfinite(node_name_refresh_interval)
-    or name_prune_wait_timeout <= node_name_refresh_interval
+    or name_prune_wait_timeout < minimum_timeout
 ):
     raise SystemExit(1)
 PY
-	echo "NAME_PRUNE_WAIT_TIMEOUT_SECONDS must be greater than NODE_NAME_REFRESH_INTERVAL_SECONDS." >&2
+	echo "NAME_PRUNE_WAIT_TIMEOUT_SECONDS must be at least 2 seconds greater than NODE_NAME_REFRESH_INTERVAL_SECONDS." >&2
 	exit 1
 fi
 if [[ -z ${MESHNET_NAME_A} || -z ${MESHNET_NAME_B} ]]; then
@@ -2319,8 +2381,8 @@ run_or_fail "Reaction did not relay to Mesh B" \
 pass_test "Encrypted-room user reaction relayed to both meshes"
 
 # Test 7: stale name rows are pruned to match current node DB snapshot.
-STALE_NAME_ID_A="!MMRELAY_STALE_A_$(date +%s)_${RANDOM}"
-STALE_NAME_ID_B="!MMRELAY_STALE_B_$(date +%s)_${RANDOM}"
+STALE_NAME_ID_A=$(generate_unique_test_id "MMRELAY_STALE_A")
+STALE_NAME_ID_B=$(generate_unique_test_id "MMRELAY_STALE_B")
 start_test "Test 7" "Test 7: stale name rows are pruned to match current node DB..."
 run_or_fail "Failed to seed stale longname in instance A" \
 	upsert_name_entry \
@@ -2356,25 +2418,37 @@ run_or_fail "Stale longname row in instance A was not pruned" \
 	"${MMRELAY_DB_PATH_A}" \
 	"longnames" \
 	"${STALE_NAME_ID_A}" \
-	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}"
+	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" \
+	"${MMRELAY_PID_A}" \
+	"MMRelay A" \
+	"${MMRELAY_LOG_PATH_A}"
 run_or_fail "Stale shortname row in instance A was not pruned" \
 	wait_for_name_entry_absent \
 	"${MMRELAY_DB_PATH_A}" \
 	"shortnames" \
 	"${STALE_NAME_ID_A}" \
-	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}"
+	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" \
+	"${MMRELAY_PID_A}" \
+	"MMRelay A" \
+	"${MMRELAY_LOG_PATH_A}"
 run_or_fail "Stale longname row in instance B was not pruned" \
 	wait_for_name_entry_absent \
 	"${MMRELAY_DB_PATH_B}" \
 	"longnames" \
 	"${STALE_NAME_ID_B}" \
-	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}"
+	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" \
+	"${MMRELAY_PID_B}" \
+	"MMRelay B" \
+	"${MMRELAY_LOG_PATH_B}"
 run_or_fail "Stale shortname row in instance B was not pruned" \
 	wait_for_name_entry_absent \
 	"${MMRELAY_DB_PATH_B}" \
 	"shortnames" \
 	"${STALE_NAME_ID_B}" \
-	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}"
+	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" \
+	"${MMRELAY_PID_B}" \
+	"MMRelay B" \
+	"${MMRELAY_LOG_PATH_B}"
 pass_test "Periodic node-name refresh pruned stale rows in both relays"
 
 write_observability_report

@@ -334,6 +334,24 @@ class TestDbUtils(unittest.TestCase):
         mock_delete_longnames.assert_not_called()
         mock_delete_shortnames.assert_not_called()
 
+    def test_sync_name_tables_if_changed_heals_missing_row_on_unchanged_state(self):
+        """Unchanged snapshots should repair missing per-ID name rows when drift is detected."""
+        initialize_database()
+        nodes = {
+            "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
+        }
+        first_state = sync_name_tables_if_changed(nodes, previous_state=None)
+
+        with sqlite3.connect(self.test_db_path) as conn:
+            conn.execute("DELETE FROM longnames WHERE meshtastic_id = ?", ("!1",))
+
+        self.assertIsNone(get_longname("!1"))
+        second_state = sync_name_tables_if_changed(nodes, previous_state=first_state)
+
+        self.assertEqual(second_state, first_state)
+        self.assertEqual(get_longname("!1"), "Alpha")
+        self.assertEqual(get_shortname("!1"), "A")
+
     def test_sync_name_tables_if_changed_updates_on_change(self):
         """State changes should trigger table updates and return the new state."""
         initialize_database()
@@ -412,6 +430,42 @@ class TestDbUtils(unittest.TestCase):
         mock_update_longnames.assert_called_once_with(nodes)
         mock_update_shortnames.assert_called_once_with(nodes)
 
+    def test_sync_name_tables_if_changed_handles_none_nodes(self):
+        """None node snapshots should be treated as empty dict snapshots."""
+        initialize_database()
+
+        with (
+            patch(
+                "mmrelay.db_utils.update_longnames", return_value=True
+            ) as mock_update_longnames,
+            patch(
+                "mmrelay.db_utils.update_shortnames", return_value=True
+            ) as mock_update_shortnames,
+        ):
+            state = sync_name_tables_if_changed(None, previous_state=None)
+
+        self.assertEqual(state, ())
+        mock_update_longnames.assert_called_once_with({})
+        mock_update_shortnames.assert_called_once_with({})
+
+    def test_sync_name_tables_if_changed_handles_non_dict_nodes(self):
+        """Non-dict node snapshots should be treated as empty dict snapshots."""
+        initialize_database()
+
+        with (
+            patch(
+                "mmrelay.db_utils.update_longnames", return_value=True
+            ) as mock_update_longnames,
+            patch(
+                "mmrelay.db_utils.update_shortnames", return_value=True
+            ) as mock_update_shortnames,
+        ):
+            state = sync_name_tables_if_changed([], previous_state=None)  # type: ignore[arg-type]
+
+        self.assertEqual(state, ())
+        mock_update_longnames.assert_called_once_with({})
+        mock_update_shortnames.assert_called_once_with({})
+
     def test_update_names_preserve_zero_id_for_stale_tracking(self):
         """
         Test that numeric zero IDs are treated as valid IDs, not skipped as missing.
@@ -437,6 +491,27 @@ class TestDbUtils(unittest.TestCase):
         self.assertEqual(get_shortname("0"), "Z0")
         self.assertIsNone(get_longname("1"))
         self.assertIsNone(get_shortname("1"))
+
+    def test_update_names_clear_rows_when_name_is_missing(self):
+        """
+        Test that empty/None name values clear existing per-node rows.
+        """
+        initialize_database()
+
+        initial_nodes = {
+            "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
+        }
+        update_longnames(initial_nodes)
+        update_shortnames(initial_nodes)
+
+        cleared_nodes = {
+            "node_a": {"user": {"id": "!1", "longName": "", "shortName": None}},
+        }
+        update_longnames(cleared_nodes)
+        update_shortnames(cleared_nodes)
+
+        self.assertIsNone(get_longname("!1"))
+        self.assertIsNone(get_shortname("!1"))
 
     def test_update_longnames_removes_stale_entries(self):
         """

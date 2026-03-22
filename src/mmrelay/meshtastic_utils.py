@@ -1,6 +1,7 @@
 import asyncio
 import atexit
 import contextlib
+import copy
 import functools
 import importlib.util
 import inspect
@@ -519,22 +520,27 @@ async def refresh_node_name_tables(
 
     previous_state: NodeNameState | None = None
     while not shutdown_event.is_set():
-        if meshtastic_client is not None:
-            try:
-                nodes_snapshot = dict(meshtastic_client.nodes)
+        try:
+            with meshtastic_lock:
+                client = meshtastic_client
+                if client is None:
+                    nodes_snapshot = None
+                else:
+                    # Deep-copy nested node payloads so sync work operates on a stable snapshot.
+                    nodes_snapshot = copy.deepcopy(dict(client.nodes))
+
+            if nodes_snapshot is None:
+                logger.debug(
+                    "Skipping node-name table refresh because Meshtastic client is unavailable"
+                )
+            else:
                 previous_state = await asyncio.to_thread(
                     sync_name_tables_if_changed,
                     nodes_snapshot,
                     previous_state,
                 )
-            except Exception:
-                logger.exception(
-                    "Failed to refresh node-name tables from node snapshot"
-                )
-        else:
-            logger.debug(
-                "Skipping node-name table refresh because Meshtastic client is unavailable"
-            )
+        except Exception:
+            logger.exception("Failed to refresh node-name tables from node snapshot")
 
         if interval <= 0:
             logger.debug(
