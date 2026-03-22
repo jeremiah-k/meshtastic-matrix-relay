@@ -549,18 +549,7 @@ async def refresh_node_name_tables(
                         )
                         nodes_snapshot = None
                     else:
-                        typed_nodes = cast(dict[str, Any], raw_nodes)
-                        nodes_snapshot = {
-                            node_key: {
-                                "user": {
-                                    "id": node.get("user", {}).get("id"),
-                                    "longName": node.get("user", {}).get("longName"),
-                                    "shortName": node.get("user", {}).get("shortName"),
-                                }
-                            }
-                            for node_key, node in typed_nodes.items()
-                            if isinstance(node, dict)
-                        }
+                        nodes_snapshot = copy.deepcopy(cast(dict[str, Any], raw_nodes))
 
             if nodes_snapshot is None:
                 if client is None:

@@ -496,12 +496,12 @@ class TestDbUtils(unittest.TestCase):
         self.assertEqual(get_shortname("!1"), "A")
 
     def test_sync_name_tables_if_changed_handles_none_nodes(self):
-        """None node snapshots should be treated as empty dict snapshots."""
+        """None node snapshots should return previous_state without modifying the database."""
         initialize_database()
 
         state = sync_name_tables_if_changed(None, previous_state=None)
 
-        self.assertEqual(state, ())
+        self.assertIsNone(state)
         with sqlite3.connect(self.test_db_path) as conn:
             longname_rows = conn.execute("SELECT COUNT(*) FROM longnames").fetchone()
             shortname_rows = conn.execute("SELECT COUNT(*) FROM shortnames").fetchone()
@@ -511,13 +511,13 @@ class TestDbUtils(unittest.TestCase):
         self.assertEqual(shortname_rows[0], 0)
 
     def test_sync_name_tables_if_changed_handles_non_dict_nodes(self):
-        """Non-dict node snapshots should be treated as empty dict snapshots."""
+        """Non-dict node snapshots should return previous_state without modifying the database."""
         initialize_database()
 
         bad_nodes: Any = []
         state = sync_name_tables_if_changed(bad_nodes, previous_state=None)
 
-        self.assertEqual(state, ())
+        self.assertIsNone(state)
         with sqlite3.connect(self.test_db_path) as conn:
             longname_rows = conn.execute("SELECT COUNT(*) FROM longnames").fetchone()
             shortname_rows = conn.execute("SELECT COUNT(*) FROM shortnames").fetchone()

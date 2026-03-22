@@ -1013,13 +1013,21 @@ def _merge_node_name_values(
     return min(existing_value, incoming_value)
 
 
-def _sync_name_tables_atomic(nodes: dict[str, Any]) -> bool:
+def _sync_name_tables_atomic(
+    state: NodeNameState,
+    current_ids: set[str],
+    snapshot_complete: bool,
+) -> bool:
     """
     Persist longname/shortname rows for one snapshot in a single transaction.
 
     This keeps names tables consistent if any write fails mid-sync.
+
+    Parameters:
+        state (NodeNameState): Precomputed node-name state snapshot.
+        current_ids (set[str]): Precomputed set of current Meshtastic IDs.
+        snapshot_complete (bool): Precomputed snapshot completeness flag.
     """
-    state, current_ids, snapshot_complete = _collect_node_name_snapshot(nodes)
     manager = _get_db_manager()
     long_delete_sql = _DELETE_STALE_ID_SQL_BY_TABLE[NAMES_TABLE_LONGNAMES]
     short_delete_sql = _DELETE_STALE_ID_SQL_BY_TABLE[NAMES_TABLE_SHORTNAMES]
@@ -1084,8 +1092,10 @@ def sync_name_tables_if_changed(
         when writes succeed; otherwise the previous state to force retry on the
         next identical snapshot.
     """
+    if nodes is None or not isinstance(nodes, dict):
+        return previous_state
+
     current_state, current_ids, snapshot_complete = _collect_node_name_snapshot(nodes)
-    nodes_dict = nodes if isinstance(nodes, dict) else {}
 
     if previous_state is not None and current_state == previous_state:
         if snapshot_complete:
@@ -1102,11 +1112,13 @@ def sync_name_tables_if_changed(
             if longnames_deleted is None or shortnames_deleted is None:
                 return previous_state
             if not _name_tables_match_state(current_state):
-                if not _sync_name_tables_atomic(nodes_dict):
+                if not _sync_name_tables_atomic(
+                    current_state, current_ids, snapshot_complete
+                ):
                     return previous_state
         return current_state
 
-    if _sync_name_tables_atomic(nodes_dict):
+    if _sync_name_tables_atomic(current_state, current_ids, snapshot_complete):
         return current_state
     return previous_state
 
@@ -1126,6 +1138,14 @@ def _update_names_core(
     `user.id` AND all name saves succeeded. If any node is present without enough
     identity data, or if any save operation fails, existing names are preserved
     rather than risking false deletions from an incomplete snapshot.
+
+    .. note::
+
+        This function performs updates non-atomically. Each call to ``save_name``
+        or ``delete_name`` initiates a separate database transaction. If an error
+        occurs midway through the loop, the database could be left in a partially
+        updated state. For atomic updates, use :func:`_sync_name_tables_atomic`
+        instead.
 
     Parameters:
         nodes (dict[str, Any]): Snapshot of node records containing optional

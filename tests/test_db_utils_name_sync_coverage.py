@@ -41,8 +41,8 @@ def configured_temp_db() -> str:
     db_path = f"{temp_dir}/test_meshtastic.sqlite"
     original_config = dbu.config
     dbu.config = {"database": {"path": db_path}}
-    initialize_database()
     try:
+        initialize_database()
         yield db_path
     finally:
         _reset_db_manager()
