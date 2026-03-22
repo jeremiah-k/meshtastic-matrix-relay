@@ -28,9 +28,11 @@ from pubsub import pub
 from mmrelay.config import get_meshtastic_config_value
 from mmrelay.constants.config import (
     CONFIG_KEY_MESHNET_NAME,
+    CONFIG_KEY_NODE_NAME_REFRESH_INTERVAL,
     CONFIG_SECTION_MESHTASTIC,
     DEFAULT_DETECTION_SENSOR,
     DEFAULT_HEALTH_CHECK_ENABLED,
+    DEFAULT_NODE_NAME_REFRESH_INTERVAL,
 )
 from mmrelay.constants.formats import (
     DETECTION_SENSOR_APP,
@@ -74,6 +76,7 @@ from mmrelay.db_utils import (
     get_shortname,
     save_longname,
     save_shortname,
+    sync_name_tables_if_changed,
 )
 from mmrelay.log_utils import get_logger
 from mmrelay.runtime_utils import is_running_as_service
@@ -3831,6 +3834,83 @@ async def check_connection() -> None:
             logger.debug("Skipping connection check - no client available")
 
         await asyncio.sleep(heartbeat_interval)
+
+
+def get_node_name_refresh_interval_seconds(passed_config: dict[str, Any]) -> float:
+    """
+    Return the configured node-name refresh interval in seconds.
+
+    Uses `meshtastic.node_name_refresh_interval` when present, otherwise falls
+    back to `DEFAULT_NODE_NAME_REFRESH_INTERVAL`.
+    """
+    meshtastic_config = passed_config.get(CONFIG_SECTION_MESHTASTIC, {})
+    if not isinstance(meshtastic_config, dict):
+        return DEFAULT_NODE_NAME_REFRESH_INTERVAL
+
+    raw_interval = meshtastic_config.get(
+        CONFIG_KEY_NODE_NAME_REFRESH_INTERVAL,
+        DEFAULT_NODE_NAME_REFRESH_INTERVAL,
+    )
+    try:
+        return float(raw_interval)
+    except (TypeError, ValueError):
+        logger.warning(
+            "Invalid meshtastic.node_name_refresh_interval=%r; defaulting to %.1f",
+            raw_interval,
+            DEFAULT_NODE_NAME_REFRESH_INTERVAL,
+        )
+        return DEFAULT_NODE_NAME_REFRESH_INTERVAL
+
+
+async def refresh_node_name_tables(
+    shutdown_event: asyncio.Event,
+    refresh_interval_seconds: float = DEFAULT_NODE_NAME_REFRESH_INTERVAL,
+) -> None:
+    """
+    Periodically sync Meshtastic node names into SQLite while the app is running.
+    """
+    global meshtastic_client, shutting_down
+
+    if refresh_interval_seconds <= 0:
+        logger.info(
+            "Node-name refresh disabled because interval is %s",
+            refresh_interval_seconds,
+        )
+        return
+
+    previous_state: tuple[tuple[str, str, str], ...] | None = None
+    previous_client: Any = None
+
+    while not shutting_down and not shutdown_event.is_set():
+        current_client = meshtastic_client
+        if current_client is not previous_client:
+            previous_state = None
+            previous_client = current_client
+
+        if current_client is not None:
+            nodes = getattr(current_client, "nodes", None)
+            if isinstance(nodes, dict):
+                nodes_snapshot = dict(nodes)
+                try:
+                    previous_state = await asyncio.to_thread(
+                        sync_name_tables_if_changed,
+                        nodes_snapshot,
+                        previous_state,
+                    )
+                except Exception:  # noqa: BLE001 - keep background sync alive
+                    logger.exception("Error refreshing Meshtastic node-name tables")
+            else:
+                logger.debug(
+                    "Skipping node-name refresh because Meshtastic nodes are unavailable"
+                )
+
+        try:
+            await asyncio.wait_for(
+                shutdown_event.wait(),
+                timeout=refresh_interval_seconds,
+            )
+        except asyncio.TimeoutError:
+            continue
 
 
 def send_text_reply(

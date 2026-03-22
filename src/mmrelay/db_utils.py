@@ -58,6 +58,8 @@ _DELETE_STALE_ID_SQL_BY_TABLE = {
     "shortnames": "DELETE FROM shortnames WHERE meshtastic_id = ?",
 }
 
+NodeNameState = tuple[tuple[str, str, str], ...]
+
 
 def clear_db_path_cache() -> None:
     """Clear the cached database path to force re-resolution on next call.
@@ -995,6 +997,55 @@ def update_shortnames(nodes: dict[str, Any]) -> None:
         save_name=save_shortname,
         delete_stale_names=delete_stale_shortnames,
     )
+
+
+def build_node_name_state(nodes_snapshot: dict[str, Any]) -> NodeNameState:
+    """
+    Build a deterministic fingerprint of node IDs and name values from a snapshot.
+
+    The fingerprint includes only fields relevant to name-table sync:
+    `user.id`, `user.longName`, and `user.shortName`.
+    """
+    state: list[tuple[str, str, str]] = []
+    for node_key, node in nodes_snapshot.items():
+        state_id = str(node_key)
+        long_name = ""
+        short_name = ""
+
+        if isinstance(node, dict):
+            user = node.get("user")
+            if isinstance(user, dict):
+                user_id = user.get("id")
+                if user_id not in (None, ""):
+                    state_id = str(user_id)
+
+                long_name_value = user.get("longName")
+                if isinstance(long_name_value, str):
+                    long_name = long_name_value
+
+                short_name_value = user.get("shortName")
+                if isinstance(short_name_value, str):
+                    short_name = short_name_value
+
+        state.append((state_id, long_name, short_name))
+
+    return tuple(sorted(state))
+
+
+def sync_name_tables_if_changed(
+    nodes_snapshot: dict[str, Any],
+    previous_state: NodeNameState | None,
+) -> NodeNameState:
+    """
+    Update longname/shortname tables only when the snapshot fingerprint changed.
+    """
+    current_state = build_node_name_state(nodes_snapshot)
+    if current_state == previous_state:
+        return current_state
+
+    update_longnames(nodes_snapshot)
+    update_shortnames(nodes_snapshot)
+    return current_state
 
 
 def _store_message_map_core(

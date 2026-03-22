@@ -29,8 +29,6 @@ from mmrelay.constants.app import APP_DISPLAY_NAME, WINDOWS_PLATFORM
 from mmrelay.constants.queue import DEFAULT_MESSAGE_DELAY
 from mmrelay.db_utils import (
     initialize_database,
-    update_longnames,
-    update_shortnames,
     wipe_message_map,
 )
 from mmrelay.log_utils import get_logger
@@ -46,8 +44,14 @@ from mmrelay.matrix_utils import (
     on_room_member,
     on_room_message,
 )
-from mmrelay.meshtastic_utils import connect_meshtastic
+from mmrelay.meshtastic_utils import (
+    connect_meshtastic,
+    get_node_name_refresh_interval_seconds,
+)
 from mmrelay.meshtastic_utils import logger as meshtastic_logger
+from mmrelay.meshtastic_utils import (
+    refresh_node_name_tables,
+)
 from mmrelay.message_queue import (
     get_message_queue,
     start_message_queue,
@@ -297,8 +301,16 @@ async def main(config: dict[str, Any]) -> None:
     # Signal readiness after core services and callbacks are initialized.
     _write_ready_file()
     ready_task: asyncio.Task[None] | None = None
+    node_name_refresh_task: asyncio.Task[None] | None = None
+    node_name_refresh_interval = get_node_name_refresh_interval_seconds(config)
     if _ready_heartbeat_seconds > 0:
         ready_task = asyncio.create_task(_ready_heartbeat(shutdown_event))
+    node_name_refresh_task = asyncio.create_task(
+        refresh_node_name_tables(
+            shutdown_event,
+            refresh_interval_seconds=node_name_refresh_interval,
+        )
+    )
 
     def _set_shutdown_flag() -> None:
         """
@@ -345,21 +357,6 @@ async def main(config: dict[str, Any]) -> None:
     try:
         while not shutdown_event.is_set():
             try:
-                if meshtastic_utils.meshtastic_client:
-                    nodes_snapshot = dict(meshtastic_utils.meshtastic_client.nodes)
-                    await loop.run_in_executor(
-                        None,
-                        update_longnames,
-                        nodes_snapshot,
-                    )
-                    await loop.run_in_executor(
-                        None,
-                        update_shortnames,
-                        nodes_snapshot,
-                    )
-                else:
-                    meshtastic_logger.warning("Meshtastic client is not connected.")
-
                 matrix_logger.info("Starting Matrix sync loop...")
                 sync_filter = getattr(matrix_client, "mmrelay_sync_filter", None)
                 first_sync_filter = getattr(
@@ -402,6 +399,12 @@ async def main(config: dict[str, Any]) -> None:
                         matrix_logger.warning(
                             "Matrix sync_forever completed unexpectedly"
                         )
+                    except KeyboardInterrupt:
+                        matrix_logger.info(
+                            "Matrix sync interrupted. Starting shutdown..."
+                        )
+                        shutdown()
+                        break
                     except (
                         Exception
                     ) as exc:  # noqa: BLE001 — sync loop must keep retrying
@@ -421,6 +424,12 @@ async def main(config: dict[str, Any]) -> None:
     except KeyboardInterrupt:
         shutdown()
     finally:
+        if node_name_refresh_task is not None:
+            node_name_refresh_task.cancel()
+            try:
+                await node_name_refresh_task
+            except asyncio.CancelledError:
+                pass
         if ready_task is not None:
             ready_task.cancel()
             try:
