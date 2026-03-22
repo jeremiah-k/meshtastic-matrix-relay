@@ -348,8 +348,12 @@ class TestDbUtils(unittest.TestCase):
             },
         }
         with (
-            patch("mmrelay.db_utils.update_longnames") as mock_update_longnames,
-            patch("mmrelay.db_utils.update_shortnames") as mock_update_shortnames,
+            patch(
+                "mmrelay.db_utils.update_longnames", return_value=True
+            ) as mock_update_longnames,
+            patch(
+                "mmrelay.db_utils.update_shortnames", return_value=True
+            ) as mock_update_shortnames,
         ):
             second_state = sync_name_tables_if_changed(
                 updated_nodes, previous_state=first_state
@@ -358,6 +362,55 @@ class TestDbUtils(unittest.TestCase):
         self.assertNotEqual(second_state, first_state)
         mock_update_longnames.assert_called_once_with(updated_nodes)
         mock_update_shortnames.assert_called_once_with(updated_nodes)
+
+    def test_sync_name_tables_if_changed_retries_after_write_failure(self):
+        """Changed snapshots should not advance state when a names-table update fails."""
+        initialize_database()
+        nodes = {
+            "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
+        }
+        first_state = sync_name_tables_if_changed(nodes, previous_state=None)
+
+        updated_nodes = {
+            "node_a": {
+                "user": {"id": "!1", "longName": "Alpha Prime", "shortName": "A1"}
+            },
+        }
+        with (
+            patch(
+                "mmrelay.db_utils.update_longnames", return_value=False
+            ) as mock_update_longnames,
+            patch(
+                "mmrelay.db_utils.update_shortnames", return_value=True
+            ) as mock_update_shortnames,
+        ):
+            second_state = sync_name_tables_if_changed(
+                updated_nodes, previous_state=first_state
+            )
+
+        self.assertEqual(second_state, first_state)
+        mock_update_longnames.assert_called_once_with(updated_nodes)
+        mock_update_shortnames.assert_called_once_with(updated_nodes)
+
+    def test_sync_name_tables_if_changed_retries_from_cold_start_on_write_failure(self):
+        """A first-run write failure should keep state unset so next loop retries."""
+        initialize_database()
+        nodes = {
+            "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
+        }
+        with (
+            patch(
+                "mmrelay.db_utils.update_longnames", return_value=False
+            ) as mock_update_longnames,
+            patch(
+                "mmrelay.db_utils.update_shortnames", return_value=True
+            ) as mock_update_shortnames,
+        ):
+            state = sync_name_tables_if_changed(nodes, previous_state=None)
+
+        self.assertIsNone(state)
+        mock_update_longnames.assert_called_once_with(nodes)
+        mock_update_shortnames.assert_called_once_with(nodes)
 
     def test_update_names_preserve_zero_id_for_stale_tracking(self):
         """

@@ -403,24 +403,52 @@ class TestMain(unittest.TestCase):
         mock_init_db,
     ):
         """
-        Verify that all main application initialization functions are properly mocked and callable during the basic startup flow test.
+        Verify startup wiring schedules periodic node-name refresh with expected interval.
         """
-        # This test just verifies that the initialization functions are called
-        # We don't run the full main() function to avoid async complexity
+        shutdown_event = _ImmediateEvent()
+        expected_interval = 7.5
+        mock_matrix_client = AsyncMock()
+        mock_matrix_client.add_event_callback = MagicMock()
+        mock_matrix_client.close = AsyncMock()
+        mock_connect_matrix.return_value = mock_matrix_client
+        mock_connect_meshtastic.return_value = MagicMock()
 
-        # Verify that the mocks are set up correctly
-        self.assertIsNotNone(mock_init_db)
-        self.assertIsNotNone(mock_load_plugins)
-        self.assertIsNotNone(mock_start_queue)
-        self.assertIsNotNone(mock_connect_meshtastic)
-        self.assertIsNotNone(mock_connect_matrix)
-        self.assertIsNotNone(mock_join_room)
-        self.assertIsNotNone(mock_stop_queue)
-        self.assertIsNotNone(mock_refresh_node_names)
+        with (
+            patch(
+                "mmrelay.main.asyncio.get_running_loop",
+                side_effect=_make_patched_get_running_loop(),
+            ),
+            patch("mmrelay.main.asyncio.Event", return_value=shutdown_event),
+            patch("mmrelay.main.get_message_queue") as mock_get_queue,
+            patch(
+                "mmrelay.main.meshtastic_utils.check_connection",
+                new_callable=AsyncMock,
+            ) as mock_check_conn,
+            patch(
+                "mmrelay.main.meshtastic_utils.get_node_name_refresh_interval_seconds",
+                return_value=expected_interval,
+            ) as mock_get_interval,
+            patch("mmrelay.main.shutdown_plugins"),
+        ):
+            mock_queue = MagicMock()
+            mock_queue.ensure_processor_started = MagicMock()
+            mock_get_queue.return_value = mock_queue
+            mock_check_conn.return_value = True
 
-        # Test passes if all mocks are properly set up
-        # The actual main() function testing is complex due to async nature
-        # and is better tested through integration tests
+            asyncio.run(main(self.mock_config))
+
+        mock_init_db.assert_called_once()
+        mock_load_plugins.assert_called_once()
+        mock_start_queue.assert_called_once_with(message_delay=2.0)
+        mock_connect_meshtastic.assert_called_once_with(passed_config=self.mock_config)
+        mock_connect_matrix.assert_awaited_once_with(passed_config=self.mock_config)
+        self.assertEqual(mock_join_room.await_count, 2)
+        mock_get_interval.assert_called_once_with(self.mock_config)
+        mock_refresh_node_names.assert_called_once_with(
+            shutdown_event,
+            refresh_interval_seconds=expected_interval,
+        )
+        mock_stop_queue.assert_called_once()
 
     def test_main_with_message_map_wipe(self):
         """

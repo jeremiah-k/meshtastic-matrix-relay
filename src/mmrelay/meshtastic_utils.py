@@ -465,15 +465,22 @@ def _coerce_bool(value: Any, default: bool, setting_name: str) -> bool:
     return default
 
 
-def get_node_name_refresh_interval_seconds() -> float:
+def get_node_name_refresh_interval_seconds(
+    passed_config: dict[str, Any] | None = None,
+) -> float:
     """
     Return the configured node-name refresh interval (seconds).
 
     Reads `meshtastic.node_name_refresh_interval` and falls back to
     `DEFAULT_NODE_NAME_REFRESH_INTERVAL` when missing or invalid.
+
+    Parameters:
+        passed_config (dict[str, Any] | None): Optional config to read from.
+            When omitted, uses this module's global `config`.
     """
+    config_source = config if passed_config is None else passed_config
     raw_interval = get_meshtastic_config_value(
-        config,
+        config_source,
         CONFIG_KEY_NODE_NAME_REFRESH_INTERVAL,
         DEFAULT_NODE_NAME_REFRESH_INTERVAL,
     )

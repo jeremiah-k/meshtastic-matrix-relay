@@ -810,7 +810,7 @@ def build_node_name_state(nodes: dict[str, Any] | None) -> NodeNameState:
 def sync_name_tables_if_changed(
     nodes: dict[str, Any] | None,
     previous_state: NodeNameState | None = None,
-) -> NodeNameState:
+) -> NodeNameState | None:
     """
     Sync longname/shortname tables only when node-name state changes.
 
@@ -823,7 +823,9 @@ def sync_name_tables_if_changed(
         previous_state (NodeNameState | None): Last successful state snapshot.
 
     Returns:
-        NodeNameState: Current normalized state for the next iteration.
+        NodeNameState | None: Current normalized state for the next iteration
+        when writes succeed; otherwise the previous state to force retry on the
+        next identical snapshot.
     """
     current_state, current_ids, snapshot_complete = _collect_node_name_snapshot(nodes)
 
@@ -834,9 +836,11 @@ def sync_name_tables_if_changed(
         return current_state
 
     nodes_dict = nodes if isinstance(nodes, dict) else {}
-    update_longnames(nodes_dict)
-    update_shortnames(nodes_dict)
-    return current_state
+    longnames_updated = update_longnames(nodes_dict)
+    shortnames_updated = update_shortnames(nodes_dict)
+    if longnames_updated and shortnames_updated:
+        return current_state
+    return previous_state
 
 
 def _update_names_core(
@@ -845,7 +849,7 @@ def _update_names_core(
     name_key: str,
     save_name: Callable[[str, str], bool],
     delete_stale_names: Callable[[set[str]], int],
-) -> None:
+) -> bool:
     """
     Persist one user name field from a node snapshot and prune stale rows.
 
@@ -862,9 +866,12 @@ def _update_names_core(
             Returns True on success, False on failure.
         delete_stale_names (Callable[[set[str]], int]): Function used to delete
             rows whose Meshtastic IDs are absent from the snapshot.
+
+    Returns:
+        bool: True when all save operations succeeded; False if any save failed.
     """
     if not nodes:
-        return
+        return True
 
     current_ids: set[str] = set()
     snapshot_complete = True
@@ -895,9 +902,10 @@ def _update_names_core(
 
     if current_ids and snapshot_complete and all_saves_ok:
         delete_stale_names(current_ids)
+    return all_saves_ok
 
 
-def update_longnames(nodes: dict[str, Any]) -> None:
+def update_longnames(nodes: dict[str, Any]) -> bool:
     """
     Persist each node's `longName` and prune stale longname rows.
 
@@ -907,8 +915,12 @@ def update_longnames(nodes: dict[str, Any]) -> None:
     Parameters:
         nodes (dict[str, Any]): Mapping of node identifiers to node dictionaries;
             each node may expose a `user` dict with `id` and `longName`.
+
+    Returns:
+        bool: True when longname writes succeeded for all rows attempted; False
+        when any write failed.
     """
-    _update_names_core(
+    return _update_names_core(
         nodes,
         name_key=NODE_NAME_FIELD_LONG,
         save_name=save_longname,
@@ -1101,7 +1113,7 @@ def delete_stale_shortnames(current_ids: set[str]) -> int:
     return _delete_stale_names(NAMES_TABLE_SHORTNAMES, current_ids)
 
 
-def update_shortnames(nodes: dict[str, Any]) -> None:
+def update_shortnames(nodes: dict[str, Any]) -> bool:
     """
     Update persisted short names for nodes that include a user object.
 
@@ -1112,8 +1124,12 @@ def update_shortnames(nodes: dict[str, Any]) -> None:
 
     Parameters:
         nodes (dict[str, Any]): Mapping of node identifiers to node objects; nodes without a `user` entry are ignored.
+
+    Returns:
+        bool: True when shortname writes succeeded for all rows attempted; False
+        when any write failed.
     """
-    _update_names_core(
+    return _update_names_core(
         nodes,
         name_key=NODE_NAME_FIELD_SHORT,
         save_name=save_shortname,

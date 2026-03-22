@@ -237,7 +237,7 @@ async def main(config: dict[str, Any]) -> None:
     )
     wipe_on_restart = (
         msg_map_config.get(CONFIG_KEY_WIPE_ON_RESTART, False)
-        if isinstance(msg_map_config, dict)
+        if has_preferred_wipe_on_restart
         else False
     )
 
@@ -361,7 +361,7 @@ async def main(config: dict[str, Any]) -> None:
     # This provides proactive connection detection for all interface types
     _ = asyncio.create_task(meshtastic_utils.check_connection())
     node_name_refresh_interval_seconds = (
-        meshtastic_utils.get_node_name_refresh_interval_seconds()
+        meshtastic_utils.get_node_name_refresh_interval_seconds(config)
     )
     node_name_refresh_task = asyncio.create_task(
         meshtastic_utils.refresh_node_name_tables(
