@@ -28,9 +28,11 @@ from pubsub import pub
 from mmrelay.config import get_meshtastic_config_value
 from mmrelay.constants.config import (
     CONFIG_KEY_MESHNET_NAME,
+    CONFIG_KEY_NODE_NAME_REFRESH_INTERVAL,
     CONFIG_SECTION_MESHTASTIC,
     DEFAULT_DETECTION_SENSOR,
     DEFAULT_HEALTH_CHECK_ENABLED,
+    DEFAULT_NODE_NAME_REFRESH_INTERVAL,
 )
 from mmrelay.constants.formats import (
     DETECTION_SENSOR_APP,
@@ -69,11 +71,13 @@ from mmrelay.constants.network import (
     METADATA_WATCHDOG_SECS,
 )
 from mmrelay.db_utils import (
+    NodeNameState,
     get_longname,
     get_message_map_by_meshtastic_id,
     get_shortname,
     save_longname,
     save_shortname,
+    sync_name_tables_if_changed,
 )
 from mmrelay.log_utils import get_logger
 from mmrelay.runtime_utils import is_running_as_service
@@ -461,9 +465,98 @@ def _coerce_bool(value: Any, default: bool, setting_name: str) -> bool:
     return default
 
 
+def get_node_name_refresh_interval_seconds(
+    passed_config: dict[str, Any] | None = None,
+) -> float:
+    """
+    Get the node-name refresh interval from configuration.
+    
+    Reads `meshtastic.node_name_refresh_interval`, coerces it to a finite float, and returns that value. If the configured value is missing or invalid, logs a warning and returns DEFAULT_NODE_NAME_REFRESH_INTERVAL.
+    
+    Parameters:
+        passed_config (dict[str, Any] | None): Optional configuration mapping to read from; when omitted uses the module-level `config`.
+    
+    Returns:
+        float: The refresh interval in seconds.
+    """
+    config_source = config if passed_config is None else passed_config
+    raw_interval = get_meshtastic_config_value(
+        config_source,
+        CONFIG_KEY_NODE_NAME_REFRESH_INTERVAL,
+        DEFAULT_NODE_NAME_REFRESH_INTERVAL,
+    )
+    try:
+        interval = float(raw_interval)
+        if math.isfinite(interval):
+            return interval
+    except (TypeError, ValueError):
+        pass
+
+    logger.warning(
+        "Invalid meshtastic.node_name_refresh_interval=%r; defaulting to %.1f",
+        raw_interval,
+        DEFAULT_NODE_NAME_REFRESH_INTERVAL,
+    )
+    return DEFAULT_NODE_NAME_REFRESH_INTERVAL
+
+
+async def refresh_node_name_tables(
+    shutdown_event: asyncio.Event,
+    *,
+    refresh_interval_seconds: float | None = None,
+) -> None:
+    """
+    Synchronize Meshtastic node longname/shortname tables immediately and then periodically until shutdown.
+    
+    If `refresh_interval_seconds` is None the configured node-name refresh interval is used; if the effective interval is less than or equal to zero a single immediate refresh is attempted and periodic scheduling is disabled. On each cycle, when a Meshtastic client is available the function snapshots `meshtastic_client.nodes` and calls `sync_name_tables_if_changed` in a background thread to persist any updates; failures are logged and do not stop the loop.
+    
+    Parameters:
+        shutdown_event (asyncio.Event): Event used to stop the refresh loop; the function returns after the event is set.
+        refresh_interval_seconds (float | None): Optional override for the refresh interval in seconds.
+    """
+    interval = (
+        get_node_name_refresh_interval_seconds()
+        if refresh_interval_seconds is None
+        else refresh_interval_seconds
+    )
+
+    previous_state: NodeNameState | None = None
+    while not shutdown_event.is_set():
+        if meshtastic_client is not None:
+            try:
+                nodes_snapshot = dict(meshtastic_client.nodes)
+                previous_state = await asyncio.to_thread(
+                    sync_name_tables_if_changed,
+                    nodes_snapshot,
+                    previous_state,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to refresh node-name tables from node snapshot"
+                )
+        else:
+            logger.debug(
+                "Skipping node-name table refresh because Meshtastic client is unavailable"
+            )
+
+        if interval <= 0:
+            logger.debug(
+                "Node-name periodic refresh disabled (interval=%.3f)", float(interval)
+            )
+            return
+
+        try:
+            await asyncio.wait_for(shutdown_event.wait(), timeout=float(interval))
+        except asyncio.TimeoutError:
+            continue
+
+
 def _extract_packet_request_id(packet: Any) -> int | None:
     """
-    Extract a request ID from a Meshtastic packet dict, if present.
+    Extract the positive integer request id from a Meshtastic packet's top-level or decoded fields.
+    
+    Returns:
+        request_id (int | None): The extracted request id if present and a positive integer, `None` otherwise.
     """
     if not isinstance(packet, dict):
         return None

@@ -10,6 +10,11 @@ from mmrelay.constants.database import (
     DEFAULT_BUSY_TIMEOUT_MS,
     DEFAULT_ENABLE_WAL,
     DEFAULT_EXTRA_PRAGMAS,
+    DEFAULT_NAME_PRUNE_CHUNK_SIZE,
+    NAMES_TABLE_LONGNAMES,
+    NAMES_TABLE_SHORTNAMES,
+    NODE_NAME_FIELD_LONG,
+    NODE_NAME_FIELD_SHORT,
 )
 from mmrelay.db_runtime import DatabaseManager
 from mmrelay.log_utils import get_logger
@@ -42,20 +47,22 @@ _db_manager_lock = threading.Lock()
 
 logger = get_logger(name="db_utils")
 
+NodeNameState = tuple[tuple[str, str | None, str | None], ...]
+
 # Table name to singular name type mapping for logging
 _NAME_TYPE_BY_TABLE = {
-    "longnames": "longname",
-    "shortnames": "shortname",
+    NAMES_TABLE_LONGNAMES: "longname",
+    NAMES_TABLE_SHORTNAMES: "shortname",
 }
 
 _SELECT_STALE_IDS_SQL_BY_TABLE = {
-    "longnames": "SELECT meshtastic_id FROM longnames",
-    "shortnames": "SELECT meshtastic_id FROM shortnames",
+    NAMES_TABLE_LONGNAMES: "SELECT meshtastic_id FROM longnames",
+    NAMES_TABLE_SHORTNAMES: "SELECT meshtastic_id FROM shortnames",
 }
 
 _DELETE_STALE_ID_SQL_BY_TABLE = {
-    "longnames": "DELETE FROM longnames WHERE meshtastic_id = ?",
-    "shortnames": "DELETE FROM shortnames WHERE meshtastic_id = ?",
+    NAMES_TABLE_LONGNAMES: "DELETE FROM longnames WHERE meshtastic_id = ?",
+    NAMES_TABLE_SHORTNAMES: "DELETE FROM shortnames WHERE meshtastic_id = ?",
 }
 
 
@@ -715,13 +722,135 @@ def save_longname(meshtastic_id: int | str, longname: str) -> bool:
         return True
 
 
+def _normalize_node_name_value(name_value: Any) -> str | None:
+    """
+    Normalize a node-name value to a string suitable for state comparison.
+
+    Parameters:
+        name_value (Any): Raw long/short name value from node data.
+
+    Returns:
+        str | None: Normalized string value, or None when value is absent/empty.
+    """
+    if name_value is None:
+        return None
+    if isinstance(name_value, str):
+        return name_value or None
+    normalized = str(name_value)
+    return normalized or None
+
+
+def _collect_node_name_snapshot(
+    nodes: dict[str, Any] | None,
+) -> tuple[NodeNameState, set[str], bool]:
+    """
+    Create a normalized, sorted snapshot of node names and metadata for stale-name pruning.
+    
+    Extracts each node's `user.id` and normalized long/short name fields, returning a deterministic state suitable for change detection. Marks the snapshot incomplete when the input is missing or any node is malformed/missing a valid `user.id`.
+    
+    Parameters:
+        nodes (dict[str, Any] | None): Mapping of node identifiers to node dictionaries (the Meshtastic nodes snapshot). Non-dict or None input produces an empty, incomplete snapshot.
+    
+    Returns:
+        tuple[NodeNameState, set[str], bool]:
+            - Normalized sorted node-name state: tuple of (meshtastic_id, longName or None, shortName or None).
+            - Set of current meshtastic_id strings extracted from the snapshot.
+            - Snapshot completeness flag (`True` if all processed nodes contained a valid `user.id` and expected structure, `False` otherwise).
+    """
+    if not isinstance(nodes, dict) or not nodes:
+        return (), set(), False
+
+    snapshot_complete = True
+    current_ids: set[str] = set()
+    state_entries: list[tuple[str, str | None, str | None]] = []
+
+    for node in nodes.values():
+        if not isinstance(node, dict):
+            snapshot_complete = False
+            continue
+
+        user = node.get("user")
+        if not isinstance(user, dict):
+            snapshot_complete = False
+            continue
+
+        meshtastic_id = user.get("id")
+        if meshtastic_id is None or (
+            isinstance(meshtastic_id, str) and meshtastic_id == ""
+        ):
+            snapshot_complete = False
+            continue
+
+        id_key = str(meshtastic_id)
+        current_ids.add(id_key)
+        state_entries.append(
+            (
+                id_key,
+                _normalize_node_name_value(user.get(NODE_NAME_FIELD_LONG)),
+                _normalize_node_name_value(user.get(NODE_NAME_FIELD_SHORT)),
+            )
+        )
+
+    state_entries.sort()
+    return tuple(state_entries), current_ids, snapshot_complete
+
+
+def build_node_name_state(nodes: dict[str, Any] | None) -> NodeNameState:
+    """
+    Create a deterministic snapshot of node names for change detection.
+    
+    Parameters:
+        nodes (dict[str, Any] | None): Current Meshtastic nodes snapshot; may be None.
+    
+    Returns:
+        NodeNameState: A tuple of sorted 3-tuples (meshtastic_id, longName or None, shortName or None).
+    """
+    state, _current_ids, _snapshot_complete = _collect_node_name_snapshot(nodes)
+    return state
+
+
+def sync_name_tables_if_changed(
+    nodes: dict[str, Any] | None,
+    previous_state: NodeNameState | None = None,
+) -> NodeNameState | None:
+    """
+    Sync longname and shortname tables when the normalized node-name state changes.
+    
+    When the computed state equals `previous_state` this function may still prune
+    stale rows for complete snapshots so the database stays aligned with current
+    node IDs without rewriting unchanged names.
+    
+    Parameters:
+        nodes (dict[str, Any] | None): Current Meshtastic nodes snapshot.
+        previous_state (NodeNameState | None): Last successful normalized state.
+    
+    Returns:
+        The current normalized `NodeNameState` when both name-table updates succeed;
+        otherwise returns `previous_state` to indicate the update did not complete.
+    """
+    current_state, current_ids, snapshot_complete = _collect_node_name_snapshot(nodes)
+
+    if previous_state is not None and current_state == previous_state:
+        if snapshot_complete and current_ids:
+            delete_stale_longnames(current_ids)
+            delete_stale_shortnames(current_ids)
+        return current_state
+
+    nodes_dict = nodes if isinstance(nodes, dict) else {}
+    longnames_updated = update_longnames(nodes_dict)
+    shortnames_updated = update_shortnames(nodes_dict)
+    if longnames_updated and shortnames_updated:
+        return current_state
+    return previous_state
+
+
 def _update_names_core(
     nodes: dict[str, Any],
     *,
     name_key: str,
     save_name: Callable[[str, str], bool],
     delete_stale_names: Callable[[set[str]], int],
-) -> None:
+) -> bool:
     """
     Persist one user name field from a node snapshot and prune stale rows.
 
@@ -738,9 +867,12 @@ def _update_names_core(
             Returns True on success, False on failure.
         delete_stale_names (Callable[[set[str]], int]): Function used to delete
             rows whose Meshtastic IDs are absent from the snapshot.
+
+    Returns:
+        bool: True when all save operations succeeded; False if any save failed.
     """
     if not nodes:
-        return
+        return True
 
     current_ids: set[str] = set()
     snapshot_complete = True
@@ -771,9 +903,10 @@ def _update_names_core(
 
     if current_ids and snapshot_complete and all_saves_ok:
         delete_stale_names(current_ids)
+    return all_saves_ok
 
 
-def update_longnames(nodes: dict[str, Any]) -> None:
+def update_longnames(nodes: dict[str, Any]) -> bool:
     """
     Persist each node's `longName` and prune stale longname rows.
 
@@ -783,10 +916,14 @@ def update_longnames(nodes: dict[str, Any]) -> None:
     Parameters:
         nodes (dict[str, Any]): Mapping of node identifiers to node dictionaries;
             each node may expose a `user` dict with `id` and `longName`.
+
+    Returns:
+        bool: True when longname writes succeeded for all rows attempted; False
+        when any write failed.
     """
-    _update_names_core(
+    return _update_names_core(
         nodes,
-        name_key="longName",
+        name_key=NODE_NAME_FIELD_LONG,
         save_name=save_longname,
         delete_stale_names=delete_stale_longnames,
     )
@@ -902,7 +1039,7 @@ def _delete_stale_names_core(
     # Delete stale IDs in batches to avoid SQLite parameter limits.
     # Use a fixed, parameterized delete statement selected from the allow-list.
     total_deleted = 0
-    chunk_size = 900  # Safe chunk size below SQLite's limit
+    chunk_size = DEFAULT_NAME_PRUNE_CHUNK_SIZE
     for i in range(0, len(stale_ids), chunk_size):
         chunk = stale_ids[i : i + chunk_size]
         cursor.executemany(delete_sql, ((stale_id,) for stale_id in chunk))
@@ -957,7 +1094,7 @@ def delete_stale_longnames(current_ids: set[str]) -> int:
     Returns:
         int: Number of rows removed from the longnames table.
     """
-    return _delete_stale_names("longnames", current_ids)
+    return _delete_stale_names(NAMES_TABLE_LONGNAMES, current_ids)
 
 
 def delete_stale_shortnames(current_ids: set[str]) -> int:
@@ -974,10 +1111,10 @@ def delete_stale_shortnames(current_ids: set[str]) -> int:
     Returns:
         int: Number of stale entries removed.
     """
-    return _delete_stale_names("shortnames", current_ids)
+    return _delete_stale_names(NAMES_TABLE_SHORTNAMES, current_ids)
 
 
-def update_shortnames(nodes: dict[str, Any]) -> None:
+def update_shortnames(nodes: dict[str, Any]) -> bool:
     """
     Update persisted short names for nodes that include a user object.
 
@@ -988,10 +1125,14 @@ def update_shortnames(nodes: dict[str, Any]) -> None:
 
     Parameters:
         nodes (dict[str, Any]): Mapping of node identifiers to node objects; nodes without a `user` entry are ignored.
+
+    Returns:
+        bool: True when shortname writes succeeded for all rows attempted; False
+        when any write failed.
     """
-    _update_names_core(
+    return _update_names_core(
         nodes,
-        name_key="shortName",
+        name_key=NODE_NAME_FIELD_SHORT,
         save_name=save_shortname,
         delete_stale_names=delete_stale_shortnames,
     )

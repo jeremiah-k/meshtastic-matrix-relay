@@ -53,6 +53,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from mmrelay.constants.config import DEFAULT_NODE_NAME_REFRESH_INTERVAL
 from mmrelay.main import main, print_banner, run_main
 from tests.helpers import InlineExecutorLoop, inline_to_thread
 
@@ -386,14 +387,14 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.connect_meshtastic")
     @patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
     @patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
-    @patch("mmrelay.main.update_longnames")
-    @patch("mmrelay.main.update_shortnames")
+    @patch(
+        "mmrelay.main.meshtastic_utils.refresh_node_name_tables", new_callable=AsyncMock
+    )
     @patch("mmrelay.main.stop_message_queue")
     def test_main_basic_flow(
         self,
         mock_stop_queue,
-        mock_update_shortnames,
-        mock_update_longnames,
+        mock_refresh_node_names,
         mock_join_room,
         mock_connect_matrix,
         mock_connect_meshtastic,
@@ -402,31 +403,58 @@ class TestMain(unittest.TestCase):
         mock_init_db,
     ):
         """
-        Verify that all main application initialization functions are properly mocked and callable during the basic startup flow test.
+        Verify startup wiring schedules periodic node-name refresh with expected interval.
         """
-        # This test just verifies that the initialization functions are called
-        # We don't run the full main() function to avoid async complexity
+        shutdown_event = _ImmediateEvent()
+        expected_interval = 7.5
+        mock_matrix_client = AsyncMock()
+        mock_matrix_client.add_event_callback = MagicMock()
+        mock_matrix_client.close = AsyncMock()
+        mock_connect_matrix.return_value = mock_matrix_client
+        mock_connect_meshtastic.return_value = MagicMock()
 
-        # Verify that the mocks are set up correctly
-        self.assertIsNotNone(mock_init_db)
-        self.assertIsNotNone(mock_load_plugins)
-        self.assertIsNotNone(mock_start_queue)
-        self.assertIsNotNone(mock_connect_meshtastic)
-        self.assertIsNotNone(mock_connect_matrix)
-        self.assertIsNotNone(mock_join_room)
-        self.assertIsNotNone(mock_stop_queue)
-        self.assertIsNotNone(mock_update_longnames)
-        self.assertIsNotNone(mock_update_shortnames)
+        with (
+            patch(
+                "mmrelay.main.asyncio.get_running_loop",
+                side_effect=_make_patched_get_running_loop(),
+            ),
+            patch("mmrelay.main.asyncio.Event", return_value=shutdown_event),
+            patch("mmrelay.main.get_message_queue") as mock_get_queue,
+            patch(
+                "mmrelay.main.meshtastic_utils.check_connection",
+                new_callable=AsyncMock,
+            ) as mock_check_conn,
+            patch(
+                "mmrelay.main.meshtastic_utils.get_node_name_refresh_interval_seconds",
+                return_value=expected_interval,
+            ) as mock_get_interval,
+            patch("mmrelay.main.shutdown_plugins"),
+        ):
+            mock_queue = MagicMock()
+            mock_queue.ensure_processor_started = MagicMock()
+            mock_get_queue.return_value = mock_queue
+            mock_check_conn.return_value = True
 
-        # Test passes if all mocks are properly set up
-        # The actual main() function testing is complex due to async nature
-        # and is better tested through integration tests
+            asyncio.run(main(self.mock_config))
+
+        mock_init_db.assert_called_once()
+        mock_load_plugins.assert_called_once()
+        mock_start_queue.assert_called_once_with(message_delay=2.0)
+        mock_connect_meshtastic.assert_called_once_with(passed_config=self.mock_config)
+        mock_connect_matrix.assert_awaited_once_with(passed_config=self.mock_config)
+        self.assertEqual(mock_join_room.await_count, 2)
+        mock_get_interval.assert_called_once_with(self.mock_config)
+        mock_refresh_node_names.assert_called_once_with(
+            shutdown_event,
+            refresh_interval_seconds=expected_interval,
+        )
+        mock_stop_queue.assert_called_once()
 
     def test_main_with_message_map_wipe(self):
         """
-        Test that the message map wipe function is called when the configuration enables wiping on restart.
-
-        Verifies that the wipe logic correctly parses both new and legacy configuration formats and triggers the wipe when appropriate.
+        Verify that message map wiping is triggered when configuration enables wiping on restart, handling both new and legacy keys.
+        
+        Checks that when "database.msg_map.wipe_on_restart" is True (or, if absent, "db.msg_map.wipe_on_restart" is True), mmrelay.db_utils.wipe_message_map() is invoked.
         """
         # Enable message map wiping
         config_with_wipe = self.mock_config.copy()
@@ -1363,43 +1391,73 @@ class TestMainFunctionEdgeCases(unittest.TestCase):
 
     def test_main_no_meshtastic_client_warning(self):
         """
-        Verify that update functions are not called when the Meshtastic client is None.
-
-        This test ensures that, if the Meshtastic client is not initialized, the main logic does not attempt to update longnames or shortnames.
+        Verify periodic node-name refresh skips DB sync when no Meshtastic client exists.
         """
-        # This test is simplified to avoid async complexity while still testing the core logic
-        # The actual behavior is tested through integration tests
 
-        # Test the specific condition: when meshtastic_client is None,
-        # update functions should not be called
+        class _OnePassEvent:
+            def __init__(self) -> None:
+                """
+                Initialize the instance and set the internal `_set` flag to False.
+                """
+                self._set = False
+
+            def is_set(self) -> bool:
+                """
+                Indicates whether the event is set.
+                
+                Returns:
+                    bool: True if the event is set, False otherwise.
+                """
+                return self._set
+
+            async def wait(self) -> None:
+                """
+                Mark the event as set and complete immediately.
+                
+                Sets the internal flag indicating the event is set; this coroutine does not block.
+                """
+                self._set = True
+
+        import mmrelay.meshtastic_utils as meshtastic_module
+
         with (
-            patch("mmrelay.main.update_longnames") as mock_update_long,
-            patch("mmrelay.main.update_shortnames") as mock_update_short,
+            patch("mmrelay.meshtastic_utils.meshtastic_client", None),
+            patch("mmrelay.meshtastic_utils.sync_name_tables_if_changed") as mock_sync,
         ):
-            # Simulate the condition where meshtastic_client is None
-            import mmrelay.meshtastic_utils
-
-            original_client = getattr(
-                mmrelay.meshtastic_utils, "meshtastic_client", None
+            asyncio.run(
+                meshtastic_module.refresh_node_name_tables(
+                    _OnePassEvent(),
+                    refresh_interval_seconds=1.0,
+                )
             )
-            mmrelay.meshtastic_utils.meshtastic_client = None
 
-            try:
-                # Test the specific logic that checks for meshtastic_client
-                if mmrelay.meshtastic_utils.meshtastic_client:
-                    # This should not execute when client is None
-                    from mmrelay.main import update_longnames, update_shortnames
+        mock_sync.assert_not_called()
 
-                    update_longnames(mmrelay.meshtastic_utils.meshtastic_client.nodes)
-                    update_shortnames(mmrelay.meshtastic_utils.meshtastic_client.nodes)
+    def test_node_name_refresh_interval_non_finite_defaults(self):
+        """Non-finite refresh intervals should fall back to the default value."""
+        import mmrelay.meshtastic_utils as meshtastic_module
 
-                # Verify update functions were not called
-                mock_update_long.assert_not_called()
-                mock_update_short.assert_not_called()
+        with (
+            patch.object(
+                meshtastic_module,
+                "config",
+                {"meshtastic": {"node_name_refresh_interval": "inf"}},
+            ),
+        ):
+            interval = meshtastic_module.get_node_name_refresh_interval_seconds()
+        self.assertEqual(interval, DEFAULT_NODE_NAME_REFRESH_INTERVAL)
 
-            finally:
-                # Restore original client
-                mmrelay.meshtastic_utils.meshtastic_client = original_client
+    def test_node_name_refresh_interval_invalid_defaults(self):
+        """Unparseable refresh intervals should fall back to the default value."""
+        import mmrelay.meshtastic_utils as meshtastic_module
+
+        with patch.object(
+            meshtastic_module,
+            "config",
+            {"meshtastic": {"node_name_refresh_interval": "not-a-number"}},
+        ):
+            interval = meshtastic_module.get_node_name_refresh_interval_seconds()
+        self.assertEqual(interval, DEFAULT_NODE_NAME_REFRESH_INTERVAL)
 
 
 @pytest.mark.parametrize("db_key", ["database", "db"])
@@ -1469,6 +1527,63 @@ def test_main_database_wipe_config(
         # Should wipe message map on startup
         mock_wipe.assert_called()
         # Should start the message queue processor
+        mock_queue.ensure_processor_started.assert_called()
+
+
+@patch("mmrelay.main.initialize_database")
+@patch("mmrelay.main.load_plugins")
+@patch("mmrelay.main.start_message_queue")
+@patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
+@patch("mmrelay.main.connect_meshtastic")
+@patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
+def test_main_database_wipe_preferred_false_wins_over_legacy_true(
+    mock_join,
+    mock_connect_mesh,
+    mock_connect_matrix,
+    mock_start_queue,
+    mock_load_plugins,
+    mock_init_db,
+):
+    """
+    Verify explicit database.msg_map.wipe_on_restart=false is not overridden by legacy config.
+    """
+    config = {
+        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+        "database": {"msg_map": {"wipe_on_restart": False}},
+        "db": {"msg_map": {"wipe_on_restart": True}},
+    }
+
+    mock_matrix_client = AsyncMock()
+    mock_matrix_client.add_event_callback = MagicMock()
+    mock_matrix_client.close = AsyncMock()
+    mock_connect_matrix.return_value = mock_matrix_client
+    mock_connect_mesh.return_value = MagicMock()
+
+    with (
+        patch(
+            "mmrelay.main.asyncio.get_running_loop",
+            side_effect=_make_patched_get_running_loop(),
+        ),
+        patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+        patch("mmrelay.main.get_message_queue") as mock_get_queue,
+        patch(
+            "mmrelay.main.meshtastic_utils.check_connection", new_callable=AsyncMock
+        ) as mock_check_conn,
+        patch("mmrelay.main.shutdown_plugins") as mock_shutdown_plugins,
+        patch("mmrelay.main.stop_message_queue") as mock_stop_queue,
+        patch("mmrelay.main.wipe_message_map") as mock_wipe,
+    ):
+        mock_queue = MagicMock()
+        mock_queue.ensure_processor_started = MagicMock()
+        mock_get_queue.return_value = mock_queue
+        mock_check_conn.return_value = True
+        mock_shutdown_plugins.return_value = None
+        mock_stop_queue.return_value = None
+
+        with contextlib.suppress(KeyboardInterrupt):
+            asyncio.run(main(config))
+
+        mock_wipe.assert_not_called()
         mock_queue.ensure_processor_started.assert_called()
 
 
