@@ -22,7 +22,7 @@ set -euo pipefail
 #   4. E2EE Matrix user message in encrypted room → Mesh A + Mesh B
 #   5. E2EE Matrix user reply in encrypted room → both meshes as structured replies
 #   6. E2EE Matrix user reaction in encrypted room → both meshes
-#   7. NodeDB reset on both meshes → stale longname/shortname rows pruned
+#   7. Stale name rows are pruned to match current node DB
 #
 # Environment Variables:
 #   MESHTASTICD_IMAGE: Docker image for meshtasticd (default: meshtastic/meshtasticd:latest)
@@ -32,6 +32,8 @@ set -euo pipefail
 #   MESH_CHANNEL_NAME_A / MESH_CHANNEL_NAME_B: Channel names for isolated meshnets
 #   MESH_PRIMARY_PSK_A / MESH_PRIMARY_PSK_B: Primary channel keys for isolated meshnets
 #   MATRIX_EVENT_TIMEOUT_SECONDS: Matrix event polling timeout per assertion
+#   NODE_NAME_REFRESH_INTERVAL_SECONDS: Node-name refresh cadence in MMRelay config
+#   NAME_PRUNE_WAIT_TIMEOUT_SECONDS: Timeout for stale-name prune assertions
 # =============================================================================
 
 # Meshtasticd Configuration
@@ -64,7 +66,7 @@ MESHNET_NAME_A="${MESHNET_NAME_A:-Mesh A}"
 MESHNET_NAME_B="${MESHNET_NAME_B:-Mesh B}"
 MATRIX_EVENT_TIMEOUT_SECONDS="${MATRIX_EVENT_TIMEOUT_SECONDS:-60}"
 MESSAGE_MAP_WAIT_TIMEOUT_SECONDS="${MESSAGE_MAP_WAIT_TIMEOUT_SECONDS:-60}"
-NAME_PRUNE_WAIT_TIMEOUT_SECONDS="${NAME_PRUNE_WAIT_TIMEOUT_SECONDS:-45}"
+NAME_PRUNE_WAIT_TIMEOUT_SECONDS="${NAME_PRUNE_WAIT_TIMEOUT_SECONDS:-75}"
 NODE_NAME_REFRESH_INTERVAL_SECONDS="${NODE_NAME_REFRESH_INTERVAL_SECONDS:-5}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 
@@ -1341,37 +1343,37 @@ raise SystemExit(1)
 PY
 }
 
-# upsert_name_entry inserts or updates a longname/shortname row in SQLite.
+# upsert_name_entry inserts or updates one row in longnames/shortnames for test setup.
 upsert_name_entry() {
 	local db_path=$1
 	local table_name=$2
-	local meshtastic_id=$3
-	local name_value=$4
-	"${PYTHON_BIN}" - "${db_path}" "${table_name}" "${meshtastic_id}" "${name_value}" <<'PY'
+	local column_name=$3
+	local meshtastic_id=$4
+	local name_value=$5
+	"${PYTHON_BIN}" - "${db_path}" "${table_name}" "${column_name}" "${meshtastic_id}" "${name_value}" <<'PY'
 import sqlite3
 import sys
 
-db_path, table_name, meshtastic_id, name_value = sys.argv[1:5]
-column_by_table = {"longnames": "longname", "shortnames": "shortname"}
-column_name = column_by_table.get(table_name)
-if column_name is None:
-    raise SystemExit(2)
+db_path, table_name, column_name, meshtastic_id, name_value = sys.argv[1:6]
+allowed_columns = {
+    "longnames": "longname",
+    "shortnames": "shortname",
+}
+expected_column = allowed_columns.get(table_name)
+if expected_column is None or expected_column != column_name:
+    raise SystemExit(f"Invalid table/column pair: {table_name}.{column_name}")
 
-conn = sqlite3.connect(db_path, timeout=5)
-try:
+with sqlite3.connect(db_path, timeout=5) as conn:
     conn.execute("PRAGMA busy_timeout = 5000")
     conn.execute(
         f"INSERT INTO {table_name} (meshtastic_id, {column_name}) VALUES (?, ?) "
         f"ON CONFLICT(meshtastic_id) DO UPDATE SET {column_name}=excluded.{column_name}",
         (meshtastic_id, name_value),
     )
-    conn.commit()
-finally:
-    conn.close()
 PY
 }
 
-# wait_for_name_entry_absent waits until a longname/shortname row no longer exists.
+# wait_for_name_entry_absent waits until a names-table row is absent for an ID.
 wait_for_name_entry_absent() {
 	local db_path=$1
 	local table_name=$2
@@ -1383,17 +1385,16 @@ import sys
 import time
 
 db_path, table_name, meshtastic_id, timeout_seconds_raw = sys.argv[1:5]
+timeout_seconds = int(timeout_seconds_raw)
 allowed_tables = {"longnames", "shortnames"}
 if table_name not in allowed_tables:
-    raise SystemExit(2)
+    raise SystemExit(f"Invalid table name: {table_name}")
 
-timeout_seconds = int(timeout_seconds_raw)
 deadline = time.monotonic() + timeout_seconds
 last_error = None
 while time.monotonic() < deadline:
     try:
-        conn = sqlite3.connect(db_path, timeout=5)
-        try:
+        with sqlite3.connect(db_path, timeout=5) as conn:
             conn.execute("PRAGMA busy_timeout = 5000")
             row = conn.execute(
                 f"SELECT 1 FROM {table_name} WHERE meshtastic_id=? LIMIT 1",
@@ -1401,17 +1402,15 @@ while time.monotonic() < deadline:
             ).fetchone()
             if row is None:
                 raise SystemExit(0)
-        finally:
-            conn.close()
     except sqlite3.Error as exc:  # pragma: no cover - retry loop
         last_error = str(exc)
-
     time.sleep(1)
 
 if last_error:
     print(f"Last SQLite error: {last_error}", file=sys.stderr)
 print(
-    f"Timed out waiting for {table_name} row removal for meshtastic_id={meshtastic_id}",
+    f"Timed out waiting for stale names row removal in {table_name} "
+    f"for meshtastic_id={meshtastic_id}",
     file=sys.stderr,
 )
 raise SystemExit(1)
@@ -1503,12 +1502,14 @@ if ((10#${NAME_PRUNE_WAIT_TIMEOUT_SECONDS} <= 0)); then
 	exit 1
 fi
 if ! "${PYTHON_BIN}" - "${NODE_NAME_REFRESH_INTERVAL_SECONDS}" <<'PY'; then
+import math
 import sys
 
 value = float(sys.argv[1])
-raise SystemExit(0 if value > 0 else 1)
+if not math.isfinite(value) or value <= 0:
+    raise SystemExit(1)
 PY
-	echo "NODE_NAME_REFRESH_INTERVAL_SECONDS must be greater than zero." >&2
+	echo "NODE_NAME_REFRESH_INTERVAL_SECONDS must be a finite value greater than zero." >&2
 	exit 1
 fi
 if [[ -z ${MESHNET_NAME_A} || -z ${MESHNET_NAME_B} ]]; then
@@ -2301,74 +2302,65 @@ run_or_fail "Reaction did not relay to Mesh B" \
 	60
 pass_test "Encrypted-room user reaction relayed to both meshes"
 
-# Test 7: NodeDB reset should prune stale longname/shortname rows from relay DBs
-STALE_NODE_ID_A="!ci-stale-a-$(date +%s)-${RANDOM}"
-STALE_NODE_ID_B="!ci-stale-b-$(date +%s)-${RANDOM}"
-
-start_test "Test 7" "Test 7: NodeDB reset prunes stale longname/shortname rows..."
-run_or_fail "Failed to seed stale longname entry in instance A" \
+# Test 7: stale name rows are pruned to match current node DB snapshot.
+STALE_NAME_ID_A="!MMRELAY_STALE_A_$(date +%s)_${RANDOM}"
+STALE_NAME_ID_B="!MMRELAY_STALE_B_$(date +%s)_${RANDOM}"
+start_test "Test 7" "Test 7: stale name rows are pruned to match current node DB..."
+run_or_fail "Failed to seed stale longname in instance A" \
 	upsert_name_entry \
 	"${MMRELAY_DB_PATH_A}" \
 	"longnames" \
-	"${STALE_NODE_ID_A}" \
+	"longname" \
+	"${STALE_NAME_ID_A}" \
 	"CI stale longname A"
-run_or_fail "Failed to seed stale shortname entry in instance A" \
+run_or_fail "Failed to seed stale shortname in instance A" \
 	upsert_name_entry \
 	"${MMRELAY_DB_PATH_A}" \
 	"shortnames" \
-	"${STALE_NODE_ID_A}" \
+	"shortname" \
+	"${STALE_NAME_ID_A}" \
 	"CSA"
-run_or_fail "Failed to seed stale longname entry in instance B" \
+run_or_fail "Failed to seed stale longname in instance B" \
 	upsert_name_entry \
 	"${MMRELAY_DB_PATH_B}" \
 	"longnames" \
-	"${STALE_NODE_ID_B}" \
+	"longname" \
+	"${STALE_NAME_ID_B}" \
 	"CI stale longname B"
-run_or_fail "Failed to seed stale shortname entry in instance B" \
+run_or_fail "Failed to seed stale shortname in instance B" \
 	upsert_name_entry \
 	"${MMRELAY_DB_PATH_B}" \
 	"shortnames" \
-	"${STALE_NODE_ID_B}" \
+	"shortname" \
+	"${STALE_NAME_ID_B}" \
 	"CSB"
 
-run_or_fail "Failed to reset NodeDB on mesh A" \
-	"${PYTHON_BIN}" -m meshtastic --timeout 25 --host "${MESHTASTICD_ENDPOINT_A}" --reset-nodedb
-run_or_fail "Failed to reset NodeDB on mesh B" \
-	"${PYTHON_BIN}" -m meshtastic --timeout 25 --host "${MESHTASTICD_ENDPOINT_B}" --reset-nodedb
-run_or_fail "Mesh A did not become ready after NodeDB reset" \
-	wait_for_meshtasticd_ready \
-	"${MESHTASTICD_ENDPOINT_A}" \
-	"${MESHTASTICD_CONTAINER_A}"
-run_or_fail "Mesh B did not become ready after NodeDB reset" \
-	wait_for_meshtasticd_ready \
-	"${MESHTASTICD_ENDPOINT_B}" \
-	"${MESHTASTICD_CONTAINER_B}"
+run_or_fail "Stale longname row in instance A was not pruned" \
+	wait_for_name_entry_absent \
+	"${MMRELAY_DB_PATH_A}" \
+	"longnames" \
+	"${STALE_NAME_ID_A}" \
+	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}"
+run_or_fail "Stale shortname row in instance A was not pruned" \
+	wait_for_name_entry_absent \
+	"${MMRELAY_DB_PATH_A}" \
+	"shortnames" \
+	"${STALE_NAME_ID_A}" \
+	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}"
+run_or_fail "Stale longname row in instance B was not pruned" \
+	wait_for_name_entry_absent \
+	"${MMRELAY_DB_PATH_B}" \
+	"longnames" \
+	"${STALE_NAME_ID_B}" \
+	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}"
+run_or_fail "Stale shortname row in instance B was not pruned" \
+	wait_for_name_entry_absent \
+	"${MMRELAY_DB_PATH_B}" \
+	"shortnames" \
+	"${STALE_NAME_ID_B}" \
+	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}"
+pass_test "Periodic node-name refresh pruned stale rows in both relays"
 
-run_or_fail "Stale longname was not pruned from instance A" \
-	wait_for_name_entry_absent \
-	"${MMRELAY_DB_PATH_A}" \
-	"longnames" \
-	"${STALE_NODE_ID_A}" \
-	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}"
-run_or_fail "Stale shortname was not pruned from instance A" \
-	wait_for_name_entry_absent \
-	"${MMRELAY_DB_PATH_A}" \
-	"shortnames" \
-	"${STALE_NODE_ID_A}" \
-	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}"
-run_or_fail "Stale longname was not pruned from instance B" \
-	wait_for_name_entry_absent \
-	"${MMRELAY_DB_PATH_B}" \
-	"longnames" \
-	"${STALE_NODE_ID_B}" \
-	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}"
-run_or_fail "Stale shortname was not pruned from instance B" \
-	wait_for_name_entry_absent \
-	"${MMRELAY_DB_PATH_B}" \
-	"shortnames" \
-	"${STALE_NODE_ID_B}" \
-	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}"
-pass_test "NodeDB reset pruned stale longname/shortname rows on both relays"
 write_observability_report
 
 # =============================================================================

@@ -4,6 +4,7 @@ It uses Meshtastic-python and Matrix nio client library to interface with the ra
 """
 
 import asyncio
+import contextlib
 import functools
 import os
 import signal
@@ -26,6 +27,14 @@ from nio.events.room_events import RoomMemberEvent
 from mmrelay import __version__, meshtastic_utils
 from mmrelay.cli_utils import msg_suggest_check_config, msg_suggest_generate_config
 from mmrelay.constants.app import APP_DISPLAY_NAME, WINDOWS_PLATFORM
+from mmrelay.constants.config import (
+    CONFIG_KEY_MESSAGE_DELAY,
+    CONFIG_KEY_MSG_MAP,
+    CONFIG_KEY_WIPE_ON_RESTART,
+    CONFIG_SECTION_DATABASE,
+    CONFIG_SECTION_DATABASE_LEGACY,
+    CONFIG_SECTION_MESHTASTIC,
+)
 from mmrelay.constants.queue import DEFAULT_MESSAGE_DELAY
 from mmrelay.db_utils import (
     initialize_database,
@@ -44,14 +53,8 @@ from mmrelay.matrix_utils import (
     on_room_member,
     on_room_message,
 )
-from mmrelay.meshtastic_utils import (
-    connect_meshtastic,
-    get_node_name_refresh_interval_seconds,
-)
+from mmrelay.meshtastic_utils import connect_meshtastic
 from mmrelay.meshtastic_utils import logger as meshtastic_logger
-from mmrelay.meshtastic_utils import (
-    refresh_node_name_tables,
-)
 from mmrelay.message_queue import (
     get_message_queue,
     start_message_queue,
@@ -222,15 +225,17 @@ async def main(config: dict[str, Any]) -> None:
     initialize_database()
 
     # Check database config for wipe_on_restart (preferred format)
-    database_config = config.get("database", {})
-    msg_map_config = database_config.get("msg_map", {})
-    wipe_on_restart = msg_map_config.get("wipe_on_restart", False)
+    database_config = config.get(CONFIG_SECTION_DATABASE, {})
+    msg_map_config = database_config.get(CONFIG_KEY_MSG_MAP, {})
+    wipe_on_restart = msg_map_config.get(CONFIG_KEY_WIPE_ON_RESTART, False)
 
     # If not found in database config, check legacy db config
     if not wipe_on_restart:
-        db_config = config.get("db", {})
-        legacy_msg_map_config = db_config.get("msg_map", {})
-        legacy_wipe_on_restart = legacy_msg_map_config.get("wipe_on_restart", False)
+        db_config = config.get(CONFIG_SECTION_DATABASE_LEGACY, {})
+        legacy_msg_map_config = db_config.get(CONFIG_KEY_MSG_MAP, {})
+        legacy_wipe_on_restart = legacy_msg_map_config.get(
+            CONFIG_KEY_WIPE_ON_RESTART, False
+        )
 
         if legacy_wipe_on_restart:
             wipe_on_restart = legacy_wipe_on_restart
@@ -248,8 +253,8 @@ async def main(config: dict[str, Any]) -> None:
     )
 
     # Start message queue with configured message delay
-    message_delay = config.get("meshtastic", {}).get(
-        "message_delay", DEFAULT_MESSAGE_DELAY
+    message_delay = config.get(CONFIG_SECTION_MESHTASTIC, {}).get(
+        CONFIG_KEY_MESSAGE_DELAY, DEFAULT_MESSAGE_DELAY
     )
     start_message_queue(message_delay=message_delay)
 
@@ -301,16 +306,8 @@ async def main(config: dict[str, Any]) -> None:
     # Signal readiness after core services and callbacks are initialized.
     _write_ready_file()
     ready_task: asyncio.Task[None] | None = None
-    node_name_refresh_task: asyncio.Task[None] | None = None
-    node_name_refresh_interval = get_node_name_refresh_interval_seconds(config)
     if _ready_heartbeat_seconds > 0:
         ready_task = asyncio.create_task(_ready_heartbeat(shutdown_event))
-    node_name_refresh_task = asyncio.create_task(
-        refresh_node_name_tables(
-            shutdown_event,
-            refresh_interval_seconds=node_name_refresh_interval,
-        )
-    )
 
     def _set_shutdown_flag() -> None:
         """
@@ -349,6 +346,15 @@ async def main(config: dict[str, Any]) -> None:
     # Start connection health monitoring using getMetadata() heartbeat
     # This provides proactive connection detection for all interface types
     _ = asyncio.create_task(meshtastic_utils.check_connection())
+    node_name_refresh_interval_seconds = (
+        meshtastic_utils.get_node_name_refresh_interval_seconds()
+    )
+    node_name_refresh_task = asyncio.create_task(
+        meshtastic_utils.refresh_node_name_tables(
+            shutdown_event,
+            refresh_interval_seconds=node_name_refresh_interval_seconds,
+        )
+    )
 
     # Ensure message queue processor is started now that event loop is running
     get_message_queue().ensure_processor_started()
@@ -399,12 +405,6 @@ async def main(config: dict[str, Any]) -> None:
                         matrix_logger.warning(
                             "Matrix sync_forever completed unexpectedly"
                         )
-                    except KeyboardInterrupt:
-                        matrix_logger.info(
-                            "Matrix sync interrupted. Starting shutdown..."
-                        )
-                        shutdown()
-                        break
                     except (
                         Exception
                     ) as exc:  # noqa: BLE001 — sync loop must keep retrying
@@ -424,12 +424,9 @@ async def main(config: dict[str, Any]) -> None:
     except KeyboardInterrupt:
         shutdown()
     finally:
-        if node_name_refresh_task is not None:
-            node_name_refresh_task.cancel()
-            try:
-                await node_name_refresh_task
-            except asyncio.CancelledError:
-                pass
+        node_name_refresh_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await node_name_refresh_task
         if ready_task is not None:
             ready_task.cancel()
             try:

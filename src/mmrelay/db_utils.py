@@ -10,6 +10,11 @@ from mmrelay.constants.database import (
     DEFAULT_BUSY_TIMEOUT_MS,
     DEFAULT_ENABLE_WAL,
     DEFAULT_EXTRA_PRAGMAS,
+    DEFAULT_NAME_PRUNE_CHUNK_SIZE,
+    NAMES_TABLE_LONGNAMES,
+    NAMES_TABLE_SHORTNAMES,
+    NODE_NAME_FIELD_LONG,
+    NODE_NAME_FIELD_SHORT,
 )
 from mmrelay.db_runtime import DatabaseManager
 from mmrelay.log_utils import get_logger
@@ -42,23 +47,23 @@ _db_manager_lock = threading.Lock()
 
 logger = get_logger(name="db_utils")
 
+NodeNameState = tuple[tuple[str, str | None, str | None], ...]
+
 # Table name to singular name type mapping for logging
 _NAME_TYPE_BY_TABLE = {
-    "longnames": "longname",
-    "shortnames": "shortname",
+    NAMES_TABLE_LONGNAMES: "longname",
+    NAMES_TABLE_SHORTNAMES: "shortname",
 }
 
 _SELECT_STALE_IDS_SQL_BY_TABLE = {
-    "longnames": "SELECT meshtastic_id FROM longnames",
-    "shortnames": "SELECT meshtastic_id FROM shortnames",
+    NAMES_TABLE_LONGNAMES: "SELECT meshtastic_id FROM longnames",
+    NAMES_TABLE_SHORTNAMES: "SELECT meshtastic_id FROM shortnames",
 }
 
 _DELETE_STALE_ID_SQL_BY_TABLE = {
-    "longnames": "DELETE FROM longnames WHERE meshtastic_id = ?",
-    "shortnames": "DELETE FROM shortnames WHERE meshtastic_id = ?",
+    NAMES_TABLE_LONGNAMES: "DELETE FROM longnames WHERE meshtastic_id = ?",
+    NAMES_TABLE_SHORTNAMES: "DELETE FROM shortnames WHERE meshtastic_id = ?",
 }
-
-NodeNameState = tuple[tuple[str, str, str], ...]
 
 
 def clear_db_path_cache() -> None:
@@ -717,6 +722,123 @@ def save_longname(meshtastic_id: int | str, longname: str) -> bool:
         return True
 
 
+def _normalize_node_name_value(name_value: Any) -> str | None:
+    """
+    Normalize a node-name value to a string suitable for state comparison.
+
+    Parameters:
+        name_value (Any): Raw long/short name value from node data.
+
+    Returns:
+        str | None: Normalized string value, or None when value is absent/empty.
+    """
+    if name_value is None:
+        return None
+    if isinstance(name_value, str):
+        return name_value or None
+    normalized = str(name_value)
+    return normalized or None
+
+
+def _collect_node_name_snapshot(
+    nodes: dict[str, Any] | None,
+) -> tuple[NodeNameState, set[str], bool]:
+    """
+    Build a normalized node-name state snapshot and metadata from node data.
+
+    Parameters:
+        nodes (dict[str, Any] | None): Current Meshtastic nodes snapshot.
+
+    Returns:
+        tuple[NodeNameState, set[str], bool]:
+            - Normalized sorted node-name state
+            - Current Meshtastic IDs extracted from the snapshot
+            - Snapshot completeness flag used for safe stale-row pruning
+    """
+    if not isinstance(nodes, dict) or not nodes:
+        return (), set(), False
+
+    snapshot_complete = True
+    current_ids: set[str] = set()
+    state_entries: list[tuple[str, str | None, str | None]] = []
+
+    for node in nodes.values():
+        if not isinstance(node, dict):
+            snapshot_complete = False
+            continue
+
+        user = node.get("user")
+        if not isinstance(user, dict):
+            snapshot_complete = False
+            continue
+
+        meshtastic_id = user.get("id")
+        if meshtastic_id is None or (
+            isinstance(meshtastic_id, str) and meshtastic_id == ""
+        ):
+            snapshot_complete = False
+            continue
+
+        id_key = str(meshtastic_id)
+        current_ids.add(id_key)
+        state_entries.append(
+            (
+                id_key,
+                _normalize_node_name_value(user.get(NODE_NAME_FIELD_LONG)),
+                _normalize_node_name_value(user.get(NODE_NAME_FIELD_SHORT)),
+            )
+        )
+
+    state_entries.sort()
+    return tuple(state_entries), current_ids, snapshot_complete
+
+
+def build_node_name_state(nodes: dict[str, Any] | None) -> NodeNameState:
+    """
+    Build a deterministic node-name state snapshot used for change detection.
+
+    Parameters:
+        nodes (dict[str, Any] | None): Current Meshtastic nodes snapshot.
+
+    Returns:
+        NodeNameState: Sorted tuples of (meshtastic_id, longName, shortName).
+    """
+    state, _current_ids, _snapshot_complete = _collect_node_name_snapshot(nodes)
+    return state
+
+
+def sync_name_tables_if_changed(
+    nodes: dict[str, Any] | None,
+    previous_state: NodeNameState | None = None,
+) -> NodeNameState:
+    """
+    Sync longname/shortname tables only when node-name state changes.
+
+    When the state has not changed, this function still performs safe stale-row
+    pruning for complete snapshots so periodic refresh keeps the DB aligned with
+    current node IDs without rewriting unchanged names.
+
+    Parameters:
+        nodes (dict[str, Any] | None): Current Meshtastic nodes snapshot.
+        previous_state (NodeNameState | None): Last successful state snapshot.
+
+    Returns:
+        NodeNameState: Current normalized state for the next iteration.
+    """
+    current_state, current_ids, snapshot_complete = _collect_node_name_snapshot(nodes)
+
+    if previous_state is not None and current_state == previous_state:
+        if snapshot_complete and current_ids:
+            delete_stale_longnames(current_ids)
+            delete_stale_shortnames(current_ids)
+        return current_state
+
+    nodes_dict = nodes if isinstance(nodes, dict) else {}
+    update_longnames(nodes_dict)
+    update_shortnames(nodes_dict)
+    return current_state
+
+
 def _update_names_core(
     nodes: dict[str, Any],
     *,
@@ -788,7 +910,7 @@ def update_longnames(nodes: dict[str, Any]) -> None:
     """
     _update_names_core(
         nodes,
-        name_key="longName",
+        name_key=NODE_NAME_FIELD_LONG,
         save_name=save_longname,
         delete_stale_names=delete_stale_longnames,
     )
@@ -904,7 +1026,7 @@ def _delete_stale_names_core(
     # Delete stale IDs in batches to avoid SQLite parameter limits.
     # Use a fixed, parameterized delete statement selected from the allow-list.
     total_deleted = 0
-    chunk_size = 900  # Safe chunk size below SQLite's limit
+    chunk_size = DEFAULT_NAME_PRUNE_CHUNK_SIZE
     for i in range(0, len(stale_ids), chunk_size):
         chunk = stale_ids[i : i + chunk_size]
         cursor.executemany(delete_sql, ((stale_id,) for stale_id in chunk))
@@ -959,7 +1081,7 @@ def delete_stale_longnames(current_ids: set[str]) -> int:
     Returns:
         int: Number of rows removed from the longnames table.
     """
-    return _delete_stale_names("longnames", current_ids)
+    return _delete_stale_names(NAMES_TABLE_LONGNAMES, current_ids)
 
 
 def delete_stale_shortnames(current_ids: set[str]) -> int:
@@ -976,7 +1098,7 @@ def delete_stale_shortnames(current_ids: set[str]) -> int:
     Returns:
         int: Number of stale entries removed.
     """
-    return _delete_stale_names("shortnames", current_ids)
+    return _delete_stale_names(NAMES_TABLE_SHORTNAMES, current_ids)
 
 
 def update_shortnames(nodes: dict[str, Any]) -> None:
@@ -993,59 +1115,10 @@ def update_shortnames(nodes: dict[str, Any]) -> None:
     """
     _update_names_core(
         nodes,
-        name_key="shortName",
+        name_key=NODE_NAME_FIELD_SHORT,
         save_name=save_shortname,
         delete_stale_names=delete_stale_shortnames,
     )
-
-
-def build_node_name_state(nodes_snapshot: dict[str, Any]) -> NodeNameState:
-    """
-    Build a deterministic fingerprint of node IDs and name values from a snapshot.
-
-    The fingerprint includes only fields relevant to name-table sync:
-    `user.id`, `user.longName`, and `user.shortName`.
-    """
-    state: list[tuple[str, str, str]] = []
-    for node_key, node in nodes_snapshot.items():
-        state_id = str(node_key)
-        long_name = ""
-        short_name = ""
-
-        if isinstance(node, dict):
-            user = node.get("user")
-            if isinstance(user, dict):
-                user_id = user.get("id")
-                if user_id not in (None, ""):
-                    state_id = str(user_id)
-
-                long_name_value = user.get("longName")
-                if isinstance(long_name_value, str):
-                    long_name = long_name_value
-
-                short_name_value = user.get("shortName")
-                if isinstance(short_name_value, str):
-                    short_name = short_name_value
-
-        state.append((state_id, long_name, short_name))
-
-    return tuple(sorted(state))
-
-
-def sync_name_tables_if_changed(
-    nodes_snapshot: dict[str, Any],
-    previous_state: NodeNameState | None,
-) -> NodeNameState:
-    """
-    Update longname/shortname tables only when the snapshot fingerprint changed.
-    """
-    current_state = build_node_name_state(nodes_snapshot)
-    if current_state == previous_state:
-        return current_state
-
-    update_longnames(nodes_snapshot)
-    update_shortnames(nodes_snapshot)
-    return current_state
 
 
 def _store_message_map_core(

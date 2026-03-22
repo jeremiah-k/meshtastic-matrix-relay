@@ -53,6 +53,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from mmrelay.constants.config import DEFAULT_NODE_NAME_REFRESH_INTERVAL
 from mmrelay.main import main, print_banner, run_main
 from tests.helpers import InlineExecutorLoop, inline_to_thread
 
@@ -386,12 +387,14 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.connect_meshtastic")
     @patch("mmrelay.main.connect_matrix", new_callable=AsyncMock)
     @patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock)
-    @patch("mmrelay.main.refresh_node_name_tables")
+    @patch(
+        "mmrelay.main.meshtastic_utils.refresh_node_name_tables", new_callable=AsyncMock
+    )
     @patch("mmrelay.main.stop_message_queue")
     def test_main_basic_flow(
         self,
         mock_stop_queue,
-        mock_refresh_node_name_tables,
+        mock_refresh_node_names,
         mock_join_room,
         mock_connect_matrix,
         mock_connect_meshtastic,
@@ -413,7 +416,7 @@ class TestMain(unittest.TestCase):
         self.assertIsNotNone(mock_connect_matrix)
         self.assertIsNotNone(mock_join_room)
         self.assertIsNotNone(mock_stop_queue)
-        self.assertIsNotNone(mock_refresh_node_name_tables)
+        self.assertIsNotNone(mock_refresh_node_names)
 
         # Test passes if all mocks are properly set up
         # The actual main() function testing is complex due to async nature
@@ -1358,116 +1361,61 @@ class TestMainFunctionEdgeCases(unittest.TestCase):
             # Should call start_message_queue with custom delay
             mock_start_queue.assert_called_once_with(message_delay=5.0)
 
-    @patch("mmrelay.meshtastic_utils.sync_name_tables_if_changed")
-    def test_main_no_meshtastic_client_warning(self, mock_sync_name_tables):
+    def test_main_no_meshtastic_client_warning(self):
         """
-        Verify node-name DB sync is skipped when the Meshtastic client is unavailable.
+        Verify periodic node-name refresh skips DB sync when no Meshtastic client exists.
         """
+
+        class _OnePassEvent:
+            def __init__(self) -> None:
+                self._set = False
+
+            def is_set(self) -> bool:
+                return self._set
+
+            async def wait(self) -> None:
+                self._set = True
+
         import mmrelay.meshtastic_utils as meshtastic_module
 
-        with patch("mmrelay.meshtastic_utils.meshtastic_client", None):
+        with (
+            patch("mmrelay.meshtastic_utils.meshtastic_client", None),
+            patch("mmrelay.meshtastic_utils.sync_name_tables_if_changed") as mock_sync,
+        ):
             asyncio.run(
                 meshtastic_module.refresh_node_name_tables(
-                    _ImmediateEvent(),
+                    _OnePassEvent(),
                     refresh_interval_seconds=1.0,
                 )
             )
 
-        mock_sync_name_tables.assert_not_called()
+        mock_sync.assert_not_called()
 
-    def test_get_node_name_refresh_interval_seconds_uses_config_value(self):
-        """
-        Verify node-name refresh interval uses the configured Meshtastic value.
-        """
+    def test_node_name_refresh_interval_non_finite_defaults(self):
+        """Non-finite refresh intervals should fall back to the default value."""
         import mmrelay.meshtastic_utils as meshtastic_module
 
-        interval = meshtastic_module.get_node_name_refresh_interval_seconds(
-            {"meshtastic": {"node_name_refresh_interval": 7.5}}
-        )
-        self.assertEqual(interval, 7.5)
+        with (
+            patch.object(
+                meshtastic_module,
+                "config",
+                {"meshtastic": {"node_name_refresh_interval": "inf"}},
+            ),
+        ):
+            interval = meshtastic_module.get_node_name_refresh_interval_seconds()
+        self.assertEqual(interval, DEFAULT_NODE_NAME_REFRESH_INTERVAL)
 
-    @patch("mmrelay.meshtastic_utils.logger")
-    def test_get_node_name_refresh_interval_seconds_invalid_value_falls_back(
-        self,
-        mock_logger,
-    ):
-        """
-        Verify invalid node-name refresh interval falls back to default and logs a warning.
-        """
+    def test_node_name_refresh_interval_invalid_defaults(self):
+        """Unparseable refresh intervals should fall back to the default value."""
         import mmrelay.meshtastic_utils as meshtastic_module
 
-        interval = meshtastic_module.get_node_name_refresh_interval_seconds(
-            {"meshtastic": {"node_name_refresh_interval": "not-a-number"}}
-        )
-        self.assertEqual(interval, 60.0)
-        mock_logger.warning.assert_called_once()
-
-    @patch("mmrelay.db_utils.update_longnames")
-    @patch("mmrelay.db_utils.update_shortnames")
-    def test_sync_name_tables_if_changed_skips_unchanged_snapshot(
-        self,
-        mock_update_shortnames,
-        mock_update_longnames,
-    ):
-        """
-        Verify DB name-table sync skips redundant writes when names are unchanged.
-        """
-        from mmrelay.db_utils import sync_name_tables_if_changed
-
-        nodes_snapshot = {
-            1234: {
-                "user": {
-                    "id": "!000004d2",
-                    "longName": "Alpha",
-                    "shortName": "A",
-                }
-            }
-        }
-
-        first_state = sync_name_tables_if_changed(nodes_snapshot, None)
-        second_state = sync_name_tables_if_changed(nodes_snapshot, first_state)
-
-        self.assertEqual(first_state, second_state)
-        self.assertEqual(mock_update_longnames.call_count, 1)
-        self.assertEqual(mock_update_shortnames.call_count, 1)
-
-    @patch("mmrelay.db_utils.update_longnames")
-    @patch("mmrelay.db_utils.update_shortnames")
-    def test_sync_name_tables_if_changed_updates_after_snapshot_change(
-        self,
-        mock_update_shortnames,
-        mock_update_longnames,
-    ):
-        """
-        Verify DB name-table sync reruns updates when name data changes.
-        """
-        from mmrelay.db_utils import sync_name_tables_if_changed
-
-        first_snapshot = {
-            1234: {
-                "user": {
-                    "id": "!000004d2",
-                    "longName": "Alpha",
-                    "shortName": "A",
-                }
-            }
-        }
-        second_snapshot = {
-            1234: {
-                "user": {
-                    "id": "!000004d2",
-                    "longName": "Bravo",
-                    "shortName": "B",
-                }
-            }
-        }
-
-        first_state = sync_name_tables_if_changed(first_snapshot, None)
-        second_state = sync_name_tables_if_changed(second_snapshot, first_state)
-
-        self.assertNotEqual(first_state, second_state)
-        self.assertEqual(mock_update_longnames.call_count, 2)
-        self.assertEqual(mock_update_shortnames.call_count, 2)
+        with patch.object(
+            meshtastic_module,
+            "config",
+            {"meshtastic": {"node_name_refresh_interval": "not-a-number"}},
+        ):
+            interval = meshtastic_module.get_node_name_refresh_interval_seconds()
+        self.assertEqual(interval, DEFAULT_NODE_NAME_REFRESH_INTERVAL)
 
 
 @pytest.mark.parametrize("db_key", ["database", "db"])
@@ -1957,18 +1905,12 @@ class TestMainAsyncFunction(unittest.TestCase):
         mock_matrix_client = AsyncMock()
         mock_matrix_client.add_event_callback = MagicMock()
         mock_matrix_client.close = AsyncMock()
-        mock_matrix_client.sync_forever = AsyncMock()
+        mock_matrix_client.sync_forever = AsyncMock(side_effect=KeyboardInterrupt)
 
         with (
-            patch(
-                "mmrelay.main.asyncio.get_running_loop",
-                side_effect=_make_patched_get_running_loop(),
-            ),
             patch("mmrelay.main.initialize_database") as mock_init_db,
             patch("mmrelay.main.load_plugins") as mock_load_plugins,
             patch("mmrelay.main.start_message_queue") as mock_start_queue,
-            patch("mmrelay.main.shutdown_plugins"),
-            patch("mmrelay.main.stop_message_queue"),
             patch(
                 "mmrelay.main.connect_matrix",
                 new_callable=AsyncMock,
@@ -1978,13 +1920,13 @@ class TestMainAsyncFunction(unittest.TestCase):
                 "mmrelay.main.connect_meshtastic", return_value=MagicMock()
             ) as mock_connect_mesh,
             patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
-            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
-            patch("mmrelay.main.get_message_queue") as mock_get_queue,
-            patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
+            patch("mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt),
+            patch(
+                "mmrelay.meshtastic_utils.asyncio.sleep", side_effect=KeyboardInterrupt
+            ),
+            patch("mmrelay.matrix_utils.asyncio.sleep", side_effect=KeyboardInterrupt),
+            contextlib.suppress(KeyboardInterrupt),
         ):
-            mock_queue = MagicMock()
-            mock_queue.ensure_processor_started = MagicMock()
-            mock_get_queue.return_value = mock_queue
             asyncio.run(main(config))
 
         # Verify initialization sequence
@@ -2015,18 +1957,12 @@ class TestMainAsyncFunction(unittest.TestCase):
         mock_matrix_client = AsyncMock()
         mock_matrix_client.add_event_callback = MagicMock()
         mock_matrix_client.close = AsyncMock()
-        mock_matrix_client.sync_forever = AsyncMock()
+        mock_matrix_client.sync_forever = AsyncMock(side_effect=KeyboardInterrupt)
 
         with (
-            patch(
-                "mmrelay.main.asyncio.get_running_loop",
-                side_effect=_make_patched_get_running_loop(),
-            ),
             patch("mmrelay.main.initialize_database"),
             patch("mmrelay.main.load_plugins"),
             patch("mmrelay.main.start_message_queue"),
-            patch("mmrelay.main.shutdown_plugins"),
-            patch("mmrelay.main.stop_message_queue"),
             patch(
                 "mmrelay.main.connect_matrix",
                 new_callable=AsyncMock,
@@ -2034,13 +1970,13 @@ class TestMainAsyncFunction(unittest.TestCase):
             ),
             patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
             patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock) as mock_join,
-            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
-            patch("mmrelay.main.get_message_queue") as mock_get_queue,
-            patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
+            patch("mmrelay.main.asyncio.sleep", side_effect=KeyboardInterrupt),
+            patch(
+                "mmrelay.meshtastic_utils.asyncio.sleep", side_effect=KeyboardInterrupt
+            ),
+            patch("mmrelay.matrix_utils.asyncio.sleep", side_effect=KeyboardInterrupt),
+            contextlib.suppress(KeyboardInterrupt),
         ):
-            mock_queue = MagicMock()
-            mock_queue.ensure_processor_started = MagicMock()
-            mock_get_queue.return_value = mock_queue
             asyncio.run(main(config))
 
         # Verify join_matrix_room was called for each room

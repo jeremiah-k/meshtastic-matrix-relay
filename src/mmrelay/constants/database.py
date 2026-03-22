@@ -9,6 +9,7 @@ and data management settings.
 DEFAULT_MSGS_TO_KEEP = 500
 DEFAULT_MAX_DATA_ROWS_PER_NODE_BASE = 100  # Base plugin default
 DEFAULT_MAX_DATA_ROWS_PER_NODE_MESH_RELAY = 50  # Reduced for mesh relay performance
+DEFAULT_NAME_PRUNE_CHUNK_SIZE = 900
 
 # Progress tracking
 PROGRESS_TOTAL_STEPS = 100
@@ -28,3 +29,9 @@ DEFAULT_EXTRA_PRAGMAS = {
     "synchronous": "NORMAL",
     "temp_store": "MEMORY",
 }
+
+# Node name storage tables and fields
+NAMES_TABLE_LONGNAMES = "longnames"
+NAMES_TABLE_SHORTNAMES = "shortnames"
+NODE_NAME_FIELD_LONG = "longName"
+NODE_NAME_FIELD_SHORT = "shortName"

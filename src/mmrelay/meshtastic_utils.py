@@ -71,6 +71,7 @@ from mmrelay.constants.network import (
     METADATA_WATCHDOG_SECS,
 )
 from mmrelay.db_utils import (
+    NodeNameState,
     get_longname,
     get_message_map_by_meshtastic_id,
     get_shortname,
@@ -462,6 +463,87 @@ def _coerce_bool(value: Any, default: bool, setting_name: str) -> bool:
         default,
     )
     return default
+
+
+def get_node_name_refresh_interval_seconds() -> float:
+    """
+    Return the configured node-name refresh interval (seconds).
+
+    Reads `meshtastic.node_name_refresh_interval` and falls back to
+    `DEFAULT_NODE_NAME_REFRESH_INTERVAL` when missing or invalid.
+    """
+    raw_interval = get_meshtastic_config_value(
+        config,
+        CONFIG_KEY_NODE_NAME_REFRESH_INTERVAL,
+        DEFAULT_NODE_NAME_REFRESH_INTERVAL,
+    )
+    try:
+        interval = float(raw_interval)
+    except (TypeError, ValueError):
+        logger.warning(
+            "Invalid meshtastic.node_name_refresh_interval=%r; defaulting to %.1f",
+            raw_interval,
+            DEFAULT_NODE_NAME_REFRESH_INTERVAL,
+        )
+        return DEFAULT_NODE_NAME_REFRESH_INTERVAL
+
+    if not math.isfinite(interval):
+        logger.warning(
+            "Invalid meshtastic.node_name_refresh_interval=%r; defaulting to %.1f",
+            raw_interval,
+            DEFAULT_NODE_NAME_REFRESH_INTERVAL,
+        )
+        return DEFAULT_NODE_NAME_REFRESH_INTERVAL
+    return interval
+
+
+async def refresh_node_name_tables(
+    shutdown_event: asyncio.Event,
+    *,
+    refresh_interval_seconds: float | None = None,
+) -> None:
+    """
+    Periodically sync longname/shortname tables from the current Meshtastic node DB.
+
+    The first refresh attempt runs immediately. When `refresh_interval_seconds`
+    is zero or negative, one immediate refresh is attempted and periodic refresh
+    is disabled afterward.
+    """
+    interval = (
+        get_node_name_refresh_interval_seconds()
+        if refresh_interval_seconds is None
+        else refresh_interval_seconds
+    )
+
+    previous_state: NodeNameState | None = None
+    while not shutdown_event.is_set():
+        if meshtastic_client is not None:
+            try:
+                nodes_snapshot = dict(meshtastic_client.nodes)
+                previous_state = await asyncio.to_thread(
+                    sync_name_tables_if_changed,
+                    nodes_snapshot,
+                    previous_state,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to refresh node-name tables from node snapshot"
+                )
+        else:
+            logger.debug(
+                "Skipping node-name table refresh because Meshtastic client is unavailable"
+            )
+
+        if interval <= 0:
+            logger.debug(
+                "Node-name periodic refresh disabled (interval=%.3f)", float(interval)
+            )
+            return
+
+        try:
+            await asyncio.wait_for(shutdown_event.wait(), timeout=float(interval))
+        except asyncio.TimeoutError:
+            continue
 
 
 def _extract_packet_request_id(packet: Any) -> int | None:
@@ -3834,83 +3916,6 @@ async def check_connection() -> None:
             logger.debug("Skipping connection check - no client available")
 
         await asyncio.sleep(heartbeat_interval)
-
-
-def get_node_name_refresh_interval_seconds(passed_config: dict[str, Any]) -> float:
-    """
-    Return the configured node-name refresh interval in seconds.
-
-    Uses `meshtastic.node_name_refresh_interval` when present, otherwise falls
-    back to `DEFAULT_NODE_NAME_REFRESH_INTERVAL`.
-    """
-    meshtastic_config = passed_config.get(CONFIG_SECTION_MESHTASTIC, {})
-    if not isinstance(meshtastic_config, dict):
-        return DEFAULT_NODE_NAME_REFRESH_INTERVAL
-
-    raw_interval = meshtastic_config.get(
-        CONFIG_KEY_NODE_NAME_REFRESH_INTERVAL,
-        DEFAULT_NODE_NAME_REFRESH_INTERVAL,
-    )
-    try:
-        return float(raw_interval)
-    except (TypeError, ValueError):
-        logger.warning(
-            "Invalid meshtastic.node_name_refresh_interval=%r; defaulting to %.1f",
-            raw_interval,
-            DEFAULT_NODE_NAME_REFRESH_INTERVAL,
-        )
-        return DEFAULT_NODE_NAME_REFRESH_INTERVAL
-
-
-async def refresh_node_name_tables(
-    shutdown_event: asyncio.Event,
-    refresh_interval_seconds: float = DEFAULT_NODE_NAME_REFRESH_INTERVAL,
-) -> None:
-    """
-    Periodically sync Meshtastic node names into SQLite while the app is running.
-    """
-    global meshtastic_client, shutting_down
-
-    if refresh_interval_seconds <= 0:
-        logger.info(
-            "Node-name refresh disabled because interval is %s",
-            refresh_interval_seconds,
-        )
-        return
-
-    previous_state: tuple[tuple[str, str, str], ...] | None = None
-    previous_client: Any = None
-
-    while not shutting_down and not shutdown_event.is_set():
-        current_client = meshtastic_client
-        if current_client is not previous_client:
-            previous_state = None
-            previous_client = current_client
-
-        if current_client is not None:
-            nodes = getattr(current_client, "nodes", None)
-            if isinstance(nodes, dict):
-                nodes_snapshot = dict(nodes)
-                try:
-                    previous_state = await asyncio.to_thread(
-                        sync_name_tables_if_changed,
-                        nodes_snapshot,
-                        previous_state,
-                    )
-                except Exception:  # noqa: BLE001 - keep background sync alive
-                    logger.exception("Error refreshing Meshtastic node-name tables")
-            else:
-                logger.debug(
-                    "Skipping node-name refresh because Meshtastic nodes are unavailable"
-                )
-
-        try:
-            await asyncio.wait_for(
-                shutdown_event.wait(),
-                timeout=refresh_interval_seconds,
-            )
-        except asyncio.TimeoutError:
-            continue
 
 
 def send_text_reply(

@@ -31,6 +31,7 @@ from mmrelay.db_utils import (
     _reset_db_manager,
     async_prune_message_map,
     async_store_message_map,
+    build_node_name_state,
     clear_db_path_cache,
     delete_plugin_data,
     delete_stale_longnames,
@@ -48,6 +49,7 @@ from mmrelay.db_utils import (
     save_shortname,
     store_message_map,
     store_plugin_data,
+    sync_name_tables_if_changed,
     update_longnames,
     update_shortnames,
     wipe_message_map,
@@ -266,6 +268,71 @@ class TestDbUtils(unittest.TestCase):
         # Verify shortnames were stored
         self.assertEqual(get_shortname("!12345678"), "AS")
         self.assertEqual(get_shortname("!87654321"), "BJ")
+
+    def test_build_node_name_state_is_sorted_and_stable(self):
+        """Node-name state snapshot should be deterministic for change detection."""
+        nodes = {
+            "node_b": {"user": {"id": "!2", "longName": "Beta", "shortName": "B"}},
+            "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
+            "bad_node": {"user": {"longName": "Missing ID"}},
+        }
+        state = build_node_name_state(nodes)
+        self.assertEqual(
+            state,
+            (
+                ("!1", "Alpha", "A"),
+                ("!2", "Beta", "B"),
+            ),
+        )
+
+    def test_sync_name_tables_if_changed_skips_redundant_updates(self):
+        """A matching previous state should avoid full long/short upserts."""
+        initialize_database()
+        nodes = {
+            "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
+        }
+        first_state = sync_name_tables_if_changed(nodes, previous_state=None)
+
+        with (
+            patch("mmrelay.db_utils.update_longnames") as mock_update_longnames,
+            patch("mmrelay.db_utils.update_shortnames") as mock_update_shortnames,
+            patch("mmrelay.db_utils.delete_stale_longnames") as mock_delete_longnames,
+            patch("mmrelay.db_utils.delete_stale_shortnames") as mock_delete_shortnames,
+        ):
+            second_state = sync_name_tables_if_changed(
+                nodes, previous_state=first_state
+            )
+
+        self.assertEqual(second_state, first_state)
+        mock_update_longnames.assert_not_called()
+        mock_update_shortnames.assert_not_called()
+        mock_delete_longnames.assert_called_once_with({"!1"})
+        mock_delete_shortnames.assert_called_once_with({"!1"})
+
+    def test_sync_name_tables_if_changed_updates_on_change(self):
+        """State changes should trigger table updates and return the new state."""
+        initialize_database()
+        nodes = {
+            "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
+        }
+        first_state = sync_name_tables_if_changed(nodes, previous_state=None)
+
+        updated_nodes = {
+            "node_a": {
+                "user": {"id": "!1", "longName": "Alpha Prime", "shortName": "A1"}
+            },
+        }
+        with (
+            patch("mmrelay.db_utils.update_longnames") as mock_update_longnames,
+            patch("mmrelay.db_utils.update_shortnames") as mock_update_shortnames,
+        ):
+            second_state = sync_name_tables_if_changed(
+                updated_nodes, previous_state=first_state
+            )
+
+        self.assertNotEqual(second_state, first_state)
+        mock_update_longnames.assert_called_once_with(updated_nodes)
+        mock_update_shortnames.assert_called_once_with(updated_nodes)
 
     def test_update_names_preserve_zero_id_for_stale_tracking(self):
         """
