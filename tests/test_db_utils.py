@@ -25,6 +25,7 @@ from unittest.mock import MagicMock, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.db_runtime import DatabaseManager
 from mmrelay.db_utils import (
     _get_db_manager,
     _parse_bool,
@@ -403,7 +404,22 @@ class TestDbUtils(unittest.TestCase):
                 "user": {"id": "!1", "longName": "Alpha Prime", "shortName": "A1"}
             },
         }
-        with patch("mmrelay.db_utils.save_longname", return_value=False):
+        original_run_sync = DatabaseManager.run_sync
+
+        def fail_longname_insert_once(self, func, *, write=False):
+            if write and any(
+                isinstance(constant, str) and "INSERT INTO longnames" in constant
+                for constant in func.__code__.co_consts
+            ):
+                raise sqlite3.Error("forced longname write failure")
+            return original_run_sync(self, func, write=write)
+
+        with patch.object(
+            DatabaseManager,
+            "run_sync",
+            autospec=True,
+            side_effect=fail_longname_insert_once,
+        ):
             second_state = sync_name_tables_if_changed(
                 updated_nodes, previous_state=first_state
             )
@@ -425,7 +441,22 @@ class TestDbUtils(unittest.TestCase):
         nodes = {
             "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
         }
-        with patch("mmrelay.db_utils.save_longname", return_value=False):
+        original_run_sync = DatabaseManager.run_sync
+
+        def fail_longname_insert_once(self, func, *, write=False):
+            if write and any(
+                isinstance(constant, str) and "INSERT INTO longnames" in constant
+                for constant in func.__code__.co_consts
+            ):
+                raise sqlite3.Error("forced longname write failure")
+            return original_run_sync(self, func, write=write)
+
+        with patch.object(
+            DatabaseManager,
+            "run_sync",
+            autospec=True,
+            side_effect=fail_longname_insert_once,
+        ):
             state = sync_name_tables_if_changed(nodes, previous_state=None)
 
         self.assertIsNone(state)

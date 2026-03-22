@@ -32,6 +32,35 @@ def _make_async_return(value):
     return _async_return
 
 
+def _make_patched_get_running_loop():
+    """Return a helper that patches run_in_executor to execute inline."""
+    original_get_running_loop = asyncio.get_running_loop
+
+    def _patched_get_running_loop():
+        loop = original_get_running_loop()
+
+        async def _mock_run_in_executor(_executor, func, *args):
+            return func(*args)
+
+        loop.run_in_executor = _mock_run_in_executor  # type: ignore[assignment]
+        return loop
+
+    return _patched_get_running_loop
+
+
+def test_coerce_config_bool_normalizes_common_values() -> None:
+    """wipe_on_restart parsing should normalize booleans, strings, and numerics."""
+    assert main_module._coerce_config_bool(True) is True
+    assert main_module._coerce_config_bool(False) is False
+    assert main_module._coerce_config_bool("true") is True
+    assert main_module._coerce_config_bool("false") is False
+    assert main_module._coerce_config_bool("1") is True
+    assert main_module._coerce_config_bool("0") is False
+    assert main_module._coerce_config_bool("not-a-bool") is False
+    assert main_module._coerce_config_bool(1) is True
+    assert main_module._coerce_config_bool(0) is False
+
+
 def test_main_cleans_up_ready_task_on_shutdown(tmp_path, monkeypatch) -> None:
     """Configured ready heartbeat task should be cancelled/awaited during shutdown."""
     config = {
@@ -49,6 +78,10 @@ def test_main_cleans_up_ready_task_on_shutdown(tmp_path, monkeypatch) -> None:
     mock_matrix_client.close = AsyncMock()
 
     with (
+        patch(
+            "mmrelay.main.asyncio.get_running_loop",
+            side_effect=_make_patched_get_running_loop(),
+        ),
         patch("mmrelay.main.initialize_database"),
         patch("mmrelay.main.load_plugins"),
         patch("mmrelay.main.start_message_queue"),

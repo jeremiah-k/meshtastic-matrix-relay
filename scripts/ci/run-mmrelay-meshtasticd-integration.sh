@@ -70,11 +70,14 @@ NAME_PRUNE_WAIT_TIMEOUT_SECONDS="${NAME_PRUNE_WAIT_TIMEOUT_SECONDS:-75}"
 NODE_NAME_REFRESH_INTERVAL_SECONDS="${NODE_NAME_REFRESH_INTERVAL_SECONDS:-5}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 
-# Node-name table constants (must stay aligned with src/mmrelay/constants/database.py).
-NAMES_TABLE_LONGNAMES="${NAMES_TABLE_LONGNAMES:-longnames}"
-NAMES_TABLE_SHORTNAMES="${NAMES_TABLE_SHORTNAMES:-shortnames}"
-NAMES_FIELD_LONGNAME="${NAMES_FIELD_LONGNAME:-longname}"
-NAMES_FIELD_SHORTNAME="${NAMES_FIELD_SHORTNAME:-shortname}"
+# Names-table SQL identifiers used by this integration test.
+# Keep these aligned with the SQLite schema/query definitions in src/mmrelay/db_utils.py.
+# src/mmrelay/constants/database.py also includes node payload keys (longName/shortName),
+# but these constants must remain lowercase DB table/column names.
+NAMES_TABLE_LONGNAMES="longnames"
+NAMES_TABLE_SHORTNAMES="shortnames"
+NAMES_FIELD_LONGNAME="longname"
+NAMES_FIELD_SHORTNAME="shortname"
 
 # Artifacts and Logging - Separated by Instance
 CI_ARTIFACT_DIR="${CI_ARTIFACT_DIR:-${PWD}/.ci-artifacts/meshtasticd-integration}"
@@ -1421,6 +1424,7 @@ import os
 import sqlite3
 import sys
 import time
+from collections import deque
 
 (
     db_path,
@@ -1458,9 +1462,8 @@ while time.monotonic() < deadline:
                     file=sys.stderr,
                 )
                 with open(relay_log_path, encoding="utf-8", errors="replace") as handle:
-                    lines = handle.readlines()
-                for line in lines[-20:]:
-                    print(line.rstrip("\n"), file=sys.stderr)
+                    for line in deque(handle, 20):
+                        print(line.rstrip("\n"), file=sys.stderr)
             raise SystemExit(1)
     try:
         with sqlite3.connect(db_path, timeout=5) as conn:

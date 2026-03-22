@@ -38,6 +38,7 @@ def configured_temp_db() -> str:
     clear_db_path_cache()
     temp_dir = tempfile.mkdtemp()
     db_path = f"{temp_dir}/test_meshtastic.sqlite"
+    original_config = dbu.config
     dbu.config = {"database": {"path": db_path}}
     initialize_database()
     try:
@@ -45,6 +46,7 @@ def configured_temp_db() -> str:
     finally:
         _reset_db_manager()
         clear_db_path_cache()
+        dbu.config = original_config
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 

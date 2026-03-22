@@ -514,11 +514,27 @@ async def refresh_node_name_tables(
     is zero or negative, one immediate refresh is attempted and periodic refresh
     is disabled afterward.
     """
-    interval = (
-        get_node_name_refresh_interval_seconds()
-        if refresh_interval_seconds is None
-        else refresh_interval_seconds
-    )
+    configured_interval = get_node_name_refresh_interval_seconds()
+    if refresh_interval_seconds is None:
+        interval = configured_interval
+    else:
+        try:
+            interval = float(refresh_interval_seconds)
+        except (TypeError, ValueError):
+            logger.warning(
+                "Invalid node-name refresh interval override %r; defaulting to configured interval %.1f",
+                refresh_interval_seconds,
+                configured_interval,
+            )
+            interval = configured_interval
+        else:
+            if not math.isfinite(interval):
+                logger.warning(
+                    "Invalid node-name refresh interval override %r; defaulting to configured interval %.1f",
+                    refresh_interval_seconds,
+                    configured_interval,
+                )
+                interval = configured_interval
 
     previous_state: NodeNameState | None = None
     while not shutdown_event.is_set():

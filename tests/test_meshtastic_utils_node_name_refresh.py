@@ -139,7 +139,7 @@ def test_refresh_node_name_tables_handles_sync_exceptions(
             mu,
             "sync_name_tables_if_changed",
             side_effect=RuntimeError("sync failure"),
-        ),
+        ) as mock_sync,
     ):
         asyncio.run(
             mu.refresh_node_name_tables(
@@ -147,3 +147,4 @@ def test_refresh_node_name_tables_handles_sync_exceptions(
                 refresh_interval_seconds=0.0,
             )
         )
+    mock_sync.assert_called_once()

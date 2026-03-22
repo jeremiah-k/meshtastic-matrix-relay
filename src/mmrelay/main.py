@@ -200,6 +200,27 @@ def print_banner() -> None:
         _banner_printed = True
 
 
+def _coerce_config_bool(value: Any) -> bool:
+    """
+    Normalize config values to a strict boolean.
+
+    Accepts booleans directly, common string representations, and numeric values.
+    Unknown values are treated as False.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"", "0", "false", "no", "off"}:
+            return False
+        return False
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return False
+
+
 async def main(config: dict[str, Any]) -> None:
     """
     Run the relay: initialize core services, connect to Meshtastic and Matrix, run the Matrix sync loop with health-monitoring and retry behavior, and perform an orderly shutdown.
@@ -237,8 +258,11 @@ async def main(config: dict[str, Any]) -> None:
     has_preferred_wipe_on_restart = (
         CONFIG_KEY_WIPE_ON_RESTART in preferred_msg_map_config
     )
+    preferred_wipe_on_restart = preferred_msg_map_config.get(
+        CONFIG_KEY_WIPE_ON_RESTART, False
+    )
     wipe_on_restart = (
-        preferred_msg_map_config.get(CONFIG_KEY_WIPE_ON_RESTART, False)
+        _coerce_config_bool(preferred_wipe_on_restart)
         if has_preferred_wipe_on_restart
         else False
     )
@@ -251,12 +275,13 @@ async def main(config: dict[str, Any]) -> None:
         )
         if not isinstance(legacy_msg_map_config, dict):
             legacy_msg_map_config = {}
-        legacy_wipe_on_restart = legacy_msg_map_config.get(
+        legacy_wipe_on_restart_value = legacy_msg_map_config.get(
             CONFIG_KEY_WIPE_ON_RESTART, False
         )
+        legacy_wipe_on_restart = _coerce_config_bool(legacy_wipe_on_restart_value)
 
         if legacy_wipe_on_restart:
-            wipe_on_restart = legacy_wipe_on_restart
+            wipe_on_restart = True
             logger.warning(
                 "Using 'db.msg_map' configuration (legacy). 'database.msg_map' is now the preferred format and 'db.msg_map' will be deprecated in a future version."
             )
