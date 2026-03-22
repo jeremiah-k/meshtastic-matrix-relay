@@ -58,16 +58,23 @@ _NAME_TYPE_BY_TABLE = {
 _NAME_COLUMN_BY_TABLE = _NAME_TYPE_BY_TABLE
 
 _SELECT_STALE_IDS_SQL_BY_TABLE = {
-    NAMES_TABLE_LONGNAMES: f"SELECT meshtastic_id FROM {NAMES_TABLE_LONGNAMES}",
-    NAMES_TABLE_SHORTNAMES: f"SELECT meshtastic_id FROM {NAMES_TABLE_SHORTNAMES}",
+    NAMES_TABLE_LONGNAMES: "SELECT meshtastic_id FROM longnames",
+    NAMES_TABLE_SHORTNAMES: "SELECT meshtastic_id FROM shortnames",
 }
 
 _DELETE_STALE_ID_SQL_BY_TABLE = {
+    NAMES_TABLE_LONGNAMES: "DELETE FROM longnames WHERE meshtastic_id = ?",
+    NAMES_TABLE_SHORTNAMES: "DELETE FROM shortnames WHERE meshtastic_id = ?",
+}
+
+_SELECT_NAME_VALUES_SQL_BY_TABLE = {
     NAMES_TABLE_LONGNAMES: (
-        f"DELETE FROM {NAMES_TABLE_LONGNAMES} WHERE meshtastic_id = ?"
+        "SELECT meshtastic_id, longname FROM longnames "
+        "WHERE meshtastic_id IN (SELECT value FROM json_each(?))"
     ),
     NAMES_TABLE_SHORTNAMES: (
-        f"DELETE FROM {NAMES_TABLE_SHORTNAMES} WHERE meshtastic_id = ?"
+        "SELECT meshtastic_id, shortname FROM shortnames "
+        "WHERE meshtastic_id IN (SELECT value FROM json_each(?))"
     ),
 }
 
@@ -829,7 +836,8 @@ def _read_name_values_for_ids(
         return {}
 
     column_name = _NAME_COLUMN_BY_TABLE.get(table)
-    if column_name is None:
+    select_sql = _SELECT_NAME_VALUES_SQL_BY_TABLE.get(table)
+    if column_name is None or select_sql is None:
         raise _InvalidNamesTableError(table)
 
     manager = _get_db_manager()
@@ -839,11 +847,9 @@ def _read_name_values_for_ids(
         rows_by_id: dict[str, str | None] = {}
         for offset in range(0, len(sorted_ids), DEFAULT_NAME_PRUNE_CHUNK_SIZE):
             chunk_ids = sorted_ids[offset : offset + DEFAULT_NAME_PRUNE_CHUNK_SIZE]
-            placeholders = ",".join("?" for _ in chunk_ids)
             cursor.execute(
-                f"SELECT meshtastic_id, {column_name} FROM {table} "
-                f"WHERE meshtastic_id IN ({placeholders})",
-                tuple(chunk_ids),
+                select_sql,
+                (json.dumps(chunk_ids),),
             )
             rows_by_id.update(
                 {

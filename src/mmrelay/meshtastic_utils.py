@@ -479,7 +479,9 @@ def get_node_name_refresh_interval_seconds(
         passed_config (dict[str, Any] | None): Optional config to read from.
             When omitted, uses this module's global `config`.
     """
-    config_source = config if passed_config is None else passed_config
+    config_source = passed_config if passed_config is not None else config
+    if not isinstance(config_source, dict):
+        config_source = {}
     raw_interval = get_meshtastic_config_value(
         config_source,
         CONFIG_KEY_NODE_NAME_REFRESH_INTERVAL,
@@ -526,8 +528,16 @@ async def refresh_node_name_tables(
                 if client is None:
                     nodes_snapshot = None
                 else:
-                    # Deep-copy nested node payloads so sync work operates on a stable snapshot.
-                    nodes_snapshot = copy.deepcopy(dict(client.nodes))
+                    raw_nodes = getattr(client, "nodes", {})
+                    if not isinstance(raw_nodes, dict):
+                        logger.debug(
+                            "Skipping node-name refresh because client.nodes is not a dict"
+                        )
+                        nodes_snapshot = {}
+                    else:
+                        typed_nodes = cast(dict[str, Any], raw_nodes)
+                        # Deep-copy nested node payloads so sync work operates on a stable snapshot.
+                        nodes_snapshot = copy.deepcopy(typed_nodes)
 
             if nodes_snapshot is None:
                 logger.debug(
