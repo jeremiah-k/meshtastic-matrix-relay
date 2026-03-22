@@ -1423,26 +1423,18 @@ class TestMainFunctionEdgeCases(unittest.TestCase):
         """Non-finite refresh intervals should fall back to the default value."""
         import mmrelay.meshtastic_utils as meshtastic_module
 
-        with (
-            patch.object(
-                meshtastic_module,
-                "config",
-                {"meshtastic": {"node_name_refresh_interval": "inf"}},
-            ),
-        ):
-            interval = meshtastic_module.get_node_name_refresh_interval_seconds()
+        interval = meshtastic_module.get_node_name_refresh_interval_seconds(
+            {"meshtastic": {"node_name_refresh_interval": "inf"}}
+        )
         self.assertEqual(interval, DEFAULT_NODE_NAME_REFRESH_INTERVAL)
 
     def test_node_name_refresh_interval_invalid_defaults(self):
         """Unparseable refresh intervals should fall back to the default value."""
         import mmrelay.meshtastic_utils as meshtastic_module
 
-        with patch.object(
-            meshtastic_module,
-            "config",
-            {"meshtastic": {"node_name_refresh_interval": "not-a-number"}},
-        ):
-            interval = meshtastic_module.get_node_name_refresh_interval_seconds()
+        interval = meshtastic_module.get_node_name_refresh_interval_seconds(
+            {"meshtastic": {"node_name_refresh_interval": "not-a-number"}}
+        )
         self.assertEqual(interval, DEFAULT_NODE_NAME_REFRESH_INTERVAL)
 
 

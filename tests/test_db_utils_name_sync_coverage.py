@@ -163,20 +163,21 @@ def test_sync_unchanged_snapshot_repair_failure_keeps_previous_state(
     assert get_longname("!1") is None
 
     original_run_sync = DatabaseManager.run_sync
-    write_failed = False
+    write_count = 0
 
-    def fail_first_write(self, func, *, write=False):
-        nonlocal write_failed
-        if write and not write_failed:
-            write_failed = True
-            raise sqlite3.Error("forced write failure")
+    def fail_repair_write(self, func, *, write=False):
+        nonlocal write_count
+        if write:
+            write_count += 1
+            if write_count == 3:
+                raise sqlite3.Error("forced write failure on repair")
         return original_run_sync(self, func, write=write)
 
     with patch.object(
         DatabaseManager,
         "run_sync",
         autospec=True,
-        side_effect=fail_first_write,
+        side_effect=fail_repair_write,
     ):
         second_state = sync_name_tables_if_changed(nodes, previous_state=first_state)
 

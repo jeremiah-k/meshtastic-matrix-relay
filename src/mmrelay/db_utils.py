@@ -944,8 +944,10 @@ def _collect_node_name_snapshot(
             - Current Meshtastic IDs extracted from the snapshot
             - Snapshot completeness flag used for safe stale-row pruning
     """
-    if not isinstance(nodes, dict) or not nodes:
+    if nodes is None or not isinstance(nodes, dict):
         return (), set(), False
+    if not nodes:
+        return (), set(), True
 
     snapshot_complete = True
     current_ids: set[str] = set()
@@ -1036,7 +1038,7 @@ def _sync_name_tables_atomic(nodes: dict[str, Any]) -> bool:
             else:
                 cursor.execute(short_upsert_sql, (id_key, short_name))
 
-        if current_ids and snapshot_complete:
+        if snapshot_complete:
             _delete_stale_names_core(cursor, NAMES_TABLE_LONGNAMES, current_ids)
             _delete_stale_names_core(cursor, NAMES_TABLE_SHORTNAMES, current_ids)
 
@@ -1086,7 +1088,7 @@ def sync_name_tables_if_changed(
     nodes_dict = nodes if isinstance(nodes, dict) else {}
 
     if previous_state is not None and current_state == previous_state:
-        if snapshot_complete and current_ids:
+        if snapshot_complete:
             longnames_deleted = _delete_stale_names(
                 NAMES_TABLE_LONGNAMES,
                 current_ids,

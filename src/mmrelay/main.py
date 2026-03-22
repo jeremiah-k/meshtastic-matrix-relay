@@ -204,7 +204,7 @@ def _coerce_config_bool(value: Any) -> bool:
     """
     Normalize config values to a strict boolean.
 
-    Accepts booleans directly, common string representations, and numeric values.
+    Accepts booleans directly plus common boolean-like strings and 0/1 values.
     Unknown values are treated as False.
     """
     if isinstance(value, bool):
@@ -221,7 +221,13 @@ def _coerce_config_bool(value: Any) -> bool:
         )
         return False
     if isinstance(value, (int, float)):
-        return bool(value)
+        if value in (0, 1, 0.0, 1.0):
+            return bool(value)
+        logger.debug(
+            "Unexpected numeric config value %r; treating as False",
+            value,
+        )
+        return False
     if value is not None:
         logger.debug(
             "Unexpected config value type %s for %r; treating as False",

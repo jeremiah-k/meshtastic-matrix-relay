@@ -342,7 +342,11 @@ class TestDbUtils(unittest.TestCase):
         self.assertEqual(get_longname("!stale"), "Stale Longname")
         self.assertEqual(get_shortname("!stale"), "STL")
 
-        second_state = sync_name_tables_if_changed(nodes, previous_state=first_state)
+        with patch("mmrelay.db_utils._sync_name_tables_atomic") as mock_atomic:
+            second_state = sync_name_tables_if_changed(
+                nodes, previous_state=first_state
+            )
+            mock_atomic.assert_not_called()
 
         self.assertEqual(second_state, first_state)
         self.assertEqual(get_longname("!1"), "Alpha")

@@ -488,6 +488,8 @@ def get_node_name_refresh_interval_seconds(
         DEFAULT_NODE_NAME_REFRESH_INTERVAL,
     )
     try:
+        if isinstance(raw_interval, bool):
+            raise TypeError("boolean interval")
         interval = float(raw_interval)
         if math.isfinite(interval):
             return interval
@@ -518,6 +520,8 @@ async def refresh_node_name_tables(
         interval = get_node_name_refresh_interval_seconds()
     else:
         try:
+            if isinstance(refresh_interval_seconds, bool):
+                raise TypeError("boolean interval")
             interval = float(refresh_interval_seconds)
             if not math.isfinite(interval):
                 raise ValueError("non-finite interval")
@@ -546,8 +550,17 @@ async def refresh_node_name_tables(
                         nodes_snapshot = None
                     else:
                         typed_nodes = cast(dict[str, Any], raw_nodes)
-                        # Deep-copy nested node payloads so sync work operates on a stable snapshot.
-                        nodes_snapshot = copy.deepcopy(typed_nodes)
+                        nodes_snapshot = {
+                            node_key: {
+                                "user": {
+                                    "id": node.get("user", {}).get("id"),
+                                    "longName": node.get("user", {}).get("longName"),
+                                    "shortName": node.get("user", {}).get("shortName"),
+                                }
+                            }
+                            for node_key, node in typed_nodes.items()
+                            if isinstance(node, dict)
+                        }
 
             if nodes_snapshot is None:
                 if client is None:
