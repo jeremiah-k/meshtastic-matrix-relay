@@ -1,9 +1,11 @@
 import asyncio
 import contextlib
 import json
+import logging
 import os
 import sqlite3
 import threading
+from collections.abc import Collection
 from typing import Any, Callable, Dict, NamedTuple, Tuple, cast
 
 from mmrelay.constants.database import (
@@ -57,6 +59,7 @@ class NodeNameEntry(NamedTuple):
 NodeNameState = tuple[NodeNameEntry, ...]
 
 _CONFLICT_SENTINEL = object()
+_NODE_NAME_DEBUG_ID_SAMPLE_LIMIT = 20
 
 # Table name to singular field-name mapping used for logging and column lookup.
 _NAME_FIELD_BY_TABLE = {
@@ -104,6 +107,20 @@ _UPSERT_NAME_SQL_BY_TABLE = {
         "ON CONFLICT(meshtastic_id) DO UPDATE SET shortname=excluded.shortname"
     ),
 }
+
+
+def _format_node_id_sample(ids: Collection[str]) -> str:
+    """
+    Render a deterministic, bounded list of node IDs for debug logging.
+    """
+    if not ids:
+        return "[]"
+    ordered_ids = sorted(ids)
+    sample = ordered_ids[:_NODE_NAME_DEBUG_ID_SAMPLE_LIMIT]
+    remaining = len(ordered_ids) - len(sample)
+    if remaining > 0:
+        return f"{sample} (+{remaining} more)"
+    return str(sample)
 
 
 def clear_db_path_cache() -> None:
@@ -1078,28 +1095,91 @@ def _sync_name_tables_atomic(
     short_delete_sql = _DELETE_STALE_ID_SQL_BY_TABLE[NAMES_TABLE_SHORTNAMES]
     long_upsert_sql = _UPSERT_NAME_SQL_BY_TABLE[NAMES_TABLE_LONGNAMES]
     short_upsert_sql = _UPSERT_NAME_SQL_BY_TABLE[NAMES_TABLE_SHORTNAMES]
+    long_upsert_ids: set[str] = set()
+    short_upsert_ids: set[str] = set()
+    long_clear_ids: set[str] = set()
+    short_clear_ids: set[str] = set()
+    stale_long_ids: set[str] = set()
+    stale_short_ids: set[str] = set()
 
     def _sync(cursor: sqlite3.Cursor) -> None:
         for id_key, long_name, short_name in state:
             if long_name is None:
                 cursor.execute(long_delete_sql, (id_key,))
+                long_clear_ids.add(id_key)
             else:
                 cursor.execute(long_upsert_sql, (id_key, long_name))
+                long_upsert_ids.add(id_key)
 
             if short_name is None:
                 cursor.execute(short_delete_sql, (id_key,))
+                short_clear_ids.add(id_key)
             else:
                 cursor.execute(short_upsert_sql, (id_key, short_name))
+                short_upsert_ids.add(id_key)
 
         if snapshot_complete:
-            _delete_stale_names_core(cursor, NAMES_TABLE_LONGNAMES, current_ids)
-            _delete_stale_names_core(cursor, NAMES_TABLE_SHORTNAMES, current_ids)
+            _delete_stale_names_core(
+                cursor,
+                NAMES_TABLE_LONGNAMES,
+                current_ids,
+                deleted_ids=stale_long_ids,
+            )
+            _delete_stale_names_core(
+                cursor,
+                NAMES_TABLE_SHORTNAMES,
+                current_ids,
+                deleted_ids=stale_short_ids,
+            )
 
     try:
         manager.run_sync(_sync, write=True)
     except sqlite3.Error:
         logger.exception("Database error syncing longname/shortname tables")
         return False
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "Node-name DB sync applied: long_upserts=%d short_upserts=%d "
+            "long_clears=%d short_clears=%d stale_long_pruned=%d "
+            "stale_short_pruned=%d snapshot_complete=%s current_ids=%d",
+            len(long_upsert_ids),
+            len(short_upsert_ids),
+            len(long_clear_ids),
+            len(short_clear_ids),
+            len(stale_long_ids),
+            len(stale_short_ids),
+            snapshot_complete,
+            len(current_ids),
+        )
+        if long_upsert_ids:
+            logger.debug(
+                "Longname upsert IDs: %s", _format_node_id_sample(long_upsert_ids)
+            )
+        if short_upsert_ids:
+            logger.debug(
+                "Shortname upsert IDs: %s",
+                _format_node_id_sample(short_upsert_ids),
+            )
+        if long_clear_ids:
+            logger.debug(
+                "Longname cleared IDs: %s",
+                _format_node_id_sample(long_clear_ids),
+            )
+        if short_clear_ids:
+            logger.debug(
+                "Shortname cleared IDs: %s",
+                _format_node_id_sample(short_clear_ids),
+            )
+        if stale_long_ids:
+            logger.debug(
+                "Stale longname pruned IDs: %s",
+                _format_node_id_sample(stale_long_ids),
+            )
+        if stale_short_ids:
+            logger.debug(
+                "Stale shortname pruned IDs: %s",
+                _format_node_id_sample(stale_short_ids),
+            )
     return True
 
 
@@ -1141,6 +1221,29 @@ def sync_name_tables_if_changed(
         return previous_state
 
     current_state, current_ids, snapshot_complete = _collect_node_name_snapshot(nodes)
+    if logger.isEnabledFor(logging.DEBUG):
+        current_state_ids = {entry.meshtastic_id for entry in current_state}
+        if previous_state is None:
+            logger.debug(
+                "Node-name snapshot initialized with %d IDs (snapshot_complete=%s): %s",
+                len(current_state_ids),
+                snapshot_complete,
+                _format_node_id_sample(current_state_ids),
+            )
+        else:
+            previous_state_ids = {entry.meshtastic_id for entry in previous_state}
+            added_ids = current_state_ids - previous_state_ids
+            removed_ids = previous_state_ids - current_state_ids
+            if added_ids or removed_ids:
+                logger.debug(
+                    "Node-name snapshot ID delta: added=%d removed=%d "
+                    "(snapshot_complete=%s) added_ids=%s removed_ids=%s",
+                    len(added_ids),
+                    len(removed_ids),
+                    snapshot_complete,
+                    _format_node_id_sample(added_ids),
+                    _format_node_id_sample(removed_ids),
+                )
 
     if previous_state is not None and current_state == previous_state:
         if snapshot_complete:
@@ -1344,7 +1447,11 @@ def save_shortname(meshtastic_id: int | str, shortname: str) -> bool:
 
 
 def _delete_stale_names_core(
-    cursor: sqlite3.Cursor, table: str, current_ids: set[str]
+    cursor: sqlite3.Cursor,
+    table: str,
+    current_ids: set[str],
+    *,
+    deleted_ids: set[str] | None = None,
 ) -> int:
     """
     Delete rows whose `meshtastic_id` is missing from the current node snapshot.
@@ -1386,6 +1493,8 @@ def _delete_stale_names_core(
     for i in range(0, len(stale_ids), chunk_size):
         chunk = stale_ids[i : i + chunk_size]
         cursor.executemany(delete_sql, ((stale_id,) for stale_id in chunk))
+        if deleted_ids is not None:
+            deleted_ids.update(chunk)
         total_deleted += cursor.rowcount
 
     return total_deleted
