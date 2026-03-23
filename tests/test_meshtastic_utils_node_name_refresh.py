@@ -28,6 +28,7 @@ class _TimeoutThenSetEvent:
     def __init__(self) -> None:
         self._set = False
         self._wait_calls = 0
+        self.first_wait_cancelled = False
 
     def is_set(self) -> bool:
         return self._set
@@ -35,7 +36,11 @@ class _TimeoutThenSetEvent:
     async def wait(self) -> None:
         self._wait_calls += 1
         if self._wait_calls == 1:
-            await asyncio.sleep(1)
+            try:
+                await asyncio.sleep(1)
+            except asyncio.CancelledError:
+                self.first_wait_cancelled = True
+                raise
             return
         self._set = True
 
@@ -83,6 +88,7 @@ def test_refresh_node_name_tables_handles_timeout_then_retries(
 ) -> None:
     """Refresh loop should continue after wait timeout and retry sync."""
     _ = reset_meshtastic_globals
+    event = _TimeoutThenSetEvent()
     client = _ClientWithNodes(
         {
             "node_a": {
@@ -96,11 +102,13 @@ def test_refresh_node_name_tables_handles_timeout_then_retries(
     ):
         asyncio.run(
             mu.refresh_node_name_tables(
-                _TimeoutThenSetEvent(),
+                event,
                 refresh_interval_seconds=0.01,
             )
         )
-    assert mock_sync.call_count >= 2
+    assert event.first_wait_cancelled is True
+    assert event._wait_calls == 2
+    assert mock_sync.call_count == 2
 
 
 def test_refresh_node_name_tables_non_positive_interval_exits_after_one_pass(

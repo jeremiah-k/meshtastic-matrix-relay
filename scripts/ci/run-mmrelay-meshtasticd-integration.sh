@@ -1401,6 +1401,38 @@ with sqlite3.connect(db_path, timeout=5) as conn:
 PY
 }
 
+# get_existing_name_entry returns one current names-table row as "table|meshtastic_id".
+get_existing_name_entry() {
+	local db_path=$1
+	"${PYTHON_BIN}" - \
+		"${db_path}" \
+		"${NAMES_TABLE_LONGNAMES}" \
+		"${NAMES_TABLE_SHORTNAMES}" <<'PY'
+import sqlite3
+import sys
+
+db_path, longnames_table, shortnames_table = sys.argv[1:4]
+
+for table_name in (longnames_table, shortnames_table):
+    if table_name not in {longnames_table, shortnames_table}:
+        raise SystemExit(f"Invalid table name: {table_name}")
+
+with sqlite3.connect(db_path, timeout=5) as conn:
+    conn.execute("PRAGMA busy_timeout = 5000")
+    for table_name in (longnames_table, shortnames_table):
+        row = conn.execute(
+            f"SELECT meshtastic_id FROM {table_name} "
+            "WHERE meshtastic_id IS NOT NULL AND meshtastic_id != '' "
+            "ORDER BY meshtastic_id LIMIT 1"
+        ).fetchone()
+        if row and row[0]:
+            print(f"{table_name}|{row[0]}")
+            raise SystemExit(0)
+
+raise SystemExit("No existing names-table row found")
+PY
+}
+
 # wait_for_name_entry_absent waits until a names-table row is absent for an ID.
 wait_for_name_entry_absent() {
 	local db_path=$1
@@ -1501,6 +1533,95 @@ if row_count is not None:
     print(f"{table_name} row count at timeout: {row_count[0]}", file=sys.stderr)
 if target_row is not None:
     print(f"Remaining target row: {target_row}", file=sys.stderr)
+raise SystemExit(1)
+PY
+}
+
+# wait_for_name_entry_present waits until a names-table row is present for an ID.
+wait_for_name_entry_present() {
+	local db_path=$1
+	local table_name=$2
+	local meshtastic_id=$3
+	local timeout_seconds=$4
+	local relay_pid=${5-}
+	local relay_name=${6:-MMRelay}
+	local relay_log_path=${7-}
+	"${PYTHON_BIN}" - \
+		"${db_path}" \
+		"${table_name}" \
+		"${meshtastic_id}" \
+		"${timeout_seconds}" \
+		"${relay_pid}" \
+		"${relay_name}" \
+		"${relay_log_path}" \
+		"${NAMES_TABLE_LONGNAMES}" \
+		"${NAMES_TABLE_SHORTNAMES}" <<'PY'
+import os
+import sqlite3
+import sys
+import time
+from collections import deque
+
+(
+    db_path,
+    table_name,
+    meshtastic_id,
+    timeout_seconds_raw,
+    relay_pid_raw,
+    relay_name,
+    relay_log_path,
+    longnames_table,
+    shortnames_table,
+) = sys.argv[1:10]
+timeout_seconds = int(timeout_seconds_raw)
+allowed_tables = {longnames_table, shortnames_table}
+if table_name not in allowed_tables:
+    raise SystemExit(f"Invalid table name: {table_name}")
+
+relay_pid = int(relay_pid_raw) if relay_pid_raw else None
+deadline = time.monotonic() + timeout_seconds
+last_error = None
+attempts = 0
+while time.monotonic() < deadline:
+    attempts += 1
+    if relay_pid is not None:
+        try:
+            os.kill(relay_pid, 0)
+        except OSError:
+            print(
+                f"{relay_name} process (pid={relay_pid}) exited while waiting for names row presence",
+                file=sys.stderr,
+            )
+            if relay_log_path and os.path.exists(relay_log_path):
+                print(
+                    f"Last 20 lines from {relay_name} log ({relay_log_path}):",
+                    file=sys.stderr,
+                )
+                with open(relay_log_path, encoding="utf-8", errors="replace") as handle:
+                    for line in deque(handle, 20):
+                        print(line.rstrip("\n"), file=sys.stderr)
+            raise SystemExit(1)
+
+    try:
+        with sqlite3.connect(db_path, timeout=5) as conn:
+            conn.execute("PRAGMA busy_timeout = 5000")
+            row = conn.execute(
+                f"SELECT 1 FROM {table_name} WHERE meshtastic_id=? LIMIT 1",
+                (meshtastic_id,),
+            ).fetchone()
+            if row is not None:
+                raise SystemExit(0)
+    except sqlite3.Error as exc:  # pragma: no cover - retry loop
+        last_error = str(exc)
+    time.sleep(1)
+
+if last_error:
+    print(f"Last SQLite error: {last_error}", file=sys.stderr)
+print(
+    f"Timed out waiting for names row presence in {table_name} "
+    f"for meshtastic_id={meshtastic_id} after {attempts} checks",
+    file=sys.stderr,
+)
 raise SystemExit(1)
 PY
 }
@@ -2420,6 +2541,30 @@ run_or_fail "Reaction did not relay to Mesh B" \
 pass_test "Encrypted-room user reaction relayed to both meshes"
 
 # Test 7: stale name rows are pruned to match current node DB snapshot.
+CURRENT_NAME_ENTRY_A=""
+run_capture_or_fail \
+	CURRENT_NAME_ENTRY_A \
+	"Could not find an existing names row in instance A before stale-row seeding" \
+	get_existing_name_entry \
+	"${MMRELAY_DB_PATH_A}"
+CURRENT_NAME_TABLE_A=${CURRENT_NAME_ENTRY_A%%|*}
+CURRENT_NAME_ID_A=${CURRENT_NAME_ENTRY_A#*|}
+if [[ -z ${CURRENT_NAME_TABLE_A} || -z ${CURRENT_NAME_ID_A} || ${CURRENT_NAME_ENTRY_A} != *"|"* ]]; then
+	fail_test "Invalid existing names entry format for instance A: ${CURRENT_NAME_ENTRY_A}"
+fi
+
+CURRENT_NAME_ENTRY_B=""
+run_capture_or_fail \
+	CURRENT_NAME_ENTRY_B \
+	"Could not find an existing names row in instance B before stale-row seeding" \
+	get_existing_name_entry \
+	"${MMRELAY_DB_PATH_B}"
+CURRENT_NAME_TABLE_B=${CURRENT_NAME_ENTRY_B%%|*}
+CURRENT_NAME_ID_B=${CURRENT_NAME_ENTRY_B#*|}
+if [[ -z ${CURRENT_NAME_TABLE_B} || -z ${CURRENT_NAME_ID_B} || ${CURRENT_NAME_ENTRY_B} != *"|"* ]]; then
+	fail_test "Invalid existing names entry format for instance B: ${CURRENT_NAME_ENTRY_B}"
+fi
+
 STALE_NAME_ID_A=$(generate_unique_test_id "MMRELAY_STALE_A")
 STALE_NAME_ID_B=$(generate_unique_test_id "MMRELAY_STALE_B")
 start_test "Test 7" "Test 7: stale name rows are pruned to match current node DB..."
@@ -2484,6 +2629,24 @@ run_or_fail "Stale shortname row in instance B was not pruned" \
 	"${MMRELAY_DB_PATH_B}" \
 	"${NAMES_TABLE_SHORTNAMES}" \
 	"${STALE_NAME_ID_B}" \
+	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" \
+	"${MMRELAY_PID_B}" \
+	"MMRelay B" \
+	"${MMRELAY_LOG_PATH_B}"
+run_or_fail "Current names row in instance A disappeared unexpectedly" \
+	wait_for_name_entry_present \
+	"${MMRELAY_DB_PATH_A}" \
+	"${CURRENT_NAME_TABLE_A}" \
+	"${CURRENT_NAME_ID_A}" \
+	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" \
+	"${MMRELAY_PID_A}" \
+	"MMRelay A" \
+	"${MMRELAY_LOG_PATH_A}"
+run_or_fail "Current names row in instance B disappeared unexpectedly" \
+	wait_for_name_entry_present \
+	"${MMRELAY_DB_PATH_B}" \
+	"${CURRENT_NAME_TABLE_B}" \
+	"${CURRENT_NAME_ID_B}" \
 	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" \
 	"${MMRELAY_PID_B}" \
 	"MMRelay B" \

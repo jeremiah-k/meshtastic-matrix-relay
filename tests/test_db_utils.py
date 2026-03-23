@@ -344,6 +344,23 @@ class TestDbUtils(unittest.TestCase):
         self.assertEqual(state, (("!2", "Beta", "B"),))
         self.assertIsNone(get_shortname("!1"))
 
+    def test_sync_name_tables_if_changed_conflicts_do_not_prune_existing_rows(self):
+        """Conflicting duplicate IDs should not cause existing rows for that ID to be pruned."""
+        initialize_database()
+        save_longname("!1", "Legacy Long")
+        save_shortname("!1", "OLD")
+        nodes = {
+            "node_first": {"user": {"id": "!1", "shortName": "ONE"}},
+            "node_second": {"user": {"id": "!1", "shortName": "TWO"}},
+            "node_other": {"user": {"id": "!2", "longName": "Beta", "shortName": "B"}},
+        }
+
+        state = sync_name_tables_if_changed(nodes, previous_state=None)
+
+        self.assertEqual(state, (("!2", "Beta", "B"),))
+        self.assertEqual(get_longname("!1"), "Legacy Long")
+        self.assertEqual(get_shortname("!1"), "OLD")
+
     def test_sync_name_tables_if_changed_skips_redundant_updates(self):
         """A matching previous state should avoid full long/short upserts."""
         initialize_database()

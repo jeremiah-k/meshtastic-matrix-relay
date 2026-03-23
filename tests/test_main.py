@@ -202,6 +202,22 @@ class _ImmediateEvent:
         return None
 
 
+class _OnePassEvent:
+    """Event that starts clear and flips set when first awaited."""
+
+    def __init__(self) -> None:
+        self._set = False
+
+    def is_set(self) -> bool:
+        return self._set
+
+    def set(self) -> None:
+        self._set = True
+
+    async def wait(self) -> None:
+        self._set = True
+
+
 class _CloseFutureBase(concurrent.futures.Future):
     """Future with a cancel flag for shutdown test assertions."""
 
@@ -405,21 +421,6 @@ class TestMain(unittest.TestCase):
         """
         Verify startup wiring schedules periodic node-name refresh with expected interval.
         """
-
-        class _OnePassEvent:
-            """Event that starts clear and flips set when first awaited."""
-
-            def __init__(self) -> None:
-                self._set = False
-
-            def is_set(self) -> bool:
-                return self._set
-
-            def set(self) -> None:
-                self._set = True
-
-            async def wait(self) -> None:
-                self._set = True
 
         shutdown_event = _OnePassEvent()
         expected_interval = 7.5
@@ -1409,16 +1410,6 @@ class TestMainFunctionEdgeCases(unittest.TestCase):
         """
         Verify periodic node-name refresh skips DB sync when no Meshtastic client exists.
         """
-
-        class _OnePassEvent:
-            def __init__(self) -> None:
-                self._set = False
-
-            def is_set(self) -> bool:
-                return self._set
-
-            async def wait(self) -> None:
-                self._set = True
 
         import mmrelay.meshtastic_utils as meshtastic_module
 

@@ -81,6 +81,8 @@ _DELETE_STALE_ID_SQL_BY_TABLE = {
     NAMES_TABLE_SHORTNAMES: "DELETE FROM shortnames WHERE meshtastic_id = ?",
 }
 
+# json_each() is used for efficient batched lookups by Meshtastic ID.
+# Runtime SQLite compatibility is validated in db_runtime.DatabaseManager.
 _SELECT_NAME_VALUES_SQL_BY_TABLE = {
     NAMES_TABLE_LONGNAMES: (
         "SELECT meshtastic_id, longname FROM longnames "
@@ -1018,7 +1020,8 @@ def _collect_node_name_snapshot(
                 id_key,
             )
             state_by_id.pop(id_key, None)
-            current_ids.discard(id_key)
+            # Keep conflicting IDs in current_ids so stale-row pruning does not
+            # incorrectly delete existing rows for active nodes.
             skipped_ids.add(id_key)
         else:
             state_by_id[id_key] = cast(

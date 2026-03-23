@@ -17,6 +17,46 @@ from contextlib import contextmanager
 from functools import partial
 from typing import Any, Generator, Optional
 
+MIN_SQLITE_VERSION_JSON_EACH = (3, 38, 0)
+
+
+def _get_sqlite_runtime_version_info() -> tuple[int, int, int]:
+    """
+    Return the runtime SQLite version as a normalized 3-int tuple.
+    """
+    version_info = getattr(sqlite3, "sqlite_version_info", None)
+    if (
+        isinstance(version_info, tuple)
+        and len(version_info) >= 3
+        and all(isinstance(part, int) for part in version_info[:3])
+    ):
+        return (version_info[0], version_info[1], version_info[2])
+
+    version_str = str(getattr(sqlite3, "sqlite_version", "0.0.0"))
+    raw_parts = version_str.split(".")
+    numeric_parts: list[int] = []
+    for raw_part in raw_parts[:3]:
+        try:
+            numeric_parts.append(int(raw_part))
+        except ValueError:
+            numeric_parts.append(0)
+    while len(numeric_parts) < 3:
+        numeric_parts.append(0)
+    return (numeric_parts[0], numeric_parts[1], numeric_parts[2])
+
+
+def _validate_sqlite_json_each_support() -> None:
+    """
+    Ensure runtime SQLite version supports json_each() usage in name-state queries.
+    """
+    current_version = _get_sqlite_runtime_version_info()
+    if current_version < MIN_SQLITE_VERSION_JSON_EACH:
+        raise RuntimeError(
+            "SQLite >= 3.38.0 is required for json_each()-based node-name queries "
+            "(used by db_utils _SELECT_NAME_VALUES_SQL_BY_TABLE). "
+            f"Detected SQLite version: {current_version[0]}.{current_version[1]}.{current_version[2]}"
+        )
+
 
 class DatabaseManager:
     """
@@ -56,6 +96,8 @@ class DatabaseManager:
                 Keys are pragma names and values are either numeric or string pragma values. Invalid pragma
                 names or values will raise when a connection is created.
         """
+        _validate_sqlite_json_each_support()
+
         self._path = path
         self._enable_wal = enable_wal
         self._busy_timeout_ms = busy_timeout_ms

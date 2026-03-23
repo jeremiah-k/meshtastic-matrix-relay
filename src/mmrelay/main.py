@@ -365,11 +365,8 @@ async def main(config: dict[str, Any]) -> None:
     # Set up shutdown event
     shutdown_event = asyncio.Event()
 
-    # Signal readiness after core services and callbacks are initialized.
-    _write_ready_file()
     ready_task: asyncio.Task[None] | None = None
-    if _ready_heartbeat_seconds > 0:
-        ready_task = asyncio.create_task(_ready_heartbeat(shutdown_event))
+    check_connection_task: asyncio.Task[Any] | None = None
 
     def _set_shutdown_flag() -> None:
         """
@@ -407,7 +404,7 @@ async def main(config: dict[str, Any]) -> None:
 
     # Start connection health monitoring using getMetadata() heartbeat
     # This provides proactive connection detection for all interface types
-    _ = asyncio.create_task(meshtastic_utils.check_connection())
+    check_connection_task = asyncio.create_task(meshtastic_utils.check_connection())
     node_name_refresh_task: asyncio.Task[None] | None = None
 
     async def _node_name_refresh_supervisor(refresh_interval_seconds: float) -> None:
@@ -452,10 +449,9 @@ async def main(config: dict[str, Any]) -> None:
             else:
                 if shutdown_event.is_set() or refresh_interval_seconds <= 0:
                     return
-                restart_attempt += 1
+                backoff_seconds = 1.0
                 matrix_logger.warning(
-                    "Node-name refresh task exited unexpectedly (attempt %d); restarting in %.1fs",
-                    restart_attempt,
+                    "Node-name refresh task exited unexpectedly; restarting in %.1fs",
                     backoff_seconds,
                 )
 
@@ -464,6 +460,37 @@ async def main(config: dict[str, Any]) -> None:
                 return
             except asyncio.TimeoutError:
                 backoff_seconds = min(backoff_seconds * 2.0, max_backoff_seconds)
+
+    async def _await_background_task_shutdown(
+        task: asyncio.Task[Any] | None,
+        *,
+        task_name: str,
+        timeout_seconds: float,
+    ) -> None:
+        """
+        Let a background task exit after shutdown is signaled, then cancel as fallback.
+        """
+        if task is None:
+            return
+
+        _done, pending = await asyncio.wait({task}, timeout=timeout_seconds)
+        if pending:
+            task.cancel()
+
+        cleanup_results: tuple[Any, ...] = await asyncio.gather(
+            task,
+            return_exceptions=True,
+        )
+        result: Any = cleanup_results[0]
+        if isinstance(result, Exception) and not isinstance(
+            result,
+            asyncio.CancelledError,
+        ):
+            matrix_logger.error(
+                "Error during %s cleanup",
+                task_name,
+                exc_info=(type(result), result, result.__traceback__),
+            )
 
     # Start the Matrix client sync loop
     try:
@@ -475,6 +502,11 @@ async def main(config: dict[str, Any]) -> None:
                 node_name_refresh_interval_seconds,
             )
         )
+
+        if _ready_heartbeat_seconds > 0:
+            ready_task = asyncio.create_task(_ready_heartbeat(shutdown_event))
+        # Publish readiness only after startup wiring in this section is complete.
+        _write_ready_file()
 
         # Ensure message queue processor is started now that event loop is running
         get_message_queue().ensure_processor_started()
@@ -528,7 +560,7 @@ async def main(config: dict[str, Any]) -> None:
                         )
                     except (ConnectionError, OSError, RuntimeError, ValueError):
                         matrix_logger.exception("Matrix sync failed")
-                        # The outer try/catch will handle the retry logic
+                        await asyncio.sleep(5)  # Keep retry pacing consistent.
 
             except (ClientError, ConnectionError, OSError, RuntimeError, ValueError):
                 if shutdown_event.is_set():
@@ -538,30 +570,22 @@ async def main(config: dict[str, Any]) -> None:
     except KeyboardInterrupt:
         shutdown()
     finally:
-        if node_name_refresh_task is not None:
-            node_name_refresh_task.cancel()
-            [refresh_cleanup_result] = await asyncio.gather(
-                node_name_refresh_task,
-                return_exceptions=True,
-            )
-            if isinstance(refresh_cleanup_result, Exception) and not isinstance(
-                refresh_cleanup_result,
-                asyncio.CancelledError,
-            ):
-                matrix_logger.error(
-                    "Error during node name refresh task cleanup",
-                    exc_info=(
-                        type(refresh_cleanup_result),
-                        refresh_cleanup_result,
-                        refresh_cleanup_result.__traceback__,
-                    ),
-                )
-        if ready_task is not None:
-            ready_task.cancel()
-            try:
-                await ready_task
-            except asyncio.CancelledError:
-                pass
+        _set_shutdown_flag()
+        await _await_background_task_shutdown(
+            node_name_refresh_task,
+            task_name="node name refresh task",
+            timeout_seconds=10.0,
+        )
+        await _await_background_task_shutdown(
+            ready_task,
+            task_name="ready heartbeat task",
+            timeout_seconds=5.0,
+        )
+        await _await_background_task_shutdown(
+            check_connection_task,
+            task_name="connection health task",
+            timeout_seconds=5.0,
+        )
         _remove_ready_file()
         # Cleanup
         matrix_logger.info("Stopping plugins...")

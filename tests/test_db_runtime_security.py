@@ -15,6 +15,7 @@ import sqlite3
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 
 from mmrelay.db_runtime import DatabaseManager
 
@@ -72,6 +73,29 @@ class TestDatabaseManager(unittest.TestCase):
             self.assertEqual(manager._extra_pragmas, custom_pragmas)
         finally:
             manager.close()
+
+    def test_initialization_rejects_unsupported_sqlite_version(self):
+        """DatabaseManager should fail fast when runtime SQLite is too old."""
+        with patch(
+            "mmrelay.db_runtime._get_sqlite_runtime_version_info",
+            return_value=(3, 37, 2),
+        ):
+            with self.assertRaises(RuntimeError) as cm:
+                DatabaseManager(self.db_path)
+        self.assertIn("SQLite >= 3.38.0 is required", str(cm.exception))
+
+    def test_initialization_accepts_minimum_supported_sqlite_version(self):
+        """DatabaseManager should allow the minimum supported SQLite runtime."""
+        with patch(
+            "mmrelay.db_runtime._get_sqlite_runtime_version_info",
+            return_value=(3, 38, 0),
+        ):
+            manager = DatabaseManager(self.db_path)
+            try:
+                with manager.read() as cursor:
+                    cursor.execute("SELECT 1")
+            finally:
+                manager.close()
 
     def test_pragma_validation_valid_names(self):
         """Test that valid pragma names are accepted."""
