@@ -611,6 +611,11 @@ async def refresh_node_name_tables(
     The first refresh attempt runs immediately. When `refresh_interval_seconds`
     is zero or negative, one immediate refresh is attempted and periodic refresh
     is disabled afterward.
+
+    Note: Exceptions are intentionally propagated to the caller (the supervisor in
+    main.py) which catches them and restarts this task with exponential backoff.
+    This prevents silent infinite retry loops on persistent errors while still
+    allowing recovery from transient failures.
     """
     if refresh_interval_seconds is None:
         interval = get_node_name_refresh_interval_seconds()

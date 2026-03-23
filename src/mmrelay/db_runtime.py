@@ -108,6 +108,7 @@ class DatabaseManager:
     _write_lock: threading.RLock
     _connections: set[sqlite3.Connection]
     _connections_lock: threading.Lock
+    _executor_lock: threading.Lock
     _closing: bool
 
     def __init__(
@@ -221,6 +222,10 @@ class DatabaseManager:
     def _get_connection(self) -> sqlite3.Connection:
         """
         Get the thread-local SQLite connection, creating and storing a new connection if none exists.
+
+        Note: The _closing check is a best-effort guard without _executor_lock. If a race with
+        close() occurs, any newly created connection is tracked in _connections and will be
+        cleaned up. This is acceptable since sync callers don't need executor serialization.
 
         Returns:
             sqlite3.Connection: The per-thread SQLite connection.
