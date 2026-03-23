@@ -737,6 +737,7 @@ def reset_meshtastic_globals():
                     asyncio.CancelledError,
                     concurrent.futures.TimeoutError,
                     concurrent.futures.CancelledError,
+                    TypeError,
                 ):
                     pass
     mu._ble_future = None

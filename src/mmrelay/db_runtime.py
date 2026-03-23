@@ -108,7 +108,7 @@ class DatabaseManager:
     _write_lock: threading.RLock
     _connections: set[sqlite3.Connection]
     _connections_lock: threading.Lock
-    _closing: bool = False
+    _closing: bool
 
     def __init__(
         self,
@@ -146,6 +146,7 @@ class DatabaseManager:
         self._connections: set[sqlite3.Connection] = set()
         self._connections_lock = threading.Lock()
         self._async_executor = ThreadPoolExecutor(max_workers=1)
+        self._closing = False
 
         # Fail fast before publishing a manager that cannot create a usable
         # SQLite connection for the configured path/PRAGMA set.
@@ -313,7 +314,6 @@ class DatabaseManager:
         func: Callable[[sqlite3.Cursor], Any],
         *,
         write: bool = False,
-        loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> Any:
         """
         Run a database callable asynchronously and return its result.
@@ -321,12 +321,10 @@ class DatabaseManager:
         Parameters:
             func (Callable[[sqlite3.Cursor], Any]): Callable that will be invoked with a managed SQLite cursor.
             write (bool, optional): If true, the callable receives a cursor from a transactional write context; otherwise a read-only context is used. Defaults to False.
-            loop (asyncio.AbstractEventLoop, optional): Event loop used for compatibility checks. If omitted, the running event loop is used.
 
         Returns:
             Any: The value returned by `func` when invoked with the cursor.
         """
-        _ = loop or asyncio.get_running_loop()
         if self._closing:
             raise RuntimeError("DatabaseManager is closing, cannot submit new work")
         executor_func = partial(self.run_sync, func, write=write)
@@ -351,12 +349,7 @@ class DatabaseManager:
         """
         self._closing = True
 
-        executor = self._async_executor
-        self._async_executor = ThreadPoolExecutor(max_workers=1)
-        try:
-            executor.shutdown(wait=True)
-        except TypeError:
-            executor.shutdown(wait=False)
+        self._async_executor.shutdown(wait=True)
 
         with self._connections_lock:
             connections = list(self._connections)

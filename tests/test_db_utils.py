@@ -402,7 +402,7 @@ class TestDbUtils(unittest.TestCase):
         self.assertEqual(get_shortname("!1"), "ONE")
 
     def test_sync_name_tables_if_changed_skips_redundant_updates(self):
-        """A matching previous state should avoid full long/short upserts."""
+        """A matching state should skip upserts while still pruning stale rows."""
         initialize_database()
         nodes = {
             "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
@@ -436,7 +436,7 @@ class TestDbUtils(unittest.TestCase):
         self.assertIsNone(get_longname("!unknown"))
         self.assertIsNone(get_shortname("!unknown"))
 
-    def test_sync_name_tables_if_partial_snapshot_skips_pruning(self):
+    def test_sync_name_tables_if_changed_partial_snapshot_skips_pruning(self):
         """Unchanged partial snapshots should skip stale-row pruning for safety."""
         initialize_database()
         nodes = {

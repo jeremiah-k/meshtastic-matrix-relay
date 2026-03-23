@@ -45,7 +45,6 @@ import concurrent.futures
 import contextlib
 import functools
 import inspect
-import logging
 import sys
 import threading
 import unittest
@@ -918,10 +917,7 @@ class TestMain(unittest.TestCase):
         mock_matrix_client.close.assert_awaited_once()
         self.assertTrue(
             any(
-                len(call.args) >= 2
-                and call.args[0]
-                == "Timed out stopping %s after %.1fs; continuing shutdown"
-                and call.args[1] == "plugins"
+                "Timed out stopping" in str(call) and "plugins" in str(call)
                 for call in mock_logger.warning.call_args_list
             )
         )
@@ -2099,15 +2095,35 @@ class TestMainAsyncFunction(unittest.TestCase):
             if hasattr(module, "_ble_timeout_counts"):
                 module._ble_timeout_counts = {}  # type: ignore[attr-defined]
             if hasattr(module, "_ble_future_watchdog_secs"):
-                module._ble_future_watchdog_secs = None  # type: ignore[attr-defined]
+                module._ble_future_watchdog_secs = getattr(
+                    module,
+                    "BLE_FUTURE_WATCHDOG_SECS",
+                    module._ble_future_watchdog_secs,
+                )  # type: ignore[attr-defined]
             if hasattr(module, "_ble_timeout_reset_threshold"):
-                module._ble_timeout_reset_threshold = None  # type: ignore[attr-defined]
+                module._ble_timeout_reset_threshold = getattr(
+                    module,
+                    "BLE_TIMEOUT_RESET_THRESHOLD",
+                    module._ble_timeout_reset_threshold,
+                )  # type: ignore[attr-defined]
             if hasattr(module, "_ble_scan_timeout_secs"):
-                module._ble_scan_timeout_secs = None  # type: ignore[attr-defined]
+                module._ble_scan_timeout_secs = getattr(
+                    module,
+                    "BLE_SCAN_TIMEOUT_SECS",
+                    module._ble_scan_timeout_secs,
+                )  # type: ignore[attr-defined]
             if hasattr(module, "_ble_future_stale_grace_secs"):
-                module._ble_future_stale_grace_secs = None  # type: ignore[attr-defined]
+                module._ble_future_stale_grace_secs = getattr(
+                    module,
+                    "BLE_FUTURE_STALE_GRACE_SECS",
+                    module._ble_future_stale_grace_secs,
+                )  # type: ignore[attr-defined]
             if hasattr(module, "_ble_interface_create_timeout_secs"):
-                module._ble_interface_create_timeout_secs = None  # type: ignore[attr-defined]
+                module._ble_interface_create_timeout_secs = getattr(
+                    module,
+                    "BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS",
+                    module._ble_interface_create_timeout_secs,
+                )  # type: ignore[attr-defined]
             if hasattr(module, "_metadata_executor"):
                 executor = module._metadata_executor  # type: ignore[attr-defined]
                 if executor is not None:
@@ -2700,15 +2716,35 @@ class TestStartupRollback(unittest.TestCase):
             module.meshtastic_iface = None  # type: ignore[attr-defined]
             module.shutting_down = False  # type: ignore[attr-defined]
             if hasattr(module, "_ble_future_watchdog_secs"):
-                module._ble_future_watchdog_secs = None  # type: ignore[attr-defined]
+                module._ble_future_watchdog_secs = getattr(
+                    module,
+                    "BLE_FUTURE_WATCHDOG_SECS",
+                    module._ble_future_watchdog_secs,
+                )  # type: ignore[attr-defined]
             if hasattr(module, "_ble_timeout_reset_threshold"):
-                module._ble_timeout_reset_threshold = None  # type: ignore[attr-defined]
+                module._ble_timeout_reset_threshold = getattr(
+                    module,
+                    "BLE_TIMEOUT_RESET_THRESHOLD",
+                    module._ble_timeout_reset_threshold,
+                )  # type: ignore[attr-defined]
             if hasattr(module, "_ble_scan_timeout_secs"):
-                module._ble_scan_timeout_secs = None  # type: ignore[attr-defined]
+                module._ble_scan_timeout_secs = getattr(
+                    module,
+                    "BLE_SCAN_TIMEOUT_SECS",
+                    module._ble_scan_timeout_secs,
+                )  # type: ignore[attr-defined]
             if hasattr(module, "_ble_future_stale_grace_secs"):
-                module._ble_future_stale_grace_secs = None  # type: ignore[attr-defined]
+                module._ble_future_stale_grace_secs = getattr(
+                    module,
+                    "BLE_FUTURE_STALE_GRACE_SECS",
+                    module._ble_future_stale_grace_secs,
+                )  # type: ignore[attr-defined]
             if hasattr(module, "_ble_interface_create_timeout_secs"):
-                module._ble_interface_create_timeout_secs = None  # type: ignore[attr-defined]
+                module._ble_interface_create_timeout_secs = getattr(
+                    module,
+                    "BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS",
+                    module._ble_interface_create_timeout_secs,
+                )  # type: ignore[attr-defined]
 
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")

@@ -6,7 +6,7 @@ import os
 import sqlite3
 import threading
 from collections.abc import Collection
-from typing import Any, Callable, Dict, NamedTuple, Tuple, cast
+from typing import Any, Callable, NamedTuple, cast
 
 from mmrelay.constants.database import (
     DEFAULT_BUSY_TIMEOUT_MS,
@@ -46,7 +46,7 @@ _cached_config_hash = None
 
 # Database manager cache
 _db_manager: DatabaseManager | None = None
-_db_manager_signature: Tuple[str, bool, int, Tuple[Tuple[str, Any], ...]] | None = None
+_db_manager_signature: tuple[str, bool, int, tuple[tuple[str, Any], ...]] | None = None
 _db_manager_lock = threading.Lock()
 
 logger = get_logger(name="db_utils")
@@ -345,7 +345,7 @@ def _parse_int(value: Any, default: int) -> int:
         return default
 
 
-def _resolve_database_options() -> Tuple[bool, int, Dict[str, Any]]:
+def _resolve_database_options() -> tuple[bool, int, dict[str, Any]]:
     """
     Resolve database options (WAL, busy timeout, and SQLite pragmas) from the global config, supporting legacy keys and falling back to module defaults.
 

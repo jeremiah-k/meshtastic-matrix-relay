@@ -7,7 +7,6 @@ Covers:
 """
 
 import sqlite3
-import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -108,123 +107,88 @@ class TestGetSqliteRuntimeVersionInfo(unittest.TestCase):
 class TestProbeSqliteJsonEachSupport(unittest.TestCase):
     """Test _probe_sqlite_json_each_support function."""
 
-    def setUp(self):
-        """Set up test fixtures."""
-        self.temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-        self.temp_db.close()
-        self.db_path = self.temp_db.name
-
-    def tearDown(self):
-        """Clean up test fixtures."""
-        import os
-
-        try:
-            os.unlink(self.db_path)
-        except OSError:
-            pass
-
     def test_no_such_function_json_each_raises_runtime_error(self):
         """Test when error contains 'no such function: json_each' - raises RuntimeError."""
-        conn = sqlite3.connect(self.db_path)
-        try:
-            mock_cursor = MagicMock()
-            mock_cursor.fetchall.side_effect = sqlite3.OperationalError(
-                "no such function: json_each"
-            )
-            mock_conn = MagicMock()
-            mock_conn.execute.return_value = mock_cursor
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.side_effect = sqlite3.OperationalError(
+            "no such function: json_each"
+        )
+        mock_conn = MagicMock()
+        mock_conn.execute.return_value = mock_cursor
 
-            with patch(
-                "mmrelay.db_runtime._get_sqlite_runtime_version_info",
-                return_value=(3, 45, 1),
-            ):
-                with self.assertRaises(RuntimeError) as cm:
-                    _probe_sqlite_json_each_support(mock_conn)
+        with patch(
+            "mmrelay.db_runtime._get_sqlite_runtime_version_info",
+            return_value=(3, 45, 1),
+        ):
+            with self.assertRaises(RuntimeError) as cm:
+                _probe_sqlite_json_each_support(mock_conn)
 
-            self.assertIn("json_each() support is required", str(cm.exception))
-            self.assertIn("3.45.1", str(cm.exception))
-        finally:
-            conn.close()
+        self.assertIn("json_each() support is required", str(cm.exception))
+        self.assertIn("3.45.1", str(cm.exception))
 
     def test_no_such_table_json_each_raises_runtime_error(self):
         """Test when error contains 'no such table: json_each' - raises RuntimeError."""
-        conn = sqlite3.connect(self.db_path)
-        try:
-            mock_cursor = MagicMock()
-            mock_cursor.fetchall.side_effect = sqlite3.OperationalError(
-                "no such table: json_each"
-            )
-            mock_conn = MagicMock()
-            mock_conn.execute.return_value = mock_cursor
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.side_effect = sqlite3.OperationalError(
+            "no such table: json_each"
+        )
+        mock_conn = MagicMock()
+        mock_conn.execute.return_value = mock_cursor
 
-            with patch(
-                "mmrelay.db_runtime._get_sqlite_runtime_version_info",
-                return_value=(3, 45, 1),
-            ):
-                with self.assertRaises(RuntimeError) as cm:
-                    _probe_sqlite_json_each_support(mock_conn)
+        with patch(
+            "mmrelay.db_runtime._get_sqlite_runtime_version_info",
+            return_value=(3, 45, 1),
+        ):
+            with self.assertRaises(RuntimeError) as cm:
+                _probe_sqlite_json_each_support(mock_conn)
 
-            self.assertIn("json_each() support is required", str(cm.exception))
-            self.assertIn("3.45.1", str(cm.exception))
-        finally:
-            conn.close()
+        self.assertIn("json_each() support is required", str(cm.exception))
+        self.assertIn("3.45.1", str(cm.exception))
 
     def test_other_sqlite_errors_reraised_unchanged(self):
         """Test other sqlite3.Errors are re-raised unchanged (not wrapped in RuntimeError)."""
-        conn = sqlite3.connect(self.db_path)
-        try:
-            original_error = sqlite3.DatabaseError("database disk image is malformed")
-            mock_cursor = MagicMock()
-            mock_cursor.fetchall.side_effect = original_error
-            mock_conn = MagicMock()
-            mock_conn.execute.return_value = mock_cursor
+        original_error = sqlite3.DatabaseError("database disk image is malformed")
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.side_effect = original_error
+        mock_conn = MagicMock()
+        mock_conn.execute.return_value = mock_cursor
 
-            with self.assertRaises(sqlite3.DatabaseError) as cm:
-                _probe_sqlite_json_each_support(mock_conn)
+        with self.assertRaises(sqlite3.DatabaseError) as cm:
+            _probe_sqlite_json_each_support(mock_conn)
 
-            self.assertIs(cm.exception, original_error)
-            self.assertNotIsInstance(cm.exception, RuntimeError)
-        finally:
-            conn.close()
+        self.assertIs(cm.exception, original_error)
+        self.assertNotIsInstance(cm.exception, RuntimeError)
 
     def test_operational_error_other_message_reraised_unchanged(self):
         """Test OperationalError with unrelated message is re-raised unchanged."""
-        conn = sqlite3.connect(self.db_path)
-        try:
-            original_error = sqlite3.OperationalError("table not found")
-            mock_cursor = MagicMock()
-            mock_cursor.fetchall.side_effect = original_error
-            mock_conn = MagicMock()
-            mock_conn.execute.return_value = mock_cursor
+        original_error = sqlite3.OperationalError("table not found")
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.side_effect = original_error
+        mock_conn = MagicMock()
+        mock_conn.execute.return_value = mock_cursor
 
-            with self.assertRaises(sqlite3.OperationalError) as cm:
-                _probe_sqlite_json_each_support(mock_conn)
+        with self.assertRaises(sqlite3.OperationalError) as cm:
+            _probe_sqlite_json_each_support(mock_conn)
 
-            self.assertIs(cm.exception, original_error)
-        finally:
-            conn.close()
+        self.assertIs(cm.exception, original_error)
 
     def test_case_insensitive_error_matching(self):
         """Test that error message matching is case insensitive."""
-        conn = sqlite3.connect(self.db_path)
-        try:
-            mock_cursor = MagicMock()
-            mock_cursor.fetchall.side_effect = sqlite3.OperationalError(
-                "NO SUCH FUNCTION: JSON_EACH"
-            )
-            mock_conn = MagicMock()
-            mock_conn.execute.return_value = mock_cursor
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.side_effect = sqlite3.OperationalError(
+            "NO SUCH FUNCTION: JSON_EACH"
+        )
+        mock_conn = MagicMock()
+        mock_conn.execute.return_value = mock_cursor
 
-            with patch(
-                "mmrelay.db_runtime._get_sqlite_runtime_version_info",
-                return_value=(3, 45, 1),
-            ):
-                with self.assertRaises(RuntimeError) as cm:
-                    _probe_sqlite_json_each_support(mock_conn)
+        with patch(
+            "mmrelay.db_runtime._get_sqlite_runtime_version_info",
+            return_value=(3, 45, 1),
+        ):
+            with self.assertRaises(RuntimeError) as cm:
+                _probe_sqlite_json_each_support(mock_conn)
 
-            self.assertIn("json_each() support is required", str(cm.exception))
-        finally:
-            conn.close()
+        self.assertIn("json_each() support is required", str(cm.exception))
 
 
 if __name__ == "__main__":

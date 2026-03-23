@@ -109,6 +109,7 @@ def _reset_ble_inflight_state(module: Any) -> None:
                     asyncio.CancelledError,
                     ConcurrentTimeoutError,
                     ConcurrentCancelledError,
+                    TypeError,
                 ):
                     pass
     module._ble_future = None

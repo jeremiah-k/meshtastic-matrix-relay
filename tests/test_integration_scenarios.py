@@ -13,6 +13,7 @@ Tests integration scenarios including:
 """
 
 import asyncio
+import logging
 import os
 import sys
 import tempfile
@@ -77,8 +78,6 @@ class TestIntegrationScenarios(unittest.TestCase):
                         TimeoutError,
                         OSError,
                     ) as e:
-                        import logging
-
                         logging.getLogger(__name__).debug(
                             "Expected error during BLE teardown: %s", e
                         )
@@ -104,9 +103,8 @@ class TestIntegrationScenarios(unittest.TestCase):
                                 asyncio.CancelledError,
                                 asyncio.TimeoutError,
                                 TimeoutError,
+                                TypeError,
                             ) as e:
-                                import logging
-
                                 logging.getLogger(__name__).debug(
                                     "Expected error during BLE future cleanup: %s", e
                                 )
@@ -609,7 +607,7 @@ plugins:
 
         self.assertIsNotNone(result)
         self.assertIs(result, mu.meshtastic_client)
-        self.assertTrue(stale_future.cancel.called)
+        stale_future.cancel.assert_called()
         stale_warning_calls = [
             call
             for call in mock_logger.warning.call_args_list
@@ -618,7 +616,10 @@ plugins:
             and len(call.args) >= 3
             and call.args[2] == ble_address
         ]
-        self.assertTrue(stale_warning_calls)
+        self.assertTrue(
+            stale_warning_calls,
+            "Expected warning about stale BLE worker was not logged",
+        )
         self.assertIn(stale_warning_calls[0].args[1], {"interface creation", "connect"})
 
     def test_multi_room_message_routing(self):

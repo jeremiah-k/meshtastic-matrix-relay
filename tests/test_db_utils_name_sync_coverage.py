@@ -9,6 +9,7 @@ only testing the high-level API.
 import shutil
 import sqlite3
 import tempfile
+from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -17,7 +18,6 @@ import mmrelay.db_utils as dbu
 from mmrelay.constants.database import (
     NAMES_TABLE_LONGNAMES,
     PROTO_NODE_NAME_LONG,
-    PROTO_NODE_NAME_SHORT,
 )
 from mmrelay.db_runtime import DatabaseManager
 from mmrelay.db_utils import (
@@ -47,7 +47,7 @@ from mmrelay.db_utils import (
 
 
 @pytest.fixture
-def configured_temp_db() -> str:
+def configured_temp_db() -> Generator[str, None, None]:
     """Provide a temporary configured database path for db_utils tests."""
     _reset_db_manager()
     clear_db_path_cache()
@@ -84,13 +84,13 @@ def test_normalize_node_name_value_handles_non_string_values() -> None:
     assert _normalize_node_name_value(_BadString()) is None
 
 
-def test_normalize_node_name_value_handles_non_string_subclass_values() -> None:
-    """Custom object types should normalize to None without conversion attempts."""
+def test_normalize_node_name_value_preserves_string_subclass_values() -> None:
+    """String subclasses should normalize as normal strings."""
 
-    class _ExplodingString:
+    class _StringSubclass(str):
         pass
 
-    assert _normalize_node_name_value(_ExplodingString()) is None
+    assert _normalize_node_name_value(_StringSubclass("Bravo")) == "Bravo"
 
 
 def test_read_name_values_rejects_unknown_table(configured_temp_db: str) -> None:
@@ -334,7 +334,7 @@ def test_sync_non_authoritative_empty_snapshot_does_not_arm_immediate_prune(
 
 
 class TestFormatNodeIdSample:
-    """Tests for _format_node_id_sample function (lines 120-127)."""
+    """Tests for _format_node_id_sample behavior."""
 
     def test_empty_collection_returns_empty_brackets(self) -> None:
         """Empty collection should return '[]'."""
@@ -356,7 +356,7 @@ class TestFormatNodeIdSample:
 
 
 class TestDeleteNameByIdSqliteError:
-    """Tests for _delete_name_by_id sqlite3.Error handling (lines 812-814)."""
+    """Tests for _delete_name_by_id sqlite3.Error handling."""
 
     def test_delete_name_by_id_sqlite_error_returns_false(
         self, configured_temp_db: str
@@ -375,7 +375,7 @@ class TestDeleteNameByIdSqliteError:
 
 
 class TestNameTableMatchesStateFalseConditions:
-    """Tests for _name_table_matches_state various return False conditions (lines 944-956)."""
+    """Tests for _name_table_matches_state return-false conditions."""
 
     def test_returns_false_when_expected_none_but_id_in_actual(self) -> None:
         """Returns False when expected_value is None but id_key is in actual_by_id."""

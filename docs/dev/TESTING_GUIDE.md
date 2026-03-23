@@ -500,6 +500,26 @@ Add or extend integration tests when a change:
 - Meshtastic connection/recovery integration paths: keep scenario-style tests close to `tests/test_meshtastic_utils_connect_paths.py` and add a higher-level scenario in `tests/test_integration_scenarios.py` when the bug crosses module boundaries.
 - Shell/CI integration harness updates: `scripts/ci/run-mmrelay-meshtasticd-integration.sh` (only for behavior that must be validated in the runtime harness).
 
+### Marking integration tests
+
+Tag integration tests with `@pytest.mark.integration` so they can be selected or
+excluded quickly:
+
+```python
+import pytest
+
+
+@pytest.mark.integration
+def test_connection_lifecycle_with_retry():
+    ...
+```
+
+Useful commands:
+
+- Run only integration tests: `python -m pytest -m integration`
+- Skip integration tests during fast local cycles:
+  `python -m pytest -m "not integration"`
+
 ### Integration test design rules
 
 1. Keep tests deterministic: no real BLE hardware, no external network calls, no wall-clock sleeps without patching/mocking.

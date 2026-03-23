@@ -612,7 +612,7 @@ async def main(config: dict[str, Any]) -> None:
                 if shutdown_event.is_set():
                     return
                 restart_attempt += 1
-                matrix_logger.error(
+                meshtastic_logger.error(
                     "Node-name refresh task failed (attempt %d); restarting in %.1fs",
                     restart_attempt,
                     backoff_seconds,
@@ -626,7 +626,7 @@ async def main(config: dict[str, Any]) -> None:
                 if shutdown_event.is_set() or refresh_interval_seconds <= 0:
                     return
                 backoff_seconds = 1.0
-                matrix_logger.warning(
+                meshtastic_logger.warning(
                     "Node-name refresh task exited unexpectedly; restarting in %.1fs",
                     backoff_seconds,
                 )

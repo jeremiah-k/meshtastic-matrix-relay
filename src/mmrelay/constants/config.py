@@ -5,86 +5,92 @@ Contains configuration section names, key names, and default values
 used throughout the configuration system.
 """
 
+from typing import Final
+
 # Configuration section names
-CONFIG_SECTION_MATRIX = "matrix"
-CONFIG_SECTION_MATRIX_ROOMS = "matrix_rooms"
-CONFIG_SECTION_MESHTASTIC = "meshtastic"
-CONFIG_SECTION_LOGGING = "logging"
-CONFIG_SECTION_DATABASE = "database"
-CONFIG_SECTION_DATABASE_LEGACY = "db"
-CONFIG_SECTION_PLUGINS = "plugins"
-CONFIG_SECTION_COMMUNITY_PLUGINS = "community-plugins"
-CONFIG_SECTION_CUSTOM_PLUGINS = "custom-plugins"
+CONFIG_SECTION_MATRIX: Final[str] = "matrix"
+CONFIG_SECTION_MATRIX_ROOMS: Final[str] = "matrix_rooms"
+CONFIG_SECTION_MESHTASTIC: Final[str] = "meshtastic"
+CONFIG_SECTION_LOGGING: Final[str] = "logging"
+CONFIG_SECTION_DATABASE: Final[str] = "database"
+CONFIG_SECTION_DATABASE_LEGACY: Final[str] = "db"
+CONFIG_SECTION_PLUGINS: Final[str] = "plugins"
+CONFIG_SECTION_COMMUNITY_PLUGINS: Final[str] = "community-plugins"
+CONFIG_SECTION_CUSTOM_PLUGINS: Final[str] = "custom-plugins"
 
 # Matrix configuration keys
-CONFIG_KEY_HOMESERVER = "homeserver"
-CONFIG_KEY_ACCESS_TOKEN = (
+CONFIG_KEY_HOMESERVER: Final[str] = "homeserver"
+CONFIG_KEY_ACCESS_TOKEN: Final[str] = (
     "access_token"  # nosec B105 - This is a config key name, not a hardcoded password
 )
-CONFIG_KEY_BOT_USER_ID = "bot_user_id"
-CONFIG_KEY_PREFIX_ENABLED = "prefix_enabled"
-CONFIG_KEY_PREFIX_FORMAT = "prefix_format"
+CONFIG_KEY_BOT_USER_ID: Final[str] = "bot_user_id"
+CONFIG_KEY_PREFIX_ENABLED: Final[str] = "prefix_enabled"
+CONFIG_KEY_PREFIX_FORMAT: Final[str] = "prefix_format"
 
 # Matrix rooms configuration keys
-CONFIG_KEY_ID = "id"
-CONFIG_KEY_MESHTASTIC_CHANNEL = "meshtastic_channel"
+CONFIG_KEY_ID: Final[str] = "id"
+CONFIG_KEY_MESHTASTIC_CHANNEL: Final[str] = "meshtastic_channel"
 
 # Meshtastic configuration keys (additional to network.py)
-CONFIG_KEY_MESHNET_NAME = "meshnet_name"
-CONFIG_KEY_MESSAGE_INTERACTIONS = "message_interactions"
-CONFIG_KEY_REACTIONS = "reactions"
-CONFIG_KEY_REPLIES = "replies"
-CONFIG_KEY_BROADCAST_ENABLED = "broadcast_enabled"
-CONFIG_KEY_DETECTION_SENSOR = "detection_sensor"
-CONFIG_KEY_MESSAGE_DELAY = "message_delay"
-CONFIG_KEY_NODE_NAME_REFRESH_INTERVAL = "node_name_refresh_interval"
-CONFIG_KEY_HEALTH_CHECK = "health_check"
-CONFIG_KEY_ENABLED = "enabled"
-CONFIG_KEY_HEARTBEAT_INTERVAL = "heartbeat_interval"
+CONFIG_KEY_MESHNET_NAME: Final[str] = "meshnet_name"
+CONFIG_KEY_MESSAGE_INTERACTIONS: Final[str] = "message_interactions"
+CONFIG_KEY_REACTIONS: Final[str] = "reactions"
+CONFIG_KEY_REPLIES: Final[str] = "replies"
+CONFIG_KEY_BROADCAST_ENABLED: Final[str] = "broadcast_enabled"
+CONFIG_KEY_DETECTION_SENSOR: Final[str] = "detection_sensor"
+CONFIG_KEY_MESSAGE_DELAY: Final[str] = "message_delay"
+CONFIG_KEY_NODE_NAME_REFRESH_INTERVAL: Final[str] = "node_name_refresh_interval"
+CONFIG_KEY_HEALTH_CHECK: Final[str] = "health_check"
+CONFIG_KEY_ENABLED: Final[str] = "enabled"
+CONFIG_KEY_HEARTBEAT_INTERVAL: Final[str] = "heartbeat_interval"
 
 # Logging configuration keys
-CONFIG_KEY_LEVEL = "level"
-CONFIG_KEY_LOG_TO_FILE = "log_to_file"
-CONFIG_KEY_FILENAME = "filename"
-CONFIG_KEY_MAX_LOG_SIZE = "max_log_size"
-CONFIG_KEY_BACKUP_COUNT = "backup_count"
-CONFIG_KEY_COLOR_ENABLED = "color_enabled"
-CONFIG_KEY_DEBUG = "debug"
+CONFIG_KEY_LEVEL: Final[str] = "level"
+CONFIG_KEY_LOG_TO_FILE: Final[str] = "log_to_file"
+CONFIG_KEY_FILENAME: Final[str] = "filename"
+CONFIG_KEY_MAX_LOG_SIZE: Final[str] = "max_log_size"
+CONFIG_KEY_BACKUP_COUNT: Final[str] = "backup_count"
+CONFIG_KEY_COLOR_ENABLED: Final[str] = "color_enabled"
+CONFIG_KEY_DEBUG: Final[str] = "debug"
 
 # Database configuration keys
-CONFIG_KEY_PATH = "path"
-CONFIG_KEY_MSG_MAP = "msg_map"
-CONFIG_KEY_MSGS_TO_KEEP = "msgs_to_keep"
-CONFIG_KEY_WIPE_ON_RESTART = "wipe_on_restart"
+CONFIG_KEY_PATH: Final[str] = "path"
+CONFIG_KEY_MSG_MAP: Final[str] = "msg_map"
+CONFIG_KEY_MSGS_TO_KEEP: Final[str] = "msgs_to_keep"
+CONFIG_KEY_WIPE_ON_RESTART: Final[str] = "wipe_on_restart"
 
 # Plugin configuration keys
-CONFIG_KEY_ACTIVE = "active"
-CONFIG_KEY_CHANNELS = "channels"
-CONFIG_KEY_UNITS = "units"
-CONFIG_KEY_REPOSITORY = "repository"
-CONFIG_KEY_TAG = "tag"
-CONFIG_KEY_REQUIRE_BOT_MENTION = "require_bot_mention"
+CONFIG_KEY_ACTIVE: Final[str] = "active"
+CONFIG_KEY_CHANNELS: Final[str] = "channels"
+CONFIG_KEY_UNITS: Final[str] = "units"
+CONFIG_KEY_REPOSITORY: Final[str] = "repository"
+CONFIG_KEY_TAG: Final[str] = "tag"
+CONFIG_KEY_REQUIRE_BOT_MENTION: Final[str] = "require_bot_mention"
 
 # Default configuration values
-DEFAULT_LOG_LEVEL = "info"
-DEFAULT_WEATHER_UNITS = "metric"
-DEFAULT_WEATHER_UNITS_IMPERIAL = "imperial"
-DEFAULT_PREFIX_ENABLED = True
-DEFAULT_BROADCAST_ENABLED = True
-DEFAULT_DETECTION_SENSOR = True
-DEFAULT_HEALTH_CHECK_ENABLED = False
-DEFAULT_HEARTBEAT_INTERVAL = 60
-DEFAULT_NODE_NAME_REFRESH_INTERVAL = 15.0  # seconds
-DEFAULT_COLOR_ENABLED = True
-DEFAULT_WIPE_ON_RESTART = False
-DEFAULT_REQUIRE_BOT_MENTION = True
+DEFAULT_LOG_LEVEL: Final[str] = "info"
+DEFAULT_WEATHER_UNITS: Final[str] = "metric"
+DEFAULT_WEATHER_UNITS_IMPERIAL: Final[str] = "imperial"
+DEFAULT_PREFIX_ENABLED: Final[bool] = True
+DEFAULT_BROADCAST_ENABLED: Final[bool] = True
+DEFAULT_DETECTION_SENSOR: Final[bool] = True
+DEFAULT_HEALTH_CHECK_ENABLED: Final[bool] = False
+DEFAULT_HEARTBEAT_INTERVAL: Final[int] = 60
+DEFAULT_NODE_NAME_REFRESH_INTERVAL: Final[float] = 15.0  # seconds
+DEFAULT_COLOR_ENABLED: Final[bool] = True
+DEFAULT_WIPE_ON_RESTART: Final[bool] = False
+DEFAULT_REQUIRE_BOT_MENTION: Final[bool] = True
 
 # E2EE constants
-E2EE_KEY_SHARING_DELAY_SECONDS = (
+E2EE_KEY_SHARING_DELAY_SECONDS: Final[int] = (
     5  # Default delay after initial sync to allow key sharing
 )
-E2EE_KEY_REQUEST_MAX_ATTEMPTS = (
+E2EE_KEY_REQUEST_MAX_ATTEMPTS: Final[int] = (
     3  # Maximum number of attempts for key requests on decryption failure
 )
-E2EE_KEY_REQUEST_BASE_DELAY = 2  # Base delay in seconds for exponential backoff
-E2EE_KEY_REQUEST_MAX_DELAY = 30.0  # Cap exponential backoff to avoid long waits
+E2EE_KEY_REQUEST_BASE_DELAY: Final[int] = (
+    2  # Base delay in seconds for exponential backoff
+)
+E2EE_KEY_REQUEST_MAX_DELAY: Final[float] = (
+    30.0  # Cap exponential backoff to avoid long waits
+)
