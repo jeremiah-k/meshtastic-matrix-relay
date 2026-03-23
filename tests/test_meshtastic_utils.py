@@ -3672,7 +3672,10 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         mock_executor._shutdown = False
         mock_executor.submit.return_value = mock_future
 
-        with patch("mmrelay.meshtastic_utils._ble_executor", mock_executor):
+        with (
+            patch("mmrelay.meshtastic_utils._ble_executor", mock_executor),
+            patch("mmrelay.meshtastic_utils._disconnect_ble_by_address"),
+        ):
             import mmrelay.meshtastic_utils as mu
 
             _reset_ble_inflight_state(mu)
@@ -3787,7 +3790,10 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         mock_executor._shutdown = False
         mock_executor.submit.side_effect = submit_side_effect
 
-        with patch("mmrelay.meshtastic_utils._ble_executor", mock_executor):
+        with (
+            patch("mmrelay.meshtastic_utils._ble_executor", mock_executor),
+            patch("mmrelay.meshtastic_utils._disconnect_ble_by_address"),
+        ):
             import mmrelay.meshtastic_utils as mu
 
             _reset_ble_inflight_state(mu)

@@ -156,8 +156,40 @@ _ble_timeout_lock = threading.Lock()
 _ble_future_watchdog_secs = BLE_FUTURE_WATCHDOG_SECS
 _ble_timeout_reset_threshold = BLE_TIMEOUT_RESET_THRESHOLD
 _ble_scan_timeout_secs = BLE_SCAN_TIMEOUT_SECS
-_ble_future_stale_grace_secs = 2.0
-_ble_interface_create_timeout_secs = 90.0
+BLE_FUTURE_STALE_GRACE_SECS = 2.0
+BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS = 90.0
+_ble_future_stale_grace_secs = BLE_FUTURE_STALE_GRACE_SECS
+_ble_interface_create_timeout_secs = BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS
+
+
+def _coerce_nonnegative_float(value: Any, default: float) -> float:
+    """
+    Coerce runtime BLE tuning values to a finite non-negative float.
+    """
+    try:
+        if isinstance(value, bool):
+            raise TypeError
+        parsed = float(value)
+        if not math.isfinite(parsed) or parsed < 0:
+            raise ValueError
+        return parsed
+    except (TypeError, ValueError):
+        return default
+
+
+def _coerce_positive_int(value: Any, default: int) -> int:
+    """
+    Coerce runtime BLE tuning values to a positive integer.
+    """
+    try:
+        if isinstance(value, bool):
+            raise TypeError
+        parsed = int(value)
+        if parsed <= 0:
+            raise ValueError
+        return parsed
+    except (TypeError, ValueError):
+        return default
 
 
 def _normalize_room_channel(room: dict[str, Any]) -> int | None:
@@ -614,7 +646,6 @@ async def refresh_node_name_tables(
                 )
         except Exception:
             logger.exception("Failed to refresh node-name tables from node snapshot")
-            raise
 
         if interval <= 0:
             logger.debug(
@@ -1070,6 +1101,11 @@ def _schedule_ble_future_cleanup(
     If a BLE task cannot be cancelled, we avoid blocking all future retries by
     clearing the shared future reference after a grace period.
     """
+    watchdog_secs = _coerce_positive_float(
+        _ble_future_watchdog_secs,
+        BLE_FUTURE_WATCHDOG_SECS,
+        "_ble_future_watchdog_secs",
+    )
 
     def _cleanup() -> None:
         """
@@ -1084,13 +1120,13 @@ def _schedule_ble_future_cleanup(
                 return
         logger.warning(
             "BLE worker still running after %.0fs for %s; clearing stale future (%s)",
-            _ble_future_watchdog_secs,
+            watchdog_secs,
             ble_address,
             reason,
         )
         _clear_ble_future(future)
 
-    timer = threading.Timer(_ble_future_watchdog_secs, _cleanup)
+    timer = threading.Timer(watchdog_secs, _cleanup)
     timer.daemon = True
     future.add_done_callback(lambda _f: timer.cancel())
     timer.start()
@@ -1123,6 +1159,12 @@ def _ensure_ble_worker_available(ble_address: str, *, operation: str) -> None:
     stale_elapsed_secs: float | None = None
     stale_timeout_secs: float | None = None
     stale_address: str | None = None
+    stale_grace_secs = _coerce_nonnegative_float(
+        _ble_future_stale_grace_secs, BLE_FUTURE_STALE_GRACE_SECS
+    )
+    reset_threshold = _coerce_positive_int(
+        _ble_timeout_reset_threshold, BLE_TIMEOUT_RESET_THRESHOLD
+    )
 
     with _ble_executor_lock:
         active_future = _ble_future
@@ -1131,7 +1173,7 @@ def _ensure_ble_worker_available(ble_address: str, *, operation: str) -> None:
 
         if _ble_future_started_at is not None and _ble_future_timeout_secs is not None:
             elapsed = time.monotonic() - _ble_future_started_at
-            stale_after = _ble_future_timeout_secs + _ble_future_stale_grace_secs
+            stale_after = _ble_future_timeout_secs + stale_grace_secs
             if elapsed >= stale_after:
                 stale_elapsed_secs = elapsed
                 stale_timeout_secs = _ble_future_timeout_secs
@@ -1152,7 +1194,7 @@ def _ensure_ble_worker_available(ble_address: str, *, operation: str) -> None:
         timeout_count = _record_ble_timeout(stale_address)
         _maybe_reset_ble_executor(
             stale_address,
-            max(timeout_count, _ble_timeout_reset_threshold),
+            max(timeout_count, reset_threshold),
         )
 
     with _ble_executor_lock:
@@ -1178,8 +1220,11 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
     """
     global _ble_executor, _ble_future, _ble_future_address
     global _ble_future_started_at, _ble_future_timeout_secs
+    reset_threshold = _coerce_positive_int(
+        _ble_timeout_reset_threshold, BLE_TIMEOUT_RESET_THRESHOLD
+    )
     with _ble_executor_lock:
-        if timeout_count < _ble_timeout_reset_threshold:
+        if timeout_count < reset_threshold:
             return
         logger.warning(
             "BLE worker timed out %s times for %s; recreating executor",
@@ -2834,14 +2879,17 @@ def connect_meshtastic(
                                     "BLEInterface auto_reconnect parameter not available; using compatibility mode"
                                 )
                             if ble_scan_after_failure and not supports_auto_reconnect:
+                                scan_timeout_secs = _coerce_positive_float(
+                                    _ble_scan_timeout_secs,
+                                    BLE_SCAN_TIMEOUT_SECS,
+                                    "_ble_scan_timeout_secs",
+                                )
                                 logger.debug(
                                     "Scanning for BLE device before retrying %s (%s)",
                                     ble_address,
                                     ble_scan_reason or "previous failure",
                                 )
-                                _scan_for_ble_address(
-                                    ble_address, _ble_scan_timeout_secs
-                                )
+                                _scan_for_ble_address(ble_address, scan_timeout_secs)
                                 ble_scan_after_failure = False
                                 ble_scan_reason = None
 
@@ -2865,8 +2913,13 @@ def connect_meshtastic(
                             # Use the larger of configured connect timeout and the safety floor.
                             # This keeps stale-worker detection and future.result() budget aligned
                             # with the actual BLEInterface constructor timeout.
+                            create_timeout_floor_secs = _coerce_positive_float(
+                                _ble_interface_create_timeout_secs,
+                                BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS,
+                                "_ble_interface_create_timeout_secs",
+                            )
                             create_timeout_secs = max(
-                                float(timeout), _ble_interface_create_timeout_secs
+                                float(timeout), create_timeout_floor_secs
                             )
 
                             # Guard against overlapping BLE tasks: if a previous BLE operation is

@@ -168,6 +168,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         ):
             with patch("time.sleep"):  # Speed up test
                 with (
+                    patch("mmrelay.meshtastic_utils._disconnect_ble_by_address"),
                     patch("mmrelay.meshtastic_utils.logger") as mock_logger,
                     patch(
                         "mmrelay.meshtastic_utils.is_running_as_service",
