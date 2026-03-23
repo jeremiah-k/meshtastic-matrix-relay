@@ -479,8 +479,28 @@ class TestDbUtils(unittest.TestCase):
         def fail_longname_insert_once(self, func, *, write=False):
             nonlocal write_failed
             if write and not write_failed:
-                write_failed = True
-                raise sqlite3.Error("forced longname write failure")
+
+                class _FailingCursorProxy:
+                    def __init__(self, inner_cursor):
+                        self._inner_cursor = inner_cursor
+                        self._execute_calls = 0
+
+                    def execute(self, *args, **kwargs):
+                        nonlocal write_failed
+                        self._execute_calls += 1
+                        result = self._inner_cursor.execute(*args, **kwargs)
+                        if self._execute_calls == 1 and not write_failed:
+                            write_failed = True
+                            raise sqlite3.Error("forced longname write failure")
+                        return result
+
+                    def __getattr__(self, attr):
+                        return getattr(self._inner_cursor, attr)
+
+                def wrapped(cursor):
+                    return func(_FailingCursorProxy(cursor))
+
+                return original_run_sync(self, wrapped, write=write)
             return original_run_sync(self, func, write=write)
 
         with patch.object(
@@ -517,8 +537,28 @@ class TestDbUtils(unittest.TestCase):
         def fail_longname_insert_once(self, func, *, write=False):
             nonlocal write_failed
             if write and not write_failed:
-                write_failed = True
-                raise sqlite3.Error("forced longname write failure")
+
+                class _FailingCursorProxy:
+                    def __init__(self, inner_cursor):
+                        self._inner_cursor = inner_cursor
+                        self._execute_calls = 0
+
+                    def execute(self, *args, **kwargs):
+                        nonlocal write_failed
+                        self._execute_calls += 1
+                        result = self._inner_cursor.execute(*args, **kwargs)
+                        if self._execute_calls == 1 and not write_failed:
+                            write_failed = True
+                            raise sqlite3.Error("forced longname write failure")
+                        return result
+
+                    def __getattr__(self, attr):
+                        return getattr(self._inner_cursor, attr)
+
+                def wrapped(cursor):
+                    return func(_FailingCursorProxy(cursor))
+
+                return original_run_sync(self, wrapped, write=write)
             return original_run_sync(self, func, write=write)
 
         with patch.object(

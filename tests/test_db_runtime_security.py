@@ -17,6 +17,7 @@ import threading
 import unittest
 from unittest.mock import patch
 
+from mmrelay.constants.database import MIN_SQLITE_VERSION_JSON_EACH
 from mmrelay.db_runtime import DatabaseManager
 
 
@@ -82,7 +83,8 @@ class TestDatabaseManager(unittest.TestCase):
         ):
             with self.assertRaises(RuntimeError) as cm:
                 DatabaseManager(self.db_path)
-        self.assertIn("SQLite >= 3.9.0 is required", str(cm.exception))
+        min_version = ".".join(str(part) for part in MIN_SQLITE_VERSION_JSON_EACH)
+        self.assertIn(f"SQLite >= {min_version} is required", str(cm.exception))
 
     def test_initialization_accepts_minimum_supported_sqlite_version(self):
         """DatabaseManager should allow the minimum supported SQLite runtime."""

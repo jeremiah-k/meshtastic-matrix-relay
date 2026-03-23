@@ -54,9 +54,10 @@ def _validate_sqlite_json_each_support() -> None:
     Ensure runtime SQLite supports json_each() usage in name-state queries.
     """
     current_version = _get_sqlite_runtime_version_info()
+    min_major, min_minor, min_patch = MIN_SQLITE_VERSION_JSON_EACH
     if current_version < MIN_SQLITE_VERSION_JSON_EACH:
         raise RuntimeError(
-            "SQLite >= 3.9.0 is required for json_each() support. "
+            f"SQLite >= {min_major}.{min_minor}.{min_patch} is required for json_each() support. "
             f"Detected SQLite version: {current_version[0]}.{current_version[1]}.{current_version[2]}"
         )
 

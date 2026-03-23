@@ -1038,8 +1038,30 @@ def _collect_node_name_snapshot(
         if id_key in skipped_ids:
             continue
         current_ids.add(id_key)
-        long_name = _normalize_node_name_value(user.get(PROTO_NODE_NAME_LONG))
-        short_name = _normalize_node_name_value(user.get(PROTO_NODE_NAME_SHORT))
+
+        raw_long_name = user.get(PROTO_NODE_NAME_LONG)
+        raw_short_name = user.get(PROTO_NODE_NAME_SHORT)
+        if raw_long_name is not None and not isinstance(raw_long_name, str):
+            logger.warning(
+                "Skipping node-name snapshot entry for %s due to non-string %s value type %s",
+                id_key,
+                PROTO_NODE_NAME_LONG,
+                type(raw_long_name).__name__,
+            )
+            snapshot_complete = False
+            continue
+        if raw_short_name is not None and not isinstance(raw_short_name, str):
+            logger.warning(
+                "Skipping node-name snapshot entry for %s due to non-string %s value type %s",
+                id_key,
+                PROTO_NODE_NAME_SHORT,
+                type(raw_short_name).__name__,
+            )
+            snapshot_complete = False
+            continue
+
+        long_name = _normalize_node_name_value(raw_long_name)
+        short_name = _normalize_node_name_value(raw_short_name)
 
         existing_entry = state_by_id.get(id_key)
         if existing_entry is None:
@@ -1244,6 +1266,9 @@ def sync_name_tables_if_changed(
         return previous_state
 
     current_state, current_ids, snapshot_complete = _collect_node_name_snapshot(nodes)
+    if nodes == {} and previous_state == ():
+        # Require at least one stable empty refresh cycle before full-table prune.
+        snapshot_complete = True
     if logger.isEnabledFor(logging.DEBUG):
         current_state_ids = {entry.meshtastic_id for entry in current_state}
         if previous_state is None:

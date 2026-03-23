@@ -1542,9 +1542,9 @@ class TestMainFunctionEdgeCases(unittest.TestCase):
             # Should call start_message_queue with custom delay
             mock_start_queue.assert_called_once_with(message_delay=5.0)
 
-    def test_main_no_meshtastic_client_warning(self):
+    def test_refresh_node_name_tables_skips_db_sync_without_meshtastic_client(self):
         """
-        Verify periodic node-name refresh skips DB sync when no Meshtastic client exists.
+        Verify refresh_node_name_tables skips DB sync when Meshtastic client is unavailable.
         """
 
         import mmrelay.meshtastic_utils as meshtastic_module

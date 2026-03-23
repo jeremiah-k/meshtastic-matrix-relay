@@ -56,6 +56,8 @@ class TestIntegrationScenarios(unittest.TestCase):
             module.config = None
             module.matrix_rooms = []
             module.meshtastic_client = None
+            if hasattr(module, "meshtastic_iface"):
+                module.meshtastic_iface = None
             module.event_loop = None
             module.reconnecting = False
             module.shutting_down = False
@@ -63,6 +65,12 @@ class TestIntegrationScenarios(unittest.TestCase):
             module.subscribed_to_messages = False
             module.subscribed_to_connection_lost = False
             if hasattr(module, "_ble_future"):
+                ble_future = module._ble_future
+                if ble_future is not None:
+                    done = getattr(ble_future, "done", None)
+                    cancel = getattr(ble_future, "cancel", None)
+                    if callable(done) and callable(cancel) and not done():
+                        cancel()
                 module._ble_future = None
             if hasattr(module, "_ble_future_address"):
                 module._ble_future_address = None
@@ -70,6 +78,8 @@ class TestIntegrationScenarios(unittest.TestCase):
                 module._ble_future_started_at = None
             if hasattr(module, "_ble_future_timeout_secs"):
                 module._ble_future_timeout_secs = None
+            if hasattr(module, "_ble_timeout_counts"):
+                module._ble_timeout_counts = {}
 
         # Reset matrix_utils globals
         if "mmrelay.matrix_utils" in sys.modules:

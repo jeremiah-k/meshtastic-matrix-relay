@@ -88,6 +88,16 @@ class _FakeEvent:
         return None
 
 
+def _reset_ble_inflight_state(module: Any) -> None:
+    """
+    Reset shared BLE in-flight tracking globals for test isolation.
+    """
+    module._ble_future = None
+    module._ble_future_address = None
+    module._ble_future_started_at = None
+    module._ble_future_timeout_secs = None
+
+
 @pytest.mark.usefixtures("stable_relay_start_time")
 class TestMeshtasticUtils(unittest.TestCase):
     """Test cases for Meshtastic utilities."""
@@ -132,10 +142,8 @@ class TestMeshtasticUtils(unittest.TestCase):
         mmrelay.meshtastic_utils.reconnecting = False
         mmrelay.meshtastic_utils.shutting_down = False
         mmrelay.meshtastic_utils.reconnect_task = None
-        mmrelay.meshtastic_utils._ble_future = None
-        mmrelay.meshtastic_utils._ble_future_address = None
-        mmrelay.meshtastic_utils._ble_future_started_at = None
-        mmrelay.meshtastic_utils._ble_future_timeout_secs = None
+        mmrelay.meshtastic_utils.meshtastic_iface = None
+        _reset_ble_inflight_state(mmrelay.meshtastic_utils)
         mmrelay.meshtastic_utils._metadata_future = None
         mmrelay.meshtastic_utils._ble_timeout_counts = {}
 
@@ -1491,10 +1499,7 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
         mu.meshtastic_iface = None
         mu.reconnecting = False
         mu.shutting_down = False
-        mu._ble_future = None
-        mu._ble_future_address = None
-        mu._ble_future_started_at = None
-        mu._ble_future_timeout_secs = None
+        _reset_ble_inflight_state(mu)
         mu._metadata_future = None
         mu._ble_timeout_counts = {}
 
@@ -3651,10 +3656,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         with patch("mmrelay.meshtastic_utils._ble_executor", mock_executor):
             import mmrelay.meshtastic_utils as mu
 
-            mu._ble_future = None
-            mu._ble_future_address = None
-            mu._ble_future_started_at = None
-            mu._ble_future_timeout_secs = None
+            _reset_ble_inflight_state(mu)
             mu._metadata_future = None
             # The function will retry 6 times (MAX_TIMEOUT_RETRIES_INFINITE = 5 + 1)
             # After all retries, it returns None (doesn't raise)
@@ -3668,7 +3670,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             error_calls = [
                 call
                 for call in mock_logger.exception.call_args_list
-                if "timed out after 90 seconds" in str(call)
+                if "BLE interface creation timed out after" in str(call)
             ]
             self.assertEqual(len(error_calls), 6)
 
@@ -3769,10 +3771,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         with patch("mmrelay.meshtastic_utils._ble_executor", mock_executor):
             import mmrelay.meshtastic_utils as mu
 
-            mu._ble_future = None
-            mu._ble_future_address = None
-            mu._ble_future_started_at = None
-            mu._ble_future_timeout_secs = None
+            _reset_ble_inflight_state(mu)
             mu._metadata_future = None
             # The function will retry 6 times and return None (doesn't raise)
             result = connect_meshtastic(passed_config=config)
@@ -3795,7 +3794,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             interface_timeout_calls = [
                 call
                 for call in mock_logger.exception.call_args_list
-                if "timed out after 90 seconds" in str(call)
+                if "BLE interface creation timed out after" in str(call)
             ]
             self.assertEqual(len(interface_timeout_calls), 5)
 

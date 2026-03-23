@@ -318,68 +318,15 @@ async def main(config: dict[str, Any]) -> None:
         logger.debug("wipe_on_restart enabled. Wiping message_map now (startup).")
         wipe_message_map()
 
-    # Load plugins early (run in executor to avoid blocking event loop with time.sleep)
-    await loop.run_in_executor(
-        None, functools.partial(load_plugins, passed_config=config)
-    )
-
-    # Start message queue with configured message delay
-    meshtastic_config = config.get(CONFIG_SECTION_MESHTASTIC)
-    if not isinstance(meshtastic_config, dict):
-        meshtastic_config = {}
-    message_delay = meshtastic_config.get(
-        CONFIG_KEY_MESSAGE_DELAY,
-        DEFAULT_MESSAGE_DELAY,
-    )
-    start_message_queue(message_delay=message_delay)
-
-    # Connect to Meshtastic
-    meshtastic_utils.meshtastic_client = await asyncio.to_thread(
-        connect_meshtastic, passed_config=config
-    )
-
-    # Connect to Matrix
-    matrix_client = await connect_matrix(passed_config=config)
-
-    # Check if Matrix connection was successful
-    if matrix_client is None:
-        # The error is logged by connect_matrix, so we can just raise here.
-        raise ConnectionError(
-            "Failed to connect to Matrix. Cannot continue without Matrix client."
-        )
-
-    # Join the rooms specified in the config.yaml
-    for room in matrix_rooms:
-        await join_matrix_room(matrix_client, room["id"])
-
-    # Register the message callback for Matrix
-    matrix_logger.info("Listening for inbound Matrix messages...")
-    matrix_client.add_event_callback(
-        cast(Any, on_room_message),
-        cast(
-            Any,
-            (RoomMessageText, RoomMessageNotice, RoomMessageEmote, ReactionEvent),
-        ),
-    )
-    # Add E2EE callbacks - MegolmEvent only goes to decryption failure handler
-    # Successfully decrypted messages will be converted to RoomMessageText etc. by matrix-nio
-    matrix_client.add_event_callback(
-        cast(Any, on_decryption_failure), cast(Any, (MegolmEvent,))
-    )
-    # Add RoomMemberEvent callback to track room-specific display name changes
-    matrix_client.add_event_callback(
-        cast(Any, on_room_member), cast(Any, (RoomMemberEvent,))
-    )
-    # Add InviteMemberEvent callback to automatically join mapped rooms on invite
-    matrix_client.add_event_callback(
-        cast(Any, on_invite), cast(Any, (InviteMemberEvent,))
-    )
-
     # Set up shutdown event
     shutdown_event = asyncio.Event()
 
     ready_task: asyncio.Task[None] | None = None
     check_connection_task: asyncio.Task[Any] | None = None
+    node_name_refresh_task: asyncio.Task[None] | None = None
+    matrix_client: Any | None = None
+    plugins_loaded = False
+    message_queue_started = False
 
     def _set_shutdown_flag() -> None:
         """
@@ -403,22 +350,115 @@ async def main(config: dict[str, Any]) -> None:
         """
         shutdown()
 
-    # Handle signals differently based on the platform
-    if sys.platform != WINDOWS_PLATFORM:
-        signals = [signal.SIGINT, signal.SIGTERM]
-        # Handle terminal hangups (e.g., SSH session closes) when supported.
-        if hasattr(signal, "SIGHUP"):
-            signals.append(signal.SIGHUP)
-        for sig in signals:
-            loop.add_signal_handler(sig, signal_handler)
-    else:
-        # On Windows, we can't use add_signal_handler, so we'll handle KeyboardInterrupt
-        pass
+    try:
+        # Load plugins early (run in executor to avoid blocking event loop with time.sleep)
+        await loop.run_in_executor(
+            None, functools.partial(load_plugins, passed_config=config)
+        )
+        plugins_loaded = True
 
-    # Start connection health monitoring using getMetadata() heartbeat
-    # This provides proactive connection detection for all interface types
-    check_connection_task = asyncio.create_task(meshtastic_utils.check_connection())
-    node_name_refresh_task: asyncio.Task[None] | None = None
+        # Start message queue with configured message delay
+        meshtastic_config = config.get(CONFIG_SECTION_MESHTASTIC)
+        if not isinstance(meshtastic_config, dict):
+            meshtastic_config = {}
+        message_delay = meshtastic_config.get(
+            CONFIG_KEY_MESSAGE_DELAY,
+            DEFAULT_MESSAGE_DELAY,
+        )
+        start_message_queue(message_delay=message_delay)
+        message_queue_started = True
+
+        # Connect to Meshtastic
+        meshtastic_utils.meshtastic_client = await asyncio.to_thread(
+            connect_meshtastic, passed_config=config
+        )
+
+        # Connect to Matrix
+        matrix_client = await connect_matrix(passed_config=config)
+
+        # Check if Matrix connection was successful
+        if matrix_client is None:
+            # The error is logged by connect_matrix, so we can just raise here.
+            raise ConnectionError(
+                "Failed to connect to Matrix. Cannot continue without Matrix client."
+            )
+
+        # Join the rooms specified in the config.yaml
+        for room in matrix_rooms:
+            await join_matrix_room(matrix_client, room["id"])
+
+        # Register the message callback for Matrix
+        matrix_logger.info("Listening for inbound Matrix messages...")
+        matrix_client.add_event_callback(
+            cast(Any, on_room_message),
+            cast(
+                Any,
+                (RoomMessageText, RoomMessageNotice, RoomMessageEmote, ReactionEvent),
+            ),
+        )
+        # Add E2EE callbacks - MegolmEvent only goes to decryption failure handler
+        # Successfully decrypted messages will be converted to RoomMessageText etc. by matrix-nio
+        matrix_client.add_event_callback(
+            cast(Any, on_decryption_failure), cast(Any, (MegolmEvent,))
+        )
+        # Add RoomMemberEvent callback to track room-specific display name changes
+        matrix_client.add_event_callback(
+            cast(Any, on_room_member), cast(Any, (RoomMemberEvent,))
+        )
+        # Add InviteMemberEvent callback to automatically join mapped rooms on invite
+        matrix_client.add_event_callback(
+            cast(Any, on_invite), cast(Any, (InviteMemberEvent,))
+        )
+
+        # Handle signals differently based on the platform
+        if sys.platform != WINDOWS_PLATFORM:
+            signals = [signal.SIGINT, signal.SIGTERM]
+            # Handle terminal hangups (e.g., SSH session closes) when supported.
+            if hasattr(signal, "SIGHUP"):
+                signals.append(signal.SIGHUP)
+            for sig in signals:
+                loop.add_signal_handler(sig, signal_handler)
+        else:
+            # On Windows, we can't use add_signal_handler, so we'll handle KeyboardInterrupt
+            pass
+
+        # Start connection health monitoring using getMetadata() heartbeat
+        # This provides proactive connection detection for all interface types
+        check_connection_task = asyncio.create_task(meshtastic_utils.check_connection())
+    except Exception:
+        _set_shutdown_flag()
+        if check_connection_task is not None:
+            check_connection_task.cancel()
+            await asyncio.gather(check_connection_task, return_exceptions=True)
+        _remove_ready_file()
+        if plugins_loaded:
+            try:
+                await asyncio.to_thread(shutdown_plugins)
+            except Exception:
+                logger.exception("Failed to stop plugins during startup rollback")
+        if message_queue_started:
+            try:
+                await asyncio.to_thread(stop_message_queue)
+            except Exception:
+                logger.exception("Failed to stop message queue during startup rollback")
+        if matrix_client is not None:
+            try:
+                await matrix_client.close()
+            except Exception:
+                logger.exception(
+                    "Failed to close Matrix client during startup rollback"
+                )
+        if meshtastic_utils.meshtastic_client:
+            try:
+                await asyncio.to_thread(meshtastic_utils.meshtastic_client.close)
+            except Exception:
+                logger.exception(
+                    "Failed to close Meshtastic client during startup rollback"
+                )
+            finally:
+                meshtastic_utils.meshtastic_client = None
+                meshtastic_utils.meshtastic_iface = None
+        raise
 
     async def _node_name_refresh_supervisor(refresh_interval_seconds: float) -> None:
         """

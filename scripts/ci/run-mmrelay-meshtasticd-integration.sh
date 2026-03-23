@@ -1434,8 +1434,8 @@ raise SystemExit(f"No existing names-table row found in {table_name}")
 PY
 }
 
-# wait_for_name_entry_absent waits until a names-table row is absent for an ID.
-wait_for_name_entry_absent() {
+# wait_for_name_entry_state waits until a names-table row reaches expected state for an ID.
+wait_for_name_entry_state() {
 	local db_path=$1
 	local table_name=$2
 	local meshtastic_id=$3
@@ -1443,6 +1443,7 @@ wait_for_name_entry_absent() {
 	local relay_pid=${5-}
 	local relay_name=${6:-MMRelay}
 	local relay_log_path=${7-}
+	local expect_present=$8
 	"${PYTHON_BIN}" - \
 		"${db_path}" \
 		"${table_name}" \
@@ -1452,7 +1453,8 @@ wait_for_name_entry_absent() {
 		"${relay_name}" \
 		"${relay_log_path}" \
 		"${NAMES_TABLE_LONGNAMES}" \
-		"${NAMES_TABLE_SHORTNAMES}" <<'PY'
+		"${NAMES_TABLE_SHORTNAMES}" \
+		"${expect_present}" <<'PY'
 import os
 import sqlite3
 import sys
@@ -1469,11 +1471,14 @@ from collections import deque
     relay_log_path,
     longnames_table,
     shortnames_table,
-) = sys.argv[1:10]
+    expect_present_raw,
+) = sys.argv[1:11]
 timeout_seconds = int(timeout_seconds_raw)
 allowed_tables = {longnames_table, shortnames_table}
 if table_name not in allowed_tables:
     raise SystemExit(f"Invalid table name: {table_name}")
+expect_present = expect_present_raw == "1"
+expected_state = "presence" if expect_present else "absence"
 
 relay_pid = int(relay_pid_raw) if relay_pid_raw else None
 deadline = time.monotonic() + timeout_seconds
@@ -1486,7 +1491,7 @@ while time.monotonic() < deadline:
             os.kill(relay_pid, 0)
         except OSError:
             print(
-                f"{relay_name} process (pid={relay_pid}) exited while waiting for stale row pruning",
+                f"{relay_name} process (pid={relay_pid}) exited while waiting for names row {expected_state}",
                 file=sys.stderr,
             )
             if relay_log_path and os.path.exists(relay_log_path):
@@ -1498,6 +1503,7 @@ while time.monotonic() < deadline:
                     for line in deque(handle, 20):
                         print(line.rstrip("\n"), file=sys.stderr)
             raise SystemExit(1)
+
     try:
         with sqlite3.connect(db_path, timeout=5) as conn:
             conn.execute("PRAGMA busy_timeout = 5000")
@@ -1505,7 +1511,8 @@ while time.monotonic() < deadline:
                 f"SELECT 1 FROM {table_name} WHERE meshtastic_id=? LIMIT 1",
                 (meshtastic_id,),
             ).fetchone()
-            if row is None:
+            is_present = row is not None
+            if is_present == expect_present:
                 raise SystemExit(0)
     except sqlite3.Error as exc:  # pragma: no cover - retry loop
         last_error = str(exc)
@@ -1526,16 +1533,36 @@ except sqlite3.Error as exc:
     row_count = None
     print(f"Failed to read debug rows from {table_name}: {exc}", file=sys.stderr)
 print(
-    f"Timed out waiting for stale names row removal in {table_name} "
+    f"Timed out waiting for names row {expected_state} in {table_name} "
     f"for meshtastic_id={meshtastic_id} after {attempts} checks",
     file=sys.stderr,
 )
 if row_count is not None:
     print(f"{table_name} row count at timeout: {row_count[0]}", file=sys.stderr)
 if target_row is not None:
-    print(f"Remaining target row: {target_row}", file=sys.stderr)
+    print(f"Target row at timeout: {target_row}", file=sys.stderr)
 raise SystemExit(1)
 PY
+}
+
+# wait_for_name_entry_absent waits until a names-table row is absent for an ID.
+wait_for_name_entry_absent() {
+	local db_path=$1
+	local table_name=$2
+	local meshtastic_id=$3
+	local timeout_seconds=$4
+	local relay_pid=${5-}
+	local relay_name=${6:-MMRelay}
+	local relay_log_path=${7-}
+	wait_for_name_entry_state \
+		"${db_path}" \
+		"${table_name}" \
+		"${meshtastic_id}" \
+		"${timeout_seconds}" \
+		"${relay_pid}" \
+		"${relay_name}" \
+		"${relay_log_path}" \
+		0
 }
 
 # wait_for_name_entry_present waits until a names-table row is present for an ID.
@@ -1547,7 +1574,7 @@ wait_for_name_entry_present() {
 	local relay_pid=${5-}
 	local relay_name=${6:-MMRelay}
 	local relay_log_path=${7-}
-	"${PYTHON_BIN}" - \
+	wait_for_name_entry_state \
 		"${db_path}" \
 		"${table_name}" \
 		"${meshtastic_id}" \
@@ -1555,76 +1582,7 @@ wait_for_name_entry_present() {
 		"${relay_pid}" \
 		"${relay_name}" \
 		"${relay_log_path}" \
-		"${NAMES_TABLE_LONGNAMES}" \
-		"${NAMES_TABLE_SHORTNAMES}" <<'PY'
-import os
-import sqlite3
-import sys
-import time
-from collections import deque
-
-(
-    db_path,
-    table_name,
-    meshtastic_id,
-    timeout_seconds_raw,
-    relay_pid_raw,
-    relay_name,
-    relay_log_path,
-    longnames_table,
-    shortnames_table,
-) = sys.argv[1:10]
-timeout_seconds = int(timeout_seconds_raw)
-allowed_tables = {longnames_table, shortnames_table}
-if table_name not in allowed_tables:
-    raise SystemExit(f"Invalid table name: {table_name}")
-
-relay_pid = int(relay_pid_raw) if relay_pid_raw else None
-deadline = time.monotonic() + timeout_seconds
-last_error = None
-attempts = 0
-while time.monotonic() < deadline:
-    attempts += 1
-    if relay_pid is not None:
-        try:
-            os.kill(relay_pid, 0)
-        except OSError:
-            print(
-                f"{relay_name} process (pid={relay_pid}) exited while waiting for names row presence",
-                file=sys.stderr,
-            )
-            if relay_log_path and os.path.exists(relay_log_path):
-                print(
-                    f"Last 20 lines from {relay_name} log ({relay_log_path}):",
-                    file=sys.stderr,
-                )
-                with open(relay_log_path, encoding="utf-8", errors="replace") as handle:
-                    for line in deque(handle, 20):
-                        print(line.rstrip("\n"), file=sys.stderr)
-            raise SystemExit(1)
-
-    try:
-        with sqlite3.connect(db_path, timeout=5) as conn:
-            conn.execute("PRAGMA busy_timeout = 5000")
-            row = conn.execute(
-                f"SELECT 1 FROM {table_name} WHERE meshtastic_id=? LIMIT 1",
-                (meshtastic_id,),
-            ).fetchone()
-            if row is not None:
-                raise SystemExit(0)
-    except sqlite3.Error as exc:  # pragma: no cover - retry loop
-        last_error = str(exc)
-    time.sleep(1)
-
-if last_error:
-    print(f"Last SQLite error: {last_error}", file=sys.stderr)
-print(
-    f"Timed out waiting for names row presence in {table_name} "
-    f"for meshtastic_id={meshtastic_id} after {attempts} checks",
-    file=sys.stderr,
-)
-raise SystemExit(1)
-PY
+		1
 }
 
 # generate_unique_test_id returns a reproducibly prefixed random ID for test rows.

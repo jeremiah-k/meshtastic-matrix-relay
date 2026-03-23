@@ -511,6 +511,46 @@ def get_node_name_refresh_interval_seconds(
     return DEFAULT_NODE_NAME_REFRESH_INTERVAL
 
 
+def _snapshot_node_name_rows() -> tuple[dict[str, Any] | None, bool]:
+    """
+    Build a minimal node-name snapshot under meshtastic_lock.
+
+    Returns:
+        tuple[dict[str, Any] | None, bool]:
+            - Snapshot suitable for sync_name_tables_if_changed(), or None when unavailable.
+            - True when the Meshtastic client is unavailable.
+    """
+    with meshtastic_lock:
+        client = meshtastic_client
+        if client is None:
+            return None, True
+
+        raw_nodes = getattr(client, "nodes", None)
+        if not isinstance(raw_nodes, dict):
+            return None, False
+
+        nodes_snapshot: dict[str, Any] = {}
+        for node_id, raw_node in raw_nodes.items():
+            node_key = str(node_id)
+            if not isinstance(raw_node, dict):
+                nodes_snapshot[node_key] = raw_node
+                continue
+
+            raw_user = raw_node.get("user")
+            if not isinstance(raw_user, dict):
+                nodes_snapshot[node_key] = {"user": raw_user}
+                continue
+
+            user_snapshot: dict[str, Any] = {
+                key: raw_user.get(key)
+                for key in ("id", PROTO_NODE_NAME_LONG, PROTO_NODE_NAME_SHORT)
+                if key in raw_user
+            }
+            nodes_snapshot[node_key] = {"user": user_snapshot}
+
+        return nodes_snapshot, False
+
+
 async def refresh_node_name_tables(
     shutdown_event: asyncio.Event,
     *,
@@ -544,46 +584,12 @@ async def refresh_node_name_tables(
     previous_state: NodeNameState | None = None
     while not shutdown_event.is_set():
         try:
-            with meshtastic_lock:
-                client = meshtastic_client
-                nodes_snapshot: dict[str, Any] | None
-                if client is None:
-                    nodes_snapshot = None
-                else:
-                    raw_nodes = getattr(client, "nodes", None)
-                    if not isinstance(raw_nodes, dict):
-                        logger.debug(
-                            "Skipping node-name refresh because client.nodes is unavailable or not a dict"
-                        )
-                        nodes_snapshot = None
-                    else:
-                        nodes_snapshot = {}
-                        for node_id, raw_node in raw_nodes.items():
-                            node_key = str(node_id)
-                            if not isinstance(raw_node, dict):
-                                nodes_snapshot[node_key] = raw_node
-                                continue
-
-                            raw_user = raw_node.get("user")
-                            if not isinstance(raw_user, dict):
-                                nodes_snapshot[node_key] = {"user": raw_user}
-                                continue
-
-                            user_snapshot: dict[str, Any] = {}
-                            if "id" in raw_user:
-                                user_snapshot["id"] = raw_user.get("id")
-                            if PROTO_NODE_NAME_LONG in raw_user:
-                                user_snapshot[PROTO_NODE_NAME_LONG] = raw_user.get(
-                                    PROTO_NODE_NAME_LONG
-                                )
-                            if PROTO_NODE_NAME_SHORT in raw_user:
-                                user_snapshot[PROTO_NODE_NAME_SHORT] = raw_user.get(
-                                    PROTO_NODE_NAME_SHORT
-                                )
-                            nodes_snapshot[node_key] = {"user": user_snapshot}
+            nodes_snapshot, client_missing = await asyncio.to_thread(
+                _snapshot_node_name_rows
+            )
 
             if nodes_snapshot is None:
-                if client is None:
+                if client_missing:
                     logger.debug(
                         "Skipping node-name table refresh because Meshtastic client is unavailable"
                     )
@@ -1155,6 +1161,7 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
         timeout_count (int): Number of consecutive timeouts recorded for that address.
     """
     global _ble_executor, _ble_future, _ble_future_address
+    global _ble_future_started_at, _ble_future_timeout_secs
     with _ble_executor_lock:
         if timeout_count < _ble_timeout_reset_threshold:
             return
@@ -2865,6 +2872,10 @@ def connect_meshtastic(
                                     operation="interface creation",
                                 )
 
+                                create_timeout_secs = max(
+                                    float(timeout), _ble_interface_create_timeout_secs
+                                )
+
                                 with _ble_executor_lock:
                                     if _ble_future and not _ble_future.done():
                                         logger.debug(
@@ -2891,13 +2902,11 @@ def connect_meshtastic(
                                     _ble_future = future
                                     _ble_future_address = ble_address
                                     _ble_future_started_at = time.monotonic()
-                                    _ble_future_timeout_secs = (
-                                        _ble_interface_create_timeout_secs
-                                    )
+                                    _ble_future_timeout_secs = create_timeout_secs
                                 future.add_done_callback(_clear_ble_future)
                                 try:
                                     meshtastic_iface = future.result(
-                                        timeout=_ble_interface_create_timeout_secs
+                                        timeout=create_timeout_secs
                                     )
                                     logger.debug(
                                         f"BLE interface created successfully for {ble_address}"
@@ -2909,7 +2918,8 @@ def connect_meshtastic(
                                     # but keep the raised exception concise (TRY003) and emit guidance
                                     # as separate log lines for operators.
                                     logger.exception(
-                                        "BLE interface creation timed out after 90 seconds for %s.",
+                                        "BLE interface creation timed out after %.1f seconds for %s.",
+                                        create_timeout_secs,
                                         ble_address,
                                     )
                                     logger.warning(

@@ -163,6 +163,31 @@ def test_collect_node_name_snapshot_empty_dict_is_incomplete() -> None:
     assert snapshot_complete is False
 
 
+def test_sync_skips_non_string_name_payloads_without_deleting_rows(
+    configured_temp_db: str,
+) -> None:
+    """Malformed non-string name payloads should preserve existing rows."""
+    _ = configured_temp_db
+    initial_nodes = {
+        "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
+    }
+    first_state = sync_name_tables_if_changed(initial_nodes, previous_state=None)
+    assert first_state == (NodeNameEntry("!1", "Alpha", "A"),)
+    assert get_longname("!1") == "Alpha"
+    assert get_shortname("!1") == "A"
+
+    malformed_nodes = {
+        "node_a": {"user": {"id": "!1", "longName": 123, "shortName": "A"}}
+    }
+    second_state = sync_name_tables_if_changed(
+        malformed_nodes,
+        previous_state=first_state,
+    )
+    assert second_state == ()
+    assert get_longname("!1") == "Alpha"
+    assert get_shortname("!1") == "A"
+
+
 def test_sync_unchanged_snapshot_repair_failure_keeps_previous_state(
     configured_temp_db: str,
 ) -> None:
@@ -171,6 +196,8 @@ def test_sync_unchanged_snapshot_repair_failure_keeps_previous_state(
         "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
     }
     first_state = sync_name_tables_if_changed(nodes, previous_state=None)
+    assert first_state is not None
+    assert get_longname("!1") == "Alpha"
 
     with sqlite3.connect(configured_temp_db, timeout=5) as conn:
         conn.execute("DELETE FROM longnames WHERE meshtastic_id = ?", ("!1",))
@@ -207,7 +234,7 @@ def test_sync_unchanged_snapshot_repair_failure_keeps_previous_state(
 def test_sync_empty_snapshot_does_not_prune_existing_rows(
     configured_temp_db: str,
 ) -> None:
-    """Transient empty NodeDB snapshots should not delete existing name rows."""
+    """Only stable consecutive empty snapshots should trigger global stale-row pruning."""
     _ = configured_temp_db
     nodes = {
         "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
@@ -221,3 +248,8 @@ def test_sync_empty_snapshot_does_not_prune_existing_rows(
     assert empty_state == ()
     assert get_longname("!1") == "Alpha"
     assert get_shortname("!1") == "A"
+
+    stable_empty_state = sync_name_tables_if_changed({}, previous_state=empty_state)
+    assert stable_empty_state == ()
+    assert get_longname("!1") is None
+    assert get_shortname("!1") is None
