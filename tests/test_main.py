@@ -2086,6 +2086,8 @@ class TestMainAsyncFunction(unittest.TestCase):
                 asyncio.AbstractEventLoop: The running event loop with `add_signal_handler` patched to capture and invoke handlers.
             """
             loop = real_get_running_loop()
+            if not isinstance(loop, InlineExecutorLoop):
+                loop = InlineExecutorLoop(loop)
             if not hasattr(loop, "_signal_handler_patched"):
 
                 def _fake_add_signal_handler(_sig, handler):
@@ -2109,6 +2111,7 @@ class TestMainAsyncFunction(unittest.TestCase):
                 "mmrelay.main.asyncio.get_running_loop",
                 side_effect=_patched_get_running_loop,
             ),
+            patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
             patch("mmrelay.main.initialize_database"),
             patch("mmrelay.main.load_plugins"),
             patch("mmrelay.main.start_message_queue"),
@@ -2232,6 +2235,11 @@ class TestMainAsyncFunction(unittest.TestCase):
         import mmrelay.main as main_module
 
         with (
+            patch(
+                "mmrelay.main.asyncio.get_running_loop",
+                side_effect=_make_patched_get_running_loop(),
+            ),
+            patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
             patch("mmrelay.main.initialize_database"),
             patch("mmrelay.main.load_plugins"),
             patch("mmrelay.main.start_message_queue"),

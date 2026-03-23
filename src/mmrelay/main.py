@@ -473,15 +473,33 @@ async def main(config: dict[str, Any]) -> None:
         if task is None:
             return
 
-        _done, pending = await asyncio.wait({task}, timeout=timeout_seconds)
-        if pending:
-            task.cancel()
+        if not task.done():
+            try:
+                await asyncio.wait_for(asyncio.shield(task), timeout=timeout_seconds)
+            except asyncio.TimeoutError:
+                task.cancel()
+            except asyncio.CancelledError:
+                task.cancel()
+                return
 
-        cleanup_results: tuple[Any, ...] = await asyncio.gather(
-            task,
-            return_exceptions=True,
-        )
-        result: Any = cleanup_results[0]
+        if not task.done():
+            task.cancel()
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(task, return_exceptions=True),
+                    timeout=1.0,
+                )
+            except asyncio.TimeoutError:
+                matrix_logger.warning(
+                    "Timed out cancelling %s; continuing shutdown",
+                    task_name,
+                )
+                return
+            except asyncio.CancelledError:
+                return
+
+        cleanup_results = await asyncio.gather(task, return_exceptions=True)
+        result: object = cleanup_results[0]
         if isinstance(result, Exception) and not isinstance(
             result,
             asyncio.CancelledError,
@@ -511,6 +529,8 @@ async def main(config: dict[str, Any]) -> None:
         # Ensure message queue processor is started now that event loop is running
         get_message_queue().ensure_processor_started()
         while not shutdown_event.is_set():
+            sync_task: asyncio.Task[Any] | None = None
+            shutdown_task: asyncio.Task[Any] | None = None
             try:
                 matrix_logger.info("Starting Matrix sync loop...")
                 sync_filter = getattr(matrix_client, "mmrelay_sync_filter", None)
@@ -534,10 +554,10 @@ async def main(config: dict[str, Any]) -> None:
                 )
 
                 # Cancel any pending tasks
-                for task in pending:
-                    task.cancel()
+                for pending_task in pending:
+                    pending_task.cancel()
                     try:
-                        await task
+                        await pending_task
                     except asyncio.CancelledError:
                         pass
 
@@ -554,10 +574,12 @@ async def main(config: dict[str, Any]) -> None:
                         matrix_logger.warning(
                             "Matrix sync_forever completed unexpectedly"
                         )
-                    except (asyncio.TimeoutError, ClientError) as exc:
+                    except asyncio.TimeoutError as exc:
                         matrix_logger.warning(
                             "Matrix sync timed out, retrying: %s", exc
                         )
+                    except ClientError as exc:
+                        matrix_logger.warning("Matrix sync failed, retrying: %s", exc)
                     except (ConnectionError, OSError, RuntimeError, ValueError):
                         matrix_logger.exception("Matrix sync failed")
                         await asyncio.sleep(5)  # Keep retry pacing consistent.
@@ -567,6 +589,17 @@ async def main(config: dict[str, Any]) -> None:
                     break
                 matrix_logger.exception("Error syncing with Matrix server")
                 await asyncio.sleep(5)  # Wait briefly before retrying
+            finally:
+                tasks_to_cleanup: list[asyncio.Task[Any]] = []
+                for cleanup_task in (sync_task, shutdown_task):
+                    if cleanup_task is None:
+                        continue
+                    if not cleanup_task.done():
+                        cleanup_task.cancel()
+                    tasks_to_cleanup.append(cleanup_task)
+
+                if tasks_to_cleanup:
+                    await asyncio.gather(*tasks_to_cleanup, return_exceptions=True)
     except KeyboardInterrupt:
         shutdown()
     finally:
@@ -589,9 +622,9 @@ async def main(config: dict[str, Any]) -> None:
         _remove_ready_file()
         # Cleanup
         matrix_logger.info("Stopping plugins...")
-        await loop.run_in_executor(None, shutdown_plugins)
+        shutdown_plugins()
         matrix_logger.info("Stopping message queue...")
-        await loop.run_in_executor(None, stop_message_queue)
+        stop_message_queue()
 
         matrix_logger.info("Closing Matrix client...")
         await matrix_client.close()
