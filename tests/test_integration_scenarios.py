@@ -71,8 +71,17 @@ class TestIntegrationScenarios(unittest.TestCase):
                             close = getattr(iface, "close", None)
                             if callable(close):
                                 close()
-                    except Exception:
-                        pass
+                    except (
+                        asyncio.CancelledError,
+                        asyncio.TimeoutError,
+                        TimeoutError,
+                        OSError,
+                    ) as e:
+                        import logging
+
+                        logging.getLogger(__name__).debug(
+                            "Expected error during BLE teardown: %s", e
+                        )
                 module.meshtastic_iface = None
             module.event_loop = None
             module.reconnecting = False
@@ -91,8 +100,16 @@ class TestIntegrationScenarios(unittest.TestCase):
                         if callable(result):
                             try:
                                 result(timeout=0.2)
-                            except Exception:
-                                pass
+                            except (
+                                asyncio.CancelledError,
+                                asyncio.TimeoutError,
+                                TimeoutError,
+                            ) as e:
+                                import logging
+
+                                logging.getLogger(__name__).debug(
+                                    "Expected error during BLE future cleanup: %s", e
+                                )
                 module._ble_future = None
             if hasattr(module, "_ble_future_address"):
                 module._ble_future_address = None

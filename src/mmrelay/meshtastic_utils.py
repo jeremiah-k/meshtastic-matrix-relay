@@ -614,6 +614,7 @@ async def refresh_node_name_tables(
                 )
         except Exception:
             logger.exception("Failed to refresh node-name tables from node snapshot")
+            raise
 
         if interval <= 0:
             logger.debug(
@@ -3285,7 +3286,8 @@ def on_lost_meshtastic_connection(
         topic (Any): Optional pubsub topic object (from pypubsub); when provided and `detection_source` is `"unknown"`, the topic's name will be used to derive the detection source.
     """
     global meshtastic_client, meshtastic_iface, reconnecting, shutting_down, event_loop, reconnect_task, _ble_future, _ble_future_address
-    global _ble_future_started_at, _ble_future_timeout_secs
+    global _ble_future_started_at, _ble_future_timeout_secs, _ble_executor
+
     with meshtastic_lock:
         if shutting_down:
             logger.debug("Shutdown in progress. Not attempting to reconnect.")
@@ -3361,6 +3363,12 @@ def on_lost_meshtastic_connection(
                 _ble_future_address = None
                 _ble_future_started_at = None
                 _ble_future_timeout_secs = None
+                if _ble_executor is not None:
+                    try:
+                        _ble_executor.shutdown(wait=False, cancel_futures=True)
+                    except TypeError:
+                        _ble_executor.shutdown(wait=False)
+                    _ble_executor = ThreadPoolExecutor(max_workers=1)
 
         if event_loop and not event_loop.is_closed():
             reconnect_task = event_loop.create_task(reconnect())

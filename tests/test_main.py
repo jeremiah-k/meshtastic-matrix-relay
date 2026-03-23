@@ -45,6 +45,7 @@ import concurrent.futures
 import contextlib
 import functools
 import inspect
+import logging
 import sys
 import threading
 import unittest
@@ -2097,6 +2098,16 @@ class TestMainAsyncFunction(unittest.TestCase):
                 module._ble_future_timeout_secs = None  # type: ignore[attr-defined]
             if hasattr(module, "_ble_timeout_counts"):
                 module._ble_timeout_counts = {}  # type: ignore[attr-defined]
+            if hasattr(module, "_ble_future_watchdog_secs"):
+                module._ble_future_watchdog_secs = None  # type: ignore[attr-defined]
+            if hasattr(module, "_ble_timeout_reset_threshold"):
+                module._ble_timeout_reset_threshold = None  # type: ignore[attr-defined]
+            if hasattr(module, "_ble_scan_timeout_secs"):
+                module._ble_scan_timeout_secs = None  # type: ignore[attr-defined]
+            if hasattr(module, "_ble_future_stale_grace_secs"):
+                module._ble_future_stale_grace_secs = None  # type: ignore[attr-defined]
+            if hasattr(module, "_ble_interface_create_timeout_secs"):
+                module._ble_interface_create_timeout_secs = None  # type: ignore[attr-defined]
             if hasattr(module, "_metadata_executor"):
                 executor = module._metadata_executor  # type: ignore[attr-defined]
                 if executor is not None:
@@ -2577,30 +2588,52 @@ def test_ready_file_noops_when_unset(tmp_path, monkeypatch) -> None:
     assert not ready_path.exists()
 
 
-class TestReadyHeartbeatEnvVarParsing(unittest.TestCase):
+class TestReadyHeartbeatEnvVarParsing:
     """Tests for MMRELAY_READY_HEARTBEAT_SECONDS environment variable parsing."""
 
     def test_invalid_ready_heartbeat_seconds_type_error(self):
         """Invalid MMRELAY_READY_HEARTBEAT_SECONDS logs warning and uses default."""
-        import mmrelay.constants.app as app_constants
+        import importlib
 
-        raw_value = "not_a_number"
-        try:
-            _ready_heartbeat_seconds = int(raw_value)
-        except (TypeError, ValueError):
-            expected_default = app_constants.DEFAULT_READY_HEARTBEAT_SECONDS
-            self.assertEqual(expected_default, 60)
+        import mmrelay.constants.app as app_constants
+        import mmrelay.main as main_module
+
+        mock_logger = MagicMock()
+
+        with patch.dict(
+            "os.environ", {"MMRELAY_READY_HEARTBEAT_SECONDS": "not_a_number"}
+        ):
+            with patch("mmrelay.log_utils.get_logger", return_value=mock_logger):
+                importlib.reload(main_module)
+
+                mock_logger.warning.assert_called_once()
+                call_args = mock_logger.warning.call_args
+                assert "MMRELAY_READY_HEARTBEAT_SECONDS" in str(call_args)
+                assert (
+                    main_module._ready_heartbeat_seconds
+                    == app_constants.DEFAULT_READY_HEARTBEAT_SECONDS
+                )
 
     def test_invalid_ready_heartbeat_seconds_value_error(self):
         """Empty string MMRELAY_READY_HEARTBEAT_SECONDS logs warning and uses default."""
-        import mmrelay.constants.app as app_constants
+        import importlib
 
-        raw_value = ""
-        try:
-            _ready_heartbeat_seconds = int(raw_value)
-        except (TypeError, ValueError):
-            expected_default = app_constants.DEFAULT_READY_HEARTBEAT_SECONDS
-            self.assertEqual(expected_default, 60)
+        import mmrelay.constants.app as app_constants
+        import mmrelay.main as main_module
+
+        mock_logger = MagicMock()
+
+        with patch.dict("os.environ", {"MMRELAY_READY_HEARTBEAT_SECONDS": ""}):
+            with patch("mmrelay.log_utils.get_logger", return_value=mock_logger):
+                importlib.reload(main_module)
+
+                mock_logger.warning.assert_called_once()
+                call_args = mock_logger.warning.call_args
+                assert "MMRELAY_READY_HEARTBEAT_SECONDS" in str(call_args)
+                assert (
+                    main_module._ready_heartbeat_seconds
+                    == app_constants.DEFAULT_READY_HEARTBEAT_SECONDS
+                )
 
 
 class TestCoerceConfigBool(unittest.TestCase):
@@ -2666,6 +2699,16 @@ class TestStartupRollback(unittest.TestCase):
             module.meshtastic_client = None  # type: ignore[attr-defined]
             module.meshtastic_iface = None  # type: ignore[attr-defined]
             module.shutting_down = False  # type: ignore[attr-defined]
+            if hasattr(module, "_ble_future_watchdog_secs"):
+                module._ble_future_watchdog_secs = None  # type: ignore[attr-defined]
+            if hasattr(module, "_ble_timeout_reset_threshold"):
+                module._ble_timeout_reset_threshold = None  # type: ignore[attr-defined]
+            if hasattr(module, "_ble_scan_timeout_secs"):
+                module._ble_scan_timeout_secs = None  # type: ignore[attr-defined]
+            if hasattr(module, "_ble_future_stale_grace_secs"):
+                module._ble_future_stale_grace_secs = None  # type: ignore[attr-defined]
+            if hasattr(module, "_ble_interface_create_timeout_secs"):
+                module._ble_interface_create_timeout_secs = None  # type: ignore[attr-defined]
 
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
@@ -2687,9 +2730,35 @@ class TestStartupRollback(unittest.TestCase):
         mock_init_db,
     ):
         """Exception during startup should cancel check_connection_task."""
-        mock_init_db.side_effect = Exception("Startup error")
+        mock_check_task = MagicMock()
+        mock_check_task.cancel = MagicMock()
+        mock_check_task.done = MagicMock(return_value=False)
+        mock_check_task.add_done_callback = MagicMock(
+            side_effect=RuntimeError("Callback error")
+        )
+
+        mock_matrix_client = MagicMock()
+        mock_matrix_client.add_event_callback = MagicMock()
+        mock_matrix_client.close = MagicMock()
+
+        async def mock_connect_matrix_fn(*args, **kwargs):
+            return mock_matrix_client
+
+        mock_connect_matrix.side_effect = mock_connect_matrix_fn
+        mock_connect_meshtastic.return_value = MagicMock()
 
         config = {"matrix_rooms": [{"id": "!room:matrix.org"}]}
+
+        def mock_create_task(coro):
+            if inspect.iscoroutine(coro):
+                coro.close()
+            return mock_check_task
+
+        async def mock_gather(*args, **kwargs):
+            return [None] * len(args)
+
+        async def mock_check_conn():
+            return None
 
         with (
             patch(
@@ -2698,15 +2767,18 @@ class TestStartupRollback(unittest.TestCase):
             ),
             patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
-            patch("mmrelay.main.meshtastic_utils.check_connection") as mock_check_conn,
+            patch("mmrelay.main.asyncio.create_task", side_effect=mock_create_task),
+            patch("mmrelay.main.asyncio.gather", side_effect=mock_gather),
+            patch(
+                "mmrelay.main.meshtastic_utils.check_connection",
+                side_effect=mock_check_conn,
+            ),
             patch("mmrelay.main.logger"),
         ):
-            mock_check_conn.return_value = AsyncMock()
-
-            with self.assertRaises(Exception) as context:
+            with self.assertRaises(RuntimeError):
                 asyncio.run(main(config))
 
-            self.assertIn("Startup error", str(context.exception))
+            mock_check_task.cancel.assert_called_once()
 
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
@@ -2849,12 +2921,33 @@ class TestStartupRollback(unittest.TestCase):
         mock_init_db,
     ):
         """Exception after Matrix client created should close it."""
-        mock_matrix_client = AsyncMock()
-        mock_connect_matrix.return_value = mock_matrix_client
-        mock_connect_matrix.side_effect = None
-        mock_init_db.side_effect = RuntimeError("Early error")
+        mock_matrix_client = MagicMock()
+        mock_matrix_client.add_event_callback = MagicMock()
+        mock_matrix_client.close = MagicMock()
+
+        async def mock_connect_matrix_fn(*args, **kwargs):
+            return mock_matrix_client
+
+        mock_connect_matrix.side_effect = mock_connect_matrix_fn
+        mock_connect_meshtastic.return_value = MagicMock()
 
         config = {"matrix_rooms": [{"id": "!room:matrix.org"}]}
+
+        create_task_call_count = [0]
+
+        def mock_create_task(coro):
+            if inspect.iscoroutine(coro):
+                coro.close()
+            create_task_call_count[0] += 1
+            if create_task_call_count[0] == 1:
+                task = MagicMock()
+                task.done = MagicMock(return_value=False)
+                task.add_done_callback = MagicMock()
+                return task
+            raise RuntimeError("After matrix client error")
+
+        async def mock_gather(*args, **kwargs):
+            return [None] * len(args)
 
         with (
             patch(
@@ -2863,11 +2956,15 @@ class TestStartupRollback(unittest.TestCase):
             ),
             patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+            patch("mmrelay.main.asyncio.create_task", side_effect=mock_create_task),
+            patch("mmrelay.main.asyncio.gather", side_effect=mock_gather),
             patch("mmrelay.main.meshtastic_utils.check_connection"),
             patch("mmrelay.main.logger"),
         ):
             with self.assertRaises(RuntimeError):
                 asyncio.run(main(config))
+
+            mock_matrix_client.close.assert_called_once()
 
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
@@ -2891,7 +2988,7 @@ class TestStartupRollback(unittest.TestCase):
         """Exception after Meshtastic client created should close it."""
         mock_meshtastic_client = MagicMock()
         mock_connect_meshtastic.return_value = mock_meshtastic_client
-        mock_init_db.side_effect = RuntimeError("Early error")
+        mock_connect_matrix.side_effect = RuntimeError("After meshtastic client error")
 
         import mmrelay.meshtastic_utils as mu
 
@@ -2911,6 +3008,8 @@ class TestStartupRollback(unittest.TestCase):
             ):
                 with self.assertRaises(RuntimeError):
                     asyncio.run(main(config))
+
+                mock_meshtastic_client.close.assert_called_once()
         finally:
             mu.meshtastic_client = original_client
 

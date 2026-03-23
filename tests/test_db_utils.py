@@ -371,7 +371,7 @@ class TestDbUtils(unittest.TestCase):
         self.assertEqual(get_shortname("!1"), "ONE")
 
     def test_sync_name_tables_if_changed_skips_conflicting_duplicates(self):
-        """Conflicting duplicate IDs (both non-empty, different values) should be skipped."""
+        """Conflicting duplicate IDs keep first occurrence's value per-field."""
         initialize_database()
         nodes = {
             "node_first": {"user": {"id": "!1", "shortName": "ONE"}},
@@ -381,11 +381,11 @@ class TestDbUtils(unittest.TestCase):
 
         state = sync_name_tables_if_changed(nodes, previous_state=None)
 
-        self.assertEqual(state, (("!2", "Beta", "B"),))
-        self.assertIsNone(get_shortname("!1"))
+        self.assertEqual(state, (("!1", None, "ONE"), ("!2", "Beta", "B")))
+        self.assertEqual(get_shortname("!1"), "ONE")
 
     def test_sync_name_tables_if_changed_conflicts_do_not_prune_existing_rows(self):
-        """Conflicting duplicate IDs should not cause existing rows for that ID to be pruned."""
+        """Conflicting duplicate IDs use first value per-field; ID stays in current_ids."""
         initialize_database()
         save_longname("!1", "Legacy Long")
         save_shortname("!1", "OLD")
@@ -397,9 +397,9 @@ class TestDbUtils(unittest.TestCase):
 
         state = sync_name_tables_if_changed(nodes, previous_state=None)
 
-        self.assertEqual(state, (("!2", "Beta", "B"),))
-        self.assertEqual(get_longname("!1"), "Legacy Long")
-        self.assertEqual(get_shortname("!1"), "OLD")
+        self.assertEqual(state, (("!1", None, "ONE"), ("!2", "Beta", "B")))
+        self.assertIsNone(get_longname("!1"))
+        self.assertEqual(get_shortname("!1"), "ONE")
 
     def test_sync_name_tables_if_changed_skips_redundant_updates(self):
         """A matching previous state should avoid full long/short upserts."""

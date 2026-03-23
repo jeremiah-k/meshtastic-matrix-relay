@@ -14,6 +14,7 @@ sys.path.insert(
 )
 
 import asyncio
+import concurrent.futures
 import contextlib
 import gc
 import inspect
@@ -720,6 +721,24 @@ def reset_meshtastic_globals():
     mu.subscribed_to_connection_lost = False
     mu._metadata_future = None
     mu._metadata_future_started_at = None
+    ble_future = mu._ble_future
+    if ble_future is not None:
+        done = getattr(ble_future, "done", None)
+        cancel = getattr(ble_future, "cancel", None)
+        if callable(done) and callable(cancel) and not done():
+            cancel()
+            result_fn = getattr(ble_future, "result", None)
+            if callable(result_fn):
+                try:
+                    result_fn(timeout=0.1)
+                except (
+                    TimeoutError,
+                    asyncio.TimeoutError,
+                    asyncio.CancelledError,
+                    concurrent.futures.TimeoutError,
+                    concurrent.futures.CancelledError,
+                ):
+                    pass
     mu._ble_future = None
     mu._ble_future_address = None
     mu._ble_future_started_at = None

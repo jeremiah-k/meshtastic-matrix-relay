@@ -108,6 +108,7 @@ class DatabaseManager:
     _write_lock: threading.RLock
     _connections: set[sqlite3.Connection]
     _connections_lock: threading.Lock
+    _closing: bool = False
 
     def __init__(
         self,
@@ -176,6 +177,7 @@ class DatabaseManager:
                     # journal_mode pragma returns the applied mode; ignore result
                     conn.execute("PRAGMA journal_mode=WAL")
                 conn.execute("PRAGMA foreign_keys=ON")
+                _probe_sqlite_json_each_support(conn)
                 for pragma, value in self._extra_pragmas.items():
                     # Validate pragma name to prevent injection.
                     if not re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]*", pragma):
@@ -325,6 +327,8 @@ class DatabaseManager:
             Any: The value returned by `func` when invoked with the cursor.
         """
         _ = loop or asyncio.get_running_loop()
+        if self._closing:
+            raise RuntimeError("DatabaseManager is closing, cannot submit new work")
         executor_func = partial(self.run_sync, func, write=write)
         worker_future = self._async_executor.submit(executor_func)
         try:
@@ -345,30 +349,29 @@ class DatabaseManager:
 
         Removes every connection from the manager's internal registry, attempts to close each connection (suppressing sqlite3.Error), and clears the current thread's stored connection reference.
         """
+        self._closing = True
+
+        executor = self._async_executor
+        self._async_executor = ThreadPoolExecutor(max_workers=1)
+        try:
+            executor.shutdown(wait=True)
+        except TypeError:
+            executor.shutdown(wait=False)
+
         with self._connections_lock:
             connections = list(self._connections)
             self._connections.clear()
-            # Close connections while holding the lock to prevent race conditions
-            # where new connections might be created and missed during cleanup.
             for conn in connections:
                 try:
                     conn.close()
                 except sqlite3.Error:
                     pass
 
-        # Clear thread-local references in the current thread
         if hasattr(self._thread_local, "connection"):
             try:
                 del self._thread_local.connection
             except AttributeError:
                 pass
-
-        executor = self._async_executor
-        self._async_executor = ThreadPoolExecutor(max_workers=1)
-        try:
-            executor.shutdown(wait=False, cancel_futures=True)
-        except TypeError:
-            executor.shutdown(wait=False)
 
 
 # Convenience alias for type hints

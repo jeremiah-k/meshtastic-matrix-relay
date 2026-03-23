@@ -548,6 +548,19 @@ async def main(config: dict[str, Any]) -> None:
         # Start connection health monitoring using getMetadata() heartbeat
         # This provides proactive connection detection for all interface types
         check_connection_task = asyncio.create_task(meshtastic_utils.check_connection())
+
+        def _on_check_connection_done(task: asyncio.Task[Any]) -> None:
+            if task.cancelled():
+                return
+            exc = task.exception()
+            if exc is not None and not shutdown_event.is_set():
+                meshtastic_logger.error(
+                    "Connection health task exited unexpectedly",
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                )
+                shutdown_event.set()
+
+        check_connection_task.add_done_callback(_on_check_connection_done)
     except Exception:
         _set_shutdown_flag()
         if check_connection_task is not None:
@@ -697,9 +710,6 @@ async def main(config: dict[str, Any]) -> None:
             )
         )
 
-        if _ready_heartbeat_seconds > 0:
-            ready_task = asyncio.create_task(_ready_heartbeat(shutdown_event))
-
         # Ensure message queue processor is started now that event loop is running
         try:
             get_message_queue().ensure_processor_started()
@@ -710,6 +720,10 @@ async def main(config: dict[str, Any]) -> None:
             raise
         # Publish readiness only after startup wiring in this section is complete.
         _write_ready_file()
+
+        # Start heartbeat AFTER readiness is confirmed
+        if _ready_heartbeat_seconds > 0:
+            ready_task = asyncio.create_task(_ready_heartbeat(shutdown_event))
         while not shutdown_event.is_set():
             sync_task: asyncio.Task[Any] | None = None
             shutdown_task: asyncio.Task[Any] | None = None

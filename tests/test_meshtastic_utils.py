@@ -14,6 +14,7 @@ import asyncio
 import os
 import sys
 import unittest
+from concurrent.futures import CancelledError as ConcurrentCancelledError
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
 from types import SimpleNamespace
 from typing import Any, Callable
@@ -102,7 +103,13 @@ def _reset_ble_inflight_state(module: Any) -> None:
             if callable(result):
                 try:
                     result(timeout=0.2)
-                except Exception:
+                except (
+                    TimeoutError,
+                    asyncio.TimeoutError,
+                    asyncio.CancelledError,
+                    ConcurrentTimeoutError,
+                    ConcurrentCancelledError,
+                ):
                     pass
     module._ble_future = None
     module._ble_future_address = None

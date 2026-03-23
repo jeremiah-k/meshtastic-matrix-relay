@@ -1376,7 +1376,16 @@ class TestEnsureBleWorkerAvailableStaleWorker:
         mu._ble_future_started_at = time.monotonic() - 100
         mu._ble_future_timeout_secs = 30.0
 
-        with patch("mmrelay.meshtastic_utils._maybe_reset_ble_executor") as mock_reset:
+        def _simulate_reset(*_args, **_kwargs):
+            mu._ble_future = None
+            mu._ble_future_address = None
+            mu._ble_future_started_at = None
+            mu._ble_future_timeout_secs = None
+
+        with patch(
+            "mmrelay.meshtastic_utils._maybe_reset_ble_executor",
+            side_effect=_simulate_reset,
+        ) as mock_reset:
             with patch("mmrelay.meshtastic_utils._record_ble_timeout", return_value=5):
                 with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
                     with patch(
@@ -1385,12 +1394,9 @@ class TestEnsureBleWorkerAvailableStaleWorker:
                         with patch(
                             "mmrelay.meshtastic_utils._ble_timeout_reset_threshold", 3
                         ):
-                            with pytest.raises(
-                                TimeoutError, match="already in progress"
-                            ):
-                                mu._ensure_ble_worker_available(
-                                    "AA:BB:CC:DD:EE:FF", operation="test"
-                                )
+                            mu._ensure_ble_worker_available(
+                                "AA:BB:CC:DD:EE:FF", operation="test"
+                            )
 
                             warning_calls = [
                                 str(call) for call in mock_logger.warning.call_args_list
@@ -1541,13 +1547,21 @@ class TestBleConnectShuttingDown:
             }
         }
 
-        ensure_call_count = [0]
+        ensure_operations: list[str] = []
 
         def mock_ensure(address, *, operation):
-            ensure_call_count[0] += 1
-            if ensure_call_count[0] == 2:
-                assert operation == "connect"
+            ensure_operations.append(operation)
             return None
+
+        mock_interface = Mock()
+        mock_interface.auto_reconnect = True
+        mock_interface.connect = Mock()
+        mock_interface.getMyNodeInfo = Mock(return_value={"user": {"id": "!abc123"}})
+        mock_bleak_client = Mock()
+        mock_bleak_client.address = "AA:BB:CC:DD:EE:FF"
+        mock_client = Mock()
+        mock_client.bleak_client = mock_bleak_client
+        mock_interface.client = mock_client
 
         with patch(
             "mmrelay.meshtastic_utils._ensure_ble_worker_available",
@@ -1556,10 +1570,17 @@ class TestBleConnectShuttingDown:
             with patch("mmrelay.meshtastic_utils._get_ble_executor") as mock_get_exec:
                 mock_executor = Mock(spec=ThreadPoolExecutor)
                 mock_get_exec.return_value = mock_executor
-                mock_future = Mock(spec=Future)
-                mock_future.done.return_value = False
-                mock_future.result.return_value = None
-                mock_executor.submit.return_value = mock_future
+
+                call_count = [0]
+
+                def create_mock_future(*_args, **_kwargs):
+                    mock_future = Mock(spec=Future)
+                    mock_future.done.return_value = True
+                    mock_future.result.return_value = mock_interface
+                    call_count[0] += 1
+                    return mock_future
+
+                mock_executor.submit.side_effect = create_mock_future
 
                 with patch(
                     "mmrelay.meshtastic_utils._ble_interface_create_timeout_secs", 30.0
@@ -1578,9 +1599,17 @@ class TestBleConnectShuttingDown:
                                     60.0,
                                 ):
                                     with patch("mmrelay.meshtastic_utils.meshtastic"):
-                                        mu.connect_meshtastic()
+                                        with patch(
+                                            "mmrelay.meshtastic_utils._sanitize_ble_address",
+                                            return_value="AA:BB:CC:DD:EE:FF",
+                                        ):
+                                            mu.connect_meshtastic()
 
-                                        assert ensure_call_count[0] >= 1
+                                            assert (
+                                                "interface creation"
+                                                in ensure_operations
+                                            )
+                                            assert "connect" in ensure_operations
 
     def test_ble_connect_busy_worker_raises_timeout(self):
         """Test when BLE worker is busy during connect phase, raises TimeoutError."""

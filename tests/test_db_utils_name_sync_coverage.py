@@ -245,8 +245,7 @@ def test_sync_unchanged_snapshot_repair_failure_keeps_previous_state(
     assert first_state is not None
     assert get_longname("!1") == "Alpha"
 
-    with sqlite3.connect(configured_temp_db, timeout=5) as conn:
-        conn.execute("DELETE FROM longnames WHERE meshtastic_id = ?", ("!1",))
+    delete_longname("!1")
 
     assert get_longname("!1") is None
 
@@ -280,7 +279,7 @@ def test_sync_unchanged_snapshot_repair_failure_keeps_previous_state(
 def test_sync_empty_snapshot_does_not_prune_existing_rows(
     configured_temp_db: str,
 ) -> None:
-    """Only stable consecutive empty snapshots should trigger global stale-row pruning."""
+    """Empty snapshots are treated as incomplete to prevent transient data loss."""
     _ = configured_temp_db
     nodes = {
         "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
@@ -297,8 +296,8 @@ def test_sync_empty_snapshot_does_not_prune_existing_rows(
 
     stable_empty_state = sync_name_tables_if_changed({}, previous_state=empty_state)
     assert stable_empty_state == ()
-    assert get_longname("!1") is None
-    assert get_shortname("!1") is None
+    assert get_longname("!1") == "Alpha"
+    assert get_shortname("!1") == "A"
 
 
 def test_sync_non_authoritative_empty_snapshot_does_not_arm_immediate_prune(
@@ -321,9 +320,9 @@ def test_sync_non_authoritative_empty_snapshot_does_not_arm_immediate_prune(
         conflicting_nodes,
         previous_state=first_state,
     )
-    assert conflict_state == first_state
+    assert conflict_state == (NodeNameEntry("!1", "Alpha", "ONE"),)
     assert get_longname("!1") == "Alpha"
-    assert get_shortname("!1") == "A"
+    assert get_shortname("!1") == "ONE"
 
     first_empty_after_conflict = sync_name_tables_if_changed(
         {},
@@ -331,7 +330,7 @@ def test_sync_non_authoritative_empty_snapshot_does_not_arm_immediate_prune(
     )
     assert first_empty_after_conflict == ()
     assert get_longname("!1") == "Alpha"
-    assert get_shortname("!1") == "A"
+    assert get_shortname("!1") == "ONE"
 
 
 class TestFormatNodeIdSample:
@@ -447,34 +446,32 @@ class TestCollectNodeNameSnapshotInvalidNameTypes:
     """Tests for _collect_node_name_snapshot handling invalid name types (lines 1038-1061)."""
 
     def test_non_string_long_name_logs_warning(self) -> None:
-        """Non-string raw_long_name logs warning and sets snapshot_complete=False."""
+        """Non-string raw_long_name logs warning, sets to None, and sets snapshot_complete=False."""
         nodes = {
             "node_a": {"user": {"id": "!1", "longName": 123, "shortName": "A"}},
         }
         with patch("mmrelay.db_utils.logger") as mock_logger:
             state, current_ids, snapshot_complete = _collect_node_name_snapshot(nodes)
-            assert state == ()
+            assert state == (NodeNameEntry("!1", None, "A"),)
             assert current_ids == {"!1"}
             assert snapshot_complete is False
             mock_logger.warning.assert_called()
             call_args = mock_logger.warning.call_args[0]
             assert "non-string" in call_args[0]
-            assert call_args[2] == PROTO_NODE_NAME_LONG
 
     def test_non_string_short_name_logs_warning(self) -> None:
-        """Non-string raw_short_name logs warning and sets snapshot_complete=False."""
+        """Non-string raw_short_name logs warning, sets to None, and sets snapshot_complete=False."""
         nodes = {
             "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": 456}},
         }
         with patch("mmrelay.db_utils.logger") as mock_logger:
             state, current_ids, snapshot_complete = _collect_node_name_snapshot(nodes)
-            assert state == ()
+            assert state == (NodeNameEntry("!1", "Alpha", None),)
             assert current_ids == {"!1"}
             assert snapshot_complete is False
             mock_logger.warning.assert_called()
             call_args = mock_logger.warning.call_args[0]
             assert "non-string" in call_args[0]
-            assert call_args[2] == PROTO_NODE_NAME_SHORT
 
 
 class TestMergeNodeNameValuesEqual:
@@ -503,6 +500,7 @@ class TestSyncNameTablesAtomicShortNameDeletion:
         """When short_name is None, the short delete SQL is executed."""
         _ = configured_temp_db
         save_longname("!1", "Alpha")
+        save_shortname("!1", "A")
 
         state = (NodeNameEntry("!1", "Alpha", None),)
         current_ids = {"!1"}
@@ -531,8 +529,10 @@ class TestSyncNameTablesAtomicDebugLogging:
             assert result is True
 
             assert mock_logger.debug.call_count >= 1
-            main_log_call = mock_logger.debug.call_args_list[0]
-            assert "long_upserts=" in str(main_log_call)
+            assert any(
+                "long_upserts=" in str(call)
+                for call in mock_logger.debug.call_args_list
+            )
 
     def test_debug_logs_for_upserts_clears_and_pruned(
         self, configured_temp_db: str

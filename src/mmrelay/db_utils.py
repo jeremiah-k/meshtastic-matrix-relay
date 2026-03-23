@@ -78,6 +78,8 @@ _DB_COLUMN_BY_PROTO_NODE_NAME_FIELD = {
 _LONGNAME_DB_FIELD = _NAME_FIELD_BY_TABLE[NAMES_TABLE_LONGNAMES]
 _SHORTNAME_DB_FIELD = _NAME_FIELD_BY_TABLE[NAMES_TABLE_SHORTNAMES]
 
+# SQL templates use constant table/column names (not user input) with parameterized values.
+# Ruff S608 warnings are false positives - NAMES_TABLE_* and NAMES_FIELD_* are constants.
 _SELECT_STALE_IDS_SQL_BY_TABLE = {
     NAMES_TABLE_LONGNAMES: f"SELECT meshtastic_id FROM {NAMES_TABLE_LONGNAMES}",
     NAMES_TABLE_SHORTNAMES: f"SELECT meshtastic_id FROM {NAMES_TABLE_SHORTNAMES}",
@@ -1091,22 +1093,22 @@ def _collect_node_name_snapshot(
         raw_short_name = user.get(PROTO_NODE_NAME_SHORT)
         if raw_long_name is not None and not isinstance(raw_long_name, str):
             logger.warning(
-                "Skipping node-name snapshot entry for %s due to non-string %s value type %s",
-                id_key,
+                "Skipping %s for %s due to non-string value type %s",
                 PROTO_NODE_NAME_LONG,
+                id_key,
                 type(raw_long_name).__name__,
             )
             snapshot_complete = False
-            continue
+            raw_long_name = None
         if raw_short_name is not None and not isinstance(raw_short_name, str):
             logger.warning(
-                "Skipping node-name snapshot entry for %s due to non-string %s value type %s",
-                id_key,
+                "Skipping %s for %s due to non-string value type %s",
                 PROTO_NODE_NAME_SHORT,
+                id_key,
                 type(raw_short_name).__name__,
             )
             snapshot_complete = False
-            continue
+            raw_short_name = None
 
         long_name = _normalize_node_name_value(raw_long_name)
         short_name = _normalize_node_name_value(raw_short_name)
@@ -1121,26 +1123,28 @@ def _collect_node_name_snapshot(
         merged_long_name = _merge_node_name_values(existing_entry[0], long_name)
         merged_short_name = _merge_node_name_values(existing_entry[1], short_name)
 
-        # If either field has a conflict, skip this ID entirely to avoid
-        # writing incorrect data. The conflict will clear in a future snapshot.
-        if (
-            merged_long_name is _CONFLICT_SENTINEL
-            or merged_short_name is _CONFLICT_SENTINEL
-        ):
+        # Handle conflicts per-field instead of dropping the whole ID.
+        # Keep existing values for conflicted fields; valid fields still update.
+        if merged_long_name is _CONFLICT_SENTINEL:
             logger.warning(
-                "Skipping node %s due to conflicting duplicate names in snapshot",
+                "Skipping %s for %s due to conflicting duplicate names in snapshot",
+                PROTO_NODE_NAME_LONG,
                 id_key,
             )
             snapshot_complete = False
-            state_by_id.pop(id_key, None)
-            # Keep conflicting IDs in current_ids so stale-row pruning does not
-            # incorrectly delete existing rows for active nodes.
-            skipped_ids.add(id_key)
-        else:
-            state_by_id[id_key] = cast(
-                tuple[str | None, str | None],
-                (merged_long_name, merged_short_name),
+            merged_long_name = existing_entry[0]
+        if merged_short_name is _CONFLICT_SENTINEL:
+            logger.warning(
+                "Skipping %s for %s due to conflicting duplicate names in snapshot",
+                PROTO_NODE_NAME_SHORT,
+                id_key,
             )
+            snapshot_complete = False
+            merged_short_name = existing_entry[1]
+        state_by_id[id_key] = cast(
+            tuple[str | None, str | None],
+            (merged_long_name, merged_short_name),
+        )
 
     state_entries = [
         NodeNameEntry(id_key, long_name, short_name)
@@ -1315,9 +1319,33 @@ def sync_name_tables_if_changed(
         return previous_state
 
     current_state, current_ids, snapshot_complete = _collect_node_name_snapshot(nodes)
-    if nodes == {} and previous_state == ():
-        # Require at least one stable empty refresh cycle before full-table prune.
-        snapshot_complete = True
+    # Empty snapshots are only authoritative if snapshot_complete=True from the collector.
+    # Don't force snapshot_complete=True here - that allows transient empty cycles to
+    # wipe tables. Let the collector's snapshot_complete value propagate naturally.
+
+    # When snapshot is incomplete, preserve previous values for None fields to avoid
+    # deleting existing DB rows due to invalid/incomplete data.
+    if not snapshot_complete and previous_state is not None:
+        previous_by_id = {e.meshtastic_id: e for e in previous_state}
+        merged_entries = []
+        for entry in current_state:
+            prev = previous_by_id.get(entry.meshtastic_id)
+            if prev is not None:
+                long_name = (
+                    entry.long_name if entry.long_name is not None else prev.long_name
+                )
+                short_name = (
+                    entry.short_name
+                    if entry.short_name is not None
+                    else prev.short_name
+                )
+                merged_entries.append(
+                    NodeNameEntry(entry.meshtastic_id, long_name, short_name)
+                )
+            else:
+                merged_entries.append(entry)
+        merged_entries.sort(key=lambda e: e.meshtastic_id)
+        current_state = tuple(merged_entries)
 
     # Non-authoritative empty states (for example conflict-only/invalid snapshots)
     # must not replace previous_state, otherwise a subsequent authoritative empty
