@@ -8,8 +8,9 @@ import functools
 import os
 import signal
 import sys
+import threading
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Callable, cast
 
 from aiohttp import ClientError
 from nio import (
@@ -70,6 +71,8 @@ logger = get_logger(name=APP_DISPLAY_NAME)
 _banner_printed = False
 _ready_file_path = os.environ.get("MMRELAY_READY_FILE")
 _ready_heartbeat_seconds_raw = os.environ.get("MMRELAY_READY_HEARTBEAT_SECONDS", "60")
+_PLUGIN_SHUTDOWN_TIMEOUT_SECONDS = 5.0
+_MESSAGE_QUEUE_SHUTDOWN_TIMEOUT_SECONDS = 5.0
 try:
     _ready_heartbeat_seconds = int(_ready_heartbeat_seconds_raw)
 except (TypeError, ValueError):
@@ -522,6 +525,63 @@ async def main(config: dict[str, Any]) -> None:
                 exc_info=(type(result), result, result.__traceback__),
             )
 
+    async def _run_blocking_shutdown_step(
+        step_func: Callable[[], None],
+        *,
+        step_name: str,
+        timeout_seconds: float,
+    ) -> None:
+        """
+        Run a potentially blocking shutdown step off the event loop with a timeout.
+
+        The callable executes on a daemon thread so shutdown can continue even if
+        the step hangs. Exceptions are logged and swallowed so remaining cleanup
+        still runs.
+        """
+        loop = asyncio.get_running_loop()
+        step_result: asyncio.Future[Exception | None] = loop.create_future()
+
+        def _run_step() -> None:
+            step_error: Exception | None = None
+            try:
+                step_func()
+            except Exception as exc:
+                step_error = exc
+
+            def _publish_result() -> None:
+                if not step_result.done():
+                    step_result.set_result(step_error)
+
+            try:
+                loop.call_soon_threadsafe(_publish_result)
+            except RuntimeError:
+                # Event loop is closing; no further action is needed.
+                return
+
+        worker = threading.Thread(
+            target=_run_step,
+            name=f"shutdown-{step_name.replace(' ', '-')}",
+            daemon=True,
+        )
+        worker.start()
+
+        try:
+            result = await asyncio.wait_for(step_result, timeout=timeout_seconds)
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Timed out stopping %s after %.1fs; continuing shutdown",
+                step_name,
+                timeout_seconds,
+            )
+            return
+
+        if result is not None:
+            logger.error(
+                "Error while stopping %s",
+                step_name,
+                exc_info=(type(result), result, result.__traceback__),
+            )
+
     # Start the Matrix client sync loop
     try:
         node_name_refresh_interval_seconds = (
@@ -634,9 +694,17 @@ async def main(config: dict[str, Any]) -> None:
         _remove_ready_file()
         # Cleanup
         matrix_logger.info("Stopping plugins...")
-        shutdown_plugins()
+        await _run_blocking_shutdown_step(
+            shutdown_plugins,
+            step_name="plugins",
+            timeout_seconds=_PLUGIN_SHUTDOWN_TIMEOUT_SECONDS,
+        )
         matrix_logger.info("Stopping message queue...")
-        stop_message_queue()
+        await _run_blocking_shutdown_step(
+            stop_message_queue,
+            step_name="message queue",
+            timeout_seconds=_MESSAGE_QUEUE_SHUTDOWN_TIMEOUT_SECONDS,
+        )
 
         matrix_logger.info("Closing Matrix client...")
         await matrix_client.close()

@@ -46,6 +46,7 @@ import contextlib
 import functools
 import inspect
 import sys
+import threading
 import unittest
 from pathlib import Path
 from typing import Any, Callable
@@ -771,6 +772,126 @@ class TestMain(unittest.TestCase):
         import mmrelay.meshtastic_utils as mu
 
         self.assertIsNone(mu.meshtastic_iface)
+
+    @patch("mmrelay.main.initialize_database")
+    @patch("mmrelay.main.load_plugins")
+    @patch("mmrelay.main.start_message_queue")
+    @patch("mmrelay.main.connect_meshtastic")
+    @patch("mmrelay.main.connect_matrix")
+    @patch("mmrelay.main.join_matrix_room")
+    def test_main_shutdown_runs_blocking_cleanup_off_event_loop_thread(
+        self,
+        mock_join_room,
+        mock_connect_matrix,
+        mock_connect_meshtastic,
+        _mock_start_queue,
+        _mock_load_plugins,
+        _mock_init_db,
+    ):
+        """
+        shutdown_plugins/stop_message_queue should run off the event-loop thread.
+        """
+        mock_connect_meshtastic.return_value = None
+        mock_matrix_client = MagicMock()
+        mock_matrix_client.close = AsyncMock()
+        mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
+        mock_join_room.side_effect = _async_noop
+
+        cleanup_context: dict[str, bool] = {}
+
+        def _shutdown_plugins_side_effect() -> None:
+            cleanup_context["plugins_has_running_loop"] = True
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                cleanup_context["plugins_has_running_loop"] = False
+
+        def _stop_queue_side_effect() -> None:
+            cleanup_context["queue_has_running_loop"] = True
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                cleanup_context["queue_has_running_loop"] = False
+
+        with (
+            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+            patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
+            patch(
+                "mmrelay.main.shutdown_plugins",
+                side_effect=_shutdown_plugins_side_effect,
+            ),
+            patch(
+                "mmrelay.main.stop_message_queue",
+                side_effect=_stop_queue_side_effect,
+            ),
+            patch("mmrelay.main.get_message_queue") as mock_get_queue,
+        ):
+            mock_queue = MagicMock()
+            mock_queue.ensure_processor_started = MagicMock()
+            mock_get_queue.return_value = mock_queue
+            asyncio.run(main(self.mock_config))
+
+        self.assertFalse(cleanup_context["plugins_has_running_loop"])
+        self.assertFalse(cleanup_context["queue_has_running_loop"])
+        mock_matrix_client.close.assert_awaited_once()
+
+    @patch("mmrelay.main.initialize_database")
+    @patch("mmrelay.main.load_plugins")
+    @patch("mmrelay.main.start_message_queue")
+    @patch("mmrelay.main.connect_meshtastic")
+    @patch("mmrelay.main.connect_matrix")
+    @patch("mmrelay.main.join_matrix_room")
+    def test_main_shutdown_plugin_timeout_continues_cleanup(
+        self,
+        mock_join_room,
+        mock_connect_matrix,
+        mock_connect_meshtastic,
+        _mock_start_queue,
+        _mock_load_plugins,
+        _mock_init_db,
+    ):
+        """
+        A stuck plugin shutdown should time out and still continue queue/client cleanup.
+        """
+        mock_connect_meshtastic.return_value = None
+        mock_matrix_client = MagicMock()
+        mock_matrix_client.close = AsyncMock()
+        mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
+        mock_join_room.side_effect = _async_noop
+
+        block_event = threading.Event()
+
+        def _blocking_shutdown_plugins() -> None:
+            block_event.wait(timeout=0.5)
+
+        with (
+            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+            patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
+            patch("mmrelay.main.get_message_queue") as mock_get_queue,
+            patch(
+                "mmrelay.main.shutdown_plugins",
+                side_effect=_blocking_shutdown_plugins,
+            ),
+            patch("mmrelay.main.stop_message_queue") as mock_stop_queue,
+            patch("mmrelay.main._PLUGIN_SHUTDOWN_TIMEOUT_SECONDS", 0.01),
+            patch("mmrelay.main.logger") as mock_logger,
+        ):
+            mock_queue = MagicMock()
+            mock_queue.ensure_processor_started = MagicMock()
+            mock_get_queue.return_value = mock_queue
+            asyncio.run(main(self.mock_config))
+
+        mock_stop_queue.assert_called_once()
+        mock_matrix_client.close.assert_awaited_once()
+        self.assertTrue(
+            any(
+                len(call.args) >= 2
+                and call.args[0]
+                == "Timed out stopping %s after %.1fs; continuing shutdown"
+                and call.args[1] == "plugins"
+                for call in mock_logger.warning.call_args_list
+            )
+        )
 
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
