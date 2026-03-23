@@ -30,8 +30,10 @@ DEFAULT_EXTRA_PRAGMAS = {
     "temp_store": "MEMORY",
 }
 
-# Node name storage tables and fields
+# Node name storage tables (SQLite schema)
 NAMES_TABLE_LONGNAMES = "longnames"
 NAMES_TABLE_SHORTNAMES = "shortnames"
-NODE_NAME_FIELD_LONG = "longName"
-NODE_NAME_FIELD_SHORT = "shortName"
+
+# Meshtastic node payload keys (protocol-level fields, not DB columns)
+PROTO_NODE_NAME_LONG = "longName"
+PROTO_NODE_NAME_SHORT = "shortName"

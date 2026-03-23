@@ -405,7 +405,23 @@ class TestMain(unittest.TestCase):
         """
         Verify startup wiring schedules periodic node-name refresh with expected interval.
         """
-        shutdown_event = _ImmediateEvent()
+
+        class _OnePassEvent:
+            """Event that starts clear and flips set when first awaited."""
+
+            def __init__(self) -> None:
+                self._set = False
+
+            def is_set(self) -> bool:
+                return self._set
+
+            def set(self) -> None:
+                self._set = True
+
+            async def wait(self) -> None:
+                self._set = True
+
+        shutdown_event = _OnePassEvent()
         expected_interval = 7.5
         mock_matrix_client = AsyncMock()
         mock_matrix_client.add_event_callback = MagicMock()
@@ -1419,23 +1435,16 @@ class TestMainFunctionEdgeCases(unittest.TestCase):
 
         mock_sync.assert_not_called()
 
-    def test_node_name_refresh_interval_non_finite_defaults(self):
-        """Non-finite refresh intervals should fall back to the default value."""
-        import mmrelay.meshtastic_utils as meshtastic_module
-
-        interval = meshtastic_module.get_node_name_refresh_interval_seconds(
-            {"meshtastic": {"node_name_refresh_interval": "inf"}}
-        )
-        self.assertEqual(interval, DEFAULT_NODE_NAME_REFRESH_INTERVAL)
-
     def test_node_name_refresh_interval_invalid_defaults(self):
-        """Unparseable refresh intervals should fall back to the default value."""
+        """Invalid refresh intervals should fall back to the default value."""
         import mmrelay.meshtastic_utils as meshtastic_module
 
-        interval = meshtastic_module.get_node_name_refresh_interval_seconds(
-            {"meshtastic": {"node_name_refresh_interval": "not-a-number"}}
-        )
-        self.assertEqual(interval, DEFAULT_NODE_NAME_REFRESH_INTERVAL)
+        for raw_value in ("inf", "not-a-number", True, False):
+            with self.subTest(raw_value=raw_value):
+                interval = meshtastic_module.get_node_name_refresh_interval_seconds(
+                    {"meshtastic": {"node_name_refresh_interval": raw_value}}
+                )
+                self.assertEqual(interval, DEFAULT_NODE_NAME_REFRESH_INTERVAL)
 
 
 @pytest.mark.parametrize("db_key", ["database", "db"])

@@ -59,24 +59,23 @@ def test_delete_name_by_id_rejects_unknown_table(configured_temp_db: str) -> Non
         _delete_name_by_id("unknown_names_table", "!1")
 
 
-def test_normalize_node_name_value_handles_value_error() -> None:
-    """Normalization should safely handle conversion failures."""
+def test_normalize_node_name_value_handles_non_string_values() -> None:
+    """Normalization should treat non-string payload values as absent."""
 
     class _BadString:
-        def __str__(self) -> str:
-            raise ValueError("cannot stringify")
+        pass
 
     assert _normalize_node_name_value("Alpha") == "Alpha"
+    assert _normalize_node_name_value("") is None
     assert _normalize_node_name_value(123) is None
     assert _normalize_node_name_value(_BadString()) is None
 
 
-def test_normalize_node_name_value_handles_unexpected_exception() -> None:
-    """Unexpected string-conversion errors should also normalize to None."""
+def test_normalize_node_name_value_handles_non_string_subclass_values() -> None:
+    """Custom object types should normalize to None without conversion attempts."""
 
     class _ExplodingString:
-        def __str__(self) -> str:
-            raise RuntimeError("unexpected stringify failure")
+        pass
 
     assert _normalize_node_name_value(_ExplodingString()) is None
 

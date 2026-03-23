@@ -4,7 +4,6 @@ It uses Meshtastic-python and Matrix nio client library to interface with the ra
 """
 
 import asyncio
-import contextlib
 import functools
 import os
 import signal
@@ -411,15 +410,69 @@ async def main(config: dict[str, Any]) -> None:
     _ = asyncio.create_task(meshtastic_utils.check_connection())
     node_name_refresh_task: asyncio.Task[None] | None = None
 
+    async def _node_name_refresh_supervisor(refresh_interval_seconds: float) -> None:
+        """
+        Run and supervise node-name refresh work, restarting on failures.
+        """
+        restart_attempt = 0
+        backoff_seconds = 1.0
+        max_backoff_seconds = 30.0
+        first_pass = True
+
+        while first_pass or not shutdown_event.is_set():
+            first_pass = False
+            refresh_task = asyncio.create_task(
+                meshtastic_utils.refresh_node_name_tables(
+                    shutdown_event,
+                    refresh_interval_seconds=refresh_interval_seconds,
+                )
+            )
+            [refresh_result] = await asyncio.gather(
+                refresh_task,
+                return_exceptions=True,
+            )
+
+            if isinstance(refresh_result, asyncio.CancelledError):
+                return
+
+            if isinstance(refresh_result, Exception):
+                if shutdown_event.is_set():
+                    return
+                restart_attempt += 1
+                matrix_logger.error(
+                    "Node-name refresh task failed (attempt %d); restarting in %.1fs",
+                    restart_attempt,
+                    backoff_seconds,
+                    exc_info=(
+                        type(refresh_result),
+                        refresh_result,
+                        refresh_result.__traceback__,
+                    ),
+                )
+            else:
+                if shutdown_event.is_set() or refresh_interval_seconds <= 0:
+                    return
+                restart_attempt += 1
+                matrix_logger.warning(
+                    "Node-name refresh task exited unexpectedly (attempt %d); restarting in %.1fs",
+                    restart_attempt,
+                    backoff_seconds,
+                )
+
+            try:
+                await asyncio.wait_for(shutdown_event.wait(), timeout=backoff_seconds)
+                return
+            except asyncio.TimeoutError:
+                backoff_seconds = min(backoff_seconds * 2.0, max_backoff_seconds)
+
     # Start the Matrix client sync loop
     try:
         node_name_refresh_interval_seconds = (
             meshtastic_utils.get_node_name_refresh_interval_seconds(config)
         )
         node_name_refresh_task = asyncio.create_task(
-            meshtastic_utils.refresh_node_name_tables(
-                shutdown_event,
-                refresh_interval_seconds=node_name_refresh_interval_seconds,
+            _node_name_refresh_supervisor(
+                node_name_refresh_interval_seconds,
             )
         )
 
@@ -469,18 +522,15 @@ async def main(config: dict[str, Any]) -> None:
                         matrix_logger.warning(
                             "Matrix sync_forever completed unexpectedly"
                         )
-                    except (
-                        Exception
-                    ) as exc:  # noqa: BLE001 — sync loop must keep retrying
-                        if isinstance(exc, (asyncio.TimeoutError, ClientError)):
-                            matrix_logger.warning(
-                                "Matrix sync timed out, retrying: %s", exc
-                            )
-                        else:
-                            matrix_logger.exception("Matrix sync failed")
+                    except (asyncio.TimeoutError, ClientError) as exc:
+                        matrix_logger.warning(
+                            "Matrix sync timed out, retrying: %s", exc
+                        )
+                    except (ConnectionError, OSError, RuntimeError, ValueError):
+                        matrix_logger.exception("Matrix sync failed")
                         # The outer try/catch will handle the retry logic
 
-            except Exception:  # noqa: BLE001 — keep loop alive for retries
+            except (ClientError, ConnectionError, OSError, RuntimeError, ValueError):
                 if shutdown_event.is_set():
                     break
                 matrix_logger.exception("Error syncing with Matrix server")
@@ -490,12 +540,22 @@ async def main(config: dict[str, Any]) -> None:
     finally:
         if node_name_refresh_task is not None:
             node_name_refresh_task.cancel()
-            try:
-                await node_name_refresh_task
-            except asyncio.CancelledError:
-                pass
-            except Exception:
-                matrix_logger.exception("Error during node name refresh task cleanup")
+            [refresh_cleanup_result] = await asyncio.gather(
+                node_name_refresh_task,
+                return_exceptions=True,
+            )
+            if isinstance(refresh_cleanup_result, Exception) and not isinstance(
+                refresh_cleanup_result,
+                asyncio.CancelledError,
+            ):
+                matrix_logger.error(
+                    "Error during node name refresh task cleanup",
+                    exc_info=(
+                        type(refresh_cleanup_result),
+                        refresh_cleanup_result,
+                        refresh_cleanup_result.__traceback__,
+                    ),
+                )
         if ready_task is not None:
             ready_task.cancel()
             try:

@@ -13,8 +13,8 @@ from mmrelay.constants.database import (
     DEFAULT_NAME_PRUNE_CHUNK_SIZE,
     NAMES_TABLE_LONGNAMES,
     NAMES_TABLE_SHORTNAMES,
-    NODE_NAME_FIELD_LONG,
-    NODE_NAME_FIELD_SHORT,
+    PROTO_NODE_NAME_LONG,
+    PROTO_NODE_NAME_SHORT,
 )
 from mmrelay.db_runtime import DatabaseManager
 from mmrelay.log_utils import get_logger
@@ -62,6 +62,13 @@ _CONFLICT_SENTINEL = object()
 _NAME_FIELD_BY_TABLE = {
     NAMES_TABLE_LONGNAMES: "longname",
     NAMES_TABLE_SHORTNAMES: "shortname",
+}
+
+# Explicit protocol-field -> DB-column translation so Meshtastic payload keys
+# are not confused with SQLite column names.
+_DB_COLUMN_BY_PROTO_NODE_NAME_FIELD = {
+    PROTO_NODE_NAME_LONG: _NAME_FIELD_BY_TABLE[NAMES_TABLE_LONGNAMES],
+    PROTO_NODE_NAME_SHORT: _NAME_FIELD_BY_TABLE[NAMES_TABLE_SHORTNAMES],
 }
 
 _SELECT_STALE_IDS_SQL_BY_TABLE = {
@@ -961,6 +968,7 @@ def _collect_node_name_snapshot(
     snapshot_complete = True
     current_ids: set[str] = set()
     state_by_id: dict[str, tuple[str | None, str | None]] = {}
+    skipped_ids: set[str] = set()
 
     for node in nodes.values():
         if not isinstance(node, dict):
@@ -983,9 +991,11 @@ def _collect_node_name_snapshot(
             continue
 
         id_key = str(meshtastic_id)
+        if id_key in skipped_ids:
+            continue
         current_ids.add(id_key)
-        long_name = _normalize_node_name_value(user.get(NODE_NAME_FIELD_LONG))
-        short_name = _normalize_node_name_value(user.get(NODE_NAME_FIELD_SHORT))
+        long_name = _normalize_node_name_value(user.get(PROTO_NODE_NAME_LONG))
+        short_name = _normalize_node_name_value(user.get(PROTO_NODE_NAME_SHORT))
 
         existing_entry = state_by_id.get(id_key)
         if existing_entry is None:
@@ -1007,8 +1017,9 @@ def _collect_node_name_snapshot(
                 "Skipping node %s due to conflicting duplicate names in snapshot",
                 id_key,
             )
-            del state_by_id[id_key]
+            state_by_id.pop(id_key, None)
             current_ids.discard(id_key)
+            skipped_ids.add(id_key)
         else:
             state_by_id[id_key] = cast(
                 tuple[str | None, str | None],
@@ -1179,7 +1190,8 @@ def _update_names_core(
     Parameters:
         nodes (dict[str, Any]): Snapshot of node records containing optional
             `user` dictionaries.
-        name_key (str): User field to read (`"longName"` or `"shortName"`).
+        name_key (str): Protocol user field to read (`"longName"` or
+            `"shortName"`).
         save_name (Callable[[str, str], bool]): Function used to persist one name.
             Returns True on success, False on failure.
         delete_name (Callable[[str], bool]): Function used to delete one row for
@@ -1193,10 +1205,19 @@ def _update_names_core(
     if not nodes:
         return True
 
-    if name_key == NODE_NAME_FIELD_LONG:
-        get_name = lambda entry: entry.long_name
-    elif name_key == NODE_NAME_FIELD_SHORT:
-        get_name = lambda entry: entry.short_name
+    if name_key not in _DB_COLUMN_BY_PROTO_NODE_NAME_FIELD:
+        raise ValueError(f"Unsupported node name key: {name_key}")
+
+    def _get_long_name(entry: NodeNameEntry) -> str | None:
+        return entry.long_name
+
+    def _get_short_name(entry: NodeNameEntry) -> str | None:
+        return entry.short_name
+
+    if name_key == PROTO_NODE_NAME_LONG:
+        get_name = _get_long_name
+    elif name_key == PROTO_NODE_NAME_SHORT:
+        get_name = _get_short_name
     else:
         raise ValueError(f"Unsupported node name key: {name_key}")
     state, current_ids, snapshot_complete = _collect_node_name_snapshot(nodes)
@@ -1235,7 +1256,7 @@ def update_longnames(nodes: dict[str, Any]) -> bool:
     """
     return _update_names_core(
         nodes,
-        name_key=NODE_NAME_FIELD_LONG,
+        name_key=PROTO_NODE_NAME_LONG,
         save_name=save_longname,
         delete_name=delete_longname,
         delete_stale_names=lambda current_ids: _delete_stale_names(
@@ -1461,7 +1482,7 @@ def update_shortnames(nodes: dict[str, Any]) -> bool:
     """
     return _update_names_core(
         nodes,
-        name_key=NODE_NAME_FIELD_SHORT,
+        name_key=PROTO_NODE_NAME_SHORT,
         save_name=save_shortname,
         delete_name=delete_shortname,
         delete_stale_names=lambda current_ids: _delete_stale_names(
