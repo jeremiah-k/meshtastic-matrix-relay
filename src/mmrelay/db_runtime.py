@@ -62,16 +62,26 @@ def _validate_sqlite_json_each_support() -> None:
 def _probe_sqlite_json_each_support(conn: sqlite3.Connection) -> None:
     """
     Verify json_each() support on an active SQLite connection.
+
+    Only translate explicit "missing json_each support" failures to a
+    RuntimeError. Other sqlite failures (for example, corrupted database files)
+    are re-raised unchanged so callers can handle the underlying database error.
     """
     current_version = _get_sqlite_runtime_version_info()
     try:
         conn.execute(_JSON_EACH_PROBE_SQL, (_JSON_EACH_PROBE_PAYLOAD,)).fetchall()
     except sqlite3.Error as exc:
-        raise RuntimeError(
-            "SQLite json_each() support is required for node-name queries. "
-            f"Detected SQLite version: {current_version[0]}.{current_version[1]}.{current_version[2]}. "
-            "Ensure SQLite is built with JSON support."
-        ) from exc
+        error_message = str(exc).lower()
+        if (
+            "no such function: json_each" in error_message
+            or "no such table: json_each" in error_message
+        ):
+            raise RuntimeError(
+                "SQLite json_each() support is required for node-name queries. "
+                f"Detected SQLite version: {current_version[0]}.{current_version[1]}.{current_version[2]}. "
+                "Ensure SQLite is built with JSON support."
+            ) from exc
+        raise
 
 
 class DatabaseManager:
