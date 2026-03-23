@@ -558,7 +558,7 @@ async def main(config: dict[str, Any]) -> None:
                     "Connection health task exited unexpectedly",
                     exc_info=(type(exc), exc, exc.__traceback__),
                 )
-                shutdown_event.set()
+                _set_shutdown_flag()
 
         check_connection_task.add_done_callback(_on_check_connection_done)
     except Exception:
