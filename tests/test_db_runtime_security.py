@@ -78,17 +78,17 @@ class TestDatabaseManager(unittest.TestCase):
         """DatabaseManager should fail fast when runtime SQLite is too old."""
         with patch(
             "mmrelay.db_runtime._get_sqlite_runtime_version_info",
-            return_value=(3, 37, 2),
+            return_value=(3, 8, 11),
         ):
             with self.assertRaises(RuntimeError) as cm:
                 DatabaseManager(self.db_path)
-        self.assertIn("SQLite >= 3.38.0 is required", str(cm.exception))
+        self.assertIn("SQLite >= 3.9.0 is required", str(cm.exception))
 
     def test_initialization_accepts_minimum_supported_sqlite_version(self):
         """DatabaseManager should allow the minimum supported SQLite runtime."""
         with patch(
             "mmrelay.db_runtime._get_sqlite_runtime_version_info",
-            return_value=(3, 38, 0),
+            return_value=(3, 9, 0),
         ):
             manager = DatabaseManager(self.db_path)
             try:

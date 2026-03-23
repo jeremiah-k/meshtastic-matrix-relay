@@ -57,9 +57,15 @@ def _validate_sqlite_json_each_support() -> None:
             "SQLite >= 3.9.0 is required for json_each() support. "
             f"Detected SQLite version: {current_version[0]}.{current_version[1]}.{current_version[2]}"
         )
+
+
+def _probe_sqlite_json_each_support(conn: sqlite3.Connection) -> None:
+    """
+    Verify json_each() support on an active SQLite connection.
+    """
+    current_version = _get_sqlite_runtime_version_info()
     try:
-        with sqlite3.connect(":memory:") as conn:
-            conn.execute(_JSON_EACH_PROBE_SQL, (_JSON_EACH_PROBE_PAYLOAD,)).fetchall()
+        conn.execute(_JSON_EACH_PROBE_SQL, (_JSON_EACH_PROBE_PAYLOAD,)).fetchall()
     except sqlite3.Error as exc:
         raise RuntimeError(
             "SQLite json_each() support is required for node-name queries. "
@@ -86,6 +92,7 @@ class DatabaseManager:
     _write_lock: threading.RLock
     _connections: set[sqlite3.Connection]
     _connections_lock: threading.Lock
+    _json_each_support_verified: bool
 
     def __init__(
         self,
@@ -117,6 +124,7 @@ class DatabaseManager:
         self._write_lock = threading.RLock()
         self._connections: set[sqlite3.Connection] = set()
         self._connections_lock = threading.Lock()
+        self._json_each_support_verified = False
 
     # ------------------------------------------------------------------ #
     # Internal helpers
@@ -138,6 +146,9 @@ class DatabaseManager:
         try:
             # Serialize PRAGMA setup to avoid concurrent WAL initialization races
             with self._write_lock:
+                if not self._json_each_support_verified:
+                    _probe_sqlite_json_each_support(conn)
+                    self._json_each_support_verified = True
                 if self._busy_timeout_ms:
                     conn.execute(f"PRAGMA busy_timeout = {int(self._busy_timeout_ms)}")
                 if self._enable_wal:
@@ -173,7 +184,7 @@ class DatabaseManager:
                         conn.execute(f"PRAGMA {pragma} = {value}")
                     else:
                         raise TypeError(f"Invalid pragma value type: {type(value)}")
-        except (sqlite3.Error, ValueError, TypeError):
+        except (sqlite3.Error, RuntimeError, ValueError, TypeError):
             # Ensure partially configured connection does not leak
             conn.close()
             raise
