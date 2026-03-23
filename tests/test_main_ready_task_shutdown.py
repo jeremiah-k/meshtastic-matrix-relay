@@ -106,6 +106,10 @@ def test_coerce_config_bool_normalizes_common_values() -> None:
     assert main_module._coerce_config_bool("not-a-bool") is False
     assert main_module._coerce_config_bool(1) is True
     assert main_module._coerce_config_bool(0) is False
+    assert main_module._coerce_config_bool(2) is False
+    assert main_module._coerce_config_bool(-1) is False
+    assert main_module._coerce_config_bool(1.5) is False
+    assert main_module._coerce_config_bool(float("nan")) is False
     assert main_module._coerce_config_bool(None) is False
 
 

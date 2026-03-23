@@ -409,21 +409,22 @@ async def main(config: dict[str, Any]) -> None:
     # Start connection health monitoring using getMetadata() heartbeat
     # This provides proactive connection detection for all interface types
     _ = asyncio.create_task(meshtastic_utils.check_connection())
-    node_name_refresh_interval_seconds = (
-        meshtastic_utils.get_node_name_refresh_interval_seconds(config)
-    )
-    node_name_refresh_task = asyncio.create_task(
-        meshtastic_utils.refresh_node_name_tables(
-            shutdown_event,
-            refresh_interval_seconds=node_name_refresh_interval_seconds,
-        )
-    )
-
-    # Ensure message queue processor is started now that event loop is running
-    get_message_queue().ensure_processor_started()
+    node_name_refresh_task: asyncio.Task[None] | None = None
 
     # Start the Matrix client sync loop
     try:
+        node_name_refresh_interval_seconds = (
+            meshtastic_utils.get_node_name_refresh_interval_seconds(config)
+        )
+        node_name_refresh_task = asyncio.create_task(
+            meshtastic_utils.refresh_node_name_tables(
+                shutdown_event,
+                refresh_interval_seconds=node_name_refresh_interval_seconds,
+            )
+        )
+
+        # Ensure message queue processor is started now that event loop is running
+        get_message_queue().ensure_processor_started()
         while not shutdown_event.is_set():
             try:
                 matrix_logger.info("Starting Matrix sync loop...")
@@ -487,13 +488,14 @@ async def main(config: dict[str, Any]) -> None:
     except KeyboardInterrupt:
         shutdown()
     finally:
-        node_name_refresh_task.cancel()
-        try:
-            await node_name_refresh_task
-        except asyncio.CancelledError:
-            pass
-        except Exception:
-            matrix_logger.exception("Error during node name refresh task cleanup")
+        if node_name_refresh_task is not None:
+            node_name_refresh_task.cancel()
+            try:
+                await node_name_refresh_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                matrix_logger.exception("Error during node name refresh task cleanup")
         if ready_task is not None:
             ready_task.cancel()
             try:

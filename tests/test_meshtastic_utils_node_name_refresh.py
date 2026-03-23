@@ -109,8 +109,18 @@ def test_refresh_node_name_tables_non_positive_interval_exits_after_one_pass(
     """Zero interval should perform one immediate pass and return."""
     _ = reset_meshtastic_globals
     with (
-        patch.object(mu, "meshtastic_client", None),
-        patch.object(mu, "sync_name_tables_if_changed") as mock_sync,
+        patch.object(
+            mu,
+            "meshtastic_client",
+            _ClientWithNodes(
+                {
+                    "node_a": {
+                        "user": {"id": "!1", "longName": "Alpha", "shortName": "A"},
+                    }
+                }
+            ),
+        ),
+        patch.object(mu, "sync_name_tables_if_changed", return_value=()) as mock_sync,
     ):
         asyncio.run(
             mu.refresh_node_name_tables(
@@ -118,7 +128,7 @@ def test_refresh_node_name_tables_non_positive_interval_exits_after_one_pass(
                 refresh_interval_seconds=0.0,
             )
         )
-    mock_sync.assert_not_called()
+    mock_sync.assert_called_once()
 
 
 def test_refresh_node_name_tables_handles_sync_exceptions(

@@ -4,7 +4,7 @@ import json
 import os
 import sqlite3
 import threading
-from typing import Any, Callable, Dict, Tuple, cast
+from typing import Any, Callable, Dict, NamedTuple, Tuple, cast
 
 from mmrelay.constants.database import (
     DEFAULT_BUSY_TIMEOUT_MS,
@@ -47,7 +47,14 @@ _db_manager_lock = threading.Lock()
 
 logger = get_logger(name="db_utils")
 
-NodeNameState = tuple[tuple[str, str | None, str | None], ...]
+
+class NodeNameEntry(NamedTuple):
+    meshtastic_id: str
+    long_name: str | None
+    short_name: str | None
+
+
+NodeNameState = tuple[NodeNameEntry, ...]
 
 _CONFLICT_SENTINEL = object()
 
@@ -879,7 +886,7 @@ def _name_table_matches_state(
     state: NodeNameState,
     *,
     table: str,
-    value_index: int,
+    get_name: Callable[[NodeNameEntry], str | None],
 ) -> bool:
     """
     Check whether one names table currently matches the expected node-name state.
@@ -887,21 +894,21 @@ def _name_table_matches_state(
     Parameters:
         state (NodeNameState): Expected normalized node-name snapshot.
         table (str): Names table identifier (`longnames` or `shortnames`).
-        value_index (int): State tuple index for the compared value
-            (`1` for longname, `2` for shortname).
+        get_name (Callable[[NodeNameEntry], str | None]): Function to extract
+            the relevant name field from a NodeNameEntry.
 
     Returns:
         bool: True when database rows for current IDs match expected normalized
         values; otherwise False.
     """
-    current_ids = {id_key for id_key, _long_name, _short_name in state}
+    current_ids = {entry.meshtastic_id for entry in state}
     actual_by_id = _read_name_values_for_ids(table, current_ids)
     if actual_by_id is None:
         return False
 
     for state_row in state:
-        id_key = state_row[0]
-        expected_value = state_row[value_index]
+        id_key = state_row.meshtastic_id
+        expected_value = get_name(state_row)
         actual_value = actual_by_id.get(id_key)
         if expected_value != actual_value:
             return False
@@ -923,11 +930,11 @@ def _name_tables_match_state(state: NodeNameState) -> bool:
     return _name_table_matches_state(
         state,
         table=NAMES_TABLE_LONGNAMES,
-        value_index=1,
+        get_name=lambda entry: entry.long_name,
     ) and _name_table_matches_state(
         state,
         table=NAMES_TABLE_SHORTNAMES,
-        value_index=2,
+        get_name=lambda entry: entry.short_name,
     )
 
 
@@ -1009,10 +1016,10 @@ def _collect_node_name_snapshot(
             )
 
     state_entries = [
-        (id_key, long_name, short_name)
+        NodeNameEntry(id_key, long_name, short_name)
         for id_key, (long_name, short_name) in state_by_id.items()
     ]
-    state_entries.sort(key=lambda entry: entry[0])
+    state_entries.sort(key=lambda entry: entry.meshtastic_id)
     return tuple(state_entries), current_ids, snapshot_complete
 
 
@@ -1187,16 +1194,16 @@ def _update_names_core(
         return True
 
     if name_key == NODE_NAME_FIELD_LONG:
-        value_index = 1
+        get_name = lambda entry: entry.long_name
     elif name_key == NODE_NAME_FIELD_SHORT:
-        value_index = 2
+        get_name = lambda entry: entry.short_name
     else:
         raise ValueError(f"Unsupported node name key: {name_key}")
     state, current_ids, snapshot_complete = _collect_node_name_snapshot(nodes)
     all_saves_ok = True
     for state_row in state:
-        id_key = state_row[0]
-        normalized_name = state_row[value_index]
+        id_key = state_row.meshtastic_id
+        normalized_name = get_name(state_row)
         if normalized_name is None:
             if not delete_name(id_key):
                 all_saves_ok = False
