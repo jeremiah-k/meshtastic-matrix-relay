@@ -2050,6 +2050,10 @@ class TestMainAsyncFunction(unittest.TestCase):
                 module._ble_future = None  # type: ignore[attr-defined]
             if hasattr(module, "_ble_future_address"):
                 module._ble_future_address = None  # type: ignore[attr-defined]
+            if hasattr(module, "_ble_future_started_at"):
+                module._ble_future_started_at = None  # type: ignore[attr-defined]
+            if hasattr(module, "_ble_future_timeout_secs"):
+                module._ble_future_timeout_secs = None  # type: ignore[attr-defined]
             if hasattr(module, "_ble_timeout_counts"):
                 module._ble_timeout_counts = {}  # type: ignore[attr-defined]
             if hasattr(module, "_metadata_executor"):

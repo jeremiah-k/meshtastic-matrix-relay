@@ -31,6 +31,8 @@ def reset_meshtastic_state(reset_meshtastic_globals):
     mu._metadata_future_started_at = None
     mu._ble_future = None
     mu._ble_future_address = None
+    mu._ble_future_started_at = None
+    mu._ble_future_timeout_secs = None
     mu._health_probe_request_deadlines = {}
     yield
 

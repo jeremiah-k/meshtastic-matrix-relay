@@ -481,6 +481,59 @@ def test_clone_or_update_repo_invalid_url_whitespace(self, mock_logger, mock_som
 
 **Note**: Parametrized tests work fine with pytest functions (not unittest.TestCase), as shown in the Test Organization section.
 
+## Integration Testing
+
+Integration tests are required for behavior that spans module boundaries (for example, connection lifecycle + retry logic + global state handling), even when unit tests exist for each helper.
+
+### When to add an integration test
+
+Add or extend integration tests when a change:
+
+1. Changes control flow across components (`main` + `meshtastic_utils`, `db_utils` + `db_runtime`, plugin loader + scheduler, etc.).
+2. Introduces/reworks retry, timeout, or shutdown behavior.
+3. Fixes a production regression that required multiple moving parts to reproduce.
+4. Adds CI shell-harness behavior in `scripts/ci/run-mmrelay-meshtasticd-integration.sh`.
+
+### Where integration tests should live
+
+- Python integration scenarios: `tests/test_integration_scenarios.py` or a focused `tests/test_*integration*.py` module.
+- Meshtastic connection/recovery integration paths: keep scenario-style tests close to `tests/test_meshtastic_utils_connect_paths.py` and add a higher-level scenario in `tests/test_integration_scenarios.py` when the bug crosses module boundaries.
+- Shell/CI integration harness updates: `scripts/ci/run-mmrelay-meshtasticd-integration.sh` (only for behavior that must be validated in the runtime harness).
+
+### Integration test design rules
+
+1. Keep tests deterministic: no real BLE hardware, no external network calls, no wall-clock sleeps without patching/mocking.
+2. Bound execution time: use explicit retry limits and timeout settings in test configs.
+3. Assert observable outcomes, not just internal calls:
+   - Returned client/state
+   - Global state cleanup
+   - Retry/backoff stop conditions
+   - Expected log/warning messages for operator visibility
+4. Isolate global state:
+   - Use `reset_meshtastic_globals` when touching `mmrelay.meshtastic_utils`.
+   - Reset module-level futures/executor references in scenario tests that mutate them.
+5. Keep integration scope minimal:
+   - Mock external dependencies (Meshtastic library objects, filesystem/network boundaries).
+   - Exercise real orchestration code between modules.
+
+### CI harness integration checks
+
+When updating `scripts/ci/run-mmrelay-meshtasticd-integration.sh`:
+
+1. Add assertions for both positive and negative outcomes (for example, stale rows removed and live rows preserved).
+2. Ensure failures are attributed to the correct test block (`start_test` before precondition probes).
+3. Keep helper functions defensive and bounded (timeouts, process-liveness checks, tail-log output on failure).
+4. Prefer explicit table/column allowlists for SQL identifier interpolation in test helpers.
+
+### Integration test checklist for PRs
+
+Before merge, confirm:
+
+- A production bug repro has at least one integration-level regression test.
+- New retry/timeout logic has a test for success path and a test for failure path.
+- Shutdown/cleanup paths are covered where background tasks or worker executors are involved.
+- Targeted integration tests were run locally (plus targeted lint/type checks).
+
 ## References
 
 - [unittest.mock documentation](https://docs.python.org/3/library/unittest.mock.html)

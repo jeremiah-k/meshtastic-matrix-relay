@@ -134,6 +134,8 @@ class TestMeshtasticUtils(unittest.TestCase):
         mmrelay.meshtastic_utils.reconnect_task = None
         mmrelay.meshtastic_utils._ble_future = None
         mmrelay.meshtastic_utils._ble_future_address = None
+        mmrelay.meshtastic_utils._ble_future_started_at = None
+        mmrelay.meshtastic_utils._ble_future_timeout_secs = None
         mmrelay.meshtastic_utils._metadata_future = None
         mmrelay.meshtastic_utils._ble_timeout_counts = {}
 
@@ -1491,6 +1493,8 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
         mu.shutting_down = False
         mu._ble_future = None
         mu._ble_future_address = None
+        mu._ble_future_started_at = None
+        mu._ble_future_timeout_secs = None
         mu._metadata_future = None
         mu._ble_timeout_counts = {}
 
@@ -3617,9 +3621,9 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         mock_iface.close.assert_called_once()
 
     @patch("mmrelay.meshtastic_utils.logger")
-    @patch("mmrelay.meshtastic_utils.time")
+    @patch("mmrelay.meshtastic_utils.time.sleep")
     def test_connect_meshtastic_ble_interface_creation_timeout(
-        self, _mock_time, mock_logger
+        self, _mock_sleep, mock_logger
     ):
         """Test connect_meshtastic handles BLEInterface creation timeout."""
         from concurrent.futures import TimeoutError as FuturesTimeoutError
@@ -3649,6 +3653,8 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
             mu._ble_future = None
             mu._ble_future_address = None
+            mu._ble_future_started_at = None
+            mu._ble_future_timeout_secs = None
             mu._metadata_future = None
             # The function will retry 6 times (MAX_TIMEOUT_RETRIES_INFINITE = 5 + 1)
             # After all retries, it returns None (doesn't raise)
@@ -3708,8 +3714,8 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         self.assertIsNone(mu.meshtastic_iface)
 
     @patch("mmrelay.meshtastic_utils.logger")
-    @patch("mmrelay.meshtastic_utils.time")
-    def test_connect_meshtastic_ble_connect_timeout(self, _mock_time, mock_logger):
+    @patch("mmrelay.meshtastic_utils.time.sleep")
+    def test_connect_meshtastic_ble_connect_timeout(self, _mock_sleep, mock_logger):
         """Test connect_meshtastic handles BLE connect() timeout."""
         from concurrent.futures import TimeoutError as FuturesTimeoutError
 
@@ -3765,6 +3771,8 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
             mu._ble_future = None
             mu._ble_future_address = None
+            mu._ble_future_started_at = None
+            mu._ble_future_timeout_secs = None
             mu._metadata_future = None
             # The function will retry 6 times and return None (doesn't raise)
             result = connect_meshtastic(passed_config=config)

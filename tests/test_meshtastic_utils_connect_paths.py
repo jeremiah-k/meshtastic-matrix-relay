@@ -1,3 +1,4 @@
+import time
 from unittest.mock import MagicMock, patch
 
 import serial
@@ -129,6 +130,73 @@ def test_connect_meshtastic_ble_missing_address_returns_none(
 
     assert result is None
     mock_logger.error.assert_called_with("No BLE address provided.")
+
+
+def test_connect_meshtastic_ble_recovers_from_stale_worker(
+    reset_meshtastic_globals,
+):
+    """Stale in-flight BLE worker futures should be reset so retries can proceed."""
+    ble_address = "AA:BB:CC:DD:EE:FF"
+    config = {
+        "meshtastic": {
+            "connection_type": "ble",
+            "ble_address": ble_address,
+            "retries": 1,
+        }
+    }
+
+    stale_future = MagicMock()
+    stale_future.done.return_value = False
+    stale_future.cancel.return_value = True
+
+    class _FakeBLEInterface:
+        def __init__(self, **kwargs: object) -> None:
+            self.address = kwargs.get("address")
+            self.auto_reconnect = kwargs.get("auto_reconnect")
+
+        def connect(self) -> None:
+            return None
+
+        def getMyNodeInfo(self) -> dict[str, dict[str, str]]:
+            return {"user": {"shortName": "Node", "hwModel": "HW"}}
+
+    mu._ble_future = stale_future
+    mu._ble_future_address = ble_address
+    mu._ble_future_started_at = time.monotonic() - 60.0
+    mu._ble_future_timeout_secs = 1.0
+
+    with (
+        patch(
+            "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
+            new=_FakeBLEInterface,
+        ),
+        patch("mmrelay.meshtastic_utils._disconnect_ble_by_address"),
+        patch(
+            "mmrelay.meshtastic_utils._validate_ble_connection_address",
+            return_value=True,
+        ),
+        patch(
+            "mmrelay.meshtastic_utils._get_device_metadata",
+            return_value={"firmware_version": "unknown", "success": False},
+        ),
+        patch("mmrelay.meshtastic_utils.pub.subscribe"),
+        patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+    ):
+        result = connect_meshtastic(passed_config=config)
+
+    assert result is not None
+    assert result is mu.meshtastic_client
+    assert stale_future.cancel.called
+    stale_warning_calls = [
+        call
+        for call in mock_logger.warning.call_args_list
+        if call.args
+        and "BLE worker appears stale during %s for %s" in str(call.args[0])
+        and len(call.args) >= 3
+        and call.args[2] == ble_address
+    ]
+    assert stale_warning_calls, "Expected stale BLE worker recovery warning"
+    assert stale_warning_calls[0].args[1] in {"interface creation", "connect"}
 
 
 def test_connect_meshtastic_tcp_missing_host_returns_none(
