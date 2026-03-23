@@ -473,11 +473,19 @@ async def main(config: dict[str, Any]) -> None:
         if task is None:
             return
 
+        wait_error: Exception | None = None
         if not task.done():
             try:
                 await asyncio.wait_for(asyncio.shield(task), timeout=timeout_seconds)
             except asyncio.TimeoutError:
                 task.cancel()
+            except Exception as exc:
+                wait_error = exc
+                logger.error(
+                    "Error while waiting for %s to finish during shutdown",
+                    task_name,
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                )
             except asyncio.CancelledError:
                 task.cancel()
                 return
@@ -490,7 +498,7 @@ async def main(config: dict[str, Any]) -> None:
                     timeout=1.0,
                 )
             except asyncio.TimeoutError:
-                matrix_logger.warning(
+                logger.warning(
                     "Timed out cancelling %s; continuing shutdown",
                     task_name,
                 )
@@ -500,11 +508,15 @@ async def main(config: dict[str, Any]) -> None:
 
         cleanup_results = await asyncio.gather(task, return_exceptions=True)
         result: object = cleanup_results[0]
-        if isinstance(result, Exception) and not isinstance(
-            result,
-            asyncio.CancelledError,
+        if (
+            isinstance(result, Exception)
+            and not isinstance(
+                result,
+                asyncio.CancelledError,
+            )
+            and result is not wait_error
         ):
-            matrix_logger.error(
+            logger.error(
                 "Error during %s cleanup",
                 task_name,
                 exc_info=(type(result), result, result.__traceback__),

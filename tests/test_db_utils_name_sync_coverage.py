@@ -28,6 +28,7 @@ from mmrelay.db_utils import (
     _reset_db_manager,
     clear_db_path_cache,
     get_longname,
+    get_shortname,
     initialize_database,
     sync_name_tables_if_changed,
 )
@@ -148,6 +149,14 @@ def test_collect_node_name_snapshot_marks_invalid_entries_incomplete() -> None:
     assert snapshot_complete is False
 
 
+def test_collect_node_name_snapshot_empty_dict_is_incomplete() -> None:
+    """Empty snapshots are treated as incomplete to avoid accidental global pruning."""
+    state, current_ids, snapshot_complete = _collect_node_name_snapshot({})
+    assert state == ()
+    assert current_ids == set()
+    assert snapshot_complete is False
+
+
 def test_sync_unchanged_snapshot_repair_failure_keeps_previous_state(
     configured_temp_db: str,
 ) -> None:
@@ -183,3 +192,22 @@ def test_sync_unchanged_snapshot_repair_failure_keeps_previous_state(
     assert repair_failure_triggered, "Repair failure path was not exercised"
     assert second_state == first_state
     assert get_longname("!1") is None
+
+
+def test_sync_empty_snapshot_does_not_prune_existing_rows(
+    configured_temp_db: str,
+) -> None:
+    """Transient empty NodeDB snapshots should not delete existing name rows."""
+    _ = configured_temp_db
+    nodes = {
+        "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
+    }
+    first_state = sync_name_tables_if_changed(nodes, previous_state=None)
+    assert first_state == (NodeNameEntry("!1", "Alpha", "A"),)
+    assert get_longname("!1") == "Alpha"
+    assert get_shortname("!1") == "A"
+
+    empty_state = sync_name_tables_if_changed({}, previous_state=first_state)
+    assert empty_state == ()
+    assert get_longname("!1") == "Alpha"
+    assert get_shortname("!1") == "A"

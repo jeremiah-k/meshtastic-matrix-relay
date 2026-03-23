@@ -17,7 +17,9 @@ from contextlib import contextmanager
 from functools import partial
 from typing import Any, Generator, Optional
 
-MIN_SQLITE_VERSION_JSON_EACH = (3, 38, 0)
+MIN_SQLITE_VERSION_JSON_EACH = (3, 9, 0)
+_JSON_EACH_PROBE_SQL = "SELECT value FROM json_each(?)"
+_JSON_EACH_PROBE_PAYLOAD = '["probe"]'
 
 
 def _get_sqlite_runtime_version_info() -> tuple[int, int, int]:
@@ -47,15 +49,23 @@ def _get_sqlite_runtime_version_info() -> tuple[int, int, int]:
 
 def _validate_sqlite_json_each_support() -> None:
     """
-    Ensure runtime SQLite version supports json_each() usage in name-state queries.
+    Ensure runtime SQLite supports json_each() usage in name-state queries.
     """
     current_version = _get_sqlite_runtime_version_info()
     if current_version < MIN_SQLITE_VERSION_JSON_EACH:
         raise RuntimeError(
-            "SQLite >= 3.38.0 is required for json_each()-based node-name queries "
-            "(used by db_utils _SELECT_NAME_VALUES_SQL_BY_TABLE). "
+            "SQLite >= 3.9.0 is required for json_each() support. "
             f"Detected SQLite version: {current_version[0]}.{current_version[1]}.{current_version[2]}"
         )
+    try:
+        with sqlite3.connect(":memory:") as conn:
+            conn.execute(_JSON_EACH_PROBE_SQL, (_JSON_EACH_PROBE_PAYLOAD,)).fetchall()
+    except sqlite3.Error as exc:
+        raise RuntimeError(
+            "SQLite json_each() support is required for node-name queries. "
+            f"Detected SQLite version: {current_version[0]}.{current_version[1]}.{current_version[2]}. "
+            "Ensure SQLite is built with JSON support."
+        ) from exc
 
 
 class DatabaseManager:

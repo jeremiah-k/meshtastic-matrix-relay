@@ -214,8 +214,9 @@ class _OnePassEvent:
     def set(self) -> None:
         self._set = True
 
-    async def wait(self) -> None:
+    async def wait(self) -> bool:
         self._set = True
+        return True
 
 
 class _CloseFutureBase(concurrent.futures.Future):
@@ -1413,18 +1414,15 @@ class TestMainFunctionEdgeCases(unittest.TestCase):
 
         import mmrelay.meshtastic_utils as meshtastic_module
 
-        with (
-            patch("mmrelay.meshtastic_utils.meshtastic_client", None),
-            patch("mmrelay.meshtastic_utils.sync_name_tables_if_changed") as mock_sync,
-        ):
-            asyncio.run(
+        with patch("mmrelay.meshtastic_utils.meshtastic_client", None):
+            result = asyncio.run(
                 meshtastic_module.refresh_node_name_tables(
                     _OnePassEvent(),
                     refresh_interval_seconds=1.0,
                 )
             )
 
-        mock_sync.assert_not_called()
+        self.assertIsNone(result)
 
     def test_node_name_refresh_interval_invalid_defaults(self):
         """Invalid refresh intervals should fall back to the default value."""

@@ -1401,35 +1401,36 @@ with sqlite3.connect(db_path, timeout=5) as conn:
 PY
 }
 
-# get_existing_name_entry returns one current names-table row as "table|meshtastic_id".
+# get_existing_name_entry returns one current meshtastic_id for a specific names table.
 get_existing_name_entry() {
 	local db_path=$1
+	local table_name=$2
 	"${PYTHON_BIN}" - \
 		"${db_path}" \
+		"${table_name}" \
 		"${NAMES_TABLE_LONGNAMES}" \
 		"${NAMES_TABLE_SHORTNAMES}" <<'PY'
 import sqlite3
 import sys
 
-db_path, longnames_table, shortnames_table = sys.argv[1:4]
+db_path, table_name, longnames_table, shortnames_table = sys.argv[1:5]
 
-for table_name in (longnames_table, shortnames_table):
-    if table_name not in {longnames_table, shortnames_table}:
-        raise SystemExit(f"Invalid table name: {table_name}")
+allowed_tables = {longnames_table, shortnames_table}
+if table_name not in allowed_tables:
+    raise SystemExit(f"Invalid table name: {table_name}")
 
 with sqlite3.connect(db_path, timeout=5) as conn:
     conn.execute("PRAGMA busy_timeout = 5000")
-    for table_name in (longnames_table, shortnames_table):
-        row = conn.execute(
-            f"SELECT meshtastic_id FROM {table_name} "
-            "WHERE meshtastic_id IS NOT NULL AND meshtastic_id != '' "
-            "ORDER BY meshtastic_id LIMIT 1"
-        ).fetchone()
-        if row and row[0]:
-            print(f"{table_name}|{row[0]}")
-            raise SystemExit(0)
+    row = conn.execute(
+        f"SELECT meshtastic_id FROM {table_name} "
+        "WHERE meshtastic_id IS NOT NULL AND meshtastic_id != '' "
+        "ORDER BY meshtastic_id LIMIT 1"
+    ).fetchone()
+    if row and row[0]:
+        print(row[0])
+        raise SystemExit(0)
 
-raise SystemExit("No existing names-table row found")
+raise SystemExit(f"No existing names-table row found in {table_name}")
 PY
 }
 
@@ -2541,33 +2542,54 @@ run_or_fail "Reaction did not relay to Mesh B" \
 pass_test "Encrypted-room user reaction relayed to both meshes"
 
 # Test 7: stale name rows are pruned to match current node DB snapshot.
-CURRENT_NAME_ENTRY_A=""
+start_test "Test 7" "Test 7: stale name rows are pruned to match current node DB..."
+
+CURRENT_LONGNAME_ID_A=""
 run_capture_or_fail \
-	CURRENT_NAME_ENTRY_A \
-	"Could not find an existing names row in instance A before stale-row seeding" \
+	CURRENT_LONGNAME_ID_A \
+	"Could not find an existing longnames row in instance A before stale-row seeding" \
 	get_existing_name_entry \
-	"${MMRELAY_DB_PATH_A}"
-CURRENT_NAME_TABLE_A=${CURRENT_NAME_ENTRY_A%%|*}
-CURRENT_NAME_ID_A=${CURRENT_NAME_ENTRY_A#*|}
-if [[ -z ${CURRENT_NAME_TABLE_A} || -z ${CURRENT_NAME_ID_A} || ${CURRENT_NAME_ENTRY_A} != *"|"* ]]; then
-	fail_test "Invalid existing names entry format for instance A: ${CURRENT_NAME_ENTRY_A}"
+	"${MMRELAY_DB_PATH_A}" \
+	"${NAMES_TABLE_LONGNAMES}"
+if [[ -z ${CURRENT_LONGNAME_ID_A} ]]; then
+	fail_test "Invalid existing longnames ID for instance A"
 fi
 
-CURRENT_NAME_ENTRY_B=""
+CURRENT_SHORTNAME_ID_A=""
 run_capture_or_fail \
-	CURRENT_NAME_ENTRY_B \
-	"Could not find an existing names row in instance B before stale-row seeding" \
+	CURRENT_SHORTNAME_ID_A \
+	"Could not find an existing shortnames row in instance A before stale-row seeding" \
 	get_existing_name_entry \
-	"${MMRELAY_DB_PATH_B}"
-CURRENT_NAME_TABLE_B=${CURRENT_NAME_ENTRY_B%%|*}
-CURRENT_NAME_ID_B=${CURRENT_NAME_ENTRY_B#*|}
-if [[ -z ${CURRENT_NAME_TABLE_B} || -z ${CURRENT_NAME_ID_B} || ${CURRENT_NAME_ENTRY_B} != *"|"* ]]; then
-	fail_test "Invalid existing names entry format for instance B: ${CURRENT_NAME_ENTRY_B}"
+	"${MMRELAY_DB_PATH_A}" \
+	"${NAMES_TABLE_SHORTNAMES}"
+if [[ -z ${CURRENT_SHORTNAME_ID_A} ]]; then
+	fail_test "Invalid existing shortnames ID for instance A"
+fi
+
+CURRENT_LONGNAME_ID_B=""
+run_capture_or_fail \
+	CURRENT_LONGNAME_ID_B \
+	"Could not find an existing longnames row in instance B before stale-row seeding" \
+	get_existing_name_entry \
+	"${MMRELAY_DB_PATH_B}" \
+	"${NAMES_TABLE_LONGNAMES}"
+if [[ -z ${CURRENT_LONGNAME_ID_B} ]]; then
+	fail_test "Invalid existing longnames ID for instance B"
+fi
+
+CURRENT_SHORTNAME_ID_B=""
+run_capture_or_fail \
+	CURRENT_SHORTNAME_ID_B \
+	"Could not find an existing shortnames row in instance B before stale-row seeding" \
+	get_existing_name_entry \
+	"${MMRELAY_DB_PATH_B}" \
+	"${NAMES_TABLE_SHORTNAMES}"
+if [[ -z ${CURRENT_SHORTNAME_ID_B} ]]; then
+	fail_test "Invalid existing shortnames ID for instance B"
 fi
 
 STALE_NAME_ID_A=$(generate_unique_test_id "MMRELAY_STALE_A")
 STALE_NAME_ID_B=$(generate_unique_test_id "MMRELAY_STALE_B")
-start_test "Test 7" "Test 7: stale name rows are pruned to match current node DB..."
 run_or_fail "Failed to seed stale longname in instance A" \
 	upsert_name_entry \
 	"${MMRELAY_DB_PATH_A}" \
@@ -2633,20 +2655,38 @@ run_or_fail "Stale shortname row in instance B was not pruned" \
 	"${MMRELAY_PID_B}" \
 	"MMRelay B" \
 	"${MMRELAY_LOG_PATH_B}"
-run_or_fail "Current names row in instance A disappeared unexpectedly" \
+run_or_fail "Current longnames row in instance A disappeared unexpectedly" \
 	wait_for_name_entry_present \
 	"${MMRELAY_DB_PATH_A}" \
-	"${CURRENT_NAME_TABLE_A}" \
-	"${CURRENT_NAME_ID_A}" \
+	"${NAMES_TABLE_LONGNAMES}" \
+	"${CURRENT_LONGNAME_ID_A}" \
 	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" \
 	"${MMRELAY_PID_A}" \
 	"MMRelay A" \
 	"${MMRELAY_LOG_PATH_A}"
-run_or_fail "Current names row in instance B disappeared unexpectedly" \
+run_or_fail "Current shortnames row in instance A disappeared unexpectedly" \
+	wait_for_name_entry_present \
+	"${MMRELAY_DB_PATH_A}" \
+	"${NAMES_TABLE_SHORTNAMES}" \
+	"${CURRENT_SHORTNAME_ID_A}" \
+	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" \
+	"${MMRELAY_PID_A}" \
+	"MMRelay A" \
+	"${MMRELAY_LOG_PATH_A}"
+run_or_fail "Current longnames row in instance B disappeared unexpectedly" \
 	wait_for_name_entry_present \
 	"${MMRELAY_DB_PATH_B}" \
-	"${CURRENT_NAME_TABLE_B}" \
-	"${CURRENT_NAME_ID_B}" \
+	"${NAMES_TABLE_LONGNAMES}" \
+	"${CURRENT_LONGNAME_ID_B}" \
+	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" \
+	"${MMRELAY_PID_B}" \
+	"MMRelay B" \
+	"${MMRELAY_LOG_PATH_B}"
+run_or_fail "Current shortnames row in instance B disappeared unexpectedly" \
+	wait_for_name_entry_present \
+	"${MMRELAY_DB_PATH_B}" \
+	"${NAMES_TABLE_SHORTNAMES}" \
+	"${CURRENT_SHORTNAME_ID_B}" \
 	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" \
 	"${MMRELAY_PID_B}" \
 	"MMRelay B" \
