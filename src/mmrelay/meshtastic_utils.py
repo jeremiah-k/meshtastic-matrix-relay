@@ -244,7 +244,16 @@ def _shutdown_shared_executors() -> None:
                 executor.shutdown(wait=False)
 
 
-atexit.register(_shutdown_shared_executors)
+def shutdown_shared_executors() -> None:
+    """
+    Public wrapper for shutting down shared Meshtastic executors.
+
+    This is primarily intended for test teardown and explicit cleanup paths.
+    """
+    _shutdown_shared_executors()
+
+
+atexit.register(shutdown_shared_executors)
 
 
 def _get_ble_executor() -> ThreadPoolExecutor:
@@ -1112,6 +1121,7 @@ def _ensure_ble_worker_available(ble_address: str, *, operation: str) -> None:
     """
     stale_elapsed_secs: float | None = None
     stale_timeout_secs: float | None = None
+    stale_address: str | None = None
 
     with _ble_executor_lock:
         active_future = _ble_future
@@ -1124,18 +1134,23 @@ def _ensure_ble_worker_available(ble_address: str, *, operation: str) -> None:
             if elapsed >= stale_after:
                 stale_elapsed_secs = elapsed
                 stale_timeout_secs = _ble_future_timeout_secs
+                stale_address = _ble_future_address or ble_address
 
-    if stale_elapsed_secs is not None and stale_timeout_secs is not None:
+    if (
+        stale_elapsed_secs is not None
+        and stale_timeout_secs is not None
+        and stale_address is not None
+    ):
         logger.warning(
             "BLE worker appears stale during %s for %s (elapsed=%.1fs, timeout=%.1fs); forcing worker reset",
             operation,
-            ble_address,
+            stale_address,
             stale_elapsed_secs,
             stale_timeout_secs,
         )
-        timeout_count = _record_ble_timeout(ble_address)
+        timeout_count = _record_ble_timeout(stale_address)
         _maybe_reset_ble_executor(
-            ble_address,
+            stale_address,
             max(timeout_count, _ble_timeout_reset_threshold),
         )
 
@@ -2829,53 +2844,49 @@ def connect_meshtastic(
                                 ble_scan_after_failure = False
                                 ble_scan_reason = None
 
-                            try:
-                                # Create BLE interface with timeout protection to prevent indefinite hangs
-                                # Use ThreadPoolExecutor to run with timeout, as BLEInterface.__init__
-                                # can potentially block indefinitely if BlueZ is in a bad state
-                                def create_ble_interface(
-                                    kwargs: dict[str, Any],
-                                ) -> Any:
-                                    """
-                                    Create a BLEInterface configured for Meshtastic BLE connections.
+                            # Create BLE interface with timeout protection to prevent indefinite hangs
+                            # Use ThreadPoolExecutor to run with timeout, as BLEInterface.__init__
+                            # can potentially block indefinitely if BlueZ is in a bad state.
+                            def create_ble_interface(
+                                kwargs: dict[str, Any],
+                            ) -> Any:
+                                """
+                                Create a BLEInterface configured for Meshtastic BLE connections.
 
-                                    Parameters:
-                                        kwargs (dict): Keyword arguments forwarded to the Meshtastic BLEInterface constructor (e.g., `address`, `adapter`, `auto_reconnect`, `timeout`). Valid keys depend on the Meshtastic BLEInterface implementation.
+                                Parameters:
+                                    kwargs (dict): Keyword arguments forwarded to the Meshtastic BLEInterface constructor (e.g., `address`, `adapter`, `auto_reconnect`, `timeout`). Valid keys depend on the Meshtastic BLEInterface implementation.
 
-                                    Returns:
-                                        BLEInterface: A newly constructed Meshtastic BLEInterface instance.
-                                    """
-                                    return meshtastic.ble_interface.BLEInterface(
-                                        **kwargs
-                                    )
+                                Returns:
+                                    BLEInterface: A newly constructed Meshtastic BLEInterface instance.
+                                """
+                                return meshtastic.ble_interface.BLEInterface(**kwargs)
 
-                                # Use 90-second timeout (3x 30s connection timeout + overhead)
-                                # This provides multiple retry cycles while ensuring eventual failure
-                                # if connection truly cannot be established.
-                                #
-                                # Guard against overlapping BLE tasks: if a previous BLE operation is
-                                # still running (often due to a hung BlueZ/DBus call), we skip queuing
-                                # a new task. Raising TimeoutError here intentionally reuses the
-                                # existing retry/backoff logic rather than silently proceeding.
-                                # Check if shutting down before submitting new BLE tasks
-                                if shutting_down:
-                                    logger.debug(
-                                        "Skipping BLE interface creation for %s (shutting down)",
-                                        ble_address,
-                                    )
-                                    raise TimeoutError(
-                                        f"BLE interface creation cancelled for {ble_address} (shutting down)."
-                                    )
+                            # Use the larger of configured connect timeout and the safety floor.
+                            # This keeps stale-worker detection and future.result() budget aligned
+                            # with the actual BLEInterface constructor timeout.
+                            create_timeout_secs = max(
+                                float(timeout), _ble_interface_create_timeout_secs
+                            )
 
-                                _ensure_ble_worker_available(
+                            # Guard against overlapping BLE tasks: if a previous BLE operation is
+                            # still running (often due to a hung BlueZ/DBus call), we skip queuing
+                            # a new task. Raising TimeoutError here intentionally reuses the
+                            # existing retry/backoff logic rather than silently proceeding.
+                            if shutting_down:
+                                logger.debug(
+                                    "Skipping BLE interface creation for %s (shutting down)",
                                     ble_address,
-                                    operation="interface creation",
+                                )
+                                raise TimeoutError(
+                                    f"BLE interface creation cancelled for {ble_address} (shutting down)."
                                 )
 
-                                create_timeout_secs = max(
-                                    float(timeout), _ble_interface_create_timeout_secs
-                                )
+                            _ensure_ble_worker_available(
+                                ble_address,
+                                operation="interface creation",
+                            )
 
+                            try:
                                 with _ble_executor_lock:
                                     if _ble_future and not _ble_future.done():
                                         logger.debug(
@@ -2949,6 +2960,8 @@ def connect_meshtastic(
                                     raise TimeoutError(
                                         f"BLE connection attempt timed out for {ble_address}."
                                     ) from err
+                            except TimeoutError:
+                                raise
                             except Exception:
                                 # BLEInterface constructor failed - this is a critical error
                                 logger.exception("BLE interface creation failed")

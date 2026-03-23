@@ -57,6 +57,22 @@ class TestIntegrationScenarios(unittest.TestCase):
             module.matrix_rooms = []
             module.meshtastic_client = None
             if hasattr(module, "meshtastic_iface"):
+                iface = module.meshtastic_iface
+                if iface is not None:
+                    try:
+                        disconnect_iface = getattr(
+                            module,
+                            "_disconnect_ble_interface",
+                            None,
+                        )
+                        if callable(disconnect_iface):
+                            disconnect_iface(iface, reason="test-reset")
+                        else:
+                            close = getattr(iface, "close", None)
+                            if callable(close):
+                                close()
+                    except Exception:
+                        pass
                 module.meshtastic_iface = None
             module.event_loop = None
             module.reconnecting = False
@@ -71,6 +87,12 @@ class TestIntegrationScenarios(unittest.TestCase):
                     cancel = getattr(ble_future, "cancel", None)
                     if callable(done) and callable(cancel) and not done():
                         cancel()
+                        result = getattr(ble_future, "result", None)
+                        if callable(result):
+                            try:
+                                result(timeout=0.2)
+                            except Exception:
+                                pass
                 module._ble_future = None
             if hasattr(module, "_ble_future_address"):
                 module._ble_future_address = None

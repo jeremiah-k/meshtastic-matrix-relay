@@ -511,7 +511,9 @@ Add or extend integration tests when a change:
    - Expected log/warning messages for operator visibility
 4. Isolate global state:
    - Use `reset_meshtastic_globals` when touching `mmrelay.meshtastic_utils`.
-   - Reset module-level futures/executor references in scenario tests that mutate them.
+   - In scenario tests that mutate executor/future state, call
+     `mmrelay.meshtastic_utils.shutdown_shared_executors()` and then reset any
+     remaining module-level future/executor references as needed.
 5. Keep integration scope minimal:
    - Mock external dependencies (Meshtastic library objects, filesystem/network boundaries).
    - Exercise real orchestration code between modules.

@@ -295,12 +295,13 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
             "mmrelay.setup_utils.get_executable_path", return_value="/usr/bin/mmrelay"
         ):
             with patch("mmrelay.setup_utils.create_service_file", return_value=False):
-                with patch("mmrelay.setup_utils.logger"):
-                    with patch(
-                        "builtins.input", return_value="y"
-                    ):  # Mock input to avoid stdin issues
-                        result = install_service()
-                        self.assertFalse(result)
+                with patch("mmrelay.setup_utils.read_service_file", return_value=None):
+                    with patch("mmrelay.setup_utils.logger"):
+                        with patch(
+                            "builtins.input", return_value="y"
+                        ):  # Mock input to avoid stdin issues
+                            result = install_service()
+                            self.assertFalse(result)
 
     def test_install_service_daemon_reload_failure(self):
         """

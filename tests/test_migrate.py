@@ -1859,6 +1859,13 @@ class TestMigrationRealWorldScenarios:
     3. Partially migrated data is handled properly
     """
 
+    @pytest.fixture(autouse=True)
+    def _disable_running_process_guard(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        Prevent host-process detection from causing false negatives in isolated tests.
+        """
+        monkeypatch.setattr(migrate_module, "_is_mmrelay_running", lambda: False)
+
     def test_windows_upgrade_from_old_install_location(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

@@ -2,6 +2,7 @@
 """Targeted tests for node-name refresh interval and refresh-loop edge paths."""
 
 import asyncio
+import logging
 from typing import Any, cast
 from unittest.mock import patch
 
@@ -141,9 +142,13 @@ def test_refresh_node_name_tables_non_positive_interval_exits_after_one_pass(
 
 def test_refresh_node_name_tables_handles_sync_exceptions(
     reset_meshtastic_globals,
+    caplog,
 ) -> None:
     """Sync errors should be logged and not crash the refresh loop."""
     _ = reset_meshtastic_globals
+    caplog.set_level(logging.ERROR, logger=mu.logger.name)
+    original_propagate = mu.logger.propagate
+    mu.logger.propagate = True
     client = _ClientWithNodes(
         {
             "node_a": {
@@ -151,18 +156,25 @@ def test_refresh_node_name_tables_handles_sync_exceptions(
             }
         }
     )
-    with (
-        patch.object(mu, "meshtastic_client", client),
-        patch.object(
-            mu,
-            "sync_name_tables_if_changed",
-            side_effect=RuntimeError("sync failure"),
-        ) as mock_sync,
-    ):
-        asyncio.run(
-            mu.refresh_node_name_tables(
-                _OnePassEvent(),
-                refresh_interval_seconds=0.0,
+    try:
+        with (
+            patch.object(mu, "meshtastic_client", client),
+            patch.object(
+                mu,
+                "sync_name_tables_if_changed",
+                side_effect=RuntimeError("sync failure"),
+            ) as mock_sync,
+        ):
+            asyncio.run(
+                mu.refresh_node_name_tables(
+                    _OnePassEvent(),
+                    refresh_interval_seconds=0.0,
+                )
             )
-        )
+    finally:
+        mu.logger.propagate = original_propagate
     mock_sync.assert_called_once()
+    assert any(
+        "Failed to refresh node-name tables from node snapshot" in record.message
+        for record in caplog.records
+    )

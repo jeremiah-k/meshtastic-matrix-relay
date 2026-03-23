@@ -13,6 +13,7 @@ import re
 import sqlite3
 import threading
 from collections.abc import Awaitable, Callable
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from functools import partial
 from typing import Any, Generator, Optional
@@ -107,7 +108,6 @@ class DatabaseManager:
     _write_lock: threading.RLock
     _connections: set[sqlite3.Connection]
     _connections_lock: threading.Lock
-    _json_each_support_verified: bool
 
     def __init__(
         self,
@@ -130,8 +130,8 @@ class DatabaseManager:
 
         Notes:
             Construction eagerly creates and validates the first SQLite connection
-            so unsupported runtime features (for example missing json_each()) fail
-            before a manager instance is published.
+            so path and PRAGMA misconfiguration fail before a manager instance is
+            published.
         """
         _validate_sqlite_json_each_support()
 
@@ -144,10 +144,10 @@ class DatabaseManager:
         self._write_lock = threading.RLock()
         self._connections: set[sqlite3.Connection] = set()
         self._connections_lock = threading.Lock()
-        self._json_each_support_verified = False
+        self._async_executor = ThreadPoolExecutor(max_workers=1)
 
-        # Fail fast before publishing a manager that cannot create usable
-        # connections for json_each()-based node-name queries.
+        # Fail fast before publishing a manager that cannot create a usable
+        # SQLite connection for the configured path/PRAGMA set.
         self._thread_local.connection = self._create_connection()
 
     # ------------------------------------------------------------------ #
@@ -170,9 +170,6 @@ class DatabaseManager:
         try:
             # Serialize PRAGMA setup to avoid concurrent WAL initialization races
             with self._write_lock:
-                if not self._json_each_support_verified:
-                    _probe_sqlite_json_each_support(conn)
-                    self._json_each_support_verified = True
                 if self._busy_timeout_ms:
                     conn.execute(f"PRAGMA busy_timeout = {int(self._busy_timeout_ms)}")
                 if self._enable_wal:
@@ -317,19 +314,26 @@ class DatabaseManager:
         loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> Any:
         """
-        Run a database callable in the event loop's executor and return its result.
+        Run a database callable asynchronously and return its result.
 
         Parameters:
             func (Callable[[sqlite3.Cursor], Any]): Callable that will be invoked with a managed SQLite cursor.
             write (bool, optional): If true, the callable receives a cursor from a transactional write context; otherwise a read-only context is used. Defaults to False.
-            loop (asyncio.AbstractEventLoop, optional): Event loop whose executor will run the callable. If omitted, the running event loop is used.
+            loop (asyncio.AbstractEventLoop, optional): Event loop used for compatibility checks. If omitted, the running event loop is used.
 
         Returns:
             Any: The value returned by `func` when invoked with the cursor.
         """
-        loop = loop or asyncio.get_running_loop()
+        _ = loop or asyncio.get_running_loop()
         executor_func = partial(self.run_sync, func, write=write)
-        return await loop.run_in_executor(None, executor_func)
+        worker_future = self._async_executor.submit(executor_func)
+        try:
+            while not worker_future.done():
+                await asyncio.sleep(0.001)
+        except asyncio.CancelledError:
+            worker_future.cancel()
+            raise
+        return worker_future.result()
 
     # ------------------------------------------------------------------ #
     # Lifecycle
@@ -358,6 +362,13 @@ class DatabaseManager:
                 del self._thread_local.connection
             except AttributeError:
                 pass
+
+        executor = self._async_executor
+        self._async_executor = ThreadPoolExecutor(max_workers=1)
+        try:
+            executor.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            executor.shutdown(wait=False)
 
 
 # Convenience alias for type hints

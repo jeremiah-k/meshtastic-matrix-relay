@@ -6,7 +6,6 @@ These tests exercise error-handling and branch paths that are easy to miss when
 only testing the high-level API.
 """
 
-import logging
 import shutil
 import sqlite3
 import tempfile
@@ -17,7 +16,6 @@ import pytest
 import mmrelay.db_utils as dbu
 from mmrelay.constants.database import (
     NAMES_TABLE_LONGNAMES,
-    NAMES_TABLE_SHORTNAMES,
     PROTO_NODE_NAME_LONG,
     PROTO_NODE_NAME_SHORT,
 )
@@ -39,7 +37,6 @@ from mmrelay.db_utils import (
     _update_names_core,
     clear_db_path_cache,
     delete_longname,
-    delete_shortname,
     get_longname,
     get_shortname,
     initialize_database,
@@ -120,6 +117,40 @@ def test_read_name_values_returns_none_on_sqlite_error(configured_temp_db: str) 
     assert result is None
 
 
+def test_read_name_values_falls_back_when_json_each_unavailable() -> None:
+    """json_each lookup failures should fall back to per-ID queries."""
+
+    class _FallbackCursor:
+        def __init__(self) -> None:
+            self._row: tuple[str, str] | None = None
+
+        def execute(
+            self,
+            sql: str,
+            params: tuple[str] | tuple[str, ...],
+        ) -> "_FallbackCursor":
+            if "json_each" in sql:
+                raise sqlite3.OperationalError("no such function: json_each")
+            meshtastic_id = str(params[0])
+            self._row = (meshtastic_id, "Alpha") if meshtastic_id == "!1" else None
+            return self
+
+        def fetchall(self) -> list[tuple[str, str]]:
+            return []
+
+        def fetchone(self) -> tuple[str, str] | None:
+            return self._row
+
+    mock_manager = MagicMock()
+    mock_manager.run_sync.side_effect = lambda func, write=False: func(
+        _FallbackCursor()
+    )
+    with patch("mmrelay.db_utils._get_db_manager", return_value=mock_manager):
+        result = _read_name_values_for_ids(NAMES_TABLE_LONGNAMES, {"!1", "!2"})
+
+    assert result == {"!1": "Alpha"}
+
+
 def test_name_table_matches_state_handles_failed_read() -> None:
     """Failed reads should cause mismatch detection."""
     state = (NodeNameEntry("!1", "Alpha", "A"),)
@@ -198,7 +229,7 @@ def test_sync_skips_non_string_name_payloads_without_deleting_rows(
         malformed_nodes,
         previous_state=first_state,
     )
-    assert second_state == ()
+    assert second_state == first_state
     assert get_longname("!1") == "Alpha"
     assert get_shortname("!1") == "A"
 
@@ -268,6 +299,39 @@ def test_sync_empty_snapshot_does_not_prune_existing_rows(
     assert stable_empty_state == ()
     assert get_longname("!1") is None
     assert get_shortname("!1") is None
+
+
+def test_sync_non_authoritative_empty_snapshot_does_not_arm_immediate_prune(
+    configured_temp_db: str,
+) -> None:
+    """Conflict-only snapshots should not allow single-cycle empty snapshot pruning."""
+    _ = configured_temp_db
+    baseline_nodes = {
+        "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
+    }
+    first_state = sync_name_tables_if_changed(baseline_nodes, previous_state=None)
+    assert first_state == (NodeNameEntry("!1", "Alpha", "A"),)
+    assert get_longname("!1") == "Alpha"
+
+    conflicting_nodes = {
+        "dup1": {"user": {"id": "!1", "shortName": "ONE"}},
+        "dup2": {"user": {"id": "!1", "shortName": "TWO"}},
+    }
+    conflict_state = sync_name_tables_if_changed(
+        conflicting_nodes,
+        previous_state=first_state,
+    )
+    assert conflict_state == first_state
+    assert get_longname("!1") == "Alpha"
+    assert get_shortname("!1") == "A"
+
+    first_empty_after_conflict = sync_name_tables_if_changed(
+        {},
+        previous_state=conflict_state,
+    )
+    assert first_empty_after_conflict == ()
+    assert get_longname("!1") == "Alpha"
+    assert get_shortname("!1") == "A"
 
 
 class TestFormatNodeIdSample:

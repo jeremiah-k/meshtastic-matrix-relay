@@ -92,6 +92,18 @@ def _reset_ble_inflight_state(module: Any) -> None:
     """
     Reset shared BLE in-flight tracking globals for test isolation.
     """
+    ble_future = getattr(module, "_ble_future", None)
+    if ble_future is not None:
+        done = getattr(ble_future, "done", None)
+        cancel = getattr(ble_future, "cancel", None)
+        if callable(done) and callable(cancel) and not done():
+            cancel()
+            result = getattr(ble_future, "result", None)
+            if callable(result):
+                try:
+                    result(timeout=0.2)
+                except Exception:
+                    pass
     module._ble_future = None
     module._ble_future_address = None
     module._ble_future_started_at = None

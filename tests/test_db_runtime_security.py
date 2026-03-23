@@ -77,9 +77,20 @@ class TestDatabaseManager(unittest.TestCase):
 
     def test_initialization_rejects_unsupported_sqlite_version(self):
         """DatabaseManager should fail fast when runtime SQLite is too old."""
+        min_major, min_minor, min_patch = MIN_SQLITE_VERSION_JSON_EACH
+        if min_patch > 0:
+            unsupported = (min_major, min_minor, min_patch - 1)
+        elif min_minor > 0:
+            unsupported = (min_major, min_minor - 1, 99)
+        else:
+            unsupported = (max(min_major - 1, 0), 99, 99)
+
         with (
-            patch("mmrelay.db_runtime.sqlite3.sqlite_version_info", (3, 8, 11)),
-            patch("mmrelay.db_runtime.sqlite3.sqlite_version", "3.8.11"),
+            patch("mmrelay.db_runtime.sqlite3.sqlite_version_info", unsupported),
+            patch(
+                "mmrelay.db_runtime.sqlite3.sqlite_version",
+                ".".join(str(part) for part in unsupported),
+            ),
         ):
             with self.assertRaises(RuntimeError) as cm:
                 DatabaseManager(self.db_path)
@@ -89,8 +100,14 @@ class TestDatabaseManager(unittest.TestCase):
     def test_initialization_accepts_minimum_supported_sqlite_version(self):
         """DatabaseManager should allow the minimum supported SQLite runtime."""
         with (
-            patch("mmrelay.db_runtime.sqlite3.sqlite_version_info", (3, 9, 0)),
-            patch("mmrelay.db_runtime.sqlite3.sqlite_version", "3.9.0"),
+            patch(
+                "mmrelay.db_runtime.sqlite3.sqlite_version_info",
+                MIN_SQLITE_VERSION_JSON_EACH,
+            ),
+            patch(
+                "mmrelay.db_runtime.sqlite3.sqlite_version",
+                ".".join(str(part) for part in MIN_SQLITE_VERSION_JSON_EACH),
+            ),
         ):
             manager = DatabaseManager(self.db_path)
             try:

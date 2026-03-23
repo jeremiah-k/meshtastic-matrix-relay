@@ -1418,8 +1418,9 @@ db_path, table_name, longnames_table, shortnames_table = sys.argv[1:5]
 allowed_tables = {longnames_table, shortnames_table}
 if table_name not in allowed_tables:
     raise SystemExit(f"Invalid table name: {table_name}")
+db_uri = f"file:{db_path}?mode=ro"
 
-with sqlite3.connect(db_path, timeout=5) as conn:
+with sqlite3.connect(db_uri, uri=True, timeout=5) as conn:
     conn.execute("PRAGMA busy_timeout = 5000")
     row = conn.execute(
         f"SELECT meshtastic_id FROM {table_name} "
@@ -1479,6 +1480,7 @@ if table_name not in allowed_tables:
     raise SystemExit(f"Invalid table name: {table_name}")
 expect_present = expect_present_raw == "1"
 expected_state = "presence" if expect_present else "absence"
+db_uri = f"file:{db_path}?mode=ro"
 
 relay_pid = int(relay_pid_raw) if relay_pid_raw else None
 deadline = time.monotonic() + timeout_seconds
@@ -1505,7 +1507,7 @@ while time.monotonic() < deadline:
             raise SystemExit(1)
 
     try:
-        with sqlite3.connect(db_path, timeout=5) as conn:
+        with sqlite3.connect(db_uri, uri=True, timeout=5) as conn:
             conn.execute("PRAGMA busy_timeout = 5000")
             row = conn.execute(
                 f"SELECT 1 FROM {table_name} WHERE meshtastic_id=? LIMIT 1",
@@ -1521,7 +1523,7 @@ while time.monotonic() < deadline:
 if last_error:
     print(f"Last SQLite error: {last_error}", file=sys.stderr)
 try:
-    with sqlite3.connect(db_path, timeout=5) as conn:
+    with sqlite3.connect(db_uri, uri=True, timeout=5) as conn:
         conn.execute("PRAGMA busy_timeout = 5000")
         target_row = conn.execute(
             f"SELECT * FROM {table_name} WHERE meshtastic_id=? LIMIT 1",

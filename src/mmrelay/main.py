@@ -176,7 +176,13 @@ async def _ready_heartbeat(shutdown_event: asyncio.Event) -> None:
         return
     while not shutdown_event.is_set():
         await asyncio.to_thread(_touch_ready_file)
-        await asyncio.sleep(_ready_heartbeat_seconds)
+        try:
+            await asyncio.wait_for(
+                shutdown_event.wait(),
+                timeout=_ready_heartbeat_seconds,
+            )
+        except asyncio.TimeoutError:
+            continue
 
 
 def _remove_ready_file() -> None:
@@ -350,6 +356,123 @@ async def main(config: dict[str, Any]) -> None:
         """
         shutdown()
 
+    async def _run_blocking_shutdown_step(
+        step_func: Callable[[], None],
+        *,
+        step_name: str,
+        timeout_seconds: float,
+    ) -> None:
+        """
+        Run a potentially blocking shutdown step off the event loop with a timeout.
+
+        The callable executes on a daemon thread so shutdown can continue even if
+        the step hangs. Exceptions are logged and swallowed so remaining cleanup
+        still runs.
+        """
+        loop = asyncio.get_running_loop()
+        step_result: asyncio.Future[Exception | None] = loop.create_future()
+
+        def _run_step() -> None:
+            step_error: Exception | None = None
+            try:
+                step_func()
+            except Exception as exc:
+                step_error = exc
+
+            def _publish_result() -> None:
+                if not step_result.done():
+                    step_result.set_result(step_error)
+
+            try:
+                loop.call_soon_threadsafe(_publish_result)
+            except RuntimeError:
+                # Event loop is closing; no further action is needed.
+                return
+
+        worker = threading.Thread(
+            target=_run_step,
+            name=f"shutdown-{step_name.replace(' ', '-')}",
+            daemon=True,
+        )
+        worker.start()
+
+        try:
+            result = await asyncio.wait_for(step_result, timeout=timeout_seconds)
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Timed out stopping %s after %.1fs; continuing shutdown",
+                step_name,
+                timeout_seconds,
+            )
+            return
+
+        if result is not None:
+            logger.error(
+                "Error while stopping %s",
+                step_name,
+                exc_info=(type(result), result, result.__traceback__),
+            )
+
+    async def _close_matrix_client_best_effort(*, context: str) -> None:
+        """
+        Close the Matrix client without aborting remaining shutdown work.
+        """
+        if matrix_client is None:
+            return
+        matrix_logger.info("Closing Matrix client...")
+        try:
+            await matrix_client.close()
+        except Exception:  # noqa: BLE001 - shutdown must continue
+            matrix_logger.exception(
+                "Failed to close Matrix client during %s",
+                context,
+            )
+
+    async def _close_meshtastic_client_best_effort(*, context: str) -> None:
+        """
+        Close the Meshtastic client using BLE-aware blocking shutdown safeguards.
+        """
+        if not meshtastic_utils.meshtastic_client:
+            return
+
+        meshtastic_logger.info("Closing Meshtastic client...")
+
+        def _close_meshtastic() -> None:
+            if not meshtastic_utils.meshtastic_client:
+                return
+            if meshtastic_utils.meshtastic_client is meshtastic_utils.meshtastic_iface:
+                # BLE shutdown needs explicit disconnect to release BlueZ state.
+                meshtastic_utils._disconnect_ble_interface(
+                    meshtastic_utils.meshtastic_iface,
+                    reason=context,
+                )
+                meshtastic_utils.meshtastic_iface = None
+            else:
+                meshtastic_utils.meshtastic_client.close()
+
+        try:
+            await asyncio.to_thread(
+                meshtastic_utils._run_blocking_with_timeout,
+                _close_meshtastic,
+                timeout=10.0,
+                label=f"meshtastic-client-close-{context.replace(' ', '-')}",
+                timeout_log_level=None,
+            )
+            meshtastic_logger.info("Meshtastic client closed successfully")
+        except TimeoutError:
+            meshtastic_logger.warning(
+                "Meshtastic client close timed out during %s - may cause notification errors",
+                context,
+            )
+        except Exception:  # noqa: BLE001 - shutdown must keep going
+            meshtastic_logger.exception(
+                "Unexpected error during Meshtastic client close during %s",
+                context,
+            )
+        finally:
+            meshtastic_utils.meshtastic_client = None
+            meshtastic_utils.meshtastic_iface = None
+
     try:
         # Load plugins early (run in executor to avoid blocking event loop with time.sleep)
         await loop.run_in_executor(
@@ -432,32 +555,19 @@ async def main(config: dict[str, Any]) -> None:
             await asyncio.gather(check_connection_task, return_exceptions=True)
         _remove_ready_file()
         if plugins_loaded:
-            try:
-                await asyncio.to_thread(shutdown_plugins)
-            except Exception:
-                logger.exception("Failed to stop plugins during startup rollback")
+            await _run_blocking_shutdown_step(
+                shutdown_plugins,
+                step_name="plugins",
+                timeout_seconds=_PLUGIN_SHUTDOWN_TIMEOUT_SECONDS,
+            )
         if message_queue_started:
-            try:
-                await asyncio.to_thread(stop_message_queue)
-            except Exception:
-                logger.exception("Failed to stop message queue during startup rollback")
-        if matrix_client is not None:
-            try:
-                await matrix_client.close()
-            except Exception:
-                logger.exception(
-                    "Failed to close Matrix client during startup rollback"
-                )
-        if meshtastic_utils.meshtastic_client:
-            try:
-                await asyncio.to_thread(meshtastic_utils.meshtastic_client.close)
-            except Exception:
-                logger.exception(
-                    "Failed to close Meshtastic client during startup rollback"
-                )
-            finally:
-                meshtastic_utils.meshtastic_client = None
-                meshtastic_utils.meshtastic_iface = None
+            await _run_blocking_shutdown_step(
+                stop_message_queue,
+                step_name="message queue",
+                timeout_seconds=_MESSAGE_QUEUE_SHUTDOWN_TIMEOUT_SECONDS,
+            )
+        await _close_matrix_client_best_effort(context="startup rollback")
+        await _close_meshtastic_client_best_effort(context="startup rollback")
         raise
 
     async def _node_name_refresh_supervisor(refresh_interval_seconds: float) -> None:
@@ -573,63 +683,6 @@ async def main(config: dict[str, Any]) -> None:
             logger.error(
                 "Error during %s cleanup",
                 task_name,
-                exc_info=(type(result), result, result.__traceback__),
-            )
-
-    async def _run_blocking_shutdown_step(
-        step_func: Callable[[], None],
-        *,
-        step_name: str,
-        timeout_seconds: float,
-    ) -> None:
-        """
-        Run a potentially blocking shutdown step off the event loop with a timeout.
-
-        The callable executes on a daemon thread so shutdown can continue even if
-        the step hangs. Exceptions are logged and swallowed so remaining cleanup
-        still runs.
-        """
-        loop = asyncio.get_running_loop()
-        step_result: asyncio.Future[Exception | None] = loop.create_future()
-
-        def _run_step() -> None:
-            step_error: Exception | None = None
-            try:
-                step_func()
-            except Exception as exc:
-                step_error = exc
-
-            def _publish_result() -> None:
-                if not step_result.done():
-                    step_result.set_result(step_error)
-
-            try:
-                loop.call_soon_threadsafe(_publish_result)
-            except RuntimeError:
-                # Event loop is closing; no further action is needed.
-                return
-
-        worker = threading.Thread(
-            target=_run_step,
-            name=f"shutdown-{step_name.replace(' ', '-')}",
-            daemon=True,
-        )
-        worker.start()
-
-        try:
-            result = await asyncio.wait_for(step_result, timeout=timeout_seconds)
-        except asyncio.TimeoutError:
-            logger.warning(
-                "Timed out stopping %s after %.1fs; continuing shutdown",
-                step_name,
-                timeout_seconds,
-            )
-            return
-
-        if result is not None:
-            logger.error(
-                "Error while stopping %s",
-                step_name,
                 exc_info=(type(result), result, result.__traceback__),
             )
 
@@ -762,58 +815,8 @@ async def main(config: dict[str, Any]) -> None:
             step_name="message queue",
             timeout_seconds=_MESSAGE_QUEUE_SHUTDOWN_TIMEOUT_SECONDS,
         )
-
-        matrix_logger.info("Closing Matrix client...")
-        await matrix_client.close()
-        if meshtastic_utils.meshtastic_client:
-            meshtastic_logger.info("Closing Meshtastic client...")
-            try:
-                # Timeout wrapper to prevent infinite hanging during shutdown
-                # The meshtastic library can sometimes hang indefinitely during close()
-                # operations, especially with BLE connections. This timeout ensures
-                # the application can shut down gracefully within 10 seconds.
-
-                def _close_meshtastic() -> None:
-                    """
-                    Close and clean up the active Meshtastic client connection.
-
-                    If a BLE interface is the active client, perform an explicit BLE disconnect to release the adapter.
-                    Clears meshtastic_utils.meshtastic_client (and meshtastic_utils.meshtastic_iface when applicable).
-                    Does nothing if no client is present.
-                    """
-                    if meshtastic_utils.meshtastic_client:
-                        if (
-                            meshtastic_utils.meshtastic_client
-                            is meshtastic_utils.meshtastic_iface
-                        ):
-                            # BLE shutdown needs an explicit disconnect to release
-                            # the adapter; a plain close() can leave BlueZ stuck.
-                            meshtastic_utils._disconnect_ble_interface(
-                                meshtastic_utils.meshtastic_iface,
-                                reason="shutdown",
-                            )
-                            meshtastic_utils.meshtastic_iface = None
-                        else:
-                            meshtastic_utils.meshtastic_client.close()
-                        meshtastic_utils.meshtastic_client = None
-
-                # Run close on a daemon worker so a hung library close call
-                # cannot block interpreter shutdown.
-                meshtastic_utils._run_blocking_with_timeout(
-                    _close_meshtastic,
-                    timeout=10.0,
-                    label="meshtastic-client-close-shutdown",
-                    timeout_log_level=None,
-                )
-                meshtastic_logger.info("Meshtastic client closed successfully")
-            except TimeoutError:
-                meshtastic_logger.warning(
-                    "Meshtastic client close timed out - may cause notification errors"
-                )
-            except Exception:  # noqa: BLE001 - shutdown must keep going
-                meshtastic_logger.exception(
-                    "Unexpected error during Meshtastic client close"
-                )
+        await _close_matrix_client_best_effort(context="shutdown")
+        await _close_meshtastic_client_best_effort(context="shutdown")
 
         # Attempt to wipe message_map on shutdown if enabled
         if wipe_on_restart:

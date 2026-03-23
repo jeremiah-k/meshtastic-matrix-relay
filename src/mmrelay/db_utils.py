@@ -79,36 +79,51 @@ _LONGNAME_DB_FIELD = _NAME_FIELD_BY_TABLE[NAMES_TABLE_LONGNAMES]
 _SHORTNAME_DB_FIELD = _NAME_FIELD_BY_TABLE[NAMES_TABLE_SHORTNAMES]
 
 _SELECT_STALE_IDS_SQL_BY_TABLE = {
-    NAMES_TABLE_LONGNAMES: "SELECT meshtastic_id FROM longnames",
-    NAMES_TABLE_SHORTNAMES: "SELECT meshtastic_id FROM shortnames",
+    NAMES_TABLE_LONGNAMES: f"SELECT meshtastic_id FROM {NAMES_TABLE_LONGNAMES}",
+    NAMES_TABLE_SHORTNAMES: f"SELECT meshtastic_id FROM {NAMES_TABLE_SHORTNAMES}",
 }
 
 _DELETE_STALE_ID_SQL_BY_TABLE = {
-    NAMES_TABLE_LONGNAMES: "DELETE FROM longnames WHERE meshtastic_id = ?",
-    NAMES_TABLE_SHORTNAMES: "DELETE FROM shortnames WHERE meshtastic_id = ?",
+    NAMES_TABLE_LONGNAMES: (
+        f"DELETE FROM {NAMES_TABLE_LONGNAMES} WHERE meshtastic_id = ?"
+    ),
+    NAMES_TABLE_SHORTNAMES: (
+        f"DELETE FROM {NAMES_TABLE_SHORTNAMES} WHERE meshtastic_id = ?"
+    ),
 }
 
-# json_each() is used for efficient batched lookups by Meshtastic ID.
-# Runtime SQLite compatibility is validated in db_runtime.DatabaseManager.
+# json_each() is the fast path for batched Meshtastic-ID lookups.
+# _read_name_values_for_ids() falls back to per-ID queries when unavailable.
 _SELECT_NAME_VALUES_SQL_BY_TABLE = {
     NAMES_TABLE_LONGNAMES: (
-        "SELECT meshtastic_id, longname FROM longnames "
+        f"SELECT meshtastic_id, {NAMES_FIELD_LONGNAME} FROM {NAMES_TABLE_LONGNAMES} "
         "WHERE meshtastic_id IN (SELECT value FROM json_each(?))"
     ),
     NAMES_TABLE_SHORTNAMES: (
-        "SELECT meshtastic_id, shortname FROM shortnames "
+        f"SELECT meshtastic_id, {NAMES_FIELD_SHORTNAME} FROM {NAMES_TABLE_SHORTNAMES} "
         "WHERE meshtastic_id IN (SELECT value FROM json_each(?))"
+    ),
+}
+
+_SELECT_NAME_VALUE_BY_ID_SQL_BY_TABLE = {
+    NAMES_TABLE_LONGNAMES: (
+        f"SELECT meshtastic_id, {NAMES_FIELD_LONGNAME} "
+        f"FROM {NAMES_TABLE_LONGNAMES} WHERE meshtastic_id = ?"
+    ),
+    NAMES_TABLE_SHORTNAMES: (
+        f"SELECT meshtastic_id, {NAMES_FIELD_SHORTNAME} "
+        f"FROM {NAMES_TABLE_SHORTNAMES} WHERE meshtastic_id = ?"
     ),
 }
 
 _UPSERT_NAME_SQL_BY_TABLE = {
     NAMES_TABLE_LONGNAMES: (
-        "INSERT INTO longnames (meshtastic_id, longname) VALUES (?, ?) "
-        "ON CONFLICT(meshtastic_id) DO UPDATE SET longname=excluded.longname"
+        f"INSERT INTO {NAMES_TABLE_LONGNAMES} (meshtastic_id, {NAMES_FIELD_LONGNAME}) VALUES (?, ?) "
+        f"ON CONFLICT(meshtastic_id) DO UPDATE SET {NAMES_FIELD_LONGNAME}=excluded.{NAMES_FIELD_LONGNAME}"
     ),
     NAMES_TABLE_SHORTNAMES: (
-        "INSERT INTO shortnames (meshtastic_id, shortname) VALUES (?, ?) "
-        "ON CONFLICT(meshtastic_id) DO UPDATE SET shortname=excluded.shortname"
+        f"INSERT INTO {NAMES_TABLE_SHORTNAMES} (meshtastic_id, {NAMES_FIELD_SHORTNAME}) VALUES (?, ?) "
+        f"ON CONFLICT(meshtastic_id) DO UPDATE SET {NAMES_FIELD_SHORTNAME}=excluded.{NAMES_FIELD_SHORTNAME}"
     ),
 }
 
@@ -736,7 +751,7 @@ def get_longname(meshtastic_id: int | str) -> str | None:
             tuple[Any, ...] | None: The first row as a tuple, or `None` if no row is available.
         """
         cursor.execute(
-            "SELECT longname FROM longnames WHERE meshtastic_id=?",
+            f"SELECT {NAMES_FIELD_LONGNAME} FROM {NAMES_TABLE_LONGNAMES} WHERE meshtastic_id=?",
             (id_key,),
         )
         return cast(tuple[Any, ...] | None, cursor.fetchone())
@@ -771,8 +786,7 @@ def save_longname(meshtastic_id: int | str, longname: str) -> bool:
         This executes an upsert into the `longnames` table for `id_key` with `longname` taken from the enclosing scope.
         """
         cursor.execute(
-            "INSERT INTO longnames (meshtastic_id, longname) VALUES (?, ?) "
-            "ON CONFLICT(meshtastic_id) DO UPDATE SET longname=excluded.longname",
+            _UPSERT_NAME_SQL_BY_TABLE[NAMES_TABLE_LONGNAMES],
             (id_key, longname),
         )
 
@@ -863,6 +877,17 @@ def _normalize_node_name_value(name_value: Any) -> str | None:
     return name_value or None
 
 
+def _is_json_each_unsupported_error(exc: sqlite3.Error) -> bool:
+    """
+    Return True when an SQLite error indicates missing json_each() support.
+    """
+    message = str(exc).lower()
+    return (
+        "no such function: json_each" in message
+        or "no such table: json_each" in message
+    )
+
+
 def _read_name_values_for_ids(
     table: str, current_ids: set[str]
 ) -> dict[str, str | None] | None:
@@ -882,7 +907,8 @@ def _read_name_values_for_ids(
 
     column_name = _NAME_FIELD_BY_TABLE.get(table)
     select_sql = _SELECT_NAME_VALUES_SQL_BY_TABLE.get(table)
-    if column_name is None or select_sql is None:
+    select_by_id_sql = _SELECT_NAME_VALUE_BY_ID_SQL_BY_TABLE.get(table)
+    if column_name is None or select_sql is None or select_by_id_sql is None:
         raise _InvalidNamesTableError(table)
 
     manager = _get_db_manager()
@@ -890,18 +916,40 @@ def _read_name_values_for_ids(
 
     def _fetch(cursor: sqlite3.Cursor) -> dict[str, str | None]:
         rows_by_id: dict[str, str | None] = {}
+        json_each_supported = True
+
         for offset in range(0, len(sorted_ids), DEFAULT_NAME_PRUNE_CHUNK_SIZE):
             chunk_ids = sorted_ids[offset : offset + DEFAULT_NAME_PRUNE_CHUNK_SIZE]
-            cursor.execute(
-                select_sql,
-                (json.dumps(chunk_ids),),
-            )
+            try:
+                cursor.execute(
+                    select_sql,
+                    (json.dumps(chunk_ids),),
+                )
+            except sqlite3.Error as exc:
+                if _is_json_each_unsupported_error(exc):
+                    json_each_supported = False
+                    rows_by_id.clear()
+                    logger.debug(
+                        "SQLite json_each() unavailable while reading %s values; falling back to per-ID lookups",
+                        column_name,
+                    )
+                    break
+                raise
+
             rows_by_id.update(
                 {
                     str(row[0]): _normalize_node_name_value(row[1])
                     for row in cursor.fetchall()
                 }
             )
+
+        if not json_each_supported:
+            for id_key in sorted_ids:
+                cursor.execute(select_by_id_sql, (id_key,))
+                row = cursor.fetchone()
+                if row is None:
+                    continue
+                rows_by_id[str(row[0])] = _normalize_node_name_value(row[1])
         return rows_by_id
 
     try:
@@ -1083,6 +1131,7 @@ def _collect_node_name_snapshot(
                 "Skipping node %s due to conflicting duplicate names in snapshot",
                 id_key,
             )
+            snapshot_complete = False
             state_by_id.pop(id_key, None)
             # Keep conflicting IDs in current_ids so stale-row pruning does not
             # incorrectly delete existing rows for active nodes.
@@ -1269,6 +1318,18 @@ def sync_name_tables_if_changed(
     if nodes == {} and previous_state == ():
         # Require at least one stable empty refresh cycle before full-table prune.
         snapshot_complete = True
+
+    # Non-authoritative empty states (for example conflict-only/invalid snapshots)
+    # must not replace previous_state, otherwise a subsequent authoritative empty
+    # snapshot could incorrectly prune all rows after a single transient cycle.
+    if nodes != {} and not snapshot_complete and not current_state:
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "Skipping non-authoritative empty node-name snapshot (nodes=%d)",
+                len(nodes),
+            )
+        return previous_state
+
     if logger.isEnabledFor(logging.DEBUG):
         current_state_ids = {entry.meshtastic_id for entry in current_state}
         if previous_state is None:
@@ -1364,23 +1425,94 @@ def _update_names_core(
     if name_key not in _DB_COLUMN_BY_PROTO_NODE_NAME_FIELD:
         raise ValueError(f"Unsupported node name key: {name_key}")
 
-    def _get_long_name(entry: NodeNameEntry) -> str | None:
-        return entry.long_name
+    def _collect_single_name_snapshot(
+        node_rows: dict[str, Any],
+    ) -> tuple[dict[str, str | None], set[str], bool]:
+        """
+        Collect one name-field snapshot without depending on the sibling field.
 
-    def _get_short_name(entry: NodeNameEntry) -> str | None:
-        return entry.short_name
+        This allows update_longnames()/update_shortnames() to proceed for a valid
+        field even when the other field is malformed or conflicting.
+        """
+        snapshot_complete = True
+        current_ids: set[str] = set()
+        state_by_id: dict[str, str | None] = {}
+        skipped_ids: set[str] = set()
 
-    if name_key == PROTO_NODE_NAME_LONG:
-        get_name = _get_long_name
-    elif name_key == PROTO_NODE_NAME_SHORT:
-        get_name = _get_short_name
-    else:
-        raise ValueError(f"Unsupported node name key: {name_key}")
-    state, current_ids, snapshot_complete = _collect_node_name_snapshot(nodes)
+        for node in node_rows.values():
+            if not isinstance(node, dict):
+                snapshot_complete = False
+                continue
+
+            user = node.get("user")
+            if not isinstance(user, dict):
+                snapshot_complete = False
+                continue
+
+            meshtastic_id = user.get("id")
+            if meshtastic_id is None:
+                logger.debug(
+                    "Skipping node-name snapshot entry because user.id is missing"
+                )
+                snapshot_complete = False
+                continue
+            if isinstance(meshtastic_id, bool) or not isinstance(
+                meshtastic_id,
+                (str, int),
+            ):
+                logger.debug(
+                    "Skipping node-name snapshot entry because user.id has invalid type %s",
+                    type(meshtastic_id).__name__,
+                )
+                snapshot_complete = False
+                continue
+            if isinstance(meshtastic_id, str) and meshtastic_id == "":
+                logger.debug(
+                    "Skipping node-name snapshot entry because user.id is empty"
+                )
+                snapshot_complete = False
+                continue
+
+            id_key = str(meshtastic_id)
+            if id_key in skipped_ids:
+                continue
+            current_ids.add(id_key)
+
+            raw_name = user.get(name_key)
+            if raw_name is not None and not isinstance(raw_name, str):
+                logger.warning(
+                    "Skipping %s update for %s due to non-string value type %s",
+                    name_key,
+                    id_key,
+                    type(raw_name).__name__,
+                )
+                snapshot_complete = False
+                continue
+
+            normalized_name = _normalize_node_name_value(raw_name)
+            existing_name = state_by_id.get(id_key)
+            if existing_name is None:
+                state_by_id[id_key] = normalized_name
+                continue
+
+            merged_name = _merge_node_name_values(existing_name, normalized_name)
+            if merged_name is _CONFLICT_SENTINEL:
+                logger.warning(
+                    "Skipping %s update for %s due to conflicting duplicate values",
+                    name_key,
+                    id_key,
+                )
+                state_by_id.pop(id_key, None)
+                skipped_ids.add(id_key)
+                continue
+
+            state_by_id[id_key] = cast(str | None, merged_name)
+
+        return state_by_id, current_ids, snapshot_complete
+
+    state_by_id, current_ids, snapshot_complete = _collect_single_name_snapshot(nodes)
     all_saves_ok = True
-    for state_row in state:
-        id_key = state_row.meshtastic_id
-        normalized_name = get_name(state_row)
+    for id_key, normalized_name in state_by_id.items():
         if normalized_name is None:
             if not delete_name(id_key):
                 all_saves_ok = False
@@ -1446,7 +1578,7 @@ def get_shortname(meshtastic_id: int | str) -> str | None:
             tuple[Any, ...] | None: The first row returned by the query (typically a single-item tuple containing the `shortname`), or `None` if no row is found.
         """
         cursor.execute(
-            "SELECT shortname FROM shortnames WHERE meshtastic_id=?",
+            f"SELECT {NAMES_FIELD_SHORTNAME} FROM {NAMES_TABLE_SHORTNAMES} WHERE meshtastic_id=?",
             (id_key,),
         )
         return cast(tuple[Any, ...] | None, cursor.fetchone())
@@ -1480,8 +1612,7 @@ def save_shortname(meshtastic_id: int | str, shortname: str) -> bool:
         Upserts the shortname for the captured Meshtastic ID into the shortnames table using the provided database cursor.
         """
         cursor.execute(
-            "INSERT INTO shortnames (meshtastic_id, shortname) VALUES (?, ?) "
-            "ON CONFLICT(meshtastic_id) DO UPDATE SET shortname=excluded.shortname",
+            _UPSERT_NAME_SQL_BY_TABLE[NAMES_TABLE_SHORTNAMES],
             (id_key, shortname),
         )
 

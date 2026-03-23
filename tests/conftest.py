@@ -689,6 +689,7 @@ def reset_meshtastic_globals():
     original_values = {
         "config": getattr(mu, "config", None),
         "meshtastic_client": getattr(mu, "meshtastic_client", None),
+        "meshtastic_iface": getattr(mu, "meshtastic_iface", None),
         "reconnecting": getattr(mu, "reconnecting", False),
         "shutting_down": getattr(mu, "shutting_down", False),
         "reconnect_task": getattr(mu, "reconnect_task", None),
@@ -702,6 +703,7 @@ def reset_meshtastic_globals():
         "_ble_future_address": getattr(mu, "_ble_future_address", None),
         "_ble_future_started_at": getattr(mu, "_ble_future_started_at", None),
         "_ble_future_timeout_secs": getattr(mu, "_ble_future_timeout_secs", None),
+        "_ble_timeout_counts": dict(getattr(mu, "_ble_timeout_counts", {})),
         "_health_probe_request_deadlines": dict(
             getattr(mu, "_health_probe_request_deadlines", {})
         ),
@@ -710,6 +712,7 @@ def reset_meshtastic_globals():
     # Reset mutable globals to a clean state; keep logger and event_loop usable
     mu.config = None
     mu.meshtastic_client = None
+    mu.meshtastic_iface = None
     mu.reconnecting = False
     mu.shutting_down = False
     mu.reconnect_task = None
@@ -721,6 +724,7 @@ def reset_meshtastic_globals():
     mu._ble_future_address = None
     mu._ble_future_started_at = None
     mu._ble_future_timeout_secs = None
+    mu._ble_timeout_counts = {}
     mu._health_probe_request_deadlines = {}
 
     yield

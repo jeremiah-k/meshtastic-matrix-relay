@@ -27,6 +27,7 @@ from mmrelay.constants.network import METADATA_WATCHDOG_SECS
 def reset_meshtastic_state(reset_meshtastic_globals):
     """Ensure clean state for each test."""
     # Additional resets specific to these tests
+    mu.meshtastic_iface = None
     mu._metadata_future = None
     mu._metadata_future_started_at = None
     mu._ble_future = None

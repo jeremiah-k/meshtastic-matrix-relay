@@ -271,6 +271,46 @@ class TestDbUtils(unittest.TestCase):
         self.assertEqual(get_shortname("!12345678"), "AS")
         self.assertEqual(get_shortname("!87654321"), "BJ")
 
+    def test_update_shortnames_ignores_invalid_longname_field(self):
+        """
+        Invalid longName payloads must not block shortname updates for the same node.
+        """
+        initialize_database()
+        save_shortname("!12345678", "OLD")
+
+        nodes = {
+            "!12345678": {
+                "user": {
+                    "id": "!12345678",
+                    "longName": 123,
+                    "shortName": "NEW",
+                }
+            }
+        }
+
+        self.assertTrue(update_shortnames(nodes))
+        self.assertEqual(get_shortname("!12345678"), "NEW")
+
+    def test_update_longnames_ignores_invalid_shortname_field(self):
+        """
+        Invalid shortName payloads must not block longname updates for the same node.
+        """
+        initialize_database()
+        save_longname("!12345678", "Old Name")
+
+        nodes = {
+            "!12345678": {
+                "user": {
+                    "id": "!12345678",
+                    "longName": "Updated Name",
+                    "shortName": {"bad": "type"},
+                }
+            }
+        }
+
+        self.assertTrue(update_longnames(nodes))
+        self.assertEqual(get_longname("!12345678"), "Updated Name")
+
     def test_build_node_name_state_is_sorted_and_stable(self):
         """Node-name state snapshot should be deterministic for change detection."""
         nodes = {
