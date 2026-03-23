@@ -6,6 +6,8 @@ import logging
 from typing import Any, cast
 from unittest.mock import patch
 
+import pytest
+
 import mmrelay.meshtastic_utils as mu
 from mmrelay.constants.config import DEFAULT_NODE_NAME_REFRESH_INTERVAL
 
@@ -77,7 +79,7 @@ def test_refresh_node_name_tables_skips_when_nodes_attribute_unavailable(
     ):
         asyncio.run(
             mu.refresh_node_name_tables(
-                _OnePassEvent(),
+                _OnePassEvent(),  # type: ignore[arg-type]
                 refresh_interval_seconds=0.01,
             )
         )
@@ -103,7 +105,7 @@ def test_refresh_node_name_tables_handles_timeout_then_retries(
     ):
         asyncio.run(
             mu.refresh_node_name_tables(
-                event,
+                event,  # type: ignore[arg-type]
                 refresh_interval_seconds=0.01,
             )
         )
@@ -144,7 +146,7 @@ def test_refresh_node_name_tables_handles_sync_exceptions(
     reset_meshtastic_globals,
     caplog,
 ) -> None:
-    """Sync errors should be logged and not crash the refresh loop."""
+    """Sync errors should be logged and re-raised for supervisor handling."""
     _ = reset_meshtastic_globals
     caplog.set_level(logging.ERROR, logger=mu.logger.name)
     original_propagate = mu.logger.propagate
@@ -165,12 +167,13 @@ def test_refresh_node_name_tables_handles_sync_exceptions(
                 side_effect=RuntimeError("sync failure"),
             ) as mock_sync,
         ):
-            asyncio.run(
-                mu.refresh_node_name_tables(
-                    _OnePassEvent(),
-                    refresh_interval_seconds=0.0,
+            with pytest.raises(RuntimeError, match="sync failure"):
+                asyncio.run(
+                    mu.refresh_node_name_tables(
+                        _OnePassEvent(),  # type: ignore[arg-type]
+                        refresh_interval_seconds=0.0,
+                    )
                 )
-            )
     finally:
         mu.logger.propagate = original_propagate
     mock_sync.assert_called_once()
