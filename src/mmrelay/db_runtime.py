@@ -17,9 +17,11 @@ from contextlib import contextmanager
 from functools import partial
 from typing import Any, Generator, Optional
 
-MIN_SQLITE_VERSION_JSON_EACH = (3, 9, 0)
-_JSON_EACH_PROBE_SQL = "SELECT value FROM json_each(?)"
-_JSON_EACH_PROBE_PAYLOAD = '["probe"]'
+from mmrelay.constants.database import (
+    MIN_SQLITE_VERSION_JSON_EACH,
+    SQLITE_JSON_EACH_PROBE_PAYLOAD,
+    SQLITE_JSON_EACH_PROBE_SQL,
+)
 
 
 def _get_sqlite_runtime_version_info() -> tuple[int, int, int]:
@@ -69,7 +71,9 @@ def _probe_sqlite_json_each_support(conn: sqlite3.Connection) -> None:
     """
     current_version = _get_sqlite_runtime_version_info()
     try:
-        conn.execute(_JSON_EACH_PROBE_SQL, (_JSON_EACH_PROBE_PAYLOAD,)).fetchall()
+        conn.execute(
+            SQLITE_JSON_EACH_PROBE_SQL, (SQLITE_JSON_EACH_PROBE_PAYLOAD,)
+        ).fetchall()
     except sqlite3.Error as exc:
         error_message = str(exc).lower()
         if (
@@ -122,6 +126,11 @@ class DatabaseManager:
             extra_pragmas (Optional[dict[str, Any]]): Additional PRAGMA directives to apply to each connection.
                 Keys are pragma names and values are either numeric or string pragma values. Invalid pragma
                 names or values will raise when a connection is created.
+
+        Notes:
+            Construction eagerly creates and validates the first SQLite connection
+            so unsupported runtime features (for example missing json_each()) fail
+            before a manager instance is published.
         """
         _validate_sqlite_json_each_support()
 
@@ -135,6 +144,10 @@ class DatabaseManager:
         self._connections: set[sqlite3.Connection] = set()
         self._connections_lock = threading.Lock()
         self._json_each_support_verified = False
+
+        # Fail fast before publishing a manager that cannot create usable
+        # connections for json_each()-based node-name queries.
+        self._thread_local.connection = self._create_connection()
 
     # ------------------------------------------------------------------ #
     # Internal helpers

@@ -141,6 +141,12 @@ def test_collect_node_name_snapshot_marks_invalid_entries_incomplete() -> None:
         "user_not_dict": {"user": "bad"},
         "missing_id": {"user": {"longName": "No ID", "shortName": "N"}},
         "empty_id": {"user": {"id": "", "longName": "Empty", "shortName": "E"}},
+        "invalid_id_dict": {
+            "user": {"id": {"bad": 1}, "longName": "Bad", "shortName": "BD"}
+        },
+        "invalid_id_bool": {
+            "user": {"id": True, "longName": "Bool", "shortName": "BL"}
+        },
         "valid": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
     }
     state, current_ids, snapshot_complete = _collect_node_name_snapshot(nodes)
@@ -176,7 +182,11 @@ def test_sync_unchanged_snapshot_repair_failure_keeps_previous_state(
 
     def fail_repair_write(self, func, *, write=False):
         nonlocal repair_failure_triggered
-        if write and not repair_failure_triggered:
+        if (
+            write
+            and getattr(func, "__name__", "") == "_sync"
+            and not repair_failure_triggered
+        ):
             repair_failure_triggered = True
             raise sqlite3.Error("forced write failure on repair")
         return original_run_sync(self, func, write=write)

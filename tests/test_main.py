@@ -431,6 +431,14 @@ class TestMain(unittest.TestCase):
         mock_matrix_client.close = AsyncMock()
         mock_connect_matrix.return_value = mock_matrix_client
         mock_connect_meshtastic.return_value = MagicMock()
+        created_task_coro_names: list[str] = []
+        real_create_task = asyncio.create_task
+
+        def _capture_create_task(coro: Any, *args: Any, **kwargs: Any) -> Any:
+            coro_code = getattr(coro, "cr_code", None)
+            if coro_code is not None:
+                created_task_coro_names.append(str(coro_code.co_name))
+            return real_create_task(coro, *args, **kwargs)
 
         with (
             patch(
@@ -447,6 +455,10 @@ class TestMain(unittest.TestCase):
                 "mmrelay.main.meshtastic_utils.get_node_name_refresh_interval_seconds",
                 return_value=expected_interval,
             ) as mock_get_interval,
+            patch(
+                "mmrelay.main.asyncio.create_task",
+                side_effect=_capture_create_task,
+            ) as mock_create_task,
             patch("mmrelay.main.shutdown_plugins"),
         ):
             mock_queue = MagicMock()
@@ -463,6 +475,8 @@ class TestMain(unittest.TestCase):
         mock_connect_matrix.assert_awaited_once_with(passed_config=self.mock_config)
         self.assertEqual(mock_join_room.await_count, 2)
         mock_get_interval.assert_called_once_with(self.mock_config)
+        self.assertIn("_node_name_refresh_supervisor", created_task_coro_names)
+        self.assertGreaterEqual(mock_create_task.call_count, 1)
         mock_refresh_node_names.assert_called_once_with(
             shutdown_event,
             refresh_interval_seconds=expected_interval,
@@ -1535,7 +1549,10 @@ class TestMainFunctionEdgeCases(unittest.TestCase):
 
         import mmrelay.meshtastic_utils as meshtastic_module
 
-        with patch("mmrelay.meshtastic_utils.meshtastic_client", None):
+        with (
+            patch("mmrelay.meshtastic_utils.meshtastic_client", None),
+            patch("mmrelay.meshtastic_utils.sync_name_tables_if_changed") as mock_sync,
+        ):
             result = asyncio.run(
                 meshtastic_module.refresh_node_name_tables(
                     _OnePassEvent(),
@@ -1543,6 +1560,7 @@ class TestMainFunctionEdgeCases(unittest.TestCase):
                 )
             )
 
+        mock_sync.assert_not_called()
         self.assertIsNone(result)
 
     def test_node_name_refresh_interval_invalid_defaults(self):

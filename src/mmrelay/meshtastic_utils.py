@@ -1,7 +1,6 @@
 import asyncio
 import atexit
 import contextlib
-import copy
 import functools
 import importlib.util
 import inspect
@@ -35,6 +34,7 @@ from mmrelay.constants.config import (
     DEFAULT_HEALTH_CHECK_ENABLED,
     DEFAULT_NODE_NAME_REFRESH_INTERVAL,
 )
+from mmrelay.constants.database import PROTO_NODE_NAME_LONG, PROTO_NODE_NAME_SHORT
 from mmrelay.constants.formats import (
     DETECTION_SENSOR_APP,
     EMOJI_FLAG_VALUE,
@@ -539,6 +539,7 @@ async def refresh_node_name_tables(
         try:
             with meshtastic_lock:
                 client = meshtastic_client
+                nodes_snapshot: dict[str, Any] | None
                 if client is None:
                     nodes_snapshot = None
                 else:
@@ -549,7 +550,30 @@ async def refresh_node_name_tables(
                         )
                         nodes_snapshot = None
                     else:
-                        nodes_snapshot = copy.deepcopy(cast(dict[str, Any], raw_nodes))
+                        nodes_snapshot = {}
+                        for node_id, raw_node in raw_nodes.items():
+                            node_key = str(node_id)
+                            if not isinstance(raw_node, dict):
+                                nodes_snapshot[node_key] = raw_node
+                                continue
+
+                            raw_user = raw_node.get("user")
+                            if not isinstance(raw_user, dict):
+                                nodes_snapshot[node_key] = {"user": raw_user}
+                                continue
+
+                            user_snapshot: dict[str, Any] = {}
+                            if "id" in raw_user:
+                                user_snapshot["id"] = raw_user.get("id")
+                            if PROTO_NODE_NAME_LONG in raw_user:
+                                user_snapshot[PROTO_NODE_NAME_LONG] = raw_user.get(
+                                    PROTO_NODE_NAME_LONG
+                                )
+                            if PROTO_NODE_NAME_SHORT in raw_user:
+                                user_snapshot[PROTO_NODE_NAME_SHORT] = raw_user.get(
+                                    PROTO_NODE_NAME_SHORT
+                                )
+                            nodes_snapshot[node_key] = {"user": user_snapshot}
 
             if nodes_snapshot is None:
                 if client is None:

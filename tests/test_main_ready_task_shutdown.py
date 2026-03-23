@@ -130,9 +130,17 @@ async def test_main_cleans_up_ready_task_on_shutdown(tmp_path, monkeypatch) -> N
     mock_matrix_client.add_event_callback = MagicMock()
     mock_matrix_client.close = AsyncMock()
     event_factory = _EventFactory()
+    captured_ready_event: _ControllableEvent | None = None
 
     async def _sync_forever_wait(*_args, **_kwargs) -> None:
         await asyncio.sleep(3600)
+
+    real_ready_heartbeat = main_module._ready_heartbeat
+
+    async def _capture_ready_heartbeat(event: _ControllableEvent) -> None:
+        nonlocal captured_ready_event
+        captured_ready_event = event
+        await real_ready_heartbeat(event)
 
     mock_matrix_client.sync_forever = AsyncMock(side_effect=_sync_forever_wait)
 
@@ -161,6 +169,7 @@ async def test_main_cleans_up_ready_task_on_shutdown(tmp_path, monkeypatch) -> N
         patch(
             "mmrelay.main._touch_ready_file", wraps=main_module._touch_ready_file
         ) as mock_touch_ready_file,
+        patch("mmrelay.main._ready_heartbeat", side_effect=_capture_ready_heartbeat),
         patch("mmrelay.main.shutdown_plugins"),
         patch("mmrelay.main.stop_message_queue"),
         patch("mmrelay.main.asyncio.Event", side_effect=event_factory),
@@ -172,10 +181,12 @@ async def test_main_cleans_up_ready_task_on_shutdown(tmp_path, monkeypatch) -> N
 
         main_task = asyncio.create_task(main_module.main(config))
         await _wait_until(lambda: bool(event_factory.created))
+        await _wait_until(lambda: captured_ready_event is not None)
         await _wait_until(
             lambda: ready_path.exists() and mock_touch_ready_file.call_count > 0
         )
-        event_factory.created[0].set()
+        assert captured_ready_event is not None
+        captured_ready_event.set()
         await asyncio.wait_for(main_task, timeout=5)
 
     mock_matrix_client.close.assert_awaited_once()

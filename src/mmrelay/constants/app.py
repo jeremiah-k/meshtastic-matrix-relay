@@ -23,6 +23,11 @@ MATRIX_DEVICE_NAME = "MMRelay"
 # Platform-specific constants
 WINDOWS_PLATFORM = "win32"
 
+# Runtime timing defaults
+DEFAULT_READY_HEARTBEAT_SECONDS = 60
+PLUGIN_SHUTDOWN_TIMEOUT_SECONDS = 5.0
+MESSAGE_QUEUE_SHUTDOWN_TIMEOUT_SECONDS = 5.0
+
 # Package and installation constants
 PACKAGE_NAME_E2E = "mmrelay[e2e]"
 PYTHON_OLM_PACKAGE = "python-olm"

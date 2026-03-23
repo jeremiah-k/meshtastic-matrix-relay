@@ -26,7 +26,13 @@ from nio.events.room_events import RoomMemberEvent
 # Import meshtastic_utils as a module to set event_loop
 from mmrelay import __version__, meshtastic_utils
 from mmrelay.cli_utils import msg_suggest_check_config, msg_suggest_generate_config
-from mmrelay.constants.app import APP_DISPLAY_NAME, WINDOWS_PLATFORM
+from mmrelay.constants.app import (
+    APP_DISPLAY_NAME,
+    DEFAULT_READY_HEARTBEAT_SECONDS,
+    MESSAGE_QUEUE_SHUTDOWN_TIMEOUT_SECONDS,
+    PLUGIN_SHUTDOWN_TIMEOUT_SECONDS,
+    WINDOWS_PLATFORM,
+)
 from mmrelay.constants.config import (
     CONFIG_KEY_MESSAGE_DELAY,
     CONFIG_KEY_MSG_MAP,
@@ -70,17 +76,21 @@ logger = get_logger(name=APP_DISPLAY_NAME)
 # Flag to track if banner has been printed
 _banner_printed = False
 _ready_file_path = os.environ.get("MMRELAY_READY_FILE")
-_ready_heartbeat_seconds_raw = os.environ.get("MMRELAY_READY_HEARTBEAT_SECONDS", "60")
-_PLUGIN_SHUTDOWN_TIMEOUT_SECONDS = 5.0
-_MESSAGE_QUEUE_SHUTDOWN_TIMEOUT_SECONDS = 5.0
+_ready_heartbeat_seconds_raw = os.environ.get(
+    "MMRELAY_READY_HEARTBEAT_SECONDS",
+    str(DEFAULT_READY_HEARTBEAT_SECONDS),
+)
+_PLUGIN_SHUTDOWN_TIMEOUT_SECONDS = PLUGIN_SHUTDOWN_TIMEOUT_SECONDS
+_MESSAGE_QUEUE_SHUTDOWN_TIMEOUT_SECONDS = MESSAGE_QUEUE_SHUTDOWN_TIMEOUT_SECONDS
 try:
     _ready_heartbeat_seconds = int(_ready_heartbeat_seconds_raw)
 except (TypeError, ValueError):
     logger.warning(
-        "Invalid MMRELAY_READY_HEARTBEAT_SECONDS=%r; defaulting to 60",
+        "Invalid MMRELAY_READY_HEARTBEAT_SECONDS=%r; defaulting to %d",
         _ready_heartbeat_seconds_raw,
+        DEFAULT_READY_HEARTBEAT_SECONDS,
     )
-    _ready_heartbeat_seconds = 60
+    _ready_heartbeat_seconds = DEFAULT_READY_HEARTBEAT_SECONDS
 
 
 def _write_ready_file() -> None:
@@ -500,6 +510,7 @@ async def main(config: dict[str, Any]) -> None:
                     asyncio.gather(task, return_exceptions=True),
                     timeout=1.0,
                 )
+                return
             except asyncio.TimeoutError:
                 logger.warning(
                     "Timed out cancelling %s; continuing shutdown",
@@ -595,11 +606,17 @@ async def main(config: dict[str, Any]) -> None:
 
         if _ready_heartbeat_seconds > 0:
             ready_task = asyncio.create_task(_ready_heartbeat(shutdown_event))
-        # Publish readiness only after startup wiring in this section is complete.
-        _write_ready_file()
 
         # Ensure message queue processor is started now that event loop is running
-        get_message_queue().ensure_processor_started()
+        try:
+            get_message_queue().ensure_processor_started()
+        except Exception:
+            matrix_logger.exception(
+                "Failed to start message queue processor during startup"
+            )
+            raise
+        # Publish readiness only after startup wiring in this section is complete.
+        _write_ready_file()
         while not shutdown_event.is_set():
             sync_task: asyncio.Task[Any] | None = None
             shutdown_task: asyncio.Task[Any] | None = None

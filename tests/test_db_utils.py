@@ -380,6 +380,22 @@ class TestDbUtils(unittest.TestCase):
         self.assertIsNone(get_longname("!stale"))
         self.assertIsNone(get_shortname("!stale"))
 
+    def test_sync_name_tables_if_changed_unchanged_snapshot_without_stale_rows(self):
+        """Unchanged snapshots without stale rows should keep state/data unchanged."""
+        initialize_database()
+        nodes = {
+            "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
+        }
+        first_state = sync_name_tables_if_changed(nodes, previous_state=None)
+
+        second_state = sync_name_tables_if_changed(nodes, previous_state=first_state)
+
+        self.assertEqual(second_state, first_state)
+        self.assertEqual(get_longname("!1"), "Alpha")
+        self.assertEqual(get_shortname("!1"), "A")
+        self.assertIsNone(get_longname("!unknown"))
+        self.assertIsNone(get_shortname("!unknown"))
+
     def test_sync_name_tables_if_partial_snapshot_skips_pruning(self):
         """Unchanged partial snapshots should skip stale-row pruning for safety."""
         initialize_database()

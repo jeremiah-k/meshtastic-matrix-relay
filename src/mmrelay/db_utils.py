@@ -13,6 +13,8 @@ from mmrelay.constants.database import (
     DEFAULT_ENABLE_WAL,
     DEFAULT_EXTRA_PRAGMAS,
     DEFAULT_NAME_PRUNE_CHUNK_SIZE,
+    NAMES_FIELD_LONGNAME,
+    NAMES_FIELD_SHORTNAME,
     NAMES_TABLE_LONGNAMES,
     NAMES_TABLE_SHORTNAMES,
     PROTO_NODE_NAME_LONG,
@@ -63,8 +65,8 @@ _NODE_NAME_DEBUG_ID_SAMPLE_LIMIT = 20
 
 # Table name to singular field-name mapping used for logging and column lookup.
 _NAME_FIELD_BY_TABLE = {
-    NAMES_TABLE_LONGNAMES: "longname",
-    NAMES_TABLE_SHORTNAMES: "shortname",
+    NAMES_TABLE_LONGNAMES: NAMES_FIELD_LONGNAME,
+    NAMES_TABLE_SHORTNAMES: NAMES_FIELD_SHORTNAME,
 }
 
 # Explicit protocol-field -> DB-column translation so Meshtastic payload keys
@@ -73,6 +75,8 @@ _DB_COLUMN_BY_PROTO_NODE_NAME_FIELD = {
     PROTO_NODE_NAME_LONG: _NAME_FIELD_BY_TABLE[NAMES_TABLE_LONGNAMES],
     PROTO_NODE_NAME_SHORT: _NAME_FIELD_BY_TABLE[NAMES_TABLE_SHORTNAMES],
 }
+_LONGNAME_DB_FIELD = _NAME_FIELD_BY_TABLE[NAMES_TABLE_LONGNAMES]
+_SHORTNAME_DB_FIELD = _NAME_FIELD_BY_TABLE[NAMES_TABLE_SHORTNAMES]
 
 _SELECT_STALE_IDS_SQL_BY_TABLE = {
     NAMES_TABLE_LONGNAMES: "SELECT meshtastic_id FROM longnames",
@@ -451,10 +455,12 @@ def initialize_database() -> None:
             cursor: An sqlite3.Cursor positioned on the target database; used to execute DDL statements.
         """
         cursor.execute(
-            "CREATE TABLE IF NOT EXISTS longnames (meshtastic_id TEXT PRIMARY KEY, longname TEXT)"
+            f"CREATE TABLE IF NOT EXISTS {NAMES_TABLE_LONGNAMES} "
+            f"(meshtastic_id TEXT PRIMARY KEY, {_LONGNAME_DB_FIELD} TEXT)"
         )
         cursor.execute(
-            "CREATE TABLE IF NOT EXISTS shortnames (meshtastic_id TEXT PRIMARY KEY, shortname TEXT)"
+            f"CREATE TABLE IF NOT EXISTS {NAMES_TABLE_SHORTNAMES} "
+            f"(meshtastic_id TEXT PRIMARY KEY, {_SHORTNAME_DB_FIELD} TEXT)"
         )
         cursor.execute(
             "CREATE TABLE IF NOT EXISTS plugin_data (plugin_name TEXT, meshtastic_id TEXT, data TEXT, PRIMARY KEY (plugin_name, meshtastic_id))"
@@ -935,7 +941,17 @@ def _name_table_matches_state(
     for state_row in state:
         id_key = state_row.meshtastic_id
         expected_value = get_name(state_row)
-        actual_value = actual_by_id.get(id_key)
+        if expected_value is None:
+            if id_key in actual_by_id:
+                return False
+            continue
+
+        if id_key not in actual_by_id:
+            return False
+
+        actual_value = actual_by_id[id_key]
+        if actual_value is None or actual_value == "":
+            return False
         if expected_value != actual_value:
             return False
     return True
@@ -1004,6 +1020,13 @@ def _collect_node_name_snapshot(
         meshtastic_id = user.get("id")
         if meshtastic_id is None:
             logger.debug("Skipping node-name snapshot entry because user.id is missing")
+            snapshot_complete = False
+            continue
+        if isinstance(meshtastic_id, bool) or not isinstance(meshtastic_id, (str, int)):
+            logger.debug(
+                "Skipping node-name snapshot entry because user.id has invalid type %s",
+                type(meshtastic_id).__name__,
+            )
             snapshot_complete = False
             continue
         if isinstance(meshtastic_id, str) and meshtastic_id == "":

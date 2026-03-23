@@ -29,10 +29,15 @@ DEFAULT_EXTRA_PRAGMAS = {
     "synchronous": "NORMAL",
     "temp_store": "MEMORY",
 }
+MIN_SQLITE_VERSION_JSON_EACH = (3, 9, 0)
+SQLITE_JSON_EACH_PROBE_SQL = "SELECT value FROM json_each(?)"
+SQLITE_JSON_EACH_PROBE_PAYLOAD = '["probe"]'
 
 # Node name storage tables (SQLite schema)
 NAMES_TABLE_LONGNAMES = "longnames"
 NAMES_TABLE_SHORTNAMES = "shortnames"
+NAMES_FIELD_LONGNAME = "longname"
+NAMES_FIELD_SHORTNAME = "shortname"
 
 # Meshtastic node payload keys (protocol-level fields, not DB columns)
 PROTO_NODE_NAME_LONG = "longName"

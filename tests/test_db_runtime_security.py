@@ -76,9 +76,9 @@ class TestDatabaseManager(unittest.TestCase):
 
     def test_initialization_rejects_unsupported_sqlite_version(self):
         """DatabaseManager should fail fast when runtime SQLite is too old."""
-        with patch(
-            "mmrelay.db_runtime._get_sqlite_runtime_version_info",
-            return_value=(3, 8, 11),
+        with (
+            patch("mmrelay.db_runtime.sqlite3.sqlite_version_info", (3, 8, 11)),
+            patch("mmrelay.db_runtime.sqlite3.sqlite_version", "3.8.11"),
         ):
             with self.assertRaises(RuntimeError) as cm:
                 DatabaseManager(self.db_path)
@@ -86,9 +86,9 @@ class TestDatabaseManager(unittest.TestCase):
 
     def test_initialization_accepts_minimum_supported_sqlite_version(self):
         """DatabaseManager should allow the minimum supported SQLite runtime."""
-        with patch(
-            "mmrelay.db_runtime._get_sqlite_runtime_version_info",
-            return_value=(3, 9, 0),
+        with (
+            patch("mmrelay.db_runtime.sqlite3.sqlite_version_info", (3, 9, 0)),
+            patch("mmrelay.db_runtime.sqlite3.sqlite_version", "3.9.0"),
         ):
             manager = DatabaseManager(self.db_path)
             try:
@@ -495,15 +495,15 @@ class TestDatabaseManager(unittest.TestCase):
         self.assertEqual(len(set(connections)), 3)  # All should be different
 
     def test_connection_tracking(self):
-        """Test that connections are properly tracked."""
+        """Test that connections are tracked and reused per thread."""
         initial_count = len(self.manager._connections)
 
-        # Create a connection
+        # Fetching again on the same thread should reuse the eager connection.
         conn = self.manager._get_connection()
 
         # Connection should be tracked
         self.assertIn(conn, self.manager._connections)
-        self.assertEqual(len(self.manager._connections), initial_count + 1)
+        self.assertEqual(len(self.manager._connections), initial_count)
 
         # Close manager and verify connection cleanup
         self.manager.close()
