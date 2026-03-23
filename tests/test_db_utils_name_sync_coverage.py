@@ -6,6 +6,7 @@ These tests exercise error-handling and branch paths that are easy to miss when
 only testing the high-level API.
 """
 
+import logging
 import shutil
 import sqlite3
 import tempfile
@@ -14,22 +15,36 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import mmrelay.db_utils as dbu
-from mmrelay.constants.database import NAMES_TABLE_LONGNAMES
+from mmrelay.constants.database import (
+    NAMES_TABLE_LONGNAMES,
+    NAMES_TABLE_SHORTNAMES,
+    PROTO_NODE_NAME_LONG,
+    PROTO_NODE_NAME_SHORT,
+)
 from mmrelay.db_runtime import DatabaseManager
 from mmrelay.db_utils import (
     NodeNameEntry,
     _collect_node_name_snapshot,
     _delete_name_by_id,
+    _delete_stale_names_core,
+    _format_node_id_sample,
     _InvalidNamesTableError,
+    _merge_node_name_values,
     _name_table_matches_state,
     _name_tables_match_state,
     _normalize_node_name_value,
     _read_name_values_for_ids,
     _reset_db_manager,
+    _sync_name_tables_atomic,
+    _update_names_core,
     clear_db_path_cache,
+    delete_longname,
+    delete_shortname,
     get_longname,
     get_shortname,
     initialize_database,
+    save_longname,
+    save_shortname,
     sync_name_tables_if_changed,
 )
 
@@ -253,3 +268,429 @@ def test_sync_empty_snapshot_does_not_prune_existing_rows(
     assert stable_empty_state == ()
     assert get_longname("!1") is None
     assert get_shortname("!1") is None
+
+
+class TestFormatNodeIdSample:
+    """Tests for _format_node_id_sample function (lines 120-127)."""
+
+    def test_empty_collection_returns_empty_brackets(self) -> None:
+        """Empty collection should return '[]'."""
+        assert _format_node_id_sample([]) == "[]"
+        assert _format_node_id_sample(set()) == "[]"
+
+    def test_collection_under_limit_returns_formatted_list(self) -> None:
+        """Collection under limit should return sorted formatted list."""
+        ids = {"!3", "!1", "!2"}
+        result = _format_node_id_sample(ids)
+        assert result == "['!1', '!2', '!3']"
+
+    def test_collection_over_limit_returns_sample_with_more(self) -> None:
+        """Collection over limit should return sample with (+N more)."""
+        ids = {f"!{i}" for i in range(25)}
+        result = _format_node_id_sample(ids)
+        assert "(+5 more)" in result
+        assert result.startswith("['!0'")
+
+
+class TestDeleteNameByIdSqliteError:
+    """Tests for _delete_name_by_id sqlite3.Error handling (lines 812-814)."""
+
+    def test_delete_name_by_id_sqlite_error_returns_false(
+        self, configured_temp_db: str
+    ) -> None:
+        """sqlite3.Error should be caught, logged, and return False."""
+        _ = configured_temp_db
+        with patch("mmrelay.db_utils._get_db_manager") as mock_get_manager:
+            mock_manager = MagicMock()
+            mock_manager.run_sync.side_effect = sqlite3.Error("delete failed")
+            mock_get_manager.return_value = mock_manager
+
+            with patch("mmrelay.db_utils.logger") as mock_logger:
+                result = _delete_name_by_id(NAMES_TABLE_LONGNAMES, "!1")
+                assert result is False
+                mock_logger.exception.assert_called_once()
+
+
+class TestNameTableMatchesStateFalseConditions:
+    """Tests for _name_table_matches_state various return False conditions (lines 944-956)."""
+
+    def test_returns_false_when_expected_none_but_id_in_actual(self) -> None:
+        """Returns False when expected_value is None but id_key is in actual_by_id."""
+        state = (NodeNameEntry("!1", None, "A"),)
+        with patch(
+            "mmrelay.db_utils._read_name_values_for_ids",
+            return_value={"!1": "Unexpected"},
+        ):
+            result = _name_table_matches_state(
+                state,
+                table=NAMES_TABLE_LONGNAMES,
+                get_name=lambda entry: entry.long_name,
+            )
+            assert result is False
+
+    def test_returns_false_when_id_not_in_actual_and_expected_not_none(self) -> None:
+        """Returns False when id_key not in actual_by_id (and expected_value is not None)."""
+        state = (NodeNameEntry("!1", "Alpha", "A"),)
+        with patch("mmrelay.db_utils._read_name_values_for_ids", return_value={}):
+            result = _name_table_matches_state(
+                state,
+                table=NAMES_TABLE_LONGNAMES,
+                get_name=lambda entry: entry.long_name,
+            )
+            assert result is False
+
+    def test_returns_false_when_actual_value_is_none(self) -> None:
+        """Returns False when actual_value is None."""
+        state = (NodeNameEntry("!1", "Alpha", "A"),)
+        with patch(
+            "mmrelay.db_utils._read_name_values_for_ids", return_value={"!1": None}
+        ):
+            result = _name_table_matches_state(
+                state,
+                table=NAMES_TABLE_LONGNAMES,
+                get_name=lambda entry: entry.long_name,
+            )
+            assert result is False
+
+    def test_returns_false_when_actual_value_is_empty(self) -> None:
+        """Returns False when actual_value is empty string."""
+        state = (NodeNameEntry("!1", "Alpha", "A"),)
+        with patch(
+            "mmrelay.db_utils._read_name_values_for_ids", return_value={"!1": ""}
+        ):
+            result = _name_table_matches_state(
+                state,
+                table=NAMES_TABLE_LONGNAMES,
+                get_name=lambda entry: entry.long_name,
+            )
+            assert result is False
+
+    def test_returns_false_when_expected_differs_from_actual(self) -> None:
+        """Returns False when expected_value != actual_value."""
+        state = (NodeNameEntry("!1", "Alpha", "A"),)
+        with patch(
+            "mmrelay.db_utils._read_name_values_for_ids", return_value={"!1": "Beta"}
+        ):
+            result = _name_table_matches_state(
+                state,
+                table=NAMES_TABLE_LONGNAMES,
+                get_name=lambda entry: entry.long_name,
+            )
+            assert result is False
+
+
+class TestCollectNodeNameSnapshotInvalidNameTypes:
+    """Tests for _collect_node_name_snapshot handling invalid name types (lines 1038-1061)."""
+
+    def test_non_string_long_name_logs_warning(self) -> None:
+        """Non-string raw_long_name logs warning and sets snapshot_complete=False."""
+        nodes = {
+            "node_a": {"user": {"id": "!1", "longName": 123, "shortName": "A"}},
+        }
+        with patch("mmrelay.db_utils.logger") as mock_logger:
+            state, current_ids, snapshot_complete = _collect_node_name_snapshot(nodes)
+            assert state == ()
+            assert current_ids == {"!1"}
+            assert snapshot_complete is False
+            mock_logger.warning.assert_called()
+            call_args = mock_logger.warning.call_args[0]
+            assert "non-string" in call_args[0]
+            assert call_args[2] == PROTO_NODE_NAME_LONG
+
+    def test_non_string_short_name_logs_warning(self) -> None:
+        """Non-string raw_short_name logs warning and sets snapshot_complete=False."""
+        nodes = {
+            "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": 456}},
+        }
+        with patch("mmrelay.db_utils.logger") as mock_logger:
+            state, current_ids, snapshot_complete = _collect_node_name_snapshot(nodes)
+            assert state == ()
+            assert current_ids == {"!1"}
+            assert snapshot_complete is False
+            mock_logger.warning.assert_called()
+            call_args = mock_logger.warning.call_args[0]
+            assert "non-string" in call_args[0]
+            assert call_args[2] == PROTO_NODE_NAME_SHORT
+
+
+class TestMergeNodeNameValuesEqual:
+    """Tests for _merge_node_name_values when values are equal (lines 1118-1119)."""
+
+    def test_returns_existing_when_both_equal_non_none(self) -> None:
+        """Returns existing_value when both are equal non-None strings."""
+        result = _merge_node_name_values("Alpha", "Alpha")
+        assert result == "Alpha"
+
+    def test_returns_incoming_when_existing_is_none(self) -> None:
+        """Returns incoming_value when existing_value is None."""
+        result = _merge_node_name_values(None, "Alpha")
+        assert result == "Alpha"
+
+    def test_returns_existing_when_incoming_is_none(self) -> None:
+        """Returns existing_value when incoming_value is None."""
+        result = _merge_node_name_values("Alpha", None)
+        assert result == "Alpha"
+
+
+class TestSyncNameTablesAtomicShortNameDeletion:
+    """Tests for _sync_name_tables_atomic short_name deletion (lines 1159-1161)."""
+
+    def test_short_name_none_executes_delete_sql(self, configured_temp_db: str) -> None:
+        """When short_name is None, the short delete SQL is executed."""
+        _ = configured_temp_db
+        save_longname("!1", "Alpha")
+
+        state = (NodeNameEntry("!1", "Alpha", None),)
+        current_ids = {"!1"}
+
+        result = _sync_name_tables_atomic(state, current_ids, snapshot_complete=False)
+        assert result is True
+        assert get_shortname("!1") is None
+
+
+class TestSyncNameTablesAtomicDebugLogging:
+    """Tests for _sync_name_tables_atomic debug logging (lines 1185-1224)."""
+
+    def test_debug_logs_emitted_when_enabled(self, configured_temp_db: str) -> None:
+        """Debug logs are emitted when logger.isEnabledFor(logging.DEBUG)."""
+        _ = configured_temp_db
+        state = (NodeNameEntry("!1", "Alpha", "A"),)
+        current_ids = {"!1"}
+
+        with patch("mmrelay.db_utils.logger") as mock_logger:
+            mock_logger.isEnabledFor.return_value = True
+            mock_logger.debug = MagicMock()
+
+            result = _sync_name_tables_atomic(
+                state, current_ids, snapshot_complete=True
+            )
+            assert result is True
+
+            assert mock_logger.debug.call_count >= 1
+            main_log_call = mock_logger.debug.call_args_list[0]
+            assert "long_upserts=" in str(main_log_call)
+
+    def test_debug_logs_for_upserts_clears_and_pruned(
+        self, configured_temp_db: str
+    ) -> None:
+        """Test all the debug log messages for upserts, clears, and pruned IDs."""
+        _ = configured_temp_db
+        save_longname("!stale", "Stale")
+        save_shortname("!stale", "STL")
+
+        state = (NodeNameEntry("!1", None, None),)
+        current_ids = {"!1"}
+
+        with patch("mmrelay.db_utils.logger") as mock_logger:
+            mock_logger.isEnabledFor.return_value = True
+            mock_logger.debug = MagicMock()
+
+            result = _sync_name_tables_atomic(
+                state, current_ids, snapshot_complete=True
+            )
+            assert result is True
+
+            debug_calls = [str(call) for call in mock_logger.debug.call_args_list]
+            assert any("long_upserts=" in call for call in debug_calls)
+
+
+class TestSyncNameTablesIfChangedDebugLoggingIdDelta:
+    """Tests for sync_name_tables_if_changed debug logging for ID delta (lines 1272-1286)."""
+
+    def test_debug_log_for_initial_snapshot(self, configured_temp_db: str) -> None:
+        """Debug log for initial snapshot (previous_state is None)."""
+        _ = configured_temp_db
+        nodes = {
+            "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
+        }
+
+        with patch("mmrelay.db_utils.logger") as mock_logger:
+            mock_logger.isEnabledFor.return_value = True
+            mock_logger.debug = MagicMock()
+
+            state = sync_name_tables_if_changed(nodes, previous_state=None)
+            assert state is not None
+
+            debug_calls = [str(call) for call in mock_logger.debug.call_args_list]
+            assert any("snapshot initialized" in call.lower() for call in debug_calls)
+
+    def test_debug_log_for_added_and_removed_ids(self, configured_temp_db: str) -> None:
+        """Debug log for added_ids and removed_ids when state changes."""
+        _ = configured_temp_db
+        nodes = {
+            "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
+        }
+        first_state = sync_name_tables_if_changed(nodes, previous_state=None)
+
+        updated_nodes = {
+            "node_b": {"user": {"id": "!2", "longName": "Beta", "shortName": "B"}},
+        }
+
+        with patch("mmrelay.db_utils.logger") as mock_logger:
+            mock_logger.isEnabledFor.return_value = True
+            mock_logger.debug = MagicMock()
+
+            sync_name_tables_if_changed(updated_nodes, previous_state=first_state)
+
+            debug_calls = [str(call) for call in mock_logger.debug.call_args_list]
+            assert any("added=" in call and "removed=" in call for call in debug_calls)
+
+
+class TestSyncNameTablesIfChangedReturnPreviousOnDeleteError:
+    """Tests for sync_name_tables_if_changed returning previous_state on delete error (lines 1308-1309)."""
+
+    def test_returns_previous_when_longnames_deleted_is_none(
+        self, configured_temp_db: str
+    ) -> None:
+        """Returns previous_state when longnames_deleted is None."""
+        _ = configured_temp_db
+        nodes = {
+            "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
+        }
+        first_state = sync_name_tables_if_changed(nodes, previous_state=None)
+
+        with patch(
+            "mmrelay.db_utils._delete_stale_names", return_value=None
+        ) as mock_delete:
+            second_state = sync_name_tables_if_changed(
+                nodes, previous_state=first_state
+            )
+            assert second_state == first_state
+            assert mock_delete.call_count >= 1
+
+    def test_returns_previous_when_shortnames_deleted_is_none(
+        self, configured_temp_db: str
+    ) -> None:
+        """Returns previous_state when shortnames_deleted is None."""
+        _ = configured_temp_db
+        nodes = {
+            "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
+        }
+        first_state = sync_name_tables_if_changed(nodes, previous_state=None)
+
+        call_count = [0]
+
+        def delete_side_effect(table_name, current_ids, *, return_none_on_error=False):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return 0
+            return None
+
+        with patch(
+            "mmrelay.db_utils._delete_stale_names", side_effect=delete_side_effect
+        ):
+            second_state = sync_name_tables_if_changed(
+                nodes, previous_state=first_state
+            )
+            assert second_state == first_state
+
+
+class TestUpdateNamesCoreValueError:
+    """Tests for _update_names_core ValueError for unsupported name_key (lines 1364-1365)."""
+
+    def test_raises_value_error_for_unsupported_name_key(
+        self, configured_temp_db: str
+    ) -> None:
+        """Raises ValueError when name_key not in _DB_COLUMN_BY_PROTO_NODE_NAME_FIELD."""
+        _ = configured_temp_db
+        nodes = {"node_a": {"user": {"id": "!1", "longName": "Alpha"}}}
+
+        with pytest.raises(ValueError, match="Unsupported node name key"):
+            _update_names_core(
+                nodes,
+                name_key="invalid_key",
+                save_name=save_longname,
+                delete_name=delete_longname,
+                delete_stale_names=lambda ids: 0,
+            )
+
+
+class TestUpdateNamesCoreIterationAndStaleDeletion:
+    """Tests for _update_names_core iteration and stale deletion (lines 1375-1394)."""
+
+    def test_delete_name_called_when_normalized_name_is_none(
+        self, configured_temp_db: str
+    ) -> None:
+        """Delete_name is called when normalized_name is None."""
+        _ = configured_temp_db
+        save_longname("!1", "Existing")
+
+        nodes = {"node_a": {"user": {"id": "!1", "longName": ""}}}
+
+        mock_delete = MagicMock(return_value=True)
+        with patch("mmrelay.db_utils.delete_longname", mock_delete):
+            result = _update_names_core(
+                nodes,
+                name_key=PROTO_NODE_NAME_LONG,
+                save_name=save_longname,
+                delete_name=mock_delete,
+                delete_stale_names=lambda ids: 0,
+            )
+            assert result is True
+            mock_delete.assert_called_once_with("!1")
+
+    def test_all_saves_ok_becomes_false_when_delete_fails(
+        self, configured_temp_db: str
+    ) -> None:
+        """All_saves_ok becomes False when delete_name fails."""
+        _ = configured_temp_db
+        save_longname("!1", "Existing")
+
+        nodes = {"node_a": {"user": {"id": "!1", "longName": ""}}}
+
+        mock_delete = MagicMock(return_value=False)
+        result = _update_names_core(
+            nodes,
+            name_key=PROTO_NODE_NAME_LONG,
+            save_name=save_longname,
+            delete_name=mock_delete,
+            delete_stale_names=lambda ids: 0,
+        )
+        assert result is False
+
+    def test_stale_delete_count_none_sets_all_saves_ok_to_false(
+        self, configured_temp_db: str
+    ) -> None:
+        """Stale_delete_count None sets all_saves_ok to False."""
+        _ = configured_temp_db
+        nodes = {"node_a": {"user": {"id": "!1", "longName": "Alpha"}}}
+
+        result = _update_names_core(
+            nodes,
+            name_key=PROTO_NODE_NAME_LONG,
+            save_name=save_longname,
+            delete_name=delete_longname,
+            delete_stale_names=lambda ids: None,
+        )
+        assert result is False
+
+
+class TestDeleteStaleNamesCoreDeletedIdsSet:
+    """Tests for _delete_stale_names_core updating deleted_ids set (lines 1544-1545)."""
+
+    def test_deleted_ids_set_updated_with_deleted_chunk_ids(
+        self, configured_temp_db: str
+    ) -> None:
+        """Deleted_ids set is updated with deleted chunk IDs when provided."""
+        _ = configured_temp_db
+        save_longname("!1", "Alpha")
+        save_longname("!2", "Beta")
+        save_longname("!3", "Charlie")
+
+        manager = dbu._get_db_manager()
+
+        deleted_ids: set[str] = set()
+
+        def _delete_test(cursor: sqlite3.Cursor) -> int:
+            return _delete_stale_names_core(
+                cursor,
+                NAMES_TABLE_LONGNAMES,
+                {"!1"},
+                deleted_ids=deleted_ids,
+            )
+
+        result = manager.run_sync(_delete_test, write=True)
+        assert result == 2
+        assert "!2" in deleted_ids
+        assert "!3" in deleted_ids
+        assert "!1" not in deleted_ids
