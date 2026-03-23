@@ -17,6 +17,7 @@ import mmrelay.db_utils as dbu
 from mmrelay.constants.database import NAMES_TABLE_LONGNAMES
 from mmrelay.db_runtime import DatabaseManager
 from mmrelay.db_utils import (
+    NodeNameEntry,
     _collect_node_name_snapshot,
     _delete_name_by_id,
     _InvalidNamesTableError,
@@ -106,13 +107,13 @@ def test_read_name_values_returns_none_on_sqlite_error(configured_temp_db: str) 
 
 def test_name_table_matches_state_handles_failed_read() -> None:
     """Failed reads should cause mismatch detection."""
-    state = (("!1", "Alpha", "A"),)
+    state = (NodeNameEntry("!1", "Alpha", "A"),)
     with patch("mmrelay.db_utils._read_name_values_for_ids", return_value=None):
         assert (
             _name_table_matches_state(
                 state,
                 table=NAMES_TABLE_LONGNAMES,
-                value_index=1,
+                get_name=lambda entry: entry.long_name,
             )
             is False
         )
@@ -125,7 +126,7 @@ def test_name_tables_match_state_empty_state_is_true() -> None:
 
 def test_name_tables_match_state_non_empty_state_checks_both_tables() -> None:
     """Non-empty snapshots should evaluate both names tables."""
-    state = (("!1", "Alpha", "A"),)
+    state = (NodeNameEntry("!1", "Alpha", "A"),)
     with patch(
         "mmrelay.db_utils._name_table_matches_state", side_effect=[True, True]
     ) as mock_match:
