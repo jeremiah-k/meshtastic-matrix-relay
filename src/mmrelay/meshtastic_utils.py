@@ -238,11 +238,13 @@ def _shutdown_shared_executors() -> None:
     global _metadata_executor, _metadata_future, _metadata_future_started_at
 
     # Cancel any pending BLE operation
+    # Capture future ref inside lock, cancel outside to avoid deadlock with done callbacks
+    ble_future_to_cancel = None
     with _ble_executor_lock:
         stale_address = _ble_future_address
         if _ble_future and not _ble_future.done():
             logger.debug("Cancelling pending BLE future during executor shutdown")
-            _ble_future.cancel()
+            ble_future_to_cancel = _ble_future
         _ble_future = None
         _ble_future_address = None
         _ble_future_started_at = None
@@ -253,27 +255,33 @@ def _shutdown_shared_executors() -> None:
 
         executor = _ble_executor
         _ble_executor = None
-        if executor is not None and not getattr(executor, "_shutdown", False):
-            try:
-                executor.shutdown(wait=False, cancel_futures=True)
-            except TypeError:
-                executor.shutdown(wait=False)
+    if ble_future_to_cancel is not None:
+        ble_future_to_cancel.cancel()
+    if executor is not None and not getattr(executor, "_shutdown", False):
+        try:
+            executor.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            executor.shutdown(wait=False)
 
     # Cancel any pending metadata operation
+    # Capture future ref inside lock, cancel outside to avoid deadlock with done callbacks
+    metadata_future_to_cancel = None
     with _metadata_future_lock:
         if _metadata_future and not _metadata_future.done():
             logger.debug("Cancelling pending metadata future during executor shutdown")
-            _metadata_future.cancel()
+            metadata_future_to_cancel = _metadata_future
         _metadata_future = None
         _metadata_future_started_at = None
 
         executor = _metadata_executor
         _metadata_executor = None
-        if executor is not None and not getattr(executor, "_shutdown", False):
-            try:
-                executor.shutdown(wait=False, cancel_futures=True)
-            except TypeError:
-                executor.shutdown(wait=False)
+    if metadata_future_to_cancel is not None:
+        metadata_future_to_cancel.cancel()
+    if executor is not None and not getattr(executor, "_shutdown", False):
+        try:
+            executor.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            executor.shutdown(wait=False)
 
 
 def shutdown_shared_executors() -> None:
@@ -646,6 +654,7 @@ async def refresh_node_name_tables(
                 )
         except Exception:
             logger.exception("Failed to refresh node-name tables from node snapshot")
+            raise
 
         if interval <= 0:
             logger.debug(
@@ -1111,7 +1120,7 @@ def _schedule_ble_future_cleanup(
         """
         Clear a stale BLE worker future when it exceeds the watchdog timeout.
 
-        If the provided future is still running and remains the active BLE future, logs a warning including the watchdog duration, BLE address, and reason, then clears the stale future.
+        If the provided future is still running and remains the active BLE future, logs a warning including the watchdog duration, BLE address, and reason, then attempts to reset the executor.
         """
         if future.done():
             return
@@ -1119,12 +1128,16 @@ def _schedule_ble_future_cleanup(
             if _ble_future is not future:
                 return
         logger.warning(
-            "BLE worker still running after %.0fs for %s; clearing stale future (%s)",
+            "BLE worker still running after %.0fs for %s; resetting executor (%s)",
             watchdog_secs,
             ble_address,
             reason,
         )
-        _clear_ble_future(future)
+        reset_threshold = _coerce_positive_int(
+            _ble_timeout_reset_threshold,
+            BLE_TIMEOUT_RESET_THRESHOLD,
+        )
+        _maybe_reset_ble_executor(ble_address, reset_threshold)
 
     timer = threading.Timer(watchdog_secs, _cleanup)
     timer.daemon = True
@@ -1223,6 +1236,8 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
     reset_threshold = _coerce_positive_int(
         _ble_timeout_reset_threshold, BLE_TIMEOUT_RESET_THRESHOLD
     )
+    # Capture future ref inside lock, cancel outside to avoid deadlock with done callbacks
+    ble_future_to_cancel = None
     with _ble_executor_lock:
         if timeout_count < reset_threshold:
             return
@@ -1232,13 +1247,7 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
             ble_address,
         )
         if _ble_future and not _ble_future.done():
-            _ble_future.cancel()
-            try:
-                _ble_future.result(timeout=0.2)
-            except FuturesTimeoutError:
-                pass
-            except Exception as exc:  # noqa: BLE001 - best-effort reset cleanup
-                logger.debug("BLE worker errored during reset: %s", exc)
+            ble_future_to_cancel = _ble_future
         if _ble_executor is not None and not _ble_executor._shutdown:
             try:
                 _ble_executor.shutdown(wait=False, cancel_futures=True)
@@ -1249,6 +1258,14 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
         _ble_future_address = None
         _ble_future_started_at = None
         _ble_future_timeout_secs = None
+    if ble_future_to_cancel is not None:
+        ble_future_to_cancel.cancel()
+        try:
+            ble_future_to_cancel.result(timeout=0.2)
+        except FuturesTimeoutError:
+            pass
+        except Exception as exc:  # noqa: BLE001 - best-effort reset cleanup
+            logger.debug("BLE worker errored during reset: %s", exc)
     with _ble_timeout_lock:
         _ble_timeout_counts[ble_address] = 0
 
@@ -2586,7 +2603,7 @@ def _get_portnum_name(portnum: Any) -> str:
 
     if isinstance(portnum, int):
         try:
-            return portnums_pb2.PortNum.Name(portnum)  # type: ignore[no-any-return]
+            return portnums_pb2.PortNum.Name(portnum)  # type: ignore[no-any-return, arg-type]
         except ValueError:
             return f"UNKNOWN (portnum={portnum})"
 

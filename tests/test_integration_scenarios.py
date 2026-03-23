@@ -13,6 +13,7 @@ Tests integration scenarios including:
 """
 
 import asyncio
+import concurrent.futures
 import logging
 import os
 import sys
@@ -104,6 +105,7 @@ class TestIntegrationScenarios(unittest.TestCase):
                                 asyncio.TimeoutError,
                                 TimeoutError,
                                 TypeError,
+                                concurrent.futures.CancelledError,
                             ) as e:
                                 logging.getLogger(__name__).debug(
                                     "Expected error during BLE future cleanup: %s", e

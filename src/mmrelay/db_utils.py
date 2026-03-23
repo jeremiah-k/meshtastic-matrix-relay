@@ -1542,7 +1542,7 @@ def _update_names_core(
     all_saves_ok = True
     for id_key, normalized_name in state_by_id.items():
         if normalized_name is None:
-            if not delete_name(id_key):
+            if snapshot_complete and not delete_name(id_key):
                 all_saves_ok = False
             continue
         if not save_name(id_key, normalized_name):

@@ -478,7 +478,7 @@ class TestMain(unittest.TestCase):
         mock_get_interval.assert_called_once_with(self.mock_config)
         self.assertIn("_node_name_refresh_supervisor", created_task_coro_names)
         self.assertGreaterEqual(mock_create_task.call_count, 1)
-        mock_refresh_node_names.assert_called_once_with(
+        mock_refresh_node_names.assert_awaited_once_with(
             shutdown_event,
             refresh_interval_seconds=expected_interval,
         )
@@ -2775,7 +2775,7 @@ class TestStartupRollback(unittest.TestCase):
 
         mock_matrix_client = MagicMock()
         mock_matrix_client.add_event_callback = MagicMock()
-        mock_matrix_client.close = MagicMock()
+        mock_matrix_client.close = AsyncMock()
 
         async def mock_connect_matrix_fn(*args, **kwargs):
             return mock_matrix_client
@@ -2959,7 +2959,7 @@ class TestStartupRollback(unittest.TestCase):
         """Exception after Matrix client created should close it."""
         mock_matrix_client = MagicMock()
         mock_matrix_client.add_event_callback = MagicMock()
-        mock_matrix_client.close = MagicMock()
+        mock_matrix_client.close = AsyncMock()
 
         async def mock_connect_matrix_fn(*args, **kwargs):
             return mock_matrix_client
@@ -3000,7 +3000,7 @@ class TestStartupRollback(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 asyncio.run(main(config))
 
-            mock_matrix_client.close.assert_called_once()
+            mock_matrix_client.close.assert_awaited_once()
 
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
@@ -3485,21 +3485,20 @@ class TestMatrixSyncLoopErrorHandling(unittest.TestCase):
             mock_matrix_client = AsyncMock()
             mock_matrix_client.add_event_callback = MagicMock()
             mock_matrix_client.close = AsyncMock()
-            shutdown_event_holder: dict[str, asyncio.Event] = {}
+            created_events: list[asyncio.Event] = []
             real_event_cls = asyncio.Event
 
             def _capture_shutdown_event(*_args, **_kwargs) -> asyncio.Event:
                 event = real_event_cls()
-                shutdown_event_holder.setdefault("event", event)
+                created_events.append(event)
                 return event
 
             def sync_forever_side_effect(**kwargs):
                 call_count[0] += 1
                 if call_count[0] == 1:
                     raise asyncio.TimeoutError("Sync timeout")
-                shutdown_event = shutdown_event_holder.get("event")
-                if shutdown_event is not None:
-                    shutdown_event.set()
+                for event in created_events:
+                    event.set()
                 return None
 
             mock_matrix_client.sync_forever = AsyncMock(

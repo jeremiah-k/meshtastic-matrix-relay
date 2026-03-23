@@ -145,6 +145,7 @@ class DatabaseManager:
         self._write_lock = threading.RLock()
         self._connections: set[sqlite3.Connection] = set()
         self._connections_lock = threading.Lock()
+        self._executor_lock = threading.Lock()
         self._async_executor = ThreadPoolExecutor(max_workers=1)
         self._closing = False
 
@@ -223,7 +224,14 @@ class DatabaseManager:
 
         Returns:
             sqlite3.Connection: The per-thread SQLite connection.
+
+        Raises:
+            RuntimeError: If the manager is closing and cannot create new connections.
         """
+        if self._closing:
+            raise RuntimeError(
+                "DatabaseManager is closing, cannot create new connections"
+            )
         conn = getattr(self._thread_local, "connection", None)
         if conn is not None:
             try:
@@ -325,10 +333,11 @@ class DatabaseManager:
         Returns:
             Any: The value returned by `func` when invoked with the cursor.
         """
-        if self._closing:
-            raise RuntimeError("DatabaseManager is closing, cannot submit new work")
         executor_func = partial(self.run_sync, func, write=write)
-        worker_future = self._async_executor.submit(executor_func)
+        with self._executor_lock:
+            if self._closing:
+                raise RuntimeError("DatabaseManager is closing, cannot submit new work")
+            worker_future = self._async_executor.submit(executor_func)
         try:
             while not worker_future.done():
                 await asyncio.sleep(0.001)
@@ -347,9 +356,9 @@ class DatabaseManager:
 
         Removes every connection from the manager's internal registry, attempts to close each connection (suppressing sqlite3.Error), and clears the current thread's stored connection reference.
         """
-        self._closing = True
-
-        self._async_executor.shutdown(wait=True)
+        with self._executor_lock:
+            self._closing = True
+            self._async_executor.shutdown(wait=True)
 
         with self._connections_lock:
             connections = list(self._connections)
