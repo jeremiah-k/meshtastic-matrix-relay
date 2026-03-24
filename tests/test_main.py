@@ -3229,8 +3229,7 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
             patch(
                 "mmrelay.main.meshtastic_utils.check_connection",
-                new_callable=AsyncMock,
-                side_effect=_check_connection_wait,
+                new=_check_connection_wait,
             ),
             patch("mmrelay.main.asyncio.wait_for") as mock_wait_for,
             patch("mmrelay.main.asyncio.create_task", side_effect=_capture_create_task),
@@ -3354,8 +3353,7 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
             patch(
                 "mmrelay.main.meshtastic_utils.check_connection",
-                new_callable=AsyncMock,
-                side_effect=_check_connection_wait,
+                new=_check_connection_wait,
             ),
             patch("mmrelay.main.asyncio.wait_for", side_effect=mock_wait_for),
             patch("mmrelay.main.asyncio.create_task", side_effect=_capture_create_task),
