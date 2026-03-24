@@ -9,7 +9,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import mmrelay.main as main_module
-from tests.helpers import InlineExecutorLoop
+from tests.helpers import (
+    make_patched_get_running_loop as _make_patched_get_running_loop,
+)
 
 
 class _ControllableEvent:
@@ -65,19 +67,6 @@ def _make_async_return(value):
     return _async_return
 
 
-def _make_patched_get_running_loop():
-    """Wrap the running loop so run_in_executor executes inline."""
-    real_get_running_loop = asyncio.get_running_loop
-
-    def _patched_get_running_loop():
-        loop = real_get_running_loop()
-        if isinstance(loop, InlineExecutorLoop):
-            return loop
-        return InlineExecutorLoop(loop)
-
-    return _patched_get_running_loop
-
-
 async def _wait_until(
     predicate: Callable[[], bool],
     *,
@@ -112,6 +101,55 @@ def test_coerce_config_bool_normalizes_common_values() -> None:
     assert main_module._coerce_config_bool(1.5) is False
     assert main_module._coerce_config_bool(float("nan")) is False
     assert main_module._coerce_config_bool(None) is False
+
+
+def test_requires_continuous_health_monitor_defaults_to_config_constant() -> None:
+    """Health monitor defaults should follow DEFAULT_HEALTH_CHECK_ENABLED."""
+    assert main_module._requires_continuous_health_monitor({}) is False
+    assert main_module._requires_continuous_health_monitor({"meshtastic": {}}) is False
+    assert (
+        main_module._requires_continuous_health_monitor(
+            {"meshtastic": {"health_check": "invalid"}}
+        )
+        is False
+    )
+
+
+def test_requires_continuous_health_monitor_respects_enabled_and_ble() -> None:
+    """Explicit health_check.enabled drives behavior except BLE which is always False."""
+    assert (
+        main_module._requires_continuous_health_monitor(
+            {
+                "meshtastic": {
+                    "connection_type": "tcp",
+                    "health_check": {"enabled": True},
+                }
+            }
+        )
+        is True
+    )
+    assert (
+        main_module._requires_continuous_health_monitor(
+            {
+                "meshtastic": {
+                    "connection_type": "serial",
+                    "health_check": {"enabled": False},
+                }
+            }
+        )
+        is False
+    )
+    assert (
+        main_module._requires_continuous_health_monitor(
+            {
+                "meshtastic": {
+                    "connection_type": "ble",
+                    "health_check": {"enabled": True},
+                }
+            }
+        )
+        is False
+    )
 
 
 @pytest.mark.asyncio

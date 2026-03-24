@@ -185,6 +185,7 @@ def _drain_future_result_safely(future: Any, timeout: float) -> None:
             "Unexpected future-drain exception during teardown: %s",
             exc,
         )
+        raise
 
 
 def cleanup_ble_future_state(module: Any) -> None:
@@ -893,8 +894,14 @@ def reset_meshtastic_globals():
         "_ble_future_started_at": getattr(mu, "_ble_future_started_at", None),
         "_ble_future_timeout_secs": getattr(mu, "_ble_future_timeout_secs", None),
         "_ble_timeout_counts": dict(getattr(mu, "_ble_timeout_counts", None) or {}),
+        "_ble_executor_orphaned_workers_by_address": dict(
+            getattr(mu, "_ble_executor_orphaned_workers_by_address", None) or {}
+        ),
         "_health_probe_request_deadlines": dict(
             getattr(mu, "_health_probe_request_deadlines", {})
+        ),
+        "_metadata_executor_orphaned_workers": getattr(
+            mu, "_metadata_executor_orphaned_workers", 0
         ),
         "_ble_future_watchdog_secs": getattr(mu, "_ble_future_watchdog_secs", None),
         "_ble_timeout_reset_threshold": getattr(
@@ -922,6 +929,8 @@ def reset_meshtastic_globals():
     mu._metadata_future_started_at = None
     cleanup_ble_future_state(mu)
     mu._ble_timeout_counts = {}
+    mu._ble_executor_orphaned_workers_by_address = {}
+    mu._metadata_executor_orphaned_workers = 0
     mu._ble_future_watchdog_secs = getattr(
         mu,
         "BLE_FUTURE_WATCHDOG_SECS",

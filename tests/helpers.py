@@ -99,3 +99,20 @@ def inline_to_thread(func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any
         Any: The return value produced by calling `func(*args, **kwargs)`.
     """
     return func(*args, **kwargs)
+
+
+def make_patched_get_running_loop() -> Callable[[], asyncio.AbstractEventLoop]:
+    """
+    Return a get_running_loop patch that wraps loops in InlineExecutorLoop.
+
+    This keeps run_in_executor paths deterministic in tests by executing inline.
+    """
+    real_get_running_loop = asyncio.get_running_loop
+
+    def _patched_get_running_loop() -> asyncio.AbstractEventLoop:
+        loop = real_get_running_loop()
+        if isinstance(loop, InlineExecutorLoop):
+            return loop
+        return InlineExecutorLoop(loop)
+
+    return _patched_get_running_loop

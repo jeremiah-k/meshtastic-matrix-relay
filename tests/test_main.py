@@ -56,7 +56,13 @@ import pytest
 
 from mmrelay.constants.config import DEFAULT_NODEDB_REFRESH_INTERVAL
 from mmrelay.main import main, print_banner, run_main
-from tests.helpers import InlineExecutorLoop, inline_to_thread
+from tests.helpers import (
+    InlineExecutorLoop,
+    inline_to_thread,
+)
+from tests.helpers import (
+    make_patched_get_running_loop as _make_patched_get_running_loop,
+)
 
 
 def _make_async_return(value: Any):
@@ -148,37 +154,6 @@ def _make_async_raise(exc: Exception):
     return _async_raise
 
 
-def _make_patched_get_running_loop():
-    """
-    Create a patched get_running_loop that wraps the loop in InlineExecutorLoop.
-
-    Returns:
-        Callable: A function that returns the current event loop wrapped in
-        InlineExecutorLoop if not already wrapped.
-
-    Notes:
-        This helper is used in tests to ensure run_in_executor calls execute
-        inline instead of scheduling on a thread pool. The returned function
-        checks if the loop is already an InlineExecutorLoop to avoid double-wrapping.
-    """
-    real_get_running_loop = asyncio.get_running_loop
-
-    def _patched_get_running_loop():
-        """
-        Wraps the real running event loop in an InlineExecutorLoop when necessary.
-
-        Returns:
-            The original loop if it is already an InlineExecutorLoop,
-            otherwise a new InlineExecutorLoop that delegates to the real loop.
-        """
-        loop = real_get_running_loop()
-        if isinstance(loop, InlineExecutorLoop):
-            return loop
-        return InlineExecutorLoop(loop)
-
-    return _patched_get_running_loop
-
-
 def _reset_meshtastic_utils_globals(*, shutdown_executors: bool = False) -> None:
     """
     Reset meshtastic_utils globals shared across main-path tests.
@@ -221,6 +196,10 @@ def _reset_meshtastic_utils_globals(*, shutdown_executors: bool = False) -> None
         module._ble_future_timeout_secs = None  # type: ignore[attr-defined]
     if hasattr(module, "_ble_timeout_counts"):
         module._ble_timeout_counts = {}  # type: ignore[attr-defined]
+    if hasattr(module, "_ble_executor_orphaned_workers_by_address"):
+        module._ble_executor_orphaned_workers_by_address = {}  # type: ignore[attr-defined]
+    if hasattr(module, "_metadata_executor_orphaned_workers"):
+        module._metadata_executor_orphaned_workers = 0  # type: ignore[attr-defined]
     if hasattr(module, "_health_probe_request_deadlines"):
         module._health_probe_request_deadlines = {}  # type: ignore[attr-defined]
     if hasattr(module, "_ble_future_watchdog_secs"):
@@ -3095,8 +3074,8 @@ class TestStartupRollback(unittest.TestCase):
 class TestNodeNameRefreshSupervisor(unittest.TestCase):
     """Tests for _node_name_refresh_supervisor behavior through main()."""
 
-    def test_first_pass_runs_even_when_shutdown_event_set(self):
-        """Supervisor runs at least one refresh pass before shutdown is signaled."""
+    def test_supervisor_runs_refresh_before_shutdown_signal(self):
+        """Supervisor should run one refresh pass before a runtime shutdown signal."""
         from mmrelay.main import main
 
         config = {

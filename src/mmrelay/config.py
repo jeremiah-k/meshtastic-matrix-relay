@@ -21,6 +21,7 @@ from mmrelay.constants.config import (
     CONFIG_KEY_ACCESS_TOKEN,
     CONFIG_KEY_BOT_USER_ID,
     CONFIG_KEY_HOMESERVER,
+    CONFIG_KEY_NODEDB_REFRESH_INTERVAL,
     CONFIG_SECTION_MATRIX,
 )
 
@@ -1042,7 +1043,7 @@ _MESHTASTIC_ENV_VAR_MAPPINGS: list[dict[str, Any]] = [
     },
     {
         "env_var": "MMRELAY_MESHTASTIC_NODEDB_REFRESH_INTERVAL",
-        "config_key": "nodedb_refresh_interval",
+        "config_key": CONFIG_KEY_NODEDB_REFRESH_INTERVAL,
         "type": "float",
         "min_value": 0.0,
     },

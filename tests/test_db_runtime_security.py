@@ -17,7 +17,6 @@ import threading
 import unittest
 from unittest.mock import patch
 
-from mmrelay.constants.database import MIN_SQLITE_VERSION_JSON_EACH
 from mmrelay.db_runtime import DatabaseManager
 
 
@@ -75,44 +74,43 @@ class TestDatabaseManager(unittest.TestCase):
         finally:
             manager.close()
 
-    def test_initialization_rejects_unsupported_sqlite_version(self):
-        """DatabaseManager should fail fast when json_each() support is unavailable."""
-        min_major, min_minor, min_patch = MIN_SQLITE_VERSION_JSON_EACH
-        if min_patch > 0:
-            unsupported = (min_major, min_minor, min_patch - 1)
-        elif min_minor > 0:
-            unsupported = (min_major, min_minor - 1, 99)
-        else:
-            unsupported = (max(min_major - 1, 0), 99, 99)
+    def test_initialization_allows_missing_json_each_support(self):
+        """DatabaseManager should initialize and mark json_each as unavailable."""
+        unsupported = (3, 8, 0)
 
-        with patch(
-            "mmrelay.db_runtime._get_sqlite_runtime_version_info",
-            return_value=unsupported,
-        ), patch("mmrelay.db_runtime._probe_sqlite_json_each_support") as mock_probe:
-            with self.assertRaises(RuntimeError) as cm:
-                DatabaseManager(self.db_path)
-
-        mock_probe.assert_not_called()
-        self.assertIn("SQLite json_each() support is required", str(cm.exception))
-        unsupported_version = ".".join(str(part) for part in unsupported)
-        self.assertIn(unsupported_version, str(cm.exception))
-
-    def test_initialization_accepts_minimum_supported_sqlite_version(self):
-        """DatabaseManager should allow the minimum supported SQLite runtime."""
         with (
             patch(
                 "mmrelay.db_runtime._get_sqlite_runtime_version_info",
-                return_value=MIN_SQLITE_VERSION_JSON_EACH,
+                return_value=unsupported,
             ),
             patch(
                 "mmrelay.db_runtime._probe_sqlite_json_each_support",
-                return_value=None,
+                side_effect=RuntimeError(
+                    "SQLite json_each() support is required for node-name queries. "
+                    f"Detected SQLite version: {unsupported[0]}.{unsupported[1]}.{unsupported[2]}. "
+                    "Ensure SQLite is built with JSON support."
+                ),
             ),
         ):
             manager = DatabaseManager(self.db_path)
             try:
                 with manager.read() as cursor:
                     cursor.execute("SELECT 1")
+                self.assertFalse(manager.supports_json_each())
+            finally:
+                manager.close()
+
+    def test_initialization_marks_json_each_supported_when_probe_succeeds(self):
+        """DatabaseManager should mark json_each support when probe succeeds."""
+        with patch(
+            "mmrelay.db_runtime._probe_sqlite_json_each_support",
+            return_value=None,
+        ):
+            manager = DatabaseManager(self.db_path)
+            try:
+                with manager.read() as cursor:
+                    cursor.execute("SELECT 1")
+                self.assertTrue(manager.supports_json_each())
             finally:
                 manager.close()
 
@@ -534,7 +532,7 @@ class TestDatabaseManager(unittest.TestCase):
             )
             return "second"
 
-        async def run_test() -> None:
+        async def run_test() -> tuple[str, str]:
             task1 = asyncio.create_task(self.manager.run_async(first_write, write=True))
             start_deadline = asyncio.get_running_loop().time() + 2.0
             while (
@@ -548,22 +546,26 @@ class TestDatabaseManager(unittest.TestCase):
             )
             await asyncio.sleep(0)
 
-            close_thread = threading.Thread(target=self.manager.close, daemon=True)
-            close_thread.start()
+            close_task = asyncio.create_task(asyncio.to_thread(self.manager.close))
             first_release.set()
 
-            close_thread.join(timeout=5.0)
-            self.assertFalse(
-                close_thread.is_alive(),
-                "close() did not complete within timeout; possible deadlock",
-            )
-            for task in (task1, task2):
-                if not task.done():
-                    task.cancel()
-                    with self.assertRaises(asyncio.CancelledError):
-                        await task
+            try:
+                result1, result2 = await asyncio.wait_for(
+                    asyncio.gather(task1, task2),
+                    timeout=5.0,
+                )
+            finally:
+                for task in (task1, task2):
+                    if not task.done():
+                        task.cancel()
+                        with self.assertRaises(asyncio.CancelledError):
+                            await task
 
-        asyncio.run(run_test())
+            await asyncio.wait_for(close_task, timeout=5.0)
+            return result1, result2
+
+        result1, result2 = asyncio.run(run_test())
+        self.assertEqual((result1, result2), ("first", "second"))
 
         with sqlite3.connect(self.db_path) as conn:
             count = conn.execute("SELECT COUNT(*) FROM test_async_close").fetchone()[0]

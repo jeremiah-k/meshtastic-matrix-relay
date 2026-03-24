@@ -11,6 +11,7 @@ Tests the Meshtastic client functionality including:
 """
 
 import asyncio
+import contextlib
 import os
 import sys
 import unittest
@@ -140,10 +141,27 @@ class TestMeshtasticUtils(unittest.TestCase):
         mmrelay.meshtastic_utils.reconnecting = False
         mmrelay.meshtastic_utils.shutting_down = False
         mmrelay.meshtastic_utils.reconnect_task = None
+        iface = mmrelay.meshtastic_utils.meshtastic_iface
+        if iface is not None:
+            disconnect_iface = getattr(
+                mmrelay.meshtastic_utils,
+                "_disconnect_ble_interface",
+                None,
+            )
+            if callable(disconnect_iface):
+                with contextlib.suppress(
+                    asyncio.CancelledError,
+                    asyncio.TimeoutError,
+                    OSError,
+                    RuntimeError,
+                ):
+                    disconnect_iface(iface, reason="test-reset")
         mmrelay.meshtastic_utils.meshtastic_iface = None
         _reset_ble_inflight_state(mmrelay.meshtastic_utils)
         mmrelay.meshtastic_utils._metadata_future = None
         mmrelay.meshtastic_utils._ble_timeout_counts = {}
+        mmrelay.meshtastic_utils._ble_executor_orphaned_workers_by_address = {}
+        mmrelay.meshtastic_utils._metadata_executor_orphaned_workers = 0
 
     def test_on_meshtastic_message_basic(self):
         """
@@ -3645,6 +3663,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         # Create a mock future whose .result() method raises FuturesTimeoutError
         mock_future = Mock()
         mock_future.result = Mock(side_effect=FuturesTimeoutError())
+        mock_future.done.return_value = False
         mock_future.cancel = Mock(return_value=True)
 
         mock_executor = Mock()
@@ -3746,6 +3765,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         connect_future = Mock()
         connect_future.result = Mock(side_effect=FuturesTimeoutError())
+        connect_future.done.return_value = False
         connect_future.cancel = Mock(return_value=True)
 
         # Track which submit call we're handling

@@ -40,6 +40,7 @@ from mmrelay.constants.config import (
     CONFIG_SECTION_DATABASE,
     CONFIG_SECTION_DATABASE_LEGACY,
     CONFIG_SECTION_MESHTASTIC,
+    DEFAULT_HEALTH_CHECK_ENABLED,
 )
 from mmrelay.constants.queue import DEFAULT_MESSAGE_DELAY
 from mmrelay.db_utils import (
@@ -262,15 +263,15 @@ def _requires_continuous_health_monitor(config: dict[str, Any]) -> bool:
     """
     meshtastic_config = config.get(CONFIG_SECTION_MESHTASTIC)
     if not isinstance(meshtastic_config, dict):
-        return True
+        return DEFAULT_HEALTH_CHECK_ENABLED
     if meshtastic_config.get("connection_type") == "ble":
         return False
-    health_config = meshtastic_config.get("health_check", {})
+    health_config = meshtastic_config.get("health_check")
     if not isinstance(health_config, dict):
-        return True
-    if "enabled" not in health_config:
-        return True
-    return _coerce_config_bool(health_config.get("enabled"))
+        return DEFAULT_HEALTH_CHECK_ENABLED
+    return _coerce_config_bool(
+        health_config.get("enabled", DEFAULT_HEALTH_CHECK_ENABLED)
+    )
 
 
 async def main(config: dict[str, Any]) -> None:

@@ -70,8 +70,13 @@ NAME_PRUNE_WAIT_TIMEOUT_SECONDS="${NAME_PRUNE_WAIT_TIMEOUT_SECONDS:-75}"
 NODEDB_REFRESH_INTERVAL_SECONDS="${NODEDB_REFRESH_INTERVAL_SECONDS:-5}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 
+if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
+	echo "Python runtime '${PYTHON_BIN}' is required." >&2
+	exit 1
+fi
+
 # Names-table SQL identifiers loaded from app constants.
-eval "$(
+names_table_constants="$(
 	"${PYTHON_BIN}" - <<'PY'
 import pathlib
 import sys
@@ -89,7 +94,11 @@ print(f"NAMES_TABLE_SHORTNAMES={NAMES_TABLE_SHORTNAMES!r}")
 print(f"NAMES_FIELD_LONGNAME={NAMES_FIELD_LONGNAME!r}")
 print(f"NAMES_FIELD_SHORTNAME={NAMES_FIELD_SHORTNAME!r}")
 PY
-)"
+)" || {
+	echo "Failed to load names-table constants via '${PYTHON_BIN}'." >&2
+	exit 1
+}
+eval "${names_table_constants}"
 
 # Artifacts and Logging - Separated by Instance
 CI_ARTIFACT_DIR="${CI_ARTIFACT_DIR:-${PWD}/.ci-artifacts/meshtasticd-integration}"
@@ -1479,7 +1488,7 @@ poll_for_existing_name_entry() {
 	local relay_name=${6:-MMRelay}
 	local relay_log_path=${7-}
 
-	local poll_start poll_now poll_elapsed captured_value
+	local poll_start poll_now poll_elapsed captured_value capture_status
 	poll_start=$(date +%s)
 	while true; do
 		_fail_if_relay_not_running_during_poll \
@@ -1487,11 +1496,15 @@ poll_for_existing_name_entry() {
 			"${relay_name}" \
 			"${relay_log_path}" \
 			"precondition poll for ${table_name} in ${instance_label}"
-		run_capture_with_status \
+		run_with_status run_capture_with_status \
 			captured_value \
 			get_existing_name_entry \
 			"${db_path}" \
-			"${table_name}" || captured_value=""
+			"${table_name}"
+		capture_status=$?
+		if ((capture_status != 0)); then
+			captured_value=""
+		fi
 
 		if [[ -n ${captured_value} ]]; then
 			printf -v "${result_var_name}" "%s" "${captured_value}"
@@ -1680,11 +1693,6 @@ trap cleanup EXIT
 
 if ! command -v docker >/dev/null 2>&1; then
 	echo "docker is required for meshtasticd integration tests." >&2
-	exit 1
-fi
-
-if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
-	echo "Python runtime '${PYTHON_BIN}' is required." >&2
 	exit 1
 fi
 

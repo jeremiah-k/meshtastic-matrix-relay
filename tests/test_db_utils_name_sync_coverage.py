@@ -10,6 +10,7 @@ import shutil
 import sqlite3
 import tempfile
 from collections.abc import Generator
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -117,30 +118,41 @@ def test_read_name_values_returns_none_on_sqlite_error(configured_temp_db: str) 
     assert result is None
 
 
-def test_read_name_values_returns_none_when_json_each_unavailable() -> None:
-    """json_each lookup failures should return None through the SQLite error path."""
+def test_read_name_values_falls_back_when_json_each_unavailable() -> None:
+    """json_each-unavailable runtimes should use the non-JSON1 per-ID fallback."""
 
     class _FallbackCursor:
+        def __init__(self) -> None:
+            self._last_params: tuple[str] | None = None
+
         def execute(
             self,
             sql: str,
             params: tuple[str] | tuple[str, ...],
         ) -> "_FallbackCursor":
-            if "json_each" in sql:
-                raise sqlite3.OperationalError("no such function: json_each")
+            self._last_params = cast(tuple[str], params)
             return self
 
         def fetchall(self) -> list[tuple[str, str]]:
-            return []
+            raise AssertionError("json_each path should not run in fallback mode")
+
+        def fetchone(self) -> tuple[str, str] | None:
+            if self._last_params is None:
+                return None
+            node_id = self._last_params[0]
+            if node_id == "!1":
+                return ("!1", "Alpha")
+            return None
 
     mock_manager = MagicMock()
+    mock_manager._supports_json_each = False
     mock_manager.run_sync.side_effect = lambda func, write=False: func(
         _FallbackCursor()
     )
     with patch("mmrelay.db_utils._get_db_manager", return_value=mock_manager):
         result = _read_name_values_for_ids(NAMES_TABLE_LONGNAMES, {"!1", "!2"})
 
-    assert result is None
+    assert result == {"!1": "Alpha"}
 
 
 def test_name_table_matches_state_handles_failed_read() -> None:
@@ -593,29 +605,11 @@ class TestSyncNameTablesIfChangedDebugLoggingIdDelta:
 class TestSyncNameTablesIfChangedReturnPreviousOnDeleteError:
     """Tests for sync_name_tables_if_changed returning previous_state on prune error."""
 
-    def test_returns_previous_when_longnames_deleted_is_none(
-        self, configured_temp_db: str
+    def test_returns_previous_when_atomic_prune_reports_failure(
+        self,
+        configured_temp_db: str,
     ) -> None:
         """Returns previous_state when unchanged-state prune fails."""
-        _ = configured_temp_db
-        nodes = {
-            "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
-        }
-        first_state = sync_name_tables_if_changed(nodes, previous_state=None)
-
-        with patch(
-            "mmrelay.db_utils._prune_stale_name_rows_atomic", return_value=False
-        ) as mock_prune:
-            second_state = sync_name_tables_if_changed(
-                nodes, previous_state=first_state
-            )
-            assert second_state == first_state
-            mock_prune.assert_called_once()
-
-    def test_returns_previous_when_shortnames_deleted_is_none(
-        self, configured_temp_db: str
-    ) -> None:
-        """Returns previous_state when atomic stale-name prune reports failure."""
         _ = configured_temp_db
         nodes = {
             "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},

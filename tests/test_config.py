@@ -521,6 +521,14 @@ class TestEnvironmentVariableHelpers(unittest.TestCase):
             _convert_env_float("not_a_float", "TEST_VAR")
         self.assertIn("Invalid float value for TEST_VAR", str(cm.exception))
 
+    def test_convert_env_float_rejects_non_finite_values(self):
+        """Test conversion rejects NaN/Infinity values."""
+        for raw_value in ("nan", "inf", "-inf"):
+            with self.subTest(raw_value=raw_value):
+                with self.assertRaises(ValueError) as cm:
+                    _convert_env_float(raw_value, "TEST_VAR")
+                self.assertIn("Invalid float value for TEST_VAR", str(cm.exception))
+
 
 class TestMeshtasticEnvironmentVariables(unittest.TestCase):
     """Test Meshtastic configuration loading from environment variables."""

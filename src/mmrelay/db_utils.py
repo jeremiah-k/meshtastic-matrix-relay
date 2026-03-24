@@ -78,48 +78,70 @@ _DB_COLUMN_BY_PROTO_NODE_NAME_FIELD = {
 _LONGNAME_DB_FIELD = _NAME_FIELD_BY_TABLE[NAMES_TABLE_LONGNAMES]
 _SHORTNAME_DB_FIELD = _NAME_FIELD_BY_TABLE[NAMES_TABLE_SHORTNAMES]
 
-# SQL templates are static literals (no runtime identifier interpolation).
+# SQL templates are defined as static literals to keep linting deterministic.
+_SELECT_STALE_IDS_FROM_LONGNAMES_SQL = "SELECT meshtastic_id FROM longnames"
+_SELECT_STALE_IDS_FROM_SHORTNAMES_SQL = "SELECT meshtastic_id FROM shortnames"
 _SELECT_STALE_IDS_SQL_BY_TABLE = {
-    NAMES_TABLE_LONGNAMES: f"SELECT meshtastic_id FROM {NAMES_TABLE_LONGNAMES}",
-    NAMES_TABLE_SHORTNAMES: f"SELECT meshtastic_id FROM {NAMES_TABLE_SHORTNAMES}",
+    NAMES_TABLE_LONGNAMES: _SELECT_STALE_IDS_FROM_LONGNAMES_SQL,
+    NAMES_TABLE_SHORTNAMES: _SELECT_STALE_IDS_FROM_SHORTNAMES_SQL,
 }
 
+_DELETE_STALE_ID_FROM_LONGNAMES_SQL = "DELETE FROM longnames WHERE meshtastic_id = ?"
+_DELETE_STALE_ID_FROM_SHORTNAMES_SQL = "DELETE FROM shortnames WHERE meshtastic_id = ?"
 _DELETE_STALE_ID_SQL_BY_TABLE = {
-    NAMES_TABLE_LONGNAMES: (
-        f"DELETE FROM {NAMES_TABLE_LONGNAMES} WHERE meshtastic_id = ?"
-    ),
-    NAMES_TABLE_SHORTNAMES: (
-        f"DELETE FROM {NAMES_TABLE_SHORTNAMES} WHERE meshtastic_id = ?"
-    ),
+    NAMES_TABLE_LONGNAMES: _DELETE_STALE_ID_FROM_LONGNAMES_SQL,
+    NAMES_TABLE_SHORTNAMES: _DELETE_STALE_ID_FROM_SHORTNAMES_SQL,
 }
 
-# json_each() is required for batched Meshtastic-ID lookups in name-state reads.
-_SELECT_NAME_VALUES_SQL_BY_TABLE = {
-    NAMES_TABLE_LONGNAMES: (
-        f"SELECT meshtastic_id, {NAMES_FIELD_LONGNAME} FROM {NAMES_TABLE_LONGNAMES} "
-        "WHERE meshtastic_id IN (SELECT value FROM json_each(?))"
-    ),
-    NAMES_TABLE_SHORTNAMES: (
-        f"SELECT meshtastic_id, {NAMES_FIELD_SHORTNAME} FROM {NAMES_TABLE_SHORTNAMES} "
-        "WHERE meshtastic_id IN (SELECT value FROM json_each(?))"
-    ),
-}
-
-_UPSERT_NAME_SQL_BY_TABLE = {
-    NAMES_TABLE_LONGNAMES: (
-        f"INSERT INTO {NAMES_TABLE_LONGNAMES} (meshtastic_id, {NAMES_FIELD_LONGNAME}) VALUES (?, ?) "
-        f"ON CONFLICT(meshtastic_id) DO UPDATE SET {NAMES_FIELD_LONGNAME}=excluded.{NAMES_FIELD_LONGNAME}"
-    ),
-    NAMES_TABLE_SHORTNAMES: (
-        f"INSERT INTO {NAMES_TABLE_SHORTNAMES} (meshtastic_id, {NAMES_FIELD_SHORTNAME}) VALUES (?, ?) "
-        f"ON CONFLICT(meshtastic_id) DO UPDATE SET {NAMES_FIELD_SHORTNAME}=excluded.{NAMES_FIELD_SHORTNAME}"
-    ),
-}
-
-_SELECT_LONGNAME_BY_ID_SQL = (
-    f"SELECT {NAMES_FIELD_LONGNAME} FROM {NAMES_TABLE_LONGNAMES} WHERE meshtastic_id=?"
+_SELECT_NAME_VALUES_JSON_FROM_LONGNAMES_SQL = (
+    "SELECT meshtastic_id, longname FROM longnames "
+    "WHERE meshtastic_id IN (SELECT value FROM json_each(?))"
 )
-_SELECT_SHORTNAME_BY_ID_SQL = f"SELECT {NAMES_FIELD_SHORTNAME} FROM {NAMES_TABLE_SHORTNAMES} WHERE meshtastic_id=?"
+_SELECT_NAME_VALUES_JSON_FROM_SHORTNAMES_SQL = (
+    "SELECT meshtastic_id, shortname FROM shortnames "
+    "WHERE meshtastic_id IN (SELECT value FROM json_each(?))"
+)
+_SELECT_NAME_VALUES_SQL_BY_TABLE = {
+    NAMES_TABLE_LONGNAMES: _SELECT_NAME_VALUES_JSON_FROM_LONGNAMES_SQL,
+    NAMES_TABLE_SHORTNAMES: _SELECT_NAME_VALUES_JSON_FROM_SHORTNAMES_SQL,
+}
+
+_SELECT_NAME_VALUE_BY_ID_FROM_LONGNAMES_SQL = (
+    "SELECT meshtastic_id, longname FROM longnames WHERE meshtastic_id = ?"
+)
+_SELECT_NAME_VALUE_BY_ID_FROM_SHORTNAMES_SQL = (
+    "SELECT meshtastic_id, shortname FROM shortnames WHERE meshtastic_id = ?"
+)
+_SELECT_NAME_VALUE_BY_ID_SQL_BY_TABLE = {
+    NAMES_TABLE_LONGNAMES: _SELECT_NAME_VALUE_BY_ID_FROM_LONGNAMES_SQL,
+    NAMES_TABLE_SHORTNAMES: _SELECT_NAME_VALUE_BY_ID_FROM_SHORTNAMES_SQL,
+}
+
+_UPSERT_LONGNAME_SQL = (
+    "INSERT INTO longnames (meshtastic_id, longname) VALUES (?, ?) "
+    "ON CONFLICT(meshtastic_id) DO UPDATE SET longname=excluded.longname"
+)
+_UPSERT_SHORTNAME_SQL = (
+    "INSERT INTO shortnames (meshtastic_id, shortname) VALUES (?, ?) "
+    "ON CONFLICT(meshtastic_id) DO UPDATE SET shortname=excluded.shortname"
+)
+_UPSERT_NAME_SQL_BY_TABLE = {
+    NAMES_TABLE_LONGNAMES: _UPSERT_LONGNAME_SQL,
+    NAMES_TABLE_SHORTNAMES: _UPSERT_SHORTNAME_SQL,
+}
+
+_SELECT_LONGNAME_BY_ID_SQL = "SELECT longname FROM longnames WHERE meshtastic_id=?"
+_SELECT_SHORTNAME_BY_ID_SQL = "SELECT shortname FROM shortnames WHERE meshtastic_id=?"
+
+if (
+    NAMES_TABLE_LONGNAMES,
+    NAMES_TABLE_SHORTNAMES,
+    NAMES_FIELD_LONGNAME,
+    NAMES_FIELD_SHORTNAME,
+) != ("longnames", "shortnames", "longname", "shortname"):
+    raise RuntimeError(
+        "Names-table constants changed; update static SQL literals in db_utils."
+    )
 
 
 def _format_node_id_sample(ids: Collection[str]) -> str:
@@ -173,7 +195,11 @@ def _canonicalize_signature_value(value: Any) -> Any:
         return [_canonicalize_signature_value(item) for item in sorted(value, key=repr)]
     if isinstance(value, (list, tuple)):
         return [_canonicalize_signature_value(item) for item in value]
-    return {"__type__": type(value).__name__}
+    try:
+        value_repr = repr(value)
+    except Exception:  # noqa: BLE001 - defensive fallback for arbitrary objects
+        value_repr = f"<unrepresentable {type(value).__name__}>"
+    return {"__type__": type(value).__name__, "__repr__": value_repr}
 
 
 def _build_database_config_signature(raw_config: Any) -> str | None:
@@ -939,32 +965,52 @@ def _read_name_values_for_ids(
     Returns:
         dict[str, str | None] | None: Mapping of ID -> normalized table value for
         rows that currently exist in the table; `None` on database errors.
+
+    Notes:
+        Uses a json_each() batched query when available, and falls back to
+        per-ID parameterized selects on runtimes without JSON1 support.
     """
     if not current_ids:
         return {}
 
     column_name = _NAME_FIELD_BY_TABLE.get(table)
     select_sql = _SELECT_NAME_VALUES_SQL_BY_TABLE.get(table)
-    if column_name is None or select_sql is None:
+    select_by_id_sql = _SELECT_NAME_VALUE_BY_ID_SQL_BY_TABLE.get(table)
+    if column_name is None or select_sql is None or select_by_id_sql is None:
         raise _InvalidNamesTableError(table)
 
     manager = _get_db_manager()
     sorted_ids = sorted(current_ids)
+    supports_json_each = True
+    supports_json_each_fn = type(manager).__dict__.get("supports_json_each")
+    if callable(supports_json_each_fn):
+        supports_json_each = bool(supports_json_each_fn(manager))
+    elif "_supports_json_each" in getattr(manager, "__dict__", {}):
+        supports_json_each = bool(getattr(manager, "_supports_json_each"))
 
     def _fetch(cursor: sqlite3.Cursor) -> dict[str, str | None]:
         rows_by_id: dict[str, str | None] = {}
 
         for offset in range(0, len(sorted_ids), DEFAULT_NAME_PRUNE_CHUNK_SIZE):
             chunk_ids = sorted_ids[offset : offset + DEFAULT_NAME_PRUNE_CHUNK_SIZE]
-            cursor.execute(
-                select_sql,
-                (json.dumps(chunk_ids),),
-            )
-
+            fetched_rows: list[tuple[Any, Any]]
+            if supports_json_each:
+                cursor.execute(
+                    select_sql,
+                    (json.dumps(chunk_ids),),
+                )
+                fetched_rows = cast(list[tuple[Any, Any]], cursor.fetchall())
+            else:
+                fetched_rows = []
+                for chunk_id in chunk_ids:
+                    cursor.execute(select_by_id_sql, (chunk_id,))
+                    row = cursor.fetchone()
+                    if row is not None:
+                        fetched_rows.append(cast(tuple[Any, Any], row))
             rows_by_id.update(
                 {
                     str(row[0]): _normalize_node_name_value(row[1])
-                    for row in cursor.fetchall()
+                    for row in fetched_rows
                 }
             )
         return rows_by_id

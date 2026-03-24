@@ -139,6 +139,7 @@ _metadata_executor: ThreadPoolExecutor | None = ThreadPoolExecutor(max_workers=1
 _metadata_future: Future[Any] | None = None
 _metadata_future_started_at: float | None = None
 _metadata_future_lock = threading.Lock()
+_metadata_executor_orphaned_workers = 0
 _health_probe_request_deadlines: dict[int, float] = {}
 _health_probe_request_lock = threading.Lock()
 _HEALTH_PROBE_TRACK_GRACE_SECS = 60.0
@@ -152,6 +153,7 @@ _ble_future_address: str | None = None
 _ble_future_started_at: float | None = None
 _ble_future_timeout_secs: float | None = None
 _ble_timeout_counts: dict[str, int] = {}
+_ble_executor_orphaned_workers_by_address: dict[str, int] = {}
 _ble_timeout_lock = threading.Lock()
 _ble_future_watchdog_secs = BLE_FUTURE_WATCHDOG_SECS
 _ble_timeout_reset_threshold = BLE_TIMEOUT_RESET_THRESHOLD
@@ -237,6 +239,7 @@ def _shutdown_shared_executors() -> None:
     global _ble_future_started_at, _ble_future_timeout_secs
     global _metadata_executor, _metadata_future, _metadata_future_started_at
     global _health_probe_request_deadlines
+    global _metadata_executor_orphaned_workers, _ble_executor_orphaned_workers_by_address
 
     # Cancel any pending BLE operation
     # Capture future ref inside lock, cancel outside to avoid deadlock with done callbacks
@@ -251,6 +254,7 @@ def _shutdown_shared_executors() -> None:
         _ble_future_timeout_secs = None
         with _ble_timeout_lock:
             _ble_timeout_counts.clear()
+            _ble_executor_orphaned_workers_by_address.clear()
 
         executor = _ble_executor
         _ble_executor = None
@@ -271,6 +275,7 @@ def _shutdown_shared_executors() -> None:
             metadata_future_to_cancel = _metadata_future
         _metadata_future = None
         _metadata_future_started_at = None
+        _metadata_executor_orphaned_workers = 0
 
         executor = _metadata_executor
         _metadata_executor = None
@@ -351,14 +356,24 @@ def _reset_metadata_executor_for_stale_probe() -> None:
     retries are not queued behind a stuck worker.
     """
     global _metadata_executor, _metadata_future, _metadata_future_started_at
+    global _metadata_executor_orphaned_workers
 
+    orphaned_workers: int | None = None
     with _metadata_future_lock:
         old_executor = _metadata_executor
         _metadata_future = None
         _metadata_future_started_at = None
         _metadata_executor = ThreadPoolExecutor(max_workers=1)
+        if old_executor is not None and not getattr(old_executor, "_shutdown", False):
+            _metadata_executor_orphaned_workers += 1
+            orphaned_workers = _metadata_executor_orphaned_workers
 
     if old_executor is not None and not getattr(old_executor, "_shutdown", False):
+        logger.warning(
+            "Replacing stale metadata executor after probe timeout; "
+            "orphaned metadata workers=%s",
+            orphaned_workers,
+        )
         try:
             old_executor.shutdown(wait=False, cancel_futures=True)
         except TypeError:
@@ -626,8 +641,8 @@ async def refresh_node_name_tables(
     Periodically sync longname/shortname tables from the current Meshtastic node DB.
 
     The first refresh attempt runs immediately. When `refresh_interval_seconds`
-    is zero or negative, one immediate refresh is attempted and periodic refresh
-    is disabled afterward.
+    is zero, one immediate refresh is attempted and periodic refresh is disabled
+    afterward. Negative values are treated the same when passed programmatically.
 
     Current scope: this task updates only long/short name cache tables from the
     NodeDB snapshot. Future releases may extend persistence to broader NodeDB
@@ -663,11 +678,11 @@ async def refresh_node_name_tables(
             if nodes_snapshot is None:
                 if client_missing:
                     logger.debug(
-                        "Skipping node-name table refresh because Meshtastic client is unavailable"
+                        "Skipping name-cache refresh from NodeDB because Meshtastic client is unavailable"
                     )
                 else:
                     logger.debug(
-                        "Skipping node-name table refresh because client.nodes is unavailable"
+                        "Skipping name-cache refresh from NodeDB because client.nodes is unavailable"
                     )
             else:
                 previous_state = await asyncio.to_thread(
@@ -676,12 +691,13 @@ async def refresh_node_name_tables(
                     previous_state,
                 )
         except Exception:
-            logger.exception("Failed to refresh node-name tables from node snapshot")
+            logger.exception("Failed to refresh name-cache tables from NodeDB snapshot")
             raise
 
         if interval <= 0:
             logger.debug(
-                "Node-name periodic refresh disabled (interval=%.3f)", float(interval)
+                "NodeDB name-cache periodic refresh disabled (interval=%.3f)",
+                float(interval),
             )
             return
 
@@ -1315,26 +1331,37 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
     """
     global _ble_executor, _ble_future, _ble_future_address
     global _ble_future_started_at, _ble_future_timeout_secs
+    global _ble_executor_orphaned_workers_by_address
     reset_threshold = _coerce_positive_int(
         _ble_timeout_reset_threshold, BLE_TIMEOUT_RESET_THRESHOLD
     )
     # Capture future ref inside lock, cancel outside to avoid deadlock with done callbacks
     ble_future_to_cancel = None
+    orphaned_workers = 0
     with _ble_executor_lock:
         if timeout_count < reset_threshold:
             return
-        logger.warning(
-            "BLE worker timed out %s times for %s; recreating executor",
-            timeout_count,
-            ble_address,
-        )
         if _ble_future and not _ble_future.done():
             ble_future_to_cancel = _ble_future
         if _ble_executor is not None and not getattr(_ble_executor, "_shutdown", False):
+            with _ble_timeout_lock:
+                orphaned_workers = (
+                    _ble_executor_orphaned_workers_by_address.get(ble_address, 0) + 1
+                )
+                _ble_executor_orphaned_workers_by_address[ble_address] = (
+                    orphaned_workers
+                )
             try:
                 _ble_executor.shutdown(wait=False, cancel_futures=True)
             except TypeError:
                 _ble_executor.shutdown(wait=False)
+        logger.warning(
+            "BLE worker timed out %s times for %s; recreating executor "
+            "(orphaned BLE workers for address=%s)",
+            timeout_count,
+            ble_address,
+            orphaned_workers,
+        )
         _ble_executor = ThreadPoolExecutor(max_workers=1)
         _ble_future = None
         _ble_future_address = None
@@ -2880,13 +2907,15 @@ def connect_meshtastic(
                 DEFAULT_MESHTASTIC_TIMEOUT,
             )
         timeout = DEFAULT_MESHTASTIC_TIMEOUT
+    configured_timeout_secs = float(timeout)
+    configured_timeout_arg = max(1, math.ceil(configured_timeout_secs))
     create_timeout_floor_secs = _coerce_positive_float(
         _ble_interface_create_timeout_secs,
         BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS,
         "_ble_interface_create_timeout_secs",
     )
-    constructor_timeout_secs = max(float(timeout), create_timeout_floor_secs)
-    constructor_timeout_arg = max(1, math.ceil(constructor_timeout_secs))
+    ble_create_timeout_secs = max(configured_timeout_secs, create_timeout_floor_secs)
+    ble_constructor_timeout_arg = max(1, math.ceil(ble_create_timeout_secs))
 
     while (
         not successful
@@ -2917,7 +2946,7 @@ def connect_meshtastic(
                     )
 
                 client = meshtastic.serial_interface.SerialInterface(
-                    serial_port, timeout=constructor_timeout_arg
+                    serial_port, timeout=configured_timeout_arg
                 )
 
             elif connection_type == CONNECTION_TYPE_BLE:
@@ -2967,7 +2996,7 @@ def connect_meshtastic(
                                 "noProto": False,
                                 "debugOut": None,
                                 "noNodes": False,
-                                "timeout": constructor_timeout_arg,
+                                "timeout": ble_constructor_timeout_arg,
                             }
 
                             # Configure auto_reconnect only when supported.
@@ -3019,7 +3048,7 @@ def connect_meshtastic(
                             # Use the larger of configured connect timeout and the safety floor.
                             # This keeps stale-worker detection and future.result() budget aligned
                             # with the actual BLEInterface constructor timeout.
-                            create_timeout_secs = constructor_timeout_secs
+                            create_timeout_secs = ble_create_timeout_secs
 
                             # Guard against overlapping BLE tasks: if a previous BLE operation is
                             # still running (often due to a hung BlueZ/DBus call), we skip queuing
@@ -3289,7 +3318,7 @@ def connect_meshtastic(
                 client = meshtastic.tcp_interface.TCPInterface(
                     hostname=target_host,
                     portNumber=target_port,
-                    timeout=constructor_timeout_arg,
+                    timeout=configured_timeout_arg,
                 )
             else:
                 logger.error(f"Unknown connection type: {connection_type}")
