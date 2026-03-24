@@ -376,10 +376,13 @@ async def main(config: dict[str, Any]) -> None:
             step_error: Exception | None = None
             try:
                 step_func()
-            except (
-                Exception
-            ) as exc:  # noqa: BLE001 - best-effort shutdown must continue
-                step_error = exc
+            except BaseException as exc:
+                if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                    raise
+                if isinstance(exc, Exception):
+                    step_error = exc
+                else:
+                    raise
 
             def _publish_result() -> None:
                 if not step_result.done():
@@ -424,11 +427,10 @@ async def main(config: dict[str, Any]) -> None:
         matrix_logger.info("Closing Matrix client...")
         try:
             await matrix_client.close()
-        except Exception:  # noqa: BLE001 - shutdown must continue
-            matrix_logger.exception(
-                "Failed to close Matrix client during %s",
-                context,
-            )
+        except BaseException as exc:
+            if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                raise
+            matrix_logger.exception("Failed to close Matrix client during %s", context)
 
     async def _close_meshtastic_client_best_effort(*, context: str) -> None:
         """
@@ -466,7 +468,9 @@ async def main(config: dict[str, Any]) -> None:
                 "Meshtastic client close timed out during %s - may cause notification errors",
                 context,
             )
-        except Exception:  # noqa: BLE001 - shutdown must keep going
+        except BaseException as exc:
+            if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                raise
             meshtastic_logger.exception(
                 "Unexpected error during Meshtastic client close during %s",
                 context,
@@ -567,6 +571,9 @@ async def main(config: dict[str, Any]) -> None:
                 _set_shutdown_flag()
 
         check_connection_task.add_done_callback(_on_check_connection_done)
+        # Give the health-check task one scheduling opportunity before readiness logic.
+        # This avoids publishing readiness if the task fails immediately.
+        await asyncio.sleep(0)
     except Exception:
         _set_shutdown_flag()
         if check_connection_task is not None:
@@ -703,19 +710,19 @@ async def main(config: dict[str, Any]) -> None:
             return
 
         cleanup_results = await asyncio.gather(task, return_exceptions=True)
-        result: object = cleanup_results[0]
+        done_result: object = cleanup_results[0]
         if (
-            isinstance(result, Exception)
+            isinstance(done_result, Exception)
             and not isinstance(
-                result,
+                done_result,
                 asyncio.CancelledError,
             )
-            and result is not wait_error
+            and done_result is not wait_error
         ):
             logger.error(
                 "Error during %s cleanup",
                 task_name,
-                exc_info=(type(result), result, result.__traceback__),
+                exc_info=(type(done_result), done_result, done_result.__traceback__),
             )
 
     # Start the Matrix client sync loop
@@ -795,6 +802,7 @@ async def main(config: dict[str, Any]) -> None:
                         matrix_logger.warning(
                             "Matrix sync_forever completed unexpectedly"
                         )
+                        await asyncio.sleep(5)  # Keep retry pacing consistent.
                     except asyncio.TimeoutError as exc:
                         matrix_logger.warning(
                             "Matrix sync timed out, retrying: %s", exc

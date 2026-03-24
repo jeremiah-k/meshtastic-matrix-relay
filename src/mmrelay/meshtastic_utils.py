@@ -241,7 +241,6 @@ def _shutdown_shared_executors() -> None:
     # Capture future ref inside lock, cancel outside to avoid deadlock with done callbacks
     ble_future_to_cancel = None
     with _ble_executor_lock:
-        stale_address = _ble_future_address
         if _ble_future and not _ble_future.done():
             logger.debug("Cancelling pending BLE future during executor shutdown")
             ble_future_to_cancel = _ble_future
@@ -521,6 +520,23 @@ def _coerce_bool(value: Any, default: bool, setting_name: str) -> bool:
     return default
 
 
+def _parse_refresh_interval_seconds(raw_interval: Any) -> float | None:
+    """
+    Parse and validate a refresh interval value.
+
+    Returns the parsed float if valid, or None if invalid (wrong type, non-finite, etc.).
+    """
+    try:
+        if isinstance(raw_interval, bool):
+            raise TypeError("boolean interval")
+        interval = float(raw_interval)
+        if not math.isfinite(interval):
+            raise ValueError("non-finite interval")
+        return interval
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
 def get_node_name_refresh_interval_seconds(
     passed_config: dict[str, Any] | None = None,
 ) -> float:
@@ -542,14 +558,9 @@ def get_node_name_refresh_interval_seconds(
         CONFIG_KEY_NODE_NAME_REFRESH_INTERVAL,
         DEFAULT_NODE_NAME_REFRESH_INTERVAL,
     )
-    try:
-        if isinstance(raw_interval, bool):
-            raise TypeError("boolean interval")
-        interval = float(raw_interval)
-        if math.isfinite(interval):
-            return interval
-    except (TypeError, ValueError, OverflowError):
-        pass
+    interval = _parse_refresh_interval_seconds(raw_interval)
+    if interval is not None:
+        return interval
 
     logger.warning(
         "Invalid meshtastic.node_name_refresh_interval=%r; defaulting to %.1f",
@@ -619,13 +630,8 @@ async def refresh_node_name_tables(
     if refresh_interval_seconds is None:
         interval = get_node_name_refresh_interval_seconds()
     else:
-        try:
-            if isinstance(refresh_interval_seconds, bool):
-                raise TypeError("boolean interval")
-            interval = float(refresh_interval_seconds)
-            if not math.isfinite(interval):
-                raise ValueError("non-finite interval")
-        except (TypeError, ValueError, OverflowError):
+        parsed = _parse_refresh_interval_seconds(refresh_interval_seconds)
+        if parsed is None:
             configured_interval = get_node_name_refresh_interval_seconds()
             logger.warning(
                 "Invalid node-name refresh interval override %r; defaulting to configured interval %.1f",
@@ -633,6 +639,8 @@ async def refresh_node_name_tables(
                 configured_interval,
             )
             interval = configured_interval
+        else:
+            interval = parsed
 
     previous_state: NodeNameState | None = None
     while not shutdown_event.is_set():
@@ -3359,7 +3367,8 @@ def on_lost_meshtastic_connection(
         detection_source (str): Identifier for where or how the loss was detected; if `"unknown"`, the function will prefer an interface-provided `_last_disconnect_source`, then derive a name from `topic`, and finally fall back to `"meshtastic.connection.lost"`.
         topic (Any): Optional pubsub topic object (from pypubsub); when provided and `detection_source` is `"unknown"`, the topic's name will be used to derive the detection source.
     """
-    global meshtastic_client, meshtastic_iface, reconnecting, shutting_down, event_loop, reconnect_task, _ble_future, _ble_future_address
+    global meshtastic_client, meshtastic_iface, reconnecting, shutting_down, event_loop
+    global reconnect_task, _ble_future, _ble_future_address
     global _ble_future_started_at, _ble_future_timeout_secs, _ble_executor
 
     with meshtastic_lock:

@@ -756,6 +756,31 @@ def reset_meshtastic_globals():
     mu._ble_future_started_at = None
     mu._ble_future_timeout_secs = None
     mu._ble_timeout_counts = {}
+    mu._ble_future_watchdog_secs = getattr(
+        mu,
+        "BLE_FUTURE_WATCHDOG_SECS",
+        None,
+    )
+    mu._ble_timeout_reset_threshold = getattr(
+        mu,
+        "BLE_TIMEOUT_RESET_THRESHOLD",
+        None,
+    )
+    mu._ble_scan_timeout_secs = getattr(
+        mu,
+        "BLE_SCAN_TIMEOUT_SECS",
+        None,
+    )
+    mu._ble_future_stale_grace_secs = getattr(
+        mu,
+        "BLE_FUTURE_STALE_GRACE_SECS",
+        None,
+    )
+    mu._ble_interface_create_timeout_secs = getattr(
+        mu,
+        "BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS",
+        None,
+    )
     mu._health_probe_request_deadlines = {}
 
     yield

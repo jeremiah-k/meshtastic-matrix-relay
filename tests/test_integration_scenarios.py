@@ -98,7 +98,11 @@ class TestIntegrationScenarios(unittest.TestCase):
                         cancel()
                         if isinstance(ble_future, asyncio.Task):
                             try:
-                                loop = asyncio.get_event_loop()
+                                loop = ble_future.get_loop()
+                                if loop.is_closed():
+                                    raise RuntimeError(
+                                        "BLE task loop already closed during cleanup"
+                                    )
                                 if loop.is_running():
                                     cleanup_future = asyncio.run_coroutine_threadsafe(
                                         asyncio.wait_for(ble_future, 0.2), loop

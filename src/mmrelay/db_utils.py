@@ -78,78 +78,52 @@ _DB_COLUMN_BY_PROTO_NODE_NAME_FIELD = {
 _LONGNAME_DB_FIELD = _NAME_FIELD_BY_TABLE[NAMES_TABLE_LONGNAMES]
 _SHORTNAME_DB_FIELD = _NAME_FIELD_BY_TABLE[NAMES_TABLE_SHORTNAMES]
 
-# SQL templates use constant table/column names (not user input) with parameterized values.
-# Ruff S608 warnings are false positives - NAMES_TABLE_* and NAMES_FIELD_* are constants.
+# SQL templates are static literals (no runtime identifier interpolation).
 _SELECT_STALE_IDS_SQL_BY_TABLE = {
-    NAMES_TABLE_LONGNAMES: "SELECT meshtastic_id FROM " + NAMES_TABLE_LONGNAMES,
-    NAMES_TABLE_SHORTNAMES: "SELECT meshtastic_id FROM " + NAMES_TABLE_SHORTNAMES,
+    NAMES_TABLE_LONGNAMES: "SELECT meshtastic_id FROM longnames",
+    NAMES_TABLE_SHORTNAMES: "SELECT meshtastic_id FROM shortnames",
 }
 
 _DELETE_STALE_ID_SQL_BY_TABLE = {
-    NAMES_TABLE_LONGNAMES: (
-        "DELETE FROM " + NAMES_TABLE_LONGNAMES + " WHERE meshtastic_id = ?"
-    ),
-    NAMES_TABLE_SHORTNAMES: (
-        "DELETE FROM " + NAMES_TABLE_SHORTNAMES + " WHERE meshtastic_id = ?"
-    ),
+    NAMES_TABLE_LONGNAMES: "DELETE FROM longnames WHERE meshtastic_id = ?",
+    NAMES_TABLE_SHORTNAMES: "DELETE FROM shortnames WHERE meshtastic_id = ?",
 }
 
 # json_each() is the fast path for batched Meshtastic-ID lookups.
 # _read_name_values_for_ids() falls back to per-ID queries when unavailable.
 _SELECT_NAME_VALUES_SQL_BY_TABLE = {
     NAMES_TABLE_LONGNAMES: (
-        "SELECT meshtastic_id, "
-        + NAMES_FIELD_LONGNAME
-        + " FROM "
-        + NAMES_TABLE_LONGNAMES
-        + " "
+        "SELECT meshtastic_id, longname FROM longnames "
         "WHERE meshtastic_id IN (SELECT value FROM json_each(?))"
     ),
     NAMES_TABLE_SHORTNAMES: (
-        "SELECT meshtastic_id, "
-        + NAMES_FIELD_SHORTNAME
-        + " FROM "
-        + NAMES_TABLE_SHORTNAMES
-        + " "
+        "SELECT meshtastic_id, shortname FROM shortnames "
         "WHERE meshtastic_id IN (SELECT value FROM json_each(?))"
     ),
 }
 
 _SELECT_NAME_VALUE_BY_ID_SQL_BY_TABLE = {
     NAMES_TABLE_LONGNAMES: (
-        "SELECT meshtastic_id, " + NAMES_FIELD_LONGNAME + " "
-        "FROM " + NAMES_TABLE_LONGNAMES + " WHERE meshtastic_id = ?"
+        "SELECT meshtastic_id, longname FROM longnames WHERE meshtastic_id = ?"
     ),
     NAMES_TABLE_SHORTNAMES: (
-        "SELECT meshtastic_id, " + NAMES_FIELD_SHORTNAME + " "
-        "FROM " + NAMES_TABLE_SHORTNAMES + " WHERE meshtastic_id = ?"
+        "SELECT meshtastic_id, shortname FROM shortnames WHERE meshtastic_id = ?"
     ),
 }
 
 _UPSERT_NAME_SQL_BY_TABLE = {
     NAMES_TABLE_LONGNAMES: (
-        "INSERT INTO "
-        + NAMES_TABLE_LONGNAMES
-        + " (meshtastic_id, "
-        + NAMES_FIELD_LONGNAME
-        + ") VALUES (?, ?) "
-        "ON CONFLICT(meshtastic_id) DO UPDATE SET "
-        + NAMES_FIELD_LONGNAME
-        + "=excluded."
-        + NAMES_FIELD_LONGNAME
+        "INSERT INTO longnames (meshtastic_id, longname) VALUES (?, ?) "
+        "ON CONFLICT(meshtastic_id) DO UPDATE SET longname=excluded.longname"
     ),
     NAMES_TABLE_SHORTNAMES: (
-        "INSERT INTO "
-        + NAMES_TABLE_SHORTNAMES
-        + " (meshtastic_id, "
-        + NAMES_FIELD_SHORTNAME
-        + ") VALUES (?, ?) "
-        "ON CONFLICT(meshtastic_id) DO UPDATE SET "
-        + NAMES_FIELD_SHORTNAME
-        + "=excluded."
-        + NAMES_FIELD_SHORTNAME
+        "INSERT INTO shortnames (meshtastic_id, shortname) VALUES (?, ?) "
+        "ON CONFLICT(meshtastic_id) DO UPDATE SET shortname=excluded.shortname"
     ),
 }
+
+_SELECT_LONGNAME_BY_ID_SQL = "SELECT longname FROM longnames WHERE meshtastic_id=?"
+_SELECT_SHORTNAME_BY_ID_SQL = "SELECT shortname FROM shortnames WHERE meshtastic_id=?"
 
 
 def _format_node_id_sample(ids: Collection[str]) -> str:
@@ -774,10 +748,7 @@ def get_longname(meshtastic_id: int | str) -> str | None:
         Returns:
             tuple[Any, ...] | None: The first row as a tuple, or `None` if no row is available.
         """
-        cursor.execute(
-            f"SELECT {NAMES_FIELD_LONGNAME} FROM {NAMES_TABLE_LONGNAMES} WHERE meshtastic_id=?",
-            (id_key,),
-        )
+        cursor.execute(_SELECT_LONGNAME_BY_ID_SQL, (id_key,))
         return cast(tuple[Any, ...] | None, cursor.fetchone())
 
     try:
@@ -1626,10 +1597,7 @@ def get_shortname(meshtastic_id: int | str) -> str | None:
         Returns:
             tuple[Any, ...] | None: The first row returned by the query (typically a single-item tuple containing the `shortname`), or `None` if no row is found.
         """
-        cursor.execute(
-            f"SELECT {NAMES_FIELD_SHORTNAME} FROM {NAMES_TABLE_SHORTNAMES} WHERE meshtastic_id=?",
-            (id_key,),
-        )
+        cursor.execute(_SELECT_SHORTNAME_BY_ID_SQL, (id_key,))
         return cast(tuple[Any, ...] | None, cursor.fetchone())
 
     try:

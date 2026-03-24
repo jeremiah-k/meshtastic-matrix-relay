@@ -3171,14 +3171,17 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
                 "mmrelay.main.connect_matrix",
                 new_callable=AsyncMock,
             ),
-            patch("mmrelay.main.connect_meshtastic", return_value=None),
+            patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
             patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
             patch("mmrelay.main.get_message_queue") as mock_get_queue,
             patch("mmrelay.main.shutdown_plugins"),
             patch("mmrelay.main.stop_message_queue"),
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
-            patch("mmrelay.main.meshtastic_utils.check_connection"),
-            contextlib.suppress(Exception),
+            patch(
+                "mmrelay.main.meshtastic_utils.check_connection",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
         ):
             mock_matrix_client = AsyncMock()
             mock_matrix_client.add_event_callback = MagicMock()
@@ -3192,16 +3195,23 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
                 asyncio.run(main(config))
 
     def test_timeout_during_shutdown_cancels_task(self):
-        """TimeoutError during shutdown task wait should cancel and continue.
-
-        Note: This test verifies the timeout path completes without hanging.
-        A more thorough test would inject a mock task to verify cancel() is called.
-        """
+        """TimeoutError during shutdown task wait should cancel and continue."""
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org"}],
             "matrix": {"homeserver": "https://matrix.org"},
             "meshtastic": {"connection_type": "serial"},
         }
+
+        async def _check_connection_wait() -> None:
+            await asyncio.sleep(3600)
+
+        created_tasks: list[asyncio.Task[Any]] = []
+        real_create_task = asyncio.create_task
+
+        def _capture_create_task(coro: Any, *args: Any, **kwargs: Any) -> Any:
+            task = real_create_task(coro, *args, **kwargs)
+            created_tasks.append(task)
+            return task
 
         with (
             patch("mmrelay.main.initialize_database"),
@@ -3217,8 +3227,13 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
             patch("mmrelay.main.shutdown_plugins"),
             patch("mmrelay.main.stop_message_queue"),
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
-            patch("mmrelay.main.meshtastic_utils.check_connection"),
+            patch(
+                "mmrelay.main.meshtastic_utils.check_connection",
+                new_callable=AsyncMock,
+                side_effect=_check_connection_wait,
+            ),
             patch("mmrelay.main.asyncio.wait_for") as mock_wait_for,
+            patch("mmrelay.main.asyncio.create_task", side_effect=_capture_create_task),
             contextlib.suppress(Exception),
         ):
             mock_matrix_client = AsyncMock()
@@ -3233,6 +3248,17 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
                 mock_wait_for.side_effect = asyncio.TimeoutError()
 
                 asyncio.run(main(config))
+
+        check_conn_tasks = [
+            task
+            for task in created_tasks
+            if getattr(getattr(task, "get_coro", lambda: None)(), "__name__", "")
+            == "_check_connection_wait"
+        ]
+        self.assertTrue(check_conn_tasks)
+        self.assertTrue(
+            any(task.cancelled() or task.cancelling() > 0 for task in check_conn_tasks)
+        )
 
     def test_exception_during_shutdown_wait_logs_error(self):
         """Exception during shutdown wait should log error and continue.
@@ -3293,6 +3319,17 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
             "meshtastic": {"connection_type": "serial"},
         }
 
+        async def _check_connection_wait() -> None:
+            await asyncio.sleep(3600)
+
+        created_tasks: list[asyncio.Task[Any]] = []
+        real_create_task = asyncio.create_task
+
+        def _capture_create_task(coro: Any, *args: Any, **kwargs: Any) -> Any:
+            task = real_create_task(coro, *args, **kwargs)
+            created_tasks.append(task)
+            return task
+
         call_count = [0]
 
         def mock_wait_for(coro, timeout=None):
@@ -3315,8 +3352,13 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
             patch("mmrelay.main.shutdown_plugins"),
             patch("mmrelay.main.stop_message_queue"),
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
-            patch("mmrelay.main.meshtastic_utils.check_connection"),
+            patch(
+                "mmrelay.main.meshtastic_utils.check_connection",
+                new_callable=AsyncMock,
+                side_effect=_check_connection_wait,
+            ),
             patch("mmrelay.main.asyncio.wait_for", side_effect=mock_wait_for),
+            patch("mmrelay.main.asyncio.create_task", side_effect=_capture_create_task),
             contextlib.suppress(Exception),
         ):
             mock_matrix_client = AsyncMock()
@@ -3329,6 +3371,17 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
                 mock_get_queue.return_value = mock_queue
 
                 asyncio.run(main(config))
+
+        check_conn_tasks = [
+            task
+            for task in created_tasks
+            if getattr(getattr(task, "get_coro", lambda: None)(), "__name__", "")
+            == "_check_connection_wait"
+        ]
+        self.assertTrue(check_conn_tasks)
+        self.assertTrue(
+            any(task.cancelled() or task.cancelling() > 0 for task in check_conn_tasks)
+        )
 
     def test_task_with_exception_result_logs_error(self):
         """Exception in task result should log error during cleanup."""

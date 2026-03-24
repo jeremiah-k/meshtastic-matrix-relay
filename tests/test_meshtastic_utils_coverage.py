@@ -1644,7 +1644,7 @@ class TestConnectionLostHandlerClearingStaleBleFuture:
         mu.event_loop.is_closed.return_value = False
         mu.reconnecting = False
 
-        with patch("mmrelay.meshtastic_utils.reconnect") as mock_reconnect:
+        with patch("mmrelay.meshtastic_utils.reconnect"):
             with patch("mmrelay.meshtastic_utils.logger"):
                 mu.on_lost_meshtastic_connection(detection_source="test source")
 

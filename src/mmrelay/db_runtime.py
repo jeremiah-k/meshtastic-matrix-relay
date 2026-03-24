@@ -19,7 +19,6 @@ from functools import partial
 from typing import Any, Generator, Optional
 
 from mmrelay.constants.database import (
-    MIN_SQLITE_VERSION_JSON_EACH,
     SQLITE_JSON_EACH_PROBE_PAYLOAD,
     SQLITE_JSON_EACH_PROBE_SQL,
 )
@@ -118,6 +117,8 @@ class DatabaseManager:
     _write_lock: threading.RLock
     _connections: set[sqlite3.Connection]
     _connections_lock: threading.RLock
+    _active_sync_condition: threading.Condition
+    _active_sync_count: int
     _executor_lock: threading.Lock
     _closing: bool
 
@@ -156,6 +157,8 @@ class DatabaseManager:
         self._write_lock = threading.RLock()
         self._connections: set[sqlite3.Connection] = set()
         self._connections_lock = threading.RLock()
+        self._active_sync_condition = threading.Condition(self._connections_lock)
+        self._active_sync_count = 0
         self._executor_lock = threading.Lock()
         self._async_executor = ThreadPoolExecutor(max_workers=1)
         self._closing = False
@@ -237,11 +240,11 @@ class DatabaseManager:
             sqlite3.Connection: The per-thread SQLite connection.
 
         Raises:
-            RuntimeError: If the manager is closing and cannot create new connections.
+            sqlite3.ProgrammingError: If the manager is closing and cannot create new connections.
         """
         with self._connections_lock:
             if self._closing:
-                raise RuntimeError(
+                raise sqlite3.ProgrammingError(
                     "DatabaseManager is closing, cannot create new connections"
                 )
             conn = getattr(self._thread_local, "connection", None)
@@ -257,6 +260,25 @@ class DatabaseManager:
                 self._thread_local.connection = conn
             return conn
 
+    @contextmanager
+    def _sync_activity(self) -> Generator[None, None, None]:
+        """
+        Track active synchronous DB usage and block new work while closing.
+        """
+        with self._connections_lock:
+            if self._closing:
+                raise sqlite3.ProgrammingError(
+                    "DatabaseManager is closing, cannot submit new work"
+                )
+            self._active_sync_count += 1
+        try:
+            yield
+        finally:
+            with self._connections_lock:
+                self._active_sync_count -= 1
+                if self._active_sync_count == 0:
+                    self._active_sync_condition.notify_all()
+
     # ------------------------------------------------------------------ #
     # Context managers
     # ------------------------------------------------------------------ #
@@ -271,12 +293,13 @@ class DatabaseManager:
         Returns:
             sqlite3.Cursor: A cursor tied to the manager's per-thread connection.
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        try:
-            yield cursor
-        finally:
-            cursor.close()
+        with self._sync_activity():
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            try:
+                yield cursor
+            finally:
+                cursor.close()
 
     @contextmanager
     def write(self) -> Generator[sqlite3.Cursor, None, None]:
@@ -288,17 +311,18 @@ class DatabaseManager:
         Returns:
             cursor (sqlite3.Cursor): Cursor for executing write statements; committed on success, rolled back on exception.
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        with self._write_lock:
-            try:
-                yield cursor
-                conn.commit()
-            except Exception:
-                conn.rollback()
-                raise
-            finally:
-                cursor.close()
+        with self._sync_activity():
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            with self._write_lock:
+                try:
+                    yield cursor
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
+                    raise
+                finally:
+                    cursor.close()
 
     # ------------------------------------------------------------------ #
     # Execution helpers
@@ -345,7 +369,9 @@ class DatabaseManager:
         executor_func = partial(self.run_sync, func, write=write)
         with self._executor_lock:
             if self._closing:
-                raise RuntimeError("DatabaseManager is closing, cannot submit new work")
+                raise sqlite3.ProgrammingError(
+                    "DatabaseManager is closing, cannot submit new work"
+                )
             worker_future = self._async_executor.submit(executor_func)
         try:
             return await asyncio.wrap_future(worker_future)
@@ -369,6 +395,8 @@ class DatabaseManager:
 
         with self._connections_lock:
             self._closing = True
+            while self._active_sync_count > 0:
+                self._active_sync_condition.wait()
             connections = list(self._connections)
             self._connections.clear()
             for conn in connections:

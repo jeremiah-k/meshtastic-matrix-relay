@@ -102,17 +102,22 @@ def _reset_ble_inflight_state(module: Any) -> None:
             cancel()
             if isinstance(ble_future, asyncio.Task):
                 try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        asyncio.run_coroutine_threadsafe(
-                            asyncio.wait_for(ble_future, 0.2), loop
-                        )
-                    else:
-                        loop.run_until_complete(asyncio.wait_for(ble_future, 0.2))
+                    loop = ble_future.get_loop()
+                    if not loop.is_closed():
+                        if loop.is_running():
+                            cleanup_future = asyncio.run_coroutine_threadsafe(
+                                asyncio.wait_for(ble_future, 0.2),
+                                loop,
+                            )
+                            cleanup_future.result(timeout=0.5)
+                        else:
+                            loop.run_until_complete(asyncio.wait_for(ble_future, 0.2))
                 except (
                     asyncio.TimeoutError,
                     asyncio.CancelledError,
                     RuntimeError,
+                    ConcurrentTimeoutError,
+                    ConcurrentCancelledError,
                 ) as exc:
                     # Intentionally swallowed: cleanup errors should not fail tests
                     logging.getLogger(__name__).debug(
