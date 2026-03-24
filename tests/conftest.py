@@ -174,10 +174,10 @@ def _drain_future_result_safely(future: Any, timeout: float) -> None:
             return
         except Exception as exc:
             logging.getLogger(__name__).debug(
-                "Suppressing future-drain exception during teardown: %s",
+                "Unexpected future-drain exception during teardown: %s",
                 exc,
             )
-            return
+            raise
     except (
         TimeoutError,
         asyncio.TimeoutError,
@@ -190,10 +190,10 @@ def _drain_future_result_safely(future: Any, timeout: float) -> None:
         return
     except Exception as exc:
         logging.getLogger(__name__).debug(
-            "Suppressing future-drain exception during teardown: %s",
+            "Unexpected future-drain exception during teardown: %s",
             exc,
         )
-        return
+        raise
 
 
 def cleanup_ble_future_state(module: Any) -> None:
@@ -995,47 +995,49 @@ def reset_meshtastic_globals():
     mu._health_probe_request_deadlines = {}
 
     yield
-    iface = getattr(mu, "meshtastic_iface", None)
-    if iface is not None:
-        disconnect_iface = getattr(mu, "_disconnect_ble_interface", None)
-        if callable(disconnect_iface):
-            with contextlib.suppress(
-                asyncio.CancelledError,
-                asyncio.TimeoutError,
-                OSError,
-                RuntimeError,
-            ):
-                disconnect_iface(iface, reason="test-reset")
-        else:
-            for method_name in ("disconnect", "close"):
-                iface_method = getattr(iface, method_name, None)
-                if not callable(iface_method):
-                    continue
+    try:
+        iface = getattr(mu, "meshtastic_iface", None)
+        if iface is not None:
+            disconnect_iface = getattr(mu, "_disconnect_ble_interface", None)
+            if callable(disconnect_iface):
                 with contextlib.suppress(
                     asyncio.CancelledError,
                     asyncio.TimeoutError,
                     OSError,
                     RuntimeError,
                 ):
-                    maybe_awaitable = iface_method()
-                    _drain_awaitable_result_safely(maybe_awaitable, timeout=0.2)
-                break
+                    disconnect_iface(iface, reason="test-reset")
+            else:
+                for method_name in ("disconnect", "close"):
+                    iface_method = getattr(iface, method_name, None)
+                    if not callable(iface_method):
+                        continue
+                    with contextlib.suppress(
+                        asyncio.CancelledError,
+                        asyncio.TimeoutError,
+                        OSError,
+                        RuntimeError,
+                    ):
+                        maybe_awaitable = iface_method()
+                        _drain_awaitable_result_safely(maybe_awaitable, timeout=0.2)
+                    break
 
-    _cancel_and_drain_future_like(getattr(mu, "reconnect_task", None), timeout=0.2)
-    _cancel_and_drain_future_like(getattr(mu, "_metadata_future", None), timeout=0.2)
-    mu.reconnect_task = None
-    mu._metadata_future = None
-    mu._metadata_future_started_at = None
-    mu.subscribed_to_messages = False
-    mu.subscribed_to_connection_lost = False
-    cleanup_ble_future_state(mu)
-    mu.shutdown_shared_executors()
-    mu.meshtastic_iface = None
-    mu.meshtastic_client = None
-
-    # Restore original values (including Nones) to avoid state leakage
-    for attr_name, original_value in original_values.items():
-        setattr(mu, attr_name, original_value)
+        _cancel_and_drain_future_like(getattr(mu, "reconnect_task", None), timeout=0.2)
+        _cancel_and_drain_future_like(
+            getattr(mu, "_metadata_future", None), timeout=0.2
+        )
+        mu.reconnect_task = None
+        mu._metadata_future = None
+        mu._metadata_future_started_at = None
+        mu.subscribed_to_messages = False
+        mu.subscribed_to_connection_lost = False
+        cleanup_ble_future_state(mu)
+        mu.shutdown_shared_executors()
+        mu.meshtastic_iface = None
+        mu.meshtastic_client = None
+    finally:
+        for attr_name, original_value in original_values.items():
+            setattr(mu, attr_name, original_value)
 
 
 @pytest.fixture

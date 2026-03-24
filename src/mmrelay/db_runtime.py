@@ -410,6 +410,11 @@ class DatabaseManager:
         try:
             return await asyncio.wrap_future(worker_future)
         except asyncio.CancelledError:
+            if write:
+                try:
+                    await asyncio.wrap_future(worker_future)
+                except asyncio.CancelledError:
+                    pass
             worker_future.cancel()
             raise
 

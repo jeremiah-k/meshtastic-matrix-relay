@@ -390,13 +390,13 @@ async def main(config: dict[str, Any]) -> None:
         still runs.
         """
         loop = asyncio.get_running_loop()
-        step_result: asyncio.Future[BaseException | None] = loop.create_future()
+        step_result: asyncio.Future[Exception | None] = loop.create_future()
 
         def _run_step() -> None:
-            step_error: BaseException | None = None
+            step_error: Exception | None = None
             try:
                 step_func()
-            except BaseException as exc:
+            except Exception as exc:
                 # Keep shutdown behavior deterministic: capture any failure from the
                 # daemon worker and report it on the main task instead of re-raising
                 # inside the thread.
@@ -451,7 +451,7 @@ async def main(config: dict[str, Any]) -> None:
                 context,
             )
         except BaseException as exc:
-            if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+            if isinstance(exc, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
                 raise
             matrix_logger.exception("Failed to close Matrix client during %s", context)
 
@@ -492,7 +492,7 @@ async def main(config: dict[str, Any]) -> None:
                 context,
             )
         except BaseException as exc:
-            if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+            if isinstance(exc, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
                 raise
             meshtastic_logger.exception(
                 "Unexpected error during Meshtastic client close during %s",
@@ -678,6 +678,17 @@ async def main(config: dict[str, Any]) -> None:
             if isinstance(refresh_result, Exception):
                 if shutdown_event.is_set():
                     return
+                if refresh_interval_seconds <= 0:
+                    meshtastic_logger.error(
+                        "NodeDB name-cache refresh task failed in one-shot mode (refresh_interval_seconds=%.1f); exiting",
+                        refresh_interval_seconds,
+                        exc_info=(
+                            type(refresh_result),
+                            refresh_result,
+                            refresh_result.__traceback__,
+                        ),
+                    )
+                    return
                 restart_attempt += 1
                 meshtastic_logger.error(
                     "NodeDB name-cache refresh task failed (attempt %d); restarting in %.1fs",
@@ -852,24 +863,39 @@ async def main(config: dict[str, Any]) -> None:
                         matrix_logger.warning(
                             "Matrix sync_forever completed unexpectedly"
                         )
-                        await asyncio.sleep(5)  # Keep retry pacing consistent.
+                        try:
+                            await asyncio.wait_for(shutdown_event.wait(), timeout=5.0)
+                        except asyncio.TimeoutError:
+                            pass
                     except asyncio.TimeoutError as exc:
                         matrix_logger.warning(
                             "Matrix sync timed out, retrying: %s", exc
                         )
-                        await asyncio.sleep(5)  # Keep retry pacing consistent.
+                        try:
+                            await asyncio.wait_for(shutdown_event.wait(), timeout=5.0)
+                        except asyncio.TimeoutError:
+                            pass
                     except ClientError as exc:
                         matrix_logger.warning("Matrix sync failed, retrying: %s", exc)
-                        await asyncio.sleep(5)  # Keep retry pacing consistent.
+                        try:
+                            await asyncio.wait_for(shutdown_event.wait(), timeout=5.0)
+                        except asyncio.TimeoutError:
+                            pass
                     except (ConnectionError, OSError, RuntimeError, ValueError):
                         matrix_logger.exception("Matrix sync failed")
-                        await asyncio.sleep(5)  # Keep retry pacing consistent.
+                        try:
+                            await asyncio.wait_for(shutdown_event.wait(), timeout=5.0)
+                        except asyncio.TimeoutError:
+                            pass
 
             except (ClientError, ConnectionError, OSError, RuntimeError, ValueError):
                 if shutdown_event.is_set():
                     break
                 matrix_logger.exception("Error syncing with Matrix server")
-                await asyncio.sleep(5)  # Wait briefly before retrying
+                try:
+                    await asyncio.wait_for(shutdown_event.wait(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    pass
             finally:
                 tasks_to_cleanup: list[asyncio.Task[Any]] = []
                 for cleanup_task in (sync_task, shutdown_task):

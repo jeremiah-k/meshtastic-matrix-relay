@@ -567,8 +567,11 @@ class TestDatabaseManager(unittest.TestCase):
             # Release first_write BEFORE starting close, so close() can complete
             first_release.set()
 
-            # Now run close without blocking the event loop
-            await asyncio.to_thread(self.manager.close)
+            # Now run close in a real thread using run_in_executor to bypass
+            # the mock_to_thread fixture which runs synchronously in the main thread
+            close_result = await asyncio.get_running_loop().run_in_executor(
+                None, self.manager.close
+            )
 
             # Both tasks should have completed by now
             try:

@@ -572,6 +572,7 @@ plugins:
 
         with (
             patch("mmrelay.meshtastic_utils._ble_timeout_reset_threshold", 1),
+            patch("mmrelay.meshtastic_utils._ble_future_stale_grace_secs", 30.0),
             patch(
                 "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
                 new=_FakeBLEInterface,

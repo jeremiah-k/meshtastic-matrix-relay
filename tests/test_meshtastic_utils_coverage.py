@@ -36,6 +36,8 @@ def reset_meshtastic_state(reset_meshtastic_globals):
     mu._ble_future_timeout_secs = None
     mu._ble_timeout_counts = {}
     mu._health_probe_request_deadlines = {}
+    mu._ble_executor_orphaned_workers_by_address = {}
+    mu._metadata_executor_orphaned_workers = 0
     yield
 
 
