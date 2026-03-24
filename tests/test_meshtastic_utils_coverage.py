@@ -1806,7 +1806,6 @@ class TestBleExecutorDegradedState:
 
     def test_ble_executor_degraded_state_per_address(self):
         """Test that BLE degraded state is tracked per address."""
-        from mmrelay.constants.network import EXECUTOR_ORPHAN_THRESHOLD
 
         degraded_address = "AA:BB:CC:DD:EE:FF"
         healthy_address = "11:22:33:44:55:66"

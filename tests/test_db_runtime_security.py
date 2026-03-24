@@ -569,9 +569,7 @@ class TestDatabaseManager(unittest.TestCase):
 
             # Now run close in a real thread using run_in_executor to bypass
             # the mock_to_thread fixture which runs synchronously in the main thread
-            close_result = await asyncio.get_running_loop().run_in_executor(
-                None, self.manager.close
-            )
+            await asyncio.get_running_loop().run_in_executor(None, self.manager.close)
 
             # Both tasks should have completed by now
             try:
@@ -588,7 +586,7 @@ class TestDatabaseManager(unittest.TestCase):
                     else:
                         task.cancel()
                         results.append(f"task{i + 1}_cancelled")
-                raise AssertionError(f"Tasks did not complete: {results}")
+                raise AssertionError(f"Tasks did not complete: {results}") from None
 
             return result1, result2
 
