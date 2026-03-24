@@ -3190,7 +3190,14 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
         self._patch_get_running_loop.stop()
 
     def test_returns_early_when_task_is_none(self):
-        """Should handle None task gracefully during shutdown."""
+        """
+        Should handle None background tasks gracefully during shutdown.
+
+        Uses _ImmediateEvent to trigger immediate shutdown, which leaves
+        background tasks (node_name_refresh_task, ready_task, check_connection_task)
+        as None since the startup code that creates them is skipped.
+        _await_background_task_shutdown must return early for None tasks.
+        """
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org"}],
             "matrix": {"homeserver": "https://matrix.org"},

@@ -168,6 +168,16 @@ _ble_executor_degraded_addresses: set[str] = set()
 _metadata_executor_degraded: bool = False
 
 
+class MetadataExecutorDegradedError(RuntimeError):
+    """
+    Raised when the metadata executor is in degraded state.
+
+    This exception indicates that too many orphaned workers have accumulated
+    and the executor requires a reconnect or restart to restore normal operation.
+    Callers should trigger recovery logic (reconnection) when this is raised.
+    """
+
+
 def _coerce_nonnegative_float(value: Any, default: float) -> float:
     """
     Coerce runtime BLE tuning values to a finite non-negative float.
@@ -505,7 +515,6 @@ def _reset_metadata_executor_for_stale_probe() -> None:
                     old_executor.shutdown(wait=False, cancel_futures=True)
                 except TypeError:
                     old_executor.shutdown(wait=False)
-            reset_executor_degraded_state()
             return
 
         old_executor = _metadata_executor
@@ -602,7 +611,9 @@ def _submit_metadata_probe(probe: Callable[[], Any]) -> Future[Any] | None:
             "Metadata executor degraded: too many orphaned workers. "
             "Reconnect or restart required to restore metadata probing."
         )
-        return None
+        raise MetadataExecutorDegradedError(
+            "Metadata executor is degraded; reconnect or restart required"
+        )
 
     with _metadata_future_lock:
         if _metadata_future is not None and not _metadata_future.done():
@@ -1534,7 +1545,6 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
             _ble_future_timeout_secs = None
             with _ble_timeout_lock:
                 _ble_timeout_counts[ble_address] = 0
-            reset_executor_degraded_state(ble_address=ble_address)
 
         if _ble_future and not _ble_future.done():
             ble_future_to_cancel = _ble_future
@@ -2237,9 +2247,15 @@ def _get_device_metadata(
 
         try:
             future = _submit_metadata_probe(call_get_metadata)
+        except MetadataExecutorDegradedError as exc:
+            logger.error(
+                "Metadata executor degraded; skipping metadata retrieval. "
+                "Reconnect or restart required to restore metadata probing."
+            )
+            if raise_on_error:
+                raise
+            return result
         except RuntimeError as exc:
-            # The shared executor may already be shutting down; treat this as
-            # a non-fatal metadata miss so we don't block connections.
             logger.debug(
                 "getMetadata() submission failed; skipping metadata retrieval",
                 exc_info=exc,
@@ -4483,6 +4499,7 @@ async def check_connection() -> None:
         if meshtastic_client and not reconnecting:
             submitted_client = meshtastic_client
             probe_submission_failed = False
+            degraded_error = False
             try:
                 probe_future = _submit_metadata_probe(
                     functools.partial(
@@ -4491,6 +4508,10 @@ async def check_connection() -> None:
                         probe_timeout,
                     )
                 )
+            except MetadataExecutorDegradedError:
+                logger.error("Metadata executor degraded; triggering reconnection")
+                probe_future = None
+                degraded_error = True
             except RuntimeError as exc:
                 logger.debug(
                     "Skipping connection check - metadata probe submission failed",
@@ -4499,7 +4520,13 @@ async def check_connection() -> None:
                 probe_future = None
                 probe_submission_failed = True
 
-            if probe_future is None:
+            if degraded_error:
+                if not reconnecting and meshtastic_client is submitted_client:
+                    on_lost_meshtastic_connection(
+                        interface=submitted_client,
+                        detection_source="metadata executor degraded",
+                    )
+            elif probe_future is None:
                 if not probe_submission_failed:
                     logger.debug(
                         "Skipping connection check - metadata probe already in progress"

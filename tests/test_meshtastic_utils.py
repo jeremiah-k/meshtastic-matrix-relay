@@ -28,6 +28,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.constants.network import (
     BLE_CONNECT_TIMEOUT_SECS,
+    MAX_TIMEOUT_RETRIES_INFINITE,
     METADATA_WATCHDOG_SECS,
 )
 from mmrelay.meshtastic_utils import (
@@ -3683,28 +3684,22 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
             _reset_ble_inflight_state(mu)
             mu._metadata_future = None
-            # The function will retry 6 times (MAX_TIMEOUT_RETRIES_INFINITE = 5 + 1)
-            # After all retries, it returns None (doesn't raise)
             result = connect_meshtastic(passed_config=config)
             self.assertIsNone(result)
             mock_disconnect.assert_called()
 
-            # Verify meshtastic_iface was set to None
             self.assertIsNone(mu.meshtastic_iface)
 
-            # Verify timeout error was logged 6 times (once per attempt)
             error_calls = [
                 call
                 for call in mock_logger.error.call_args_list
                 if "BLE interface creation timed out after" in str(call)
             ]
-            self.assertEqual(len(error_calls), 6)
+            self.assertEqual(len(error_calls), MAX_TIMEOUT_RETRIES_INFINITE + 1)
 
-            # Verify that last error call contains BLE address
             last_error_call = str(error_calls[-1])
             self.assertIn("AA:BB:CC:DD:EE:FF", last_error_call)
 
-            # Verify final abort was logged after max retries (using logger.exception)
             abort_calls = [
                 call
                 for call in mock_logger.exception.call_args_list
@@ -3713,13 +3708,12 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             ]
             self.assertEqual(len(abort_calls), 1)
 
-            # Verify warnings were logged for each retry (5 retries, not 6 - after 6th timeout it aborts)
             warning_calls = [
                 call
                 for call in mock_logger.warning.call_args_list
                 if "Connection attempt" in str(call) and "timed out" in str(call)
             ]
-            self.assertEqual(len(warning_calls), 5)
+            self.assertEqual(len(warning_calls), MAX_TIMEOUT_RETRIES_INFINITE)
 
     @patch("mmrelay.meshtastic_utils._disconnect_ble_interface")
     def test_connect_meshtastic_closes_existing_ble_interface(
@@ -3805,15 +3799,12 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
             _reset_ble_inflight_state(mu)
             mu._metadata_future = None
-            # The function will retry 6 times and return None (doesn't raise)
             result = connect_meshtastic(passed_config=config)
             self.assertIsNone(result)
             mock_disconnect.assert_called()
 
-            # Verify meshtastic_iface was set to None
             self.assertIsNone(mu.meshtastic_iface)
 
-            # Verify connect() timeout error was logged on first attempt
             connect_timeout_calls = [
                 call
                 for call in mock_logger.exception.call_args_list
@@ -3822,16 +3813,13 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             ]
             self.assertEqual(len(connect_timeout_calls), 1)
 
-            # Verify that subsequent attempts show interface creation timeouts
-            # (because meshtastic_iface is set to None after connect timeout)
             interface_timeout_calls = [
                 call
                 for call in mock_logger.error.call_args_list
                 if "BLE interface creation timed out after" in str(call)
             ]
-            self.assertEqual(len(interface_timeout_calls), 5)
+            self.assertEqual(len(interface_timeout_calls), MAX_TIMEOUT_RETRIES_INFINITE)
 
-            # Verify final abort was logged after max retries (using logger.exception)
             abort_calls = [
                 call
                 for call in mock_logger.exception.call_args_list
@@ -3840,13 +3828,12 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             ]
             self.assertEqual(len(abort_calls), 1)
 
-            # Verify warnings were logged for each retry (5 warnings, not 6)
             warning_calls = [
                 call
                 for call in mock_logger.warning.call_args_list
                 if "Connection attempt" in str(call) and "timed out" in str(call)
             ]
-            self.assertEqual(len(warning_calls), 5)
+            self.assertEqual(len(warning_calls), MAX_TIMEOUT_RETRIES_INFINITE)
 
 
 if __name__ == "__main__":

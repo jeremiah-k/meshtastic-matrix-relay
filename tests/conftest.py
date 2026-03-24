@@ -211,7 +211,6 @@ def cleanup_ble_future_state(module: Any) -> None:
     is_done = _safe_is_done(ble_future)
 
     if callable(cancel_fn) and not is_done:
-        cancel_fn()
         if isinstance(ble_future, asyncio.Task):
 
             def _consume_task_result(done_task: asyncio.Task[Any]) -> None:
@@ -229,14 +228,17 @@ def cleanup_ble_future_state(module: Any) -> None:
                         with contextlib.suppress(RuntimeError):
                             same_loop = asyncio.get_running_loop() is loop
                         if same_loop:
+                            ble_future.cancel()
                             ble_future.add_done_callback(_consume_task_result)
                         else:
+                            loop.call_soon_threadsafe(ble_future.cancel)
                             cleanup_future = asyncio.run_coroutine_threadsafe(
                                 asyncio.wait_for(ble_future, 0.2),
                                 loop,
                             )
                             cleanup_future.result(timeout=0.5)
                     else:
+                        ble_future.cancel()
                         loop.run_until_complete(asyncio.wait_for(ble_future, 0.2))
             except (
                 asyncio.TimeoutError,
@@ -252,6 +254,7 @@ def cleanup_ble_future_state(module: Any) -> None:
                     exc,
                 )
         else:
+            cancel_fn()
             _drain_future_result_safely(ble_future, timeout=0.2)
 
     # Drain completed-task exceptions as well (prevents "exception was never retrieved").
@@ -273,46 +276,65 @@ def cleanup_ble_future_state(module: Any) -> None:
 def _drain_awaitable_result_safely(awaitable: Any, timeout: float = 0.2) -> None:
     """
     Best-effort completion of a coroutine/awaitable from synchronous teardown code.
+
+    Handles raw coroutines, asyncio.Task, and asyncio.Future objects appropriately.
     """
     if not inspect.isawaitable(awaitable):
         return
 
-    coro = awaitable
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
+    def _consume_result(done_task: asyncio.Future[Any]) -> None:
+        with contextlib.suppress(
+            asyncio.CancelledError,
+            asyncio.InvalidStateError,
+        ):
+            done_task.exception()
 
-    if loop is not None and loop.is_running():
-        task = loop.create_task(coro)
+    if isinstance(awaitable, asyncio.Future):
+        try:
+            loop = awaitable.get_loop()
+        except (AttributeError, RuntimeError):
+            loop = None
 
-        def _consume_result(done_task: asyncio.Task[Any]) -> None:
-            with contextlib.suppress(
-                asyncio.CancelledError,
-                asyncio.InvalidStateError,
-            ):
-                done_task.exception()
-
-        task.add_done_callback(_consume_result)
+        if loop is not None and not loop.is_closed() and loop.is_running():
+            same_loop = False
+            with contextlib.suppress(RuntimeError):
+                same_loop = asyncio.get_running_loop() is loop
+            if same_loop:
+                awaitable.add_done_callback(_consume_result)
+            return
+        if loop is not None and not loop.is_closed():
+            loop.run_until_complete(asyncio.wait_for(awaitable, timeout=timeout))
         return
 
-    temp_loop = asyncio.new_event_loop()
-    try:
-        temp_loop.run_until_complete(asyncio.wait_for(coro, timeout=timeout))
-    except asyncio.TimeoutError:
-        pass
-    except asyncio.CancelledError:
-        pass
-    except RuntimeError as exc:
-        import logging
+    if asyncio.iscoroutine(awaitable):
+        coro = awaitable
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
 
-        logger = logging.getLogger(__name__)
-        logger.debug(
-            "Unexpected RuntimeError in drain_awaitable_result_safely: %s",
-            exc,
-        )
-    finally:
-        temp_loop.close()
+        if loop is not None and loop.is_running():
+            task = loop.create_task(coro)
+            task.add_done_callback(_consume_result)
+            return
+
+        temp_loop = asyncio.new_event_loop()
+        try:
+            temp_loop.run_until_complete(asyncio.wait_for(coro, timeout=timeout))
+        except asyncio.TimeoutError:
+            pass
+        except asyncio.CancelledError:
+            pass
+        except RuntimeError as exc:
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.debug(
+                "Unexpected RuntimeError in drain_awaitable_result_safely: %s",
+                exc,
+            )
+        finally:
+            temp_loop.close()
 
 
 def _cancel_and_drain_future_like(future_obj: Any, *, timeout: float = 0.2) -> None:

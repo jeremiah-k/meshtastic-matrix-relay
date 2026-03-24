@@ -13,6 +13,7 @@ Tests cover:
 """
 
 import asyncio
+import contextlib
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from unittest.mock import Mock, patch
@@ -1243,11 +1244,21 @@ class TestRefreshNodeNameTablesInvalidInterval:
                 mock_to_thread.return_value = (None, True)
                 with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
                     shutdown_event = asyncio.Event()
-                    shutdown_event.set()
-                    await mu.refresh_node_name_tables(
-                        shutdown_event,
-                        refresh_interval_seconds=True,
-                    )
+
+                    async def run_with_shutdown():
+                        await asyncio.sleep(0.01)
+                        shutdown_event.set()
+
+                    shutdown_task = asyncio.create_task(run_with_shutdown())
+                    try:
+                        await mu.refresh_node_name_tables(
+                            shutdown_event,
+                            refresh_interval_seconds=True,
+                        )
+                    finally:
+                        shutdown_task.cancel()
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await shutdown_task
 
                     warning_calls = [
                         str(call) for call in mock_logger.warning.call_args_list
@@ -1271,11 +1282,21 @@ class TestRefreshNodeNameTablesInvalidInterval:
                 mock_to_thread.return_value = (None, True)
                 with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
                     shutdown_event = asyncio.Event()
-                    shutdown_event.set()
-                    await mu.refresh_node_name_tables(
-                        shutdown_event,
-                        refresh_interval_seconds=float("nan"),
-                    )
+
+                    async def run_with_shutdown():
+                        await asyncio.sleep(0.01)
+                        shutdown_event.set()
+
+                    shutdown_task = asyncio.create_task(run_with_shutdown())
+                    try:
+                        await mu.refresh_node_name_tables(
+                            shutdown_event,
+                            refresh_interval_seconds=float("nan"),
+                        )
+                    finally:
+                        shutdown_task.cancel()
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await shutdown_task
 
                     warning_calls = [
                         str(call) for call in mock_logger.warning.call_args_list
@@ -1299,11 +1320,21 @@ class TestRefreshNodeNameTablesInvalidInterval:
                 mock_to_thread.return_value = (None, True)
                 with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
                     shutdown_event = asyncio.Event()
-                    shutdown_event.set()
-                    await mu.refresh_node_name_tables(
-                        shutdown_event,
-                        refresh_interval_seconds=float("inf"),
-                    )
+
+                    async def run_with_shutdown():
+                        await asyncio.sleep(0.01)
+                        shutdown_event.set()
+
+                    shutdown_task = asyncio.create_task(run_with_shutdown())
+                    try:
+                        await mu.refresh_node_name_tables(
+                            shutdown_event,
+                            refresh_interval_seconds=float("inf"),
+                        )
+                    finally:
+                        shutdown_task.cancel()
+                        with contextlib.suppress(asyncio.CancelledError):
+                            await shutdown_task
 
                     warning_calls = [
                         str(call) for call in mock_logger.warning.call_args_list
@@ -1718,15 +1749,17 @@ class TestMetadataExecutorDegradedState:
         assert mu._metadata_executor_orphaned_workers == 0
 
     def test_metadata_degraded_state_blocks_new_probes(self):
-        """Test that metadata degraded state prevents new probe submissions."""
+        """Test that metadata degraded state raises MetadataExecutorDegradedError."""
+        from mmrelay.meshtastic_utils import MetadataExecutorDegradedError
+
         mu._metadata_executor_degraded = True
         mu._metadata_future = None
         mu._metadata_future_started_at = None
 
         with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
-            result = mu._submit_metadata_probe(lambda: None)
+            with pytest.raises(MetadataExecutorDegradedError):
+                mu._submit_metadata_probe(lambda: None)
 
-            assert result is None
             mock_logger.error.assert_called_once()
             error_msg = str(mock_logger.error.call_args)
             assert "degraded" in error_msg.lower()
