@@ -333,10 +333,12 @@ def reset_executor_degraded_state(
     """
     global _ble_executor_degraded_addresses, _metadata_executor_degraded
     global _metadata_executor_orphaned_workers, _ble_executor_orphaned_workers_by_address
+    global _ble_executor, _metadata_executor
 
     reset_any = False
 
     if reset_all:
+        stale_ble_executor = None
         with _ble_executor_lock:
             if _ble_executor_degraded_addresses:
                 logger.info(
@@ -346,16 +348,34 @@ def reset_executor_degraded_state(
                 _ble_executor_degraded_addresses.clear()
                 with _ble_timeout_lock:
                     _ble_executor_orphaned_workers_by_address.clear()
+                if _ble_executor is not None:
+                    stale_ble_executor = _ble_executor
+                    _ble_executor = None
                 reset_any = True
+        if stale_ble_executor is not None:
+            try:
+                stale_ble_executor.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                stale_ble_executor.shutdown(wait=False)
+        stale_metadata_executor = None
         with _metadata_future_lock:
             if _metadata_executor_degraded:
                 logger.info("Resetting degraded state for metadata executor")
                 _metadata_executor_degraded = False
                 _metadata_executor_orphaned_workers = 0
+                if _metadata_executor is not None:
+                    stale_metadata_executor = _metadata_executor
+                    _metadata_executor = None
                 reset_any = True
+        if stale_metadata_executor is not None:
+            try:
+                stale_metadata_executor.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                stale_metadata_executor.shutdown(wait=False)
         return reset_any
 
     if ble_address is not None:
+        stale_ble_executor = None
         with _ble_executor_lock:
             if ble_address in _ble_executor_degraded_addresses:
                 logger.info(
@@ -365,14 +385,31 @@ def reset_executor_degraded_state(
                 _ble_executor_degraded_addresses.discard(ble_address)
                 with _ble_timeout_lock:
                     _ble_executor_orphaned_workers_by_address.pop(ble_address, None)
+                if _ble_executor is not None:
+                    stale_ble_executor = _ble_executor
+                    _ble_executor = None
                 reset_any = True
+        if stale_ble_executor is not None:
+            try:
+                stale_ble_executor.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                stale_ble_executor.shutdown(wait=False)
 
+    stale_metadata_executor = None
     with _metadata_future_lock:
         if _metadata_executor_degraded:
             logger.info("Resetting degraded state for metadata executor")
             _metadata_executor_degraded = False
             _metadata_executor_orphaned_workers = 0
+            if _metadata_executor is not None:
+                stale_metadata_executor = _metadata_executor
+                _metadata_executor = None
             reset_any = True
+    if stale_metadata_executor is not None:
+        try:
+            stale_metadata_executor.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            stale_metadata_executor.shutdown(wait=False)
 
     return reset_any
 
@@ -3778,6 +3815,14 @@ def on_lost_meshtastic_connection(
 
         if stale_ble_address is not None:
             reset_executor_degraded_state(ble_address=stale_ble_address)
+        else:
+            with _ble_executor_lock:
+                if _ble_executor_degraded_addresses:
+                    logger.debug(
+                        "Resetting degraded BLE executor state during reconnect "
+                        "(no stale_ble_address but degraded addresses exist)"
+                    )
+                    reset_executor_degraded_state(reset_all=True)
 
         if event_loop and not event_loop.is_closed():
             reconnect_task = event_loop.create_task(reconnect())

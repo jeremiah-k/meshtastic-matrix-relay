@@ -158,9 +158,12 @@ class TestMeshtasticUtils(unittest.TestCase):
                     disconnect_iface(iface, reason="test-reset")
         mmrelay.meshtastic_utils.meshtastic_iface = None
         _reset_ble_inflight_state(mmrelay.meshtastic_utils)
+        mmrelay.meshtastic_utils.shutdown_shared_executors()
         mmrelay.meshtastic_utils._metadata_future = None
         mmrelay.meshtastic_utils._ble_timeout_counts = {}
+        mmrelay.meshtastic_utils._ble_executor_degraded_addresses = set()
         mmrelay.meshtastic_utils._ble_executor_orphaned_workers_by_address = {}
+        mmrelay.meshtastic_utils._metadata_executor_degraded = False
         mmrelay.meshtastic_utils._metadata_executor_orphaned_workers = 0
 
     def test_on_meshtastic_message_basic(self):

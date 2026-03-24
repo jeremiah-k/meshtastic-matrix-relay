@@ -572,11 +572,14 @@ class TestDatabaseManager(unittest.TestCase):
 
             close_started = threading.Event()
             close_done = threading.Event()
+            close_error: list[Exception] = []
 
             def _close_manager() -> None:
                 close_started.set()
                 try:
                     self.manager.close()
+                except Exception as err:
+                    close_error.append(err)
                 finally:
                     close_done.set()
 
@@ -626,6 +629,10 @@ class TestDatabaseManager(unittest.TestCase):
                 ):
                     await asyncio.sleep(0.01)
                 self.assertTrue(close_done.is_set(), "close() did not complete")
+                close_thread.join(timeout=operation_timeout)
+                self.assertFalse(close_thread.is_alive(), "close thread did not exit")
+                if close_error:
+                    raise close_error[0]
             except asyncio.TimeoutError as err:
                 # Check if tasks are done after close
                 results = []

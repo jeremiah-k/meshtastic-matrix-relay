@@ -1430,9 +1430,15 @@ def sync_name_tables_if_changed(
         return previous_state
 
     # Empty snapshots should preserve prior state to avoid transient data loss
-    # from temporary network disconnects or incomplete refreshes
-    if not nodes and previous_state is not None:
-        return previous_state
+    # from temporary network disconnects or incomplete refreshes.
+    # CRITICAL: When previous_state is None (first run after restart), we cannot
+    # distinguish between a genuinely empty NodeDB and a transient empty snapshot.
+    # We must NOT prune tables on first run - return None to defer pruning until
+    # we have established a baseline state.
+    if not nodes:
+        if previous_state is not None:
+            return previous_state
+        return None
 
     current_state, current_ids, snapshot_complete = _collect_node_name_snapshot(nodes)
     # Empty snapshots are only authoritative if snapshot_complete=True from the collector.

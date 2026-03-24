@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import mmrelay.main as main_module
+from mmrelay.constants.config import DEFAULT_HEALTH_CHECK_ENABLED
 from tests.helpers import (
     make_patched_get_running_loop as _make_patched_get_running_loop,
 )
@@ -106,13 +107,16 @@ def test_coerce_config_bool_normalizes_common_values() -> None:
 
 def test_requires_continuous_health_monitor_defaults_to_config_constant() -> None:
     """Health monitor defaults should follow DEFAULT_HEALTH_CHECK_ENABLED."""
-    assert main_module._requires_continuous_health_monitor({}) is False
-    assert main_module._requires_continuous_health_monitor({"meshtastic": {}}) is False
+    expected = DEFAULT_HEALTH_CHECK_ENABLED
+    assert main_module._requires_continuous_health_monitor({}) is expected
+    assert (
+        main_module._requires_continuous_health_monitor({"meshtastic": {}}) is expected
+    )
     assert (
         main_module._requires_continuous_health_monitor(
             {"meshtastic": {"health_check": "invalid"}}
         )
-        is False
+        is expected
     )
 
 
