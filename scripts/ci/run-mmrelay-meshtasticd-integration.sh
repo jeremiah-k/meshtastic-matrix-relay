@@ -1460,7 +1460,8 @@ try:
         ).fetchone()
 except sqlite3.Error as exc:
     if "no such table" in str(exc).lower():
-        raise SystemExit(1)
+        print(f"Table {table_name} not yet created: {exc}", file=sys.stderr)
+        raise SystemExit(2)
     print(f"SQLite error querying {table_name}: {exc}", file=sys.stderr)
     raise SystemExit(1)
 

@@ -1710,7 +1710,7 @@ class TestMetadataExecutorDegradedState:
         mu._metadata_executor = old_executor
         mu._metadata_future = Mock(spec=Future)
         mu._metadata_future_started_at = time.monotonic()
-        mu._metadata_executor_orphaned_workers = EXECUTOR_ORPHAN_THRESHOLD
+        mu._metadata_executor_orphaned_workers = EXECUTOR_ORPHAN_THRESHOLD - 1
         mu._metadata_executor_degraded = False
 
         with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
@@ -1779,7 +1779,7 @@ class TestBleExecutorDegradedState:
         mu._ble_future = None
         mu._ble_future_address = None
         mu._ble_executor_orphaned_workers_by_address = {
-            ble_address: EXECUTOR_ORPHAN_THRESHOLD
+            ble_address: EXECUTOR_ORPHAN_THRESHOLD - 1
         }
         mu._ble_executor_degraded_addresses = set()
 

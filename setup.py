@@ -10,7 +10,9 @@ with open(
 ) as f:
     content = f.read()
     match = re.search(
-        r'__version__\s*(?::\s*[^=]+)?\s*=\s*["\']([^"\']*)["\']', content
+        r'^\s*__version__\s*(?::\s*[^=]+)?\s*=\s*["\']([^"\']+)["\']\s*$',
+        content,
+        re.MULTILINE,
     )
     if match:
         __version__ = match.group(1)

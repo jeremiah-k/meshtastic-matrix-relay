@@ -3759,31 +3759,29 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         mock_iface.connect = Mock()  # Has connect() method to trigger connect() path
         mock_iface.auto_reconnect = False
 
-        interface_future = Mock()
-        interface_future.result = Mock(return_value=mock_iface)
-        interface_future.cancel = Mock(return_value=True)
+        def _make_interface_future():
+            future = Mock()
+            future.result = Mock(return_value=mock_iface)
+            future.cancel = Mock(return_value=True)
+            return future
 
-        connect_future = Mock()
-        connect_future.result = Mock(side_effect=FuturesTimeoutError())
-        connect_future.done.return_value = False
-        connect_future.cancel = Mock(return_value=True)
+        def _make_connect_future():
+            future = Mock()
+            future.result = Mock(side_effect=FuturesTimeoutError())
+            future.done.return_value = False
+            future.cancel = Mock(return_value=True)
+            return future
 
-        # Track which submit call we're handling
-        call_count = [0]
+        from mmrelay.constants.network import MAX_TIMEOUT_RETRIES_INFINITE
+
+        future_sequence = iter(
+            future
+            for _ in range(MAX_TIMEOUT_RETRIES_INFINITE + 1)
+            for future in (_make_interface_future(), _make_connect_future())
+        )
 
         def submit_side_effect(_func, *_args, **_kwargs):
-            """
-            Test helper used as a side-effect function to simulate a two-stage submission flow.
-
-            Increments the shared call_count[0] each time it is invoked and, on the first invocation, returns the precreated interface_future; on subsequent invocations, returns the connect_future. The provided positional and keyword arguments are ignored.
-            """
-            call_count[0] += 1
-            if call_count[0] == 1:
-                # First call: interface creation
-                return interface_future
-            else:
-                # Second call: connect()
-                return connect_future
+            return next(future_sequence)
 
         mock_executor = Mock()
         mock_executor._shutdown = False
@@ -3811,14 +3809,16 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
                 if f"connect() call timed out after {BLE_CONNECT_TIMEOUT_SECS} seconds"
                 in str(call)
             ]
-            self.assertEqual(len(connect_timeout_calls), 1)
+            self.assertEqual(
+                len(connect_timeout_calls), MAX_TIMEOUT_RETRIES_INFINITE + 1
+            )
 
             interface_timeout_calls = [
                 call
                 for call in mock_logger.error.call_args_list
                 if "BLE interface creation timed out after" in str(call)
             ]
-            self.assertEqual(len(interface_timeout_calls), MAX_TIMEOUT_RETRIES_INFINITE)
+            self.assertEqual(len(interface_timeout_calls), 0)
 
             abort_calls = [
                 call

@@ -1546,6 +1546,22 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
             with _ble_timeout_lock:
                 _ble_timeout_counts[ble_address] = 0
 
+        if ble_address in _ble_executor_degraded_addresses:
+            if ble_future_to_cancel is not None:
+                ble_future_to_cancel.cancel()
+                try:
+                    ble_future_to_cancel.result(timeout=0.2)
+                except Exception:
+                    pass
+            if stale_executor is not None and not getattr(
+                stale_executor, "_shutdown", False
+            ):
+                try:
+                    stale_executor.shutdown(wait=False, cancel_futures=True)
+                except TypeError:
+                    stale_executor.shutdown(wait=False)
+            return
+
         if _ble_future and not _ble_future.done():
             ble_future_to_cancel = _ble_future
         if _ble_executor is not None and not getattr(_ble_executor, "_shutdown", False):
