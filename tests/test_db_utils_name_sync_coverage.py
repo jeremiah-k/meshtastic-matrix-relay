@@ -145,7 +145,7 @@ def test_read_name_values_falls_back_when_json_each_unavailable() -> None:
             return None
 
     mock_manager = MagicMock()
-    mock_manager._supports_json_each = False
+    mock_manager.supports_json_each.return_value = False
     mock_manager.run_sync.side_effect = lambda func, write=False: func(
         _FallbackCursor()
     )
