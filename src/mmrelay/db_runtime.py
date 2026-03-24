@@ -270,23 +270,28 @@ class DatabaseManager:
         """
         Track active synchronous DB usage and block new work while closing.
         """
+        previously_admitted = bool(
+            getattr(self._thread_local, "_allow_during_close", False)
+        )
         with self._connections_lock:
-            if self._closing and not self._is_executor_worker():
+            if self._closing and not previously_admitted:
                 raise sqlite3.ProgrammingError(
                     "DatabaseManager is closing, cannot submit new work"
                 )
+            self._thread_local._allow_during_close = True
             self._active_sync_count += 1
         try:
             yield
         finally:
             with self._connections_lock:
                 self._active_sync_count -= 1
+                self._thread_local._allow_during_close = previously_admitted
                 if self._active_sync_count == 0:
                     self._active_sync_condition.notify_all()
 
     def _is_executor_worker(self) -> bool:
         """
-        Return True when the current thread is running reserved executor work.
+        Return True when the current thread is admitted to keep working during close().
         """
         return bool(getattr(self._thread_local, "_allow_during_close", False))
 
@@ -417,7 +422,6 @@ class DatabaseManager:
             self._async_executor.shutdown(wait=True)
 
         with self._connections_lock:
-            self._closing = True
             while self._active_sync_count > 0:
                 self._active_sync_condition.wait()
             connections = list(self._connections)

@@ -1,6 +1,7 @@
 import asyncio
 import functools
 import json
+import math
 import ntpath
 import os
 import re
@@ -489,6 +490,8 @@ def _convert_env_float(
         float_value = float(value)
     except ValueError:
         raise ValueError(f"Invalid float value for {var_name}: '{value}'") from None
+    if not math.isfinite(float_value):
+        raise ValueError(f"Invalid float value for {var_name}: '{value}'")
 
     if min_value is not None and float_value < min_value:
         raise ValueError(f"{var_name} must be >= {min_value}, got {float_value}")

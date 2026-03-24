@@ -514,7 +514,8 @@ class TestDatabaseManager(unittest.TestCase):
 
         def first_write(cursor):
             first_started.set()
-            first_release.wait(timeout=2.0)
+            if not first_release.wait(timeout=2.0):
+                raise AssertionError("Timed out waiting to release first_write")
             cursor.execute(
                 "INSERT INTO test_async_close (value) VALUES (?)",
                 ("first",),
@@ -530,20 +531,26 @@ class TestDatabaseManager(unittest.TestCase):
 
         async def run_test() -> tuple[str, str]:
             task1 = asyncio.create_task(self.manager.run_async(first_write, write=True))
-            await asyncio.to_thread(first_started.wait, 2.0)
+            self.assertTrue(
+                await asyncio.to_thread(first_started.wait, 2.0),
+                "First queued write never started",
+            )
             task2 = asyncio.create_task(
                 self.manager.run_async(second_write, write=True)
             )
             await asyncio.sleep(0)
 
-            close_thread = threading.Thread(target=self.manager.close)
+            close_thread = threading.Thread(target=self.manager.close, daemon=True)
             close_thread.start()
             first_release.set()
 
             result1 = await task1
             result2 = await task2
             close_thread.join(timeout=2.0)
-            self.assertFalse(close_thread.is_alive())
+            self.assertFalse(
+                close_thread.is_alive(),
+                "close() did not complete within timeout; possible deadlock",
+            )
             return result1, result2
 
         result1, result2 = asyncio.run(run_test())

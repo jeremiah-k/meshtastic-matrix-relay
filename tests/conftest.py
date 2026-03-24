@@ -121,6 +121,31 @@ def _drain_future_result_safely(future: Any, timeout: float) -> None:
     """
     Drain a future/task result best-effort so teardown does not leak exceptions.
     """
+    done_fn = getattr(future, "done", None)
+    exception_fn = getattr(future, "exception", None)
+    is_done = False
+    if callable(done_fn):
+        with contextlib.suppress(
+            RuntimeError,
+            asyncio.InvalidStateError,
+            concurrent.futures.InvalidStateError,
+        ):
+            is_done = bool(done_fn())
+    if is_done and callable(exception_fn):
+        # For completed futures/tasks, consume stored exceptions without re-raising.
+        with contextlib.suppress(
+            TimeoutError,
+            asyncio.TimeoutError,
+            asyncio.CancelledError,
+            asyncio.InvalidStateError,
+            concurrent.futures.TimeoutError,
+            concurrent.futures.CancelledError,
+            concurrent.futures.InvalidStateError,
+            Exception,
+        ):
+            exception_fn()
+        return
+
     result_fn = getattr(future, "result", None)
     if not callable(result_fn):
         return
@@ -136,6 +161,7 @@ def _drain_future_result_safely(future: Any, timeout: float) -> None:
             concurrent.futures.TimeoutError,
             concurrent.futures.CancelledError,
             concurrent.futures.InvalidStateError,
+            Exception,
         ):
             result_fn()
     except (
@@ -146,6 +172,7 @@ def _drain_future_result_safely(future: Any, timeout: float) -> None:
         concurrent.futures.TimeoutError,
         concurrent.futures.CancelledError,
         concurrent.futures.InvalidStateError,
+        Exception,
     ):
         pass
 
@@ -211,7 +238,15 @@ def cleanup_ble_future_state(module: Any) -> None:
             _drain_future_result_safely(ble_future, timeout=0.2)
 
     # Drain completed-task exceptions as well (prevents "exception was never retrieved").
-    if callable(done_fn) and done_fn():
+    is_done_now = False
+    if callable(done_fn):
+        with contextlib.suppress(
+            RuntimeError,
+            asyncio.InvalidStateError,
+            concurrent.futures.InvalidStateError,
+        ):
+            is_done_now = bool(done_fn())
+    if is_done_now:
         _drain_future_result_safely(ble_future, timeout=0.1)
 
     module._ble_future = None
@@ -868,6 +903,7 @@ def reset_meshtastic_globals():
     mu._health_probe_request_deadlines = {}
 
     yield
+    cleanup_ble_future_state(mu)
 
     # Restore original values (including Nones) to avoid state leakage
     for attr_name, original_value in original_values.items():

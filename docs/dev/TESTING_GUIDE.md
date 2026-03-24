@@ -516,9 +516,9 @@ def test_connection_lifecycle_with_retry():
 
 Useful commands:
 
-- Run only integration tests: `python -m pytest -m integration`
+- Run only integration tests: `python -m pytest -m integration -v --timeout=60`
 - Skip integration tests during fast local cycles:
-  `python -m pytest -m "not integration"`
+  `python -m pytest -m "not integration" -v --timeout=60`
 
 ### Integration test design rules
 

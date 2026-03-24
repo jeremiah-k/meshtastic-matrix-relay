@@ -121,9 +121,6 @@ def test_read_name_values_returns_none_when_json_each_unavailable() -> None:
     """json_each lookup failures should return None through the SQLite error path."""
 
     class _FallbackCursor:
-        def __init__(self) -> None:
-            self._row: tuple[str, str] | None = None
-
         def execute(
             self,
             sql: str,
@@ -131,15 +128,10 @@ def test_read_name_values_returns_none_when_json_each_unavailable() -> None:
         ) -> "_FallbackCursor":
             if "json_each" in sql:
                 raise sqlite3.OperationalError("no such function: json_each")
-            meshtastic_id = str(params[0])
-            self._row = (meshtastic_id, "Alpha") if meshtastic_id == "!1" else None
             return self
 
         def fetchall(self) -> list[tuple[str, str]]:
             return []
-
-        def fetchone(self) -> tuple[str, str] | None:
-            return self._row
 
     mock_manager = MagicMock()
     mock_manager.run_sync.side_effect = lambda func, write=False: func(

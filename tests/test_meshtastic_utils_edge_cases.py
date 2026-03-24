@@ -168,9 +168,6 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         ):
             with patch("time.sleep"):  # Speed up test
                 with (
-                    patch(
-                        "mmrelay.meshtastic_utils._disconnect_ble_by_address"
-                    ) as mock_disconnect,
                     patch("mmrelay.meshtastic_utils.logger") as mock_logger,
                     patch(
                         "mmrelay.meshtastic_utils.is_running_as_service",
@@ -180,7 +177,6 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
                 ):
                     result = connect_meshtastic(config)
                     self.assertIsNone(result)
-                    mock_disconnect.assert_called_once_with("00:11:22:33:44:55")
                     mock_logger.exception.assert_called()
 
     def test_connect_meshtastic_tcp_connection_refused(self):

@@ -242,17 +242,25 @@ def _reset_meshtastic_utils_globals(*, shutdown_executors: bool = False) -> None
             "BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS",
             module._ble_interface_create_timeout_secs,
         )  # type: ignore[attr-defined]
+
+    def _shutdown_executor(executor: Any) -> None:
+        try:
+            executor.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            with contextlib.suppress(RuntimeError):
+                executor.shutdown(wait=False)
+        except RuntimeError:
+            pass
+
     if shutdown_executors and hasattr(module, "_metadata_executor"):
         executor = module._metadata_executor  # type: ignore[attr-defined]
         if executor is not None:
-            with contextlib.suppress(TypeError, RuntimeError):
-                executor.shutdown(wait=False, cancel_futures=True)
+            _shutdown_executor(executor)
         module._metadata_executor = None  # type: ignore[attr-defined]
     if shutdown_executors and hasattr(module, "_ble_executor"):
         executor = module._ble_executor  # type: ignore[attr-defined]
         if executor is not None:
-            with contextlib.suppress(TypeError, RuntimeError):
-                executor.shutdown(wait=False, cancel_futures=True)
+            _shutdown_executor(executor)
         module._ble_executor = None  # type: ignore[attr-defined]
 
 
@@ -936,6 +944,7 @@ class TestMain(unittest.TestCase):
                 "mmrelay.main.asyncio.get_running_loop",
                 side_effect=_make_patched_get_running_loop(),
             ),
+            patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
             patch(
                 "mmrelay.main.shutdown_plugins",
@@ -991,6 +1000,7 @@ class TestMain(unittest.TestCase):
                 "mmrelay.main.asyncio.get_running_loop",
                 side_effect=_make_patched_get_running_loop(),
             ),
+            patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
             patch("mmrelay.main.get_message_queue") as mock_get_queue,
             patch(

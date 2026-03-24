@@ -549,6 +549,10 @@ def get_nodedb_refresh_interval_seconds(
     Reads `meshtastic.nodedb_refresh_interval` and falls back to
     `DEFAULT_NODEDB_REFRESH_INTERVAL` when missing or invalid.
 
+    Current scope: this interval controls periodic refresh of cached long/short
+    node-name tables derived from the Meshtastic NodeDB. The key name is
+    future-oriented because later releases may expand persistence beyond names.
+
     Parameters:
         passed_config (dict[str, Any] | None): Optional config to read from.
             When omitted, uses this module's global `config`.
@@ -624,6 +628,10 @@ async def refresh_node_name_tables(
     The first refresh attempt runs immediately. When `refresh_interval_seconds`
     is zero or negative, one immediate refresh is attempted and periodic refresh
     is disabled afterward.
+
+    Current scope: this task updates only long/short name cache tables from the
+    NodeDB snapshot. Future releases may extend persistence to broader NodeDB
+    fields while keeping this interval setting.
 
     Note: Exceptions are intentionally propagated to the caller (the supervisor in
     main.py) which catches them and restarts this task with exponential backoff.
@@ -1158,6 +1166,65 @@ def _schedule_ble_future_cleanup(
     timer.daemon = True
     future.add_done_callback(lambda _f: timer.cancel())
     timer.start()
+
+
+def _attach_late_ble_interface_disposer(
+    future: Future[Any],
+    ble_address: str,
+    reason: str,
+    *,
+    fallback_iface: Any | None = None,
+) -> None:
+    """
+    Dispose interfaces created by abandoned BLE futures that complete late.
+
+    Timeout paths can drop `_ble_future` while a worker thread is still running.
+    If that worker later succeeds, this callback prevents orphaned interfaces
+    from remaining connected outside normal ownership.
+    """
+
+    def _dispose(done_future: Future[Any]) -> None:
+        if done_future.cancelled():
+            return
+
+        late_iface = fallback_iface
+        try:
+            result = done_future.result()
+            if result is not None:
+                late_iface = result
+        except Exception:
+            return
+
+        if late_iface is None:
+            return
+
+        if not (hasattr(late_iface, "disconnect") or hasattr(late_iface, "close")):
+            return
+
+        with meshtastic_iface_lock:
+            active_iface = meshtastic_iface
+        if active_iface is late_iface:
+            return
+
+        logger.warning(
+            "Cleaning up late BLE interface completion for %s (%s)",
+            ble_address,
+            reason,
+        )
+        try:
+            _disconnect_ble_interface(
+                late_iface,
+                reason=f"late completion after {reason}",
+            )
+        except Exception:
+            logger.debug(
+                "Late BLE interface cleanup failed for %s (%s)",
+                ble_address,
+                reason,
+                exc_info=True,
+            )
+
+    future.add_done_callback(_dispose)
 
 
 def _record_ble_timeout(ble_address: str) -> int:
@@ -3038,6 +3105,11 @@ def connect_meshtastic(
                                             ble_address,
                                             reason="interface creation timeout",
                                         )
+                                        _attach_late_ble_interface_disposer(
+                                            future,
+                                            ble_address,
+                                            reason="interface creation timeout",
+                                        )
                                         timeout_count = _record_ble_timeout(ble_address)
                                         _maybe_reset_ble_executor(
                                             ble_address, timeout_count
@@ -3160,6 +3232,12 @@ def connect_meshtastic(
                                     connect_future,
                                     ble_address,
                                     reason="connect timeout",
+                                )
+                                _attach_late_ble_interface_disposer(
+                                    connect_future,
+                                    ble_address,
+                                    reason="connect timeout",
+                                    fallback_iface=iface,
                                 )
                                 timeout_count = _record_ble_timeout(ble_address)
                                 _maybe_reset_ble_executor(ble_address, timeout_count)

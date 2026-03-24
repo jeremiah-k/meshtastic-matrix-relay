@@ -210,7 +210,7 @@ The `MMRELAY_MATRIX_*` variables (HOMESERVER, BOT_USER_ID, PASSWORD, ACCESS_TOKE
 - **`MMRELAY_MESHTASTIC_BROADCAST_ENABLED`**: Enable Matrix→Meshtastic messages (`true`/`false`)
 - **`MMRELAY_MESHTASTIC_MESHNET_NAME`**: Display name for the mesh network
 - **`MMRELAY_MESHTASTIC_MESSAGE_DELAY`**: Delay between messages in seconds (minimum: 2.0; values below are clamped at startup)
-- **`MMRELAY_MESHTASTIC_NODEDB_REFRESH_INTERVAL`**: Seconds between node-database refreshes (`0` disables periodic refresh after startup)
+- **`MMRELAY_MESHTASTIC_NODEDB_REFRESH_INTERVAL`**: Seconds between refreshes of cached long/short node-name tables from the Meshtastic NodeDB (default: `15.0`; `0` disables periodic refresh after startup). This currently refreshes name caches only; future versions may extend persistence to broader NodeDB fields.
 
 #### System Configuration
 
@@ -254,20 +254,20 @@ Use environment variables **only** when:
 
 ### Environment Variable to Config.yaml Mapping
 
-| Environment Variable                         | Config.yaml Path                     | Type    | Description                                                               |
-| -------------------------------------------- | ------------------------------------ | ------- | ------------------------------------------------------------------------- |
-| `MMRELAY_MESHTASTIC_CONNECTION_TYPE`         | `meshtastic.connection_type`         | string  | Connection method (`tcp`, `serial`, `ble`)                                |
-| `MMRELAY_MESHTASTIC_HOST`                    | `meshtastic.host`                    | string  | TCP host address                                                          |
-| `MMRELAY_MESHTASTIC_PORT`                    | `meshtastic.port`                    | integer | TCP port (default: 4403)                                                  |
-| `MMRELAY_MESHTASTIC_SERIAL_PORT`             | `meshtastic.serial_port`             | string  | Serial device path                                                        |
-| `MMRELAY_MESHTASTIC_BLE_ADDRESS`             | `meshtastic.ble_address`             | string  | Bluetooth MAC address                                                     |
-| `MMRELAY_MESHTASTIC_BROADCAST_ENABLED`       | `meshtastic.broadcast_enabled`       | boolean | Enable Matrix→Meshtastic                                                  |
-| `MMRELAY_MESHTASTIC_MESHNET_NAME`            | `meshtastic.meshnet_name`            | string  | Display name for mesh                                                     |
-| `MMRELAY_MESHTASTIC_MESSAGE_DELAY`           | `meshtastic.message_delay`           | float   | Delay between messages in seconds (minimum: 2.0)                          |
-| `MMRELAY_MESHTASTIC_NODEDB_REFRESH_INTERVAL` | `meshtastic.nodedb_refresh_interval` | float   | Node-database refresh interval in seconds (`0` disables periodic refresh) |
-| `MMRELAY_LOGGING_LEVEL`                      | `logging.level`                      | string  | Log level (`debug`, `info`, `warning`, `error`, `critical`)               |
-| `MMRELAY_LOG_FILE`                           | `logging.filename`                   | string  | Log file path                                                             |
-| `MMRELAY_DATABASE_PATH`                      | `database.path`                      | string  | SQLite database path                                                      |
+| Environment Variable                         | Config.yaml Path                     | Type    | Description                                                                                                          |
+| -------------------------------------------- | ------------------------------------ | ------- | -------------------------------------------------------------------------------------------------------------------- |
+| `MMRELAY_MESHTASTIC_CONNECTION_TYPE`         | `meshtastic.connection_type`         | string  | Connection method (`tcp`, `serial`, `ble`)                                                                           |
+| `MMRELAY_MESHTASTIC_HOST`                    | `meshtastic.host`                    | string  | TCP host address                                                                                                     |
+| `MMRELAY_MESHTASTIC_PORT`                    | `meshtastic.port`                    | integer | TCP port (default: 4403)                                                                                             |
+| `MMRELAY_MESHTASTIC_SERIAL_PORT`             | `meshtastic.serial_port`             | string  | Serial device path                                                                                                   |
+| `MMRELAY_MESHTASTIC_BLE_ADDRESS`             | `meshtastic.ble_address`             | string  | Bluetooth MAC address                                                                                                |
+| `MMRELAY_MESHTASTIC_BROADCAST_ENABLED`       | `meshtastic.broadcast_enabled`       | boolean | Enable Matrix→Meshtastic                                                                                             |
+| `MMRELAY_MESHTASTIC_MESHNET_NAME`            | `meshtastic.meshnet_name`            | string  | Display name for mesh                                                                                                |
+| `MMRELAY_MESHTASTIC_MESSAGE_DELAY`           | `meshtastic.message_delay`           | float   | Delay between messages in seconds (minimum: 2.0)                                                                     |
+| `MMRELAY_MESHTASTIC_NODEDB_REFRESH_INTERVAL` | `meshtastic.nodedb_refresh_interval` | float   | Refresh interval for cached long/short node-name tables from NodeDB (default: `15.0`; `0` disables periodic refresh) |
+| `MMRELAY_LOGGING_LEVEL`                      | `logging.level`                      | string  | Log level (`debug`, `info`, `warning`, `error`, `critical`)                                                          |
+| `MMRELAY_LOG_FILE`                           | `logging.filename`                   | string  | Log file path                                                                                                        |
+| `MMRELAY_DATABASE_PATH`                      | `database.path`                      | string  | SQLite database path                                                                                                 |
 
 ## Tips for Advanced Configuration
 

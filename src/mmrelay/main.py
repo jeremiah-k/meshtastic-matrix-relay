@@ -574,7 +574,7 @@ async def main(config: dict[str, Any]) -> None:
         # Give the health-check task one scheduling opportunity before readiness logic.
         # This only guards against immediate startup failures in check_connection().
         await asyncio.sleep(0)
-    except Exception:
+    except BaseException:
         _set_shutdown_flag()
         if check_connection_task is not None:
             check_connection_task.cancel()
@@ -599,7 +599,11 @@ async def main(config: dict[str, Any]) -> None:
 
     async def _node_name_refresh_supervisor(refresh_interval_seconds: float) -> None:
         """
-        Run and supervise node-name refresh work, restarting on failures.
+        Run and supervise periodic NodeDB-derived name-cache refresh work.
+
+        Current scope is refreshing long/short name tables from `client.nodes`.
+        The interval setting is future-oriented and may be reused for broader
+        NodeDB persistence in later releases.
         """
         restart_attempt = 0
         backoff_seconds = 1.0
@@ -731,26 +735,26 @@ async def main(config: dict[str, Any]) -> None:
         nodedb_refresh_interval_seconds = (
             meshtastic_utils.get_nodedb_refresh_interval_seconds(config)
         )
-        node_name_refresh_task = asyncio.create_task(
-            _node_name_refresh_supervisor(
-                nodedb_refresh_interval_seconds,
-            )
-        )
-
-        # Ensure message queue processor is started now that event loop is running
-        try:
-            get_message_queue().ensure_processor_started()
-        except Exception:
-            matrix_logger.exception(
-                "Failed to start message queue processor during startup"
-            )
-            raise
-
         if shutdown_event.is_set():
             matrix_logger.warning(
                 "Skipping readiness publication because shutdown was requested during startup"
             )
         else:
+            node_name_refresh_task = asyncio.create_task(
+                _node_name_refresh_supervisor(
+                    nodedb_refresh_interval_seconds,
+                )
+            )
+
+            # Ensure message queue processor is started now that event loop is running
+            try:
+                get_message_queue().ensure_processor_started()
+            except Exception:
+                matrix_logger.exception(
+                    "Failed to start message queue processor during startup"
+                )
+                raise
+
             # Publish readiness only after startup wiring in this section is complete.
             _write_ready_file()
 

@@ -1443,18 +1443,14 @@ poll_for_existing_name_entry() {
 	local table_name=$3
 	local instance_label=$4
 
-	local poll_start poll_now poll_elapsed captured_value capture_status
+	local poll_start poll_now poll_elapsed captured_value
 	poll_start=$(date +%s)
 	while true; do
 		run_capture_with_status \
 			captured_value \
 			get_existing_name_entry \
 			"${db_path}" \
-			"${table_name}"
-		capture_status=$?
-		if [[ ${capture_status} -ne 0 ]]; then
-			captured_value=""
-		fi
+			"${table_name}" || captured_value=""
 
 		if [[ -n ${captured_value} ]]; then
 			printf -v "${result_var_name}" "%s" "${captured_value}"

@@ -559,6 +559,7 @@ plugins:
         mu._ble_future_address = ble_address
         mu._ble_future_started_at = time.monotonic() - 60.0
         mu._ble_future_timeout_secs = 1.0
+        mu._ble_timeout_counts = {ble_address: 0}
 
         config = {
             "meshtastic": {
@@ -570,6 +571,7 @@ plugins:
         }
 
         with (
+            patch("mmrelay.meshtastic_utils._ble_timeout_reset_threshold", 1),
             patch(
                 "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
                 new=_FakeBLEInterface,

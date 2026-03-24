@@ -632,7 +632,9 @@ class TestMeshtasticEnvironmentVariables(unittest.TestCase):
 
     def test_invalid_nodedb_refresh_interval(self):
         """Test invalid nodedb refresh interval handling."""
-        os.environ["MMRELAY_MESHTASTIC_NODEDB_REFRESH_INTERVAL"] = "-1.0"
+        os.environ["MMRELAY_MESHTASTIC_NODEDB_REFRESH_INTERVAL"] = (
+            "-1.0"  # Must be >= 0
+        )
 
         config = load_meshtastic_config_from_env()
         self.assertIsNone(config)

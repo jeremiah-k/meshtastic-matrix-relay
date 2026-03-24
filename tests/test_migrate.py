@@ -1869,10 +1869,14 @@ class TestMigrationRealWorldScenarios:
         """
         original_which = migrate_module.shutil.which
 
-        def mock_which(cmd: str):
+        def mock_which(
+            cmd: str,
+            mode: int = os.F_OK | os.X_OK,
+            path: str | None = None,
+        ) -> str | None:
             if cmd == "pgrep":
                 return None
-            return original_which(cmd)
+            return original_which(cmd, mode=mode, path=path)
 
         monkeypatch.setattr(migrate_module.shutil, "which", mock_which)
 
