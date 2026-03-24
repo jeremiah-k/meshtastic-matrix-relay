@@ -3672,7 +3672,9 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         with (
             patch("mmrelay.meshtastic_utils._ble_executor", mock_executor),
-            patch("mmrelay.meshtastic_utils._disconnect_ble_by_address"),
+            patch(
+                "mmrelay.meshtastic_utils._disconnect_ble_by_address"
+            ) as mock_disconnect,
         ):
             import mmrelay.meshtastic_utils as mu
 
@@ -3682,6 +3684,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             # After all retries, it returns None (doesn't raise)
             result = connect_meshtastic(passed_config=config)
             self.assertIsNone(result)
+            mock_disconnect.assert_called()
 
             # Verify meshtastic_iface was set to None
             self.assertIsNone(mu.meshtastic_iface)
@@ -3791,7 +3794,9 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         with (
             patch("mmrelay.meshtastic_utils._ble_executor", mock_executor),
-            patch("mmrelay.meshtastic_utils._disconnect_ble_by_address"),
+            patch(
+                "mmrelay.meshtastic_utils._disconnect_ble_by_address"
+            ) as mock_disconnect,
         ):
             import mmrelay.meshtastic_utils as mu
 
@@ -3800,6 +3805,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             # The function will retry 6 times and return None (doesn't raise)
             result = connect_meshtastic(passed_config=config)
             self.assertIsNone(result)
+            mock_disconnect.assert_called()
 
             # Verify meshtastic_iface was set to None
             self.assertIsNone(mu.meshtastic_iface)

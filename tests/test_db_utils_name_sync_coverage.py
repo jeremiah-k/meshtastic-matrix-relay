@@ -381,8 +381,10 @@ class TestDeleteNameByIdSqliteError:
 class TestNameTableMatchesStateFalseConditions:
     """Tests for _name_table_matches_state return-false conditions."""
 
-    def test_returns_false_when_expected_none_but_id_in_actual(self) -> None:
-        """Returns False when expected_value is None but id_key is in actual_by_id."""
+    def test_returns_true_when_expected_none_and_id_in_actual_preserves_existing(
+        self,
+    ) -> None:
+        """Returns True when expected_value is None (preserve existing behavior)."""
         state = (NodeNameEntry("!1", None, "A"),)
         with patch(
             "mmrelay.db_utils._read_name_values_for_ids",
@@ -393,7 +395,7 @@ class TestNameTableMatchesStateFalseConditions:
                 table=NAMES_TABLE_LONGNAMES,
                 get_name=lambda entry: entry.long_name,
             )
-            assert result is False
+            assert result is True
 
     def test_returns_false_when_id_not_in_actual_and_expected_not_none(self) -> None:
         """Returns False when id_key not in actual_by_id (and expected_value is not None)."""

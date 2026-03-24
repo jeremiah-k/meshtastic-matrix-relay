@@ -390,17 +390,15 @@ async def main(config: dict[str, Any]) -> None:
         still runs.
         """
         loop = asyncio.get_running_loop()
-        step_result: asyncio.Future[Exception | None] = loop.create_future()
+        step_result: asyncio.Future[BaseException | None] = loop.create_future()
 
         def _run_step() -> None:
-            step_error: Exception | None = None
+            step_error: BaseException | None = None
             try:
                 step_func()
-            except (KeyboardInterrupt, SystemExit):
-                raise
-            except (
-                Exception
-            ) as exc:  # noqa: BLE001  # Broad catch needed: shutdown must continue even if one step fails
+            except BaseException as exc:
+                if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                    raise
                 step_error = exc
 
             def _publish_result() -> None:
@@ -598,6 +596,7 @@ async def main(config: dict[str, Any]) -> None:
                     exc_info=(type(exc), exc, exc.__traceback__),
                 )
                 _set_shutdown_flag()
+                task._exception_consumed = True  # type: ignore[attr-defined]
                 return
 
             if (
@@ -779,6 +778,8 @@ async def main(config: dict[str, Any]) -> None:
 
         cleanup_results = await asyncio.gather(task, return_exceptions=True)
         done_result: object = cleanup_results[0]
+        if getattr(task, "_exception_consumed", False):
+            return
         if (
             isinstance(done_result, Exception)
             and not isinstance(
@@ -874,6 +875,7 @@ async def main(config: dict[str, Any]) -> None:
                         matrix_logger.warning(
                             "Matrix sync timed out, retrying: %s", exc
                         )
+                        sync_task._exception_consumed = True  # type: ignore[attr-defined]
                         try:
                             await asyncio.wait_for(shutdown_event.wait(), timeout=5.0)
                         except asyncio.TimeoutError:

@@ -459,6 +459,16 @@ def _reset_metadata_executor_for_stale_probe() -> None:
             )
             _metadata_future = None
             _metadata_future_started_at = None
+            old_executor = _metadata_executor
+            _metadata_executor = ThreadPoolExecutor(max_workers=1)
+            if old_executor is not None and not getattr(
+                old_executor, "_shutdown", False
+            ):
+                try:
+                    old_executor.shutdown(wait=False, cancel_futures=True)
+                except TypeError:
+                    old_executor.shutdown(wait=False)
+            reset_executor_degraded_state()
             return
 
         old_executor = _metadata_executor
@@ -1479,11 +1489,15 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
                 ble_address,
                 current_orphans + 1,
             )
+            ble_future_to_cancel = _ble_future
             _ble_future = None
+            stale_executor = _ble_executor
             _ble_future_address = None
             _ble_future_started_at = None
             _ble_future_timeout_secs = None
-            return
+            with _ble_timeout_lock:
+                _ble_timeout_counts[ble_address] = 0
+            reset_executor_degraded_state(ble_address=ble_address)
 
         if _ble_future and not _ble_future.done():
             ble_future_to_cancel = _ble_future
@@ -3730,13 +3744,13 @@ def on_lost_meshtastic_connection(
         stale_executor = None
         stale_ble_address: str | None = None
         with _ble_executor_lock:
+            stale_ble_address = _ble_future_address
             if _ble_future and not _ble_future.done():
                 logger.debug(
                     "Clearing stale BLE future before reconnect (%s)",
                     detection_source,
                 )
                 ble_future_to_cancel = _ble_future
-                stale_ble_address = _ble_future_address
                 _ble_future = None
                 if _ble_future_address:
                     with _ble_timeout_lock:

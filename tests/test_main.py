@@ -2827,7 +2827,7 @@ class TestStartupRollback(unittest.TestCase):
 
         def mock_create_task(coro, *args, **kwargs):
             if inspect.iscoroutine(coro):
-                coro_name = getattr(coro, "__name__", "")
+                coro_name = getattr(getattr(coro, "cr_code", None), "co_name", "")
                 if coro_name == "check_connection":
                     return mock_check_task
                 elif coro_name == "_node_name_refresh_supervisor":
@@ -3294,12 +3294,12 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
         observed_coro_names: list[str] = []
         for spy in created_tasks:
             coro = getattr(spy._task, "get_coro", lambda: None)()
-            coro_name = getattr(coro, "__name__", "")
+            coro_name = getattr(getattr(coro, "cr_code", None), "co_name", "")
             observed_coro_names.append(coro_name)
             if "check_connection" in coro_name:
                 check_conn_tasks.append(spy)
                 continue
-            if "_check_connection_wait" in repr(coro):
+            if coro_name == "_check_connection_wait":
                 check_conn_tasks.append(spy)
 
         self.assertTrue(
@@ -3450,12 +3450,12 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
         observed_coro_names: list[str] = []
         for spy in created_tasks:
             coro = getattr(spy._task, "get_coro", lambda: None)()
-            coro_name = getattr(coro, "__name__", "")
+            coro_name = getattr(getattr(coro, "cr_code", None), "co_name", "")
             observed_coro_names.append(coro_name)
             if "check_connection" in coro_name:
                 check_conn_tasks.append(spy)
                 continue
-            if "_check_connection_wait" in repr(coro):
+            if coro_name == "_check_connection_wait":
                 check_conn_tasks.append(spy)
 
         self.assertTrue(

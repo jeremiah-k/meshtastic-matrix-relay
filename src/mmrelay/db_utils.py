@@ -1007,7 +1007,7 @@ def _read_name_values_for_ids(
                 fetched_rows = cast(list[tuple[Any, Any]], cursor.fetchall())
             else:
                 placeholders = ",".join("?" for _ in chunk_ids)
-                select_in_sql = f"{select_in_prefix_sql}{placeholders})"  # noqa: S608
+                select_in_sql = f"{select_in_prefix_sql}{placeholders})"
                 cursor.execute(select_in_sql, tuple(chunk_ids))
                 fetched_rows = cast(list[tuple[Any, Any]], cursor.fetchall())
             rows_by_id.update(
@@ -1056,8 +1056,7 @@ def _name_table_matches_state(
         id_key = state_row.meshtastic_id
         expected_value = get_name(state_row)
         if expected_value is None:
-            if id_key in actual_by_id:
-                return False
+            # None means "unknown / preserve existing" in partial snapshots
             continue
 
         if id_key not in actual_by_id:

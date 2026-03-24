@@ -77,7 +77,7 @@ fi
 
 # Names-table SQL identifiers loaded from app constants.
 mapfile -t names_table_constants < <(
-	"${PYTHON_BIN}" - <<'PY'
+	"${PYTHON_BIN}" - <<'PY' || true
 import pathlib
 import sys
 
@@ -1460,7 +1460,7 @@ try:
         ).fetchone()
 except sqlite3.Error as exc:
     if "no such table" in str(exc).lower():
-        raise SystemExit(2)
+        raise SystemExit(1)
     print(f"SQLite error querying {table_name}: {exc}", file=sys.stderr)
     raise SystemExit(1)
 

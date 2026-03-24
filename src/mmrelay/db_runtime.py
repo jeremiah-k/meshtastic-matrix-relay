@@ -415,7 +415,8 @@ class DatabaseManager:
                     await asyncio.shield(asyncio.wrap_future(worker_future))
                 except asyncio.CancelledError:
                     pass
-            worker_future.cancel()
+            if not worker_future.done():
+                worker_future.cancel()
             raise
 
     # ------------------------------------------------------------------ #

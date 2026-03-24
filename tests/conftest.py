@@ -299,12 +299,18 @@ def _drain_awaitable_result_safely(awaitable: Any, timeout: float = 0.2) -> None
     temp_loop = asyncio.new_event_loop()
     try:
         temp_loop.run_until_complete(asyncio.wait_for(coro, timeout=timeout))
-    except (
-        RuntimeError,
-        asyncio.TimeoutError,
-        asyncio.CancelledError,
-    ):
+    except asyncio.TimeoutError:
         pass
+    except asyncio.CancelledError:
+        pass
+    except RuntimeError as exc:
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.debug(
+            "Unexpected RuntimeError in drain_awaitable_result_safely: %s",
+            exc,
+        )
     finally:
         temp_loop.close()
 

@@ -600,7 +600,7 @@ class TestDatabaseManager(unittest.TestCase):
 
             await asyncio.sleep(0)
 
-            deadline = asyncio.get_running_loop().time() + 1.0
+            deadline = asyncio.get_running_loop().time() + operation_timeout
             while (
                 not second_started.is_set()
                 and asyncio.get_running_loop().time() < deadline
