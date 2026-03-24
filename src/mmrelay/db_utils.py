@@ -1112,9 +1112,7 @@ def _collect_node_name_snapshot(
     if nodes is None or not isinstance(nodes, dict):
         return (), set(), False
     if not nodes:
-        # Treat empty NodeDB snapshots as incomplete so transient reconnect windows
-        # cannot trigger full-table stale-row pruning.
-        return (), set(), False
+        return (), set(), True
 
     snapshot_complete = True
     current_ids: set[str] = set()

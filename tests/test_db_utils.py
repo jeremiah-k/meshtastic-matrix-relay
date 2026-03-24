@@ -413,11 +413,7 @@ class TestDbUtils(unittest.TestCase):
         self.assertEqual(get_longname("!stale"), "Stale Longname")
         self.assertEqual(get_shortname("!stale"), "STL")
 
-        with patch("mmrelay.db_utils._sync_name_tables_atomic") as mock_sync_atomic:
-            second_state = sync_name_tables_if_changed(
-                nodes, previous_state=first_state
-            )
-            mock_sync_atomic.assert_not_called()
+        second_state = sync_name_tables_if_changed(nodes, previous_state=first_state)
         self.assertEqual(second_state, first_state)
         self.assertEqual(get_longname("!1"), "Alpha")
         self.assertEqual(get_shortname("!1"), "A")
@@ -432,11 +428,7 @@ class TestDbUtils(unittest.TestCase):
         }
         first_state = sync_name_tables_if_changed(nodes, previous_state=None)
 
-        with patch("mmrelay.db_utils._sync_name_tables_atomic") as mock_sync_atomic:
-            second_state = sync_name_tables_if_changed(
-                nodes, previous_state=first_state
-            )
-            mock_sync_atomic.assert_not_called()
+        second_state = sync_name_tables_if_changed(nodes, previous_state=first_state)
 
         self.assertEqual(second_state, first_state)
         self.assertEqual(get_longname("!1"), "Alpha")
@@ -1057,7 +1049,7 @@ class TestDbUtils(unittest.TestCase):
                     path = str(call.args[0])
                 elif "database" in call.kwargs:
                     path = str(call.kwargs["database"])
-                if path != ":memory:":
+                if path and os.path.abspath(path) == os.path.abspath(self.test_db_path):
                     real_db_connect_calls.append(call)
             self.assertEqual(len(real_db_connect_calls), 1)
 

@@ -721,12 +721,12 @@ def _snapshot_node_name_rows() -> tuple[dict[str, Any] | None, bool]:
         for node_id, raw_node in raw_nodes.items():
             node_key = str(node_id)
             if not isinstance(raw_node, dict):
-                nodes_snapshot[node_key] = raw_node
+                nodes_snapshot[node_key] = {"user": None}
                 continue
 
             raw_user = raw_node.get("user")
             if not isinstance(raw_user, dict):
-                nodes_snapshot[node_key] = {"user": raw_user}
+                nodes_snapshot[node_key] = {"user": {"id": None}}
                 continue
 
             user_snapshot: dict[str, Any] = {
@@ -3740,6 +3740,7 @@ def on_lost_meshtastic_connection(
                 if _ble_executor is not None:
                     stale_executor = _ble_executor
                     _ble_executor = ThreadPoolExecutor(max_workers=1)
+                    reset_executor_degraded_state(ble_address=stale_ble_address)
 
         if ble_future_to_cancel is not None:
             if stale_ble_address:

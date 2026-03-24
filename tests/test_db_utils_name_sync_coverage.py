@@ -206,12 +206,12 @@ def test_collect_node_name_snapshot_marks_invalid_entries_incomplete() -> None:
     assert snapshot_complete is False
 
 
-def test_collect_node_name_snapshot_empty_dict_is_incomplete() -> None:
-    """Empty snapshots are treated as incomplete to avoid accidental global pruning."""
+def test_collect_node_name_snapshot_empty_dict_is_complete() -> None:
+    """Empty snapshots are treated as complete so NodeDB clear can prune stale rows."""
     state, current_ids, snapshot_complete = _collect_node_name_snapshot({})
     assert state == ()
     assert current_ids == set()
-    assert snapshot_complete is False
+    assert snapshot_complete is True
 
 
 def test_sync_skips_non_string_name_payloads_without_deleting_rows(

@@ -137,6 +137,29 @@ def _mock_run_with_keyboard_interrupt(coro: Any) -> None:
     raise KeyboardInterrupt()
 
 
+class _TaskSpy:
+    """
+    Wrapper around asyncio.Task that records cancel() calls.
+
+    This allows tests to verify that cancel() was explicitly called,
+    rather than inferring shutdown from loop teardown cancellation.
+    """
+
+    def __init__(self, task: asyncio.Task[Any]) -> None:
+        self._task = task
+        self.cancel_called = False
+
+    def cancel(self) -> bool:
+        self.cancel_called = True
+        return self._task.cancel()
+
+    def __await__(self) -> Any:
+        return self._task.__await__()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._task, name)
+
+
 def _make_async_raise(exc: Exception):
     """
     Create an async callable that always raises provided exception when awaited.
@@ -3216,13 +3239,14 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
         async def _check_connection_wait() -> None:
             await asyncio.sleep(3600)
 
-        created_tasks: list[asyncio.Task[Any]] = []
+        created_tasks: list[_TaskSpy] = []
         real_create_task = asyncio.create_task
 
         def _capture_create_task(coro: Any, *args: Any, **kwargs: Any) -> Any:
             task = real_create_task(coro, *args, **kwargs)
-            created_tasks.append(task)
-            return task
+            spy = _TaskSpy(task)
+            created_tasks.append(spy)
+            return spy
 
         real_wait_for = asyncio.wait_for
 
@@ -3268,22 +3292,23 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
 
         check_conn_tasks = []
         observed_coro_names: list[str] = []
-        for task in created_tasks:
-            coro = getattr(task, "get_coro", lambda: None)()
+        for spy in created_tasks:
+            coro = getattr(spy._task, "get_coro", lambda: None)()
             coro_name = getattr(coro, "__name__", "")
             observed_coro_names.append(coro_name)
             if "check_connection" in coro_name:
-                check_conn_tasks.append(task)
+                check_conn_tasks.append(spy)
                 continue
             if "_check_connection_wait" in repr(coro):
-                check_conn_tasks.append(task)
+                check_conn_tasks.append(spy)
 
         self.assertTrue(
             check_conn_tasks,
             f"No connection health task captured. Observed coroutines: {observed_coro_names}",
         )
         self.assertTrue(
-            any(task.cancelled() or task.cancelling() > 0 for task in check_conn_tasks)
+            any(spy.cancel_called for spy in check_conn_tasks),
+            "Expected cancel() to be called on check_connection task during shutdown",
         )
 
     def test_exception_during_shutdown_wait_logs_error(self):
@@ -3360,13 +3385,14 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
         async def _check_connection_wait() -> None:
             await asyncio.sleep(3600)
 
-        created_tasks: list[asyncio.Task[Any]] = []
+        created_tasks: list[_TaskSpy] = []
         real_create_task = asyncio.create_task
 
         def _capture_create_task(coro: Any, *args: Any, **kwargs: Any) -> Any:
             task = real_create_task(coro, *args, **kwargs)
-            created_tasks.append(task)
-            return task
+            spy = _TaskSpy(task)
+            created_tasks.append(spy)
+            return spy
 
         real_wait_for = asyncio.wait_for
 
@@ -3422,22 +3448,23 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
 
         check_conn_tasks = []
         observed_coro_names: list[str] = []
-        for task in created_tasks:
-            coro = getattr(task, "get_coro", lambda: None)()
+        for spy in created_tasks:
+            coro = getattr(spy._task, "get_coro", lambda: None)()
             coro_name = getattr(coro, "__name__", "")
             observed_coro_names.append(coro_name)
             if "check_connection" in coro_name:
-                check_conn_tasks.append(task)
+                check_conn_tasks.append(spy)
                 continue
             if "_check_connection_wait" in repr(coro):
-                check_conn_tasks.append(task)
+                check_conn_tasks.append(spy)
 
         self.assertTrue(
             check_conn_tasks,
             f"No connection health task captured. Observed coroutines: {observed_coro_names}",
         )
         self.assertTrue(
-            any(task.cancelled() or task.cancelling() > 0 for task in check_conn_tasks)
+            any(spy.cancel_called for spy in check_conn_tasks),
+            "Expected cancel() to be called on check_connection task during shutdown",
         )
 
     def test_task_with_exception_result_logs_error(self):

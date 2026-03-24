@@ -1439,6 +1439,7 @@ get_existing_name_entry() {
 		"${table_name}" \
 		"${NAMES_TABLE_LONGNAMES}" \
 		"${NAMES_TABLE_SHORTNAMES}" <<'PY'
+import pathlib
 import sqlite3
 import sys
 
@@ -1448,7 +1449,7 @@ allowed_tables = {longnames_table, shortnames_table}
 if table_name not in allowed_tables:
     print(f"Invalid table name: {table_name}", file=sys.stderr)
     raise SystemExit(1)
-db_uri = f"file:{db_path}?mode=ro"
+db_uri = pathlib.Path(db_path).resolve().as_uri() + "?mode=ro"
 try:
     with sqlite3.connect(db_uri, uri=True, timeout=5) as conn:
         conn.execute("PRAGMA busy_timeout = 5000")
@@ -1458,6 +1459,8 @@ try:
             "ORDER BY meshtastic_id LIMIT 1"
         ).fetchone()
 except sqlite3.Error as exc:
+    if "no such table" in str(exc).lower():
+        raise SystemExit(2)
     print(f"SQLite error querying {table_name}: {exc}", file=sys.stderr)
     raise SystemExit(1)
 
@@ -1559,6 +1562,7 @@ wait_for_name_entry_state() {
 		"${NAMES_TABLE_SHORTNAMES}" \
 		"${expect_present}" <<'PY'
 import os
+import pathlib
 import sqlite3
 import sys
 import time
@@ -1582,7 +1586,7 @@ if table_name not in allowed_tables:
     raise SystemExit(f"Invalid table name: {table_name}")
 expect_present = expect_present_raw == "1"
 expected_state = "presence" if expect_present else "absence"
-db_uri = f"file:{db_path}?mode=ro"
+db_uri = pathlib.Path(db_path).resolve().as_uri() + "?mode=ro"
 
 relay_pid = int(relay_pid_raw) if relay_pid_raw else None
 deadline = time.monotonic() + timeout_seconds

@@ -5,6 +5,8 @@ Contains timeout values, retry limits, connection types, and other
 network-related configuration constants.
 """
 
+from typing import Final
+
 # Connection types
 CONNECTION_TYPE_TCP = "tcp"
 CONNECTION_TYPE_SERIAL = "serial"
@@ -80,4 +82,4 @@ BLE_CONNECT_TIMEOUT_SECS = 30.0
 # Maximum orphaned workers before entering degraded state
 # When executor recovery cycles orphan this many workers, we stop
 # silently recovering and require explicit reconnect/restart.
-EXECUTOR_ORPHAN_THRESHOLD = 5
+EXECUTOR_ORPHAN_THRESHOLD: Final[int] = 5

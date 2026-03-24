@@ -532,6 +532,8 @@ class TestDatabaseManager(unittest.TestCase):
 
         first_started = threading.Event()
         first_release = threading.Event()
+        second_started = threading.Event()
+        second_release = threading.Event()
 
         def first_write(cursor):
             first_started.set()
@@ -544,6 +546,9 @@ class TestDatabaseManager(unittest.TestCase):
             return "first"
 
         def second_write(cursor):
+            second_started.set()
+            if not second_release.wait(timeout=10.0):
+                raise AssertionError("Timed out waiting to release second_write")
             cursor.execute(
                 "INSERT INTO test_async_close (value) VALUES (?)",
                 ("second",),
@@ -584,7 +589,32 @@ class TestDatabaseManager(unittest.TestCase):
             ):
                 await asyncio.sleep(0.01)
             self.assertTrue(close_started.is_set(), "close() never started")
+
+            deadline = asyncio.get_running_loop().time() + 1.0
+            while (
+                second_started.is_set() and asyncio.get_running_loop().time() < deadline
+            ):
+                await asyncio.sleep(0.01)
+            self.assertFalse(
+                second_started.is_set(), "second_write should not have started yet"
+            )
+
             first_release.set()
+
+            await asyncio.sleep(0)
+
+            deadline = asyncio.get_running_loop().time() + 1.0
+            while (
+                not second_started.is_set()
+                and asyncio.get_running_loop().time() < deadline
+            ):
+                await asyncio.sleep(0.01)
+            self.assertTrue(
+                second_started.is_set(),
+                "second_write should have started after first_release",
+            )
+
+            second_release.set()
 
             # Both tasks should have completed by now
             try:

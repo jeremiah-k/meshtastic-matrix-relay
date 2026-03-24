@@ -398,7 +398,7 @@ async def main(config: dict[str, Any]) -> None:
                 step_func()
             except (KeyboardInterrupt, SystemExit):
                 raise
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 step_error = exc
 
             def _publish_result() -> None:
