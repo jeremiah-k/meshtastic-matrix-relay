@@ -396,10 +396,9 @@ async def main(config: dict[str, Any]) -> None:
             step_error: Exception | None = None
             try:
                 step_func()
+            except (KeyboardInterrupt, SystemExit):
+                raise
             except Exception as exc:
-                # Keep shutdown behavior deterministic: capture any failure from the
-                # daemon worker and report it on the main task instead of re-raising
-                # inside the thread.
                 step_error = exc
 
             def _publish_result() -> None:
@@ -844,10 +843,12 @@ async def main(config: dict[str, Any]) -> None:
 
                 # Cancel any pending tasks
                 for pending_task in pending:
+                    if pending_task is shutdown_task:
+                        pending_task.cancel()
                     await _await_background_task_shutdown(
                         pending_task,
                         task_name="matrix sync pending task",
-                        timeout_seconds=5.0,
+                        timeout_seconds=0.0 if pending_task is shutdown_task else 5.0,
                     )
 
                 if shutdown_event.is_set():

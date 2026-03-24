@@ -748,8 +748,8 @@ async def refresh_node_name_tables(
     Periodically sync longname/shortname tables from the current Meshtastic node DB.
 
     The first refresh attempt runs immediately. When `refresh_interval_seconds`
-    is zero, one immediate refresh is attempted and periodic refresh is disabled
-    afterward.
+    is zero or negative, one immediate refresh is attempted and periodic refresh
+    is disabled afterward.
 
     Current scope: this task updates only long/short name cache tables from the
     NodeDB snapshot. Future releases may extend persistence to broader NodeDB

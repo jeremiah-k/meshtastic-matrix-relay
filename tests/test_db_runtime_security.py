@@ -551,8 +551,9 @@ class TestDatabaseManager(unittest.TestCase):
             return "second"
 
         async def run_test() -> tuple[str, str]:
+            operation_timeout = 10.0
             task1 = asyncio.create_task(self.manager.run_async(first_write, write=True))
-            start_deadline = asyncio.get_running_loop().time() + 10.0
+            start_deadline = asyncio.get_running_loop().time() + operation_timeout
             while (
                 not first_started.is_set()
                 and asyncio.get_running_loop().time() < start_deadline
@@ -564,20 +565,41 @@ class TestDatabaseManager(unittest.TestCase):
             )
             await asyncio.sleep(0)
 
-            # Release first_write BEFORE starting close, so close() can complete
-            first_release.set()
+            close_started = threading.Event()
+            close_done = threading.Event()
 
-            # Now run close in a real thread using run_in_executor to bypass
-            # the mock_to_thread fixture which runs synchronously in the main thread
-            await asyncio.get_running_loop().run_in_executor(None, self.manager.close)
+            def _close_manager() -> None:
+                close_started.set()
+                try:
+                    self.manager.close()
+                finally:
+                    close_done.set()
+
+            close_thread = threading.Thread(target=_close_manager, daemon=True)
+            close_thread.start()
+            close_deadline = asyncio.get_running_loop().time() + operation_timeout
+            while (
+                not close_started.is_set()
+                and asyncio.get_running_loop().time() < close_deadline
+            ):
+                await asyncio.sleep(0.01)
+            self.assertTrue(close_started.is_set(), "close() never started")
+            first_release.set()
 
             # Both tasks should have completed by now
             try:
                 result1, result2 = await asyncio.wait_for(
                     asyncio.gather(task1, task2),
-                    timeout=5.0,
+                    timeout=operation_timeout,
                 )
-            except asyncio.TimeoutError:
+                join_deadline = asyncio.get_running_loop().time() + operation_timeout
+                while (
+                    not close_done.is_set()
+                    and asyncio.get_running_loop().time() < join_deadline
+                ):
+                    await asyncio.sleep(0.01)
+                self.assertTrue(close_done.is_set(), "close() did not complete")
+            except asyncio.TimeoutError as err:
                 # Check if tasks are done after close
                 results = []
                 for i, task in enumerate((task1, task2)):
@@ -586,7 +608,7 @@ class TestDatabaseManager(unittest.TestCase):
                     else:
                         task.cancel()
                         results.append(f"task{i + 1}_cancelled")
-                raise AssertionError(f"Tasks did not complete: {results}") from None
+                raise AssertionError(f"Tasks did not complete: {results}") from err
 
             return result1, result2
 

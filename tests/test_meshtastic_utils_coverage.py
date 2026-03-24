@@ -1664,6 +1664,7 @@ class TestConnectionLostHandlerClearingStaleBleFuture:
                 mu.on_lost_meshtastic_connection(detection_source="test source")
 
                 assert "11:22:33:44:55:66" not in mu._ble_timeout_counts
+                assert mu._ble_timeout_counts["OTHER:ADDRESS"] == 3
 
 
 class TestMetadataExecutorDegradedState:

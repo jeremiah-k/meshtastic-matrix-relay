@@ -200,38 +200,34 @@ def _reset_meshtastic_utils_globals(*, shutdown_executors: bool = False) -> None
         module._ble_executor_orphaned_workers_by_address = {}  # type: ignore[attr-defined]
     if hasattr(module, "_metadata_executor_orphaned_workers"):
         module._metadata_executor_orphaned_workers = 0  # type: ignore[attr-defined]
+    if hasattr(module, "_ble_executor_degraded_addresses"):
+        module._ble_executor_degraded_addresses = set()  # type: ignore[attr-defined]
+    if hasattr(module, "_metadata_executor_degraded"):
+        module._metadata_executor_degraded = False  # type: ignore[attr-defined]
     if hasattr(module, "_health_probe_request_deadlines"):
         module._health_probe_request_deadlines = {}  # type: ignore[attr-defined]
     if hasattr(module, "_ble_future_watchdog_secs"):
         module._ble_future_watchdog_secs = getattr(
-            module,
-            "BLE_FUTURE_WATCHDOG_SECS",
-            module._ble_future_watchdog_secs,
-        )  # type: ignore[attr-defined]
+            module, "BLE_FUTURE_WATCHDOG_SECS", module._ble_future_watchdog_secs
+        )
     if hasattr(module, "_ble_timeout_reset_threshold"):
         module._ble_timeout_reset_threshold = getattr(
-            module,
-            "BLE_TIMEOUT_RESET_THRESHOLD",
-            module._ble_timeout_reset_threshold,
-        )  # type: ignore[attr-defined]
+            module, "BLE_TIMEOUT_RESET_THRESHOLD", module._ble_timeout_reset_threshold
+        )
     if hasattr(module, "_ble_scan_timeout_secs"):
         module._ble_scan_timeout_secs = getattr(
-            module,
-            "BLE_SCAN_TIMEOUT_SECS",
-            module._ble_scan_timeout_secs,
-        )  # type: ignore[attr-defined]
+            module, "BLE_SCAN_TIMEOUT_SECS", module._ble_scan_timeout_secs
+        )
     if hasattr(module, "_ble_future_stale_grace_secs"):
         module._ble_future_stale_grace_secs = getattr(
-            module,
-            "BLE_FUTURE_STALE_GRACE_SECS",
-            module._ble_future_stale_grace_secs,
-        )  # type: ignore[attr-defined]
+            module, "BLE_FUTURE_STALE_GRACE_SECS", module._ble_future_stale_grace_secs
+        )
     if hasattr(module, "_ble_interface_create_timeout_secs"):
         module._ble_interface_create_timeout_secs = getattr(
             module,
             "BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS",
             module._ble_interface_create_timeout_secs,
-        )  # type: ignore[attr-defined]
+        )
 
     def _shutdown_executor(executor: Any) -> None:
         try:
@@ -2789,6 +2785,10 @@ class TestStartupRollback(unittest.TestCase):
         mock_check_task.add_done_callback = MagicMock(
             side_effect=RuntimeError("Callback error")
         )
+        mock_supervisor_task = MagicMock()
+        mock_supervisor_task.cancel = MagicMock()
+        mock_supervisor_task.done = MagicMock(return_value=False)
+        mock_supervisor_task.add_done_callback = MagicMock()
 
         mock_matrix_client = MagicMock()
         mock_matrix_client.add_event_callback = MagicMock()
@@ -2802,8 +2802,13 @@ class TestStartupRollback(unittest.TestCase):
 
         config = {"matrix_rooms": [{"id": "!room:matrix.org"}]}
 
-        def mock_create_task(coro):
+        def mock_create_task(coro, *args, **kwargs):
             if inspect.iscoroutine(coro):
+                coro_name = getattr(coro, "__name__", "")
+                if coro_name == "check_connection":
+                    return mock_check_task
+                elif coro_name == "_node_name_refresh_supervisor":
+                    return mock_supervisor_task
                 coro.close()
             return mock_check_task
 
@@ -3129,8 +3134,7 @@ class TestNodeNameRefreshSupervisor(unittest.TestCase):
                 mock_queue.ensure_processor_started = MagicMock()
                 mock_get_queue.return_value = mock_queue
 
-                with contextlib.suppress(Exception):
-                    asyncio.run(main(config))
+                asyncio.run(main(config))
 
         self.assertTrue(
             refresh_called, "refresh_node_name_tables should be called once"
@@ -3220,6 +3224,13 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
             created_tasks.append(task)
             return task
 
+        real_wait_for = asyncio.wait_for
+
+        async def _wait_for_side_effect(awaitable, timeout=None):
+            if timeout == 5.0:
+                raise asyncio.TimeoutError()
+            return await real_wait_for(awaitable, timeout=timeout)
+
         with (
             patch("mmrelay.main.initialize_database"),
             patch("mmrelay.main.load_plugins"),
@@ -3240,7 +3251,7 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
             ),
             patch("mmrelay.main.asyncio.wait_for") as mock_wait_for,
             patch("mmrelay.main.asyncio.create_task", side_effect=_capture_create_task),
-            contextlib.suppress(Exception),
+            contextlib.suppress(asyncio.TimeoutError),
         ):
             mock_matrix_client = AsyncMock()
             mock_matrix_client.add_event_callback = MagicMock()
@@ -3251,7 +3262,7 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
                 mock_queue.ensure_processor_started = MagicMock()
                 mock_get_queue.return_value = mock_queue
 
-                mock_wait_for.side_effect = asyncio.TimeoutError()
+                mock_wait_for.side_effect = _wait_for_side_effect
 
                 asyncio.run(main(config))
 
@@ -3396,7 +3407,7 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
             ),
             patch("mmrelay.main.asyncio.wait_for", new=mock_wait_for),
             patch("mmrelay.main.asyncio.create_task", side_effect=_capture_create_task),
-            contextlib.suppress(Exception),
+            contextlib.suppress(asyncio.CancelledError),
         ):
             mock_matrix_client = AsyncMock()
             mock_matrix_client.add_event_callback = MagicMock()

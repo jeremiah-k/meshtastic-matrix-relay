@@ -172,12 +172,6 @@ def _drain_future_result_safely(future: Any, timeout: float) -> None:
             concurrent.futures.InvalidStateError,
         ):
             return
-        except Exception as exc:
-            logging.getLogger(__name__).debug(
-                "Unexpected future-drain exception during teardown: %s",
-                exc,
-            )
-            raise
     except (
         TimeoutError,
         asyncio.TimeoutError,
@@ -188,12 +182,6 @@ def _drain_future_result_safely(future: Any, timeout: float) -> None:
         concurrent.futures.InvalidStateError,
     ):
         return
-    except Exception as exc:
-        logging.getLogger(__name__).debug(
-            "Unexpected future-drain exception during teardown: %s",
-            exc,
-        )
-        raise
 
 
 def cleanup_ble_future_state(module: Any) -> None:
