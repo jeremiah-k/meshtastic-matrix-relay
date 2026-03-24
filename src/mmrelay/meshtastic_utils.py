@@ -491,10 +491,12 @@ def _coerce_positive_float(value: Any, default: float, setting_name: str) -> flo
     value is not a finite positive number.
     """
     try:
+        if isinstance(value, bool):
+            raise TypeError
         parsed = float(value)
         if math.isfinite(parsed) and parsed > 0:
             return parsed
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         pass
 
     logger.warning(
@@ -1338,6 +1340,7 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
     # Capture future ref inside lock, cancel outside to avoid deadlock with done callbacks
     ble_future_to_cancel = None
     orphaned_workers = 0
+    stale_executor: ThreadPoolExecutor | None = None
     with _ble_executor_lock:
         if timeout_count < reset_threshold:
             return
@@ -1351,10 +1354,7 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
                 _ble_executor_orphaned_workers_by_address[ble_address] = (
                     orphaned_workers
                 )
-            try:
-                _ble_executor.shutdown(wait=False, cancel_futures=True)
-            except TypeError:
-                _ble_executor.shutdown(wait=False)
+            stale_executor = _ble_executor
         logger.warning(
             "BLE worker timed out %s times for %s; recreating executor "
             "(orphaned BLE workers=%s)",
@@ -1367,6 +1367,11 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
         _ble_future_address = None
         _ble_future_started_at = None
         _ble_future_timeout_secs = None
+    if stale_executor is not None and not getattr(stale_executor, "_shutdown", False):
+        try:
+            stale_executor.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            stale_executor.shutdown(wait=False)
     if ble_future_to_cancel is not None:
         ble_future_to_cancel.cancel()
         try:
@@ -3107,13 +3112,11 @@ def connect_meshtastic(
                                     if hasattr(meshtastic_iface, "auto_reconnect"):
                                         supports_auto_reconnect = True
                                 except FuturesTimeoutError as err:
-                                    # Use logger.exception so we retain the timeout context (TRY400),
-                                    # but keep the raised exception concise (TRY003) and emit guidance
-                                    # as separate log lines for operators.
-                                    logger.exception(
+                                    logger.error(
                                         "BLE interface creation timed out after %.1f seconds for %s.",
                                         create_timeout_secs,
                                         ble_address,
+                                        exc_info=True,
                                     )
                                     logger.warning(
                                         "This may indicate a stale BlueZ connection or Bluetooth adapter issue."

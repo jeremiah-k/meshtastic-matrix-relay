@@ -99,9 +99,15 @@ def test_refresh_node_name_tables_handles_timeout_then_retries(
             }
         }
     )
+    state_after_first_refresh = {"state": 1}
+    state_after_second_refresh = {"state": 2}
     with (
         patch.object(mu, "meshtastic_client", client),
-        patch.object(mu, "sync_name_tables_if_changed", return_value=()) as mock_sync,
+        patch.object(
+            mu,
+            "sync_name_tables_if_changed",
+            side_effect=[state_after_first_refresh, state_after_second_refresh],
+        ) as mock_sync,
     ):
         asyncio.run(
             mu.refresh_node_name_tables(
@@ -112,6 +118,8 @@ def test_refresh_node_name_tables_handles_timeout_then_retries(
     assert event.first_wait_cancelled is True
     assert event._wait_calls == 2
     assert mock_sync.call_count == 2
+    assert mock_sync.call_args_list[0].args[1] is None
+    assert mock_sync.call_args_list[1].args[1] is state_after_first_refresh
 
 
 def test_refresh_node_name_tables_non_positive_interval_exits_after_one_pass(

@@ -119,30 +119,29 @@ def test_read_name_values_returns_none_on_sqlite_error(configured_temp_db: str) 
 
 
 def test_read_name_values_falls_back_when_json_each_unavailable() -> None:
-    """json_each-unavailable runtimes should use the non-JSON1 per-ID fallback."""
+    """json_each-unavailable runtimes should use the non-JSON1 IN-query fallback."""
 
     class _FallbackCursor:
         def __init__(self) -> None:
-            self._last_params: tuple[str] | None = None
+            self._last_params: tuple[str, ...] = ()
+            self._last_sql = ""
 
         def execute(
             self,
             sql: str,
             params: tuple[str] | tuple[str, ...],
         ) -> "_FallbackCursor":
-            self._last_params = cast(tuple[str], params)
+            self._last_sql = sql
+            self._last_params = cast(tuple[str, ...], params)
             return self
 
         def fetchall(self) -> list[tuple[str, str]]:
-            raise AssertionError("json_each path should not run in fallback mode")
-
-        def fetchone(self) -> tuple[str, str] | None:
-            if self._last_params is None:
-                return None
-            node_id = self._last_params[0]
-            if node_id == "!1":
-                return ("!1", "Alpha")
-            return None
+            if "json_each" in self._last_sql:
+                raise AssertionError("json_each path should not run in fallback mode")
+            rows: list[tuple[str, str]] = []
+            if "!1" in self._last_params:
+                rows.append(("!1", "Alpha"))
+            return rows
 
     mock_manager = MagicMock()
     mock_manager.supports_json_each.return_value = False
@@ -257,10 +256,13 @@ def test_sync_unchanged_snapshot_repair_failure_keeps_previous_state(
 
     original_run_sync = DatabaseManager.run_sync
     repair_failure_triggered = False
+    write_call_count = 0
 
     def fail_repair_write(self, func, *, write=False):
-        nonlocal repair_failure_triggered
-        if write and not repair_failure_triggered:
+        nonlocal repair_failure_triggered, write_call_count
+        if write:
+            write_call_count += 1
+        if write and write_call_count == 2 and not repair_failure_triggered:
             repair_failure_triggered = True
             raise sqlite3.Error("forced write failure on repair")
         return original_run_sync(self, func, write=write)

@@ -76,7 +76,7 @@ if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
 fi
 
 # Names-table SQL identifiers loaded from app constants.
-names_table_constants="$(
+mapfile -t names_table_constants < <(
 	"${PYTHON_BIN}" - <<'PY'
 import pathlib
 import sys
@@ -89,16 +89,24 @@ from mmrelay.constants.database import (
     NAMES_TABLE_SHORTNAMES,
 )
 
-print(f"NAMES_TABLE_LONGNAMES={NAMES_TABLE_LONGNAMES!r}")
-print(f"NAMES_TABLE_SHORTNAMES={NAMES_TABLE_SHORTNAMES!r}")
-print(f"NAMES_FIELD_LONGNAME={NAMES_FIELD_LONGNAME!r}")
-print(f"NAMES_FIELD_SHORTNAME={NAMES_FIELD_SHORTNAME!r}")
+print(NAMES_TABLE_LONGNAMES)
+print(NAMES_TABLE_SHORTNAMES)
+print(NAMES_FIELD_LONGNAME)
+print(NAMES_FIELD_SHORTNAME)
 PY
-)" || {
+) || {
 	echo "Failed to load names-table constants via '${PYTHON_BIN}'." >&2
 	exit 1
 }
-eval "${names_table_constants}"
+if [[ ${#names_table_constants[@]} -ne 4 ]]; then
+	echo "Failed to parse names-table constants from '${PYTHON_BIN}' output." >&2
+	exit 1
+fi
+
+NAMES_TABLE_LONGNAMES="${names_table_constants[0]}"
+NAMES_TABLE_SHORTNAMES="${names_table_constants[1]}"
+NAMES_FIELD_LONGNAME="${names_table_constants[2]}"
+NAMES_FIELD_SHORTNAME="${names_table_constants[3]}"
 
 # Artifacts and Logging - Separated by Instance
 CI_ARTIFACT_DIR="${CI_ARTIFACT_DIR:-${PWD}/.ci-artifacts/meshtasticd-integration}"

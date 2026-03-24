@@ -59,7 +59,7 @@ def _validate_sqlite_json_each_support() -> bool:
         bool: True when json_each() is available, False otherwise.
     """
     current_version = _get_sqlite_runtime_version_info()
-    conn = sqlite3.Connection(":memory:")
+    conn = sqlite3.connect(":memory:")
     try:
         _probe_sqlite_json_each_support(conn)
         return True
@@ -233,7 +233,7 @@ class DatabaseManager:
                         conn.execute(f"PRAGMA {pragma} = {value}")
                     else:
                         raise TypeError(f"Invalid pragma value type: {type(value)}")
-        except (sqlite3.Error, RuntimeError, ValueError, TypeError):
+        except BaseException:
             # Ensure partially configured connection does not leak
             conn.close()
             raise
@@ -425,6 +425,10 @@ class DatabaseManager:
         """
         with self._executor_lock:
             with self._connections_lock:
+                if self._is_admitted_during_close():
+                    raise RuntimeError(
+                        "DatabaseManager.close() cannot be called from inside an active database operation"
+                    )
                 self._accepting_submissions = False
                 self._closing = True
 

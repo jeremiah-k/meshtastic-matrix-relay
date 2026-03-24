@@ -106,15 +106,15 @@ _SELECT_NAME_VALUES_SQL_BY_TABLE = {
     NAMES_TABLE_SHORTNAMES: _SELECT_NAME_VALUES_JSON_FROM_SHORTNAMES_SQL,
 }
 
-_SELECT_NAME_VALUE_BY_ID_FROM_LONGNAMES_SQL = (
-    "SELECT meshtastic_id, longname FROM longnames WHERE meshtastic_id = ?"
+_SELECT_NAME_VALUES_IN_PREFIX_FROM_LONGNAMES_SQL = (
+    "SELECT meshtastic_id, longname FROM longnames WHERE meshtastic_id IN ("
 )
-_SELECT_NAME_VALUE_BY_ID_FROM_SHORTNAMES_SQL = (
-    "SELECT meshtastic_id, shortname FROM shortnames WHERE meshtastic_id = ?"
+_SELECT_NAME_VALUES_IN_PREFIX_FROM_SHORTNAMES_SQL = (
+    "SELECT meshtastic_id, shortname FROM shortnames WHERE meshtastic_id IN ("
 )
-_SELECT_NAME_VALUE_BY_ID_SQL_BY_TABLE = {
-    NAMES_TABLE_LONGNAMES: _SELECT_NAME_VALUE_BY_ID_FROM_LONGNAMES_SQL,
-    NAMES_TABLE_SHORTNAMES: _SELECT_NAME_VALUE_BY_ID_FROM_SHORTNAMES_SQL,
+_SELECT_NAME_VALUES_IN_PREFIX_SQL_BY_TABLE = {
+    NAMES_TABLE_LONGNAMES: _SELECT_NAME_VALUES_IN_PREFIX_FROM_LONGNAMES_SQL,
+    NAMES_TABLE_SHORTNAMES: _SELECT_NAME_VALUES_IN_PREFIX_FROM_SHORTNAMES_SQL,
 }
 
 _UPSERT_LONGNAME_SQL = (
@@ -132,6 +132,14 @@ _UPSERT_NAME_SQL_BY_TABLE = {
 
 _SELECT_LONGNAME_BY_ID_SQL = "SELECT longname FROM longnames WHERE meshtastic_id=?"
 _SELECT_SHORTNAME_BY_ID_SQL = "SELECT shortname FROM shortnames WHERE meshtastic_id=?"
+_CREATE_TABLE_NAMES_LONG_SQL = (
+    "CREATE TABLE IF NOT EXISTS longnames "
+    "(meshtastic_id TEXT PRIMARY KEY, longname TEXT)"
+)
+_CREATE_TABLE_NAMES_SHORT_SQL = (
+    "CREATE TABLE IF NOT EXISTS shortnames "
+    "(meshtastic_id TEXT PRIMARY KEY, shortname TEXT)"
+)
 
 if (
     NAMES_TABLE_LONGNAMES,
@@ -446,10 +454,15 @@ def _resolve_database_options() -> tuple[bool, int, dict[str, Any]]:
         DEFAULT_ENABLE_WAL,
     )
 
+    raw_busy_timeout_ms = database_cfg.get(
+        "busy_timeout_ms",
+        legacy_cfg.get("busy_timeout_ms", DEFAULT_BUSY_TIMEOUT_MS),
+    )
     busy_timeout_ms = _parse_int(
-        database_cfg.get(
-            "busy_timeout_ms",
-            legacy_cfg.get("busy_timeout_ms", DEFAULT_BUSY_TIMEOUT_MS),
+        (
+            DEFAULT_BUSY_TIMEOUT_MS
+            if isinstance(raw_busy_timeout_ms, bool)
+            else raw_busy_timeout_ms
         ),
         DEFAULT_BUSY_TIMEOUT_MS,
     )
@@ -547,14 +560,8 @@ def initialize_database() -> None:
         Parameters:
             cursor: An sqlite3.Cursor positioned on the target database; used to execute DDL statements.
         """
-        cursor.execute(
-            f"CREATE TABLE IF NOT EXISTS {NAMES_TABLE_LONGNAMES} "
-            f"(meshtastic_id TEXT PRIMARY KEY, {_LONGNAME_DB_FIELD} TEXT)"
-        )
-        cursor.execute(
-            f"CREATE TABLE IF NOT EXISTS {NAMES_TABLE_SHORTNAMES} "
-            f"(meshtastic_id TEXT PRIMARY KEY, {_SHORTNAME_DB_FIELD} TEXT)"
-        )
+        cursor.execute(_CREATE_TABLE_NAMES_LONG_SQL)
+        cursor.execute(_CREATE_TABLE_NAMES_SHORT_SQL)
         cursor.execute(
             "CREATE TABLE IF NOT EXISTS plugin_data (plugin_name TEXT, meshtastic_id TEXT, data TEXT, PRIMARY KEY (plugin_name, meshtastic_id))"
         )
@@ -968,15 +975,15 @@ def _read_name_values_for_ids(
 
     Notes:
         Uses a json_each() batched query when available, and falls back to
-        per-ID parameterized selects on runtimes without JSON1 support.
+        chunked IN-clause parameterized selects on runtimes without JSON1 support.
     """
     if not current_ids:
         return {}
 
     column_name = _NAME_FIELD_BY_TABLE.get(table)
     select_sql = _SELECT_NAME_VALUES_SQL_BY_TABLE.get(table)
-    select_by_id_sql = _SELECT_NAME_VALUE_BY_ID_SQL_BY_TABLE.get(table)
-    if column_name is None or select_sql is None or select_by_id_sql is None:
+    select_in_prefix_sql = _SELECT_NAME_VALUES_IN_PREFIX_SQL_BY_TABLE.get(table)
+    if column_name is None or select_sql is None or select_in_prefix_sql is None:
         raise _InvalidNamesTableError(table)
 
     manager = _get_db_manager()
@@ -996,12 +1003,10 @@ def _read_name_values_for_ids(
                 )
                 fetched_rows = cast(list[tuple[Any, Any]], cursor.fetchall())
             else:
-                fetched_rows = []
-                for chunk_id in chunk_ids:
-                    cursor.execute(select_by_id_sql, (chunk_id,))
-                    row = cursor.fetchone()
-                    if row is not None:
-                        fetched_rows.append(cast(tuple[Any, Any], row))
+                placeholders = ",".join("?" for _ in chunk_ids)
+                select_in_sql = f"{select_in_prefix_sql}{placeholders})"  # noqa: S608
+                cursor.execute(select_in_sql, tuple(chunk_ids))
+                fetched_rows = cast(list[tuple[Any, Any]], cursor.fetchall())
             rows_by_id.update(
                 {
                     str(row[0]): _normalize_node_name_value(row[1])

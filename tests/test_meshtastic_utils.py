@@ -3689,7 +3689,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             # Verify timeout error was logged 6 times (once per attempt)
             error_calls = [
                 call
-                for call in mock_logger.exception.call_args_list
+                for call in mock_logger.error.call_args_list
                 if "BLE interface creation timed out after" in str(call)
             ]
             self.assertEqual(len(error_calls), 6)
@@ -3817,7 +3817,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             # (because meshtastic_iface is set to None after connect timeout)
             interface_timeout_calls = [
                 call
-                for call in mock_logger.exception.call_args_list
+                for call in mock_logger.error.call_args_list
                 if "BLE interface creation timed out after" in str(call)
             ]
             self.assertEqual(len(interface_timeout_calls), 5)

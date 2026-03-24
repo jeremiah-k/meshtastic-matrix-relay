@@ -5,6 +5,8 @@ Contains default values for database configuration, message retention,
 and data management settings.
 """
 
+from collections.abc import Mapping
+from types import MappingProxyType
 from typing import Final
 
 # Message retention defaults
@@ -32,10 +34,12 @@ DEFAULT_RADIUS_KM: Final[int] = 5  # Default radius for location-based filtering
 # SQLite configuration defaults
 DEFAULT_ENABLE_WAL: Final[bool] = True
 DEFAULT_BUSY_TIMEOUT_MS: Final[int] = 5000
-DEFAULT_EXTRA_PRAGMAS: Final[dict[str, str]] = {
-    "synchronous": "NORMAL",
-    "temp_store": "MEMORY",
-}
+DEFAULT_EXTRA_PRAGMAS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "synchronous": "NORMAL",
+        "temp_store": "MEMORY",
+    }
+)
 SQLITE_JSON_EACH_PROBE_SQL: Final[str] = "SELECT value FROM json_each(?)"
 SQLITE_JSON_EACH_PROBE_PAYLOAD: Final[str] = '["probe"]'
 

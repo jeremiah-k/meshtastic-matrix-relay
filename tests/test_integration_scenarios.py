@@ -69,10 +69,6 @@ class TestIntegrationScenarios(unittest.TestCase):
                         )
                         if callable(disconnect_iface):
                             disconnect_iface(iface, reason="test-reset")
-                        else:
-                            close = getattr(iface, "close", None)
-                            if callable(close):
-                                close()
                     except (
                         asyncio.CancelledError,
                         asyncio.TimeoutError,

@@ -15,6 +15,7 @@ Tests edge cases and error handling including:
 import os
 import subprocess  # nosec B404 - Used for controlled test environment operations
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -318,9 +319,10 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
             patch("mmrelay.setup_utils.logger"),
             patch("builtins.input", return_value="y"),
         ):
-            mock_service_path.return_value = Path("/tmp/mmrelay-test.service")
-            result = install_service()
-            self.assertFalse(result)
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                mock_service_path.return_value = Path(tmp_dir) / "mmrelay-test.service"
+                result = install_service()
+                self.assertFalse(result)
 
     def test_install_service_daemon_reload_failure(self):
         """

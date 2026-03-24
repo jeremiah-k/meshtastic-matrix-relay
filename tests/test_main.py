@@ -3297,6 +3297,7 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
             nonlocal shutdown_wait_for_injected
             if timeout == 5.0 and not shutdown_wait_for_injected:
                 shutdown_wait_for_injected = True
+                _close_coro_if_possible(awaitable)
                 raise ValueError("Test error")
             return await real_wait_for(awaitable, timeout=timeout)
 
@@ -3358,8 +3359,20 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
 
         real_wait_for = asyncio.wait_for
 
+        def _awaitable_name(awaitable: Any) -> str:
+            candidate = getattr(awaitable, "_coro", awaitable)
+            inner = getattr(candidate, "_inner", None)
+            if inner is not None:
+                candidate = getattr(inner, "get_coro", lambda: inner)()
+            elif hasattr(candidate, "get_coro"):
+                candidate = candidate.get_coro()
+            code = getattr(candidate, "cr_code", None) or getattr(
+                candidate, "__code__", None
+            )
+            return getattr(code, "co_name", "")
+
         async def mock_wait_for(coro, timeout=None):
-            if "_outer_done_callback" in repr(coro):
+            if timeout == 5.0 and _awaitable_name(coro) == "_check_connection_wait":
                 raise asyncio.CancelledError()
             return await real_wait_for(coro, timeout=timeout)
 
@@ -3441,7 +3454,6 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
             patch("mmrelay.main.asyncio.gather") as mock_gather,
             patch("mmrelay.main.logger") as mock_logger,
-            contextlib.suppress(Exception),
         ):
             mock_matrix_client = AsyncMock()
             mock_matrix_client.add_event_callback = MagicMock()
@@ -3452,16 +3464,19 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
                 mock_queue.ensure_processor_started = MagicMock()
                 mock_get_queue.return_value = mock_queue
 
-                mock_gather.return_value = [ValueError("Task error")]
+                async def _mock_gather(*_args: Any, **_kwargs: Any) -> list[Any]:
+                    return [ValueError("Task error")]
+
+                mock_gather.side_effect = _mock_gather
 
                 asyncio.run(main(config))
 
-                self.assertTrue(
-                    any(
-                        "Error during" in str(call)
-                        for call in mock_logger.error.call_args_list
-                    )
+            self.assertTrue(
+                any(
+                    "Error during" in str(call)
+                    for call in mock_logger.error.call_args_list
                 )
+            )
 
 
 class TestRunBlockingShutdownStep(unittest.TestCase):
@@ -3491,7 +3506,6 @@ class TestRunBlockingShutdownStep(unittest.TestCase):
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
             patch("mmrelay.main.logger") as mock_logger,
-            contextlib.suppress(Exception),
         ):
             mock_matrix_client = AsyncMock()
             mock_matrix_client.add_event_callback = MagicMock()
@@ -3506,12 +3520,12 @@ class TestRunBlockingShutdownStep(unittest.TestCase):
 
                 asyncio.run(main(config))
 
-                self.assertTrue(
-                    any(
-                        "Error while stopping" in str(call)
-                        for call in mock_logger.error.call_args_list
-                    )
+            self.assertTrue(
+                any(
+                    "Error while stopping" in str(call)
+                    for call in mock_logger.error.call_args_list
                 )
+            )
 
 
 class TestMessageQueueProcessorStartFailure(unittest.TestCase):

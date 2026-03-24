@@ -76,7 +76,9 @@ DEFAULT_BROADCAST_ENABLED: Final[bool] = True
 DEFAULT_DETECTION_SENSOR: Final[bool] = True
 DEFAULT_HEALTH_CHECK_ENABLED: Final[bool] = False
 DEFAULT_HEARTBEAT_INTERVAL: Final[int] = 60
-DEFAULT_NODEDB_REFRESH_INTERVAL: Final[float] = 15.0  # seconds
+# Default refresh cadence in seconds. Setting this to 0.0 disables periodic
+# NodeDB-derived name-cache refresh after the first immediate pass.
+DEFAULT_NODEDB_REFRESH_INTERVAL: Final[float] = 15.0
 DEFAULT_COLOR_ENABLED: Final[bool] = True
 DEFAULT_WIPE_ON_RESTART: Final[bool] = False
 DEFAULT_REQUIRE_BOT_MENTION: Final[bool] = True

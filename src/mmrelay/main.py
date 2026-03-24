@@ -390,19 +390,17 @@ async def main(config: dict[str, Any]) -> None:
         still runs.
         """
         loop = asyncio.get_running_loop()
-        step_result: asyncio.Future[Exception | None] = loop.create_future()
+        step_result: asyncio.Future[BaseException | None] = loop.create_future()
 
         def _run_step() -> None:
-            step_error: Exception | None = None
+            step_error: BaseException | None = None
             try:
                 step_func()
             except BaseException as exc:
-                if isinstance(exc, (KeyboardInterrupt, SystemExit)):
-                    raise
-                if isinstance(exc, Exception):
-                    step_error = exc
-                else:
-                    raise
+                # Keep shutdown behavior deterministic: capture any failure from the
+                # daemon worker and report it on the main task instead of re-raising
+                # inside the thread.
+                step_error = exc
 
             def _publish_result() -> None:
                 if not step_result.done():
@@ -719,22 +717,24 @@ async def main(config: dict[str, Any]) -> None:
         if task is None:
             return
 
-        wait_error: Exception | None = None
+        wait_error: BaseException | None = None
         if not task.done():
             try:
                 await asyncio.wait_for(asyncio.shield(task), timeout=timeout_seconds)
             except asyncio.TimeoutError:
                 task.cancel()
-            except Exception as exc:
+            except asyncio.CancelledError:
+                task.cancel()
+                return
+            except BaseException as exc:
+                if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                    raise
                 wait_error = exc
                 logger.error(
                     "Error while waiting for %s to finish during shutdown",
                     task_name,
                     exc_info=(type(exc), exc, exc.__traceback__),
                 )
-            except asyncio.CancelledError:
-                task.cancel()
-                return
 
         if not task.done():
             task.cancel()
@@ -797,14 +797,8 @@ async def main(config: dict[str, Any]) -> None:
                 )
             )
 
-            # Ensure message queue processor is started now that event loop is running
-            try:
-                get_message_queue().ensure_processor_started()
-            except Exception:
-                matrix_logger.exception(
-                    "Failed to start message queue processor during startup"
-                )
-                raise
+            # Ensure message queue processor is started now that event loop is running.
+            get_message_queue().ensure_processor_started()
 
             # Publish readiness only after startup wiring in this section is complete.
             _write_ready_file()
@@ -839,11 +833,11 @@ async def main(config: dict[str, Any]) -> None:
 
                 # Cancel any pending tasks
                 for pending_task in pending:
-                    pending_task.cancel()
-                    try:
-                        await pending_task
-                    except asyncio.CancelledError:
-                        pass
+                    await _await_background_task_shutdown(
+                        pending_task,
+                        task_name="matrix sync pending task",
+                        timeout_seconds=5.0,
+                    )
 
                 if shutdown_event.is_set():
                     matrix_logger.info("Shutdown event detected. Stopping sync loop...")
@@ -886,27 +880,32 @@ async def main(config: dict[str, Any]) -> None:
                     tasks_to_cleanup.append(cleanup_task)
 
                 if tasks_to_cleanup:
-                    await asyncio.gather(*tasks_to_cleanup, return_exceptions=True)
+                    for cleanup_task in tasks_to_cleanup:
+                        await _await_background_task_shutdown(
+                            cleanup_task,
+                            task_name="matrix sync cleanup task",
+                            timeout_seconds=5.0,
+                        )
     except KeyboardInterrupt:
         shutdown()
     finally:
         _set_shutdown_flag()
+        await _await_background_task_shutdown(
+            ready_task,
+            task_name="ready heartbeat task",
+            timeout_seconds=5.0,
+        )
+        _remove_ready_file()
         await _await_background_task_shutdown(
             node_name_refresh_task,
             task_name="NodeDB name-cache refresh task",
             timeout_seconds=10.0,
         )
         await _await_background_task_shutdown(
-            ready_task,
-            task_name="ready heartbeat task",
-            timeout_seconds=5.0,
-        )
-        await _await_background_task_shutdown(
             check_connection_task,
             task_name="connection health task",
             timeout_seconds=5.0,
         )
-        _remove_ready_file()
         # Cleanup
         matrix_logger.info("Stopping plugins...")
         await _run_blocking_shutdown_step(

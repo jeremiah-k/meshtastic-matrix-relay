@@ -6,7 +6,7 @@ and improve maintainability of the test suite.
 """
 
 import asyncio
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, TypeVar, cast
 
 T = TypeVar("T")
 
@@ -62,6 +62,8 @@ class InlineExecutorLoop:
         try:
             result = func(*args)
         except BaseException as exc:
+            # Mirror run_in_executor semantics where all failures are captured on
+            # the returned Future instead of escaping synchronously.
             fut.set_exception(exc)
         else:
             fut.set_result(result)
@@ -108,11 +110,16 @@ def make_patched_get_running_loop() -> Callable[[], asyncio.AbstractEventLoop]:
     This keeps run_in_executor paths deterministic in tests by executing inline.
     """
     real_get_running_loop = asyncio.get_running_loop
+    wrapped_loops: dict[asyncio.AbstractEventLoop, InlineExecutorLoop] = {}
 
     def _patched_get_running_loop() -> asyncio.AbstractEventLoop:
         loop = real_get_running_loop()
         if isinstance(loop, InlineExecutorLoop):
             return loop
-        return InlineExecutorLoop(loop)
+        wrapped = wrapped_loops.get(loop)
+        if wrapped is None:
+            wrapped = InlineExecutorLoop(loop)
+            wrapped_loops[loop] = wrapped
+        return cast(asyncio.AbstractEventLoop, wrapped)
 
     return _patched_get_running_loop

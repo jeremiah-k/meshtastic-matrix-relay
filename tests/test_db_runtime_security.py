@@ -15,7 +15,7 @@ import sqlite3
 import tempfile
 import threading
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from mmrelay.db_runtime import DatabaseManager
 
@@ -76,21 +76,23 @@ class TestDatabaseManager(unittest.TestCase):
 
     def test_initialization_allows_missing_json_each_support(self):
         """DatabaseManager should initialize and mark json_each as unavailable."""
-        unsupported = (3, 8, 0)
+        probe_conn = MagicMock()
+        probe_conn.execute.side_effect = sqlite3.OperationalError(
+            "no such function: json_each"
+        )
 
-        with (
-            patch(
-                "mmrelay.db_runtime._get_sqlite_runtime_version_info",
-                return_value=unsupported,
-            ),
-            patch(
-                "mmrelay.db_runtime._probe_sqlite_json_each_support",
-                side_effect=RuntimeError(
-                    "SQLite json_each() support is required for node-name queries. "
-                    f"Detected SQLite version: {unsupported[0]}.{unsupported[1]}.{unsupported[2]}. "
-                    "Ensure SQLite is built with JSON support."
-                ),
-            ),
+        real_connect = sqlite3.connect
+
+        def _connect_side_effect(*args, **kwargs):
+            database = kwargs.get("database")
+            if database is None and args:
+                database = args[0]
+            if database == ":memory:":
+                return probe_conn
+            return real_connect(*args, **kwargs)
+
+        with patch(
+            "mmrelay.db_runtime.sqlite3.connect", side_effect=_connect_side_effect
         ):
             manager = DatabaseManager(self.db_path)
             try:
@@ -99,12 +101,27 @@ class TestDatabaseManager(unittest.TestCase):
                 self.assertFalse(manager.supports_json_each())
             finally:
                 manager.close()
+        probe_conn.close.assert_called()
 
     def test_initialization_marks_json_each_supported_when_probe_succeeds(self):
         """DatabaseManager should mark json_each support when probe succeeds."""
+        probe_result = MagicMock()
+        probe_result.fetchall.return_value = [("probe",)]
+        probe_conn = MagicMock()
+        probe_conn.execute.return_value = probe_result
+
+        real_connect = sqlite3.connect
+
+        def _connect_side_effect(*args, **kwargs):
+            database = kwargs.get("database")
+            if database is None and args:
+                database = args[0]
+            if database == ":memory:":
+                return probe_conn
+            return real_connect(*args, **kwargs)
+
         with patch(
-            "mmrelay.db_runtime._probe_sqlite_json_each_support",
-            return_value=None,
+            "mmrelay.db_runtime.sqlite3.connect", side_effect=_connect_side_effect
         ):
             manager = DatabaseManager(self.db_path)
             try:
@@ -113,6 +130,7 @@ class TestDatabaseManager(unittest.TestCase):
                 self.assertTrue(manager.supports_json_each())
             finally:
                 manager.close()
+        probe_conn.close.assert_called()
 
     def test_pragma_validation_valid_names(self):
         """Test that valid pragma names are accepted."""
@@ -547,6 +565,7 @@ class TestDatabaseManager(unittest.TestCase):
             await asyncio.sleep(0)
 
             close_task = asyncio.create_task(asyncio.to_thread(self.manager.close))
+            await asyncio.sleep(0)
             first_release.set()
 
             try:
@@ -631,6 +650,18 @@ class TestDatabaseManager(unittest.TestCase):
         # Verify cleanup
         self.assertEqual(len(self.manager._connections), 0)
         self.assertFalse(hasattr(self.manager._thread_local, "connection"))
+
+    def test_close_rejected_during_active_database_operation(self):
+        """close() should reject reentrant invocation from active DB work."""
+
+        def close_inside_operation(_cursor: sqlite3.Cursor) -> None:
+            self.manager.close()
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "cannot be called from inside an active database operation",
+        ):
+            self.manager.run_sync(close_inside_operation)
 
     def test_close_handles_connection_errors(self):
         """Test close method handles connection errors gracefully."""
