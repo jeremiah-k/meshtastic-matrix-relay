@@ -9,7 +9,9 @@ with open(
     encoding="utf-8",
 ) as f:
     content = f.read()
-    match = re.search(r'__version__\s*=\s*["\']([^"\']*)["\']', content)
+    match = re.search(
+        r'__version__\s*(?::\s*[^=]+)?\s*=\s*["\']([^"\']*)["\']', content
+    )
     if match:
         __version__ = match.group(1)
     else:
