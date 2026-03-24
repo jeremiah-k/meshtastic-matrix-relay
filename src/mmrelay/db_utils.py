@@ -1430,6 +1430,11 @@ def sync_name_tables_if_changed(
     if nodes is None or not isinstance(nodes, dict):
         return previous_state
 
+    # Empty snapshots should preserve prior state to avoid transient data loss
+    # from temporary network disconnects or incomplete refreshes
+    if not nodes and previous_state is not None:
+        return previous_state
+
     current_state, current_ids, snapshot_complete = _collect_node_name_snapshot(nodes)
     # Empty snapshots are only authoritative if snapshot_complete=True from the collector.
     # Don't force snapshot_complete=True here - that allows transient empty cycles to

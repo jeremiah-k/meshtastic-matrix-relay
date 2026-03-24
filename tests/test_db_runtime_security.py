@@ -590,11 +590,8 @@ class TestDatabaseManager(unittest.TestCase):
                 await asyncio.sleep(0.01)
             self.assertTrue(close_started.is_set(), "close() never started")
 
-            deadline = asyncio.get_running_loop().time() + 1.0
-            while (
-                second_started.is_set() and asyncio.get_running_loop().time() < deadline
-            ):
-                await asyncio.sleep(0.01)
+            # Brief wait to allow any incorrect early execution to manifest
+            await asyncio.sleep(0.1)
             self.assertFalse(
                 second_started.is_set(), "second_write should not have started yet"
             )

@@ -3740,7 +3740,6 @@ def on_lost_meshtastic_connection(
                 if _ble_executor is not None:
                     stale_executor = _ble_executor
                     _ble_executor = ThreadPoolExecutor(max_workers=1)
-                    reset_executor_degraded_state(ble_address=stale_ble_address)
 
         if ble_future_to_cancel is not None:
             if stale_ble_address:
@@ -3755,6 +3754,9 @@ def on_lost_meshtastic_connection(
                 stale_executor.shutdown(wait=False, cancel_futures=True)
             except TypeError:
                 stale_executor.shutdown(wait=False)
+
+        if stale_ble_address is not None:
+            reset_executor_degraded_state(ble_address=stale_ble_address)
 
         if event_loop and not event_loop.is_closed():
             reconnect_task = event_loop.create_task(reconnect())
