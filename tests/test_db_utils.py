@@ -1040,8 +1040,18 @@ class TestDbUtils(unittest.TestCase):
             initialize_database()
             store_plugin_data("plugin", "nodeA", {"value": 1})
             store_plugin_data("plugin", "nodeB", {"value": 2})
-            # Only the initial connection should be created; subsequent calls reuse it.
-            self.assertEqual(mock_connect.call_count, 1)
+            # DatabaseManager may open an in-memory probe connection during startup
+            # capability checks; assert reuse for the real configured database path.
+            real_db_connect_calls = []
+            for call in mock_connect.call_args_list:
+                path = ""
+                if call.args:
+                    path = str(call.args[0])
+                elif "database" in call.kwargs:
+                    path = str(call.kwargs["database"])
+                if path != ":memory:":
+                    real_db_connect_calls.append(call)
+            self.assertEqual(len(real_db_connect_calls), 1)
 
     def test_async_store_and_prune_message_map(self):
         """

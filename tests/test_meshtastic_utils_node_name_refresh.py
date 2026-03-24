@@ -178,6 +178,6 @@ def test_refresh_node_name_tables_handles_sync_exceptions(
         mu.logger.propagate = original_propagate
     mock_sync.assert_called_once()
     assert any(
-        "Failed to refresh node-name tables from node snapshot" in record.message
+        "Failed to refresh name-cache tables from NodeDB snapshot" in record.message
         for record in caplog.records
     )
