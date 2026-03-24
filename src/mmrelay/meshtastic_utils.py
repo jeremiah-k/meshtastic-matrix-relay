@@ -316,6 +316,12 @@ def reset_executor_degraded_state(
     and refuse new work submissions. This function clears that state so normal
     operation can resume after a successful reconnect or manual intervention.
 
+    Note:
+        When ble_address is provided (and reset_all is False), this function
+        resets both the BLE executor degraded state AND the metadata executor
+        degraded state. This connection-scoped behavior reflects that a successful
+        BLE reconnect typically also restores the metadata probe path.
+
     Parameters:
         ble_address (str | None): Specific BLE address to reset. If None and
             reset_all is False, only metadata executor is reset.
@@ -3252,11 +3258,12 @@ def connect_meshtastic(
                                     logger.debug(
                                         f"BLE interface created successfully for {ble_address}"
                                     )
-                                    reset_executor_degraded_state(
-                                        ble_address=ble_address
-                                    )
                                     if hasattr(meshtastic_iface, "auto_reconnect"):
                                         supports_auto_reconnect = True
+                                    else:
+                                        reset_executor_degraded_state(
+                                            ble_address=ble_address
+                                        )
                                 except FuturesTimeoutError as err:
                                     logger.error(
                                         "BLE interface creation timed out after %.1f seconds for %s.",
