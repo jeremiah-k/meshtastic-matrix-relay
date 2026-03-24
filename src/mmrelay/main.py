@@ -376,7 +376,9 @@ async def main(config: dict[str, Any]) -> None:
             step_error: Exception | None = None
             try:
                 step_func()
-            except Exception as exc:
+            except (
+                Exception
+            ) as exc:  # noqa: BLE001 - best-effort shutdown must continue
                 step_error = exc
 
             def _publish_result() -> None:
@@ -669,11 +671,10 @@ async def main(config: dict[str, Any]) -> None:
         if not task.done():
             task.cancel()
             try:
-                await asyncio.wait_for(
+                cleanup_results = await asyncio.wait_for(
                     asyncio.gather(task, return_exceptions=True),
                     timeout=1.0,
                 )
-                return
             except asyncio.TimeoutError:
                 logger.warning(
                     "Timed out cancelling %s; continuing shutdown",
@@ -682,6 +683,19 @@ async def main(config: dict[str, Any]) -> None:
                 return
             except asyncio.CancelledError:
                 return
+
+            result = cleanup_results[0]
+            if (
+                isinstance(result, Exception)
+                and not isinstance(result, asyncio.CancelledError)
+                and result is not wait_error
+            ):
+                logger.error(
+                    "Error during %s cleanup",
+                    task_name,
+                    exc_info=(type(result), result, result.__traceback__),
+                )
+            return
 
         cleanup_results = await asyncio.gather(task, return_exceptions=True)
         result: object = cleanup_results[0]
@@ -718,12 +732,18 @@ async def main(config: dict[str, Any]) -> None:
                 "Failed to start message queue processor during startup"
             )
             raise
-        # Publish readiness only after startup wiring in this section is complete.
-        _write_ready_file()
 
-        # Start heartbeat AFTER readiness is confirmed
-        if _ready_heartbeat_seconds > 0:
-            ready_task = asyncio.create_task(_ready_heartbeat(shutdown_event))
+        if shutdown_event.is_set():
+            matrix_logger.warning(
+                "Skipping readiness publication because shutdown was requested during startup"
+            )
+        else:
+            # Publish readiness only after startup wiring in this section is complete.
+            _write_ready_file()
+
+            # Start heartbeat AFTER readiness is confirmed
+            if _ready_heartbeat_seconds > 0:
+                ready_task = asyncio.create_task(_ready_heartbeat(shutdown_event))
         while not shutdown_event.is_set():
             sync_task: asyncio.Task[Any] | None = None
             shutdown_task: asyncio.Task[Any] | None = None

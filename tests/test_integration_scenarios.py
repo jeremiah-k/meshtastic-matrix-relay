@@ -96,20 +96,41 @@ class TestIntegrationScenarios(unittest.TestCase):
                     cancel = getattr(ble_future, "cancel", None)
                     if callable(done) and callable(cancel) and not done():
                         cancel()
-                        result = getattr(ble_future, "result", None)
-                        if callable(result):
+                        if isinstance(ble_future, asyncio.Task):
                             try:
-                                result(timeout=0.2)
+                                loop = asyncio.get_event_loop()
+                                if loop.is_running():
+                                    asyncio.run_coroutine_threadsafe(
+                                        asyncio.wait_for(ble_future, 0.2), loop
+                                    )
+                                else:
+                                    loop.run_until_complete(
+                                        asyncio.wait_for(ble_future, 0.2)
+                                    )
                             except (
                                 asyncio.CancelledError,
                                 asyncio.TimeoutError,
-                                TimeoutError,
-                                TypeError,
-                                concurrent.futures.CancelledError,
+                                Exception,
                             ) as e:
                                 logging.getLogger(__name__).debug(
-                                    "Expected error during BLE future cleanup: %s", e
+                                    "Expected error during BLE Task cleanup: %s", e
                                 )
+                        else:
+                            result = getattr(ble_future, "result", None)
+                            if callable(result):
+                                try:
+                                    result(timeout=0.2)
+                                except (
+                                    asyncio.CancelledError,
+                                    asyncio.TimeoutError,
+                                    TimeoutError,
+                                    TypeError,
+                                    concurrent.futures.CancelledError,
+                                ) as e:
+                                    logging.getLogger(__name__).debug(
+                                        "Expected error during BLE future cleanup: %s",
+                                        e,
+                                    )
                 module._ble_future = None
             if hasattr(module, "_ble_future_address"):
                 module._ble_future_address = None
@@ -119,6 +140,11 @@ class TestIntegrationScenarios(unittest.TestCase):
                 module._ble_future_timeout_secs = None
             if hasattr(module, "_ble_timeout_counts"):
                 module._ble_timeout_counts = {}
+            try:
+                if hasattr(module, "_shutdown_shared_executors"):
+                    module._shutdown_shared_executors()
+            except Exception:
+                pass
 
         # Reset matrix_utils globals
         if "mmrelay.matrix_utils" in sys.modules:

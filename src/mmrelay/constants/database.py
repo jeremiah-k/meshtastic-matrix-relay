@@ -36,7 +36,7 @@ DEFAULT_EXTRA_PRAGMAS: Final[dict[str, str]] = {
     "synchronous": "NORMAL",
     "temp_store": "MEMORY",
 }
-MIN_SQLITE_VERSION_JSON_EACH: Final[tuple[int, int, int]] = (3, 9, 0)
+MIN_SQLITE_VERSION_JSON_EACH: Final[tuple[int, int, int]] = (3, 38, 0)
 SQLITE_JSON_EACH_PROBE_SQL: Final[str] = "SELECT value FROM json_each(?)"
 SQLITE_JSON_EACH_PROBE_PAYLOAD: Final[str] = '["probe"]'
 

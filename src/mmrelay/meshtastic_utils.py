@@ -249,9 +249,8 @@ def _shutdown_shared_executors() -> None:
         _ble_future_address = None
         _ble_future_started_at = None
         _ble_future_timeout_secs = None
-        if stale_address:
-            with _ble_timeout_lock:
-                _ble_timeout_counts.pop(stale_address, None)
+        with _ble_timeout_lock:
+            _ble_timeout_counts.clear()
 
         executor = _ble_executor
         _ble_executor = None
@@ -549,7 +548,7 @@ def get_node_name_refresh_interval_seconds(
         interval = float(raw_interval)
         if math.isfinite(interval):
             return interval
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         pass
 
     logger.warning(
@@ -626,7 +625,7 @@ async def refresh_node_name_tables(
             interval = float(refresh_interval_seconds)
             if not math.isfinite(interval):
                 raise ValueError("non-finite interval")
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             configured_interval = get_node_name_refresh_interval_seconds()
             logger.warning(
                 "Invalid node-name refresh interval override %r; defaulting to configured interval %.1f",
@@ -3425,12 +3424,15 @@ def on_lost_meshtastic_connection(
                 except Exception as e:
                     logger.warning(f"Error closing Meshtastic client: {e}")
         meshtastic_client = None
+        ble_future_to_cancel = None
+        stale_executor = None
         with _ble_executor_lock:
             if _ble_future and not _ble_future.done():
                 logger.debug(
                     "Clearing stale BLE future before reconnect (%s)",
                     detection_source,
                 )
+                ble_future_to_cancel = _ble_future
                 _ble_future = None
                 if _ble_future_address:
                     with _ble_timeout_lock:
@@ -3439,11 +3441,16 @@ def on_lost_meshtastic_connection(
                 _ble_future_started_at = None
                 _ble_future_timeout_secs = None
                 if _ble_executor is not None:
-                    try:
-                        _ble_executor.shutdown(wait=False, cancel_futures=True)
-                    except TypeError:
-                        _ble_executor.shutdown(wait=False)
+                    stale_executor = _ble_executor
                     _ble_executor = ThreadPoolExecutor(max_workers=1)
+
+        if ble_future_to_cancel is not None:
+            ble_future_to_cancel.cancel()
+        if stale_executor is not None:
+            try:
+                stale_executor.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                stale_executor.shutdown(wait=False)
 
         if event_loop and not event_loop.is_closed():
             reconnect_task = event_loop.create_task(reconnect())

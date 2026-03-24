@@ -1646,7 +1646,7 @@ class TestConnectionLostHandlerClearingStaleBleFuture:
 
         with patch("mmrelay.meshtastic_utils.reconnect") as mock_reconnect:
             with patch("mmrelay.meshtastic_utils.logger"):
-                mu.on_lost_meshtastic_connection("test source")
+                mu.on_lost_meshtastic_connection(detection_source="test source")
 
                 assert mu._ble_future is None
                 assert mu._ble_future_address is None
@@ -1671,7 +1671,7 @@ class TestConnectionLostHandlerClearingStaleBleFuture:
 
         with patch("mmrelay.meshtastic_utils.reconnect"):
             with patch("mmrelay.meshtastic_utils.logger"):
-                mu.on_lost_meshtastic_connection("test source")
+                mu.on_lost_meshtastic_connection(detection_source="test source")
 
                 assert "11:22:33:44:55:66" not in mu._ble_timeout_counts
                 assert "OTHER:ADDRESS" in mu._ble_timeout_counts

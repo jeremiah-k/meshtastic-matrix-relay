@@ -2607,6 +2607,15 @@ def test_ready_file_noops_when_unset(tmp_path, monkeypatch) -> None:
 class TestReadyHeartbeatEnvVarParsing:
     """Tests for MMRELAY_READY_HEARTBEAT_SECONDS environment variable parsing."""
 
+    @pytest.fixture(autouse=True)
+    def _restore_main_logger(self):
+        import importlib
+
+        import mmrelay.main as main_module
+
+        yield
+        importlib.reload(main_module)
+
     def test_invalid_ready_heartbeat_seconds_type_error(self):
         """Invalid MMRELAY_READY_HEARTBEAT_SECONDS logs warning and uses default."""
         import importlib

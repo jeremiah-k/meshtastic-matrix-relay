@@ -107,7 +107,7 @@ class DatabaseManager:
     _thread_local: threading.local
     _write_lock: threading.RLock
     _connections: set[sqlite3.Connection]
-    _connections_lock: threading.Lock
+    _connections_lock: threading.RLock
     _executor_lock: threading.Lock
     _closing: bool
 
@@ -145,7 +145,7 @@ class DatabaseManager:
         self._thread_local = threading.local()
         self._write_lock = threading.RLock()
         self._connections: set[sqlite3.Connection] = set()
-        self._connections_lock = threading.Lock()
+        self._connections_lock = threading.RLock()
         self._executor_lock = threading.Lock()
         self._async_executor = ThreadPoolExecutor(max_workers=1)
         self._closing = False
@@ -223,35 +223,29 @@ class DatabaseManager:
         """
         Get the thread-local SQLite connection, creating and storing a new connection if none exists.
 
-        Note: The _closing check is a best-effort guard without _executor_lock. If a race with
-        close() occurs, any newly created connection is tracked in _connections and will be
-        cleaned up. This is acceptable since sync callers don't need executor serialization.
-
         Returns:
             sqlite3.Connection: The per-thread SQLite connection.
 
         Raises:
             RuntimeError: If the manager is closing and cannot create new connections.
         """
-        if self._closing:
-            raise RuntimeError(
-                "DatabaseManager is closing, cannot create new connections"
-            )
-        conn = getattr(self._thread_local, "connection", None)
-        if conn is not None:
-            try:
-                # Using cursor() is a lightweight way to check if the connection is open.
-                conn.cursor().close()
-            except sqlite3.ProgrammingError:
-                # Connection is closed, so we'll create a new one.
-                with self._connections_lock:
+        with self._connections_lock:
+            if self._closing:
+                raise RuntimeError(
+                    "DatabaseManager is closing, cannot create new connections"
+                )
+            conn = getattr(self._thread_local, "connection", None)
+            if conn is not None:
+                try:
+                    conn.cursor().close()
+                except sqlite3.ProgrammingError:
                     self._connections.discard(conn)
-                conn = None
+                    conn = None
 
-        if conn is None:
-            conn = self._create_connection()
-            self._thread_local.connection = conn
-        return conn
+            if conn is None:
+                conn = self._create_connection()
+                self._thread_local.connection = conn
+            return conn
 
     # ------------------------------------------------------------------ #
     # Context managers
@@ -344,12 +338,10 @@ class DatabaseManager:
                 raise RuntimeError("DatabaseManager is closing, cannot submit new work")
             worker_future = self._async_executor.submit(executor_func)
         try:
-            while not worker_future.done():
-                await asyncio.sleep(0.001)
+            return await asyncio.wrap_future(worker_future)
         except asyncio.CancelledError:
             worker_future.cancel()
             raise
-        return worker_future.result()
 
     # ------------------------------------------------------------------ #
     # Lifecycle

@@ -704,7 +704,7 @@ def reset_meshtastic_globals():
         "_ble_future_address": getattr(mu, "_ble_future_address", None),
         "_ble_future_started_at": getattr(mu, "_ble_future_started_at", None),
         "_ble_future_timeout_secs": getattr(mu, "_ble_future_timeout_secs", None),
-        "_ble_timeout_counts": dict(getattr(mu, "_ble_timeout_counts", {})),
+        "_ble_timeout_counts": dict(getattr(mu, "_ble_timeout_counts", None) or {}),
         "_health_probe_request_deadlines": dict(
             getattr(mu, "_health_probe_request_deadlines", {})
         ),

@@ -81,16 +81,16 @@ _SHORTNAME_DB_FIELD = _NAME_FIELD_BY_TABLE[NAMES_TABLE_SHORTNAMES]
 # SQL templates use constant table/column names (not user input) with parameterized values.
 # Ruff S608 warnings are false positives - NAMES_TABLE_* and NAMES_FIELD_* are constants.
 _SELECT_STALE_IDS_SQL_BY_TABLE = {
-    NAMES_TABLE_LONGNAMES: f"SELECT meshtastic_id FROM {NAMES_TABLE_LONGNAMES}",
-    NAMES_TABLE_SHORTNAMES: f"SELECT meshtastic_id FROM {NAMES_TABLE_SHORTNAMES}",
+    NAMES_TABLE_LONGNAMES: "SELECT meshtastic_id FROM " + NAMES_TABLE_LONGNAMES,
+    NAMES_TABLE_SHORTNAMES: "SELECT meshtastic_id FROM " + NAMES_TABLE_SHORTNAMES,
 }
 
 _DELETE_STALE_ID_SQL_BY_TABLE = {
     NAMES_TABLE_LONGNAMES: (
-        f"DELETE FROM {NAMES_TABLE_LONGNAMES} WHERE meshtastic_id = ?"
+        "DELETE FROM " + NAMES_TABLE_LONGNAMES + " WHERE meshtastic_id = ?"
     ),
     NAMES_TABLE_SHORTNAMES: (
-        f"DELETE FROM {NAMES_TABLE_SHORTNAMES} WHERE meshtastic_id = ?"
+        "DELETE FROM " + NAMES_TABLE_SHORTNAMES + " WHERE meshtastic_id = ?"
     ),
 }
 
@@ -98,34 +98,56 @@ _DELETE_STALE_ID_SQL_BY_TABLE = {
 # _read_name_values_for_ids() falls back to per-ID queries when unavailable.
 _SELECT_NAME_VALUES_SQL_BY_TABLE = {
     NAMES_TABLE_LONGNAMES: (
-        f"SELECT meshtastic_id, {NAMES_FIELD_LONGNAME} FROM {NAMES_TABLE_LONGNAMES} "
+        "SELECT meshtastic_id, "
+        + NAMES_FIELD_LONGNAME
+        + " FROM "
+        + NAMES_TABLE_LONGNAMES
+        + " "
         "WHERE meshtastic_id IN (SELECT value FROM json_each(?))"
     ),
     NAMES_TABLE_SHORTNAMES: (
-        f"SELECT meshtastic_id, {NAMES_FIELD_SHORTNAME} FROM {NAMES_TABLE_SHORTNAMES} "
+        "SELECT meshtastic_id, "
+        + NAMES_FIELD_SHORTNAME
+        + " FROM "
+        + NAMES_TABLE_SHORTNAMES
+        + " "
         "WHERE meshtastic_id IN (SELECT value FROM json_each(?))"
     ),
 }
 
 _SELECT_NAME_VALUE_BY_ID_SQL_BY_TABLE = {
     NAMES_TABLE_LONGNAMES: (
-        f"SELECT meshtastic_id, {NAMES_FIELD_LONGNAME} "
-        f"FROM {NAMES_TABLE_LONGNAMES} WHERE meshtastic_id = ?"
+        "SELECT meshtastic_id, " + NAMES_FIELD_LONGNAME + " "
+        "FROM " + NAMES_TABLE_LONGNAMES + " WHERE meshtastic_id = ?"
     ),
     NAMES_TABLE_SHORTNAMES: (
-        f"SELECT meshtastic_id, {NAMES_FIELD_SHORTNAME} "
-        f"FROM {NAMES_TABLE_SHORTNAMES} WHERE meshtastic_id = ?"
+        "SELECT meshtastic_id, " + NAMES_FIELD_SHORTNAME + " "
+        "FROM " + NAMES_TABLE_SHORTNAMES + " WHERE meshtastic_id = ?"
     ),
 }
 
 _UPSERT_NAME_SQL_BY_TABLE = {
     NAMES_TABLE_LONGNAMES: (
-        f"INSERT INTO {NAMES_TABLE_LONGNAMES} (meshtastic_id, {NAMES_FIELD_LONGNAME}) VALUES (?, ?) "
-        f"ON CONFLICT(meshtastic_id) DO UPDATE SET {NAMES_FIELD_LONGNAME}=excluded.{NAMES_FIELD_LONGNAME}"
+        "INSERT INTO "
+        + NAMES_TABLE_LONGNAMES
+        + " (meshtastic_id, "
+        + NAMES_FIELD_LONGNAME
+        + ") VALUES (?, ?) "
+        "ON CONFLICT(meshtastic_id) DO UPDATE SET "
+        + NAMES_FIELD_LONGNAME
+        + "=excluded."
+        + NAMES_FIELD_LONGNAME
     ),
     NAMES_TABLE_SHORTNAMES: (
-        f"INSERT INTO {NAMES_TABLE_SHORTNAMES} (meshtastic_id, {NAMES_FIELD_SHORTNAME}) VALUES (?, ?) "
-        f"ON CONFLICT(meshtastic_id) DO UPDATE SET {NAMES_FIELD_SHORTNAME}=excluded.{NAMES_FIELD_SHORTNAME}"
+        "INSERT INTO "
+        + NAMES_TABLE_SHORTNAMES
+        + " (meshtastic_id, "
+        + NAMES_FIELD_SHORTNAME
+        + ") VALUES (?, ?) "
+        "ON CONFLICT(meshtastic_id) DO UPDATE SET "
+        + NAMES_FIELD_SHORTNAME
+        + "=excluded."
+        + NAMES_FIELD_SHORTNAME
     ),
 }
 
@@ -1123,24 +1145,19 @@ def _collect_node_name_snapshot(
         merged_long_name = _merge_node_name_values(existing_entry[0], long_name)
         merged_short_name = _merge_node_name_values(existing_entry[1], short_name)
 
-        # Handle conflicts per-field instead of dropping the whole ID.
-        # Keep existing values for conflicted fields; valid fields still update.
-        if merged_long_name is _CONFLICT_SENTINEL:
+        # If either field has a conflict, skip the entire ID to avoid partial updates.
+        if (
+            merged_long_name is _CONFLICT_SENTINEL
+            or merged_short_name is _CONFLICT_SENTINEL
+        ):
             logger.warning(
-                "Skipping %s for %s due to conflicting duplicate names in snapshot",
-                PROTO_NODE_NAME_LONG,
+                "Skipping node %s due to conflicting duplicate names in snapshot",
                 id_key,
             )
             snapshot_complete = False
-            merged_long_name = existing_entry[0]
-        if merged_short_name is _CONFLICT_SENTINEL:
-            logger.warning(
-                "Skipping %s for %s due to conflicting duplicate names in snapshot",
-                PROTO_NODE_NAME_SHORT,
-                id_key,
-            )
-            snapshot_complete = False
-            merged_short_name = existing_entry[1]
+            state_by_id.pop(id_key, None)
+            skipped_ids.add(id_key)
+            continue
         state_by_id[id_key] = cast(
             tuple[str | None, str | None],
             (merged_long_name, merged_short_name),
@@ -1203,15 +1220,17 @@ def _sync_name_tables_atomic(
     def _sync(cursor: sqlite3.Cursor) -> None:
         for id_key, long_name, short_name in state:
             if long_name is None:
-                cursor.execute(long_delete_sql, (id_key,))
-                long_clear_ids.add(id_key)
+                if snapshot_complete:
+                    cursor.execute(long_delete_sql, (id_key,))
+                    long_clear_ids.add(id_key)
             else:
                 cursor.execute(long_upsert_sql, (id_key, long_name))
                 long_upsert_ids.add(id_key)
 
             if short_name is None:
-                cursor.execute(short_delete_sql, (id_key,))
-                short_clear_ids.add(id_key)
+                if snapshot_complete:
+                    cursor.execute(short_delete_sql, (id_key,))
+                    short_clear_ids.add(id_key)
             else:
                 cursor.execute(short_upsert_sql, (id_key, short_name))
                 short_upsert_ids.add(id_key)

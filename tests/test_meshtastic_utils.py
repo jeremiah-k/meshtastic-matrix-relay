@@ -99,19 +99,31 @@ def _reset_ble_inflight_state(module: Any) -> None:
         cancel = getattr(ble_future, "cancel", None)
         if callable(done) and callable(cancel) and not done():
             cancel()
-            result = getattr(ble_future, "result", None)
-            if callable(result):
+            if isinstance(ble_future, asyncio.Task):
                 try:
-                    result(timeout=0.2)
-                except (
-                    TimeoutError,
-                    asyncio.TimeoutError,
-                    asyncio.CancelledError,
-                    ConcurrentTimeoutError,
-                    ConcurrentCancelledError,
-                    TypeError,
-                ):
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        asyncio.run_coroutine_threadsafe(
+                            asyncio.wait_for(ble_future, 0.2), loop
+                        )
+                    else:
+                        loop.run_until_complete(asyncio.wait_for(ble_future, 0.2))
+                except (asyncio.TimeoutError, asyncio.CancelledError, Exception):
                     pass
+            else:
+                result = getattr(ble_future, "result", None)
+                if callable(result):
+                    try:
+                        result(timeout=0.2)
+                    except (
+                        TimeoutError,
+                        asyncio.TimeoutError,
+                        asyncio.CancelledError,
+                        ConcurrentTimeoutError,
+                        ConcurrentCancelledError,
+                        TypeError,
+                    ):
+                        pass
     module._ble_future = None
     module._ble_future_address = None
     module._ble_future_started_at = None
