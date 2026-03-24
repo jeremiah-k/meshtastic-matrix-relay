@@ -591,12 +591,12 @@ class TestSyncNameTablesIfChangedDebugLoggingIdDelta:
 
 
 class TestSyncNameTablesIfChangedReturnPreviousOnDeleteError:
-    """Tests for sync_name_tables_if_changed returning previous_state on delete error (lines 1308-1309)."""
+    """Tests for sync_name_tables_if_changed returning previous_state on prune error."""
 
     def test_returns_previous_when_longnames_deleted_is_none(
         self, configured_temp_db: str
     ) -> None:
-        """Returns previous_state when longnames_deleted is None."""
+        """Returns previous_state when unchanged-state prune fails."""
         _ = configured_temp_db
         nodes = {
             "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
@@ -604,39 +604,32 @@ class TestSyncNameTablesIfChangedReturnPreviousOnDeleteError:
         first_state = sync_name_tables_if_changed(nodes, previous_state=None)
 
         with patch(
-            "mmrelay.db_utils._delete_stale_names", return_value=None
-        ) as mock_delete:
+            "mmrelay.db_utils._prune_stale_name_rows_atomic", return_value=False
+        ) as mock_prune:
             second_state = sync_name_tables_if_changed(
                 nodes, previous_state=first_state
             )
             assert second_state == first_state
-            assert mock_delete.call_count >= 1
+            mock_prune.assert_called_once()
 
     def test_returns_previous_when_shortnames_deleted_is_none(
         self, configured_temp_db: str
     ) -> None:
-        """Returns previous_state when shortnames_deleted is None."""
+        """Returns previous_state when atomic stale-name prune reports failure."""
         _ = configured_temp_db
         nodes = {
             "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
         }
         first_state = sync_name_tables_if_changed(nodes, previous_state=None)
 
-        call_count = [0]
-
-        def delete_side_effect(table_name, current_ids, *, return_none_on_error=False):
-            call_count[0] += 1
-            if call_count[0] == 1:
-                return 0
-            return None
-
         with patch(
-            "mmrelay.db_utils._delete_stale_names", side_effect=delete_side_effect
-        ):
+            "mmrelay.db_utils._prune_stale_name_rows_atomic", return_value=False
+        ) as mock_prune:
             second_state = sync_name_tables_if_changed(
                 nodes, previous_state=first_state
             )
             assert second_state == first_state
+            mock_prune.assert_called_once()
 
 
 class TestUpdateNamesCoreValueError:

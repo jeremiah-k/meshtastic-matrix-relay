@@ -1253,7 +1253,8 @@ class TestRefreshNodeNameTablesInvalidInterval:
                             str(call) for call in mock_logger.warning.call_args_list
                         ]
                         assert any(
-                            "Invalid node-name refresh interval" in call
+                            "Invalid NodeDB name-cache refresh interval override"
+                            in call
                             for call in warning_calls
                         )
                         assert any("60.0" in call for call in warning_calls)
@@ -1285,7 +1286,8 @@ class TestRefreshNodeNameTablesInvalidInterval:
                             str(call) for call in mock_logger.warning.call_args_list
                         ]
                         assert any(
-                            "Invalid node-name refresh interval" in call
+                            "Invalid NodeDB name-cache refresh interval override"
+                            in call
                             for call in warning_calls
                         )
                         assert any("120.0" in call for call in warning_calls)
@@ -1317,7 +1319,8 @@ class TestRefreshNodeNameTablesInvalidInterval:
                             str(call) for call in mock_logger.warning.call_args_list
                         ]
                         assert any(
-                            "Invalid node-name refresh interval" in call
+                            "Invalid NodeDB name-cache refresh interval override"
+                            in call
                             for call in warning_calls
                         )
                         assert any("90.0" in call for call in warning_calls)

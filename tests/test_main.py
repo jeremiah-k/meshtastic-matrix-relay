@@ -94,9 +94,9 @@ async def _thread_backed_to_thread(
     """
     Execute a callable on a real worker thread and await its result.
     """
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(func, *args, **kwargs)
-        return await asyncio.wrap_future(future)
+    loop = asyncio.get_running_loop()
+    bound_call = functools.partial(func, *args, **kwargs)
+    return await loop.run_in_executor(None, bound_call)
 
 
 def _close_coro_if_possible(coro: Any) -> None:
