@@ -1859,6 +1859,43 @@ class TestBleExecutorDegradedState:
                 assert healthy_address not in mu._ble_executor_degraded_addresses
 
 
+class TestReconnectResetsDegradedStateWithoutDeadlock:
+    """Test reconnect path resets degraded BLE state without deadlock."""
+
+    def test_on_lost_connection_resets_degraded_state_no_stale_address(self):
+        """
+        Test that on_lost_meshtastic_connection resets degraded state when
+        there is no stale_ble_address but degraded addresses exist.
+
+        This tests the fix for a deadlock bug where reset_executor_degraded_state(reset_all=True)
+        was called while holding _ble_executor_lock, causing a self-deadlock since
+        threading.Lock is not reentrant.
+        """
+        mu._ble_future = None
+        mu._ble_future_address = None
+        mu._ble_executor_degraded_addresses = {"AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"}
+        mu._ble_executor_orphaned_workers_by_address = {
+            "AA:BB:CC:DD:EE:FF": 10,
+            "11:22:33:44:55:66": 5,
+        }
+        mu._metadata_executor_degraded = True
+        mu._metadata_executor_orphaned_workers = 8
+        mu.meshtastic_client = Mock()
+        mu.event_loop = Mock()
+        mu.event_loop.is_closed.return_value = False
+        mu.reconnecting = False
+        mu.shutting_down = False
+
+        with patch("mmrelay.meshtastic_utils.reconnect"):
+            with patch("mmrelay.meshtastic_utils.logger"):
+                mu.on_lost_meshtastic_connection(detection_source="test source")
+
+                assert len(mu._ble_executor_degraded_addresses) == 0
+                assert len(mu._ble_executor_orphaned_workers_by_address) == 0
+                assert mu._metadata_executor_degraded is False
+                assert mu._metadata_executor_orphaned_workers == 0
+
+
 class TestShutdownClearsDegradedState:
     """Test that shutdown_shared_executors clears degraded state."""
 

@@ -3832,13 +3832,16 @@ def on_lost_meshtastic_connection(
         if stale_ble_address is not None:
             reset_executor_degraded_state(ble_address=stale_ble_address)
         else:
+            should_reset_all_degraded = False
             with _ble_executor_lock:
                 if _ble_executor_degraded_addresses:
+                    should_reset_all_degraded = True
                     logger.debug(
                         "Resetting degraded BLE executor state during reconnect "
                         "(no stale_ble_address but degraded addresses exist)"
                     )
-                    reset_executor_degraded_state(reset_all=True)
+            if should_reset_all_degraded:
+                reset_executor_degraded_state(reset_all=True)
 
         if event_loop and not event_loop.is_closed():
             reconnect_task = event_loop.create_task(reconnect())
