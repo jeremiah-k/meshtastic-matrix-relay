@@ -80,40 +80,46 @@ _SHORTNAME_DB_FIELD = _NAME_FIELD_BY_TABLE[NAMES_TABLE_SHORTNAMES]
 
 # SQL templates are static literals (no runtime identifier interpolation).
 _SELECT_STALE_IDS_SQL_BY_TABLE = {
-    NAMES_TABLE_LONGNAMES: "SELECT meshtastic_id FROM longnames",
-    NAMES_TABLE_SHORTNAMES: "SELECT meshtastic_id FROM shortnames",
+    NAMES_TABLE_LONGNAMES: f"SELECT meshtastic_id FROM {NAMES_TABLE_LONGNAMES}",
+    NAMES_TABLE_SHORTNAMES: f"SELECT meshtastic_id FROM {NAMES_TABLE_SHORTNAMES}",
 }
 
 _DELETE_STALE_ID_SQL_BY_TABLE = {
-    NAMES_TABLE_LONGNAMES: "DELETE FROM longnames WHERE meshtastic_id = ?",
-    NAMES_TABLE_SHORTNAMES: "DELETE FROM shortnames WHERE meshtastic_id = ?",
+    NAMES_TABLE_LONGNAMES: (
+        f"DELETE FROM {NAMES_TABLE_LONGNAMES} WHERE meshtastic_id = ?"
+    ),
+    NAMES_TABLE_SHORTNAMES: (
+        f"DELETE FROM {NAMES_TABLE_SHORTNAMES} WHERE meshtastic_id = ?"
+    ),
 }
 
 # json_each() is required for batched Meshtastic-ID lookups in name-state reads.
 _SELECT_NAME_VALUES_SQL_BY_TABLE = {
     NAMES_TABLE_LONGNAMES: (
-        "SELECT meshtastic_id, longname FROM longnames "
+        f"SELECT meshtastic_id, {NAMES_FIELD_LONGNAME} FROM {NAMES_TABLE_LONGNAMES} "
         "WHERE meshtastic_id IN (SELECT value FROM json_each(?))"
     ),
     NAMES_TABLE_SHORTNAMES: (
-        "SELECT meshtastic_id, shortname FROM shortnames "
+        f"SELECT meshtastic_id, {NAMES_FIELD_SHORTNAME} FROM {NAMES_TABLE_SHORTNAMES} "
         "WHERE meshtastic_id IN (SELECT value FROM json_each(?))"
     ),
 }
 
 _UPSERT_NAME_SQL_BY_TABLE = {
     NAMES_TABLE_LONGNAMES: (
-        "INSERT INTO longnames (meshtastic_id, longname) VALUES (?, ?) "
-        "ON CONFLICT(meshtastic_id) DO UPDATE SET longname=excluded.longname"
+        f"INSERT INTO {NAMES_TABLE_LONGNAMES} (meshtastic_id, {NAMES_FIELD_LONGNAME}) VALUES (?, ?) "
+        f"ON CONFLICT(meshtastic_id) DO UPDATE SET {NAMES_FIELD_LONGNAME}=excluded.{NAMES_FIELD_LONGNAME}"
     ),
     NAMES_TABLE_SHORTNAMES: (
-        "INSERT INTO shortnames (meshtastic_id, shortname) VALUES (?, ?) "
-        "ON CONFLICT(meshtastic_id) DO UPDATE SET shortname=excluded.shortname"
+        f"INSERT INTO {NAMES_TABLE_SHORTNAMES} (meshtastic_id, {NAMES_FIELD_SHORTNAME}) VALUES (?, ?) "
+        f"ON CONFLICT(meshtastic_id) DO UPDATE SET {NAMES_FIELD_SHORTNAME}=excluded.{NAMES_FIELD_SHORTNAME}"
     ),
 }
 
-_SELECT_LONGNAME_BY_ID_SQL = "SELECT longname FROM longnames WHERE meshtastic_id=?"
-_SELECT_SHORTNAME_BY_ID_SQL = "SELECT shortname FROM shortnames WHERE meshtastic_id=?"
+_SELECT_LONGNAME_BY_ID_SQL = (
+    f"SELECT {NAMES_FIELD_LONGNAME} FROM {NAMES_TABLE_LONGNAMES} WHERE meshtastic_id=?"
+)
+_SELECT_SHORTNAME_BY_ID_SQL = f"SELECT {NAMES_FIELD_SHORTNAME} FROM {NAMES_TABLE_SHORTNAMES} WHERE meshtastic_id=?"
 
 
 def _format_node_id_sample(ids: Collection[str]) -> str:
@@ -142,6 +148,53 @@ def clear_db_path_cache() -> None:
     _cached_config_hash = None
 
 
+def _normalize_database_section(section: Any) -> dict[str, Any]:
+    """
+    Return a dictionary section for database config, defaulting invalid shapes to {}.
+    """
+    return section if isinstance(section, dict) else {}
+
+
+def _canonicalize_signature_value(value: Any) -> Any:
+    """
+    Convert arbitrary config values to deterministic JSON-safe values.
+    """
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, dict):
+        return {
+            str(key): _canonicalize_signature_value(nested_value)
+            for key, nested_value in sorted(
+                value.items(),
+                key=lambda item: str(item[0]),
+            )
+        }
+    if isinstance(value, set):
+        return [_canonicalize_signature_value(item) for item in sorted(value, key=repr)]
+    if isinstance(value, (list, tuple)):
+        return [_canonicalize_signature_value(item) for item in value]
+    return {"__type__": type(value).__name__}
+
+
+def _build_database_config_signature(raw_config: Any) -> str | None:
+    """
+    Build a stable cache signature from normalized database config sections.
+    """
+    if not isinstance(raw_config, dict):
+        return None
+    db_config = {
+        "database": _normalize_database_section(raw_config.get("database")),
+        "db": _normalize_database_section(raw_config.get("db")),
+    }
+    signature_payload = _canonicalize_signature_value(db_config)
+    return json.dumps(
+        signature_payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=True,
+    )
+
+
 # Get the database path
 def get_db_path() -> str:
     """
@@ -154,21 +207,9 @@ def get_db_path() -> str:
     """
     global config, _cached_db_path, _db_path_logged, _cached_config_hash
 
-    # Create a deterministic JSON representation of relevant config sections to detect changes
-    current_config_hash = None
-    if isinstance(config, dict):
-        # Use only the database-related config sections
-        database_section = config.get("database", {})
-        if not isinstance(database_section, dict):
-            database_section = {}
-        legacy_db_section = config.get("db", {})
-        if not isinstance(legacy_db_section, dict):
-            legacy_db_section = {}
-        db_config = {
-            "database": database_section,
-            "db": legacy_db_section,  # Legacy format
-        }
-        current_config_hash = json.dumps(db_config, sort_keys=True, default=repr)
+    # Create a deterministic representation of relevant config sections to
+    # detect changes without assuming serializable value shapes.
+    current_config_hash = _build_database_config_signature(config)
 
     # Check if cache is valid (path exists and config hasn't changed)
     if _cached_db_path is not None and current_config_hash == _cached_config_hash:
@@ -182,12 +223,8 @@ def get_db_path() -> str:
 
     # Check if config is available
     if isinstance(config, dict):
-        database_section = config.get("database", {})
-        if not isinstance(database_section, dict):
-            database_section = {}
-        legacy_db_section = config.get("db", {})
-        if not isinstance(legacy_db_section, dict):
-            legacy_db_section = {}
+        database_section = _normalize_database_section(config.get("database"))
+        legacy_db_section = _normalize_database_section(config.get("db"))
 
         # Check if database path is specified in config (preferred format)
         if "path" in database_section:
@@ -1256,6 +1293,31 @@ def _sync_name_tables_atomic(
     return True
 
 
+def _prune_stale_name_rows_atomic(current_ids: set[str]) -> bool:
+    """
+    Prune stale rows from both names tables in a single write transaction.
+
+    Returns:
+        bool: True when both table prunes succeed, False on database errors.
+    """
+    manager = _get_db_manager()
+
+    def _prune(cursor: sqlite3.Cursor) -> None:
+        _delete_stale_names_core(cursor, NAMES_TABLE_LONGNAMES, current_ids)
+        _delete_stale_names_core(cursor, NAMES_TABLE_SHORTNAMES, current_ids)
+
+    try:
+        manager.run_sync(_prune, write=True)
+    except sqlite3.Error:
+        logger.exception(
+            "Database error deleting stale %s/%s entries",
+            NAMES_FIELD_LONGNAME,
+            NAMES_FIELD_SHORTNAME,
+        )
+        return False
+    return True
+
+
 def build_node_name_state(nodes: dict[str, Any] | None) -> NodeNameState:
     """
     Build a deterministic node-name state snapshot used for change detection.
@@ -1360,18 +1422,11 @@ def sync_name_tables_if_changed(
 
     if previous_state is not None and current_state == previous_state:
         if snapshot_complete:
-            longnames_deleted = _delete_stale_names(
-                NAMES_TABLE_LONGNAMES,
-                current_ids,
-                return_none_on_error=True,
-            )
-            shortnames_deleted = _delete_stale_names(
-                NAMES_TABLE_SHORTNAMES,
-                current_ids,
-                return_none_on_error=True,
-            )
-            if longnames_deleted is None or shortnames_deleted is None:
+            if not _prune_stale_name_rows_atomic(current_ids):
                 return previous_state
+        # For partial snapshots, equal current/previous state means we intentionally
+        # avoid stale-row pruning. A non-authoritative partial view can miss IDs, so
+        # pruning here could delete valid rows. Drift repair still runs below.
         if not _name_tables_match_state(current_state):
             if not _sync_name_tables_atomic(
                 current_state, current_ids, snapshot_complete

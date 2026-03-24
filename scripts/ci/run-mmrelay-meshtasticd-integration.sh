@@ -70,14 +70,26 @@ NAME_PRUNE_WAIT_TIMEOUT_SECONDS="${NAME_PRUNE_WAIT_TIMEOUT_SECONDS:-75}"
 NODEDB_REFRESH_INTERVAL_SECONDS="${NODEDB_REFRESH_INTERVAL_SECONDS:-5}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 
-# Names-table SQL identifiers used by this integration test.
-# Keep these aligned with the SQLite schema/query definitions in src/mmrelay/db_utils.py.
-# src/mmrelay/constants/database.py also includes node payload keys (longName/shortName),
-# but these constants must remain lowercase DB table/column names.
-NAMES_TABLE_LONGNAMES="longnames"
-NAMES_TABLE_SHORTNAMES="shortnames"
-NAMES_FIELD_LONGNAME="longname"
-NAMES_FIELD_SHORTNAME="shortname"
+# Names-table SQL identifiers loaded from app constants.
+eval "$(
+	"${PYTHON_BIN}" - <<'PY'
+import pathlib
+import sys
+
+sys.path.insert(0, str(pathlib.Path.cwd() / "src"))
+from mmrelay.constants.database import (
+    NAMES_FIELD_LONGNAME,
+    NAMES_FIELD_SHORTNAME,
+    NAMES_TABLE_LONGNAMES,
+    NAMES_TABLE_SHORTNAMES,
+)
+
+print(f"NAMES_TABLE_LONGNAMES={NAMES_TABLE_LONGNAMES!r}")
+print(f"NAMES_TABLE_SHORTNAMES={NAMES_TABLE_SHORTNAMES!r}")
+print(f"NAMES_FIELD_LONGNAME={NAMES_FIELD_LONGNAME!r}")
+print(f"NAMES_FIELD_SHORTNAME={NAMES_FIELD_SHORTNAME!r}")
+PY
+)"
 
 # Artifacts and Logging - Separated by Instance
 CI_ARTIFACT_DIR="${CI_ARTIFACT_DIR:-${PWD}/.ci-artifacts/meshtasticd-integration}"
@@ -1437,15 +1449,44 @@ PY
 
 # poll_for_existing_name_entry polls until a name entry exists, using global timeout settings.
 # Sets the result variable and returns 0 on success, calls fail_test on timeout.
+_fail_if_relay_not_running_during_poll() {
+	local relay_pid=${1-}
+	local relay_name=${2:-MMRelay}
+	local relay_log_path=${3-}
+	local detail=${4:-poll}
+	if [[ -z ${relay_pid} ]]; then
+		return 0
+	fi
+	if kill -0 "${relay_pid}" >/dev/null 2>&1; then
+		return 0
+	fi
+
+	if [[ -n ${relay_log_path} ]] && [[ -f ${relay_log_path} ]]; then
+		{
+			echo "Last 20 lines from ${relay_name} log (${relay_log_path}):"
+			tail -n 20 "${relay_log_path}" || true
+		} >&2
+	fi
+	fail_test "${relay_name} process (pid=${relay_pid}) exited while waiting during ${detail}"
+}
+
 poll_for_existing_name_entry() {
 	local result_var_name=$1
 	local db_path=$2
 	local table_name=$3
 	local instance_label=$4
+	local relay_pid=${5-}
+	local relay_name=${6:-MMRelay}
+	local relay_log_path=${7-}
 
 	local poll_start poll_now poll_elapsed captured_value
 	poll_start=$(date +%s)
 	while true; do
+		_fail_if_relay_not_running_during_poll \
+			"${relay_pid}" \
+			"${relay_name}" \
+			"${relay_log_path}" \
+			"precondition poll for ${table_name} in ${instance_label}"
 		run_capture_with_status \
 			captured_value \
 			get_existing_name_entry \
@@ -2536,20 +2577,62 @@ pass_test "Encrypted-room user reaction relayed to both meshes"
 # Test 7: stale name rows are pruned to match current node DB snapshot.
 start_test "Test 7" "Test 7: stale name rows are pruned to match current node DB..."
 
-POLL_TIMEOUT_SECONDS=30
+POLL_TIMEOUT_SECONDS=$(
+	"${PYTHON_BIN}" - "${NODEDB_REFRESH_INTERVAL_SECONDS}" <<'PY'
+import math
+import sys
+
+DEFAULT_TIMEOUT_SECONDS = 30
+SAFETY_MARGIN_SECONDS = 10
+try:
+    refresh_interval = float(sys.argv[1])
+except (TypeError, ValueError):
+    refresh_interval = float(DEFAULT_TIMEOUT_SECONDS)
+refresh_interval = max(refresh_interval, 0.0)
+print(max(DEFAULT_TIMEOUT_SECONDS, math.ceil(refresh_interval + SAFETY_MARGIN_SECONDS)))
+PY
+)
 POLL_INTERVAL_SECONDS=1
 
 CURRENT_LONGNAME_ID_A=""
-poll_for_existing_name_entry CURRENT_LONGNAME_ID_A "${MMRELAY_DB_PATH_A}" "${NAMES_TABLE_LONGNAMES}" "instance A"
+poll_for_existing_name_entry \
+	CURRENT_LONGNAME_ID_A \
+	"${MMRELAY_DB_PATH_A}" \
+	"${NAMES_TABLE_LONGNAMES}" \
+	"instance A" \
+	"${MMRELAY_PID_A}" \
+	"MMRelay A" \
+	"${MMRELAY_LOG_PATH_A}"
 
 CURRENT_SHORTNAME_ID_A=""
-poll_for_existing_name_entry CURRENT_SHORTNAME_ID_A "${MMRELAY_DB_PATH_A}" "${NAMES_TABLE_SHORTNAMES}" "instance A"
+poll_for_existing_name_entry \
+	CURRENT_SHORTNAME_ID_A \
+	"${MMRELAY_DB_PATH_A}" \
+	"${NAMES_TABLE_SHORTNAMES}" \
+	"instance A" \
+	"${MMRELAY_PID_A}" \
+	"MMRelay A" \
+	"${MMRELAY_LOG_PATH_A}"
 
 CURRENT_LONGNAME_ID_B=""
-poll_for_existing_name_entry CURRENT_LONGNAME_ID_B "${MMRELAY_DB_PATH_B}" "${NAMES_TABLE_LONGNAMES}" "instance B"
+poll_for_existing_name_entry \
+	CURRENT_LONGNAME_ID_B \
+	"${MMRELAY_DB_PATH_B}" \
+	"${NAMES_TABLE_LONGNAMES}" \
+	"instance B" \
+	"${MMRELAY_PID_B}" \
+	"MMRelay B" \
+	"${MMRELAY_LOG_PATH_B}"
 
 CURRENT_SHORTNAME_ID_B=""
-poll_for_existing_name_entry CURRENT_SHORTNAME_ID_B "${MMRELAY_DB_PATH_B}" "${NAMES_TABLE_SHORTNAMES}" "instance B"
+poll_for_existing_name_entry \
+	CURRENT_SHORTNAME_ID_B \
+	"${MMRELAY_DB_PATH_B}" \
+	"${NAMES_TABLE_SHORTNAMES}" \
+	"instance B" \
+	"${MMRELAY_PID_B}" \
+	"MMRelay B" \
+	"${MMRELAY_LOG_PATH_B}"
 
 STALE_NAME_ID_A=$(generate_unique_test_id "MMRELAY_STALE_A")
 STALE_NAME_ID_B=$(generate_unique_test_id "MMRELAY_STALE_B")

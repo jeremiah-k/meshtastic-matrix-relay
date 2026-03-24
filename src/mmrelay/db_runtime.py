@@ -18,6 +18,7 @@ from contextlib import contextmanager
 from typing import Any, Generator, Optional
 
 from mmrelay.constants.database import (
+    MIN_SQLITE_VERSION_JSON_EACH,
     SQLITE_JSON_EACH_PROBE_PAYLOAD,
     SQLITE_JSON_EACH_PROBE_SQL,
 )
@@ -55,14 +56,20 @@ def _validate_sqlite_json_each_support() -> None:
     """
     Ensure runtime SQLite supports json_each() usage in name-state queries.
 
-    Uses a capability probe instead of version checking, since some builds
-    may have json_each() available even on older SQLite versions.
+    Enforces a minimum SQLite runtime version and then verifies runtime support
+    with a capability probe.
     """
+    current_version = _get_sqlite_runtime_version_info()
+    if current_version < MIN_SQLITE_VERSION_JSON_EACH:
+        raise RuntimeError(
+            f"SQLite json_each() support is required. "
+            f"Detected SQLite version: {current_version[0]}.{current_version[1]}.{current_version[2]}"
+        )
+
     conn = sqlite3.Connection(":memory:")
     try:
         _probe_sqlite_json_each_support(conn)
     except RuntimeError:
-        current_version = _get_sqlite_runtime_version_info()
         raise RuntimeError(
             f"SQLite json_each() support is required. "
             f"Detected SQLite version: {current_version[0]}.{current_version[1]}.{current_version[2]}"
@@ -168,7 +175,7 @@ class DatabaseManager:
         # SQLite connection for the configured path/PRAGMA set.
         try:
             self._thread_local.connection = self._create_connection()
-        except Exception:
+        except BaseException:
             self._async_executor.shutdown(wait=False)
             raise
 
@@ -248,7 +255,7 @@ class DatabaseManager:
             sqlite3.ProgrammingError: If the manager is closing and cannot create new connections.
         """
         with self._connections_lock:
-            if self._closing and not self._is_executor_worker():
+            if self._closing and not self._is_admitted_during_close():
                 raise sqlite3.ProgrammingError(
                     "DatabaseManager is closing, cannot create new connections"
                 )
@@ -289,7 +296,7 @@ class DatabaseManager:
                 if self._active_sync_count == 0:
                     self._active_sync_condition.notify_all()
 
-    def _is_executor_worker(self) -> bool:
+    def _is_admitted_during_close(self) -> bool:
         """
         Return True when the current thread is admitted to keep working during close().
         """
@@ -396,8 +403,9 @@ class DatabaseManager:
                     "DatabaseManager is closing, cannot submit new work"
                 )
             worker_future = self._async_executor.submit(executor_func)
+        current_loop = asyncio.get_running_loop()
         try:
-            return await asyncio.wrap_future(worker_future)
+            return await asyncio.wrap_future(worker_future, loop=current_loop)
         except asyncio.CancelledError:
             worker_future.cancel()
             raise

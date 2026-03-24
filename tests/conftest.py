@@ -117,20 +117,28 @@ sys.modules["platformdirs"] = MagicMock()
 sys.modules["py_staticmaps"] = MagicMock()
 
 
+def _safe_is_done(future: Any) -> bool:
+    """
+    Check future/task completion state while suppressing known state errors.
+    """
+    done_fn = getattr(future, "done", None)
+    if not callable(done_fn):
+        return False
+    with contextlib.suppress(
+        RuntimeError,
+        asyncio.InvalidStateError,
+        concurrent.futures.InvalidStateError,
+    ):
+        return bool(done_fn())
+    return False
+
+
 def _drain_future_result_safely(future: Any, timeout: float) -> None:
     """
     Drain a future/task result best-effort so teardown does not leak exceptions.
     """
-    done_fn = getattr(future, "done", None)
     exception_fn = getattr(future, "exception", None)
-    is_done = False
-    if callable(done_fn):
-        with contextlib.suppress(
-            RuntimeError,
-            asyncio.InvalidStateError,
-            concurrent.futures.InvalidStateError,
-        ):
-            is_done = bool(done_fn())
+    is_done = _safe_is_done(future)
     if is_done and callable(exception_fn):
         # For completed futures/tasks, consume stored exceptions without re-raising.
         with contextlib.suppress(
@@ -141,7 +149,6 @@ def _drain_future_result_safely(future: Any, timeout: float) -> None:
             concurrent.futures.TimeoutError,
             concurrent.futures.CancelledError,
             concurrent.futures.InvalidStateError,
-            Exception,
         ):
             exception_fn()
         return
@@ -161,7 +168,6 @@ def _drain_future_result_safely(future: Any, timeout: float) -> None:
             concurrent.futures.TimeoutError,
             concurrent.futures.CancelledError,
             concurrent.futures.InvalidStateError,
-            Exception,
         ):
             result_fn()
     except (
@@ -172,9 +178,13 @@ def _drain_future_result_safely(future: Any, timeout: float) -> None:
         concurrent.futures.TimeoutError,
         concurrent.futures.CancelledError,
         concurrent.futures.InvalidStateError,
-        Exception,
     ):
-        pass
+        return
+    except Exception as exc:
+        logging.getLogger(__name__).debug(
+            "Unexpected future-drain exception during teardown: %s",
+            exc,
+        )
 
 
 def cleanup_ble_future_state(module: Any) -> None:
@@ -196,16 +206,8 @@ def cleanup_ble_future_state(module: Any) -> None:
             module._ble_future_timeout_secs = None
         return
 
-    done_fn = getattr(ble_future, "done", None)
     cancel_fn = getattr(ble_future, "cancel", None)
-    is_done = False
-    if callable(done_fn):
-        with contextlib.suppress(
-            RuntimeError,
-            asyncio.InvalidStateError,
-            concurrent.futures.InvalidStateError,
-        ):
-            is_done = bool(done_fn())
+    is_done = _safe_is_done(ble_future)
 
     if callable(cancel_fn) and not is_done:
         cancel_fn()
@@ -238,14 +240,7 @@ def cleanup_ble_future_state(module: Any) -> None:
             _drain_future_result_safely(ble_future, timeout=0.2)
 
     # Drain completed-task exceptions as well (prevents "exception was never retrieved").
-    is_done_now = False
-    if callable(done_fn):
-        with contextlib.suppress(
-            RuntimeError,
-            asyncio.InvalidStateError,
-            concurrent.futures.InvalidStateError,
-        ):
-            is_done_now = bool(done_fn())
+    is_done_now = _safe_is_done(ble_future)
     if is_done_now:
         _drain_future_result_safely(ble_future, timeout=0.1)
 
@@ -256,6 +251,58 @@ def cleanup_ble_future_state(module: Any) -> None:
         module._ble_future_started_at = None
     if hasattr(module, "_ble_future_timeout_secs"):
         module._ble_future_timeout_secs = None
+
+
+def _drain_awaitable_result_safely(awaitable: Any, timeout: float = 0.2) -> None:
+    """
+    Best-effort completion of a coroutine/awaitable from synchronous teardown code.
+    """
+    if not inspect.isawaitable(awaitable):
+        return
+
+    coro = awaitable
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop is not None and loop.is_running():
+        task = loop.create_task(coro)
+
+        def _consume_result(done_task: asyncio.Task[Any]) -> None:
+            with contextlib.suppress(
+                asyncio.CancelledError,
+                asyncio.InvalidStateError,
+            ):
+                done_task.exception()
+
+        task.add_done_callback(_consume_result)
+        return
+
+    temp_loop = asyncio.new_event_loop()
+    try:
+        temp_loop.run_until_complete(asyncio.wait_for(coro, timeout=timeout))
+    except (
+        RuntimeError,
+        asyncio.TimeoutError,
+        asyncio.CancelledError,
+    ):
+        pass
+    finally:
+        temp_loop.close()
+
+
+def _cancel_and_drain_future_like(future_obj: Any, *, timeout: float = 0.2) -> None:
+    """
+    Best-effort cancel and drain for asyncio/concurrent futures.
+    """
+    if future_obj is None:
+        return
+    cancel_fn = getattr(future_obj, "cancel", None)
+    if callable(cancel_fn) and not _safe_is_done(future_obj):
+        with contextlib.suppress(RuntimeError):
+            cancel_fn()
+    _drain_future_result_safely(future_obj, timeout=timeout)
 
 
 # Now that mocks are in place, we can import the application code
@@ -903,7 +950,43 @@ def reset_meshtastic_globals():
     mu._health_probe_request_deadlines = {}
 
     yield
+    iface = getattr(mu, "meshtastic_iface", None)
+    if iface is not None:
+        disconnect_iface = getattr(mu, "_disconnect_ble_interface", None)
+        if callable(disconnect_iface):
+            with contextlib.suppress(
+                asyncio.CancelledError,
+                asyncio.TimeoutError,
+                OSError,
+                RuntimeError,
+            ):
+                disconnect_iface(iface, reason="test-reset")
+        else:
+            for method_name in ("disconnect", "close"):
+                iface_method = getattr(iface, method_name, None)
+                if not callable(iface_method):
+                    continue
+                with contextlib.suppress(
+                    asyncio.CancelledError,
+                    asyncio.TimeoutError,
+                    OSError,
+                    RuntimeError,
+                ):
+                    maybe_awaitable = iface_method()
+                    _drain_awaitable_result_safely(maybe_awaitable, timeout=0.2)
+                break
+
+    _cancel_and_drain_future_like(getattr(mu, "reconnect_task", None), timeout=0.2)
+    _cancel_and_drain_future_like(getattr(mu, "_metadata_future", None), timeout=0.2)
+    mu.reconnect_task = None
+    mu._metadata_future = None
+    mu._metadata_future_started_at = None
+    mu.subscribed_to_messages = False
+    mu.subscribed_to_connection_lost = False
     cleanup_ble_future_state(mu)
+    mu.shutdown_shared_executors()
+    mu.meshtastic_iface = None
+    mu.meshtastic_client = None
 
     # Restore original values (including Nones) to avoid state leakage
     for attr_name, original_value in original_values.items():

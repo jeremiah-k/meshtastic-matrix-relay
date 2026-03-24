@@ -96,7 +96,11 @@ class TestDatabaseManagerIntegration(unittest.TestCase):
             patch.object(mmrelay.db_utils, "config", test_config),
             patch(
                 "mmrelay.db_runtime.sqlite3.connect",
-                side_effect=lambda *_args, **_kwargs: real_sqlite_connect(":memory:"),
+                side_effect=lambda _path, *args, **kwargs: real_sqlite_connect(
+                    ":memory:",
+                    *args,
+                    **kwargs,
+                ),
             ),
         ):
             # Reset manager to ensure fresh creation
@@ -135,7 +139,11 @@ class TestDatabaseManagerIntegration(unittest.TestCase):
             patch.object(mmrelay.db_utils, "config", test_config),
             patch(
                 "mmrelay.db_runtime.sqlite3.connect",
-                side_effect=lambda *_args, **_kwargs: real_sqlite_connect(":memory:"),
+                side_effect=lambda _path, *args, **kwargs: real_sqlite_connect(
+                    ":memory:",
+                    *args,
+                    **kwargs,
+                ),
             ),
         ):
             # Reset manager to ensure fresh creation

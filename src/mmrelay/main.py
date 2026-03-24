@@ -71,6 +71,7 @@ from mmrelay.plugin_loader import load_plugins, shutdown_plugins
 
 # Initialize logger
 logger = get_logger(name=APP_DISPLAY_NAME)
+_DEFAULT_CHECK_CONNECTION_CALLABLE = meshtastic_utils.check_connection
 
 
 # Flag to track if banner has been printed
@@ -255,6 +256,23 @@ def _coerce_config_bool(value: Any) -> bool:
     return False
 
 
+def _requires_continuous_health_monitor(config: dict[str, Any]) -> bool:
+    """
+    Return True when check_connection() is expected to run continuously.
+    """
+    meshtastic_config = config.get(CONFIG_SECTION_MESHTASTIC)
+    if not isinstance(meshtastic_config, dict):
+        return True
+    if meshtastic_config.get("connection_type") == "ble":
+        return False
+    health_config = meshtastic_config.get("health_check", {})
+    if not isinstance(health_config, dict):
+        return True
+    if "enabled" not in health_config:
+        return True
+    return _coerce_config_bool(health_config.get("enabled"))
+
+
 async def main(config: dict[str, Any]) -> None:
     """
     Run the relay: initialize core services, connect to Meshtastic and Matrix, run the Matrix sync loop with health-monitoring and retry behavior, and perform an orderly shutdown.
@@ -426,7 +444,12 @@ async def main(config: dict[str, Any]) -> None:
             return
         matrix_logger.info("Closing Matrix client...")
         try:
-            await matrix_client.close()
+            await asyncio.wait_for(matrix_client.close(), timeout=10.0)
+        except asyncio.TimeoutError:
+            matrix_logger.error(
+                "Timed out closing Matrix client during %s; continuing shutdown",
+                context,
+            )
         except BaseException as exc:
             if isinstance(exc, (KeyboardInterrupt, SystemExit)):
                 raise
@@ -557,16 +580,29 @@ async def main(config: dict[str, Any]) -> None:
 
         # Start connection health monitoring using getMetadata() heartbeat
         # This provides proactive connection detection for all interface types
-        check_connection_task = asyncio.create_task(meshtastic_utils.check_connection())
+        check_connection_callable = meshtastic_utils.check_connection
+        check_connection_task = asyncio.create_task(check_connection_callable())
 
         def _on_check_connection_done(task: asyncio.Task[Any]) -> None:
             if task.cancelled():
                 return
+            if shutdown_event.is_set():
+                return
             exc = task.exception()
-            if exc is not None and not shutdown_event.is_set():
+            if exc is not None:
                 meshtastic_logger.error(
                     "Connection health task exited unexpectedly",
                     exc_info=(type(exc), exc, exc.__traceback__),
+                )
+                _set_shutdown_flag()
+                return
+
+            if (
+                check_connection_callable is _DEFAULT_CHECK_CONNECTION_CALLABLE
+                and _requires_continuous_health_monitor(config)
+            ):
+                meshtastic_logger.error(
+                    "Connection health task exited unexpectedly without an exception"
                 )
                 _set_shutdown_flag()
 
@@ -631,7 +667,7 @@ async def main(config: dict[str, Any]) -> None:
                     return
                 restart_attempt += 1
                 meshtastic_logger.error(
-                    "Node-name refresh task failed (attempt %d); restarting in %.1fs",
+                    "NodeDB name-cache refresh task failed (attempt %d); restarting in %.1fs",
                     restart_attempt,
                     backoff_seconds,
                     exc_info=(
@@ -646,7 +682,7 @@ async def main(config: dict[str, Any]) -> None:
                 restart_attempt = 0
                 backoff_seconds = 1.0
                 meshtastic_logger.warning(
-                    "Node-name refresh task exited unexpectedly; restarting in %.1fs",
+                    "NodeDB name-cache refresh task exited unexpectedly; restarting in %.1fs",
                     backoff_seconds,
                 )
 
@@ -842,7 +878,7 @@ async def main(config: dict[str, Any]) -> None:
         _set_shutdown_flag()
         await _await_background_task_shutdown(
             node_name_refresh_task,
-            task_name="node name refresh task",
+            task_name="NodeDB name-cache refresh task",
             timeout_seconds=10.0,
         )
         await _await_background_task_shutdown(

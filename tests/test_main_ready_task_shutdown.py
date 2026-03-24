@@ -2,6 +2,7 @@
 """Coverage test for main() ready-task shutdown cleanup path."""
 
 import asyncio
+import contextlib
 from collections.abc import Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -180,14 +181,23 @@ async def test_main_cleans_up_ready_task_on_shutdown(tmp_path, monkeypatch) -> N
         mock_get_queue.return_value = mock_queue
 
         main_task = asyncio.create_task(main_module.main(config))
-        await _wait_until(lambda: bool(event_factory.created))
-        await _wait_until(lambda: captured_ready_event is not None)
-        await _wait_until(
-            lambda: ready_path.exists() and mock_touch_ready_file.call_count > 0
-        )
-        assert captured_ready_event is not None
-        captured_ready_event.set()
-        await asyncio.wait_for(main_task, timeout=5)
+        try:
+            await _wait_until(lambda: bool(event_factory.created))
+            await _wait_until(lambda: captured_ready_event is not None)
+            await _wait_until(
+                lambda: ready_path.exists() and mock_touch_ready_file.call_count > 0
+            )
+            assert captured_ready_event is not None
+            captured_ready_event.set()
+            await asyncio.wait_for(main_task, timeout=5)
+        finally:
+            if not main_task.done():
+                main_task.cancel()
+                with contextlib.suppress(
+                    asyncio.CancelledError,
+                    asyncio.TimeoutError,
+                ):
+                    await asyncio.wait_for(main_task, timeout=5)
 
     mock_matrix_client.close.assert_awaited_once()
     assert not ready_path.exists()

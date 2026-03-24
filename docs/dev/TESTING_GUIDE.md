@@ -225,7 +225,7 @@ asyncmock_patterns = [
 python -m pytest tests/test_cli.py -v --cov --tb=short
 
 # Run all tests with coverage
-python -m pytest -v --cov --junitxml=junit.xml -o junit_family=legacy
+python -m pytest -v --cov --junitxml=junit.xml -o junit_family=legacy --timeout=60
 ```
 
 ### Code Quality Checks

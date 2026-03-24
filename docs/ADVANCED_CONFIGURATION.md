@@ -210,7 +210,7 @@ The `MMRELAY_MATRIX_*` variables (HOMESERVER, BOT_USER_ID, PASSWORD, ACCESS_TOKE
 - **`MMRELAY_MESHTASTIC_BROADCAST_ENABLED`**: Enable Matrix→Meshtastic messages (`true`/`false`)
 - **`MMRELAY_MESHTASTIC_MESHNET_NAME`**: Display name for the mesh network
 - **`MMRELAY_MESHTASTIC_MESSAGE_DELAY`**: Delay between messages in seconds (minimum: 2.0; values below are clamped at startup)
-- **`MMRELAY_MESHTASTIC_NODEDB_REFRESH_INTERVAL`**: Seconds between refreshes of cached long/short node-name tables from the Meshtastic NodeDB (default: `15.0`; `0` disables periodic refresh after startup). This currently refreshes name caches only; future versions may extend persistence to broader NodeDB fields.
+- **`MMRELAY_MESHTASTIC_NODEDB_REFRESH_INTERVAL`**: Seconds between refreshes of cached long/short node-name tables from the Meshtastic NodeDB (default: `15.0`; `0` disables periodic refresh after startup). This currently refreshes name caches only; future versions may extend this to refresh additional NodeDB fields.
 
 #### System Configuration
 

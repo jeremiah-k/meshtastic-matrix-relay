@@ -639,6 +639,15 @@ class TestMeshtasticEnvironmentVariables(unittest.TestCase):
         config = load_meshtastic_config_from_env()
         self.assertIsNone(config)
 
+    def test_zero_nodedb_refresh_interval(self):
+        """Test disabling periodic NodeDB refresh with a zero interval."""
+        os.environ["MMRELAY_MESHTASTIC_NODEDB_REFRESH_INTERVAL"] = "0"
+
+        config = load_meshtastic_config_from_env()
+
+        self.assertIsNotNone(config)
+        self.assertEqual(config["nodedb_refresh_interval"], 0.0)
+
     def test_no_env_vars_returns_none(self):
         """Test that no environment variables returns None."""
         config = load_meshtastic_config_from_env()
@@ -740,6 +749,7 @@ class TestEnvironmentVariableIntegration(unittest.TestCase):
             "MMRELAY_MESHTASTIC_CONNECTION_TYPE",
             "MMRELAY_MESHTASTIC_HOST",
             "MMRELAY_MESHTASTIC_PORT",
+            "MMRELAY_MESHTASTIC_NODEDB_REFRESH_INTERVAL",
             "MMRELAY_LOGGING_LEVEL",
             "MMRELAY_DATABASE_PATH",
         ]

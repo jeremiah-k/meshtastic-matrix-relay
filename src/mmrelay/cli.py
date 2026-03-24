@@ -1546,7 +1546,7 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                             return False
 
                         if option in {"message_delay", "nodedb_refresh_interval"} and (
-                            not math.isfinite(float(value))
+                            not math.isfinite(value)
                         ):
                             print(
                                 f"Error: '{option}' must be a finite number, got: {value}",

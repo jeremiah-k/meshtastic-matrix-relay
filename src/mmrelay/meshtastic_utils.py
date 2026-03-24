@@ -645,7 +645,7 @@ async def refresh_node_name_tables(
         if parsed is None:
             configured_interval = get_nodedb_refresh_interval_seconds()
             logger.warning(
-                "Invalid node-name refresh interval override %r; defaulting to configured interval %.1f",
+                "Invalid NodeDB name-cache refresh interval override %r; defaulting to configured interval %.1f",
                 refresh_interval_seconds,
                 configured_interval,
             )
@@ -1192,8 +1192,8 @@ def _attach_late_ble_interface_disposer(
             result = done_future.result()
             if result is not None:
                 late_iface = result
-        except Exception:
-            return
+        except Exception:  # noqa: BLE001 - futures can raise backend-specific errors
+            late_iface = fallback_iface
 
         if late_iface is None:
             return
@@ -1216,7 +1216,7 @@ def _attach_late_ble_interface_disposer(
                 late_iface,
                 reason=f"late completion after {reason}",
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 - cleanup must not propagate
             logger.debug(
                 "Late BLE interface cleanup failed for %s (%s)",
                 ble_address,
@@ -2880,6 +2880,13 @@ def connect_meshtastic(
                 DEFAULT_MESHTASTIC_TIMEOUT,
             )
         timeout = DEFAULT_MESHTASTIC_TIMEOUT
+    create_timeout_floor_secs = _coerce_positive_float(
+        _ble_interface_create_timeout_secs,
+        BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS,
+        "_ble_interface_create_timeout_secs",
+    )
+    constructor_timeout_secs = max(float(timeout), create_timeout_floor_secs)
+    constructor_timeout_arg = max(1, math.ceil(constructor_timeout_secs))
 
     while (
         not successful
@@ -2910,7 +2917,7 @@ def connect_meshtastic(
                     )
 
                 client = meshtastic.serial_interface.SerialInterface(
-                    serial_port, timeout=timeout
+                    serial_port, timeout=constructor_timeout_arg
                 )
 
             elif connection_type == CONNECTION_TYPE_BLE:
@@ -2960,7 +2967,7 @@ def connect_meshtastic(
                                 "noProto": False,
                                 "debugOut": None,
                                 "noNodes": False,
-                                "timeout": timeout,
+                                "timeout": constructor_timeout_arg,
                             }
 
                             # Configure auto_reconnect only when supported.
@@ -3012,14 +3019,7 @@ def connect_meshtastic(
                             # Use the larger of configured connect timeout and the safety floor.
                             # This keeps stale-worker detection and future.result() budget aligned
                             # with the actual BLEInterface constructor timeout.
-                            create_timeout_floor_secs = _coerce_positive_float(
-                                _ble_interface_create_timeout_secs,
-                                BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS,
-                                "_ble_interface_create_timeout_secs",
-                            )
-                            create_timeout_secs = max(
-                                float(timeout), create_timeout_floor_secs
-                            )
+                            create_timeout_secs = constructor_timeout_secs
 
                             # Guard against overlapping BLE tasks: if a previous BLE operation is
                             # still running (often due to a hung BlueZ/DBus call), we skip queuing
@@ -3287,7 +3287,9 @@ def connect_meshtastic(
 
                 # Connect without progress indicator
                 client = meshtastic.tcp_interface.TCPInterface(
-                    hostname=target_host, portNumber=target_port, timeout=timeout
+                    hostname=target_host,
+                    portNumber=target_port,
+                    timeout=constructor_timeout_arg,
                 )
             else:
                 logger.error(f"Unknown connection type: {connection_type}")

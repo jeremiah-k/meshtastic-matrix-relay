@@ -170,6 +170,8 @@ def test_name_tables_match_state_non_empty_state_checks_both_tables() -> None:
     ) as mock_match:
         assert _name_tables_match_state(state) is True
     assert mock_match.call_count == 2
+    table_names = [call.kwargs.get("table") for call in mock_match.call_args_list]
+    assert table_names == [dbu.NAMES_TABLE_LONGNAMES, dbu.NAMES_TABLE_SHORTNAMES]
 
 
 def test_collect_node_name_snapshot_marks_invalid_entries_incomplete() -> None:
