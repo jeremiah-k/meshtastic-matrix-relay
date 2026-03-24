@@ -76,3 +76,8 @@ METADATA_WATCHDOG_SECS = 30.0
 
 # Timeout for BLE connect() operation watchdog
 BLE_CONNECT_TIMEOUT_SECS = 30.0
+
+# Maximum orphaned workers before entering degraded state
+# When executor recovery cycles orphan this many workers, we stop
+# silently recovering and require explicit reconnect/restart.
+EXECUTOR_ORPHAN_THRESHOLD = 5

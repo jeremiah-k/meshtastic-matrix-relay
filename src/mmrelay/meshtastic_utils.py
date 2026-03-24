@@ -66,6 +66,7 @@ from mmrelay.constants.network import (
     DEFAULT_MESHTASTIC_TIMEOUT,
     DEFAULT_TCP_PORT,
     ERRNO_BAD_FILE_DESCRIPTOR,
+    EXECUTOR_ORPHAN_THRESHOLD,
     INFINITE_RETRIES,
     INITIAL_HEALTH_CHECK_DELAY,
     MAX_TIMEOUT_RETRIES_INFINITE,
@@ -163,6 +164,9 @@ BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS = 90.0
 _ble_future_stale_grace_secs = BLE_FUTURE_STALE_GRACE_SECS
 _ble_interface_create_timeout_secs = BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS
 
+_ble_executor_degraded_addresses: set[str] = set()
+_metadata_executor_degraded: bool = False
+
 
 def _coerce_nonnegative_float(value: Any, default: float) -> float:
     """
@@ -240,6 +244,7 @@ def _shutdown_shared_executors() -> None:
     global _metadata_executor, _metadata_future, _metadata_future_started_at
     global _health_probe_request_deadlines
     global _metadata_executor_orphaned_workers, _ble_executor_orphaned_workers_by_address
+    global _ble_executor_degraded_addresses, _metadata_executor_degraded
 
     # Cancel any pending BLE operation
     # Capture future ref inside lock, cancel outside to avoid deadlock with done callbacks
@@ -255,6 +260,7 @@ def _shutdown_shared_executors() -> None:
         with _ble_timeout_lock:
             _ble_timeout_counts.clear()
             _ble_executor_orphaned_workers_by_address.clear()
+        _ble_executor_degraded_addresses.clear()
 
         executor = _ble_executor
         _ble_executor = None
@@ -276,6 +282,7 @@ def _shutdown_shared_executors() -> None:
         _metadata_future = None
         _metadata_future_started_at = None
         _metadata_executor_orphaned_workers = 0
+        _metadata_executor_degraded = False
 
         executor = _metadata_executor
         _metadata_executor = None
@@ -297,6 +304,71 @@ def shutdown_shared_executors() -> None:
     This is primarily intended for test teardown and explicit cleanup paths.
     """
     _shutdown_shared_executors()
+
+
+def reset_executor_degraded_state(
+    ble_address: str | None = None, *, reset_all: bool = False
+) -> bool:
+    """
+    Reset degraded state for executors, allowing recovery after reconnect.
+
+    When executors reach the orphan threshold, they enter a degraded state and
+    refuse automatic recovery. This function clears that state so normal
+    operation can resume after a successful reconnect or manual intervention.
+
+    Parameters:
+        ble_address (str | None): Specific BLE address to reset. If None and
+            reset_all is False, only metadata executor is reset.
+        reset_all (bool): If True, reset all degraded state including all
+            BLE addresses and metadata executor.
+
+    Returns:
+        bool: True if any degraded state was reset, False otherwise.
+    """
+    global _ble_executor_degraded_addresses, _metadata_executor_degraded
+    global _metadata_executor_orphaned_workers, _ble_executor_orphaned_workers_by_address
+
+    reset_any = False
+
+    if reset_all:
+        with _ble_executor_lock:
+            if _ble_executor_degraded_addresses:
+                logger.info(
+                    "Resetting degraded state for all BLE executors: %s",
+                    ", ".join(sorted(_ble_executor_degraded_addresses)),
+                )
+                _ble_executor_degraded_addresses.clear()
+                with _ble_timeout_lock:
+                    _ble_executor_orphaned_workers_by_address.clear()
+                reset_any = True
+        with _metadata_future_lock:
+            if _metadata_executor_degraded:
+                logger.info("Resetting degraded state for metadata executor")
+                _metadata_executor_degraded = False
+                _metadata_executor_orphaned_workers = 0
+                reset_any = True
+        return reset_any
+
+    if ble_address is not None:
+        with _ble_executor_lock:
+            if ble_address in _ble_executor_degraded_addresses:
+                logger.info(
+                    "Resetting degraded state for BLE executor: %s",
+                    ble_address,
+                )
+                _ble_executor_degraded_addresses.discard(ble_address)
+                with _ble_timeout_lock:
+                    _ble_executor_orphaned_workers_by_address.pop(ble_address, None)
+                reset_any = True
+
+    with _metadata_future_lock:
+        if _metadata_executor_degraded:
+            logger.info("Resetting degraded state for metadata executor")
+            _metadata_executor_degraded = False
+            _metadata_executor_orphaned_workers = 0
+            reset_any = True
+
+    return reset_any
 
 
 atexit.register(shutdown_shared_executors)
@@ -354,12 +426,34 @@ def _reset_metadata_executor_for_stale_probe() -> None:
     A wedged single-worker executor can block all later probe submissions.
     This function abandons the old executor and creates a fresh one so probe
     retries are not queued behind a stuck worker.
+
+    When the number of orphaned workers reaches EXECUTOR_ORPHAN_THRESHOLD,
+    the executor enters a degraded state and refuses to create new executors.
+    Recovery requires an explicit reconnect or process restart.
     """
     global _metadata_executor, _metadata_future, _metadata_future_started_at
-    global _metadata_executor_orphaned_workers
+    global _metadata_executor_orphaned_workers, _metadata_executor_degraded
 
-    orphaned_workers: int | None = None
+    if _metadata_executor_degraded:
+        logger.debug(
+            "Metadata executor is in degraded state; refusing to reset. "
+            "Reconnect or restart required to recover."
+        )
+        return
+
     with _metadata_future_lock:
+        if _metadata_executor_orphaned_workers >= EXECUTOR_ORPHAN_THRESHOLD:
+            _metadata_executor_degraded = True
+            logger.error(
+                "METADATA EXECUTOR DEGRADED: %s workers have been orphaned due to "
+                "repeated hangs. Further automatic recovery is disabled. "
+                "Reconnect or restart the relay to restore metadata probing.",
+                _metadata_executor_orphaned_workers,
+            )
+            _metadata_future = None
+            _metadata_future_started_at = None
+            return
+
         old_executor = _metadata_executor
         _metadata_future = None
         _metadata_future_started_at = None
@@ -367,12 +461,15 @@ def _reset_metadata_executor_for_stale_probe() -> None:
         if old_executor is not None and not getattr(old_executor, "_shutdown", False):
             _metadata_executor_orphaned_workers += 1
             orphaned_workers = _metadata_executor_orphaned_workers
+        else:
+            orphaned_workers = None
 
     if old_executor is not None and not getattr(old_executor, "_shutdown", False):
         logger.warning(
             "Replacing stale metadata executor after probe timeout; "
-            "orphaned metadata workers=%s",
+            "orphaned metadata workers=%s (threshold=%s)",
             orphaned_workers,
+            EXECUTOR_ORPHAN_THRESHOLD,
         )
         try:
             old_executor.shutdown(wait=False, cancel_futures=True)
@@ -1327,13 +1424,26 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
     best-effort cancellation and cleanup of a possibly stuck BLE task and resets the per-address
     timeout counter to zero.
 
+    When the number of orphaned workers for a BLE address reaches EXECUTOR_ORPHAN_THRESHOLD,
+    that address enters a degraded state and refuses to create new executors.
+    Recovery requires an explicit reconnect or process restart.
+
     Parameters:
         ble_address (str): BLE device address associated with the observed timeouts.
         timeout_count (int): Number of consecutive timeouts recorded for that address.
     """
     global _ble_executor, _ble_future, _ble_future_address
     global _ble_future_started_at, _ble_future_timeout_secs
-    global _ble_executor_orphaned_workers_by_address
+    global _ble_executor_orphaned_workers_by_address, _ble_executor_degraded_addresses
+
+    if ble_address in _ble_executor_degraded_addresses:
+        logger.debug(
+            "BLE executor for %s is in degraded state; refusing to reset. "
+            "Reconnect or restart required to recover.",
+            ble_address,
+        )
+        return
+
     reset_threshold = _coerce_positive_int(
         _ble_timeout_reset_threshold, BLE_TIMEOUT_RESET_THRESHOLD
     )
@@ -1344,23 +1454,39 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
     with _ble_executor_lock:
         if timeout_count < reset_threshold:
             return
+
+        current_orphans = _ble_executor_orphaned_workers_by_address.get(ble_address, 0)
+        if current_orphans >= EXECUTOR_ORPHAN_THRESHOLD:
+            _ble_executor_degraded_addresses.add(ble_address)
+            logger.error(
+                "BLE EXECUTOR DEGRADED for %s: %s workers have been orphaned due to "
+                "repeated hangs. Further automatic recovery is disabled for this device. "
+                "Reconnect or restart the relay to restore BLE connectivity.",
+                ble_address,
+                current_orphans,
+            )
+            _ble_future = None
+            _ble_future_address = None
+            _ble_future_started_at = None
+            _ble_future_timeout_secs = None
+            return
+
         if _ble_future and not _ble_future.done():
             ble_future_to_cancel = _ble_future
         if _ble_executor is not None and not getattr(_ble_executor, "_shutdown", False):
             with _ble_timeout_lock:
-                orphaned_workers = (
-                    _ble_executor_orphaned_workers_by_address.get(ble_address, 0) + 1
-                )
+                orphaned_workers = current_orphans + 1
                 _ble_executor_orphaned_workers_by_address[ble_address] = (
                     orphaned_workers
                 )
             stale_executor = _ble_executor
         logger.warning(
             "BLE worker timed out %s times for %s; recreating executor "
-            "(orphaned BLE workers=%s)",
+            "(orphaned BLE workers=%s, threshold=%s)",
             timeout_count,
             ble_address,
             orphaned_workers,
+            EXECUTOR_ORPHAN_THRESHOLD,
         )
         _ble_executor = ThreadPoolExecutor(max_workers=1)
         _ble_future = None

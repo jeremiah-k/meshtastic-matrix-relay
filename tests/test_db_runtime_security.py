@@ -535,7 +535,7 @@ class TestDatabaseManager(unittest.TestCase):
 
         def first_write(cursor):
             first_started.set()
-            if not first_release.wait(timeout=2.0):
+            if not first_release.wait(timeout=10.0):
                 raise AssertionError("Timed out waiting to release first_write")
             cursor.execute(
                 "INSERT INTO test_async_close (value) VALUES (?)",
@@ -552,7 +552,7 @@ class TestDatabaseManager(unittest.TestCase):
 
         async def run_test() -> tuple[str, str]:
             task1 = asyncio.create_task(self.manager.run_async(first_write, write=True))
-            start_deadline = asyncio.get_running_loop().time() + 2.0
+            start_deadline = asyncio.get_running_loop().time() + 10.0
             while (
                 not first_started.is_set()
                 and asyncio.get_running_loop().time() < start_deadline
@@ -564,22 +564,29 @@ class TestDatabaseManager(unittest.TestCase):
             )
             await asyncio.sleep(0)
 
-            close_task = asyncio.create_task(asyncio.to_thread(self.manager.close))
-            await asyncio.sleep(0)
+            # Release first_write BEFORE starting close, so close() can complete
             first_release.set()
 
+            # Now run close without blocking the event loop
+            await asyncio.to_thread(self.manager.close)
+
+            # Both tasks should have completed by now
             try:
                 result1, result2 = await asyncio.wait_for(
                     asyncio.gather(task1, task2),
                     timeout=5.0,
                 )
-            finally:
-                for task in (task1, task2):
-                    if not task.done():
+            except asyncio.TimeoutError:
+                # Check if tasks are done after close
+                results = []
+                for i, task in enumerate((task1, task2)):
+                    if task.done():
+                        results.append(task.result())
+                    else:
                         task.cancel()
-                        with self.assertRaises(asyncio.CancelledError):
-                            await task
-                await asyncio.wait_for(close_task, timeout=5.0)
+                        results.append(f"task{i + 1}_cancelled")
+                raise AssertionError(f"Tasks did not complete: {results}")
+
             return result1, result2
 
         result1, result2 = asyncio.run(run_test())

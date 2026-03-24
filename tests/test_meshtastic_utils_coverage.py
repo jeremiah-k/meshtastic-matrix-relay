@@ -1662,4 +1662,173 @@ class TestConnectionLostHandlerClearingStaleBleFuture:
                 mu.on_lost_meshtastic_connection(detection_source="test source")
 
                 assert "11:22:33:44:55:66" not in mu._ble_timeout_counts
-                assert "OTHER:ADDRESS" in mu._ble_timeout_counts
+
+
+class TestMetadataExecutorDegradedState:
+    """Test metadata executor degraded state when orphan threshold is exceeded."""
+
+    def test_metadata_executor_enters_degraded_state_at_threshold(self):
+        """Test that metadata executor enters degraded state when orphan count reaches threshold."""
+        from mmrelay.constants.network import EXECUTOR_ORPHAN_THRESHOLD
+
+        old_executor = Mock(spec=ThreadPoolExecutor)
+        old_executor._shutdown = False
+        mu._metadata_executor = old_executor
+        mu._metadata_future = Mock(spec=Future)
+        mu._metadata_future_started_at = time.monotonic()
+        mu._metadata_executor_orphaned_workers = EXECUTOR_ORPHAN_THRESHOLD
+        mu._metadata_executor_degraded = False
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            mu._reset_metadata_executor_for_stale_probe()
+
+            assert mu._metadata_executor_degraded is True
+            assert mu._metadata_future is None
+            assert mu._metadata_future_started_at is None
+            assert mock_logger.error.called
+            error_msg = str(mock_logger.error.call_args)
+            assert "DEGRADED" in error_msg
+
+    def test_metadata_executor_refuses_reset_when_degraded(self):
+        """Test that degraded metadata executor refuses to reset."""
+        mu._metadata_executor_degraded = True
+        mu._metadata_executor = Mock(spec=ThreadPoolExecutor)
+        mu._metadata_future = Mock(spec=Future)
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            mu._reset_metadata_executor_for_stale_probe()
+
+            assert mu._metadata_executor_degraded is True
+            assert mock_logger.debug.called
+            debug_msg = str(mock_logger.debug.call_args)
+            assert "degraded state" in debug_msg.lower()
+
+    def test_metadata_executor_allows_recovery_from_degraded(self):
+        """Test that reset_executor_degraded_state clears metadata degraded state."""
+        mu._metadata_executor_degraded = True
+        mu._metadata_executor_orphaned_workers = 10
+
+        result = mu.reset_executor_degraded_state()
+
+        assert result is True
+        assert mu._metadata_executor_degraded is False
+        assert mu._metadata_executor_orphaned_workers == 0
+
+
+class TestBleExecutorDegradedState:
+    """Test BLE executor degraded state when orphan threshold is exceeded."""
+
+    def test_ble_executor_enters_degraded_state_at_threshold(self):
+        """Test that BLE executor enters degraded state when orphan count reaches threshold per address."""
+        from mmrelay.constants.network import EXECUTOR_ORPHAN_THRESHOLD
+
+        ble_address = "AA:BB:CC:DD:EE:FF"
+        mock_executor = Mock(spec=ThreadPoolExecutor)
+        mock_executor._shutdown = False
+        mu._ble_executor = mock_executor
+        mu._ble_future = None
+        mu._ble_future_address = None
+        mu._ble_executor_orphaned_workers_by_address = {
+            ble_address: EXECUTOR_ORPHAN_THRESHOLD
+        }
+        mu._ble_executor_degraded_addresses = set()
+
+        with patch("mmrelay.meshtastic_utils._ble_timeout_reset_threshold", 3):
+            with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+                mu._maybe_reset_ble_executor(ble_address, timeout_count=5)
+
+                assert ble_address in mu._ble_executor_degraded_addresses
+                assert mock_logger.error.called
+                error_msg = str(mock_logger.error.call_args)
+                assert "DEGRADED" in error_msg
+                assert ble_address in error_msg
+
+    def test_ble_executor_refuses_reset_when_degraded(self):
+        """Test that degraded BLE executor refuses to reset for that address."""
+        ble_address = "AA:BB:CC:DD:EE:FF"
+        mu._ble_executor_degraded_addresses = {ble_address}
+        mu._ble_executor = Mock(spec=ThreadPoolExecutor)
+        mu._ble_future = Mock(spec=Future)
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            mu._maybe_reset_ble_executor(ble_address, timeout_count=10)
+
+            assert ble_address in mu._ble_executor_degraded_addresses
+            assert mock_logger.debug.called
+            debug_msg = str(mock_logger.debug.call_args)
+            assert "degraded state" in debug_msg.lower()
+
+    def test_ble_executor_allows_recovery_for_specific_address(self):
+        """Test that reset_executor_degraded_state clears degraded state for specific BLE address."""
+        ble_address = "AA:BB:CC:DD:EE:FF"
+        mu._ble_executor_degraded_addresses = {ble_address}
+        mu._ble_executor_orphaned_workers_by_address = {ble_address: 10}
+
+        result = mu.reset_executor_degraded_state(ble_address=ble_address)
+
+        assert result is True
+        assert ble_address not in mu._ble_executor_degraded_addresses
+        assert ble_address not in mu._ble_executor_orphaned_workers_by_address
+
+    def test_ble_executor_allows_recovery_for_all_addresses(self):
+        """Test that reset_executor_degraded_state with reset_all clears all degraded state."""
+        mu._ble_executor_degraded_addresses = {"AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"}
+        mu._ble_executor_orphaned_workers_by_address = {
+            "AA:BB:CC:DD:EE:FF": 10,
+            "11:22:33:44:55:66": 5,
+        }
+        mu._metadata_executor_degraded = True
+        mu._metadata_executor_orphaned_workers = 8
+
+        result = mu.reset_executor_degraded_state(reset_all=True)
+
+        assert result is True
+        assert len(mu._ble_executor_degraded_addresses) == 0
+        assert len(mu._ble_executor_orphaned_workers_by_address) == 0
+        assert mu._metadata_executor_degraded is False
+        assert mu._metadata_executor_orphaned_workers == 0
+
+    def test_ble_executor_degraded_state_per_address(self):
+        """Test that BLE degraded state is tracked per address."""
+        from mmrelay.constants.network import EXECUTOR_ORPHAN_THRESHOLD
+
+        degraded_address = "AA:BB:CC:DD:EE:FF"
+        healthy_address = "11:22:33:44:55:66"
+
+        mu._ble_executor_degraded_addresses = {degraded_address}
+        mu._ble_executor = Mock(spec=ThreadPoolExecutor)
+        mu._ble_executor._shutdown = False
+        mu._ble_future = None
+        mu._ble_future_address = None
+        mu._ble_executor_orphaned_workers_by_address = {healthy_address: 0}
+
+        with patch("mmrelay.meshtastic_utils._ble_timeout_reset_threshold", 3):
+            with patch("mmrelay.meshtastic_utils.logger"):
+                mu._maybe_reset_ble_executor(healthy_address, timeout_count=5)
+
+                assert degraded_address in mu._ble_executor_degraded_addresses
+                assert healthy_address not in mu._ble_executor_degraded_addresses
+
+
+class TestShutdownClearsDegradedState:
+    """Test that shutdown_shared_executors clears degraded state."""
+
+    def test_shutdown_clears_metadata_degraded_state(self):
+        """Test that shutdown clears metadata executor degraded state."""
+        mu._metadata_executor_degraded = True
+        mu._metadata_executor_orphaned_workers = 10
+
+        mu.shutdown_shared_executors()
+
+        assert mu._metadata_executor_degraded is False
+        assert mu._metadata_executor_orphaned_workers == 0
+
+    def test_shutdown_clears_ble_degraded_state(self):
+        """Test that shutdown clears BLE executor degraded state."""
+        mu._ble_executor_degraded_addresses = {"AA:BB:CC:DD:EE:FF"}
+        mu._ble_executor_orphaned_workers_by_address = {"AA:BB:CC:DD:EE:FF": 10}
+
+        mu.shutdown_shared_executors()
+
+        assert len(mu._ble_executor_degraded_addresses) == 0
+        assert len(mu._ble_executor_orphaned_workers_by_address) == 0

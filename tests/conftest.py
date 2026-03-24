@@ -942,6 +942,12 @@ def reset_meshtastic_globals():
         "_ble_interface_create_timeout_secs": getattr(
             mu, "_ble_interface_create_timeout_secs", None
         ),
+        "_ble_executor_degraded_addresses": set(
+            getattr(mu, "_ble_executor_degraded_addresses", None) or set()
+        ),
+        "_metadata_executor_degraded": getattr(
+            mu, "_metadata_executor_degraded", False
+        ),
     }
 
     # Reset mutable globals to a clean state; keep logger and event_loop usable
@@ -959,6 +965,8 @@ def reset_meshtastic_globals():
     mu._ble_timeout_counts = {}
     mu._ble_executor_orphaned_workers_by_address = {}
     mu._metadata_executor_orphaned_workers = 0
+    mu._ble_executor_degraded_addresses = set()
+    mu._metadata_executor_degraded = False
     mu._ble_future_watchdog_secs = getattr(
         mu,
         "BLE_FUTURE_WATCHDOG_SECS",
