@@ -173,7 +173,7 @@ def _coerce_nonnegative_float(value: Any, default: float) -> float:
         if not math.isfinite(parsed) or parsed < 0:
             raise ValueError
         return parsed
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return default
 
 

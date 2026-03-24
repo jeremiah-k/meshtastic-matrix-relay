@@ -2504,49 +2504,100 @@ pass_test "Encrypted-room user reaction relayed to both meshes"
 # Test 7: stale name rows are pruned to match current node DB snapshot.
 start_test "Test 7" "Test 7: stale name rows are pruned to match current node DB..."
 
+POLL_TIMEOUT_SECONDS=30
+POLL_INTERVAL_SECONDS=1
+
 CURRENT_LONGNAME_ID_A=""
-run_capture_or_fail \
-	CURRENT_LONGNAME_ID_A \
-	"Could not find an existing longnames row in instance A before stale-row seeding" \
-	get_existing_name_entry \
-	"${MMRELAY_DB_PATH_A}" \
-	"${NAMES_TABLE_LONGNAMES}"
-if [[ -z ${CURRENT_LONGNAME_ID_A} ]]; then
-	fail_test "Invalid existing longnames ID for instance A"
-fi
+POLL_START=$(date +%s)
+while [[ -z ${CURRENT_LONGNAME_ID_A} ]]; do
+	run_capture_or_fail \
+		CURRENT_LONGNAME_ID_A \
+		"Could not find an existing longnames row in instance A before stale-row seeding" \
+		get_existing_name_entry \
+		"${MMRELAY_DB_PATH_A}" \
+		"${NAMES_TABLE_LONGNAMES}" || CURRENT_LONGNAME_ID_A=""
+
+	if [[ -n ${CURRENT_LONGNAME_ID_A} ]]; then
+		break
+	fi
+
+	POLL_NOW=$(date +%s)
+	POLL_ELAPSED=$((POLL_NOW - POLL_START))
+	if [[ ${POLL_ELAPSED} -ge ${POLL_TIMEOUT_SECONDS} ]]; then
+		fail_test "Timed out waiting for existing longnames row in instance A (${POLL_ELAPSED}s)"
+	fi
+
+	sleep "${POLL_INTERVAL_SECONDS}"
+done
 
 CURRENT_SHORTNAME_ID_A=""
-run_capture_or_fail \
-	CURRENT_SHORTNAME_ID_A \
-	"Could not find an existing shortnames row in instance A before stale-row seeding" \
-	get_existing_name_entry \
-	"${MMRELAY_DB_PATH_A}" \
-	"${NAMES_TABLE_SHORTNAMES}"
-if [[ -z ${CURRENT_SHORTNAME_ID_A} ]]; then
-	fail_test "Invalid existing shortnames ID for instance A"
-fi
+POLL_START=$(date +%s)
+while [[ -z ${CURRENT_SHORTNAME_ID_A} ]]; do
+	run_capture_or_fail \
+		CURRENT_SHORTNAME_ID_A \
+		"Could not find an existing shortnames row in instance A before stale-row seeding" \
+		get_existing_name_entry \
+		"${MMRELAY_DB_PATH_A}" \
+		"${NAMES_TABLE_SHORTNAMES}" || CURRENT_SHORTNAME_ID_A=""
+
+	if [[ -n ${CURRENT_SHORTNAME_ID_A} ]]; then
+		break
+	fi
+
+	POLL_NOW=$(date +%s)
+	POLL_ELAPSED=$((POLL_NOW - POLL_START))
+	if [[ ${POLL_ELAPSED} -ge ${POLL_TIMEOUT_SECONDS} ]]; then
+		fail_test "Timed out waiting for existing shortnames row in instance A (${POLL_ELAPSED}s)"
+	fi
+
+	sleep "${POLL_INTERVAL_SECONDS}"
+done
 
 CURRENT_LONGNAME_ID_B=""
-run_capture_or_fail \
-	CURRENT_LONGNAME_ID_B \
-	"Could not find an existing longnames row in instance B before stale-row seeding" \
-	get_existing_name_entry \
-	"${MMRELAY_DB_PATH_B}" \
-	"${NAMES_TABLE_LONGNAMES}"
-if [[ -z ${CURRENT_LONGNAME_ID_B} ]]; then
-	fail_test "Invalid existing longnames ID for instance B"
-fi
+POLL_START=$(date +%s)
+while [[ -z ${CURRENT_LONGNAME_ID_B} ]]; do
+	run_capture_or_fail \
+		CURRENT_LONGNAME_ID_B \
+		"Could not find an existing longnames row in instance B before stale-row seeding" \
+		get_existing_name_entry \
+		"${MMRELAY_DB_PATH_B}" \
+		"${NAMES_TABLE_LONGNAMES}" || CURRENT_LONGNAME_ID_B=""
+
+	if [[ -n ${CURRENT_LONGNAME_ID_B} ]]; then
+		break
+	fi
+
+	POLL_NOW=$(date +%s)
+	POLL_ELAPSED=$((POLL_NOW - POLL_START))
+	if [[ ${POLL_ELAPSED} -ge ${POLL_TIMEOUT_SECONDS} ]]; then
+		fail_test "Timed out waiting for existing longnames row in instance B (${POLL_ELAPSED}s)"
+	fi
+
+	sleep "${POLL_INTERVAL_SECONDS}"
+done
 
 CURRENT_SHORTNAME_ID_B=""
-run_capture_or_fail \
-	CURRENT_SHORTNAME_ID_B \
-	"Could not find an existing shortnames row in instance B before stale-row seeding" \
-	get_existing_name_entry \
-	"${MMRELAY_DB_PATH_B}" \
-	"${NAMES_TABLE_SHORTNAMES}"
-if [[ -z ${CURRENT_SHORTNAME_ID_B} ]]; then
-	fail_test "Invalid existing shortnames ID for instance B"
-fi
+POLL_START=$(date +%s)
+while [[ -z ${CURRENT_SHORTNAME_ID_B} ]]; do
+	run_capture_or_fail \
+		CURRENT_SHORTNAME_ID_B \
+		"Could not find an existing shortnames row in instance B before stale-row seeding" \
+		get_existing_name_entry \
+		"${MMRELAY_DB_PATH_B}" \
+		"${NAMES_TABLE_SHORTNAMES}" || CURRENT_SHORTNAME_ID_B=""
+
+	if [[ -n ${CURRENT_SHORTNAME_ID_B} ]]; then
+		break
+	fi
+
+	POLL_NOW=$(date +%s)
+	POLL_ELAPSED=$((POLL_NOW - POLL_START))
+	if [[ ${POLL_ELAPSED} -ge ${POLL_TIMEOUT_SECONDS} ]]; then
+		fail_test "Timed out waiting for existing shortnames row in instance B (${POLL_ELAPSED}s)"
+	fi
+
+	sleep "${POLL_INTERVAL_SECONDS}"
+done
 
 STALE_NAME_ID_A=$(generate_unique_test_id "MMRELAY_STALE_A")
 STALE_NAME_ID_B=$(generate_unique_test_id "MMRELAY_STALE_B")

@@ -1863,8 +1863,18 @@ class TestMigrationRealWorldScenarios:
     def _disable_running_process_guard(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """
         Prevent host-process detection from causing false negatives in isolated tests.
+
+        Patches the external probe (shutil.which) so the guard's internal logic
+        executes but returns False, rather than replacing the guard function entirely.
         """
-        monkeypatch.setattr(migrate_module, "_is_mmrelay_running", lambda: False)
+        original_which = migrate_module.shutil.which
+
+        def mock_which(cmd: str):
+            if cmd == "pgrep":
+                return None
+            return original_which(cmd)
+
+        monkeypatch.setattr(migrate_module.shutil, "which", mock_which)
 
     def test_windows_upgrade_from_old_install_location(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -497,6 +497,10 @@ async def main(config: dict[str, Any]) -> None:
         meshtastic_utils.meshtastic_client = await asyncio.to_thread(
             connect_meshtastic, passed_config=config
         )
+        if meshtastic_utils.meshtastic_client is None:
+            raise ConnectionError(
+                "Failed to connect to Meshtastic. Cannot continue without a relay client."
+            )
 
         # Connect to Matrix
         matrix_client = await connect_matrix(passed_config=config)
@@ -583,6 +587,7 @@ async def main(config: dict[str, Any]) -> None:
             )
         await _close_matrix_client_best_effort(context="startup rollback")
         await _close_meshtastic_client_best_effort(context="startup rollback")
+        await asyncio.to_thread(meshtastic_utils.shutdown_shared_executors)
         raise
 
     async def _node_name_refresh_supervisor(refresh_interval_seconds: float) -> None:
@@ -853,6 +858,7 @@ async def main(config: dict[str, Any]) -> None:
         )
         await _close_matrix_client_best_effort(context="shutdown")
         await _close_meshtastic_client_best_effort(context="shutdown")
+        await asyncio.to_thread(meshtastic_utils.shutdown_shared_executors)
 
         # Attempt to wipe message_map on shutdown if enabled
         if wipe_on_restart:

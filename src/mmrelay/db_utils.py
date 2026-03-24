@@ -1346,9 +1346,9 @@ def sync_name_tables_if_changed(
     # deleting existing DB rows due to invalid/incomplete data.
     if not snapshot_complete and previous_state is not None:
         previous_by_id = {e.meshtastic_id: e for e in previous_state}
-        merged_entries = []
+        merged_entries: list[NodeNameEntry] = []
         for entry in current_state:
-            prev = previous_by_id.get(entry.meshtastic_id)
+            prev = previous_by_id.pop(entry.meshtastic_id, None)
             if prev is not None:
                 long_name = (
                     entry.long_name if entry.long_name is not None else prev.long_name
@@ -1363,6 +1363,7 @@ def sync_name_tables_if_changed(
                 )
             else:
                 merged_entries.append(entry)
+        merged_entries.extend(previous_by_id.values())
         merged_entries.sort(key=lambda e: e.meshtastic_id)
         current_state = tuple(merged_entries)
 
@@ -1549,6 +1550,7 @@ def _update_names_core(
                     name_key,
                     id_key,
                 )
+                snapshot_complete = False
                 state_by_id.pop(id_key, None)
                 skipped_ids.add(id_key)
                 continue

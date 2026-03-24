@@ -11,6 +11,7 @@ Tests the Meshtastic client functionality including:
 """
 
 import asyncio
+import logging
 import os
 import sys
 import unittest
@@ -108,8 +109,15 @@ def _reset_ble_inflight_state(module: Any) -> None:
                         )
                     else:
                         loop.run_until_complete(asyncio.wait_for(ble_future, 0.2))
-                except (asyncio.TimeoutError, asyncio.CancelledError, Exception):
-                    pass
+                except (
+                    asyncio.TimeoutError,
+                    asyncio.CancelledError,
+                    RuntimeError,
+                ) as exc:
+                    # Intentionally swallowed: cleanup errors should not fail tests
+                    logging.getLogger(__name__).debug(
+                        "BLE future cleanup exception (ignored): %s", exc
+                    )
             else:
                 result = getattr(ble_future, "result", None)
                 if callable(result):

@@ -275,8 +275,11 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
                 return_value="[Unit]\nTest",
             ):
                 with patch(
-                    "mmrelay.setup_utils.read_service_file", return_value=None
-                ):  # No existing service
+                    "mmrelay.setup_utils.get_user_service_path"
+                ) as mock_service_path:  # No existing service
+                    mock_path = MagicMock()
+                    mock_path.exists.return_value = False
+                    mock_service_path.return_value = mock_path
                     with patch("mmrelay.setup_utils.logger") as mock_logger:
                         with patch(
                             "builtins.input", return_value="n"
@@ -297,10 +300,13 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
                 return_value="/usr/bin/mmrelay",
             ),
             patch("mmrelay.setup_utils.create_service_file", return_value=False),
-            patch("mmrelay.setup_utils.read_service_file", return_value=None),
+            patch("mmrelay.setup_utils.get_user_service_path") as mock_service_path,
             patch("mmrelay.setup_utils.logger"),
             patch("builtins.input", return_value="y"),
         ):
+            mock_path = MagicMock()
+            mock_path.exists.return_value = False
+            mock_service_path.return_value = mock_path
             result = install_service()
             self.assertFalse(result)
 
@@ -316,8 +322,11 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
             with patch("mmrelay.setup_utils.create_service_file", return_value=True):
                 with patch("mmrelay.setup_utils.reload_daemon", return_value=False):
                     with patch(
-                        "mmrelay.setup_utils.read_service_file", return_value=None
-                    ):
+                        "mmrelay.setup_utils.get_user_service_path"
+                    ) as mock_service_path:
+                        mock_path = MagicMock()
+                        mock_path.exists.return_value = False
+                        mock_service_path.return_value = mock_path
                         with patch(
                             "mmrelay.setup_utils.service_needs_update",
                             return_value=(True, "test"),

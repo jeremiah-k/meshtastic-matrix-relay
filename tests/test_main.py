@@ -204,19 +204,28 @@ class _ImmediateEvent:
 
 
 class _OnePassEvent:
-    """Event that starts clear and flips set when first awaited."""
+    """Event that can only be set once and never resets."""
 
     def __init__(self) -> None:
         self._set = False
+        self._waiters: list[asyncio.Future] = []
 
     def is_set(self) -> bool:
         return self._set
 
     def set(self) -> None:
         self._set = True
+        for waiter in self._waiters:
+            if not waiter.done():
+                waiter.set_result(True)
+        self._waiters.clear()
 
-    async def wait(self) -> None:
-        self._set = True
+    async def wait(self) -> bool:
+        if self._set:
+            return True
+        waiter = asyncio.get_event_loop().create_future()
+        self._waiters.append(waiter)
+        return await waiter
 
 
 class _CloseFutureBase(concurrent.futures.Future):
@@ -811,7 +820,7 @@ class TestMain(unittest.TestCase):
         """
         shutdown_plugins/stop_message_queue should run off the event-loop thread.
         """
-        mock_connect_meshtastic.return_value = None
+        mock_connect_meshtastic.return_value = MagicMock()
         mock_matrix_client = MagicMock()
         mock_matrix_client.close = AsyncMock()
         mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
@@ -839,7 +848,6 @@ class TestMain(unittest.TestCase):
                 "mmrelay.main.asyncio.get_running_loop",
                 side_effect=_make_patched_get_running_loop(),
             ),
-            patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
             patch(
                 "mmrelay.main.shutdown_plugins",
@@ -878,7 +886,7 @@ class TestMain(unittest.TestCase):
         """
         A stuck plugin shutdown should time out and still continue queue/client cleanup.
         """
-        mock_connect_meshtastic.return_value = None
+        mock_connect_meshtastic.return_value = MagicMock()
         mock_matrix_client = MagicMock()
         mock_matrix_client.close = AsyncMock()
         mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
@@ -895,7 +903,6 @@ class TestMain(unittest.TestCase):
                 "mmrelay.main.asyncio.get_running_loop",
                 side_effect=_make_patched_get_running_loop(),
             ),
-            patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
             patch("mmrelay.main.get_message_queue") as mock_get_queue,
             patch(
@@ -2337,7 +2344,7 @@ class TestMainAsyncFunction(unittest.TestCase):
                 "mmrelay.main.connect_matrix",
                 side_effect=_make_async_return(mock_matrix_client),
             ),
-            patch("mmrelay.main.connect_meshtastic", return_value=None),
+            patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
             patch("mmrelay.main.join_matrix_room", side_effect=_async_noop),
             patch("mmrelay.main.get_message_queue") as mock_get_queue,
             patch(
@@ -2474,7 +2481,7 @@ class TestMainAsyncFunction(unittest.TestCase):
                 new_callable=AsyncMock,
                 return_value=mock_matrix_client,
             ),
-            patch("mmrelay.main.connect_meshtastic", return_value=None),
+            patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
             patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
             patch("mmrelay.main.get_message_queue") as mock_get_queue,
             patch(
@@ -3185,7 +3192,11 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
                 asyncio.run(main(config))
 
     def test_timeout_during_shutdown_cancels_task(self):
-        """TimeoutError during shutdown task wait should cancel and continue."""
+        """TimeoutError during shutdown task wait should cancel and continue.
+
+        Note: This test verifies the timeout path completes without hanging.
+        A more thorough test would inject a mock task to verify cancel() is called.
+        """
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org"}],
             "matrix": {"homeserver": "https://matrix.org"},
@@ -3224,7 +3235,11 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
                 asyncio.run(main(config))
 
     def test_exception_during_shutdown_wait_logs_error(self):
-        """Exception during shutdown wait should log error and continue."""
+        """Exception during shutdown wait should log error and continue.
+
+        Note: This test verifies the exception path completes without hanging.
+        A more thorough test would inject a mock task to verify cancel() is called.
+        """
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org"}],
             "matrix": {"homeserver": "https://matrix.org"},

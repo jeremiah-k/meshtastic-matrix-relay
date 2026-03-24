@@ -56,14 +56,21 @@ def _get_sqlite_runtime_version_info() -> tuple[int, int, int]:
 def _validate_sqlite_json_each_support() -> None:
     """
     Ensure runtime SQLite supports json_each() usage in name-state queries.
+
+    Uses a capability probe instead of version checking, since some builds
+    may have json_each() available even on older SQLite versions.
     """
-    current_version = _get_sqlite_runtime_version_info()
-    min_major, min_minor, min_patch = MIN_SQLITE_VERSION_JSON_EACH
-    if current_version < MIN_SQLITE_VERSION_JSON_EACH:
+    conn = sqlite3.Connection(":memory:")
+    try:
+        _probe_sqlite_json_each_support(conn)
+    except RuntimeError:
+        current_version = _get_sqlite_runtime_version_info()
         raise RuntimeError(
-            f"SQLite >= {min_major}.{min_minor}.{min_patch} is required for json_each() support. "
+            f"SQLite json_each() support is required. "
             f"Detected SQLite version: {current_version[0]}.{current_version[1]}.{current_version[2]}"
-        )
+        ) from None
+    finally:
+        conn.close()
 
 
 def _probe_sqlite_json_each_support(conn: sqlite3.Connection) -> None:

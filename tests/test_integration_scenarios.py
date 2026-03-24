@@ -100,9 +100,10 @@ class TestIntegrationScenarios(unittest.TestCase):
                             try:
                                 loop = asyncio.get_event_loop()
                                 if loop.is_running():
-                                    asyncio.run_coroutine_threadsafe(
+                                    cleanup_future = asyncio.run_coroutine_threadsafe(
                                         asyncio.wait_for(ble_future, 0.2), loop
                                     )
+                                    cleanup_future.result(timeout=0.5)
                                 else:
                                     loop.run_until_complete(
                                         asyncio.wait_for(ble_future, 0.2)
@@ -112,6 +113,8 @@ class TestIntegrationScenarios(unittest.TestCase):
                                 asyncio.TimeoutError,
                                 RuntimeError,
                                 asyncio.InvalidStateError,
+                                concurrent.futures.TimeoutError,
+                                concurrent.futures.CancelledError,
                             ) as e:
                                 logging.getLogger(__name__).debug(
                                     "Expected error during BLE Task cleanup: %s", e
@@ -144,7 +147,7 @@ class TestIntegrationScenarios(unittest.TestCase):
             try:
                 if hasattr(module, "_shutdown_shared_executors"):
                     module._shutdown_shared_executors()
-            except Exception as e:
+            except (RuntimeError, OSError) as e:
                 logging.getLogger(__name__).debug(
                     "Error during executor shutdown: %s", e
                 )

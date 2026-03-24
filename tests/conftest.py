@@ -708,6 +708,17 @@ def reset_meshtastic_globals():
         "_health_probe_request_deadlines": dict(
             getattr(mu, "_health_probe_request_deadlines", {})
         ),
+        "_ble_future_watchdog_secs": getattr(mu, "_ble_future_watchdog_secs", None),
+        "_ble_timeout_reset_threshold": getattr(
+            mu, "_ble_timeout_reset_threshold", None
+        ),
+        "_ble_scan_timeout_secs": getattr(mu, "_ble_scan_timeout_secs", None),
+        "_ble_future_stale_grace_secs": getattr(
+            mu, "_ble_future_stale_grace_secs", None
+        ),
+        "_ble_interface_create_timeout_secs": getattr(
+            mu, "_ble_interface_create_timeout_secs", None
+        ),
     }
 
     # Reset mutable globals to a clean state; keep logger and event_loop usable
