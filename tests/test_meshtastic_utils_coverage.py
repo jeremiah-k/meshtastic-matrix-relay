@@ -1195,7 +1195,7 @@ class TestSnapshotNodeNameRowsNonDict:
     """Test _snapshot_node_name_rows handling non-dict raw_node and raw_user (lines 535-542)."""
 
     def test_snapshot_node_name_rows_non_dict_raw_node(self):
-        """Test when raw_node is not a dict, it's stored directly in nodes_snapshot."""
+        """Test when raw_node is not a dict, nodes_snapshot gets {"user": None}."""
         mock_client = Mock()
         mock_client.nodes = {
             "12345": "not_a_dict",
@@ -1207,11 +1207,11 @@ class TestSnapshotNodeNameRowsNonDict:
 
             assert client_missing is False
             assert result is not None
-            assert result["12345"] == "not_a_dict"
-            assert result["67890"] is None
+            assert result["12345"] == {"user": None}
+            assert result["67890"] == {"user": None}
 
     def test_snapshot_node_name_rows_non_dict_raw_user(self):
-        """Test when raw_user is not a dict, nodes_snapshot gets {"user": raw_user}."""
+        """Test when raw_user is not a dict, nodes_snapshot gets {"user": {"id": None}}."""
         mock_client = Mock()
         mock_client.nodes = {
             "12345": {"user": "user_string_not_dict"},
@@ -1223,8 +1223,8 @@ class TestSnapshotNodeNameRowsNonDict:
 
             assert client_missing is False
             assert result is not None
-            assert result["12345"] == {"user": "user_string_not_dict"}
-            assert result["67890"] == {"user": None}
+            assert result["12345"] == {"user": {"id": None}}
+            assert result["67890"] == {"user": {"id": None}}
 
 
 class TestRefreshNodeNameTablesInvalidInterval:
