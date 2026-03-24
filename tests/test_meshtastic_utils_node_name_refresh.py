@@ -135,7 +135,7 @@ def test_refresh_node_name_tables_non_positive_interval_exits_after_one_pass(
     ):
         asyncio.run(
             mu.refresh_node_name_tables(
-                asyncio.Event(),
+                _OnePassEvent(),  # type: ignore[arg-type]
                 refresh_interval_seconds=0.0,
             )
         )

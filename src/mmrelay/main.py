@@ -794,6 +794,7 @@ async def main(config: dict[str, Any]) -> None:
                         matrix_logger.warning(
                             "Matrix sync timed out, retrying: %s", exc
                         )
+                        await asyncio.sleep(5)  # Keep retry pacing consistent.
                     except ClientError as exc:
                         matrix_logger.warning("Matrix sync failed, retrying: %s", exc)
                         await asyncio.sleep(5)  # Keep retry pacing consistent.

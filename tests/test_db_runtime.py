@@ -7,8 +7,9 @@ Covers:
 """
 
 import sqlite3
-import unittest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from mmrelay.db_runtime import (
     _get_sqlite_runtime_version_info,
@@ -16,20 +17,20 @@ from mmrelay.db_runtime import (
 )
 
 
-class TestGetSqliteRuntimeVersionInfo(unittest.TestCase):
+class TestGetSqliteRuntimeVersionInfo:
     """Test _get_sqlite_runtime_version_info function."""
 
     def test_valid_tuple_with_three_ints_returns_normalized(self):
         """Test when sqlite_version_info is a valid tuple with 3+ ints - returns normalized tuple."""
         with patch("mmrelay.db_runtime.sqlite3.sqlite_version_info", (3, 45, 1)):
             result = _get_sqlite_runtime_version_info()
-            self.assertEqual(result, (3, 45, 1))
+            assert result == (3, 45, 1)
 
     def test_valid_tuple_with_more_than_three_ints_returns_first_three(self):
         """Test when sqlite_version_info has more than 3 parts - returns first 3."""
         with patch("mmrelay.db_runtime.sqlite3.sqlite_version_info", (3, 45, 1, 2, 3)):
             result = _get_sqlite_runtime_version_info()
-            self.assertEqual(result, (3, 45, 1))
+            assert result == (3, 45, 1)
 
     def test_none_version_info_falls_back_to_string_parsing(self):
         """Test when sqlite_version_info is None - falls back to sqlite_version string parsing."""
@@ -38,7 +39,7 @@ class TestGetSqliteRuntimeVersionInfo(unittest.TestCase):
             patch("mmrelay.db_runtime.sqlite3.sqlite_version", "3.45.1"),
         ):
             result = _get_sqlite_runtime_version_info()
-            self.assertEqual(result, (3, 45, 1))
+            assert result == (3, 45, 1)
 
     def test_non_tuple_version_info_falls_back_to_string_parsing(self):
         """Test when sqlite_version_info is not a tuple - falls back to string parsing."""
@@ -47,7 +48,7 @@ class TestGetSqliteRuntimeVersionInfo(unittest.TestCase):
             patch("mmrelay.db_runtime.sqlite3.sqlite_version", "3.45.1"),
         ):
             result = _get_sqlite_runtime_version_info()
-            self.assertEqual(result, (3, 45, 1))
+            assert result == (3, 45, 1)
 
     def test_string_fewer_than_three_parts_pads_with_zeros(self):
         """Test when sqlite_version string has fewer than 3 parts - pads with zeros."""
@@ -56,7 +57,7 @@ class TestGetSqliteRuntimeVersionInfo(unittest.TestCase):
             patch("mmrelay.db_runtime.sqlite3.sqlite_version", "3.45"),
         ):
             result = _get_sqlite_runtime_version_info()
-            self.assertEqual(result, (3, 45, 0))
+            assert result == (3, 45, 0)
 
     def test_string_single_part_pads_with_zeros(self):
         """Test when sqlite_version string has only 1 part - pads with zeros."""
@@ -65,7 +66,7 @@ class TestGetSqliteRuntimeVersionInfo(unittest.TestCase):
             patch("mmrelay.db_runtime.sqlite3.sqlite_version", "3"),
         ):
             result = _get_sqlite_runtime_version_info()
-            self.assertEqual(result, (3, 0, 0))
+            assert result == (3, 0, 0)
 
     def test_string_non_numeric_parts_uses_zero(self):
         """Test when sqlite_version string has non-numeric parts - uses 0 for those parts."""
@@ -74,7 +75,7 @@ class TestGetSqliteRuntimeVersionInfo(unittest.TestCase):
             patch("mmrelay.db_runtime.sqlite3.sqlite_version", "3.abc.1"),
         ):
             result = _get_sqlite_runtime_version_info()
-            self.assertEqual(result, (3, 0, 1))
+            assert result == (3, 0, 1)
 
     def test_string_all_non_numeric_parts_uses_zeros(self):
         """Test when sqlite_version string has all non-numeric parts."""
@@ -83,7 +84,7 @@ class TestGetSqliteRuntimeVersionInfo(unittest.TestCase):
             patch("mmrelay.db_runtime.sqlite3.sqlite_version", "a.b.c"),
         ):
             result = _get_sqlite_runtime_version_info()
-            self.assertEqual(result, (0, 0, 0))
+            assert result == (0, 0, 0)
 
     def test_tuple_with_non_int_parts_falls_back_to_string(self):
         """Test when sqlite_version_info tuple has non-int parts - falls back to string."""
@@ -92,7 +93,7 @@ class TestGetSqliteRuntimeVersionInfo(unittest.TestCase):
             patch("mmrelay.db_runtime.sqlite3.sqlite_version", "3.45.1"),
         ):
             result = _get_sqlite_runtime_version_info()
-            self.assertEqual(result, (3, 45, 1))
+            assert result == (3, 45, 1)
 
     def test_tuple_with_less_than_three_parts_falls_back_to_string(self):
         """Test when sqlite_version_info tuple has fewer than 3 parts - falls back to string."""
@@ -101,10 +102,10 @@ class TestGetSqliteRuntimeVersionInfo(unittest.TestCase):
             patch("mmrelay.db_runtime.sqlite3.sqlite_version", "3.45.1"),
         ):
             result = _get_sqlite_runtime_version_info()
-            self.assertEqual(result, (3, 45, 1))
+            assert result == (3, 45, 1)
 
 
-class TestProbeSqliteJsonEachSupport(unittest.TestCase):
+class TestProbeSqliteJsonEachSupport:
     """Test _probe_sqlite_json_each_support function."""
 
     def test_no_such_function_json_each_raises_runtime_error(self):
@@ -116,15 +117,12 @@ class TestProbeSqliteJsonEachSupport(unittest.TestCase):
         mock_conn = MagicMock()
         mock_conn.execute.return_value = mock_cursor
 
-        with patch(
-            "mmrelay.db_runtime._get_sqlite_runtime_version_info",
-            return_value=(3, 45, 1),
-        ):
-            with self.assertRaises(RuntimeError) as cm:
+        with patch("mmrelay.db_runtime.sqlite3.sqlite_version_info", (3, 45, 1)):
+            with pytest.raises(RuntimeError) as cm:
                 _probe_sqlite_json_each_support(mock_conn)
 
-        self.assertIn("json_each() support is required", str(cm.exception))
-        self.assertIn("3.45.1", str(cm.exception))
+        assert "json_each() support is required" in str(cm.value)
+        assert "3.45.1" in str(cm.value)
 
     def test_no_such_table_json_each_raises_runtime_error(self):
         """Test when error contains 'no such table: json_each' - raises RuntimeError."""
@@ -135,15 +133,12 @@ class TestProbeSqliteJsonEachSupport(unittest.TestCase):
         mock_conn = MagicMock()
         mock_conn.execute.return_value = mock_cursor
 
-        with patch(
-            "mmrelay.db_runtime._get_sqlite_runtime_version_info",
-            return_value=(3, 45, 1),
-        ):
-            with self.assertRaises(RuntimeError) as cm:
+        with patch("mmrelay.db_runtime.sqlite3.sqlite_version_info", (3, 45, 1)):
+            with pytest.raises(RuntimeError) as cm:
                 _probe_sqlite_json_each_support(mock_conn)
 
-        self.assertIn("json_each() support is required", str(cm.exception))
-        self.assertIn("3.45.1", str(cm.exception))
+        assert "json_each() support is required" in str(cm.value)
+        assert "3.45.1" in str(cm.value)
 
     def test_other_sqlite_errors_reraised_unchanged(self):
         """Test other sqlite3.Errors are re-raised unchanged (not wrapped in RuntimeError)."""
@@ -153,11 +148,11 @@ class TestProbeSqliteJsonEachSupport(unittest.TestCase):
         mock_conn = MagicMock()
         mock_conn.execute.return_value = mock_cursor
 
-        with self.assertRaises(sqlite3.DatabaseError) as cm:
+        with pytest.raises(sqlite3.DatabaseError) as cm:
             _probe_sqlite_json_each_support(mock_conn)
 
-        self.assertIs(cm.exception, original_error)
-        self.assertNotIsInstance(cm.exception, RuntimeError)
+        assert cm.value is original_error
+        assert not isinstance(cm.value, RuntimeError)
 
     def test_operational_error_other_message_reraised_unchanged(self):
         """Test OperationalError with unrelated message is re-raised unchanged."""
@@ -167,10 +162,10 @@ class TestProbeSqliteJsonEachSupport(unittest.TestCase):
         mock_conn = MagicMock()
         mock_conn.execute.return_value = mock_cursor
 
-        with self.assertRaises(sqlite3.OperationalError) as cm:
+        with pytest.raises(sqlite3.OperationalError) as cm:
             _probe_sqlite_json_each_support(mock_conn)
 
-        self.assertIs(cm.exception, original_error)
+        assert cm.value is original_error
 
     def test_case_insensitive_error_matching(self):
         """Test that error message matching is case insensitive."""
@@ -181,15 +176,8 @@ class TestProbeSqliteJsonEachSupport(unittest.TestCase):
         mock_conn = MagicMock()
         mock_conn.execute.return_value = mock_cursor
 
-        with patch(
-            "mmrelay.db_runtime._get_sqlite_runtime_version_info",
-            return_value=(3, 45, 1),
-        ):
-            with self.assertRaises(RuntimeError) as cm:
+        with patch("mmrelay.db_runtime.sqlite3.sqlite_version_info", (3, 45, 1)):
+            with pytest.raises(RuntimeError) as cm:
                 _probe_sqlite_json_each_support(mock_conn)
 
-        self.assertIn("json_each() support is required", str(cm.exception))
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert "json_each() support is required" in str(cm.value)

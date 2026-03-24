@@ -215,9 +215,8 @@ class _OnePassEvent:
     def set(self) -> None:
         self._set = True
 
-    async def wait(self) -> bool:
+    async def wait(self) -> None:
         self._set = True
-        return True
 
 
 class _CloseFutureBase(concurrent.futures.Future):

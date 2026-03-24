@@ -23,6 +23,9 @@ from mmrelay.constants.database import (
     SQLITE_JSON_EACH_PROBE_PAYLOAD,
     SQLITE_JSON_EACH_PROBE_SQL,
 )
+from mmrelay.log_utils import get_logger
+
+logger = get_logger(__name__)
 
 
 def _get_sqlite_runtime_version_info() -> tuple[int, int, int]:
@@ -358,13 +361,16 @@ class DatabaseManager:
             self._async_executor.shutdown(wait=True)
 
         with self._connections_lock:
+            self._closing = True
             connections = list(self._connections)
             self._connections.clear()
             for conn in connections:
                 try:
                     conn.close()
                 except sqlite3.Error:
-                    pass
+                    logger.debug(
+                        "Error closing connection during shutdown", exc_info=True
+                    )
 
         if hasattr(self._thread_local, "connection"):
             try:

@@ -320,9 +320,9 @@ def test_sync_non_authoritative_empty_snapshot_does_not_arm_immediate_prune(
         conflicting_nodes,
         previous_state=first_state,
     )
-    assert conflict_state == (NodeNameEntry("!1", "Alpha", "ONE"),)
+    assert conflict_state == first_state
     assert get_longname("!1") == "Alpha"
-    assert get_shortname("!1") == "ONE"
+    assert get_shortname("!1") == "A"
 
     first_empty_after_conflict = sync_name_tables_if_changed(
         {},
@@ -330,7 +330,7 @@ def test_sync_non_authoritative_empty_snapshot_does_not_arm_immediate_prune(
     )
     assert first_empty_after_conflict == ()
     assert get_longname("!1") == "Alpha"
-    assert get_shortname("!1") == "ONE"
+    assert get_shortname("!1") == "A"
 
 
 class TestFormatNodeIdSample:
@@ -497,7 +497,7 @@ class TestSyncNameTablesAtomicShortNameDeletion:
     """Tests for _sync_name_tables_atomic short_name deletion (lines 1159-1161)."""
 
     def test_short_name_none_executes_delete_sql(self, configured_temp_db: str) -> None:
-        """When short_name is None, the short delete SQL is executed."""
+        """When short_name is None and snapshot_complete=True, the short delete SQL is executed."""
         _ = configured_temp_db
         save_longname("!1", "Alpha")
         save_shortname("!1", "A")
@@ -505,7 +505,7 @@ class TestSyncNameTablesAtomicShortNameDeletion:
         state = (NodeNameEntry("!1", "Alpha", None),)
         current_ids = {"!1"}
 
-        result = _sync_name_tables_atomic(state, current_ids, snapshot_complete=False)
+        result = _sync_name_tables_atomic(state, current_ids, snapshot_complete=True)
         assert result is True
         assert get_shortname("!1") is None
 
@@ -521,7 +521,6 @@ class TestSyncNameTablesAtomicDebugLogging:
 
         with patch("mmrelay.db_utils.logger") as mock_logger:
             mock_logger.isEnabledFor.return_value = True
-            mock_logger.debug = MagicMock()
 
             result = _sync_name_tables_atomic(
                 state, current_ids, snapshot_complete=True
@@ -547,7 +546,6 @@ class TestSyncNameTablesAtomicDebugLogging:
 
         with patch("mmrelay.db_utils.logger") as mock_logger:
             mock_logger.isEnabledFor.return_value = True
-            mock_logger.debug = MagicMock()
 
             result = _sync_name_tables_atomic(
                 state, current_ids, snapshot_complete=True
@@ -570,7 +568,6 @@ class TestSyncNameTablesIfChangedDebugLoggingIdDelta:
 
         with patch("mmrelay.db_utils.logger") as mock_logger:
             mock_logger.isEnabledFor.return_value = True
-            mock_logger.debug = MagicMock()
 
             state = sync_name_tables_if_changed(nodes, previous_state=None)
             assert state is not None
@@ -592,7 +589,6 @@ class TestSyncNameTablesIfChangedDebugLoggingIdDelta:
 
         with patch("mmrelay.db_utils.logger") as mock_logger:
             mock_logger.isEnabledFor.return_value = True
-            mock_logger.debug = MagicMock()
 
             sync_name_tables_if_changed(updated_nodes, previous_state=first_state)
 

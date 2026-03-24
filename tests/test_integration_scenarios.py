@@ -110,7 +110,8 @@ class TestIntegrationScenarios(unittest.TestCase):
                             except (
                                 asyncio.CancelledError,
                                 asyncio.TimeoutError,
-                                Exception,
+                                RuntimeError,
+                                asyncio.InvalidStateError,
                             ) as e:
                                 logging.getLogger(__name__).debug(
                                     "Expected error during BLE Task cleanup: %s", e
@@ -143,8 +144,10 @@ class TestIntegrationScenarios(unittest.TestCase):
             try:
                 if hasattr(module, "_shutdown_shared_executors"):
                     module._shutdown_shared_executors()
-            except Exception:
-                pass
+            except Exception as e:
+                logging.getLogger(__name__).debug(
+                    "Error during executor shutdown: %s", e
+                )
 
         # Reset matrix_utils globals
         if "mmrelay.matrix_utils" in sys.modules:
