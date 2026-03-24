@@ -1438,21 +1438,26 @@ db_path, table_name, longnames_table, shortnames_table = sys.argv[1:5]
 
 allowed_tables = {longnames_table, shortnames_table}
 if table_name not in allowed_tables:
-    raise SystemExit(f"Invalid table name: {table_name}")
+    print(f"Invalid table name: {table_name}", file=sys.stderr)
+    raise SystemExit(1)
 db_uri = f"file:{db_path}?mode=ro"
+try:
+    with sqlite3.connect(db_uri, uri=True, timeout=5) as conn:
+        conn.execute("PRAGMA busy_timeout = 5000")
+        row = conn.execute(
+            f"SELECT meshtastic_id FROM {table_name} "
+            "WHERE meshtastic_id IS NOT NULL AND meshtastic_id != '' "
+            "ORDER BY meshtastic_id LIMIT 1"
+        ).fetchone()
+except sqlite3.Error as exc:
+    print(f"SQLite error querying {table_name}: {exc}", file=sys.stderr)
+    raise SystemExit(1)
 
-with sqlite3.connect(db_uri, uri=True, timeout=5) as conn:
-    conn.execute("PRAGMA busy_timeout = 5000")
-    row = conn.execute(
-        f"SELECT meshtastic_id FROM {table_name} "
-        "WHERE meshtastic_id IS NOT NULL AND meshtastic_id != '' "
-        "ORDER BY meshtastic_id LIMIT 1"
-    ).fetchone()
-    if row and row[0]:
-        print(row[0])
-        raise SystemExit(0)
+if row and row[0]:
+    print(row[0])
+    raise SystemExit(0)
 
-raise SystemExit(f"No existing names-table row found in {table_name}")
+raise SystemExit(2)
 PY
 }
 
@@ -1502,8 +1507,11 @@ poll_for_existing_name_entry() {
 			"${db_path}" \
 			"${table_name}"
 		capture_status=$?
-		if ((capture_status != 0)); then
+		if ((capture_status == 2)); then
 			captured_value=""
+		elif ((capture_status != 0)); then
+			fail_test \
+				"Failed reading ${table_name} in ${instance_label} while waiting for first sync"
 		fi
 
 		if [[ -n ${captured_value} ]]; then

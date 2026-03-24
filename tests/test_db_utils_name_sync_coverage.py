@@ -260,11 +260,7 @@ def test_sync_unchanged_snapshot_repair_failure_keeps_previous_state(
 
     def fail_repair_write(self, func, *, write=False):
         nonlocal repair_failure_triggered
-        if (
-            write
-            and getattr(func, "__name__", "") == "_sync"
-            and not repair_failure_triggered
-        ):
+        if write and not repair_failure_triggered:
             repair_failure_triggered = True
             raise sqlite3.Error("forced write failure on repair")
         return original_run_sync(self, func, write=write)

@@ -350,8 +350,9 @@ async def main(config: dict[str, Any]) -> None:
     check_connection_task: asyncio.Task[Any] | None = None
     node_name_refresh_task: asyncio.Task[None] | None = None
     matrix_client: Any | None = None
-    plugins_loaded = False
-    message_queue_started = False
+    fatal_exception: BaseException | None = None
+    plugins_cleanup_needed = False
+    message_queue_cleanup_needed = False
 
     def _set_shutdown_flag() -> None:
         """
@@ -505,10 +506,10 @@ async def main(config: dict[str, Any]) -> None:
 
     try:
         # Load plugins early (run in executor to avoid blocking event loop with time.sleep)
+        plugins_cleanup_needed = True
         await loop.run_in_executor(
             None, functools.partial(load_plugins, passed_config=config)
         )
-        plugins_loaded = True
 
         # Start message queue with configured message delay
         meshtastic_config = config.get(CONFIG_SECTION_MESHTASTIC)
@@ -518,8 +519,8 @@ async def main(config: dict[str, Any]) -> None:
             CONFIG_KEY_MESSAGE_DELAY,
             DEFAULT_MESSAGE_DELAY,
         )
+        message_queue_cleanup_needed = True
         start_message_queue(message_delay=message_delay)
-        message_queue_started = True
 
         # Connect to Meshtastic
         meshtastic_utils.meshtastic_client = await asyncio.to_thread(
@@ -585,12 +586,14 @@ async def main(config: dict[str, Any]) -> None:
         check_connection_task = asyncio.create_task(check_connection_callable())
 
         def _on_check_connection_done(task: asyncio.Task[Any]) -> None:
+            nonlocal fatal_exception
             if task.cancelled():
                 return
             if shutdown_event.is_set():
                 return
             exc = task.exception()
             if exc is not None:
+                fatal_exception = exc
                 meshtastic_logger.error(
                     "Connection health task exited unexpectedly",
                     exc_info=(type(exc), exc, exc.__traceback__),
@@ -602,6 +605,9 @@ async def main(config: dict[str, Any]) -> None:
                 check_connection_callable is _DEFAULT_CHECK_CONNECTION_CALLABLE
                 and _requires_continuous_health_monitor(config)
             ):
+                fatal_exception = RuntimeError(
+                    "Connection health task exited unexpectedly without an exception"
+                )
                 meshtastic_logger.error(
                     "Connection health task exited unexpectedly without an exception"
                 )
@@ -615,15 +621,23 @@ async def main(config: dict[str, Any]) -> None:
         _set_shutdown_flag()
         if check_connection_task is not None:
             check_connection_task.cancel()
-            await asyncio.gather(check_connection_task, return_exceptions=True)
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(check_connection_task, return_exceptions=True),
+                    timeout=5.0,
+                )
+            except asyncio.TimeoutError:
+                meshtastic_logger.warning(
+                    "Timed out waiting for connection health task during startup rollback"
+                )
         _remove_ready_file()
-        if plugins_loaded:
+        if plugins_cleanup_needed:
             await _run_blocking_shutdown_step(
                 shutdown_plugins,
                 step_name="plugins",
                 timeout_seconds=_PLUGIN_SHUTDOWN_TIMEOUT_SECONDS,
             )
-        if message_queue_started:
+        if message_queue_cleanup_needed:
             await _run_blocking_shutdown_step(
                 stop_message_queue,
                 step_name="message queue",
@@ -921,6 +935,8 @@ async def main(config: dict[str, Any]) -> None:
             meshtastic_logger.info("Cancelled Meshtastic reconnect task.")
 
         matrix_logger.info("Shutdown complete.")
+        if fatal_exception is not None and sys.exc_info()[1] is None:
+            raise fatal_exception
 
 
 def run_main(args: Any) -> int:

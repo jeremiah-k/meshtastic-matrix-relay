@@ -16,6 +16,7 @@ import os
 import subprocess  # nosec B404 - Used for controlled test environment operations
 import sys
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 # Add src to path for imports
@@ -299,14 +300,25 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
                 "mmrelay.setup_utils.get_executable_path",
                 return_value="/usr/bin/mmrelay",
             ),
-            patch("mmrelay.setup_utils.create_service_file", return_value=False),
+            patch(
+                "mmrelay.setup_utils.get_template_service_content",
+                return_value=(
+                    "[Unit]\n"
+                    "Description=MMRelay\n"
+                    "[Service]\n"
+                    "WorkingDirectory=%h/meshtastic-matrix-relay\n"
+                    "ExecStart=/usr/bin/env mmrelay --config %h/.mmrelay/config/config.yaml\n"
+                ),
+            ),
             patch("mmrelay.setup_utils.get_user_service_path") as mock_service_path,
+            patch(
+                "pathlib.Path.write_text",
+                side_effect=PermissionError("Permission denied"),
+            ),
             patch("mmrelay.setup_utils.logger"),
             patch("builtins.input", return_value="y"),
         ):
-            mock_path = MagicMock()
-            mock_path.exists.return_value = False
-            mock_service_path.return_value = mock_path
+            mock_service_path.return_value = Path("/tmp/mmrelay-test.service")
             result = install_service()
             self.assertFalse(result)
 

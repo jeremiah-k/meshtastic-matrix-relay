@@ -160,7 +160,9 @@ def _drain_future_result_safely(future: Any, timeout: float) -> None:
     try:
         result_fn(timeout=timeout)
     except TypeError:
-        with contextlib.suppress(
+        try:
+            result_fn()
+        except (
             TimeoutError,
             asyncio.TimeoutError,
             asyncio.CancelledError,
@@ -169,7 +171,13 @@ def _drain_future_result_safely(future: Any, timeout: float) -> None:
             concurrent.futures.CancelledError,
             concurrent.futures.InvalidStateError,
         ):
-            result_fn()
+            return
+        except Exception as exc:
+            logging.getLogger(__name__).debug(
+                "Suppressing future-drain exception during teardown: %s",
+                exc,
+            )
+            return
     except (
         TimeoutError,
         asyncio.TimeoutError,
@@ -182,10 +190,10 @@ def _drain_future_result_safely(future: Any, timeout: float) -> None:
         return
     except Exception as exc:
         logging.getLogger(__name__).debug(
-            "Unexpected future-drain exception during teardown: %s",
+            "Suppressing future-drain exception during teardown: %s",
             exc,
         )
-        raise
+        return
 
 
 def cleanup_ble_future_state(module: Any) -> None:
@@ -196,7 +204,11 @@ def cleanup_ble_future_state(module: Any) -> None:
     because test teardown should not fail while clearing in-flight bookkeeping.
     """
     ble_future = getattr(module, "_ble_future", None)
+    ble_address = getattr(module, "_ble_future_address", None)
+    timeout_counts = getattr(module, "_ble_timeout_counts", None)
     if ble_future is None:
+        if isinstance(timeout_counts, dict) and ble_address is not None:
+            timeout_counts.pop(ble_address, None)
         if hasattr(module, "_ble_future"):
             module._ble_future = None
         if hasattr(module, "_ble_future_address"):
@@ -213,15 +225,29 @@ def cleanup_ble_future_state(module: Any) -> None:
     if callable(cancel_fn) and not is_done:
         cancel_fn()
         if isinstance(ble_future, asyncio.Task):
+
+            def _consume_task_result(done_task: asyncio.Task[Any]) -> None:
+                with contextlib.suppress(
+                    asyncio.CancelledError,
+                    asyncio.InvalidStateError,
+                ):
+                    done_task.exception()
+
             try:
                 loop = ble_future.get_loop()
                 if not loop.is_closed():
                     if loop.is_running():
-                        cleanup_future = asyncio.run_coroutine_threadsafe(
-                            asyncio.wait_for(ble_future, 0.2),
-                            loop,
-                        )
-                        cleanup_future.result(timeout=0.5)
+                        same_loop = False
+                        with contextlib.suppress(RuntimeError):
+                            same_loop = asyncio.get_running_loop() is loop
+                        if same_loop:
+                            ble_future.add_done_callback(_consume_task_result)
+                        else:
+                            cleanup_future = asyncio.run_coroutine_threadsafe(
+                                asyncio.wait_for(ble_future, 0.2),
+                                loop,
+                            )
+                            cleanup_future.result(timeout=0.5)
                     else:
                         loop.run_until_complete(asyncio.wait_for(ble_future, 0.2))
             except (
@@ -245,6 +271,8 @@ def cleanup_ble_future_state(module: Any) -> None:
     if is_done_now:
         _drain_future_result_safely(ble_future, timeout=0.1)
 
+    if isinstance(timeout_counts, dict) and ble_address is not None:
+        timeout_counts.pop(ble_address, None)
     module._ble_future = None
     if hasattr(module, "_ble_future_address"):
         module._ble_future_address = None

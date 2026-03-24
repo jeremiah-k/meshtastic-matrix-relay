@@ -61,7 +61,7 @@ class InlineExecutorLoop:
         fut = self._loop.create_future()
         try:
             result = func(*args)
-        except Exception as exc:
+        except BaseException as exc:
             fut.set_exception(exc)
         else:
             fut.set_result(result)

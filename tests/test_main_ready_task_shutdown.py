@@ -35,12 +35,13 @@ class _ControllableEvent:
     def clear(self) -> None:
         self._set = False
 
-    async def wait(self) -> None:
+    async def wait(self) -> bool:
         if self._set:
-            return
+            return True
         waiter: asyncio.Future[None] = asyncio.get_running_loop().create_future()
         self._waiters.append(waiter)
         await waiter
+        return True
 
 
 class _EventFactory:

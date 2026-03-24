@@ -93,6 +93,10 @@ class TestIntegrationScenarios(unittest.TestCase):
                 cleanup_ble_future_state(module)
             if hasattr(module, "_ble_timeout_counts"):
                 module._ble_timeout_counts = {}
+            if hasattr(module, "_ble_executor_orphaned_workers_by_address"):
+                module._ble_executor_orphaned_workers_by_address = {}
+            if hasattr(module, "_metadata_executor_orphaned_workers"):
+                module._metadata_executor_orphaned_workers = 0
             try:
                 if hasattr(module, "_shutdown_shared_executors"):
                     module._shutdown_shared_executors()

@@ -59,7 +59,7 @@ def _validate_sqlite_json_each_support() -> bool:
         bool: True when json_each() is available, False otherwise.
     """
     current_version = _get_sqlite_runtime_version_info()
-    conn = sqlite3.connect(":memory:")
+    conn = sqlite3.Connection(":memory:")
     try:
         _probe_sqlite_json_each_support(conn)
         return True
@@ -424,10 +424,9 @@ class DatabaseManager:
         Removes every connection from the manager's internal registry, attempts to close each connection (suppressing sqlite3.Error), and clears the current thread's stored connection reference.
         """
         with self._executor_lock:
-            self._accepting_submissions = False
-
-        with self._connections_lock:
-            self._closing = True
+            with self._connections_lock:
+                self._accepting_submissions = False
+                self._closing = True
 
         with self._executor_lock:
             self._async_executor.shutdown(wait=True)

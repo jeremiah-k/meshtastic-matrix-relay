@@ -3287,6 +3287,19 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
             "meshtastic": {"connection_type": "serial"},
         }
 
+        async def _pending_check_connection() -> None:
+            await asyncio.sleep(3600)
+
+        real_wait_for = asyncio.wait_for
+        shutdown_wait_for_injected = False
+
+        async def _wait_for_side_effect(awaitable, timeout=None):
+            nonlocal shutdown_wait_for_injected
+            if timeout == 5.0 and not shutdown_wait_for_injected:
+                shutdown_wait_for_injected = True
+                raise ValueError("Test error")
+            return await real_wait_for(awaitable, timeout=timeout)
+
         with (
             patch("mmrelay.main.initialize_database"),
             patch("mmrelay.main.load_plugins"),
@@ -3301,10 +3314,12 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
             patch("mmrelay.main.shutdown_plugins"),
             patch("mmrelay.main.stop_message_queue"),
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
-            patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
+            patch(
+                "mmrelay.main.meshtastic_utils.check_connection",
+                new=_pending_check_connection,
+            ),
             patch("mmrelay.main.asyncio.wait_for") as mock_wait_for,
             patch("mmrelay.main.logger") as mock_logger,
-            contextlib.suppress(Exception),
         ):
             mock_matrix_client = AsyncMock()
             mock_matrix_client.add_event_callback = MagicMock()
@@ -3315,16 +3330,12 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
                 mock_queue.ensure_processor_started = MagicMock()
                 mock_get_queue.return_value = mock_queue
 
-                mock_wait_for.side_effect = ValueError("Test error")
+                mock_wait_for.side_effect = _wait_for_side_effect
 
                 asyncio.run(main(config))
 
-                self.assertTrue(
-                    any(
-                        "Error while waiting for" in str(call)
-                        for call in mock_logger.error.call_args_list
-                    )
-                )
+                self.assertTrue(shutdown_wait_for_injected)
+                self.assertTrue(mock_logger.error.called)
 
     def test_cancelled_error_cancels_task_and_returns(self):
         """CancelledError during shutdown should cancel task and return."""

@@ -981,12 +981,7 @@ def _read_name_values_for_ids(
 
     manager = _get_db_manager()
     sorted_ids = sorted(current_ids)
-    supports_json_each = True
-    supports_json_each_fn = type(manager).__dict__.get("supports_json_each")
-    if callable(supports_json_each_fn):
-        supports_json_each = bool(supports_json_each_fn(manager))
-    elif "_supports_json_each" in getattr(manager, "__dict__", {}):
-        supports_json_each = bool(getattr(manager, "_supports_json_each"))
+    supports_json_each = manager.supports_json_each()
 
     def _fetch(cursor: sqlite3.Cursor) -> dict[str, str | None]:
         rows_by_id: dict[str, str | None] = {}
@@ -1184,18 +1179,46 @@ def _collect_node_name_snapshot(
         merged_long_name = _merge_node_name_values(existing_entry[0], long_name)
         merged_short_name = _merge_node_name_values(existing_entry[1], short_name)
 
-        # If either field has a conflict, skip the entire ID to avoid partial updates.
-        if (
-            merged_long_name is _CONFLICT_SENTINEL
-            or merged_short_name is _CONFLICT_SENTINEL
-        ):
+        long_name_conflict = merged_long_name is _CONFLICT_SENTINEL
+        short_name_conflict = merged_short_name is _CONFLICT_SENTINEL
+        if long_name_conflict and short_name_conflict:
             logger.warning(
-                "Skipping node %s due to conflicting duplicate names in snapshot",
+                "Skipping node %s due to conflicting duplicate %s/%s values in snapshot",
                 id_key,
+                PROTO_NODE_NAME_LONG,
+                PROTO_NODE_NAME_SHORT,
             )
             snapshot_complete = False
             state_by_id.pop(id_key, None)
             skipped_ids.add(id_key)
+            continue
+        if long_name_conflict or short_name_conflict:
+            snapshot_complete = False
+            if long_name_conflict:
+                logger.warning(
+                    "Ignoring conflicting duplicate %s values for node %s",
+                    PROTO_NODE_NAME_LONG,
+                    id_key,
+                )
+            if short_name_conflict:
+                logger.warning(
+                    "Ignoring conflicting duplicate %s values for node %s",
+                    PROTO_NODE_NAME_SHORT,
+                    id_key,
+                )
+            resolved_long_name = (
+                None if long_name_conflict else cast(str | None, merged_long_name)
+            )
+            resolved_short_name = (
+                None if short_name_conflict else cast(str | None, merged_short_name)
+            )
+            # If no unambiguous field remains for this ID, preserve existing DB state
+            # by skipping updates for this snapshot cycle.
+            if resolved_long_name is None and resolved_short_name is None:
+                state_by_id.pop(id_key, None)
+                skipped_ids.add(id_key)
+                continue
+            state_by_id[id_key] = (resolved_long_name, resolved_short_name)
             continue
         state_by_id[id_key] = cast(
             tuple[str | None, str | None],

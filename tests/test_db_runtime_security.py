@@ -560,8 +560,7 @@ class TestDatabaseManager(unittest.TestCase):
                         task.cancel()
                         with self.assertRaises(asyncio.CancelledError):
                             await task
-
-            await asyncio.wait_for(close_task, timeout=5.0)
+                await asyncio.wait_for(close_task, timeout=5.0)
             return result1, result2
 
         result1, result2 = asyncio.run(run_test())

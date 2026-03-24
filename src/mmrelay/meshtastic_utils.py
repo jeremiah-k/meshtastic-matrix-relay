@@ -623,9 +623,9 @@ def _snapshot_node_name_rows() -> tuple[dict[str, Any] | None, bool]:
                 continue
 
             user_snapshot: dict[str, Any] = {
-                key: raw_user.get(key)
-                for key in ("id", PROTO_NODE_NAME_LONG, PROTO_NODE_NAME_SHORT)
-                if key in raw_user
+                "id": raw_user.get("id"),
+                PROTO_NODE_NAME_LONG: raw_user.get(PROTO_NODE_NAME_LONG),
+                PROTO_NODE_NAME_SHORT: raw_user.get(PROTO_NODE_NAME_SHORT),
             }
             nodes_snapshot[node_key] = {"user": user_snapshot}
 
@@ -1357,7 +1357,7 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
                 _ble_executor.shutdown(wait=False)
         logger.warning(
             "BLE worker timed out %s times for %s; recreating executor "
-            "(orphaned BLE workers for address=%s)",
+            "(orphaned BLE workers=%s)",
             timeout_count,
             ble_address,
             orphaned_workers,
@@ -2915,7 +2915,6 @@ def connect_meshtastic(
         "_ble_interface_create_timeout_secs",
     )
     ble_create_timeout_secs = max(configured_timeout_secs, create_timeout_floor_secs)
-    ble_constructor_timeout_arg = max(1, math.ceil(ble_create_timeout_secs))
 
     while (
         not successful
@@ -2996,7 +2995,8 @@ def connect_meshtastic(
                                 "noProto": False,
                                 "debugOut": None,
                                 "noNodes": False,
-                                "timeout": ble_constructor_timeout_arg,
+                                # Preserve user-configured Meshtastic reply timeout.
+                                "timeout": configured_timeout_arg,
                             }
 
                             # Configure auto_reconnect only when supported.
@@ -3257,6 +3257,12 @@ def connect_meshtastic(
                             if connect_future.cancel():
                                 _clear_ble_future(connect_future)
                             else:
+                                timed_out_iface = iface
+                                # Clear global/local references before attaching late
+                                # disposer so late completions cannot observe stale active
+                                # globals and skip cleanup.
+                                iface = None
+                                meshtastic_iface = None
                                 _schedule_ble_future_cleanup(
                                     connect_future,
                                     ble_address,
@@ -3266,7 +3272,7 @@ def connect_meshtastic(
                                     connect_future,
                                     ble_address,
                                     reason="connect timeout",
-                                    fallback_iface=iface,
+                                    fallback_iface=timed_out_iface,
                                 )
                                 timeout_count = _record_ble_timeout(ble_address)
                                 _maybe_reset_ble_executor(ble_address, timeout_count)
@@ -3556,6 +3562,7 @@ def on_lost_meshtastic_connection(
         meshtastic_client = None
         ble_future_to_cancel = None
         stale_executor = None
+        stale_ble_address: str | None = None
         with _ble_executor_lock:
             if _ble_future and not _ble_future.done():
                 logger.debug(
@@ -3563,6 +3570,7 @@ def on_lost_meshtastic_connection(
                     detection_source,
                 )
                 ble_future_to_cancel = _ble_future
+                stale_ble_address = _ble_future_address
                 _ble_future = None
                 if _ble_future_address:
                     with _ble_timeout_lock:
@@ -3575,6 +3583,12 @@ def on_lost_meshtastic_connection(
                     _ble_executor = ThreadPoolExecutor(max_workers=1)
 
         if ble_future_to_cancel is not None:
+            if stale_ble_address:
+                _attach_late_ble_interface_disposer(
+                    ble_future_to_cancel,
+                    stale_ble_address,
+                    reason=f"connection loss: {detection_source}",
+                )
             ble_future_to_cancel.cancel()
         if stale_executor is not None:
             try:
