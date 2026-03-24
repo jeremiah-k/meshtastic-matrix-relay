@@ -9,6 +9,8 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Final
 
+PragmaValue = str | bool | int | float
+
 # Message retention defaults
 DEFAULT_MSGS_TO_KEEP: Final[int] = 500
 DEFAULT_MAX_DATA_ROWS_PER_NODE_BASE: Final[int] = 100  # Base plugin default
@@ -34,7 +36,7 @@ DEFAULT_RADIUS_KM: Final[int] = 5  # Default radius for location-based filtering
 # SQLite configuration defaults
 DEFAULT_ENABLE_WAL: Final[bool] = True
 DEFAULT_BUSY_TIMEOUT_MS: Final[int] = 5000
-DEFAULT_EXTRA_PRAGMAS: Final[Mapping[str, str]] = MappingProxyType(
+DEFAULT_EXTRA_PRAGMAS: Final[Mapping[str, PragmaValue]] = MappingProxyType(
     {
         "synchronous": "NORMAL",
         "temp_store": "MEMORY",

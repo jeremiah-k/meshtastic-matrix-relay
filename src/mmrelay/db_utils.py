@@ -19,6 +19,7 @@ from mmrelay.constants.database import (
     NAMES_TABLE_SHORTNAMES,
     PROTO_NODE_NAME_LONG,
     PROTO_NODE_NAME_SHORT,
+    PragmaValue,
 )
 from mmrelay.db_runtime import DatabaseManager
 from mmrelay.log_utils import get_logger
@@ -371,7 +372,10 @@ def _reset_db_manager() -> None:
     """
     Reset the cached global DatabaseManager so a new instance will be created on next access.
 
-    If a manager exists, it is closed while holding the manager lock to avoid race conditions. Intended for testing and when configuration changes require recreating the manager.
+    The manager reference is cleared atomically under lock, then closed outside the lock.
+    This avoids holding the lock during a potentially blocking close() operation while
+    still ensuring no new threads can acquire the old manager after this call returns.
+    Intended for testing and when configuration changes require recreating the manager.
     """
     global _db_manager, _db_manager_signature
     manager_to_close = None
@@ -381,9 +385,8 @@ def _reset_db_manager() -> None:
             _db_manager = None
             _db_manager_signature = None
 
-            # Close old manager inside the lock to prevent race condition
-            # where another thread might be using connections from the old manager
-            _close_manager_safely(manager_to_close)
+    if manager_to_close is not None:
+        _close_manager_safely(manager_to_close)
 
 
 def _parse_bool(value: Any, default: bool) -> bool:
@@ -425,7 +428,7 @@ def _parse_int(value: Any, default: int) -> int:
         return default
 
 
-def _resolve_database_options() -> tuple[bool, int, dict[str, Any]]:
+def _resolve_database_options() -> tuple[bool, int, dict[str, PragmaValue]]:
     """
     Resolve database options (WAL, busy timeout, and SQLite pragmas) from the global config, supporting legacy keys and falling back to module defaults.
 

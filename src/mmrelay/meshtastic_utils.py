@@ -442,13 +442,13 @@ def _reset_metadata_executor_for_stale_probe() -> None:
         return
 
     with _metadata_future_lock:
-        if _metadata_executor_orphaned_workers >= EXECUTOR_ORPHAN_THRESHOLD:
+        if _metadata_executor_orphaned_workers + 1 >= EXECUTOR_ORPHAN_THRESHOLD:
             _metadata_executor_degraded = True
             logger.error(
                 "METADATA EXECUTOR DEGRADED: %s workers have been orphaned due to "
                 "repeated hangs. Further automatic recovery is disabled. "
                 "Reconnect or restart the relay to restore metadata probing.",
-                _metadata_executor_orphaned_workers,
+                _metadata_executor_orphaned_workers + 1,
             )
             _metadata_future = None
             _metadata_future_started_at = None
@@ -741,7 +741,7 @@ async def refresh_node_name_tables(
 
     The first refresh attempt runs immediately. When `refresh_interval_seconds`
     is zero, one immediate refresh is attempted and periodic refresh is disabled
-    afterward. Negative values are treated the same when passed programmatically.
+    afterward.
 
     Current scope: this task updates only long/short name cache tables from the
     NodeDB snapshot. Future releases may extend persistence to broader NodeDB
@@ -1456,14 +1456,14 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
             return
 
         current_orphans = _ble_executor_orphaned_workers_by_address.get(ble_address, 0)
-        if current_orphans >= EXECUTOR_ORPHAN_THRESHOLD:
+        if current_orphans + 1 >= EXECUTOR_ORPHAN_THRESHOLD:
             _ble_executor_degraded_addresses.add(ble_address)
             logger.error(
                 "BLE EXECUTOR DEGRADED for %s: %s workers have been orphaned due to "
                 "repeated hangs. Further automatic recovery is disabled for this device. "
                 "Reconnect or restart the relay to restore BLE connectivity.",
                 ble_address,
-                current_orphans,
+                current_orphans + 1,
             )
             _ble_future = None
             _ble_future_address = None
