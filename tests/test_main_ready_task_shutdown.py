@@ -152,7 +152,7 @@ async def test_main_cleans_up_ready_task_on_shutdown(tmp_path, monkeypatch) -> N
         patch("mmrelay.main.initialize_database"),
         patch("mmrelay.main.load_plugins"),
         patch("mmrelay.main.start_message_queue"),
-        patch("mmrelay.main.connect_meshtastic", return_value=None),
+        patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
         patch(
             "mmrelay.main.connect_matrix",
             side_effect=_make_async_return(mock_matrix_client),

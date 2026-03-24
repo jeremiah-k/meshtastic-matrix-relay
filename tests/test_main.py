@@ -437,6 +437,12 @@ class TestMain(unittest.TestCase):
         mock_matrix_client = AsyncMock()
         mock_matrix_client.add_event_callback = MagicMock()
         mock_matrix_client.close = AsyncMock()
+
+        async def _sync_forever_once(*_args: Any, **_kwargs: Any) -> None:
+            shutdown_event.set()
+            return None
+
+        mock_matrix_client.sync_forever = AsyncMock(side_effect=_sync_forever_once)
         mock_connect_matrix.return_value = mock_matrix_client
         mock_connect_meshtastic.return_value = MagicMock()
         created_task_coro_names: list[str] = []
@@ -625,18 +631,12 @@ class TestMain(unittest.TestCase):
         mock_connect_meshtastic,
     ):
         """
-        Test that the application attempts to connect to Matrix even if Meshtastic connection fails.
-
-        Simulates a failed Meshtastic connection and verifies that the Matrix connection is still attempted during application startup.
+        Test that startup fails fast when Meshtastic connection cannot be established.
         """
         # Mock Meshtastic connection to return None (failure)
         mock_connect_meshtastic.return_value = None
 
-        # Mock Matrix connection to fail early to avoid hanging
-        mock_connect_matrix.side_effect = _make_async_return(None)
-        mock_join_room.side_effect = _async_noop
-
-        # Call main function (should exit early due to connection failures)
+        # Call main function (should fail before Matrix connection is attempted)
         with (
             patch(
                 "mmrelay.main.asyncio.get_running_loop",
@@ -647,11 +647,11 @@ class TestMain(unittest.TestCase):
                 side_effect=inline_to_thread,
             ),
         ):
-            with contextlib.suppress(ConnectionError):
+            with self.assertRaises(ConnectionError):
                 asyncio.run(main(self.mock_config))
 
-        # Should still proceed with Matrix connection
-        mock_connect_matrix.assert_called_once()
+        mock_connect_matrix.assert_not_called()
+        mock_join_room.assert_not_called()
 
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
@@ -1598,7 +1598,7 @@ class TestMainFunctionEdgeCases(unittest.TestCase):
             result = asyncio.run(
                 meshtastic_module.refresh_node_name_tables(
                     _OnePassEvent(),  # pyright: ignore[reportArgumentType]
-                    refresh_interval_seconds=1.0,
+                    refresh_interval_seconds=0.0,
                 )
             )
 
@@ -2428,7 +2428,7 @@ class TestMainAsyncFunction(unittest.TestCase):
                 "mmrelay.main.connect_matrix",
                 side_effect=_make_async_return(mock_matrix_client),
             ),
-            patch("mmrelay.main.connect_meshtastic", return_value=None),
+            patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
             patch("mmrelay.main.join_matrix_room", side_effect=_async_noop),
             patch("mmrelay.main.get_message_queue") as mock_get_queue,
             patch(

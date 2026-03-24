@@ -279,7 +279,7 @@ def test_sync_unchanged_snapshot_repair_failure_keeps_previous_state(
 def test_sync_empty_snapshot_does_not_prune_existing_rows(
     configured_temp_db: str,
 ) -> None:
-    """Empty snapshots are treated as incomplete to prevent transient data loss."""
+    """Empty snapshots should preserve prior state and avoid transient data loss."""
     _ = configured_temp_db
     nodes = {
         "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
@@ -290,12 +290,12 @@ def test_sync_empty_snapshot_does_not_prune_existing_rows(
     assert get_shortname("!1") == "A"
 
     empty_state = sync_name_tables_if_changed({}, previous_state=first_state)
-    assert empty_state == ()
+    assert empty_state == first_state
     assert get_longname("!1") == "Alpha"
     assert get_shortname("!1") == "A"
 
     stable_empty_state = sync_name_tables_if_changed({}, previous_state=empty_state)
-    assert stable_empty_state == ()
+    assert stable_empty_state == first_state
     assert get_longname("!1") == "Alpha"
     assert get_shortname("!1") == "A"
 
@@ -328,7 +328,7 @@ def test_sync_non_authoritative_empty_snapshot_does_not_arm_immediate_prune(
         {},
         previous_state=conflict_state,
     )
-    assert first_empty_after_conflict == ()
+    assert first_empty_after_conflict == first_state
     assert get_longname("!1") == "Alpha"
     assert get_shortname("!1") == "A"
 

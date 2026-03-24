@@ -76,7 +76,7 @@ class TestDatabaseManager(unittest.TestCase):
             manager.close()
 
     def test_initialization_rejects_unsupported_sqlite_version(self):
-        """DatabaseManager should fail fast when runtime SQLite is too old."""
+        """DatabaseManager should fail fast when json_each() support is unavailable."""
         min_major, min_minor, min_patch = MIN_SQLITE_VERSION_JSON_EACH
         if min_patch > 0:
             unsupported = (min_major, min_minor, min_patch - 1)
@@ -86,28 +86,27 @@ class TestDatabaseManager(unittest.TestCase):
             unsupported = (max(min_major - 1, 0), 99, 99)
 
         with (
-            patch("mmrelay.db_runtime.sqlite3.sqlite_version_info", unsupported),
             patch(
-                "mmrelay.db_runtime.sqlite3.sqlite_version",
-                ".".join(str(part) for part in unsupported),
+                "mmrelay.db_runtime._probe_sqlite_json_each_support",
+                side_effect=RuntimeError("missing json_each"),
+            ),
+            patch(
+                "mmrelay.db_runtime._get_sqlite_runtime_version_info",
+                return_value=unsupported,
             ),
         ):
             with self.assertRaises(RuntimeError) as cm:
                 DatabaseManager(self.db_path)
-        min_version = ".".join(str(part) for part in MIN_SQLITE_VERSION_JSON_EACH)
-        self.assertIn(f"SQLite >= {min_version} is required", str(cm.exception))
+
+        self.assertIn("SQLite json_each() support is required", str(cm.exception))
+        unsupported_version = ".".join(str(part) for part in unsupported)
+        self.assertIn(unsupported_version, str(cm.exception))
 
     def test_initialization_accepts_minimum_supported_sqlite_version(self):
         """DatabaseManager should allow the minimum supported SQLite runtime."""
-        with (
-            patch(
-                "mmrelay.db_runtime.sqlite3.sqlite_version_info",
-                MIN_SQLITE_VERSION_JSON_EACH,
-            ),
-            patch(
-                "mmrelay.db_runtime.sqlite3.sqlite_version",
-                ".".join(str(part) for part in MIN_SQLITE_VERSION_JSON_EACH),
-            ),
+        with patch(
+            "mmrelay.db_runtime._get_sqlite_runtime_version_info",
+            return_value=MIN_SQLITE_VERSION_JSON_EACH,
         ):
             manager = DatabaseManager(self.db_path)
             try:
