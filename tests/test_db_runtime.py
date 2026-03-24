@@ -181,3 +181,15 @@ class TestProbeSqliteJsonEachSupport:
                 _probe_sqlite_json_each_support(mock_conn)
 
         assert "json_each() support is required" in str(cm.value)
+
+    def test_json_each_supported_completes_without_error(self):
+        """Test when json_each is supported - function completes without raising."""
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [("probe",)]
+        mock_conn = MagicMock()
+        mock_conn.execute.return_value = mock_cursor
+
+        _probe_sqlite_json_each_support(mock_conn)
+
+        mock_conn.execute.assert_called_once()
+        mock_cursor.fetchall.assert_called_once()

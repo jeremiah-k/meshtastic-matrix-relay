@@ -7,9 +7,9 @@ and data management settings.
 
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import Final
+from typing import Final, TypeAlias
 
-PragmaValue = str | bool | int | float
+PragmaValue: TypeAlias = str | bool | int | float
 
 # Message retention defaults
 DEFAULT_MSGS_TO_KEEP: Final[int] = 500

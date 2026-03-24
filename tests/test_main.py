@@ -53,6 +53,7 @@ from typing import Any, Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from aiohttp import ClientError
 
 from mmrelay.constants.config import DEFAULT_NODEDB_REFRESH_INTERVAL
 from mmrelay.main import main, print_banner, run_main
@@ -3726,8 +3727,6 @@ class TestMatrixSyncLoopErrorHandling(unittest.TestCase):
 
     def test_sync_client_error_logs_warning_and_retries(self):
         """ClientError from sync_task.result() logs warning and retries."""
-        from aiohttp import ClientError
-
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org"}],
             "matrix": {"homeserver": "https://matrix.org"},

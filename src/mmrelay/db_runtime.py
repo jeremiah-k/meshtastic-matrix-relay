@@ -127,6 +127,7 @@ class DatabaseManager:
     _accepting_submissions: bool
     _closing: bool
     _supports_json_each: bool
+    _async_executor: ThreadPoolExecutor
 
     def __init__(
         self,

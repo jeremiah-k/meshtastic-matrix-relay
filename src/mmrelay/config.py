@@ -490,9 +490,9 @@ def _convert_env_float(
     try:
         float_value = float(value)
     except ValueError:
-        raise ValueError(f"Invalid float value for {var_name}: '{value}'") from None
+        raise ValueError(f"{var_name} must be a finite number, got '{value}'") from None
     if not math.isfinite(float_value):
-        raise ValueError(f"Invalid float value for {var_name}: '{value}'")
+        raise ValueError(f"{var_name} must be a finite number, got '{value}'")
 
     if min_value is not None and float_value < min_value:
         raise ValueError(f"{var_name} must be >= {min_value}, got {float_value}")

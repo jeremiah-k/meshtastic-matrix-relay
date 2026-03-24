@@ -538,14 +538,15 @@ class TestBleDegradedStateSubmissionBlocking:
         assert error_calls, "Expected error about degraded BLE executor"
         assert ble_address in str(error_calls[0].args)
 
-    def test_ble_degraded_state_cleared_after_constructor_success_compatibility_mode(
+    def test_ble_degraded_state_not_present_after_constructor_success_compatibility_mode(
         self, reset_meshtastic_globals
     ):
-        """In compatibility mode, degraded state should be cleared after constructor success.
+        """In compatibility mode, successful connection should not leave degraded state.
 
         This verifies that for interfaces without auto_reconnect support (where constructor
-        success IS the full connection), the degraded state is cleared immediately after
-        the interface is created.
+        success IS the full connection), the degraded state is not present after a successful
+        connection. Note: This test does not verify clearing behavior - see
+        test_ble_degraded_state_blocks_constructor_path for blocking behavior.
         """
         ble_address = "AA:BB:CC:DD:EE:FF"
         config = {
@@ -579,23 +580,20 @@ class TestBleDegradedStateSubmissionBlocking:
             ),
             patch("mmrelay.meshtastic_utils.logger"),
         ):
-            # Connect without degraded state to verify normal connection works
             result = connect_meshtastic(passed_config=config)
 
         assert result is not None
-        # In compatibility mode (no auto_reconnect), constructor success clears degraded state
-        # Since we didn't start with degraded state, it should still not be present
         assert ble_address not in mu._ble_executor_degraded_addresses
 
-    def test_ble_degraded_state_not_cleared_after_constructor_auto_reconnect_mode(
+    def test_ble_degraded_state_not_present_after_full_connection_auto_reconnect_mode(
         self, reset_meshtastic_globals
     ):
-        """In auto_reconnect mode, degraded state should NOT be cleared after constructor success.
+        """In auto_reconnect mode, successful connection should not leave degraded state.
 
-        This verifies that for interfaces with auto_reconnect support (where constructor
-        success != full connection - we still need connect() to succeed), the degraded
-        state is NOT cleared after constructor success. It should only be cleared after
-        connect() succeeds.
+        This verifies that for interfaces with auto_reconnect support, the degraded
+        state is not present after both constructor and connect() succeed.
+        Note: This test does not verify clearing behavior - see
+        test_ble_degraded_state_blocks_explicit_connect_path for blocking behavior.
         """
         ble_address = "AA:BB:CC:DD:EE:FF"
         config = {
@@ -633,14 +631,11 @@ class TestBleDegradedStateSubmissionBlocking:
             ),
             patch("mmrelay.meshtastic_utils.logger") as mock_logger,
         ):
-            # Connect without degraded state to verify normal connection works
             result = connect_meshtastic(passed_config=config)
 
         assert result is not None
-        # In auto_reconnect mode, connection succeeded so degraded state should be cleared
         assert ble_address not in mu._ble_executor_degraded_addresses
 
-        # Verify connect() was actually called (log shows "BLE connection established")
         info_calls = [
             call
             for call in mock_logger.info.call_args_list

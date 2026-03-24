@@ -66,9 +66,9 @@ def configured_temp_db() -> Generator[str, None, None]:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-def test_delete_name_by_id_rejects_unknown_table(configured_temp_db: str) -> None:
+@pytest.mark.usefixtures("configured_temp_db")
+def test_delete_name_by_id_rejects_unknown_table() -> None:
     """Invalid names table identifiers should raise a clear error."""
-    _ = configured_temp_db
     with pytest.raises(_InvalidNamesTableError):
         _delete_name_by_id("unknown_names_table", "!1")
 
@@ -94,22 +94,22 @@ def test_normalize_node_name_value_preserves_string_subclass_values() -> None:
     assert _normalize_node_name_value(_StringSubclass("Bravo")) == "Bravo"
 
 
-def test_read_name_values_rejects_unknown_table(configured_temp_db: str) -> None:
+@pytest.mark.usefixtures("configured_temp_db")
+def test_read_name_values_rejects_unknown_table() -> None:
     """Unknown names tables should be rejected before querying SQLite."""
-    _ = configured_temp_db
     with pytest.raises(_InvalidNamesTableError):
         _read_name_values_for_ids("unknown_names_table", {"!1"})
 
 
-def test_read_name_values_empty_ids_returns_empty_dict(configured_temp_db: str) -> None:
+@pytest.mark.usefixtures("configured_temp_db")
+def test_read_name_values_empty_ids_returns_empty_dict() -> None:
     """Empty ID collections should short-circuit without querying SQLite."""
-    _ = configured_temp_db
     assert _read_name_values_for_ids(NAMES_TABLE_LONGNAMES, set()) == {}
 
 
-def test_read_name_values_returns_none_on_sqlite_error(configured_temp_db: str) -> None:
+@pytest.mark.usefixtures("configured_temp_db")
+def test_read_name_values_returns_none_on_sqlite_error() -> None:
     """SQLite failures in drift checks should not raise to caller paths."""
-    _ = configured_temp_db
     with patch("mmrelay.db_utils._get_db_manager") as mock_get_manager:
         mock_manager = MagicMock()
         mock_manager.run_sync.side_effect = sqlite3.Error("read failure")
@@ -214,11 +214,9 @@ def test_collect_node_name_snapshot_empty_dict_is_complete() -> None:
     assert snapshot_complete is True
 
 
-def test_sync_skips_non_string_name_payloads_without_deleting_rows(
-    configured_temp_db: str,
-) -> None:
+@pytest.mark.usefixtures("configured_temp_db")
+def test_sync_skips_non_string_name_payloads_without_deleting_rows() -> None:
     """Malformed non-string name payloads should preserve existing rows."""
-    _ = configured_temp_db
     initial_nodes = {
         "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
     }
@@ -239,9 +237,8 @@ def test_sync_skips_non_string_name_payloads_without_deleting_rows(
     assert get_shortname("!1") == "A"
 
 
-def test_sync_unchanged_snapshot_repair_failure_keeps_previous_state(
-    configured_temp_db: str,
-) -> None:
+@pytest.mark.usefixtures("configured_temp_db")
+def test_sync_unchanged_snapshot_repair_failure_keeps_previous_state() -> None:
     """Repair failures on unchanged snapshots should keep prior state for retries."""
     nodes = {
         "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
@@ -280,11 +277,9 @@ def test_sync_unchanged_snapshot_repair_failure_keeps_previous_state(
     assert get_longname("!1") is None
 
 
-def test_sync_empty_snapshot_does_not_prune_existing_rows(
-    configured_temp_db: str,
-) -> None:
+@pytest.mark.usefixtures("configured_temp_db")
+def test_sync_empty_snapshot_does_not_prune_existing_rows() -> None:
     """Empty snapshots should preserve prior state and avoid transient data loss."""
-    _ = configured_temp_db
     nodes = {
         "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
     }
@@ -304,11 +299,9 @@ def test_sync_empty_snapshot_does_not_prune_existing_rows(
     assert get_shortname("!1") == "A"
 
 
-def test_sync_non_authoritative_empty_snapshot_does_not_arm_immediate_prune(
-    configured_temp_db: str,
-) -> None:
+@pytest.mark.usefixtures("configured_temp_db")
+def test_sync_non_authoritative_empty_snapshot_does_not_arm_immediate_prune() -> None:
     """Conflict-only snapshots should not allow single-cycle empty snapshot pruning."""
-    _ = configured_temp_db
     baseline_nodes = {
         "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
     }
@@ -362,11 +355,9 @@ class TestFormatNodeIdSample:
 class TestDeleteNameByIdSqliteError:
     """Tests for _delete_name_by_id sqlite3.Error handling."""
 
-    def test_delete_name_by_id_sqlite_error_returns_false(
-        self, configured_temp_db: str
-    ) -> None:
+    @pytest.mark.usefixtures("configured_temp_db")
+    def test_delete_name_by_id_sqlite_error_returns_false(self) -> None:
         """sqlite3.Error should be caught, logged, and return False."""
-        _ = configured_temp_db
         with patch("mmrelay.db_utils._get_db_manager") as mock_get_manager:
             mock_manager = MagicMock()
             mock_manager.run_sync.side_effect = sqlite3.Error("delete failed")
@@ -449,7 +440,7 @@ class TestNameTableMatchesStateFalseConditions:
 
 
 class TestCollectNodeNameSnapshotInvalidNameTypes:
-    """Tests for _collect_node_name_snapshot handling invalid name types (lines 1038-1061)."""
+    """Tests for _collect_node_name_snapshot handling invalid name types."""
 
     def test_non_string_long_name_logs_warning(self) -> None:
         """Non-string raw_long_name logs warning, sets to None, and sets snapshot_complete=False."""
@@ -481,7 +472,7 @@ class TestCollectNodeNameSnapshotInvalidNameTypes:
 
 
 class TestMergeNodeNameValuesEqual:
-    """Tests for _merge_node_name_values when values are equal (lines 1118-1119)."""
+    """Tests for _merge_node_name_values when values are equal."""
 
     def test_returns_existing_when_both_equal_non_none(self) -> None:
         """Returns existing_value when both are equal non-None strings."""
@@ -500,11 +491,11 @@ class TestMergeNodeNameValuesEqual:
 
 
 class TestSyncNameTablesAtomicShortNameDeletion:
-    """Tests for _sync_name_tables_atomic short_name deletion (lines 1159-1161)."""
+    """Tests for _sync_name_tables_atomic short_name deletion."""
 
-    def test_short_name_none_executes_delete_sql(self, configured_temp_db: str) -> None:
+    @pytest.mark.usefixtures("configured_temp_db")
+    def test_short_name_none_executes_delete_sql(self) -> None:
         """When short_name is None and snapshot_complete=True, the short delete SQL is executed."""
-        _ = configured_temp_db
         save_longname("!1", "Alpha")
         save_shortname("!1", "A")
 
@@ -517,11 +508,11 @@ class TestSyncNameTablesAtomicShortNameDeletion:
 
 
 class TestSyncNameTablesAtomicDebugLogging:
-    """Tests for _sync_name_tables_atomic debug logging (lines 1185-1224)."""
+    """Tests for _sync_name_tables_atomic debug logging."""
 
-    def test_debug_logs_emitted_when_enabled(self, configured_temp_db: str) -> None:
+    @pytest.mark.usefixtures("configured_temp_db")
+    def test_debug_logs_emitted_when_enabled(self) -> None:
         """Debug logs are emitted when logger.isEnabledFor(logging.DEBUG)."""
-        _ = configured_temp_db
         state = (NodeNameEntry("!1", "Alpha", "A"),)
         current_ids = {"!1"}
 
@@ -539,11 +530,9 @@ class TestSyncNameTablesAtomicDebugLogging:
                 for call in mock_logger.debug.call_args_list
             )
 
-    def test_debug_logs_for_upserts_clears_and_pruned(
-        self, configured_temp_db: str
-    ) -> None:
+    @pytest.mark.usefixtures("configured_temp_db")
+    def test_debug_logs_for_upserts_clears_and_pruned(self) -> None:
         """Test all the debug log messages for upserts, clears, and pruned IDs."""
-        _ = configured_temp_db
         save_longname("!stale", "Stale")
         save_shortname("!stale", "STL")
 
@@ -563,9 +552,10 @@ class TestSyncNameTablesAtomicDebugLogging:
 
 
 class TestSyncNameTablesIfChangedDebugLoggingIdDelta:
-    """Tests for sync_name_tables_if_changed debug logging for ID delta (lines 1272-1286)."""
+    """Tests for sync_name_tables_if_changed debug logging for ID delta."""
 
-    def test_debug_log_for_initial_snapshot(self, configured_temp_db: str) -> None:
+    @pytest.mark.usefixtures("configured_temp_db")
+    def test_debug_log_for_initial_snapshot(self) -> None:
         """Debug log for initial snapshot (previous_state is None)."""
         _ = configured_temp_db
         nodes = {
@@ -581,9 +571,9 @@ class TestSyncNameTablesIfChangedDebugLoggingIdDelta:
             debug_calls = [str(call) for call in mock_logger.debug.call_args_list]
             assert any("snapshot initialized" in call.lower() for call in debug_calls)
 
-    def test_debug_log_for_added_and_removed_ids(self, configured_temp_db: str) -> None:
+    @pytest.mark.usefixtures("configured_temp_db")
+    def test_debug_log_for_added_and_removed_ids(self) -> None:
         """Debug log for added_ids and removed_ids when state changes."""
-        _ = configured_temp_db
         nodes = {
             "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
         }
@@ -605,12 +595,9 @@ class TestSyncNameTablesIfChangedDebugLoggingIdDelta:
 class TestSyncNameTablesIfChangedReturnPreviousOnDeleteError:
     """Tests for sync_name_tables_if_changed returning previous_state on prune error."""
 
-    def test_returns_previous_when_atomic_prune_reports_failure(
-        self,
-        configured_temp_db: str,
-    ) -> None:
+    @pytest.mark.usefixtures("configured_temp_db")
+    def test_returns_previous_when_atomic_prune_reports_failure(self) -> None:
         """Returns previous_state when unchanged-state prune fails."""
-        _ = configured_temp_db
         nodes = {
             "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
         }
@@ -627,13 +614,11 @@ class TestSyncNameTablesIfChangedReturnPreviousOnDeleteError:
 
 
 class TestUpdateNamesCoreValueError:
-    """Tests for _update_names_core ValueError for unsupported name_key (lines 1364-1365)."""
+    """Tests for _update_names_core ValueError for unsupported name_key."""
 
-    def test_raises_value_error_for_unsupported_name_key(
-        self, configured_temp_db: str
-    ) -> None:
+    @pytest.mark.usefixtures("configured_temp_db")
+    def test_raises_value_error_for_unsupported_name_key(self) -> None:
         """Raises ValueError when name_key not in _DB_COLUMN_BY_PROTO_NODE_NAME_FIELD."""
-        _ = configured_temp_db
         nodes = {"node_a": {"user": {"id": "!1", "longName": "Alpha"}}}
 
         with pytest.raises(ValueError, match="Unsupported node name key"):
@@ -647,13 +632,11 @@ class TestUpdateNamesCoreValueError:
 
 
 class TestUpdateNamesCoreIterationAndStaleDeletion:
-    """Tests for _update_names_core iteration and stale deletion (lines 1375-1394)."""
+    """Tests for _update_names_core iteration and stale deletion."""
 
-    def test_delete_name_called_when_normalized_name_is_none(
-        self, configured_temp_db: str
-    ) -> None:
+    @pytest.mark.usefixtures("configured_temp_db")
+    def test_delete_name_called_when_normalized_name_is_none(self) -> None:
         """Delete_name is called when normalized_name is None."""
-        _ = configured_temp_db
         save_longname("!1", "Existing")
 
         nodes = {"node_a": {"user": {"id": "!1", "longName": ""}}}
@@ -670,11 +653,9 @@ class TestUpdateNamesCoreIterationAndStaleDeletion:
             assert result is True
             mock_delete.assert_called_once_with("!1")
 
-    def test_all_saves_ok_becomes_false_when_delete_fails(
-        self, configured_temp_db: str
-    ) -> None:
+    @pytest.mark.usefixtures("configured_temp_db")
+    def test_all_saves_ok_becomes_false_when_delete_fails(self) -> None:
         """All_saves_ok becomes False when delete_name fails."""
-        _ = configured_temp_db
         save_longname("!1", "Existing")
 
         nodes = {"node_a": {"user": {"id": "!1", "longName": ""}}}
@@ -689,11 +670,9 @@ class TestUpdateNamesCoreIterationAndStaleDeletion:
         )
         assert result is False
 
-    def test_stale_delete_count_none_sets_all_saves_ok_to_false(
-        self, configured_temp_db: str
-    ) -> None:
+    @pytest.mark.usefixtures("configured_temp_db")
+    def test_stale_delete_count_none_sets_all_saves_ok_false(self) -> None:
         """Stale_delete_count None sets all_saves_ok to False."""
-        _ = configured_temp_db
         nodes = {"node_a": {"user": {"id": "!1", "longName": "Alpha"}}}
 
         result = _update_names_core(
@@ -707,13 +686,11 @@ class TestUpdateNamesCoreIterationAndStaleDeletion:
 
 
 class TestDeleteStaleNamesCoreDeletedIdsSet:
-    """Tests for _delete_stale_names_core updating deleted_ids set (lines 1544-1545)."""
+    """Tests for _delete_stale_names_core updating deleted_ids set."""
 
-    def test_deleted_ids_set_updated_with_deleted_chunk_ids(
-        self, configured_temp_db: str
-    ) -> None:
+    @pytest.mark.usefixtures("configured_temp_db")
+    def test_deleted_ids_set_updated_with_deleted_chunk_id(self) -> None:
         """Deleted_ids set is updated with deleted chunk IDs when provided."""
-        _ = configured_temp_db
         save_longname("!1", "Alpha")
         save_longname("!2", "Beta")
         save_longname("!3", "Charlie")

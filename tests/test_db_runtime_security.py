@@ -725,7 +725,7 @@ class TestDatabaseManager(unittest.TestCase):
             RuntimeError,
             "cannot be called from inside an active database operation",
         ):
-            self.manager.run_sync(close_inside_operation)
+            self.manager.run_sync(close_inside_operation, write=False)
 
     def test_close_handles_connection_errors(self):
         """Test close method handles connection errors gracefully."""

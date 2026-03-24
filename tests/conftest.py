@@ -326,8 +326,6 @@ def _drain_awaitable_result_safely(awaitable: Any, timeout: float = 0.2) -> None
         except asyncio.CancelledError:
             pass
         except RuntimeError as exc:
-            import logging
-
             logger = logging.getLogger(__name__)
             logger.debug(
                 "Unexpected RuntimeError in drain_awaitable_result_safely: %s",

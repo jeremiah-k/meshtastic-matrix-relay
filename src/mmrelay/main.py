@@ -596,6 +596,7 @@ async def main(config: dict[str, Any]) -> None:
                     exc_info=(type(exc), exc, exc.__traceback__),
                 )
                 _set_shutdown_flag()
+                # Mark exception as consumed to prevent double-logging in _await_background_task_shutdown
                 task._exception_consumed = True  # type: ignore[attr-defined]
                 return
 

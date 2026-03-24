@@ -312,17 +312,15 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
                 ),
             ),
             patch("mmrelay.setup_utils.get_user_service_path") as mock_service_path,
-            patch(
-                "pathlib.Path.write_text",
-                side_effect=PermissionError("Permission denied"),
-            ),
             patch("mmrelay.setup_utils.logger"),
             patch("builtins.input", return_value="y"),
         ):
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                mock_service_path.return_value = Path(tmp_dir) / "mmrelay-test.service"
-                result = install_service()
-                self.assertFalse(result)
+            mock_path = MagicMock()
+            mock_path.exists.return_value = False
+            mock_path.write_text.side_effect = PermissionError("Permission denied")
+            mock_service_path.return_value = mock_path
+            result = install_service()
+            self.assertFalse(result)
 
     def test_install_service_daemon_reload_failure(self):
         """
