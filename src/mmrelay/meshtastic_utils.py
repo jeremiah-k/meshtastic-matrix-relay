@@ -312,8 +312,8 @@ def reset_executor_degraded_state(
     """
     Reset degraded state for executors, allowing recovery after reconnect.
 
-    When executors reach the orphan threshold, they enter a degraded state and
-    refuse automatic recovery. This function clears that state so normal
+    When executors reach the orphan threshold, they enter a degraded state
+    and refuse new work submissions. This function clears that state so normal
     operation can resume after a successful reconnect or manual intervention.
 
     Parameters:
@@ -428,8 +428,9 @@ def _reset_metadata_executor_for_stale_probe() -> None:
     retries are not queued behind a stuck worker.
 
     When the number of orphaned workers reaches EXECUTOR_ORPHAN_THRESHOLD,
-    the executor enters a degraded state and refuses to create new executors.
-    Recovery requires an explicit reconnect or process restart.
+    the executor enters a degraded state: submission of new probes is refused
+    and further automatic recovery is disabled. Recovery requires an explicit
+    reconnect or process restart.
     """
     global _metadata_executor, _metadata_future, _metadata_future_started_at
     global _metadata_executor_orphaned_workers, _metadata_executor_degraded
@@ -542,6 +543,13 @@ def _submit_metadata_probe(probe: Callable[[], Any]) -> Future[Any] | None:
             "submit-retry",
         )
         _reset_metadata_executor_for_stale_probe()
+
+    if _metadata_executor_degraded:
+        logger.error(
+            "Metadata executor degraded: too many orphaned workers. "
+            "Reconnect or restart required to restore metadata probing."
+        )
+        return None
 
     with _metadata_future_lock:
         if _metadata_future is not None and not _metadata_future.done():
@@ -1425,8 +1433,8 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
     timeout counter to zero.
 
     When the number of orphaned workers for a BLE address reaches EXECUTOR_ORPHAN_THRESHOLD,
-    that address enters a degraded state and refuses to create new executors.
-    Recovery requires an explicit reconnect or process restart.
+    that address enters a degraded state: submission of new BLE work is refused and further
+    automatic recovery is disabled. Recovery requires an explicit reconnect or process restart.
 
     Parameters:
         ble_address (str): BLE device address associated with the observed timeouts.
@@ -3209,6 +3217,15 @@ def connect_meshtastic(
                                         raise TimeoutError(
                                             f"BLE interface creation already in progress for {ble_address}."
                                         )
+                                    if ble_address in _ble_executor_degraded_addresses:
+                                        logger.error(
+                                            "BLE executor degraded for %s: too many orphaned workers. "
+                                            "Reconnect or restart required to restore BLE connectivity.",
+                                            ble_address,
+                                        )
+                                        raise RuntimeError(
+                                            f"BLE executor degraded for {ble_address}; reset required"
+                                        )
                                     try:
                                         future = _get_ble_executor().submit(
                                             create_ble_interface, ble_kwargs
@@ -3234,6 +3251,9 @@ def connect_meshtastic(
                                     )
                                     logger.debug(
                                         f"BLE interface created successfully for {ble_address}"
+                                    )
+                                    reset_executor_degraded_state(
+                                        ble_address=ble_address
                                     )
                                     if hasattr(meshtastic_iface, "auto_reconnect"):
                                         supports_auto_reconnect = True
@@ -3348,6 +3368,15 @@ def connect_meshtastic(
                                 raise TimeoutError(
                                     f"BLE connect already in progress for {ble_address}."
                                 )
+                            if ble_address in _ble_executor_degraded_addresses:
+                                logger.error(
+                                    "BLE executor degraded for %s: too many orphaned workers. "
+                                    "Reconnect or restart required to restore BLE connectivity.",
+                                    ble_address,
+                                )
+                                raise RuntimeError(
+                                    f"BLE executor degraded for {ble_address}; reset required"
+                                )
                             try:
                                 connect_future = _get_ble_executor().submit(
                                     connect_iface, iface
@@ -3368,6 +3397,7 @@ def connect_meshtastic(
                         try:
                             connect_future.result(timeout=BLE_CONNECT_TIMEOUT_SECS)
                             logger.info(f"BLE connection established to {ble_address}")
+                            reset_executor_degraded_state(ble_address=ble_address)
                         except FuturesTimeoutError as err:
                             # Use logger.exception so timeouts include stack context (TRY400),
                             # but raise a short error and keep operator guidance in logs (TRY003).

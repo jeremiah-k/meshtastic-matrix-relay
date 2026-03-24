@@ -1716,6 +1716,20 @@ class TestMetadataExecutorDegradedState:
         assert mu._metadata_executor_degraded is False
         assert mu._metadata_executor_orphaned_workers == 0
 
+    def test_metadata_degraded_state_blocks_new_probes(self):
+        """Test that metadata degraded state prevents new probe submissions."""
+        mu._metadata_executor_degraded = True
+        mu._metadata_future = None
+        mu._metadata_future_started_at = None
+
+        with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
+            result = mu._submit_metadata_probe(lambda: None)
+
+            assert result is None
+            mock_logger.error.assert_called_once()
+            error_msg = str(mock_logger.error.call_args)
+            assert "degraded" in error_msg.lower()
+
 
 class TestBleExecutorDegradedState:
     """Test BLE executor degraded state when orphan threshold is exceeded."""
