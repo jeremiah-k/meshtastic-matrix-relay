@@ -1504,6 +1504,10 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                         "type": (int, float),
                         "description": "Delay in seconds between messages sent to mesh (minimum: 2.0)",
                     },
+                    "nodedb_refresh_interval": {
+                        "type": (int, float),
+                        "description": "Seconds between periodic nodedb refreshes (set to 0 to disable periodic refresh)",
+                    },
                     "meshnet_name": {
                         "type": str,
                         "description": "Name displayed for your meshnet in Matrix messages",
@@ -1535,6 +1539,12 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                         if option == "message_delay" and value < 2.0:
                             print(
                                 f"Error: 'message_delay' must be at least 2.0 seconds (firmware limitation), got: {value}",
+                                file=sys.stderr,
+                            )
+                            return False
+                        if option == "nodedb_refresh_interval" and value < 0:
+                            print(
+                                f"Error: 'nodedb_refresh_interval' must be >= 0 seconds, got: {value}",
                                 file=sys.stderr,
                             )
                             return False

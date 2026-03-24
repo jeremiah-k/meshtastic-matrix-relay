@@ -28,11 +28,11 @@ from pubsub import pub
 from mmrelay.config import get_meshtastic_config_value
 from mmrelay.constants.config import (
     CONFIG_KEY_MESHNET_NAME,
-    CONFIG_KEY_NODE_NAME_REFRESH_INTERVAL,
+    CONFIG_KEY_NODEDB_REFRESH_INTERVAL,
     CONFIG_SECTION_MESHTASTIC,
     DEFAULT_DETECTION_SENSOR,
     DEFAULT_HEALTH_CHECK_ENABLED,
-    DEFAULT_NODE_NAME_REFRESH_INTERVAL,
+    DEFAULT_NODEDB_REFRESH_INTERVAL,
 )
 from mmrelay.constants.database import PROTO_NODE_NAME_LONG, PROTO_NODE_NAME_SHORT
 from mmrelay.constants.formats import (
@@ -188,7 +188,7 @@ def _coerce_positive_int(value: Any, default: int) -> int:
         if parsed <= 0:
             raise ValueError
         return parsed
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return default
 
 
@@ -236,6 +236,7 @@ def _shutdown_shared_executors() -> None:
     global _ble_executor, _ble_future, _ble_future_address
     global _ble_future_started_at, _ble_future_timeout_secs
     global _metadata_executor, _metadata_future, _metadata_future_started_at
+    global _health_probe_request_deadlines
 
     # Cancel any pending BLE operation
     # Capture future ref inside lock, cancel outside to avoid deadlock with done callbacks
@@ -273,6 +274,8 @@ def _shutdown_shared_executors() -> None:
 
         executor = _metadata_executor
         _metadata_executor = None
+    with _health_probe_request_lock:
+        _health_probe_request_deadlines.clear()
     if metadata_future_to_cancel is not None:
         metadata_future_to_cancel.cancel()
     if executor is not None and not getattr(executor, "_shutdown", False):
@@ -537,14 +540,14 @@ def _parse_refresh_interval_seconds(raw_interval: Any) -> float | None:
         return None
 
 
-def get_node_name_refresh_interval_seconds(
+def get_nodedb_refresh_interval_seconds(
     passed_config: dict[str, Any] | None = None,
 ) -> float:
     """
-    Return the configured node-name refresh interval (seconds).
+    Return the configured nodedb refresh interval (seconds).
 
-    Reads `meshtastic.node_name_refresh_interval` and falls back to
-    `DEFAULT_NODE_NAME_REFRESH_INTERVAL` when missing or invalid.
+    Reads `meshtastic.nodedb_refresh_interval` and falls back to
+    `DEFAULT_NODEDB_REFRESH_INTERVAL` when missing or invalid.
 
     Parameters:
         passed_config (dict[str, Any] | None): Optional config to read from.
@@ -555,19 +558,19 @@ def get_node_name_refresh_interval_seconds(
         config_source = {}
     raw_interval = get_meshtastic_config_value(
         config_source,
-        CONFIG_KEY_NODE_NAME_REFRESH_INTERVAL,
-        DEFAULT_NODE_NAME_REFRESH_INTERVAL,
+        CONFIG_KEY_NODEDB_REFRESH_INTERVAL,
+        DEFAULT_NODEDB_REFRESH_INTERVAL,
     )
     interval = _parse_refresh_interval_seconds(raw_interval)
     if interval is not None:
         return interval
 
     logger.warning(
-        "Invalid meshtastic.node_name_refresh_interval=%r; defaulting to %.1f",
+        "Invalid meshtastic.nodedb_refresh_interval=%r; defaulting to %.1f",
         raw_interval,
-        DEFAULT_NODE_NAME_REFRESH_INTERVAL,
+        DEFAULT_NODEDB_REFRESH_INTERVAL,
     )
-    return DEFAULT_NODE_NAME_REFRESH_INTERVAL
+    return DEFAULT_NODEDB_REFRESH_INTERVAL
 
 
 def _snapshot_node_name_rows() -> tuple[dict[str, Any] | None, bool]:
@@ -628,11 +631,11 @@ async def refresh_node_name_tables(
     allowing recovery from transient failures.
     """
     if refresh_interval_seconds is None:
-        interval = get_node_name_refresh_interval_seconds()
+        interval = get_nodedb_refresh_interval_seconds()
     else:
         parsed = _parse_refresh_interval_seconds(refresh_interval_seconds)
         if parsed is None:
-            configured_interval = get_node_name_refresh_interval_seconds()
+            configured_interval = get_nodedb_refresh_interval_seconds()
             logger.warning(
                 "Invalid node-name refresh interval override %r; defaulting to configured interval %.1f",
                 refresh_interval_seconds,
@@ -1260,7 +1263,7 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
         )
         if _ble_future and not _ble_future.done():
             ble_future_to_cancel = _ble_future
-        if _ble_executor is not None and not _ble_executor._shutdown:
+        if _ble_executor is not None and not getattr(_ble_executor, "_shutdown", False):
             try:
                 _ble_executor.shutdown(wait=False, cancel_futures=True)
             except TypeError:
@@ -3367,9 +3370,18 @@ def on_lost_meshtastic_connection(
         detection_source (str): Identifier for where or how the loss was detected; if `"unknown"`, the function will prefer an interface-provided `_last_disconnect_source`, then derive a name from `topic`, and finally fall back to `"meshtastic.connection.lost"`.
         topic (Any): Optional pubsub topic object (from pypubsub); when provided and `detection_source` is `"unknown"`, the topic's name will be used to derive the detection source.
     """
-    global meshtastic_client, meshtastic_iface, reconnecting, shutting_down, event_loop
-    global reconnect_task, _ble_future, _ble_future_address
-    global _ble_future_started_at, _ble_future_timeout_secs, _ble_executor
+    # Keep these as one-global-per-line to minimize merge churn as this list evolves.
+    global meshtastic_client
+    global meshtastic_iface
+    global reconnecting
+    global shutting_down
+    global event_loop
+    global reconnect_task
+    global _ble_future
+    global _ble_future_address
+    global _ble_future_started_at
+    global _ble_future_timeout_secs
+    global _ble_executor
 
     with meshtastic_lock:
         if shutting_down:

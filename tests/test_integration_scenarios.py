@@ -13,7 +13,6 @@ Tests integration scenarios including:
 """
 
 import asyncio
-import concurrent.futures
 import logging
 import os
 import sys
@@ -29,6 +28,7 @@ from mmrelay.config import load_config
 from mmrelay.db_utils import initialize_database
 from mmrelay.matrix_utils import connect_matrix
 from mmrelay.meshtastic_utils import connect_meshtastic, on_meshtastic_message
+from tests.conftest import cleanup_ble_future_state
 
 
 class TestIntegrationScenarios(unittest.TestCase):
@@ -90,62 +90,7 @@ class TestIntegrationScenarios(unittest.TestCase):
             module.subscribed_to_messages = False
             module.subscribed_to_connection_lost = False
             if hasattr(module, "_ble_future"):
-                ble_future = module._ble_future
-                if ble_future is not None:
-                    done = getattr(ble_future, "done", None)
-                    cancel = getattr(ble_future, "cancel", None)
-                    if callable(done) and callable(cancel) and not done():
-                        cancel()
-                        if isinstance(ble_future, asyncio.Task):
-                            try:
-                                loop = ble_future.get_loop()
-                                if loop.is_closed():
-                                    raise RuntimeError(
-                                        "BLE task loop already closed during cleanup"
-                                    )
-                                if loop.is_running():
-                                    cleanup_future = asyncio.run_coroutine_threadsafe(
-                                        asyncio.wait_for(ble_future, 0.2), loop
-                                    )
-                                    cleanup_future.result(timeout=0.5)
-                                else:
-                                    loop.run_until_complete(
-                                        asyncio.wait_for(ble_future, 0.2)
-                                    )
-                            except (
-                                asyncio.CancelledError,
-                                asyncio.TimeoutError,
-                                RuntimeError,
-                                asyncio.InvalidStateError,
-                                concurrent.futures.TimeoutError,
-                                concurrent.futures.CancelledError,
-                            ) as e:
-                                logging.getLogger(__name__).debug(
-                                    "Expected error during BLE Task cleanup: %s", e
-                                )
-                        else:
-                            result = getattr(ble_future, "result", None)
-                            if callable(result):
-                                try:
-                                    result(timeout=0.2)
-                                except (
-                                    asyncio.CancelledError,
-                                    asyncio.TimeoutError,
-                                    TimeoutError,
-                                    TypeError,
-                                    concurrent.futures.CancelledError,
-                                ) as e:
-                                    logging.getLogger(__name__).debug(
-                                        "Expected error during BLE future cleanup: %s",
-                                        e,
-                                    )
-                module._ble_future = None
-            if hasattr(module, "_ble_future_address"):
-                module._ble_future_address = None
-            if hasattr(module, "_ble_future_started_at"):
-                module._ble_future_started_at = None
-            if hasattr(module, "_ble_future_timeout_secs"):
-                module._ble_future_timeout_secs = None
+                cleanup_ble_future_state(module)
             if hasattr(module, "_ble_timeout_counts"):
                 module._ble_timeout_counts = {}
             try:

@@ -26,7 +26,7 @@ import threading
 import time
 from concurrent.futures import Future
 from pathlib import Path
-from typing import Generator
+from typing import Any, Generator
 from unittest.mock import MagicMock
 
 import pytest
@@ -115,6 +115,112 @@ sys.modules["haversine"] = MagicMock()
 sys.modules["schedule"] = MagicMock()
 sys.modules["platformdirs"] = MagicMock()
 sys.modules["py_staticmaps"] = MagicMock()
+
+
+def _drain_future_result_safely(future: Any, timeout: float) -> None:
+    """
+    Drain a future/task result best-effort so teardown does not leak exceptions.
+    """
+    result_fn = getattr(future, "result", None)
+    if not callable(result_fn):
+        return
+
+    try:
+        result_fn(timeout=timeout)
+    except TypeError:
+        with contextlib.suppress(
+            TimeoutError,
+            asyncio.TimeoutError,
+            asyncio.CancelledError,
+            asyncio.InvalidStateError,
+            concurrent.futures.TimeoutError,
+            concurrent.futures.CancelledError,
+            concurrent.futures.InvalidStateError,
+        ):
+            result_fn()
+    except (
+        TimeoutError,
+        asyncio.TimeoutError,
+        asyncio.CancelledError,
+        asyncio.InvalidStateError,
+        concurrent.futures.TimeoutError,
+        concurrent.futures.CancelledError,
+        concurrent.futures.InvalidStateError,
+    ):
+        pass
+
+
+def cleanup_ble_future_state(module: Any) -> None:
+    """
+    Best-effort cancel and drain BLE in-flight future/task state on a module.
+
+    This helper intentionally swallows expected timeout/cancellation/state errors
+    because test teardown should not fail while clearing in-flight bookkeeping.
+    """
+    ble_future = getattr(module, "_ble_future", None)
+    if ble_future is None:
+        if hasattr(module, "_ble_future"):
+            module._ble_future = None
+        if hasattr(module, "_ble_future_address"):
+            module._ble_future_address = None
+        if hasattr(module, "_ble_future_started_at"):
+            module._ble_future_started_at = None
+        if hasattr(module, "_ble_future_timeout_secs"):
+            module._ble_future_timeout_secs = None
+        return
+
+    done_fn = getattr(ble_future, "done", None)
+    cancel_fn = getattr(ble_future, "cancel", None)
+    is_done = False
+    if callable(done_fn):
+        with contextlib.suppress(
+            RuntimeError,
+            asyncio.InvalidStateError,
+            concurrent.futures.InvalidStateError,
+        ):
+            is_done = bool(done_fn())
+
+    if callable(cancel_fn) and not is_done:
+        cancel_fn()
+        if isinstance(ble_future, asyncio.Task):
+            try:
+                loop = ble_future.get_loop()
+                if not loop.is_closed():
+                    if loop.is_running():
+                        cleanup_future = asyncio.run_coroutine_threadsafe(
+                            asyncio.wait_for(ble_future, 0.2),
+                            loop,
+                        )
+                        cleanup_future.result(timeout=0.5)
+                    else:
+                        loop.run_until_complete(asyncio.wait_for(ble_future, 0.2))
+            except (
+                asyncio.TimeoutError,
+                asyncio.CancelledError,
+                RuntimeError,
+                asyncio.InvalidStateError,
+                concurrent.futures.TimeoutError,
+                concurrent.futures.CancelledError,
+                concurrent.futures.InvalidStateError,
+            ) as exc:
+                logging.getLogger(__name__).debug(
+                    "Expected BLE Task cleanup exception: %s",
+                    exc,
+                )
+        else:
+            _drain_future_result_safely(ble_future, timeout=0.2)
+
+    # Drain completed-task exceptions as well (prevents "exception was never retrieved").
+    if callable(done_fn) and done_fn():
+        _drain_future_result_safely(ble_future, timeout=0.1)
+
+    module._ble_future = None
+    if hasattr(module, "_ble_future_address"):
+        module._ble_future_address = None
+    if hasattr(module, "_ble_future_started_at"):
+        module._ble_future_started_at = None
+    if hasattr(module, "_ble_future_timeout_secs"):
+        module._ble_future_timeout_secs = None
 
 
 # Now that mocks are in place, we can import the application code
@@ -732,29 +838,7 @@ def reset_meshtastic_globals():
     mu.subscribed_to_connection_lost = False
     mu._metadata_future = None
     mu._metadata_future_started_at = None
-    ble_future = mu._ble_future
-    if ble_future is not None:
-        done = getattr(ble_future, "done", None)
-        cancel = getattr(ble_future, "cancel", None)
-        if callable(done) and callable(cancel) and not done():
-            cancel()
-            result_fn = getattr(ble_future, "result", None)
-            if callable(result_fn):
-                try:
-                    result_fn(timeout=0.1)
-                except (
-                    TimeoutError,
-                    asyncio.TimeoutError,
-                    asyncio.CancelledError,
-                    concurrent.futures.TimeoutError,
-                    concurrent.futures.CancelledError,
-                    TypeError,
-                ):
-                    pass
-    mu._ble_future = None
-    mu._ble_future_address = None
-    mu._ble_future_started_at = None
-    mu._ble_future_timeout_secs = None
+    cleanup_ble_future_state(mu)
     mu._ble_timeout_counts = {}
     mu._ble_future_watchdog_secs = getattr(
         mu,

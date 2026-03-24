@@ -1234,7 +1234,7 @@ class TestRefreshNodeNameTablesInvalidInterval:
 
         async def run_test():
             with patch(
-                "mmrelay.meshtastic_utils.get_node_name_refresh_interval_seconds",
+                "mmrelay.meshtastic_utils.get_nodedb_refresh_interval_seconds",
                 return_value=60.0,
             ):
                 with patch(
@@ -1266,7 +1266,7 @@ class TestRefreshNodeNameTablesInvalidInterval:
 
         async def run_test():
             with patch(
-                "mmrelay.meshtastic_utils.get_node_name_refresh_interval_seconds",
+                "mmrelay.meshtastic_utils.get_nodedb_refresh_interval_seconds",
                 return_value=120.0,
             ):
                 with patch(
@@ -1298,7 +1298,7 @@ class TestRefreshNodeNameTablesInvalidInterval:
 
         async def run_test():
             with patch(
-                "mmrelay.meshtastic_utils.get_node_name_refresh_interval_seconds",
+                "mmrelay.meshtastic_utils.get_nodedb_refresh_interval_seconds",
                 return_value=90.0,
             ):
                 with patch(

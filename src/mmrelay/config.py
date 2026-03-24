@@ -1037,6 +1037,12 @@ _MESHTASTIC_ENV_VAR_MAPPINGS: list[dict[str, Any]] = [
         "type": "float",
         "min_value": 2.0,
     },
+    {
+        "env_var": "MMRELAY_MESHTASTIC_NODEDB_REFRESH_INTERVAL",
+        "config_key": "nodedb_refresh_interval",
+        "type": "float",
+        "min_value": 0.0,
+    },
 ]
 
 _LOGGING_ENV_VAR_MAPPINGS: list[dict[str, Any]] = [

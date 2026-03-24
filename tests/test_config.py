@@ -536,6 +536,7 @@ class TestMeshtasticEnvironmentVariables(unittest.TestCase):
             "MMRELAY_MESHTASTIC_BROADCAST_ENABLED",
             "MMRELAY_MESHTASTIC_MESHNET_NAME",
             "MMRELAY_MESHTASTIC_MESSAGE_DELAY",
+            "MMRELAY_MESHTASTIC_NODEDB_REFRESH_INTERVAL",
         ]
         for var in self.env_vars:
             if var in os.environ:
@@ -591,6 +592,7 @@ class TestMeshtasticEnvironmentVariables(unittest.TestCase):
         os.environ["MMRELAY_MESHTASTIC_BROADCAST_ENABLED"] = "true"
         os.environ["MMRELAY_MESHTASTIC_MESHNET_NAME"] = "Test Mesh"
         os.environ["MMRELAY_MESHTASTIC_MESSAGE_DELAY"] = "2.5"
+        os.environ["MMRELAY_MESHTASTIC_NODEDB_REFRESH_INTERVAL"] = "15.0"
 
         config = load_meshtastic_config_from_env()
 
@@ -598,6 +600,7 @@ class TestMeshtasticEnvironmentVariables(unittest.TestCase):
         self.assertEqual(config["broadcast_enabled"], True)
         self.assertEqual(config["meshnet_name"], "Test Mesh")
         self.assertEqual(config["message_delay"], 2.5)
+        self.assertEqual(config["nodedb_refresh_interval"], 15.0)
 
     def test_invalid_connection_type(self):
         """Test invalid connection type handling."""
@@ -623,6 +626,13 @@ class TestMeshtasticEnvironmentVariables(unittest.TestCase):
     def test_invalid_message_delay(self):
         """Test invalid message delay handling."""
         os.environ["MMRELAY_MESHTASTIC_MESSAGE_DELAY"] = "1.0"  # Below minimum of 2.0
+
+        config = load_meshtastic_config_from_env()
+        self.assertIsNone(config)
+
+    def test_invalid_nodedb_refresh_interval(self):
+        """Test invalid nodedb refresh interval handling."""
+        os.environ["MMRELAY_MESHTASTIC_NODEDB_REFRESH_INTERVAL"] = "-1.0"
 
         config = load_meshtastic_config_from_env()
         self.assertIsNone(config)

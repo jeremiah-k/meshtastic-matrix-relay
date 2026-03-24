@@ -89,8 +89,7 @@ _DELETE_STALE_ID_SQL_BY_TABLE = {
     NAMES_TABLE_SHORTNAMES: "DELETE FROM shortnames WHERE meshtastic_id = ?",
 }
 
-# json_each() is the fast path for batched Meshtastic-ID lookups.
-# _read_name_values_for_ids() falls back to per-ID queries when unavailable.
+# json_each() is required for batched Meshtastic-ID lookups in name-state reads.
 _SELECT_NAME_VALUES_SQL_BY_TABLE = {
     NAMES_TABLE_LONGNAMES: (
         "SELECT meshtastic_id, longname FROM longnames "
@@ -99,15 +98,6 @@ _SELECT_NAME_VALUES_SQL_BY_TABLE = {
     NAMES_TABLE_SHORTNAMES: (
         "SELECT meshtastic_id, shortname FROM shortnames "
         "WHERE meshtastic_id IN (SELECT value FROM json_each(?))"
-    ),
-}
-
-_SELECT_NAME_VALUE_BY_ID_SQL_BY_TABLE = {
-    NAMES_TABLE_LONGNAMES: (
-        "SELECT meshtastic_id, longname FROM longnames WHERE meshtastic_id = ?"
-    ),
-    NAMES_TABLE_SHORTNAMES: (
-        "SELECT meshtastic_id, shortname FROM shortnames WHERE meshtastic_id = ?"
     ),
 }
 
@@ -166,13 +156,19 @@ def get_db_path() -> str:
 
     # Create a deterministic JSON representation of relevant config sections to detect changes
     current_config_hash = None
-    if config is not None:
+    if isinstance(config, dict):
         # Use only the database-related config sections
+        database_section = config.get("database", {})
+        if not isinstance(database_section, dict):
+            database_section = {}
+        legacy_db_section = config.get("db", {})
+        if not isinstance(legacy_db_section, dict):
+            legacy_db_section = {}
         db_config = {
-            "database": config.get("database", {}),
-            "db": config.get("db", {}),  # Legacy format
+            "database": database_section,
+            "db": legacy_db_section,  # Legacy format
         }
-        current_config_hash = json.dumps(db_config, sort_keys=True)
+        current_config_hash = json.dumps(db_config, sort_keys=True, default=repr)
 
     # Check if cache is valid (path exists and config hasn't changed)
     if _cached_db_path is not None and current_config_hash == _cached_config_hash:
@@ -185,11 +181,18 @@ def get_db_path() -> str:
         _cached_config_hash = current_config_hash
 
     # Check if config is available
-    if config is not None:
+    if isinstance(config, dict):
+        database_section = config.get("database", {})
+        if not isinstance(database_section, dict):
+            database_section = {}
+        legacy_db_section = config.get("db", {})
+        if not isinstance(legacy_db_section, dict):
+            legacy_db_section = {}
+
         # Check if database path is specified in config (preferred format)
-        if "database" in config and "path" in config["database"]:
-            custom_path = config["database"]["path"]
-            if custom_path:
+        if "path" in database_section:
+            custom_path = database_section["path"]
+            if isinstance(custom_path, str) and custom_path:
                 # Ensure the directory exists
                 db_dir = os.path.dirname(custom_path)
                 if db_dir:
@@ -207,11 +210,16 @@ def get_db_path() -> str:
                     logger.info("Using database path from config: %s", custom_path)
                     _db_path_logged = True
                 return custom_path
+            if custom_path not in (None, ""):
+                logger.warning(
+                    "Ignoring invalid database.path value of type %s",
+                    type(custom_path).__name__,
+                )
 
         # Check legacy format (db section)
-        if "db" in config and "path" in config["db"]:
-            custom_path = config["db"]["path"]
-            if custom_path:
+        if "path" in legacy_db_section:
+            custom_path = legacy_db_section["path"]
+            if isinstance(custom_path, str) and custom_path:
                 # Ensure the directory exists
                 db_dir = os.path.dirname(custom_path)
                 if db_dir:
@@ -231,6 +239,11 @@ def get_db_path() -> str:
                     )
                     _db_path_logged = True
                 return custom_path
+            if custom_path not in (None, ""):
+                logger.warning(
+                    "Ignoring invalid db.path value of type %s",
+                    type(custom_path).__name__,
+                )
 
     # Use unified path resolution for database
     paths_info = resolve_all_paths()
@@ -872,17 +885,6 @@ def _normalize_node_name_value(name_value: Any) -> str | None:
     return name_value or None
 
 
-def _is_json_each_unsupported_error(exc: sqlite3.Error) -> bool:
-    """
-    Return True when an SQLite error indicates missing json_each() support.
-    """
-    message = str(exc).lower()
-    return (
-        "no such function: json_each" in message
-        or "no such table: json_each" in message
-    )
-
-
 def _read_name_values_for_ids(
     table: str, current_ids: set[str]
 ) -> dict[str, str | None] | None:
@@ -902,8 +904,7 @@ def _read_name_values_for_ids(
 
     column_name = _NAME_FIELD_BY_TABLE.get(table)
     select_sql = _SELECT_NAME_VALUES_SQL_BY_TABLE.get(table)
-    select_by_id_sql = _SELECT_NAME_VALUE_BY_ID_SQL_BY_TABLE.get(table)
-    if column_name is None or select_sql is None or select_by_id_sql is None:
+    if column_name is None or select_sql is None:
         raise _InvalidNamesTableError(table)
 
     manager = _get_db_manager()
@@ -911,25 +912,13 @@ def _read_name_values_for_ids(
 
     def _fetch(cursor: sqlite3.Cursor) -> dict[str, str | None]:
         rows_by_id: dict[str, str | None] = {}
-        json_each_supported = True
 
         for offset in range(0, len(sorted_ids), DEFAULT_NAME_PRUNE_CHUNK_SIZE):
             chunk_ids = sorted_ids[offset : offset + DEFAULT_NAME_PRUNE_CHUNK_SIZE]
-            try:
-                cursor.execute(
-                    select_sql,
-                    (json.dumps(chunk_ids),),
-                )
-            except sqlite3.Error as exc:
-                if _is_json_each_unsupported_error(exc):
-                    json_each_supported = False
-                    rows_by_id.clear()
-                    logger.debug(
-                        "SQLite json_each() unavailable while reading %s values; falling back to per-ID lookups",
-                        column_name,
-                    )
-                    break
-                raise
+            cursor.execute(
+                select_sql,
+                (json.dumps(chunk_ids),),
+            )
 
             rows_by_id.update(
                 {
@@ -937,14 +926,6 @@ def _read_name_values_for_ids(
                     for row in cursor.fetchall()
                 }
             )
-
-        if not json_each_supported:
-            for id_key in sorted_ids:
-                cursor.execute(select_by_id_sql, (id_key,))
-                row = cursor.fetchone()
-                if row is None:
-                    continue
-                rows_by_id[str(row[0])] = _normalize_node_name_value(row[1])
         return rows_by_id
 
     try:

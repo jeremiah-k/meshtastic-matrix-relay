@@ -15,7 +15,6 @@ import threading
 from collections.abc import Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from functools import partial
 from typing import Any, Generator, Optional
 
 from mmrelay.constants.database import (
@@ -120,6 +119,7 @@ class DatabaseManager:
     _active_sync_condition: threading.Condition
     _active_sync_count: int
     _executor_lock: threading.Lock
+    _accepting_submissions: bool
     _closing: bool
 
     def __init__(
@@ -161,11 +161,16 @@ class DatabaseManager:
         self._active_sync_count = 0
         self._executor_lock = threading.Lock()
         self._async_executor = ThreadPoolExecutor(max_workers=1)
+        self._accepting_submissions = True
         self._closing = False
 
         # Fail fast before publishing a manager that cannot create a usable
         # SQLite connection for the configured path/PRAGMA set.
-        self._thread_local.connection = self._create_connection()
+        try:
+            self._thread_local.connection = self._create_connection()
+        except Exception:
+            self._async_executor.shutdown(wait=False)
+            raise
 
     # ------------------------------------------------------------------ #
     # Internal helpers
@@ -243,7 +248,7 @@ class DatabaseManager:
             sqlite3.ProgrammingError: If the manager is closing and cannot create new connections.
         """
         with self._connections_lock:
-            if self._closing:
+            if self._closing and not self._is_executor_worker():
                 raise sqlite3.ProgrammingError(
                     "DatabaseManager is closing, cannot create new connections"
                 )
@@ -266,7 +271,7 @@ class DatabaseManager:
         Track active synchronous DB usage and block new work while closing.
         """
         with self._connections_lock:
-            if self._closing:
+            if self._closing and not self._is_executor_worker():
                 raise sqlite3.ProgrammingError(
                     "DatabaseManager is closing, cannot submit new work"
                 )
@@ -278,6 +283,12 @@ class DatabaseManager:
                 self._active_sync_count -= 1
                 if self._active_sync_count == 0:
                     self._active_sync_condition.notify_all()
+
+    def _is_executor_worker(self) -> bool:
+        """
+        Return True when the current thread is running reserved executor work.
+        """
+        return bool(getattr(self._thread_local, "_allow_during_close", False))
 
     # ------------------------------------------------------------------ #
     # Context managers
@@ -318,7 +329,7 @@ class DatabaseManager:
                 try:
                     yield cursor
                     conn.commit()
-                except Exception:
+                except BaseException:
                     conn.rollback()
                     raise
                 finally:
@@ -366,9 +377,16 @@ class DatabaseManager:
         Returns:
             Any: The value returned by `func` when invoked with the cursor.
         """
-        executor_func = partial(self.run_sync, func, write=write)
+
+        def executor_func() -> Any:
+            self._thread_local._allow_during_close = True
+            try:
+                return self.run_sync(func, write=write)
+            finally:
+                self._thread_local._allow_during_close = False
+
         with self._executor_lock:
-            if self._closing:
+            if not self._accepting_submissions:
                 raise sqlite3.ProgrammingError(
                     "DatabaseManager is closing, cannot submit new work"
                 )
@@ -390,7 +408,12 @@ class DatabaseManager:
         Removes every connection from the manager's internal registry, attempts to close each connection (suppressing sqlite3.Error), and clears the current thread's stored connection reference.
         """
         with self._executor_lock:
+            self._accepting_submissions = False
+
+        with self._connections_lock:
             self._closing = True
+
+        with self._executor_lock:
             self._async_executor.shutdown(wait=True)
 
         with self._connections_lock:

@@ -11,11 +11,9 @@ Tests the Meshtastic client functionality including:
 """
 
 import asyncio
-import logging
 import os
 import sys
 import unittest
-from concurrent.futures import CancelledError as ConcurrentCancelledError
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
 from types import SimpleNamespace
 from typing import Any, Callable
@@ -45,6 +43,7 @@ from mmrelay.meshtastic_utils import (
     send_text_reply,
     serial_port_exists,
 )
+from tests.conftest import cleanup_ble_future_state
 
 TEST_PACKET_RX_TIME = 1234567890
 
@@ -94,53 +93,7 @@ def _reset_ble_inflight_state(module: Any) -> None:
     """
     Reset shared BLE in-flight tracking globals for test isolation.
     """
-    ble_future = getattr(module, "_ble_future", None)
-    if ble_future is not None:
-        done = getattr(ble_future, "done", None)
-        cancel = getattr(ble_future, "cancel", None)
-        if callable(done) and callable(cancel) and not done():
-            cancel()
-            if isinstance(ble_future, asyncio.Task):
-                try:
-                    loop = ble_future.get_loop()
-                    if not loop.is_closed():
-                        if loop.is_running():
-                            cleanup_future = asyncio.run_coroutine_threadsafe(
-                                asyncio.wait_for(ble_future, 0.2),
-                                loop,
-                            )
-                            cleanup_future.result(timeout=0.5)
-                        else:
-                            loop.run_until_complete(asyncio.wait_for(ble_future, 0.2))
-                except (
-                    asyncio.TimeoutError,
-                    asyncio.CancelledError,
-                    RuntimeError,
-                    ConcurrentTimeoutError,
-                    ConcurrentCancelledError,
-                ) as exc:
-                    # Intentionally swallowed: cleanup errors should not fail tests
-                    logging.getLogger(__name__).debug(
-                        "BLE future cleanup exception (ignored): %s", exc
-                    )
-            else:
-                result = getattr(ble_future, "result", None)
-                if callable(result):
-                    try:
-                        result(timeout=0.2)
-                    except (
-                        TimeoutError,
-                        asyncio.TimeoutError,
-                        asyncio.CancelledError,
-                        ConcurrentTimeoutError,
-                        ConcurrentCancelledError,
-                        TypeError,
-                    ):
-                        pass
-    module._ble_future = None
-    module._ble_future_address = None
-    module._ble_future_started_at = None
-    module._ble_future_timeout_secs = None
+    cleanup_ble_future_state(module)
 
 
 @pytest.mark.usefixtures("stable_relay_start_time")

@@ -383,6 +383,25 @@ class TestDatabaseManager(unittest.TestCase):
             result = cursor.execute("SELECT value FROM test").fetchone()
             self.assertEqual(result[0], "initial")
 
+    def test_write_context_manager_rollback_on_keyboard_interrupt(self):
+        """Write context manager should roll back on KeyboardInterrupt."""
+        with self.manager.write() as cursor:
+            cursor.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
+            cursor.execute("INSERT INTO test (value) VALUES (?)", ("initial",))
+
+        with self.assertRaises(KeyboardInterrupt):
+            with self.manager.write() as cursor:
+                cursor.execute(
+                    "INSERT INTO test (value) VALUES (?)", ("should_be_rolled_back",)
+                )
+                raise KeyboardInterrupt()
+
+        with self.manager.read() as cursor:
+            result = cursor.execute("SELECT COUNT(*) FROM test").fetchone()
+            self.assertEqual(result[0], 1)
+            result = cursor.execute("SELECT value FROM test").fetchone()
+            self.assertEqual(result[0], "initial")
+
     def test_write_context_manager_partial_transaction_rollback(self):
         """Test that partial transactions are properly rolled back on non-SQLite exceptions."""
         # Create initial table with some data
@@ -481,6 +500,58 @@ class TestDatabaseManager(unittest.TestCase):
         # Run the async function
         result = asyncio.run(test_async())
         self.assertEqual(result, "async_result")
+
+    def test_run_async_queued_work_completes_during_close(self):
+        """Queued run_async work accepted before close() should still complete."""
+
+        with self.manager.write() as cursor:
+            cursor.execute(
+                "CREATE TABLE test_async_close (id INTEGER PRIMARY KEY, value TEXT)"
+            )
+
+        first_started = threading.Event()
+        first_release = threading.Event()
+
+        def first_write(cursor):
+            first_started.set()
+            first_release.wait(timeout=2.0)
+            cursor.execute(
+                "INSERT INTO test_async_close (value) VALUES (?)",
+                ("first",),
+            )
+            return "first"
+
+        def second_write(cursor):
+            cursor.execute(
+                "INSERT INTO test_async_close (value) VALUES (?)",
+                ("second",),
+            )
+            return "second"
+
+        async def run_test() -> tuple[str, str]:
+            task1 = asyncio.create_task(self.manager.run_async(first_write, write=True))
+            await asyncio.to_thread(first_started.wait, 2.0)
+            task2 = asyncio.create_task(
+                self.manager.run_async(second_write, write=True)
+            )
+            await asyncio.sleep(0)
+
+            close_thread = threading.Thread(target=self.manager.close)
+            close_thread.start()
+            first_release.set()
+
+            result1 = await task1
+            result2 = await task2
+            close_thread.join(timeout=2.0)
+            self.assertFalse(close_thread.is_alive())
+            return result1, result2
+
+        result1, result2 = asyncio.run(run_test())
+        self.assertEqual((result1, result2), ("first", "second"))
+
+        with sqlite3.connect(self.db_path) as conn:
+            count = conn.execute("SELECT COUNT(*) FROM test_async_close").fetchone()[0]
+        self.assertEqual(count, 2)
 
     def test_thread_local_connections(self):
         """Test that connections are thread-local."""

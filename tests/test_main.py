@@ -54,7 +54,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from mmrelay.constants.config import DEFAULT_NODE_NAME_REFRESH_INTERVAL
+from mmrelay.constants.config import DEFAULT_NODEDB_REFRESH_INTERVAL
 from mmrelay.main import main, print_banner, run_main
 from tests.helpers import InlineExecutorLoop, inline_to_thread
 
@@ -168,6 +168,94 @@ def _make_patched_get_running_loop():
     return _patched_get_running_loop
 
 
+def _reset_meshtastic_utils_globals(*, shutdown_executors: bool = False) -> None:
+    """
+    Reset meshtastic_utils globals shared across main-path tests.
+    """
+    if "mmrelay.meshtastic_utils" not in sys.modules:
+        return
+
+    module = sys.modules["mmrelay.meshtastic_utils"]
+    if hasattr(module, "config"):
+        module.config = None  # type: ignore[attr-defined]
+    if hasattr(module, "matrix_rooms"):
+        module.matrix_rooms = []  # type: ignore[attr-defined]
+    if hasattr(module, "meshtastic_client"):
+        module.meshtastic_client = None  # type: ignore[attr-defined]
+    if hasattr(module, "meshtastic_iface"):
+        module.meshtastic_iface = None  # type: ignore[attr-defined]
+    if hasattr(module, "event_loop"):
+        module.event_loop = None  # type: ignore[attr-defined]
+    if hasattr(module, "reconnecting"):
+        module.reconnecting = False  # type: ignore[attr-defined]
+    if hasattr(module, "shutting_down"):
+        module.shutting_down = False  # type: ignore[attr-defined]
+    if hasattr(module, "reconnect_task"):
+        module.reconnect_task = None  # type: ignore[attr-defined]
+    if hasattr(module, "subscribed_to_messages"):
+        module.subscribed_to_messages = False  # type: ignore[attr-defined]
+    if hasattr(module, "subscribed_to_connection_lost"):
+        module.subscribed_to_connection_lost = False  # type: ignore[attr-defined]
+    if hasattr(module, "_metadata_future"):
+        module._metadata_future = None  # type: ignore[attr-defined]
+    if hasattr(module, "_metadata_future_started_at"):
+        module._metadata_future_started_at = None  # type: ignore[attr-defined]
+    if hasattr(module, "_ble_future"):
+        module._ble_future = None  # type: ignore[attr-defined]
+    if hasattr(module, "_ble_future_address"):
+        module._ble_future_address = None  # type: ignore[attr-defined]
+    if hasattr(module, "_ble_future_started_at"):
+        module._ble_future_started_at = None  # type: ignore[attr-defined]
+    if hasattr(module, "_ble_future_timeout_secs"):
+        module._ble_future_timeout_secs = None  # type: ignore[attr-defined]
+    if hasattr(module, "_ble_timeout_counts"):
+        module._ble_timeout_counts = {}  # type: ignore[attr-defined]
+    if hasattr(module, "_health_probe_request_deadlines"):
+        module._health_probe_request_deadlines = {}  # type: ignore[attr-defined]
+    if hasattr(module, "_ble_future_watchdog_secs"):
+        module._ble_future_watchdog_secs = getattr(
+            module,
+            "BLE_FUTURE_WATCHDOG_SECS",
+            module._ble_future_watchdog_secs,
+        )  # type: ignore[attr-defined]
+    if hasattr(module, "_ble_timeout_reset_threshold"):
+        module._ble_timeout_reset_threshold = getattr(
+            module,
+            "BLE_TIMEOUT_RESET_THRESHOLD",
+            module._ble_timeout_reset_threshold,
+        )  # type: ignore[attr-defined]
+    if hasattr(module, "_ble_scan_timeout_secs"):
+        module._ble_scan_timeout_secs = getattr(
+            module,
+            "BLE_SCAN_TIMEOUT_SECS",
+            module._ble_scan_timeout_secs,
+        )  # type: ignore[attr-defined]
+    if hasattr(module, "_ble_future_stale_grace_secs"):
+        module._ble_future_stale_grace_secs = getattr(
+            module,
+            "BLE_FUTURE_STALE_GRACE_SECS",
+            module._ble_future_stale_grace_secs,
+        )  # type: ignore[attr-defined]
+    if hasattr(module, "_ble_interface_create_timeout_secs"):
+        module._ble_interface_create_timeout_secs = getattr(
+            module,
+            "BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS",
+            module._ble_interface_create_timeout_secs,
+        )  # type: ignore[attr-defined]
+    if shutdown_executors and hasattr(module, "_metadata_executor"):
+        executor = module._metadata_executor  # type: ignore[attr-defined]
+        if executor is not None:
+            with contextlib.suppress(TypeError, RuntimeError):
+                executor.shutdown(wait=False, cancel_futures=True)
+        module._metadata_executor = None  # type: ignore[attr-defined]
+    if shutdown_executors and hasattr(module, "_ble_executor"):
+        executor = module._ble_executor  # type: ignore[attr-defined]
+        if executor is not None:
+            with contextlib.suppress(TypeError, RuntimeError):
+                executor.shutdown(wait=False, cancel_futures=True)
+        module._ble_executor = None  # type: ignore[attr-defined]
+
+
 class _ImmediateEvent:
     """Event that starts set and completes wait() immediately for shutdown tests."""
 
@@ -223,7 +311,7 @@ class _OnePassEvent:
     async def wait(self) -> bool:
         if self._set:
             return True
-        waiter = asyncio.get_event_loop().create_future()
+        waiter = asyncio.get_running_loop().create_future()
         self._waiters.append(waiter)
         return await waiter
 
@@ -467,7 +555,7 @@ class TestMain(unittest.TestCase):
                 new_callable=AsyncMock,
             ) as mock_check_conn,
             patch(
-                "mmrelay.main.meshtastic_utils.get_node_name_refresh_interval_seconds",
+                "mmrelay.main.meshtastic_utils.get_nodedb_refresh_interval_seconds",
                 return_value=expected_interval,
             ) as mock_get_interval,
             patch(
@@ -1605,16 +1693,16 @@ class TestMainFunctionEdgeCases(unittest.TestCase):
         mock_sync.assert_not_called()
         self.assertIsNone(result)
 
-    def test_node_name_refresh_interval_invalid_defaults(self):
-        """Invalid refresh intervals should fall back to the default value."""
+    def test_nodedb_refresh_interval_invalid_defaults(self):
+        """Invalid nodedb refresh intervals should fall back to the default value."""
         import mmrelay.meshtastic_utils as meshtastic_module
 
         for raw_value in ("inf", "not-a-number", True, False):
             with self.subTest(raw_value=raw_value):
-                interval = meshtastic_module.get_node_name_refresh_interval_seconds(
-                    {"meshtastic": {"node_name_refresh_interval": raw_value}}
+                interval = meshtastic_module.get_nodedb_refresh_interval_seconds(
+                    {"meshtastic": {"nodedb_refresh_interval": raw_value}}
                 )
-                self.assertEqual(interval, DEFAULT_NODE_NAME_REFRESH_INTERVAL)
+                self.assertEqual(interval, DEFAULT_NODEDB_REFRESH_INTERVAL)
 
 
 @pytest.mark.parametrize("db_key", ["database", "db"])
@@ -2076,72 +2164,7 @@ class TestMainAsyncFunction(unittest.TestCase):
         (e.g., message queue stop) to ensure resources are released and tests remain isolated.
         """
 
-        # Reset meshtastic_utils globals
-        if "mmrelay.meshtastic_utils" in sys.modules:
-            module = sys.modules["mmrelay.meshtastic_utils"]
-            module.config = None  # type: ignore[attr-defined]
-            module.matrix_rooms = []  # type: ignore[attr-defined]
-            module.meshtastic_client = None  # type: ignore[attr-defined]
-            module.event_loop = None  # type: ignore[attr-defined]
-            module.reconnecting = False  # type: ignore[attr-defined]
-            module.shutting_down = False  # type: ignore[attr-defined]
-            module.reconnect_task = None  # type: ignore[attr-defined]
-            module.subscribed_to_messages = False  # type: ignore[attr-defined]
-            module.subscribed_to_connection_lost = False  # type: ignore[attr-defined]
-            if hasattr(module, "_metadata_future"):
-                module._metadata_future = None  # type: ignore[attr-defined]
-            if hasattr(module, "_ble_future"):
-                module._ble_future = None  # type: ignore[attr-defined]
-            if hasattr(module, "_ble_future_address"):
-                module._ble_future_address = None  # type: ignore[attr-defined]
-            if hasattr(module, "_ble_future_started_at"):
-                module._ble_future_started_at = None  # type: ignore[attr-defined]
-            if hasattr(module, "_ble_future_timeout_secs"):
-                module._ble_future_timeout_secs = None  # type: ignore[attr-defined]
-            if hasattr(module, "_ble_timeout_counts"):
-                module._ble_timeout_counts = {}  # type: ignore[attr-defined]
-            if hasattr(module, "_ble_future_watchdog_secs"):
-                module._ble_future_watchdog_secs = getattr(
-                    module,
-                    "BLE_FUTURE_WATCHDOG_SECS",
-                    module._ble_future_watchdog_secs,
-                )  # type: ignore[attr-defined]
-            if hasattr(module, "_ble_timeout_reset_threshold"):
-                module._ble_timeout_reset_threshold = getattr(
-                    module,
-                    "BLE_TIMEOUT_RESET_THRESHOLD",
-                    module._ble_timeout_reset_threshold,
-                )  # type: ignore[attr-defined]
-            if hasattr(module, "_ble_scan_timeout_secs"):
-                module._ble_scan_timeout_secs = getattr(
-                    module,
-                    "BLE_SCAN_TIMEOUT_SECS",
-                    module._ble_scan_timeout_secs,
-                )  # type: ignore[attr-defined]
-            if hasattr(module, "_ble_future_stale_grace_secs"):
-                module._ble_future_stale_grace_secs = getattr(
-                    module,
-                    "BLE_FUTURE_STALE_GRACE_SECS",
-                    module._ble_future_stale_grace_secs,
-                )  # type: ignore[attr-defined]
-            if hasattr(module, "_ble_interface_create_timeout_secs"):
-                module._ble_interface_create_timeout_secs = getattr(
-                    module,
-                    "BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS",
-                    module._ble_interface_create_timeout_secs,
-                )  # type: ignore[attr-defined]
-            if hasattr(module, "_metadata_executor"):
-                executor = module._metadata_executor  # type: ignore[attr-defined]
-                if executor is not None:
-                    with contextlib.suppress(TypeError, RuntimeError):
-                        executor.shutdown(wait=False, cancel_futures=True)
-                module._metadata_executor = None  # type: ignore[attr-defined]
-            if hasattr(module, "_ble_executor"):
-                executor = module._ble_executor  # type: ignore[attr-defined]
-                if executor is not None:
-                    with contextlib.suppress(TypeError, RuntimeError):
-                        executor.shutdown(wait=False, cancel_futures=True)
-                module._ble_executor = None  # type: ignore[attr-defined]
+        _reset_meshtastic_utils_globals(shutdown_executors=True)
 
         # Reset matrix_utils globals
         if "mmrelay.matrix_utils" in sys.modules:
@@ -2725,41 +2748,7 @@ class TestStartupRollback(unittest.TestCase):
 
     def _reset_global_state(self):
         """Reset module-level global state."""
-        if "mmrelay.meshtastic_utils" in sys.modules:
-            module = sys.modules["mmrelay.meshtastic_utils"]
-            module.meshtastic_client = None  # type: ignore[attr-defined]
-            module.meshtastic_iface = None  # type: ignore[attr-defined]
-            module.shutting_down = False  # type: ignore[attr-defined]
-            if hasattr(module, "_ble_future_watchdog_secs"):
-                module._ble_future_watchdog_secs = getattr(
-                    module,
-                    "BLE_FUTURE_WATCHDOG_SECS",
-                    module._ble_future_watchdog_secs,
-                )  # type: ignore[attr-defined]
-            if hasattr(module, "_ble_timeout_reset_threshold"):
-                module._ble_timeout_reset_threshold = getattr(
-                    module,
-                    "BLE_TIMEOUT_RESET_THRESHOLD",
-                    module._ble_timeout_reset_threshold,
-                )  # type: ignore[attr-defined]
-            if hasattr(module, "_ble_scan_timeout_secs"):
-                module._ble_scan_timeout_secs = getattr(
-                    module,
-                    "BLE_SCAN_TIMEOUT_SECS",
-                    module._ble_scan_timeout_secs,
-                )  # type: ignore[attr-defined]
-            if hasattr(module, "_ble_future_stale_grace_secs"):
-                module._ble_future_stale_grace_secs = getattr(
-                    module,
-                    "BLE_FUTURE_STALE_GRACE_SECS",
-                    module._ble_future_stale_grace_secs,
-                )  # type: ignore[attr-defined]
-            if hasattr(module, "_ble_interface_create_timeout_secs"):
-                module._ble_interface_create_timeout_secs = getattr(
-                    module,
-                    "BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS",
-                    module._ble_interface_create_timeout_secs,
-                )  # type: ignore[attr-defined]
+        _reset_meshtastic_utils_globals()
 
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
@@ -3248,13 +3237,22 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
 
                 asyncio.run(main(config))
 
-        check_conn_tasks = [
-            task
-            for task in created_tasks
-            if getattr(getattr(task, "get_coro", lambda: None)(), "__name__", "")
-            == "_check_connection_wait"
-        ]
-        self.assertTrue(check_conn_tasks)
+        check_conn_tasks = []
+        observed_coro_names: list[str] = []
+        for task in created_tasks:
+            coro = getattr(task, "get_coro", lambda: None)()
+            coro_name = getattr(coro, "__name__", "")
+            observed_coro_names.append(coro_name)
+            if "check_connection" in coro_name:
+                check_conn_tasks.append(task)
+                continue
+            if "_check_connection_wait" in repr(coro):
+                check_conn_tasks.append(task)
+
+        self.assertTrue(
+            check_conn_tasks,
+            f"No connection health task captured. Observed coroutines: {observed_coro_names}",
+        )
         self.assertTrue(
             any(task.cancelled() or task.cancelling() > 0 for task in check_conn_tasks)
         )
@@ -3370,13 +3368,22 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
 
                 asyncio.run(main(config))
 
-        check_conn_tasks = [
-            task
-            for task in created_tasks
-            if getattr(getattr(task, "get_coro", lambda: None)(), "__name__", "")
-            == "_check_connection_wait"
-        ]
-        self.assertTrue(check_conn_tasks)
+        check_conn_tasks = []
+        observed_coro_names: list[str] = []
+        for task in created_tasks:
+            coro = getattr(task, "get_coro", lambda: None)()
+            coro_name = getattr(coro, "__name__", "")
+            observed_coro_names.append(coro_name)
+            if "check_connection" in coro_name:
+                check_conn_tasks.append(task)
+                continue
+            if "_check_connection_wait" in repr(coro):
+                check_conn_tasks.append(task)
+
+        self.assertTrue(
+            check_conn_tasks,
+            f"No connection health task captured. Observed coroutines: {observed_coro_names}",
+        )
         self.assertTrue(
             any(task.cancelled() or task.cancelling() > 0 for task in check_conn_tasks)
         )
@@ -3540,10 +3547,7 @@ class TestMatrixSyncLoopErrorHandling(unittest.TestCase):
 
     def _reset_global_state(self):
         """Reset module-level global state."""
-        if "mmrelay.meshtastic_utils" in sys.modules:
-            module = sys.modules["mmrelay.meshtastic_utils"]
-            module.meshtastic_client = None  # type: ignore[attr-defined]
-            module.shutting_down = False  # type: ignore[attr-defined]
+        _reset_meshtastic_utils_globals()
 
     def test_sync_timeout_logs_warning_and_retries(self):
         """TimeoutError from sync_task.result() logs warning and retries."""

@@ -32,7 +32,7 @@ set -euo pipefail
 #   MESH_CHANNEL_NAME_A / MESH_CHANNEL_NAME_B: Channel names for isolated meshnets
 #   MESH_PRIMARY_PSK_A / MESH_PRIMARY_PSK_B: Primary channel keys for isolated meshnets
 #   MATRIX_EVENT_TIMEOUT_SECONDS: Matrix event polling timeout per assertion
-#   NODE_NAME_REFRESH_INTERVAL_SECONDS: Node-name refresh cadence in MMRelay config
+#   NODEDB_REFRESH_INTERVAL_SECONDS: Node-name refresh cadence in MMRelay config
 #   NAME_PRUNE_WAIT_TIMEOUT_SECONDS: Timeout for stale-name prune assertions
 # =============================================================================
 
@@ -67,7 +67,7 @@ MESHNET_NAME_B="${MESHNET_NAME_B:-Mesh B}"
 MATRIX_EVENT_TIMEOUT_SECONDS="${MATRIX_EVENT_TIMEOUT_SECONDS:-60}"
 MESSAGE_MAP_WAIT_TIMEOUT_SECONDS="${MESSAGE_MAP_WAIT_TIMEOUT_SECONDS:-60}"
 NAME_PRUNE_WAIT_TIMEOUT_SECONDS="${NAME_PRUNE_WAIT_TIMEOUT_SECONDS:-75}"
-NODE_NAME_REFRESH_INTERVAL_SECONDS="${NODE_NAME_REFRESH_INTERVAL_SECONDS:-5}"
+NODEDB_REFRESH_INTERVAL_SECONDS="${NODEDB_REFRESH_INTERVAL_SECONDS:-5}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 
 # Names-table SQL identifiers used by this integration test.
@@ -1674,7 +1674,7 @@ require_regex "${MMRELAY_READY_TIMEOUT_SECONDS}" '^[0-9]+$' "MMRELAY_READY_TIMEO
 require_regex "${MATRIX_EVENT_TIMEOUT_SECONDS}" '^[0-9]+$' "MATRIX_EVENT_TIMEOUT_SECONDS"
 require_regex "${MESSAGE_MAP_WAIT_TIMEOUT_SECONDS}" '^[0-9]+$' "MESSAGE_MAP_WAIT_TIMEOUT_SECONDS"
 require_regex "${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" '^[0-9]+$' "NAME_PRUNE_WAIT_TIMEOUT_SECONDS"
-require_regex "${NODE_NAME_REFRESH_INTERVAL_SECONDS}" '^[0-9]+([.][0-9]+)?$' "NODE_NAME_REFRESH_INTERVAL_SECONDS"
+require_regex "${NODEDB_REFRESH_INTERVAL_SECONDS}" '^[0-9]+([.][0-9]+)?$' "NODEDB_REFRESH_INTERVAL_SECONDS"
 require_regex "${MESH_CHANNEL_NAME_A}" '^[[:print:]]+$' "MESH_CHANNEL_NAME_A"
 require_regex "${MESH_CHANNEL_NAME_B}" '^[[:print:]]+$' "MESH_CHANNEL_NAME_B"
 require_regex "${MESH_PRIMARY_PSK_A}" '^0x[0-9A-Fa-f]{64}$' "MESH_PRIMARY_PSK_A"
@@ -1719,7 +1719,7 @@ if ((10#${NAME_PRUNE_WAIT_TIMEOUT_SECONDS} <= 0)); then
 	echo "NAME_PRUNE_WAIT_TIMEOUT_SECONDS must be greater than zero." >&2
 	exit 1
 fi
-if ! "${PYTHON_BIN}" - "${NODE_NAME_REFRESH_INTERVAL_SECONDS}" <<'PY'; then
+if ! "${PYTHON_BIN}" - "${NODEDB_REFRESH_INTERVAL_SECONDS}" <<'PY'; then
 import math
 import sys
 
@@ -1727,24 +1727,24 @@ value = float(sys.argv[1])
 if not math.isfinite(value) or value <= 0:
     raise SystemExit(1)
 PY
-	echo "NODE_NAME_REFRESH_INTERVAL_SECONDS must be a finite value greater than zero." >&2
+	echo "NODEDB_REFRESH_INTERVAL_SECONDS must be a finite value greater than zero." >&2
 	exit 1
 fi
-if ! "${PYTHON_BIN}" - "${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" "${NODE_NAME_REFRESH_INTERVAL_SECONDS}" <<'PY'; then
+if ! "${PYTHON_BIN}" - "${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" "${NODEDB_REFRESH_INTERVAL_SECONDS}" <<'PY'; then
 import math
 import sys
 
 name_prune_wait_timeout = float(sys.argv[1])
-node_name_refresh_interval = float(sys.argv[2])
-minimum_timeout = node_name_refresh_interval + 2.0
+nodedb_refresh_interval = float(sys.argv[2])
+minimum_timeout = nodedb_refresh_interval + 2.0
 if (
     not math.isfinite(name_prune_wait_timeout)
-    or not math.isfinite(node_name_refresh_interval)
+    or not math.isfinite(nodedb_refresh_interval)
     or name_prune_wait_timeout < minimum_timeout
 ):
     raise SystemExit(1)
 PY
-	echo "NAME_PRUNE_WAIT_TIMEOUT_SECONDS must be at least 2 seconds greater than NODE_NAME_REFRESH_INTERVAL_SECONDS." >&2
+	echo "NAME_PRUNE_WAIT_TIMEOUT_SECONDS must be at least 2 seconds greater than NODEDB_REFRESH_INTERVAL_SECONDS." >&2
 	exit 1
 fi
 if [[ -z ${MESHNET_NAME_A} || -z ${MESHNET_NAME_B} ]]; then
@@ -2157,7 +2157,7 @@ meshtastic:
   host: "${MESHTASTICD_HOST_A}"
   port: ${MESHTASTICD_PORT_A_DEC}
   meshnet_name: "${MESHNET_NAME_A}"
-  node_name_refresh_interval: ${NODE_NAME_REFRESH_INTERVAL_SECONDS}
+  nodedb_refresh_interval: ${NODEDB_REFRESH_INTERVAL_SECONDS}
   health_check:
     enabled: false
   broadcast_enabled: true
@@ -2190,7 +2190,7 @@ meshtastic:
   host: "${MESHTASTICD_HOST_B}"
   port: ${MESHTASTICD_PORT_B_DEC}
   meshnet_name: "${MESHNET_NAME_B}"
-  node_name_refresh_interval: ${NODE_NAME_REFRESH_INTERVAL_SECONDS}
+  nodedb_refresh_interval: ${NODEDB_REFRESH_INTERVAL_SECONDS}
   health_check:
     enabled: false
   broadcast_enabled: true

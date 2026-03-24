@@ -572,7 +572,7 @@ async def main(config: dict[str, Any]) -> None:
 
         check_connection_task.add_done_callback(_on_check_connection_done)
         # Give the health-check task one scheduling opportunity before readiness logic.
-        # This avoids publishing readiness if the task fails immediately.
+        # This only guards against immediate startup failures in check_connection().
         await asyncio.sleep(0)
     except Exception:
         _set_shutdown_flag()
@@ -639,6 +639,7 @@ async def main(config: dict[str, Any]) -> None:
             else:
                 if shutdown_event.is_set() or refresh_interval_seconds <= 0:
                     return
+                restart_attempt = 0
                 backoff_seconds = 1.0
                 meshtastic_logger.warning(
                     "Node-name refresh task exited unexpectedly; restarting in %.1fs",
@@ -727,12 +728,12 @@ async def main(config: dict[str, Any]) -> None:
 
     # Start the Matrix client sync loop
     try:
-        node_name_refresh_interval_seconds = (
-            meshtastic_utils.get_node_name_refresh_interval_seconds(config)
+        nodedb_refresh_interval_seconds = (
+            meshtastic_utils.get_nodedb_refresh_interval_seconds(config)
         )
         node_name_refresh_task = asyncio.create_task(
             _node_name_refresh_supervisor(
-                node_name_refresh_interval_seconds,
+                nodedb_refresh_interval_seconds,
             )
         )
 
@@ -877,20 +878,6 @@ async def main(config: dict[str, Any]) -> None:
         if meshtastic_utils.reconnect_task:
             meshtastic_utils.reconnect_task.cancel()
             meshtastic_logger.info("Cancelled Meshtastic reconnect task.")
-
-        # Cancel any remaining tasks (including the check_conn_task)
-        current_task = asyncio.current_task()
-        pending_tasks = [
-            task
-            for task in asyncio.all_tasks(loop)
-            if task is not current_task and not task.done()
-        ]
-
-        for task in pending_tasks:
-            task.cancel()
-
-        if pending_tasks:
-            await asyncio.gather(*pending_tasks, return_exceptions=True)
 
         matrix_logger.info("Shutdown complete.")
 

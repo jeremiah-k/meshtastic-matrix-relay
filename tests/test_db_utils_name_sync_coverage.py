@@ -117,8 +117,8 @@ def test_read_name_values_returns_none_on_sqlite_error(configured_temp_db: str) 
     assert result is None
 
 
-def test_read_name_values_falls_back_when_json_each_unavailable() -> None:
-    """json_each lookup failures should fall back to per-ID queries."""
+def test_read_name_values_returns_none_when_json_each_unavailable() -> None:
+    """json_each lookup failures should return None through the SQLite error path."""
 
     class _FallbackCursor:
         def __init__(self) -> None:
@@ -148,7 +148,7 @@ def test_read_name_values_falls_back_when_json_each_unavailable() -> None:
     with patch("mmrelay.db_utils._get_db_manager", return_value=mock_manager):
         result = _read_name_values_for_ids(NAMES_TABLE_LONGNAMES, {"!1", "!2"})
 
-    assert result == {"!1": "Alpha"}
+    assert result is None
 
 
 def test_name_table_matches_state_handles_failed_read() -> None:

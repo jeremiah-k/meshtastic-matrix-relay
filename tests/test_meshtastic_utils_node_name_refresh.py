@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 
 import mmrelay.meshtastic_utils as mu
-from mmrelay.constants.config import DEFAULT_NODE_NAME_REFRESH_INTERVAL
+from mmrelay.constants.config import DEFAULT_NODEDB_REFRESH_INTERVAL
 
 
 class _OnePassEvent:
@@ -59,13 +59,13 @@ class _ClientWithNodes:
         self.nodes = nodes
 
 
-def test_get_node_name_refresh_interval_ignores_non_dict_config(
+def test_get_nodedb_refresh_interval_ignores_non_dict_config(
     reset_meshtastic_globals,
 ) -> None:
-    """Non-dict config inputs should fall back to default refresh interval."""
+    """Non-dict config inputs should fall back to default nodedb refresh interval."""
     _ = reset_meshtastic_globals
-    interval = mu.get_node_name_refresh_interval_seconds(cast(Any, []))
-    assert interval == DEFAULT_NODE_NAME_REFRESH_INTERVAL
+    interval = mu.get_nodedb_refresh_interval_seconds(cast(Any, []))
+    assert interval == DEFAULT_NODEDB_REFRESH_INTERVAL
 
 
 def test_refresh_node_name_tables_skips_when_nodes_attribute_unavailable(
