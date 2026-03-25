@@ -116,7 +116,7 @@ def test_requires_continuous_health_monitor_defaults_to_config_constant() -> Non
         main_module._requires_continuous_health_monitor(
             {"meshtastic": {"health_check": "invalid"}}
         )
-        is expected
+        is True
     )
 
 
@@ -184,7 +184,7 @@ async def test_main_cleans_up_ready_task_on_shutdown(tmp_path, monkeypatch) -> N
     async def _capture_ready_heartbeat(event: _ControllableEvent) -> None:
         nonlocal captured_ready_event
         captured_ready_event = event
-        await real_ready_heartbeat(event)
+        await real_ready_heartbeat(event)  # type: ignore[arg-type]
 
     mock_matrix_client.sync_forever = AsyncMock(side_effect=_sync_forever_wait)
 
