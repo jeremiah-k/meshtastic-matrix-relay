@@ -4,18 +4,21 @@
 from __future__ import annotations
 
 import os
+from typing import IO, Any, Callable
 from unittest.mock import mock_open, patch
 
 import mmrelay.runtime_utils as runtime_utils
 
 
-def _open_side_effect_for_proc(status_text: str, comm_text: str):
+def _open_side_effect_for_proc(
+    status_text: str, comm_text: str
+) -> Callable[[str, Any, Any], IO[Any]]:
     """Build an open() side effect for /proc status and comm file reads."""
     status_handle = mock_open(read_data=status_text).return_value
     comm_handle = mock_open(read_data=comm_text).return_value
     target_comm_path = runtime_utils.PROC_COMM_PATH_TEMPLATE.format(ppid=1)
 
-    def _side_effect(path: str, *args, **kwargs):
+    def _side_effect(path: str, *args: Any, **kwargs: Any) -> IO[Any]:
         if path == runtime_utils.PROC_SELF_STATUS_PATH:
             return status_handle
         if path == target_comm_path:

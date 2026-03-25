@@ -970,7 +970,11 @@ class TestDatabaseManager(unittest.TestCase):
             manager._connections = {real_conn, bad_conn}
         with patch("mmrelay.db_runtime.logger") as mock_logger:
             manager.close()
-        mock_logger.debug.assert_called()
+        mock_logger.debug.assert_called_once_with(
+            "Error closing connection during shutdown", exc_info=True
+        )
+        with manager._connections_lock:
+            self.assertEqual(len(manager._connections), 0)
 
     def test_close_ignores_attributeerror_while_deleting_thread_local_connection(self):
         """close() should ignore AttributeError from unusual thread-local implementations."""

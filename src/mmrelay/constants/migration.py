@@ -22,6 +22,4 @@ TEMP_DEVICE_NAME_LOGOUT: Final[str] = "mmrelay-logout-verify"
 MIGRATION_MIN_FREE_SPACE_BYTES: Final[int] = 500 * 1024 * 1024  # 500 MB
 
 # Service args template
-DEFAULT_SERVICE_ARGS_SUFFIX: Final[str] = (
-    " --config %h/.mmrelay/config.yaml --logfile %h/.mmrelay/logs/mmrelay.log"
-)
+DEFAULT_SERVICE_ARGS_SUFFIX: Final[str] = " --home %h/.mmrelay"

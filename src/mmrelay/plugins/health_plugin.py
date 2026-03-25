@@ -114,7 +114,7 @@ class Plugin(BasePlugin):
 
         return f"""Nodes: {radios}
  {battery_line}
- Nodes with Low Battery (<= 10): {low_battery}
+ Nodes with Low Battery (<={LOW_BATTERY_THRESHOLD_PERCENT}%): {low_battery}
  {air_util_line}
  {snr_line}"""
 

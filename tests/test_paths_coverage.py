@@ -168,14 +168,11 @@ def test_get_legacy_dirs_includes_windows_installer_path(monkeypatch) -> None:
 
     installer_path = Path("/la") / "Programs" / WINDOWS_INSTALLER_DIR_NAME
 
-    def _exists_side_effect(self: Path) -> bool:
-        return self == installer_path
-
     with (
         patch("sys.platform", "win32"),
         patch("mmrelay.paths.get_home_dir", return_value=Path("/current/home")),
         patch("mmrelay.paths.platformdirs.user_data_dir", return_value="/platform"),
-        patch.object(Path, "exists", autospec=True, side_effect=_exists_side_effect),
+        patch.object(installer_path, "exists", return_value=True),
     ):
         legacy_dirs = get_legacy_dirs()
 

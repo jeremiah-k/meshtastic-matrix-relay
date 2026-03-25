@@ -103,37 +103,37 @@ ENV_BOOL_FALSE_VALUES: Final[tuple[str, ...]] = ("false", "0", "no", "off")
 
 # Normalizable configuration sections (case-insensitive)
 NORMALIZABLE_CONFIG_SECTIONS: Final[tuple[str, ...]] = (
-    "matrix",
-    "meshtastic",
-    "logging",
-    "database",
-    "db",
-    "plugins",
-    "custom-plugins",
-    "community-plugins",
+    CONFIG_SECTION_MATRIX,
+    CONFIG_SECTION_MESHTASTIC,
+    CONFIG_SECTION_LOGGING,
+    CONFIG_SECTION_DATABASE,
+    CONFIG_SECTION_DATABASE_LEGACY,
+    CONFIG_SECTION_PLUGINS,
+    CONFIG_SECTION_CUSTOM_PLUGINS,
+    CONFIG_SECTION_COMMUNITY_PLUGINS,
 )
 
 # Required credential keys
 REQUIRED_CREDENTIALS_KEYS: Final[tuple[str, ...]] = (
-    "homeserver",
-    "access_token",
-    "user_id",
+    CONFIG_KEY_HOMESERVER,
+    CONFIG_KEY_ACCESS_TOKEN,
+    "user_id",  # No constant defined for this key
 )
 
 # Required config keys
 REQUIRED_CONFIG_KEYS_WITH_CREDENTIALS: Final[tuple[str, ...]] = (
-    "meshtastic",
-    "matrix_rooms",
+    CONFIG_SECTION_MESHTASTIC,
+    CONFIG_SECTION_MATRIX_ROOMS,
 )
 REQUIRED_CONFIG_KEYS_WITHOUT_CREDENTIALS: Final[tuple[str, ...]] = (
-    "matrix",
-    "meshtastic",
-    "matrix_rooms",
+    CONFIG_SECTION_MATRIX,
+    CONFIG_SECTION_MESHTASTIC,
+    CONFIG_SECTION_MATRIX_ROOMS,
 )
 
 # Plugin configuration sections
 PLUGIN_CONFIG_SECTIONS: Final[tuple[str, ...]] = (
-    "plugins",
-    "community-plugins",
-    "custom-plugins",
+    CONFIG_SECTION_PLUGINS,
+    CONFIG_SECTION_COMMUNITY_PLUGINS,
+    CONFIG_SECTION_CUSTOM_PLUGINS,
 )

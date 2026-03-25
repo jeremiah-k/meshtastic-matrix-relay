@@ -507,7 +507,9 @@ def _find_legacy_data(legacy_root: Path) -> list[dict[str, str]]:
         legacy_root / "data" / "meshtastic.sqlite",
         legacy_root / "database" / "meshtastic.sqlite",
     ]
-    db_sidecar_suffixes = SQLITE_SIDECAR_SUFFIXES[:2]  # .sqlite-wal, .sqlite-shm
+    db_sidecar_suffixes = tuple(
+        s for s in SQLITE_SIDECAR_SUFFIXES if s in {".sqlite-wal", ".sqlite-shm"}
+    )
     for candidate in db_candidates:
         if candidate.exists():
             add_finding("database", candidate)
@@ -1381,6 +1383,14 @@ def migrate_config(
             staging_path.unlink(missing_ok=True)
 
 
+def _collect_db_sidecars(db_path: Path, candidates: list[Path]) -> None:
+    for suffix in SQLITE_SIDECAR_SUFFIXES:
+        sidecar_suffix = suffix if suffix.startswith(".") else f".sqlite{suffix}"
+        sidecar = db_path.with_suffix(sidecar_suffix)
+        if sidecar.exists():
+            candidates.append(sidecar)
+
+
 def migrate_database(
     legacy_roots: list[Path],
     new_home: Path,
@@ -1427,13 +1437,7 @@ def migrate_database(
             continue
         if legacy_db.exists():
             candidates.append(legacy_db)
-            for suffix in SQLITE_SIDECAR_SUFFIXES:
-                sidecar_suffix = (
-                    suffix if suffix.startswith(".") else f".sqlite{suffix}"
-                )
-                sidecar = legacy_db.with_suffix(sidecar_suffix)
-                if sidecar.exists():
-                    candidates.append(sidecar)
+            _collect_db_sidecars(legacy_db, candidates)
 
         partial_data_dir = legacy_root / "data"
         if partial_data_dir.exists():
@@ -1442,13 +1446,7 @@ def migrate_database(
                 continue
             if partial_db.exists():
                 candidates.append(partial_db)
-                for suffix in SQLITE_SIDECAR_SUFFIXES:
-                    sidecar_suffix = (
-                        suffix if suffix.startswith(".") else f".sqlite{suffix}"
-                    )
-                    sidecar = partial_db.with_suffix(sidecar_suffix)
-                    if sidecar.exists():
-                        candidates.append(sidecar)
+                _collect_db_sidecars(partial_db, candidates)
 
         legacy_db_dir = legacy_root / "database"
         if legacy_db_dir.exists():
@@ -1469,13 +1467,7 @@ def migrate_database(
                 continue
             if legacy_db.exists():
                 candidates.append(legacy_db)
-                for suffix in SQLITE_SIDECAR_SUFFIXES:
-                    sidecar_suffix = (
-                        suffix if suffix.startswith(".") else f".sqlite{suffix}"
-                    )
-                    sidecar = legacy_db.with_suffix(sidecar_suffix)
-                    if sidecar.exists():
-                        candidates.append(sidecar)
+                _collect_db_sidecars(legacy_db, candidates)
 
     if not candidates:
         if (new_db_dir / "meshtastic.sqlite").exists():

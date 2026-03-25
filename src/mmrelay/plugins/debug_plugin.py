@@ -21,7 +21,7 @@ class Plugin(BasePlugin):
     before logging to keep output readable.
 
     Configuration:
-        priority: 1 (runs first, before other plugins)
+        priority: Configured via the DEBUG_PLUGIN_PRIORITY constant (runs first, before other plugins)
 
     Never intercepts messages (always returns False) so other plugins
     can still process the same packets.

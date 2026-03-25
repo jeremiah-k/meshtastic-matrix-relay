@@ -39,7 +39,7 @@ class TestDebugPlugin(unittest.TestCase):
 
     def test_plugin_priority(self):
         """
-        Verify that the debug plugin's priority is set to 1, ensuring it executes early in the plugin chain.
+        Verify that the debug plugin's priority matches DEBUG_PLUGIN_PRIORITY, ensuring it executes early in the plugin chain.
         """
         self.assertEqual(self.plugin.priority, DEBUG_PLUGIN_PRIORITY)
 

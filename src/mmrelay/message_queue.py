@@ -151,29 +151,37 @@ class MessageQueue:
             self._running = False
 
             if self._processor_task:
-                self._processor_task.cancel()
-
                 # Wait for the task to complete on its owning loop
                 task_loop = self._processor_task.get_loop()
                 current_loop = None
                 with contextlib.suppress(RuntimeError):
                     current_loop = asyncio.get_running_loop()
+
                 if task_loop.is_closed():
                     # Owning loop is closed; nothing we can do to await it
                     pass
                 elif current_loop is task_loop:
-                    # Avoid blocking the event loop thread; cancellation will finish naturally
-                    pass
+                    # Same thread: safe to cancel directly, skip blocking await
+                    self._processor_task.cancel()
                 elif task_loop.is_running():
-                    from asyncio import run_coroutine_threadsafe, shield
+                    # Cross-thread: use call_soon_threadsafe for cancel
+                    task_loop.call_soon_threadsafe(self._processor_task.cancel)
+
+                    # Create a proper coroutine for awaiting the task
+                    async def _await_processor_task() -> None:
+                        await self._processor_task
+
+                    from asyncio import run_coroutine_threadsafe
 
                     with contextlib.suppress(Exception):
                         fut: Any = run_coroutine_threadsafe(
-                            cast(Any, shield(self._processor_task)), task_loop
+                            _await_processor_task(), task_loop
                         )
                         # Wait for completion; ignore exceptions raised due to cancellation
                         fut.result(timeout=TASK_SHUTDOWN_TIMEOUT_SEC)
                 else:
+                    # Non-running loop: safe to cancel directly, then run_until_complete
+                    self._processor_task.cancel()
                     with contextlib.suppress(
                         asyncio.CancelledError, RuntimeError, Exception
                     ):

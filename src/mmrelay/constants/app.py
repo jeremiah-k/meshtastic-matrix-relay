@@ -81,7 +81,7 @@ PROC_COMM_PATH_TEMPLATE: Final[str] = "/proc/{ppid}/comm"
 DIAGNOSTICS_PARTIAL_ERROR_THRESHOLD: Final[int] = 3
 DISK_SPACE_OK_GB: Final[float] = 1.0
 DISK_SPACE_WARN_GB: Final[float] = 0.5
-DISK_SPACE_CRITICAL_GB: Final[float] = 0.1
+DISK_SPACE_CRITICAL_DATABASE_GB: Final[float] = 0.1
 
 # Docker legacy paths (for migration detection)
 DOCKER_LEGACY_PATHS: Final[tuple[str, ...]] = ("/data", "/app/data", "/var/lib/mmrelay")

@@ -120,7 +120,7 @@ class TestSetupUtils(unittest.TestCase):
 
         result = get_resolved_exec_start()
 
-        expected = "ExecStart=/usr/local/bin/mmrelay --config %h/.mmrelay/config.yaml --logfile %h/.mmrelay/logs/mmrelay.log"
+        expected = "ExecStart=/usr/local/bin/mmrelay --home %h/.mmrelay"
         self.assertEqual(result, expected)
 
     @patch("shutil.which")
@@ -130,7 +130,7 @@ class TestSetupUtils(unittest.TestCase):
 
         result = get_resolved_exec_start()
 
-        expected = f"ExecStart={sys.executable} -m mmrelay --config %h/.mmrelay/config.yaml --logfile %h/.mmrelay/logs/mmrelay.log"
+        expected = f"ExecStart={sys.executable} -m mmrelay --home %h/.mmrelay"
         self.assertEqual(result, expected)
 
     @patch("mmrelay.setup_utils.logger")

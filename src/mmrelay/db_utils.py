@@ -578,20 +578,25 @@ def initialize_database() -> None:
         cursor.execute(
             f"CREATE TABLE IF NOT EXISTS {MESSAGE_MAP_TABLE} ({MESSAGE_MAP_COLUMNS[0]} TEXT, {MESSAGE_MAP_COLUMNS[1]} TEXT PRIMARY KEY, {MESSAGE_MAP_COLUMNS[2]} TEXT, {MESSAGE_MAP_COLUMNS[3]} TEXT, {MESSAGE_MAP_COLUMNS[4]} TEXT)"
         )
+        _legacy_table = f"{MESSAGE_MAP_TABLE}_legacy"
+        _col_id, _col_evt, _col_room, _col_text, _col_mesh = MESSAGE_MAP_COLUMNS
+
         # Attempt schema adjustments for upgrades
         try:
-            cursor.execute("ALTER TABLE message_map ADD COLUMN meshtastic_meshnet TEXT")
+            cursor.execute(
+                f"ALTER TABLE {MESSAGE_MAP_TABLE} ADD COLUMN {_col_mesh} TEXT"
+            )
         except sqlite3.OperationalError:
             pass
 
         # Migrate legacy message_map schema where meshtastic_id used INTEGER affinity.
-        cursor.execute("PRAGMA table_info(message_map)")
+        cursor.execute(f"PRAGMA table_info({MESSAGE_MAP_TABLE})")
         columns = cursor.fetchall()
         column_map = {column[1]: column for column in columns}
-        meshtastic_column = column_map.get("meshtastic_id")
-        meshnet_column = column_map.get("meshtastic_meshnet")
+        meshtastic_column = column_map.get(_col_id)
+        meshnet_column = column_map.get(_col_mesh)
         cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='message_map_legacy'"
+            f"SELECT name FROM sqlite_master WHERE type='table' AND name='{_legacy_table}'"
         )
         legacy_exists = cursor.fetchone() is not None
 
@@ -599,47 +604,47 @@ def initialize_database() -> None:
             not meshtastic_column or str(meshtastic_column[2]).upper() == "TEXT"
         ):
             # Recover from a previously interrupted migration by merging legacy rows.
-            cursor.execute("PRAGMA table_info(message_map_legacy)")
+            cursor.execute(f"PRAGMA table_info({_legacy_table})")
             legacy_columns = {column[1]: column for column in cursor.fetchall()}
-            if "meshtastic_meshnet" in legacy_columns:
+            if _col_mesh in legacy_columns:
                 cursor.execute(
-                    "INSERT OR IGNORE INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
-                    "SELECT CAST(meshtastic_id AS TEXT), matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet "
-                    "FROM message_map_legacy"
+                    f"INSERT OR IGNORE INTO {MESSAGE_MAP_TABLE} ({_col_id}, {_col_evt}, {_col_room}, {_col_text}, {_col_mesh}) "
+                    f"SELECT CAST({_col_id} AS TEXT), {_col_evt}, {_col_room}, {_col_text}, {_col_mesh} "
+                    f"FROM {_legacy_table}"
                 )
             else:
                 cursor.execute(
-                    "INSERT OR IGNORE INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
-                    "SELECT CAST(meshtastic_id AS TEXT), matrix_event_id, matrix_room_id, meshtastic_text, NULL "
-                    "FROM message_map_legacy"
+                    f"INSERT OR IGNORE INTO {MESSAGE_MAP_TABLE} ({_col_id}, {_col_evt}, {_col_room}, {_col_text}, {_col_mesh}) "
+                    f"SELECT CAST({_col_id} AS TEXT), {_col_evt}, {_col_room}, {_col_text}, NULL "
+                    f"FROM {_legacy_table}"
                 )
-            cursor.execute("DROP TABLE message_map_legacy")
+            cursor.execute(f"DROP TABLE {_legacy_table}")
             legacy_exists = False
 
         if meshtastic_column and str(meshtastic_column[2]).upper() != "TEXT":
             if legacy_exists:
-                cursor.execute("DROP TABLE message_map_legacy")
-            cursor.execute("ALTER TABLE message_map RENAME TO message_map_legacy")
+                cursor.execute(f"DROP TABLE {_legacy_table}")
+            cursor.execute(f"ALTER TABLE {MESSAGE_MAP_TABLE} RENAME TO {_legacy_table}")
             cursor.execute(
-                "CREATE TABLE message_map (meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
+                f"CREATE TABLE {MESSAGE_MAP_TABLE} ({_col_id} TEXT, {_col_evt} TEXT PRIMARY KEY, {_col_room} TEXT, {_col_text} TEXT, {_col_mesh} TEXT)"
             )
             if meshnet_column:
                 cursor.execute(
-                    "INSERT INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
-                    "SELECT CAST(meshtastic_id AS TEXT), matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet "
-                    "FROM message_map_legacy"
+                    f"INSERT INTO {MESSAGE_MAP_TABLE} ({_col_id}, {_col_evt}, {_col_room}, {_col_text}, {_col_mesh}) "
+                    f"SELECT CAST({_col_id} AS TEXT), {_col_evt}, {_col_room}, {_col_text}, {_col_mesh} "
+                    f"FROM {_legacy_table}"
                 )
             else:
                 cursor.execute(
-                    "INSERT INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
-                    "SELECT CAST(meshtastic_id AS TEXT), matrix_event_id, matrix_room_id, meshtastic_text, NULL "
-                    "FROM message_map_legacy"
+                    f"INSERT INTO {MESSAGE_MAP_TABLE} ({_col_id}, {_col_evt}, {_col_room}, {_col_text}, {_col_mesh}) "
+                    f"SELECT CAST({_col_id} AS TEXT), {_col_evt}, {_col_room}, {_col_text}, NULL "
+                    f"FROM {_legacy_table}"
                 )
-            cursor.execute("DROP TABLE message_map_legacy")
+            cursor.execute(f"DROP TABLE {_legacy_table}")
 
         try:
             cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_message_map_meshtastic_id ON message_map (meshtastic_id)"
+                f"CREATE INDEX IF NOT EXISTS idx_{MESSAGE_MAP_TABLE}_{_col_id} ON {MESSAGE_MAP_TABLE} ({_col_id})"
             )
         except sqlite3.OperationalError:
             pass
@@ -684,8 +689,8 @@ def store_plugin_data(plugin_name: str, meshtastic_id: int | str, data: Any) -> 
             cursor (sqlite3.Cursor): Open database cursor used to execute the insert/update statement.
         """
         cursor.execute(
-            "INSERT INTO plugin_data (plugin_name, meshtastic_id, data) VALUES (?, ?, ?) "
-            "ON CONFLICT (plugin_name, meshtastic_id) DO UPDATE SET data = excluded.data",
+            f"INSERT INTO {PLUGIN_DATA_TABLE} ({PLUGIN_DATA_COLUMNS[0]}, {PLUGIN_DATA_COLUMNS[1]}, {PLUGIN_DATA_COLUMNS[2]}) VALUES (?, ?, ?) "
+            f"ON CONFLICT ({PLUGIN_DATA_COLUMNS[0]}, {PLUGIN_DATA_COLUMNS[1]}) DO UPDATE SET {PLUGIN_DATA_COLUMNS[2]} = excluded.{PLUGIN_DATA_COLUMNS[2]}",
             (plugin_name, id_key, payload),
         )
 
@@ -718,7 +723,7 @@ def delete_plugin_data(plugin_name: str, meshtastic_id: int | str) -> None:
             cursor (sqlite3.Cursor): Cursor on which the DELETE is executed; must be part of the caller's transaction.
         """
         cursor.execute(
-            "DELETE FROM plugin_data WHERE plugin_name=? AND meshtastic_id=?",
+            f"DELETE FROM {PLUGIN_DATA_TABLE} WHERE {PLUGIN_DATA_COLUMNS[0]}=? AND {PLUGIN_DATA_COLUMNS[1]}=?",
             (plugin_name, id_key),
         )
 
@@ -756,7 +761,7 @@ def get_plugin_data_for_node(plugin_name: str, meshtastic_id: int | str) -> Any:
             `tuple[Any, ...]` with the `data` column for the matched row, or `None` if no row matches.
         """
         cursor.execute(
-            "SELECT data FROM plugin_data WHERE plugin_name=? AND meshtastic_id=?",
+            f"SELECT {PLUGIN_DATA_COLUMNS[2]} FROM {PLUGIN_DATA_TABLE} WHERE {PLUGIN_DATA_COLUMNS[0]}=? AND {PLUGIN_DATA_COLUMNS[1]}=?",
             (plugin_name, id_key),
         )
         return cast(tuple[Any, ...] | None, cursor.fetchone())

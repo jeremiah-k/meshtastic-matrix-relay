@@ -61,7 +61,7 @@ class TestExecStartImprovements(unittest.TestCase):
 
         result = get_resolved_exec_start()
 
-        expected = "ExecStart=/usr/local/bin/mmrelay --config %h/.mmrelay/config.yaml --logfile %h/.mmrelay/logs/mmrelay.log"
+        expected = "ExecStart=/usr/local/bin/mmrelay --home %h/.mmrelay"
         self.assertEqual(result, expected)
 
     @patch("mmrelay.setup_utils.get_resolved_exec_cmd")

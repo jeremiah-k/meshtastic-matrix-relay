@@ -36,7 +36,7 @@ from mmrelay.config import (
     validate_yaml_syntax,
 )
 from mmrelay.constants.app import (
-    DISK_SPACE_CRITICAL_GB,
+    DISK_SPACE_CRITICAL_DATABASE_GB,
     DISK_SPACE_OK_GB,
     DISK_SPACE_WARN_GB,
     WINDOWS_PLATFORM,
@@ -2073,7 +2073,7 @@ def _print_system_health(paths_info: dict[str, Any]) -> None:
             print(
                 f"   {status} {free_gb:.1f} GB free of {total_gb:.1f} GB ({used_pct:.0f}% used)"
             )
-            if free_gb < DISK_SPACE_CRITICAL_GB:
+            if free_gb < DISK_SPACE_CRITICAL_DATABASE_GB:
                 print("       ⚠️  Low disk space - database/logs may fail")
         else:
             print("   ⚠️  HOME directory not accessible")
@@ -2281,7 +2281,7 @@ def handle_auth_status(args: argparse.Namespace) -> int:
                 with open(credentials_path, "r", encoding="utf-8") as f:
                     credentials = json.load(f)
 
-                required = ("homeserver", "access_token", "user_id")
+                required = REQUIRED_CREDENTIALS_KEYS
                 if not all(
                     isinstance(credentials.get(k), str) and credentials.get(k).strip()
                     for k in required

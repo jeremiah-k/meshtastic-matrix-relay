@@ -2105,7 +2105,7 @@ def start_global_scheduler() -> None:
         """
         Runs the global scheduler loop that executes scheduled jobs until stopped.
 
-        Continuously calls `schedule.run_pending()` (if the `schedule` library is available) and waits up to 1 second between iterations. The loop exits when the module-level stop event is set.
+        Continuously calls `schedule.run_pending()` (if the `schedule` library is available) and waits up to ``SCHEDULER_LOOP_WAIT_SECONDS`` between iterations. The loop exits when the module-level stop_event is set.
         """
         logger.debug("Global scheduler thread started")
         # Capture stop_event locally to avoid races if globals are reset.
@@ -2127,7 +2127,7 @@ def stop_global_scheduler() -> None:
     """
     Stop the global scheduler thread.
 
-    Signals the scheduler loop to stop, waits up to 5 seconds for the thread to terminate, clears all scheduled jobs, and resets the scheduler state.
+    Signals the scheduler loop to stop, waits up to ``SCHEDULER_SHUTDOWN_TIMEOUT_SECONDS`` for the thread to terminate, clears all scheduled jobs, and resets the scheduler state.
     """
     global _global_scheduler_thread, _global_scheduler_stop_event
 

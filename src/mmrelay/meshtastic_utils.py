@@ -2013,14 +2013,14 @@ def _resolve_plugin_timeout(
 
     try:
         timeout = float(raw_value)
-        if timeout > 0:
+        if timeout > 0 and math.isfinite(timeout):
             return timeout
         logger.warning(
-            "Non-positive meshtastic.plugin_timeout value %r; using %ss fallback.",
+            "Invalid meshtastic.plugin_timeout value %r; using %ss fallback.",
             raw_value,
             default,
         )
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         logger.warning(
             "Invalid meshtastic.plugin_timeout value %r; using %ss fallback.",
             raw_value,

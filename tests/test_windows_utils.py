@@ -9,6 +9,8 @@ import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -248,6 +250,10 @@ class TestCheckWindowsRequirements(unittest.TestCase):
 class TestTestConfigGenerationWindows(unittest.TestCase):
     """Test cases for test_config_generation_windows function."""
 
+    @pytest.fixture(autouse=True)
+    def _setup_tmp_path(self, tmp_path):
+        self.tmp_path = tmp_path
+
     @patch("sys.platform", "linux")
     def test_test_config_generation_windows_non_windows(self):
         """Test test_config_generation_windows returns error on non-Windows."""
@@ -296,15 +302,17 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
 
     def test_test_config_generation_windows_sample_path_missing(self):
         """Missing sample config path should mark sample test as error."""
+        missing_sample = str(self.tmp_path / "missing_sample.yaml")
+        config_path = str(self.tmp_path / "config.yaml")
         with (
             patch("mmrelay.windows_utils.is_windows", return_value=True),
             patch(
                 "mmrelay.tools.get_sample_config_path",
-                return_value="/tmp/missing_sample.yaml",
+                return_value=missing_sample,
             ),
             patch("os.path.exists", return_value=False),
             patch("importlib.resources.files") as mock_files,
-            patch("mmrelay.config.get_config_paths", return_value=["/tmp/config.yaml"]),
+            patch("mmrelay.config.get_config_paths", return_value=[config_path]),
         ):
             mock_joinpath = MagicMock()
             mock_joinpath.read_text.return_value = "sample: config"
@@ -316,17 +324,19 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
 
     def test_test_config_generation_windows_importlib_resources_error(self):
         """importlib.resources errors should be captured in diagnostics."""
+        sample_config = str(self.tmp_path / "sample_config.yaml")
+        config_path = str(self.tmp_path / "config.yaml")
         with (
             patch("mmrelay.windows_utils.is_windows", return_value=True),
             patch(
                 "mmrelay.tools.get_sample_config_path",
-                return_value="/tmp/sample_config.yaml",
+                return_value=sample_config,
             ),
             patch("os.path.exists", return_value=True),
             patch(
                 "importlib.resources.files", side_effect=FileNotFoundError("missing")
             ),
-            patch("mmrelay.config.get_config_paths", return_value=["/tmp/config.yaml"]),
+            patch("mmrelay.config.get_config_paths", return_value=[config_path]),
         ):
             result = windows_test_config_generation(None)
 
@@ -335,11 +345,12 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
 
     def test_test_config_generation_windows_config_paths_error(self):
         """Config path resolution failures should be recorded as errors."""
+        sample_config = str(self.tmp_path / "sample_config.yaml")
         with (
             patch("mmrelay.windows_utils.is_windows", return_value=True),
             patch(
                 "mmrelay.tools.get_sample_config_path",
-                return_value="/tmp/sample_config.yaml",
+                return_value=sample_config,
             ),
             patch("os.path.exists", return_value=True),
             patch("importlib.resources.files") as mock_files,
@@ -355,16 +366,17 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
 
     def test_test_config_generation_windows_creates_missing_dirs(self):
         """Directory creation diagnostic should report created directories."""
+        sample_config = str(self.tmp_path / "sample_config.yaml")
+        new_dir = str(self.tmp_path / "new")
+        new_config = str(self.tmp_path / "new" / "config.yaml")
         with (
             patch("mmrelay.windows_utils.is_windows", return_value=True),
             patch(
                 "mmrelay.tools.get_sample_config_path",
-                return_value="/tmp/sample_config.yaml",
+                return_value=sample_config,
             ),
             patch("importlib.resources.files") as mock_files,
-            patch(
-                "mmrelay.config.get_config_paths", return_value=["/tmp/new/config.yaml"]
-            ),
+            patch("mmrelay.config.get_config_paths", return_value=[new_config]),
             patch("os.makedirs") as mock_makedirs,
         ):
             mock_joinpath = MagicMock()
@@ -372,31 +384,31 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
             mock_files.return_value.joinpath.return_value = mock_joinpath
 
             def _exists_side_effect(path: str) -> bool:
-                if path == "/tmp/sample_config.yaml":
+                if path == sample_config:
                     return True
-                if path == "/tmp/new":
+                if path == new_dir:
                     return False
                 return False
 
             with patch("os.path.exists", side_effect=_exists_side_effect):
                 result = windows_test_config_generation(None)
 
-        mock_makedirs.assert_called_once_with("/tmp/new", exist_ok=True)
+        mock_makedirs.assert_called_once_with(new_dir, exist_ok=True)
         self.assertEqual(result["directory_creation"]["status"], "ok")
-        self.assertIn("/tmp/new", result["directory_creation"]["details"])
+        self.assertIn(new_dir, result["directory_creation"]["details"])
 
     def test_test_config_generation_windows_directory_creation_oserror(self):
         """Directory creation OSError should be captured as diagnostic error."""
+        sample_config = str(self.tmp_path / "sample_config.yaml")
+        new_config = str(self.tmp_path / "new" / "config.yaml")
         with (
             patch("mmrelay.windows_utils.is_windows", return_value=True),
             patch(
                 "mmrelay.tools.get_sample_config_path",
-                return_value="/tmp/sample_config.yaml",
+                return_value=sample_config,
             ),
             patch("importlib.resources.files") as mock_files,
-            patch(
-                "mmrelay.config.get_config_paths", return_value=["/tmp/new/config.yaml"]
-            ),
+            patch("mmrelay.config.get_config_paths", return_value=[new_config]),
             patch("os.path.exists", return_value=False),
             patch("os.makedirs", side_effect=OSError("cannot create")),
         ):
@@ -409,15 +421,17 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
 
     def test_test_config_generation_windows_outer_oserror_sets_overall_error(self):
         """Unexpected outer OSError should mark overall_status=error with details."""
+        sample_config = str(self.tmp_path / "sample_config.yaml")
+        config_path = str(self.tmp_path / "config.yaml")
         with (
             patch("mmrelay.windows_utils.is_windows", return_value=True),
             patch(
                 "mmrelay.tools.get_sample_config_path",
-                return_value="/tmp/sample_config.yaml",
+                return_value=sample_config,
             ),
             patch("os.path.exists", return_value=True),
             patch("importlib.resources.files") as mock_files,
-            patch("mmrelay.config.get_config_paths", return_value=["/tmp/config.yaml"]),
+            patch("mmrelay.config.get_config_paths", return_value=[config_path]),
             patch("builtins.sum", side_effect=OSError("sum failure")),
         ):
             mock_joinpath = MagicMock()
@@ -430,6 +444,7 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
 
     def test_test_config_generation_windows_error_status_when_all_checks_fail(self):
         """Three or more check errors should produce overall_status='error'."""
+        _ = self.tmp_path
         with (
             patch("mmrelay.windows_utils.is_windows", return_value=True),
             patch(
