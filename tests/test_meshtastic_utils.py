@@ -98,6 +98,24 @@ def _reset_ble_inflight_state(module: Any) -> None:
     cleanup_ble_future_state(module)
 
 
+def _make_timeout_future() -> Mock:
+    """
+    Create a mock future that simulates a timeout.
+
+    Returns a Mock configured with:
+    - result() raises FuturesTimeoutError
+    - done() returns False
+    - cancel() returns True
+    """
+    from concurrent.futures import TimeoutError as FuturesTimeoutError
+
+    future = Mock()
+    future.result = Mock(side_effect=FuturesTimeoutError())
+    future.done.return_value = False
+    future.cancel = Mock(return_value=True)
+    return future
+
+
 @pytest.mark.usefixtures("stable_relay_start_time")
 class TestMeshtasticUtils(unittest.TestCase):
     """Test cases for Meshtastic utilities."""
@@ -3676,8 +3694,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         self, _mock_sleep, mock_logger
     ):
         """Test connect_meshtastic handles BLEInterface creation timeout."""
-        from concurrent.futures import TimeoutError as FuturesTimeoutError
-
         from mmrelay.meshtastic_utils import connect_meshtastic
 
         config = {
@@ -3687,15 +3703,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             },
             "matrix_rooms": [],
         }
-
-        # Mock BLE interface creation with the shared BLE executor
-        # Create a fresh mock future per submit() call to avoid state leakage across retries
-        def _make_timeout_future():
-            future = Mock()
-            future.result = Mock(side_effect=FuturesTimeoutError())
-            future.done.return_value = False
-            future.cancel = Mock(return_value=True)
-            return future
 
         mock_executor = Mock()
         mock_executor._shutdown = False
@@ -3770,8 +3777,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
     @patch("mmrelay.meshtastic_utils.time.sleep")
     def test_connect_meshtastic_ble_connect_timeout(self, _mock_sleep, mock_logger):
         """Test connect_meshtastic handles BLE connect() timeout."""
-        from concurrent.futures import TimeoutError as FuturesTimeoutError
-
         from mmrelay.meshtastic_utils import connect_meshtastic
 
         config = {
@@ -3782,12 +3787,9 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             "matrix_rooms": [],
         }
 
-        # Create two mock futures:
-        # 1. For interface creation: succeeds with a mock interface
-        # 2. For connect(): times out
         mock_iface = Mock()
         mock_iface.getMyNodeInfo.return_value = {"num": 123}
-        mock_iface.connect = Mock()  # Has connect() method to trigger connect() path
+        mock_iface.connect = Mock()
         mock_iface.auto_reconnect = False
 
         def _make_interface_future():
@@ -3796,17 +3798,10 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             future.cancel = Mock(return_value=True)
             return future
 
-        def _make_connect_future():
-            future = Mock()
-            future.result = Mock(side_effect=FuturesTimeoutError())
-            future.done.return_value = False
-            future.cancel = Mock(return_value=True)
-            return future
-
         future_sequence = iter(
             future
             for _ in range(MAX_TIMEOUT_RETRIES_INFINITE + 1)
-            for future in (_make_interface_future(), _make_connect_future())
+            for future in (_make_interface_future(), _make_timeout_future())
         )
 
         def submit_side_effect(_func, *_args, **_kwargs):

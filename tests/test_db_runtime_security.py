@@ -77,6 +77,7 @@ class TestDatabaseManager(unittest.TestCase):
     def test_initialization_allows_missing_json_each_support(self):
         """DatabaseManager should initialize and mark json_each as unavailable."""
         _validate_sqlite_json_each_support.cache_clear()
+        self.addCleanup(_validate_sqlite_json_each_support.cache_clear)
         probe_conn = MagicMock()
         probe_conn.execute.side_effect = sqlite3.OperationalError(
             "no such function: json_each"
@@ -107,6 +108,7 @@ class TestDatabaseManager(unittest.TestCase):
     def test_initialization_marks_json_each_supported_when_probe_succeeds(self):
         """DatabaseManager should mark json_each support when probe succeeds."""
         _validate_sqlite_json_each_support.cache_clear()
+        self.addCleanup(_validate_sqlite_json_each_support.cache_clear)
         probe_result = MagicMock()
         probe_result.fetchall.return_value = [("probe",)]
         probe_conn = MagicMock()

@@ -55,6 +55,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from aiohttp import ClientError
 
+from mmrelay.constants.app import DEFAULT_READY_HEARTBEAT_SECONDS
 from mmrelay.constants.config import DEFAULT_NODEDB_REFRESH_INTERVAL
 from mmrelay.main import main, print_banner, run_main
 from tests.helpers import (
@@ -103,10 +104,17 @@ async def _thread_backed_to_thread(
 ) -> Any:
     """
     Execute a callable on a real worker thread and await its result.
+
+    Uses a dedicated ThreadPoolExecutor per call to avoid blocking asyncio.run()
+    shutdown with the default executor.
     """
     loop = asyncio.get_running_loop()
     bound_call = functools.partial(func, *args, **kwargs)
-    return await loop.run_in_executor(None, bound_call)
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    try:
+        return await loop.run_in_executor(executor, bound_call)
+    finally:
+        executor.shutdown(wait=False)
 
 
 def _close_coro_if_possible(coro: Any) -> None:
@@ -219,7 +227,7 @@ def _reset_all_mmrelay_globals() -> None:
         module = sys.modules["mmrelay.main"]
         module._banner_printed = False  # type: ignore[attr-defined]
         module._ready_file_path = None  # type: ignore[attr-defined]
-        module._ready_heartbeat_seconds = 60  # type: ignore[attr-defined]
+        module._ready_heartbeat_seconds = DEFAULT_READY_HEARTBEAT_SECONDS  # type: ignore[attr-defined]
 
     if "mmrelay.plugin_loader" in sys.modules:
         module = sys.modules["mmrelay.plugin_loader"]
@@ -1598,6 +1606,90 @@ class TestRunMain(unittest.TestCase):
         # Check that log level was set in config
         self.assertEqual(mock_config["logging"]["level"], "DEBUG")
 
+    @patch("mmrelay.main.print_banner")
+    @patch("mmrelay.config.load_config")
+    @patch("mmrelay.config.load_credentials")
+    def test_run_main_with_credentials_json(
+        self, mock_load_credentials, mock_load_config, mock_print_banner
+    ):
+        """
+        Test run_main with credentials.json present (different required keys).
+
+        When credentials.json provides matrix authentication, the matrix.homeserver
+        key is not required in config.yaml.
+        """
+        mock_config = {
+            "meshtastic": {"connection_type": "serial"},
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+        }
+        mock_load_config.return_value = mock_config
+        mock_load_credentials.return_value = {"access_token": "test_token"}
+
+        mock_args = MagicMock()
+        mock_args.data_dir = None
+        mock_args.log_level = None
+
+        with patch("asyncio.run") as mock_asyncio_run:
+            mock_asyncio_run.side_effect = _close_coro_if_possible
+            result = run_main(mock_args)
+
+        self.assertEqual(result, 0)
+        mock_asyncio_run.assert_called_once()
+
+    @patch("mmrelay.main.print_banner")
+    @patch("mmrelay.config.load_config")
+    @patch("mmrelay.config.load_credentials")
+    @patch("mmrelay.main.get_legacy_env_vars")
+    @patch("mmrelay.main.get_legacy_dirs")
+    @patch("mmrelay.main.get_home_dir")
+    @patch("mmrelay.config.get_log_dir")
+    @patch("mmrelay.config.os.makedirs")
+    def test_run_main_legacy_layout_warning(
+        self,
+        _mock_makedirs,
+        mock_get_log_dir,
+        mock_get_home_dir,
+        mock_get_legacy_dirs,
+        mock_get_legacy_env_vars,
+        mock_load_credentials,
+        mock_load_config,
+        mock_print_banner,
+    ):
+        """Test that warning messages are logged when legacy layout is enabled."""
+        mock_config = {
+            "matrix": {"homeserver": "https://matrix.org"},
+            "meshtastic": {"connection_type": "serial"},
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+        }
+        mock_load_config.return_value = mock_config
+        mock_load_credentials.return_value = None
+        mock_get_home_dir.return_value = Path("/test/home/dir")
+        mock_get_legacy_dirs.return_value = [Path("/test/legacy/dir")]
+        mock_get_legacy_env_vars.return_value = ["MMRELAY_DATA_DIR"]
+        mock_get_log_dir.return_value = "/test/log/dir"
+
+        mock_args = MagicMock()
+        mock_args.data_dir = None
+        mock_args.log_level = None
+
+        with patch("asyncio.run") as mock_asyncio_run:
+            mock_asyncio_run.side_effect = _close_coro_if_possible
+            with patch("mmrelay.main.get_logger") as mock_get_logger:
+                mock_config_logger = MagicMock()
+                mock_get_logger.return_value = mock_config_logger
+                result = run_main(mock_args)
+
+        self.assertEqual(result, 0)
+        mock_config_logger.warning.assert_any_call(
+            "Legacy data layout detected (MMRELAY_HOME=%s, legacy_env_vars=%s, legacy_dirs=%s). This layout is deprecated and will be removed in a future release.",
+            "/test/home/dir",
+            "MMRELAY_DATA_DIR",
+            "/test/legacy/dir",
+        )
+        mock_config_logger.warning.assert_any_call(
+            "To migrate to the new layout, see docs/DOCKER.md: Migrating to the New Layout."
+        )
+
 
 class TestMainFunctionEdgeCases(unittest.TestCase):
     """Test cases for edge cases in the main function."""
@@ -1886,281 +1978,6 @@ def test_main_database_wipe_preferred_false_wins_over_legacy_true(
 
 class TestDatabaseConfiguration(unittest.TestCase):
     """Test cases for database configuration handling."""
-
-
-class TestRunMainFunction(unittest.TestCase):
-    """Test cases for run_main function."""
-
-    @patch("mmrelay.main.print_banner")
-    @patch("mmrelay.config.load_config")
-    @patch("mmrelay.config.load_credentials")
-    @patch("mmrelay.main.asyncio.run")
-    def test_run_main_success(
-        self,
-        mock_asyncio_run,
-        mock_load_credentials,
-        mock_load_config,
-        mock_print_banner,
-    ):
-        """Test successful run_main execution."""
-        # Mock configuration
-        mock_config = {
-            "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
-            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-        }
-        mock_load_config.return_value = mock_config
-        mock_load_credentials.return_value = None
-
-        # Mock asyncio.run to properly close coroutines
-        mock_asyncio_run.side_effect = _close_coro_if_possible
-
-        # Mock args
-        mock_args = MagicMock()
-        mock_args.data_dir = None
-        mock_args.log_level = None
-
-        result = run_main(mock_args)
-
-        self.assertEqual(result, 0)
-        mock_print_banner.assert_called_once()
-        mock_asyncio_run.assert_called_once()
-
-    @patch("mmrelay.main.print_banner")
-    @patch("mmrelay.config.load_config")
-    @patch("mmrelay.config.load_credentials")
-    def test_run_main_missing_config_keys(
-        self, mock_load_credentials, mock_load_config, mock_print_banner
-    ):
-        """Test run_main with missing required configuration keys."""
-        # Mock incomplete configuration
-        mock_config = {
-            "matrix": {"homeserver": "https://matrix.org"}
-        }  # Missing meshtastic and matrix_rooms
-        mock_load_config.return_value = mock_config
-        mock_load_credentials.return_value = None
-
-        mock_args = MagicMock()
-        mock_args.data_dir = None
-        mock_args.log_level = None
-
-        result = run_main(mock_args)
-
-        self.assertEqual(result, 1)
-        mock_print_banner.assert_called_once()
-
-    @patch("mmrelay.main.print_banner")
-    @patch("mmrelay.config.load_config")
-    @patch("mmrelay.config.load_credentials")
-    def test_run_main_with_credentials_json(
-        self, mock_load_credentials, mock_load_config, mock_print_banner
-    ):
-        """Test run_main with credentials.json present (different required keys)."""
-        # Mock configuration with credentials.json present
-        mock_config = {
-            "meshtastic": {"connection_type": "serial"},
-            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-            # No matrix section needed when credentials.json exists
-        }
-        mock_load_config.return_value = mock_config
-        mock_load_credentials.return_value = {"access_token": "test_token"}
-
-        mock_args = MagicMock()
-        mock_args.data_dir = None
-        mock_args.log_level = None
-
-        with patch("mmrelay.main.asyncio.run") as mock_asyncio_run:
-            # Mock asyncio.run to properly close coroutines
-            mock_asyncio_run.side_effect = _close_coro_if_possible
-            result = run_main(mock_args)
-
-        self.assertEqual(result, 0)
-        mock_asyncio_run.assert_called_once()
-
-    @patch("mmrelay.main.print_banner")
-    @patch("mmrelay.config.load_config")
-    @patch("mmrelay.config.load_credentials")
-    @patch("mmrelay.main.asyncio.run")
-    def test_run_main_with_custom_data_dir(
-        self,
-        mock_asyncio_run,
-        mock_load_credentials,
-        mock_load_config,
-        mock_print_banner,
-    ):
-        """Test run_main with custom data directory.
-
-        Note: --data-dir processing is now handled in cli.py before run_main() is called,
-        so run_main() no longer processes the data_dir argument directly.
-        """
-        # Use a simple custom data directory path
-        custom_data_dir = "/home/user/test_custom_data"
-
-        mock_config = {
-            "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
-            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-        }
-        mock_load_config.return_value = mock_config
-        mock_load_credentials.return_value = None
-
-        # Mock asyncio.run to properly close coroutines
-        mock_asyncio_run.side_effect = _close_coro_if_possible
-
-        mock_args = MagicMock()
-        mock_args.data_dir = custom_data_dir
-        mock_args.log_level = None
-
-        result = run_main(mock_args)
-
-        self.assertEqual(result, 0)
-        # run_main() no longer processes --data-dir (that's handled in cli.py)
-        # Just verify it runs successfully
-
-    @patch("mmrelay.main.print_banner")
-    @patch("mmrelay.config.load_config")
-    @patch("mmrelay.config.load_credentials")
-    def test_run_main_with_log_level_override(
-        self, mock_load_credentials, mock_load_config, mock_print_banner
-    ):
-        """Test run_main with log level override."""
-        mock_config = {
-            "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
-            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-        }
-        mock_load_config.return_value = mock_config
-        mock_load_credentials.return_value = None
-
-        mock_args = MagicMock()
-        mock_args.data_dir = None
-        mock_args.log_level = "DEBUG"
-
-        with patch("mmrelay.main.asyncio.run") as mock_asyncio_run:
-            # Mock asyncio.run to properly close coroutines
-            mock_asyncio_run.side_effect = _close_coro_if_possible
-            result = run_main(mock_args)
-
-        self.assertEqual(result, 0)
-        # Verify log level was set in config
-        self.assertEqual(mock_config["logging"]["level"], "DEBUG")
-
-    @patch("mmrelay.main.print_banner")
-    @patch("mmrelay.config.load_config")
-    @patch("mmrelay.config.load_credentials")
-    @patch("mmrelay.main.get_legacy_env_vars")
-    @patch("mmrelay.main.get_legacy_dirs")
-    @patch("mmrelay.main.get_home_dir")
-    @patch("mmrelay.config.get_log_dir")
-    @patch("mmrelay.config.os.makedirs")
-    def test_run_main_legacy_layout_warning(
-        self,
-        _mock_makedirs,
-        mock_get_log_dir,
-        mock_get_home_dir,
-        mock_get_legacy_dirs,
-        mock_get_legacy_env_vars,
-        mock_load_credentials,
-        mock_load_config,
-        _mock_print_banner,
-    ):
-        """Test that warning messages are logged when legacy layout is enabled."""
-        mock_config = {
-            "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
-            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-        }
-        mock_load_config.return_value = mock_config
-        mock_load_credentials.return_value = None
-        mock_get_home_dir.return_value = Path("/test/home/dir")
-        mock_get_legacy_dirs.return_value = [Path("/test/legacy/dir")]
-        mock_get_legacy_env_vars.return_value = ["MMRELAY_DATA_DIR"]
-        mock_get_log_dir.return_value = "/test/log/dir"
-
-        mock_args = MagicMock()
-        mock_args.data_dir = None
-        mock_args.log_level = None
-
-        with patch("mmrelay.main.asyncio.run") as mock_asyncio_run:
-            mock_asyncio_run.side_effect = _close_coro_if_possible
-            with patch("mmrelay.main.get_logger") as mock_get_logger:
-                mock_config_logger = MagicMock()
-                mock_get_logger.return_value = mock_config_logger
-                result = run_main(mock_args)
-
-        self.assertEqual(result, 0)
-        # Verify warning was called with legacy layout message
-        mock_config_logger.warning.assert_any_call(
-            "Legacy data layout detected (MMRELAY_HOME=%s, legacy_env_vars=%s, legacy_dirs=%s). This layout is deprecated and will be removed in a future release.",
-            "/test/home/dir",
-            "MMRELAY_DATA_DIR",
-            "/test/legacy/dir",
-        )
-        mock_config_logger.warning.assert_any_call(
-            "To migrate to the new layout, see docs/DOCKER.md: Migrating to the New Layout."
-        )
-
-    @patch("mmrelay.main.print_banner")
-    @patch("mmrelay.config.load_config")
-    @patch("mmrelay.config.load_credentials")
-    @patch("mmrelay.main.asyncio.run")
-    def test_run_main_keyboard_interrupt(
-        self,
-        mock_asyncio_run,
-        mock_load_credentials,
-        mock_load_config,
-        mock_print_banner,
-    ):
-        """Test run_main handling KeyboardInterrupt."""
-        mock_config = {
-            "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
-            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-        }
-        mock_load_config.return_value = mock_config
-        mock_load_credentials.return_value = None
-
-        # Mock asyncio.run to properly close coroutines and raise KeyboardInterrupt
-        mock_asyncio_run.side_effect = _mock_run_with_keyboard_interrupt
-
-        mock_args = MagicMock()
-        mock_args.data_dir = None
-        mock_args.log_level = None
-
-        result = run_main(mock_args)
-
-        self.assertEqual(result, 0)  # KeyboardInterrupt should return 0
-
-    @patch("mmrelay.main.print_banner")
-    @patch("mmrelay.config.load_config")
-    @patch("mmrelay.config.load_credentials")
-    @patch("mmrelay.main.asyncio.run")
-    def test_run_main_exception_handling(
-        self,
-        mock_asyncio_run,
-        mock_load_credentials,
-        mock_load_config,
-        mock_print_banner,
-    ):
-        """Test run_main handling general exceptions."""
-        mock_config = {
-            "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
-            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-        }
-        mock_load_config.return_value = mock_config
-        mock_load_credentials.return_value = None
-
-        # Mock asyncio.run to properly close coroutines and raise exception
-        mock_asyncio_run.side_effect = _mock_run_with_exception
-
-        mock_args = MagicMock()
-        mock_args.data_dir = None
-        mock_args.log_level = None
-
-        result = run_main(mock_args)
-
-        self.assertEqual(result, 1)  # General exceptions should return 1
 
 
 class TestMainAsyncFunction(unittest.TestCase):
