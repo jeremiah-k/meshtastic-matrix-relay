@@ -162,21 +162,24 @@ def test_get_legacy_env_vars_and_deprecation_window(monkeypatch) -> None:
 
 def test_get_legacy_dirs_includes_windows_installer_path(monkeypatch) -> None:
     """Windows installer directory should be reported as a legacy source."""
-    monkeypatch.setenv("LOCALAPPDATA", "/la")
-    monkeypatch.delenv("MMRELAY_BASE_DIR", raising=False)
-    monkeypatch.delenv("MMRELAY_DATA_DIR", raising=False)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        local_app_data = Path(tmp_dir) / "la"
+        local_app_data.mkdir()
+        installer_path = local_app_data / "Programs" / WINDOWS_INSTALLER_DIR_NAME
+        installer_path.mkdir(parents=True)
 
-    installer_path = Path("/la") / "Programs" / WINDOWS_INSTALLER_DIR_NAME
+        monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+        monkeypatch.delenv("MMRELAY_BASE_DIR", raising=False)
+        monkeypatch.delenv("MMRELAY_DATA_DIR", raising=False)
 
-    with (
-        patch("sys.platform", "win32"),
-        patch("mmrelay.paths.get_home_dir", return_value=Path("/current/home")),
-        patch("mmrelay.paths.platformdirs.user_data_dir", return_value="/platform"),
-        patch.object(installer_path, "exists", return_value=True),
-    ):
-        legacy_dirs = get_legacy_dirs()
+        with (
+            patch("sys.platform", "win32"),
+            patch("mmrelay.paths.get_home_dir", return_value=Path("/current/home")),
+            patch("mmrelay.paths.platformdirs.user_data_dir", return_value="/platform"),
+        ):
+            legacy_dirs = get_legacy_dirs()
 
-    assert installer_path in legacy_dirs
+        assert installer_path in legacy_dirs
 
 
 def test_get_legacy_dirs_includes_env_and_docker_sources(monkeypatch) -> None:
