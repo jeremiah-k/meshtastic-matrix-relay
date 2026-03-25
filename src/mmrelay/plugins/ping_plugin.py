@@ -14,7 +14,11 @@ from nio import (
 )
 
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
-from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
+from mmrelay.constants.messages import (
+    PING_FALLBACK_RESPONSE,
+    PING_MATRIX_RESPONSE,
+    PORTNUM_TEXT_MESSAGE_APP,
+)
 from mmrelay.constants.plugins import MAX_PUNCTUATION_LENGTH
 from mmrelay.plugins.base_plugin import BasePlugin
 
@@ -150,7 +154,7 @@ class Plugin(BasePlugin):
 
         # Construct reply message
         reply_message = (
-            "Pong..."
+            PING_FALLBACK_RESPONSE
             if total_punc_length > MAX_PUNCTUATION_LENGTH
             else pre_punc + base_response + post_punc
         )
@@ -220,5 +224,5 @@ class Plugin(BasePlugin):
         if not self.matches(event):
             return False
 
-        await self.send_matrix_message(room.room_id, "pong!")
+        await self.send_matrix_message(room.room_id, PING_MATRIX_RESPONSE)
         return True

@@ -18,6 +18,12 @@ from mmrelay.constants.app import (
     PYTHON_OLM_PACKAGE,
     WINDOWS_PLATFORM,
 )
+from mmrelay.constants.messages import (
+    MSG_E2EE_DISABLED,
+    MSG_E2EE_NO_AUTH,
+    MSG_E2EE_WINDOWS_UNSUPPORTED,
+    MSG_E2EE_WINDOWS_UNSUPPORTED_DETAIL,
+)
 from mmrelay.paths import is_deprecation_window_active, resolve_all_paths
 
 
@@ -69,7 +75,7 @@ def get_e2ee_status(
     # Check platform support
     if sys.platform == WINDOWS_PLATFORM or sys.platform.startswith(("msys", "cygwin")):
         status["platform_supported"] = False
-        status["issues"].append("E2EE is not supported on Windows")
+        status["issues"].append(MSG_E2EE_WINDOWS_UNSUPPORTED)
 
     # Check dependencies
     try:
@@ -99,7 +105,7 @@ def get_e2ee_status(
     )
 
     if not status["enabled"]:
-        status["issues"].append("E2EE is disabled in configuration")
+        status["issues"].append(MSG_E2EE_DISABLED)
 
     # Check credentials
     paths_info = resolve_all_paths()
@@ -108,7 +114,7 @@ def get_e2ee_status(
     )
 
     if not status["credentials_available"]:
-        status["issues"].append("Matrix authentication not configured")
+        status["issues"].append(MSG_E2EE_NO_AUTH)
 
     # Determine overall availability and status
     status["available"] = (
@@ -371,8 +377,8 @@ def get_e2ee_fix_instructions(e2ee_status: E2EEStatus) -> List[str]:
     instructions = []
 
     if not e2ee_status["platform_supported"]:
-        instructions.append("❌ E2EE is not supported on Windows")
-        instructions.append("   Use Linux or macOS for E2EE support")
+        instructions.append(MSG_E2EE_WINDOWS_UNSUPPORTED)
+        instructions.append(MSG_E2EE_WINDOWS_UNSUPPORTED_DETAIL)
         return instructions
 
     step = 1

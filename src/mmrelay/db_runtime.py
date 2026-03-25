@@ -19,6 +19,10 @@ from functools import lru_cache
 from typing import Any, Generator, Optional
 
 from mmrelay.constants.database import (
+    DB_EXECUTOR_MAX_WORKERS,
+    PRAGMA_FOREIGN_KEYS_ON,
+    PRAGMA_JOURNAL_MODE_WAL,
+    SQLITE_IN_MEMORY_PATH,
     SQLITE_JSON_EACH_PROBE_PAYLOAD,
     SQLITE_JSON_EACH_PROBE_SQL,
 )
@@ -60,7 +64,7 @@ def _validate_sqlite_json_each_support() -> bool:
     Returns:
         bool: True when json_each() is available, False otherwise.
     """
-    conn = sqlite3.connect(":memory:")
+    conn = sqlite3.connect(SQLITE_IN_MEMORY_PATH)
     try:
         _probe_sqlite_json_each_support(conn)
         return True
@@ -169,7 +173,7 @@ class DatabaseManager:
         self._active_sync_condition = threading.Condition(self._connections_lock)
         self._active_sync_count = 0
         self._executor_lock = threading.Lock()
-        self._async_executor = ThreadPoolExecutor(max_workers=1)
+        self._async_executor = ThreadPoolExecutor(max_workers=DB_EXECUTOR_MAX_WORKERS)
         self._accepting_submissions = True
         self._closing = False
 
@@ -205,8 +209,8 @@ class DatabaseManager:
                     conn.execute(f"PRAGMA busy_timeout = {int(self._busy_timeout_ms)}")
                 if self._enable_wal:
                     # journal_mode pragma returns the applied mode; ignore result
-                    conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute("PRAGMA foreign_keys=ON")
+                    conn.execute(PRAGMA_JOURNAL_MODE_WAL)
+                conn.execute(PRAGMA_FOREIGN_KEYS_ON)
                 for pragma, value in self._extra_pragmas.items():
                     # Validate pragma name to prevent injection.
                     if not re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]*", pragma):

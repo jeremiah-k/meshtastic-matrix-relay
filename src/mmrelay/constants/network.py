@@ -83,3 +83,47 @@ BLE_CONNECT_TIMEOUT_SECS: Final[float] = 30.0
 # When executor recovery cycles orphan this many workers, we stop
 # silently recovering and require explicit reconnect/restart.
 EXECUTOR_ORPHAN_THRESHOLD: Final[int] = 5
+
+# ACK polling interval
+ACK_POLL_INTERVAL_SECS: Final[float] = 0.1
+
+# BLE timing constants
+BLE_FUTURE_STALE_GRACE_SECS: Final[float] = 2.0
+BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS: Final[float] = 90.0
+BLE_DISCONNECT_MAX_RETRIES: Final[int] = 3
+BLE_DISCONNECT_TIMEOUT_SECS: Final[float] = 3.0
+BLE_DISCONNECT_SETTLE_SECS: Final[float] = 2.0
+BLE_RETRY_DELAY_SECS: Final[float] = 0.5
+STALE_DISCONNECT_TIMEOUT_SECS: Final[float] = 10.0
+HEALTH_PROBE_TRACK_GRACE_SECS: Final[float] = 60.0
+
+# Future/cancel timing
+FUTURE_CANCEL_TIMEOUT_SECS: Final[float] = 0.2
+
+# Plugin timeout
+DEFAULT_PLUGIN_TIMEOUT_SECS: Final[float] = 5.0
+
+# Close timeouts
+MATRIX_CLIENT_CLOSE_TIMEOUT_SECONDS: Final[float] = 10.0
+MESHTASTIC_CLOSE_TIMEOUT_SECONDS: Final[float] = 10.0
+
+# Sync and retry timing
+MATRIX_SYNC_RETRY_DELAY_SECONDS: Final[float] = 5.0
+NODEDB_BACKOFF_INITIAL_SECONDS: Final[float] = 1.0
+NODEDB_BACKOFF_MAX_SECONDS: Final[float] = 30.0
+NODEDB_SHUTDOWN_TIMEOUT_SECONDS: Final[float] = 10.0
+
+# Process check timeouts
+PROCESS_CHECK_TIMEOUT_SECONDS: Final[float] = 5.0
+PROCESS_CHECK_SHORT_TIMEOUT_SECONDS: Final[float] = 2.0
+
+# HTTP status codes
+HTTP_SERVER_ERROR_CODES: Final[tuple[int, ...]] = (500, 502, 503)
+
+# Hostname validation limits
+MAX_HOSTNAME_LENGTH: Final[int] = 253
+MAX_HOSTNAME_LABEL_LENGTH: Final[int] = 63
+
+# Meshtastic channel limits
+MESHTASTIC_CHANNEL_MIN: Final[int] = 0
+MESHTASTIC_CHANNEL_MAX: Final[int] = 7

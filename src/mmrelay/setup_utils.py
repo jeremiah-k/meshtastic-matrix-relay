@@ -19,7 +19,15 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     pass
 
+from mmrelay.constants.app import (
+    DIAGNOSTICS_PARTIAL_ERROR_THRESHOLD,
+    SERVICE_FILENAME,
+    SERVICE_RESTART_SECONDS,
+    SYSTEMD_USER_DIR,
+    WINDOWS_PATH_LENGTH_WARNING,
+)
 from mmrelay.constants.database import PROGRESS_COMPLETE, PROGRESS_TOTAL_STEPS
+from mmrelay.constants.migration import DEFAULT_SERVICE_ARGS_SUFFIX
 from mmrelay.constants.network import SYSTEMCTL_FALLBACK
 from mmrelay.log_utils import get_logger
 from mmrelay.tools import get_service_template_path
@@ -78,7 +86,7 @@ def get_executable_path() -> str:
 
 
 def get_resolved_exec_start(
-    args_suffix: str = " --config %h/.mmrelay/config.yaml --logfile %h/.mmrelay/logs/mmrelay.log",
+    args_suffix: str = DEFAULT_SERVICE_ARGS_SUFFIX,
 ) -> str:
     """
     Construct the systemd `ExecStart=` line for the mmrelay service.
@@ -102,8 +110,8 @@ def get_user_service_path() -> Path:
     Returns:
         Path: Path to the user unit file, typically '~/.config/systemd/user/mmrelay.service'.
     """
-    service_dir = Path.home() / ".config" / "systemd" / "user"
-    return service_dir / "mmrelay.service"
+    service_dir = Path.home() / SYSTEMD_USER_DIR
+    return service_dir / SERVICE_FILENAME
 
 
 def service_exists() -> bool:
@@ -329,7 +337,7 @@ Type=simple
 {resolved_exec_start}
 WorkingDirectory=%h/.mmrelay
 Restart=on-failure
-RestartSec=10
+RestartSec={SERVICE_RESTART_SECONDS}
 Environment=PYTHONUNBUFFERED=1
 Environment=LANG=C.UTF-8
 # Ensure both pipx and pip environments are properly loaded

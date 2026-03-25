@@ -25,10 +25,20 @@ from mmrelay.constants.plugins import (
     COMMIT_HASH_PATTERN,
     DEFAULT_ALLOWED_COMMUNITY_HOSTS,
     DEFAULT_BRANCHES,
+    DEFAULT_PLUGIN_PRIORITY,
+    DEFAULT_SUBPROCESS_TIMEOUT_SECONDS,
+    GIT_COMMAND_TIMEOUT_SECONDS,
+    GIT_RETRY_ATTEMPTS,
+    GIT_RETRY_DELAY_SECONDS,
+    PIP_INSTALL_MISSING_DEP_TIMEOUT,
+    PIP_INSTALL_TIMEOUT_SECONDS,
     PIP_SOURCE_FLAGS,
     PIPX_ENVIRONMENT_KEYS,
     REF_NAME_PATTERN,
     RISKY_REQUIREMENT_PREFIXES,
+    SCHEDULER_LOOP_WAIT_SECONDS,
+    SCHEDULER_SHUTDOWN_TIMEOUT_SECONDS,
+    SENSITIVE_URL_PARAMS,
 )
 from mmrelay.log_utils import get_logger
 
@@ -464,19 +474,10 @@ def _redact_url(url: str) -> str:
             netloc = s.netloc
 
         # Always redact sensitive query parameters
-        sensitive = {
-            "token",
-            "access_token",
-            "auth",
-            "key",
-            "password",
-            "pwd",
-            "private_token",
-            "oauth_token",
-            "x-access-token",
-        }
         q = parse_qsl(s.query, keep_blank_values=True)
-        redacted = [(k, "***" if k.lower() in sensitive else v) for k, v in q]
+        redacted = [
+            (k, "***" if k.lower() in SENSITIVE_URL_PARAMS else v) for k, v in q
+        ]
         query = urlencode(redacted)
         return urlunsplit((s.scheme, netloc, s.path, query, s.fragment))
     except (ValueError, TypeError, AttributeError) as exc:
@@ -843,7 +844,7 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
                         "--requirement",
                         temp_path,
                     ]
-                    _run(cmd, timeout=600)
+                    _run(cmd, timeout=PIP_INSTALL_TIMEOUT_SECONDS)
                     installed_packages = True
                 finally:
                     # Clean up the temporary file
@@ -892,7 +893,7 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
 
                 try:
                     cmd.extend(["-r", temp_path])
-                    _run(cmd, timeout=600)
+                    _run(cmd, timeout=PIP_INSTALL_TIMEOUT_SECONDS)
                     installed_packages = True
                 finally:
                     # Clean up the temporary file
@@ -992,7 +993,7 @@ def get_community_plugin_dirs() -> list[str]:
 
 def _run(
     cmd: list[str],
-    timeout: float = 120,
+    timeout: float = DEFAULT_SUBPROCESS_TIMEOUT_SECONDS,
     retry_attempts: int = 1,
     retry_delay: float = 1,
     **kwargs: Any,
@@ -1054,7 +1055,7 @@ def _run(
 
 
 def _run_git(
-    cmd: list[str], timeout: float = 120, **kwargs: Any
+    cmd: list[str], timeout: float = GIT_COMMAND_TIMEOUT_SECONDS, **kwargs: Any
 ) -> subprocess.CompletedProcess[str]:
     """
     Execute a git command with conservative retry defaults and a non-interactive environment.
@@ -1067,8 +1068,8 @@ def _run_git(
     Returns:
         subprocess.CompletedProcess[str]: Completed process containing `returncode`, `stdout`, and `stderr`.
     """
-    kwargs.setdefault("retry_attempts", 3)
-    kwargs.setdefault("retry_delay", 2)
+    kwargs.setdefault("retry_attempts", GIT_RETRY_ATTEMPTS)
+    kwargs.setdefault("retry_delay", GIT_RETRY_DELAY_SECONDS)
     # Ensure non-interactive git by default
     env = dict(os.environ)
     if "env" in kwargs:
@@ -1975,7 +1976,7 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
                                     )
                                 _run(
                                     [pipx_path, "inject", "mmrelay", missing_pkg],
-                                    timeout=300,
+                                    timeout=PIP_INSTALL_MISSING_DEP_TIMEOUT,
                                 )
                             else:
                                 in_venv = (
@@ -1996,7 +1997,7 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
                                 ]
                                 if not in_venv:
                                     cmd += ["--user"]
-                                _run(cmd, timeout=300)
+                                _run(cmd, timeout=PIP_INSTALL_MISSING_DEP_TIMEOUT)
 
                             logger.info(
                                 f"Successfully installed {missing_pkg}, retrying plugin load"
@@ -2112,7 +2113,7 @@ def start_global_scheduler() -> None:
             if schedule is not None:
                 schedule.run_pending()
             # Wait up to 1 second or until stop is requested
-            stop_event.wait(1)
+            stop_event.wait(SCHEDULER_LOOP_WAIT_SECONDS)
         logger.debug("Global scheduler thread stopped")
 
     _global_scheduler_thread = threading.Thread(
@@ -2141,7 +2142,7 @@ def stop_global_scheduler() -> None:
 
     # Wait for thread to finish
     if _global_scheduler_thread.is_alive():
-        _global_scheduler_thread.join(timeout=5)
+        _global_scheduler_thread.join(timeout=SCHEDULER_SHUTDOWN_TIMEOUT_SECONDS)
         if _global_scheduler_thread.is_alive():
             logger.warning("Global scheduler thread did not stop within timeout")
 
@@ -2482,7 +2483,7 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
 
         if is_active:
             plugin.priority = plugin_config.get(
-                "priority", getattr(plugin, "priority", 100)
+                "priority", getattr(plugin, "priority", DEFAULT_PLUGIN_PRIORITY)
             )
             try:
                 plugin.start()

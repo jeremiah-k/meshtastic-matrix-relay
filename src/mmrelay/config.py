@@ -14,7 +14,11 @@ import yaml
 from yaml.loader import SafeLoader
 
 import mmrelay.paths as paths_module
-from mmrelay.constants.app import CREDENTIALS_FILENAME, MATRIX_DIRNAME
+from mmrelay.constants.app import (
+    CREDENTIALS_FILENAME,
+    MATRIX_DIRNAME,
+    SECURE_FILE_PERMISSIONS,
+)
 
 # Import application constants
 from mmrelay.constants.config import (
@@ -23,6 +27,10 @@ from mmrelay.constants.config import (
     CONFIG_KEY_HOMESERVER,
     CONFIG_KEY_NODEDB_REFRESH_INTERVAL,
     CONFIG_SECTION_MATRIX,
+    ENV_BOOL_FALSE_VALUES,
+    ENV_BOOL_TRUE_VALUES,
+    NORMALIZABLE_CONFIG_SECTIONS,
+    REQUIRED_CREDENTIALS_KEYS,
 )
 
 # Import new path resolution system
@@ -79,7 +87,9 @@ def _warn_deprecated(_name: str) -> None:
     )
 
 
-def set_secure_file_permissions(file_path: str, mode: int = 0o600) -> None:
+def set_secure_file_permissions(
+    file_path: str, mode: int = SECURE_FILE_PERMISSIONS
+) -> None:
     """
     Set restrictive Unix permission bits on a file to limit access.
 
@@ -423,9 +433,9 @@ def _convert_env_bool(value: str, var_name: str) -> bool:
     Raises:
         ValueError: If `value` is not a recognized boolean representation; the error message includes `var_name`.
     """
-    if value.lower() in ("true", "1", "yes", "on"):
+    if value.lower() in ENV_BOOL_TRUE_VALUES:
         return True
-    elif value.lower() in ("false", "0", "no", "off"):
+    elif value.lower() in ENV_BOOL_FALSE_VALUES:
         return False
     else:
         raise ValueError(
@@ -700,16 +710,7 @@ def apply_env_config_overrides(config: dict[str, Any] | None) -> dict[str, Any]:
     else:
         _normalize_optional_dict_sections(
             config,
-            (
-                "matrix",
-                "meshtastic",
-                "logging",
-                "database",
-                "db",
-                "plugins",
-                "custom-plugins",
-                "community-plugins",
-            ),
+            NORMALIZABLE_CONFIG_SECTIONS,
         )
 
     # Apply Meshtastic configuration overrides
@@ -799,7 +800,7 @@ def load_credentials() -> dict[str, Any] | None:
         credentials = cast(dict[str, Any], loaded)
         missing_required = [
             key
-            for key in ("homeserver", "access_token", "user_id")
+            for key in REQUIRED_CREDENTIALS_KEYS
             if not isinstance(credentials.get(key), str)
             or not credentials.get(key, "").strip()
         ]

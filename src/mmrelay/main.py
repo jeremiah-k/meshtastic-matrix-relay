@@ -31,6 +31,8 @@ from mmrelay.constants.app import (
     DEFAULT_READY_HEARTBEAT_SECONDS,
     MESSAGE_QUEUE_SHUTDOWN_TIMEOUT_SECONDS,
     PLUGIN_SHUTDOWN_TIMEOUT_SECONDS,
+    SECURE_DIR_PERMISSIONS,
+    SECURE_FILE_PERMISSIONS,
     WINDOWS_PLATFORM,
 )
 from mmrelay.constants.config import (
@@ -40,6 +42,16 @@ from mmrelay.constants.config import (
     CONFIG_SECTION_DATABASE,
     CONFIG_SECTION_DATABASE_LEGACY,
     CONFIG_SECTION_MESHTASTIC,
+    REQUIRED_CONFIG_KEYS_WITH_CREDENTIALS,
+    REQUIRED_CONFIG_KEYS_WITHOUT_CREDENTIALS,
+)
+from mmrelay.constants.network import (
+    MATRIX_CLIENT_CLOSE_TIMEOUT_SECONDS,
+    MATRIX_SYNC_RETRY_DELAY_SECONDS,
+    MESHTASTIC_CLOSE_TIMEOUT_SECONDS,
+    NODEDB_BACKOFF_INITIAL_SECONDS,
+    NODEDB_BACKOFF_MAX_SECONDS,
+    NODEDB_SHUTDOWN_TIMEOUT_SECONDS,
 )
 from mmrelay.constants.queue import DEFAULT_MESSAGE_DELAY
 from mmrelay.db_utils import (
@@ -110,14 +122,14 @@ def _write_ready_file() -> None:
         ready_dir = os.path.dirname(_ready_file_path)
         if ready_dir:
             # Create parent directory with restrictive permissions (owner only)
-            os.makedirs(ready_dir, exist_ok=True, mode=0o700)
+            os.makedirs(ready_dir, exist_ok=True, mode=SECURE_DIR_PERMISSIONS)
             # Ensure directory has correct permissions when we own it.
             try:
                 if (
                     os.path.isdir(ready_dir)
                     and os.stat(ready_dir).st_uid == os.geteuid()
                 ):
-                    os.chmod(ready_dir, 0o700)
+                    os.chmod(ready_dir, SECURE_DIR_PERMISSIONS)
             except OSError:
                 logger.debug(
                     "Failed to set readiness directory permissions: %s",
@@ -131,7 +143,12 @@ def _write_ready_file() -> None:
 
         # Create temp file with restrictive permissions (owner read/write only)
         with os.fdopen(
-            os.open(temp_path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600), "w"
+            os.open(
+                temp_path,
+                os.O_CREAT | os.O_WRONLY | os.O_TRUNC,
+                SECURE_FILE_PERMISSIONS,
+            ),
+            "w",
         ):
             pass
 
@@ -155,8 +172,8 @@ def _touch_ready_file() -> None:
     if not _ready_file_path:
         return
     try:
-        Path(_ready_file_path).touch(mode=0o600, exist_ok=True)
-        os.chmod(_ready_file_path, 0o600)
+        Path(_ready_file_path).touch(mode=SECURE_FILE_PERMISSIONS, exist_ok=True)
+        os.chmod(_ready_file_path, SECURE_FILE_PERMISSIONS)
         logger.debug("Touched readiness file: %s", _ready_file_path)
     except OSError:
         logger.debug(
@@ -435,7 +452,9 @@ async def main(config: dict[str, Any]) -> None:
             return
         matrix_logger.info("Closing Matrix client...")
         try:
-            await asyncio.wait_for(matrix_client.close(), timeout=10.0)
+            await asyncio.wait_for(
+                matrix_client.close(), timeout=MATRIX_CLIENT_CLOSE_TIMEOUT_SECONDS
+            )
         except asyncio.TimeoutError:
             matrix_logger.error(
                 "Timed out closing Matrix client during %s; continuing shutdown",
@@ -472,7 +491,7 @@ async def main(config: dict[str, Any]) -> None:
             await asyncio.to_thread(
                 meshtastic_utils._run_blocking_with_timeout,
                 _close_meshtastic,
-                timeout=10.0,
+                timeout=MESHTASTIC_CLOSE_TIMEOUT_SECONDS,
                 label=f"meshtastic-client-close-{context.replace(' ', '-')}",
                 timeout_log_level=None,
             )
@@ -648,8 +667,8 @@ async def main(config: dict[str, Any]) -> None:
         NodeDB persistence in later releases.
         """
         restart_attempt = 0
-        backoff_seconds = 1.0
-        max_backoff_seconds = 30.0
+        backoff_seconds = NODEDB_BACKOFF_INITIAL_SECONDS
+        max_backoff_seconds = NODEDB_BACKOFF_MAX_SECONDS
         first_pass = True
 
         while first_pass or not shutdown_event.is_set():
@@ -697,7 +716,7 @@ async def main(config: dict[str, Any]) -> None:
                 if shutdown_event.is_set() or refresh_interval_seconds <= 0:
                     return
                 restart_attempt = 0
-                backoff_seconds = 1.0
+                backoff_seconds = NODEDB_BACKOFF_INITIAL_SECONDS
                 meshtastic_logger.warning(
                     "NodeDB name-cache refresh task exited unexpectedly; restarting in %.1fs",
                     backoff_seconds,
@@ -925,7 +944,7 @@ async def main(config: dict[str, Any]) -> None:
         await _await_background_task_shutdown(
             node_name_refresh_task,
             task_name="NodeDB name-cache refresh task",
-            timeout_seconds=10.0,
+            timeout_seconds=NODEDB_SHUTDOWN_TIMEOUT_SECONDS,
         )
         await _await_background_task_shutdown(
             check_connection_task,
@@ -1053,10 +1072,10 @@ def run_main(args: Any) -> int:
 
     if credentials:
         # With credentials.json, only meshtastic and matrix_rooms are required
-        required_keys = ["meshtastic", "matrix_rooms"]
+        required_keys = list(REQUIRED_CONFIG_KEYS_WITH_CREDENTIALS)
     else:
         # Without credentials.json, all sections are required
-        required_keys = ["matrix", "meshtastic", "matrix_rooms"]
+        required_keys = list(REQUIRED_CONFIG_KEYS_WITHOUT_CREDENTIALS)
 
     # Check each key individually for better debugging
     for key in required_keys:

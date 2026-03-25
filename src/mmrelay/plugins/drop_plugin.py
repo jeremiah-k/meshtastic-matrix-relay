@@ -13,7 +13,7 @@ from nio import (
 
 from mmrelay.constants.database import DEFAULT_DISTANCE_KM_FALLBACK, DEFAULT_RADIUS_KM
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
-from mmrelay.constants.plugins import SPECIAL_NODE_MESSAGES
+from mmrelay.constants.plugins import DROP_COMMAND_REGEX, SPECIAL_NODE_MESSAGES
 from mmrelay.meshtastic_utils import connect_meshtastic
 from mmrelay.plugins.base_plugin import BasePlugin
 
@@ -78,7 +78,7 @@ class Plugin(BasePlugin):
             is_drop_command = (
                 packet.get("decoded", {}).get("portnum") == TEXT_MESSAGE_APP
                 and f"!{self.plugin_name}" in text
-                and re.search(r"!drop\s+(.+)$", text)
+                and DROP_COMMAND_REGEX.search(text)
             )
             return bool(is_drop_command)
         nodeInfo = meshtastic_client.getMyNodeInfo()
@@ -138,7 +138,7 @@ class Plugin(BasePlugin):
             if f"!{self.plugin_name}" not in text:
                 return False
 
-            match = re.search(r"!drop\s+(.+)$", text)
+            match = DROP_COMMAND_REGEX.search(text)
             if not match:
                 return False
 

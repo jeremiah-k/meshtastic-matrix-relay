@@ -96,3 +96,44 @@ E2EE_KEY_REQUEST_BASE_DELAY: Final[int] = (
 E2EE_KEY_REQUEST_MAX_DELAY: Final[float] = (
     30.0  # Cap exponential backoff to avoid long waits
 )
+
+# Boolean parsing values
+ENV_BOOL_TRUE_VALUES: Final[tuple[str, ...]] = ("true", "1", "yes", "on")
+ENV_BOOL_FALSE_VALUES: Final[tuple[str, ...]] = ("false", "0", "no", "off")
+
+# Normalizable configuration sections (case-insensitive)
+NORMALIZABLE_CONFIG_SECTIONS: Final[tuple[str, ...]] = (
+    "matrix",
+    "meshtastic",
+    "logging",
+    "database",
+    "db",
+    "plugins",
+    "custom-plugins",
+    "community-plugins",
+)
+
+# Required credential keys
+REQUIRED_CREDENTIALS_KEYS: Final[tuple[str, ...]] = (
+    "homeserver",
+    "access_token",
+    "user_id",
+)
+
+# Required config keys
+REQUIRED_CONFIG_KEYS_WITH_CREDENTIALS: Final[tuple[str, ...]] = (
+    "meshtastic",
+    "matrix_rooms",
+)
+REQUIRED_CONFIG_KEYS_WITHOUT_CREDENTIALS: Final[tuple[str, ...]] = (
+    "matrix",
+    "meshtastic",
+    "matrix_rooms",
+)
+
+# Plugin configuration sections
+PLUGIN_CONFIG_SECTIONS: Final[tuple[str, ...]] = (
+    "plugins",
+    "community-plugins",
+    "custom-plugins",
+)

@@ -38,16 +38,25 @@ from mmrelay.constants.database import PROTO_NODE_NAME_LONG, PROTO_NODE_NAME_SHO
 from mmrelay.constants.formats import (
     DETECTION_SENSOR_APP,
     EMOJI_FLAG_VALUE,
+    FIRMWARE_VERSION_REGEX,
     TEXT_MESSAGE_APP,
 )
 from mmrelay.constants.messages import (
     DEFAULT_CHANNEL_VALUE,
+    METADATA_OUTPUT_MAX_LENGTH,
     PORTNUM_DETECTION_SENSOR_APP,
     PORTNUM_TEXT_MESSAGE_APP,
 )
 from mmrelay.constants.network import (
+    ACK_POLL_INTERVAL_SECS,
     BLE_CONNECT_TIMEOUT_SECS,
+    BLE_DISCONNECT_MAX_RETRIES,
+    BLE_DISCONNECT_SETTLE_SECS,
+    BLE_DISCONNECT_TIMEOUT_SECS,
+    BLE_FUTURE_STALE_GRACE_SECS,
     BLE_FUTURE_WATCHDOG_SECS,
+    BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS,
+    BLE_RETRY_DELAY_SECS,
     BLE_SCAN_TIMEOUT_SECS,
     BLE_TIMEOUT_RESET_THRESHOLD,
     BLE_TROUBLESHOOTING_GUIDANCE,
@@ -64,13 +73,17 @@ from mmrelay.constants.network import (
     DEFAULT_BACKOFF_TIME,
     DEFAULT_MESHTASTIC_OPERATION_TIMEOUT,
     DEFAULT_MESHTASTIC_TIMEOUT,
+    DEFAULT_PLUGIN_TIMEOUT_SECS,
     DEFAULT_TCP_PORT,
     ERRNO_BAD_FILE_DESCRIPTOR,
     EXECUTOR_ORPHAN_THRESHOLD,
+    FUTURE_CANCEL_TIMEOUT_SECS,
+    HEALTH_PROBE_TRACK_GRACE_SECS,
     INFINITE_RETRIES,
     INITIAL_HEALTH_CHECK_DELAY,
     MAX_TIMEOUT_RETRIES_INFINITE,
     METADATA_WATCHDOG_SECS,
+    STALE_DISCONNECT_TIMEOUT_SECS,
 )
 from mmrelay.db_utils import (
     NodeNameState,
@@ -149,7 +162,7 @@ _metadata_future_lock = threading.Lock()
 _metadata_executor_orphaned_workers = 0
 _health_probe_request_deadlines: dict[int, float] = {}
 _health_probe_request_lock = threading.Lock()
-_HEALTH_PROBE_TRACK_GRACE_SECS = 60.0
+_HEALTH_PROBE_TRACK_GRACE_SECS = HEALTH_PROBE_TRACK_GRACE_SECS
 
 # Shared executor for BLE init/connect to avoid leaking threads across retries.
 # BLE setup is inherently sequential, so a single worker keeps things predictable.
@@ -165,8 +178,6 @@ _ble_timeout_lock = threading.Lock()
 _ble_future_watchdog_secs = BLE_FUTURE_WATCHDOG_SECS
 _ble_timeout_reset_threshold = BLE_TIMEOUT_RESET_THRESHOLD
 _ble_scan_timeout_secs = BLE_SCAN_TIMEOUT_SECS
-BLE_FUTURE_STALE_GRACE_SECS = 2.0
-BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS = 90.0
 _ble_future_stale_grace_secs = BLE_FUTURE_STALE_GRACE_SECS
 _ble_interface_create_timeout_secs = BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS
 
@@ -1161,7 +1172,7 @@ def _wait_for_probe_ack(client: Any, timeout_secs: float) -> None:
         ):
             _reset_probe_ack_state(ack_state)
             return
-        time.sleep(0.1)
+        time.sleep(ACK_POLL_INTERVAL_SECS)
 
     raise _metadata_probe_ack_timeout_error(timeout_secs)
 
@@ -1617,7 +1628,7 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
         if ble_future_to_cancel is not None:
             ble_future_to_cancel.cancel()
             try:
-                ble_future_to_cancel.result(timeout=0.2)
+                ble_future_to_cancel.result(timeout=FUTURE_CANCEL_TIMEOUT_SECS)
             except Exception as exc:  # noqa: BLE001 - best-effort degraded cleanup
                 logger.debug(
                     "BLE future cancellation raised error for %s: %s",
@@ -1636,7 +1647,7 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
     if ble_future_to_cancel is not None:
         ble_future_to_cancel.cancel()
         try:
-            ble_future_to_cancel.result(timeout=0.2)
+            ble_future_to_cancel.result(timeout=FUTURE_CANCEL_TIMEOUT_SECS)
         except FuturesTimeoutError:
             pass
         except Exception as exc:  # noqa: BLE001 - best-effort reset cleanup
@@ -1978,7 +1989,9 @@ def _wait_for_result(
         asyncio.set_event_loop(None)
 
 
-def _resolve_plugin_timeout(cfg: dict[str, Any] | None, default: float = 5.0) -> float:
+def _resolve_plugin_timeout(
+    cfg: dict[str, Any] | None, default: float = DEFAULT_PLUGIN_TIMEOUT_SECS
+) -> float:
     """
     Resolve the plugin timeout value from the configuration.
 
@@ -2068,7 +2081,7 @@ def _run_meshtastic_plugins(
     from mmrelay.plugin_loader import load_plugins
 
     plugins = load_plugins()
-    plugin_timeout = _resolve_plugin_timeout(cfg, default=5.0)
+    plugin_timeout = _resolve_plugin_timeout(cfg, default=DEFAULT_PLUGIN_TIMEOUT_SECS)
 
     found_matching_plugin = False
     for plugin in plugins:
@@ -2386,16 +2399,13 @@ def _get_device_metadata(
             raise future_error
 
         # Cap raw_output length to avoid memory bloat
-        if len(console_output) > 4096:
-            console_output = console_output[:4096] + "…"
+        if len(console_output) > METADATA_OUTPUT_MAX_LENGTH:
+            console_output = console_output[:METADATA_OUTPUT_MAX_LENGTH] + "…"
         result["raw_output"] = console_output
 
         # Parse firmware version from the output using robust regex
         # Case-insensitive, handles quotes, whitespace, and various formats
-        match = re.search(
-            r"(?i)\bfirmware[\s_/-]*version\b\s*[:=]\s*['\"]?\s*([^\s\r\n'\"]+)",
-            console_output,
-        )
+        match = FIRMWARE_VERSION_REGEX.search(console_output)
         parsed_output_firmware = (
             _normalize_firmware_version(match.group(1)) if match else None
         )
@@ -2588,15 +2598,18 @@ def _disconnect_ble_by_address(address: str) -> None:
                         f"Device {address} is already connected in BlueZ. Disconnecting..."
                     )
                     # Retry logic for disconnect with timeout
-                    max_retries = 3
+                    max_retries = BLE_DISCONNECT_MAX_RETRIES
                     for attempt in range(max_retries):
                         try:
                             # Some backends or test doubles return a sync result
                             # from disconnect(); only await when needed.
                             disconnect_result = client.disconnect()
                             if inspect.isawaitable(disconnect_result):
-                                await asyncio.wait_for(disconnect_result, timeout=3.0)
-                            await asyncio.sleep(2.0)
+                                await asyncio.wait_for(
+                                    disconnect_result,
+                                    timeout=BLE_DISCONNECT_TIMEOUT_SECS,
+                                )
+                            await asyncio.sleep(BLE_DISCONNECT_SETTLE_SECS)
                             logger.debug(
                                 f"Successfully disconnected stale connection to {address} on attempt {attempt + 1}, "
                                 f"waiting 2s for BlueZ to settle"
@@ -2607,7 +2620,7 @@ def _disconnect_ble_by_address(address: str) -> None:
                                 logger.warning(
                                     f"Disconnect attempt {attempt + 1} for {address} timed out, retrying..."
                                 )
-                                await asyncio.sleep(0.5)
+                                await asyncio.sleep(BLE_RETRY_DELAY_SECS)
                             else:
                                 logger.warning(
                                     f"Disconnect for {address} timed out after {max_retries} attempts"
@@ -2623,7 +2636,7 @@ def _disconnect_ble_by_address(address: str) -> None:
                                     e,
                                     exc_info=True,
                                 )
-                                await asyncio.sleep(0.5)
+                                await asyncio.sleep(BLE_RETRY_DELAY_SECS)
                             else:
                                 logger.warning(
                                     "Disconnect for %s failed after %s attempts: %s",
@@ -2651,8 +2664,10 @@ def _disconnect_ble_by_address(address: str) -> None:
                         # from disconnect(); only await when needed.
                         disconnect_result = client.disconnect()
                         if inspect.isawaitable(disconnect_result):
-                            await asyncio.wait_for(disconnect_result, timeout=2.0)
-                        await asyncio.sleep(0.5)
+                            await asyncio.wait_for(
+                                disconnect_result, timeout=BLE_DISCONNECT_SETTLE_SECS
+                            )
+                        await asyncio.sleep(BLE_RETRY_DELAY_SECS)
                 except asyncio.TimeoutError:
                     logger.debug(f"Final disconnect for {address} timed out (cleanup)")
                 except BLEAK_EXCEPTIONS as e:
@@ -2687,11 +2702,11 @@ def _disconnect_ble_by_address(address: str) -> None:
                 disconnect_stale_connection(), event_loop
             )
             try:
-                future.result(timeout=10.0)
+                future.result(timeout=STALE_DISCONNECT_TIMEOUT_SECS)
                 logger.debug(f"Stale connection disconnect completed for {address}")
             except FuturesTimeoutError:
                 logger.warning(
-                    f"Stale connection disconnect timed out after 10s for {address}"
+                    f"Stale connection disconnect timed out after {STALE_DISCONNECT_TIMEOUT_SECS:.0f}s for {address}"
                 )
                 if not future.done():
                     # Cancel the cleanup task so we do not block a new connect

@@ -19,6 +19,12 @@ from nio import (
 )
 
 from mmrelay.constants.database import DEFAULT_MAX_DATA_ROWS_PER_NODE_MESH_RELAY
+from mmrelay.constants.formats import (
+    FORMAT_PROCESSED_PACKET,
+    MATRIX_PACKET_KEY,
+    MATRIX_SUPPRESS_KEY,
+)
+from mmrelay.constants.plugins import MESH_PACKET_DEFAULT_ID, PROCESSED_PACKET_REGEX
 from mmrelay.plugins.base_plugin import BasePlugin, config
 
 
@@ -184,9 +190,9 @@ class Plugin(BasePlugin):
             message_type="m.room.message",
             content={
                 "msgtype": "m.text",
-                "mmrelay_suppress": True,
-                "meshtastic_packet": json.dumps(packet),
-                "body": f"Processed {packet_type} radio packet",
+                MATRIX_SUPPRESS_KEY: True,
+                MATRIX_PACKET_KEY: json.dumps(packet),
+                "body": FORMAT_PROCESSED_PACKET.format(packet_type=packet_type),
             },
         )
 
@@ -209,7 +215,7 @@ class Plugin(BasePlugin):
         body = content.get("body", "")
 
         if isinstance(body, str):
-            match = re.match(r"^Processed (.+) radio packet$", body)
+            match = PROCESSED_PACKET_REGEX.match(body)
             return bool(match)
         return False
 
@@ -250,7 +256,7 @@ class Plugin(BasePlugin):
             self.logger.debug(f"Skipping message from unmapped room {room.room_id}")
             return False
 
-        packet_json = event.source["content"].get("meshtastic_packet")
+        packet_json = event.source["content"].get(MATRIX_PACKET_KEY)
         if not packet_json:
             self.logger.debug("Missing embedded packet")
             return False
@@ -282,7 +288,7 @@ class Plugin(BasePlugin):
             meshPacket.decoded.payload = base64.b64decode(payload_b64)
             meshPacket.decoded.portnum = portnum
             meshPacket.decoded.want_response = False
-            meshPacket.id = 0
+            meshPacket.id = MESH_PACKET_DEFAULT_ID
         except (TypeError, ValueError, binascii.Error):
             self.logger.exception("Error reconstructing packet")
             return False

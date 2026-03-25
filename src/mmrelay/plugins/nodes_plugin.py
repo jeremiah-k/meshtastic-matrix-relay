@@ -11,6 +11,13 @@ from nio import (
     RoomMessageText,
 )
 
+from mmrelay.constants.formats import DATE_FORMAT_LONG, SNR_UNIT_SUFFIX
+from mmrelay.constants.messages import (
+    RELATIVE_TIME_DAYS_THRESHOLD,
+    SECONDS_PER_HOUR,
+    SECONDS_PER_MINUTE,
+    UNKNOWN_NODE_VALUE,
+)
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
@@ -40,17 +47,17 @@ def get_relative_time(timestamp: float) -> str:
     seconds = delta.seconds
 
     # Convert the time difference into a relative timeframe
-    if days > 7:
+    if days > RELATIVE_TIME_DAYS_THRESHOLD:
         return dt.strftime(
-            "%b %d, %Y"
+            DATE_FORMAT_LONG
         )  # Return the timestamp in a specific format if it's older than 7 days
     elif days >= 1:
         return f"{days} days ago"
-    elif seconds >= 3600:
-        hours = seconds // 3600
+    elif seconds >= SECONDS_PER_HOUR:
+        hours = seconds // SECONDS_PER_HOUR
         return f"{hours} hours ago"
-    elif seconds >= 60:
-        minutes = seconds // 60
+    elif seconds >= SECONDS_PER_MINUTE:
+        minutes = seconds // SECONDS_PER_MINUTE
         return f"{minutes} minutes ago"
     else:
         return "Just now"
@@ -99,9 +106,9 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
 
             user = info.get("user")
             user_info = user if isinstance(user, dict) else {}
-            short_name = user_info.get("shortName") or "Unknown"
-            long_name = user_info.get("longName") or "Unknown"
-            hw_model = user_info.get("hwModel") or "Unknown"
+            short_name = user_info.get("shortName") or UNKNOWN_NODE_VALUE
+            long_name = user_info.get("longName") or UNKNOWN_NODE_VALUE
+            hw_model = user_info.get("hwModel") or UNKNOWN_NODE_VALUE
 
             hops = "? hops away"
             hops_away = info.get("hopsAway")
@@ -116,7 +123,7 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
             snr = ""
             snr_value = info.get("snr")
             if snr_value is not None:
-                snr = f"{snr_value} dB"
+                snr = f"{snr_value}{SNR_UNIT_SUFFIX}"
 
             last_heard = "?"
             last_heard_timestamp = info.get("lastHeard")

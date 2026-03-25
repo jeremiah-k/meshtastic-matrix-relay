@@ -75,6 +75,8 @@ from mmrelay.constants.cli import (
     CLI_COMMANDS,
     DEPRECATED_COMMANDS,
 )
+from mmrelay.constants.migration import TEMP_DEVICE_NAME_LOGOUT
+from mmrelay.constants.network import HTTP_SERVER_ERROR_CODES
 from mmrelay.log_utils import get_logger
 
 logger: logging.Logger | None = None
@@ -466,11 +468,7 @@ def _handle_matrix_error(
         status_code = getattr(exception, "status_code", None)
         if errcode == "M_FORBIDDEN" or status_code == 401:
             error_category = "credentials"
-        elif status_code in [
-            500,
-            502,
-            503,
-        ]:
+        elif status_code in HTTP_SERVER_ERROR_CODES:
             error_category = "server"
         else:
             error_category = "other"
@@ -497,11 +495,8 @@ def _handle_matrix_error(
             or "timeout" in error_msg
         ):
             error_category = "network"
-        elif (
-            "server" in error_msg
-            or "500" in error_msg
-            or "502" in error_msg
-            or "503" in error_msg
+        elif "server" in error_msg or any(
+            str(code) in error_msg for code in HTTP_SERVER_ERROR_CODES
         ):
             error_category = "server"
         else:
@@ -715,7 +710,7 @@ async def logout_matrix_bot(password: str) -> bool:
         try:
             # Attempt login with the provided password
             response = await asyncio.wait_for(
-                temp_client.login(password, device_name="mmrelay-logout-verify"),
+                temp_client.login(password, device_name=TEMP_DEVICE_NAME_LOGOUT),
                 timeout=MATRIX_LOGIN_TIMEOUT,
             )
 

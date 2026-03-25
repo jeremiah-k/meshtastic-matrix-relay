@@ -27,7 +27,14 @@ from mmrelay.constants.app import (
     APP_AUTHOR,
     APP_NAME,
     CREDENTIALS_FILENAME,
+    DATABASE_DIRNAME,
+    DATABASE_FILENAME,
+    DOCKER_LEGACY_PATHS,
+    LOG_FILENAME,
+    LOGS_DIRNAME,
     MATRIX_DIRNAME,
+    PLUGIN_DATA_DIRNAME,
+    PLUGINS_DIRNAME,
     STORE_DIRNAME,
     WINDOWS_INSTALLER_DIR_NAME,
 )
@@ -313,7 +320,7 @@ def get_database_dir() -> Path:
         Path: Path to the `database` directory inside the resolved application home.
     """
     home = get_home_dir()
-    return home / "database"
+    return home / DATABASE_DIRNAME
 
 
 def get_database_path() -> Path:
@@ -323,7 +330,7 @@ def get_database_path() -> Path:
     Returns:
         Path: Path to the file "meshtastic.sqlite" located in the application's database directory.
     """
-    return get_database_dir() / "meshtastic.sqlite"
+    return get_database_dir() / DATABASE_FILENAME
 
 
 def get_logs_dir() -> Path:
@@ -334,7 +341,7 @@ def get_logs_dir() -> Path:
         Path: Path to the logs directory located inside the resolved home (home / "logs").
     """
     home = get_home_dir()
-    return home / "logs"
+    return home / LOGS_DIRNAME
 
 
 def get_log_file() -> Path:
@@ -349,7 +356,7 @@ def get_log_file() -> Path:
     env_log = os.getenv("MMRELAY_LOG_PATH")
     if env_log:
         return Path(env_log).expanduser().absolute()
-    return get_logs_dir() / "mmrelay.log"
+    return get_logs_dir() / LOG_FILENAME
 
 
 def get_e2ee_store_dir() -> Path:
@@ -378,7 +385,7 @@ def get_plugins_dir() -> Path:
         Path: Path to the plugins directory located inside the application home.
     """
     home = get_home_dir()
-    return home / "plugins"
+    return home / PLUGINS_DIRNAME
 
 
 def get_custom_plugins_dir() -> Path:
@@ -491,7 +498,7 @@ def get_plugin_data_dir(
         else:
             base_dir = get_core_plugins_dir() / plugin_name
 
-    data_dir = base_dir / "data"
+    data_dir = base_dir / PLUGIN_DATA_DIRNAME
     return data_dir / subdir if subdir else data_dir
 
 
@@ -675,12 +682,8 @@ def get_legacy_dirs() -> list[Path]:
 
     # 5. Check common Docker legacy mounts
     # These are common volume mount points in Docker deployments
-    docker_legacy_paths = [
-        Path("/data"),
-        Path("/app/data"),
-        Path("/var/lib/mmrelay"),
-    ]
-    for docker_path in docker_legacy_paths:
+    for docker_path_str in DOCKER_LEGACY_PATHS:
+        docker_path = Path(docker_path_str)
         if docker_path.exists() and _has_mmrelay_artifacts(docker_path):
             docker_str = str(docker_path.absolute())
             if docker_str != home_str and docker_str not in seen:

@@ -9,6 +9,7 @@ from nio import (
     RoomMessageText,
 )
 
+from mmrelay.constants.plugins import DEBUG_PLUGIN_PRIORITY
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
@@ -28,7 +29,7 @@ class Plugin(BasePlugin):
 
     plugin_name = "debug"
     is_core_plugin = True
-    priority = 1
+    priority = DEBUG_PLUGIN_PRIORITY
 
     async def handle_meshtastic_message(
         self,

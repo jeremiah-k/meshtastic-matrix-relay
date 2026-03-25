@@ -54,3 +54,40 @@ NAMES_FIELD_SHORTNAME: Final[str] = "shortname"
 # Meshtastic node payload keys (protocol-level fields, not DB columns)
 PROTO_NODE_NAME_LONG: Final[str] = "longName"
 PROTO_NODE_NAME_SHORT: Final[str] = "shortName"
+
+# Debug and sampling
+DEBUG_ID_SAMPLE_LIMIT: Final[int] = 20
+
+# SQLite paths and filenames
+SQLITE_IN_MEMORY_PATH: Final[str] = ":memory:"
+DEFAULT_DB_FILENAME: Final[str] = "meshtastic.sqlite"
+LEGACY_DATABASE_SUBDIR: Final[str] = "database"
+
+# Table and column names
+PLUGIN_DATA_TABLE: Final[str] = "plugin_data"
+PLUGIN_DATA_COLUMNS: Final[tuple[str, ...]] = ("plugin_name", "meshtastic_id", "data")
+MESSAGE_MAP_TABLE: Final[str] = "message_map"
+MESSAGE_MAP_COLUMNS: Final[tuple[str, ...]] = (
+    "meshtastic_id",
+    "matrix_event_id",
+    "matrix_room_id",
+    "meshtastic_text",
+    "meshtastic_meshnet",
+)
+
+# SQLite pragmas
+PRAGMA_JOURNAL_MODE_WAL: Final[str] = "PRAGMA journal_mode=WAL"
+PRAGMA_FOREIGN_KEYS_ON: Final[str] = "PRAGMA foreign_keys=ON"
+
+# SQLite sidecar file suffixes
+SQLITE_SIDECAR_SUFFIXES: Final[tuple[str, ...]] = (
+    ".sqlite-wal",
+    ".sqlite-shm",
+    "-journal",
+)
+
+# Database executor
+DB_EXECUTOR_MAX_WORKERS: Final[int] = 1
+
+# Plugin database template
+PLUGIN_DB_FILENAME_TEMPLATE: Final[str] = "plugin_data_{plugin_name}.sqlite"

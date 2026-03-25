@@ -22,11 +22,13 @@ from mmrelay.config import get_plugin_data_dir as resolve_plugin_data_dir
 from mmrelay.constants.config import (
     CONFIG_KEY_REQUIRE_BOT_MENTION,
     DEFAULT_REQUIRE_BOT_MENTION,
+    PLUGIN_CONFIG_SECTIONS,
 )
 from mmrelay.constants.database import (
     DEFAULT_MAX_DATA_ROWS_PER_NODE_BASE,
     DEFAULT_TEXT_TRUNCATION_LENGTH,
 )
+from mmrelay.constants.plugins import DEFAULT_PLUGIN_PRIORITY
 from mmrelay.constants.queue import DEFAULT_MESSAGE_DELAY, MINIMUM_MESSAGE_DELAY
 from mmrelay.db_utils import (
     delete_plugin_data,
@@ -110,7 +112,7 @@ class BasePlugin(ABC):
     plugin_name: str | None = None  # Must be overridden in subclasses
     is_core_plugin: bool | None = None
     max_data_rows_per_node = DEFAULT_MAX_DATA_ROWS_PER_NODE_BASE
-    priority = 10
+    priority = DEFAULT_PLUGIN_PRIORITY
 
     @property
     def description(self) -> str:
@@ -176,7 +178,7 @@ class BasePlugin(ABC):
         self.mapped_channels: list[int | None] = []
         self._global_require_bot_mention: bool | None = None
         global config
-        plugin_levels = ["plugins", "community-plugins", "custom-plugins"]
+        plugin_levels = list(PLUGIN_CONFIG_SECTIONS)
 
         # Check if config is available
         if config is not None:

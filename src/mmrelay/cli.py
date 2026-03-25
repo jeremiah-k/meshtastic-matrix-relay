@@ -35,13 +35,24 @@ from mmrelay.config import (
     set_secure_file_permissions,
     validate_yaml_syntax,
 )
-from mmrelay.constants.app import WINDOWS_PLATFORM
+from mmrelay.constants.app import (
+    DISK_SPACE_CRITICAL_GB,
+    DISK_SPACE_OK_GB,
+    DISK_SPACE_WARN_GB,
+    WINDOWS_PLATFORM,
+)
 from mmrelay.constants.config import (
     CONFIG_KEY_ACCESS_TOKEN,
     CONFIG_KEY_BOT_USER_ID,
     CONFIG_KEY_HOMESERVER,
     CONFIG_SECTION_MATRIX,
     CONFIG_SECTION_MESHTASTIC,
+    REQUIRED_CREDENTIALS_KEYS,
+)
+from mmrelay.constants.formats import (
+    MAC_ADDRESS_PATTERN,
+    UNIX_SERIAL_PORT_PATTERN,
+    WINDOWS_SERIAL_PORT_PATTERN,
 )
 from mmrelay.constants.network import (
     CONFIG_KEY_BLE_ADDRESS,
@@ -52,6 +63,10 @@ from mmrelay.constants.network import (
     CONNECTION_TYPE_NETWORK,
     CONNECTION_TYPE_SERIAL,
     CONNECTION_TYPE_TCP,
+    MAX_HOSTNAME_LABEL_LENGTH,
+    MAX_HOSTNAME_LENGTH,
+    MESHTASTIC_CHANNEL_MAX,
+    MESHTASTIC_CHANNEL_MIN,
 )
 from mmrelay.e2ee_utils import E2EEStatus
 from mmrelay.log_utils import get_logger
@@ -587,7 +602,7 @@ def _validate_credentials_json(
             )
             continue
 
-        required_fields = ["homeserver", "access_token", "user_id"]
+        required_fields = list(REQUIRED_CREDENTIALS_KEYS)
         missing_fields = [
             field
             for field in required_fields
@@ -1067,12 +1082,11 @@ def _is_valid_serial_port(port: str) -> bool:
     if is_windows:
         # Windows: COM1, COM3, COM10, etc.
         # COM followed by one or more digits (COM1, COM10, COM100, COM1000, etc.)
-        return re.match(r"^COM\d+$", port) is not None
+        return re.match(WINDOWS_SERIAL_PORT_PATTERN, port) is not None
     else:
         # Linux/macOS: /dev/ttyUSB0, /dev/ttyACM0, /dev/cu.usbserial*, etc.
         # Must start with /dev/tty or /dev/cu followed by at least one character
-        linux_pattern = r"^/dev/(tty|cu).+$"
-        return re.match(linux_pattern, port) is not None
+        return re.match(UNIX_SERIAL_PORT_PATTERN, port) is not None
 
 
 def _is_valid_host(host: str) -> bool:
@@ -1102,12 +1116,12 @@ def _is_valid_host(host: str) -> bool:
         return False
 
     # Check length limits (hostname max 253 chars, each label max 63)
-    if len(host) > 253:
+    if len(host) > MAX_HOSTNAME_LENGTH:
         return False
 
     labels = host.split(".")
     for label in labels:
-        if len(label) > 63 or len(label) == 0:
+        if len(label) > MAX_HOSTNAME_LABEL_LENGTH or len(label) == 0:
             return False
 
     return True
@@ -1130,8 +1144,7 @@ def _is_valid_ble_address(address: str) -> bool:
         return False
 
     # Check for standard MAC address: AA:BB:CC:DD:EE:FF (6 groups of 2 hex chars)
-    mac_pattern = r"^(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$"
-    if re.match(mac_pattern, trimmed_address):
+    if re.match(MAC_ADDRESS_PATTERN, trimmed_address):
         return True
 
     # Device name: non-empty string without colons (to avoid confusion with MAC)
@@ -1355,7 +1368,9 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                     meshtastic_channel = room["meshtastic_channel"]
                     if (
                         not isinstance(meshtastic_channel, int)
-                        or not 0 <= meshtastic_channel <= 7
+                        or not MESHTASTIC_CHANNEL_MIN
+                        <= meshtastic_channel
+                        <= MESHTASTIC_CHANNEL_MAX
                     ):
                         print(
                             f"Error: Room {room['id']} has invalid 'meshtastic_channel' value: {meshtastic_channel}"
@@ -2050,11 +2065,15 @@ def _print_system_health(paths_info: dict[str, Any]) -> None:
             free_gb = usage.free / (1024**3)
             total_gb = usage.total / (1024**3)
             used_pct = (usage.used / usage.total) * 100
-            status = "✅" if free_gb > 1 else "⚠️" if free_gb > 0.1 else "❌"
+            status = (
+                "✅"
+                if free_gb > DISK_SPACE_OK_GB
+                else "⚠️" if free_gb > DISK_SPACE_WARN_GB else "❌"
+            )
             print(
                 f"   {status} {free_gb:.1f} GB free of {total_gb:.1f} GB ({used_pct:.0f}% used)"
             )
-            if free_gb < 0.5:
+            if free_gb < DISK_SPACE_CRITICAL_GB:
                 print("       ⚠️  Low disk space - database/logs may fail")
         else:
             print("   ⚠️  HOME directory not accessible")

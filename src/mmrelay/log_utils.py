@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 
 # Import logging configuration helpers and constants.
 from mmrelay.constants.app import APP_DISPLAY_NAME
+from mmrelay.constants.formats import RICH_LOG_TIME_FORMAT
 from mmrelay.constants.messages import (
     DEFAULT_LOG_BACKUP_COUNT,
     DEFAULT_LOG_SIZE_MB,
@@ -300,7 +301,7 @@ def _configure_logger(
                     show_level=True,
                     show_path=False,
                     markup=True,
-                    log_time_format="%Y-%m-%d %H:%M:%S",
+                    log_time_format=RICH_LOG_TIME_FORMAT,
                     omit_repeated_times=False,
                 )
             )

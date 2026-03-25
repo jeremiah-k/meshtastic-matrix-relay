@@ -7,7 +7,7 @@ execution by defining trusted sources and dangerous patterns.
 """
 
 import re
-from typing import Tuple
+from typing import Final, Tuple
 
 # Message length limits
 MAX_FORECAST_LENGTH = 200
@@ -64,3 +64,68 @@ PIP_SOURCE_FLAGS: Tuple[str, ...] = (
     "--index-url",
     "--extra-index-url",
 )
+
+# Plugin priorities
+DEFAULT_PLUGIN_PRIORITY: Final[int] = 100
+DEBUG_PLUGIN_PRIORITY: Final[int] = 1
+
+# Plugin timeouts
+PIP_INSTALL_TIMEOUT_SECONDS: Final[int] = 600
+PIP_INSTALL_MISSING_DEP_TIMEOUT: Final[int] = 300
+DEFAULT_SUBPROCESS_TIMEOUT_SECONDS: Final[int] = 120
+GIT_COMMAND_TIMEOUT_SECONDS: Final[int] = 120
+GIT_RETRY_ATTEMPTS: Final[int] = 3
+GIT_RETRY_DELAY_SECONDS: Final[int] = 2
+WEATHER_API_TIMEOUT_SECONDS: Final[int] = 10
+
+# Scheduler timing
+SCHEDULER_SHUTDOWN_TIMEOUT_SECONDS: Final[int] = 5
+SCHEDULER_LOOP_WAIT_SECONDS: Final[int] = 1
+
+# Sensitive URL parameters to redact
+SENSITIVE_URL_PARAMS: Final[frozenset[str]] = frozenset(
+    {
+        "token",
+        "access_token",
+        "auth",
+        "key",
+        "password",
+        "pwd",
+        "private_token",
+        "oauth_token",
+        "x-access-token",
+    }
+)
+
+# Weather plugin constants
+WEATHER_COMMANDS: Final[tuple[str, ...]] = ("weather", "hourly", "daily")
+DAILY_FORECAST_DAYS: Final[int] = 5
+HOURLY_FORECAST_DAYS: Final[int] = 3
+HOURLY_FORECAST_OFFSETS_HOURS: Final[list[int]] = [3, 6, 12]
+HOURLY_FORECAST_SLOT_LABELS: Final[list[str]] = ["+3h", "+6h", "+12h"]
+GEOCODING_RESULT_COUNT: Final[int] = 1
+
+# Open-Meteo API URLs
+OPEN_METEO_FORECAST_API_URL: Final[str] = "https://api.open-meteo.com/v1/forecast"
+OPEN_METEO_GEOCODING_API_URL: Final[str] = (
+    "https://geocoding-api.open-meteo.com/v1/search"
+)
+
+# Telemetry plugin constants
+TELEMETRY_DEFAULT_HOURS: Final[int] = 12
+TELEMETRY_MAX_DATA_ROWS: Final[int] = 50
+
+# Health plugin constants
+LOW_BATTERY_THRESHOLD_PERCENT: Final[int] = 10
+
+# Regex patterns
+PING_COMMAND_REGEX: Final[re.Pattern[str]] = re.compile(
+    r"(?<!\w)([!?]*)(ping)([!?]*)(?!\w)"
+)
+DROP_COMMAND_REGEX: Final[re.Pattern[str]] = re.compile(r"!drop\s+(.+)$")
+PROCESSED_PACKET_REGEX: Final[re.Pattern[str]] = re.compile(
+    r"^Processed (.+) radio packet$"
+)
+
+# Mesh relay constants
+MESH_PACKET_DEFAULT_ID: Final[int] = 0

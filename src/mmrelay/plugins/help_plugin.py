@@ -9,6 +9,10 @@ from nio import (
     RoomMessageText,
 )
 
+from mmrelay.constants.messages import (
+    MSG_AVAILABLE_COMMANDS_PREFIX,
+    MSG_NO_SUCH_COMMAND,
+)
 from mmrelay.plugin_loader import load_plugins
 from mmrelay.plugins.base_plugin import BasePlugin
 
@@ -108,7 +112,7 @@ class Plugin(BasePlugin):
         plugins = load_plugins()
 
         if command:
-            reply = f"No such command: {command}"
+            reply = MSG_NO_SUCH_COMMAND.format(command=command)
 
             for plugin in plugins:
                 if command in plugin.get_matrix_commands():
@@ -117,7 +121,7 @@ class Plugin(BasePlugin):
             commands = []
             for plugin in plugins:
                 commands.extend(plugin.get_matrix_commands())
-            reply = "Available commands: " + ", ".join(commands)
+            reply = MSG_AVAILABLE_COMMANDS_PREFIX + ", ".join(commands)
 
         await self.send_matrix_message(room.room_id, reply)
         return True

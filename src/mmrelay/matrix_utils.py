@@ -90,12 +90,17 @@ from mmrelay.constants.config import (
     E2EE_KEY_REQUEST_MAX_ATTEMPTS,
     E2EE_KEY_REQUEST_MAX_DELAY,
     E2EE_KEY_SHARING_DELAY_SECONDS,
+    REQUIRED_CREDENTIALS_KEYS,
 )
 from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
 from mmrelay.constants.formats import (
     DEFAULT_MATRIX_PREFIX,
     DEFAULT_MESHTASTIC_PREFIX,
     DETECTION_SENSOR_APP,
+    HTML_TAG_REGEX,
+    MARKDOWN_ESCAPE_REGEX,
+    OBJECT_REPR_REGEX,
+    PREFIX_DEFINITION_REGEX,
 )
 from mmrelay.constants.messages import (
     DEFAULT_MESSAGE_TRUNCATE_BYTES,
@@ -103,6 +108,9 @@ from mmrelay.constants.messages import (
     MAX_TRUNCATION_LENGTH,
     MESHNET_NAME_ABBREVIATION_LENGTH,
     MESSAGE_PREVIEW_LENGTH,
+    MSG_MATRIX_SYNC_FAILED,
+    MSG_MATRIX_SYNC_TIMEOUT,
+    MSG_MISSING_MATRIX_ROOMS,
     PORTNUM_DETECTION_SENSOR_APP,
     SHORTNAME_FALLBACK_LENGTH,
 )
@@ -200,7 +208,7 @@ class MissingMatrixRoomsError(ValueError):
         """
         Exception raised when the Matrix rooms configuration is missing.
         """
-        super().__init__("Missing required matrix_rooms configuration")
+        super().__init__(MSG_MISSING_MATRIX_ROOMS)
 
 
 class MatrixSyncTimeoutError(ConnectionError):
@@ -212,7 +220,7 @@ class MatrixSyncTimeoutError(ConnectionError):
 
         The exception's message is set to "Matrix sync timed out".
         """
-        super().__init__("Matrix sync timed out")
+        super().__init__(MSG_MATRIX_SYNC_TIMEOUT)
 
 
 class MatrixSyncFailedError(ConnectionError):
@@ -224,7 +232,7 @@ class MatrixSyncFailedError(ConnectionError):
 
         Sets the exception message to "Matrix sync failed".
         """
-        super().__init__("Matrix sync failed")
+        super().__init__(MSG_MATRIX_SYNC_FAILED)
 
 
 class MatrixSyncFailedDetailsError(ConnectionError):
@@ -717,8 +725,8 @@ def _get_detailed_matrix_error_message(matrix_response: Any) -> str:
             bool: `true` if the string appears to be an unhelpful error message (contains an object memory-address repr, a lone HTML-like tag, or the phrase "unknown error"), `false` otherwise.
         """
         return (
-            re.search(r"<.+? object at 0x[0-9a-fA-F]+>", error_str) is not None
-            or re.search(r"<[a-zA-Z/][^>]*>", error_str) is not None
+            OBJECT_REPR_REGEX.search(error_str) is not None
+            or HTML_TAG_REGEX.search(error_str) is not None
             or "unknown error" in error_str.lower()
         )
 
@@ -919,9 +927,9 @@ def _add_truncated_vars(
         format_vars[f"{prefix}{i}"] = truncated_value
 
 
-_PREFIX_DEFINITION_PATTERN = re.compile(r"^\[(.+?)\]:(\s*)")
+_PREFIX_DEFINITION_PATTERN = PREFIX_DEFINITION_REGEX
 # Escape underscores, asterisks, backticks, tildes, backslashes, and brackets inside prefixes
-_MARKDOWN_ESCAPE_PATTERN = re.compile(r"([*_`~\\\[\]])")
+_MARKDOWN_ESCAPE_PATTERN = MARKDOWN_ESCAPE_REGEX
 
 
 def _escape_leading_prefix_for_markdown(message: str) -> tuple[str, bool]:
@@ -1359,7 +1367,7 @@ def _missing_credentials_keys(credentials: dict[str, Any]) -> list[str]:
     """
     return [
         key
-        for key in ("homeserver", "access_token", "user_id")
+        for key in REQUIRED_CREDENTIALS_KEYS
         if not isinstance(credentials.get(key), str)
         or not credentials.get(key, "").strip()
     ]
@@ -1725,6 +1733,7 @@ def _initialize_matrix_client(
     Returns:
         AsyncClient: A configured AsyncClient instance ready for login and synchronization.
     """
+    # max_limit_exceeded=0, max_timeouts=0 are NIO client params - keep inline
     client_config = AsyncClientConfig(
         max_limit_exceeded=0,
         max_timeouts=0,

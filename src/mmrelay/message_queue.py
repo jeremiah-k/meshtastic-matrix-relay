@@ -19,28 +19,21 @@ from typing import Any, Callable, Optional, cast
 from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
 from mmrelay.constants.network import MINIMUM_MESSAGE_DELAY, RECOMMENDED_MINIMUM_DELAY
 from mmrelay.constants.queue import (
+    CONNECTION_ERROR_KEYWORDS,
+    CONNECTION_RETRY_SLEEP_SEC,
     DEFAULT_MESSAGE_DELAY,
     MAX_QUEUE_SIZE,
+    QUEUE_EXECUTOR_MAX_WORKERS,
+    QUEUE_FULL_LOG_INTERVAL_SEC,
     QUEUE_HIGH_WATER_MARK,
     QUEUE_MEDIUM_WATER_MARK,
+    QUEUE_POLL_INTERVAL_SEC,
+    QUEUE_WAIT_RETRY_SLEEP_SEC,
+    TASK_SHUTDOWN_TIMEOUT_SEC,
 )
 from mmrelay.log_utils import get_logger
 
 logger = get_logger(name="MessageQueue")
-
-# Module-level constant for connection error keywords (fallback heuristic)
-# Used when exception types don't match known connection errors.
-_CONNECTION_ERROR_KEYWORDS = frozenset(
-    [
-        "connection",
-        "not connected",
-        "disconnected",
-        "timeout",
-        "broken pipe",
-        "reset by peer",
-        "network",
-    ]
-)
 
 
 @dataclass
@@ -119,7 +112,8 @@ class MessageQueue:
             # Create dedicated executor for this MessageQueue
             if self._executor is None:
                 self._executor = ThreadPoolExecutor(
-                    max_workers=1, thread_name_prefix=f"MessageQueue-{id(self)}"
+                    max_workers=QUEUE_EXECUTOR_MAX_WORKERS,
+                    thread_name_prefix=f"MessageQueue-{id(self)}",
                 )
 
             # Start the processor in the event loop
@@ -178,7 +172,7 @@ class MessageQueue:
                             cast(Any, shield(self._processor_task)), task_loop
                         )
                         # Wait for completion; ignore exceptions raised due to cancellation
-                        fut.result(timeout=1.0)
+                        fut.result(timeout=TASK_SHUTDOWN_TIMEOUT_SEC)
                 else:
                     with contextlib.suppress(
                         asyncio.CancelledError, RuntimeError, Exception
@@ -283,7 +277,8 @@ class MessageQueue:
                         current_time = time.monotonic()
                         if (
                             self._last_queue_full_log_time is None
-                            or current_time - self._last_queue_full_log_time >= 5.0
+                            or current_time - self._last_queue_full_log_time
+                            >= QUEUE_FULL_LOG_INTERVAL_SEC
                         ):
                             logger.warning(
                                 f"Message queue full ({queue_size}/{MAX_QUEUE_SIZE}), "
@@ -295,7 +290,7 @@ class MessageQueue:
                         # Use try/finally to ensure lock is always reacquired
                         self._lock.release()
                         try:
-                            time.sleep(0.5)
+                            time.sleep(QUEUE_WAIT_RETRY_SLEEP_SEC)
                         finally:
                             self._lock.acquire()
 
@@ -424,7 +419,7 @@ class MessageQueue:
                 return False
             if deadline is not None and time.monotonic() > deadline:
                 return False
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(QUEUE_POLL_INTERVAL_SEC)
         return True
 
     def ensure_processor_started(self) -> None:
@@ -475,7 +470,7 @@ class MessageQueue:
                         self._has_current = True
                     except IndexError:
                         # No messages, wait a bit and continue
-                        await asyncio.sleep(0.1)
+                        await asyncio.sleep(QUEUE_POLL_INTERVAL_SEC)
                         continue
 
                 # Check if we should send (connection state, etc.)
@@ -484,7 +479,7 @@ class MessageQueue:
                     logger.debug(
                         f"Connection not ready, waiting to send: {current_message.description}"
                     )
-                    await asyncio.sleep(1.0)
+                    await asyncio.sleep(CONNECTION_RETRY_SLEEP_SEC)
                     continue
 
                 # Check if we need to wait for message delay (only if we've sent before)
@@ -506,7 +501,7 @@ class MessageQueue:
                             self._requeue_message(current_message)
                             current_message = None
                             self._has_current = False
-                            await asyncio.sleep(1.0)
+                            await asyncio.sleep(CONNECTION_RETRY_SLEEP_SEC)
                             continue
                         # After successful wait, continue to send
                     elif time_since_last < MINIMUM_MESSAGE_DELAY:
@@ -531,7 +526,7 @@ class MessageQueue:
                     self._requeue_message(current_message)
                     current_message = None
                     self._has_current = False
-                    await asyncio.sleep(1.0)
+                    await asyncio.sleep(CONNECTION_RETRY_SLEEP_SEC)
                     continue
 
                 # Send the message
@@ -603,7 +598,7 @@ class MessageQueue:
                         error_msg = str(e).lower()
                         is_connection_error = any(
                             keyword in error_msg
-                            for keyword in _CONNECTION_ERROR_KEYWORDS
+                            for keyword in CONNECTION_ERROR_KEYWORDS
                         )
 
                     if is_connection_error:
@@ -616,7 +611,7 @@ class MessageQueue:
                         current_message = None
                         self._has_current = False
                         self._in_flight = False
-                        await asyncio.sleep(1.0)
+                        await asyncio.sleep(CONNECTION_RETRY_SLEEP_SEC)
                         continue
                     else:
                         logger.exception(
@@ -639,7 +634,9 @@ class MessageQueue:
                 break
             except Exception:
                 logger.exception("Error in message queue processor")
-                await asyncio.sleep(1.0)  # Prevent tight error loop
+                await asyncio.sleep(
+                    CONNECTION_RETRY_SLEEP_SEC
+                )  # Prevent tight error loop
 
     def _should_send_message(self) -> bool:
         """

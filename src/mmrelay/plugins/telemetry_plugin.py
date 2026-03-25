@@ -15,13 +15,16 @@ from nio import (
 )
 from PIL import Image
 
+from mmrelay.constants.formats import TELEMETRY_APP_PORTNUM, TELEMETRY_GRAPH_FILENAME
+from mmrelay.constants.messages import MSG_GRAPH_UPLOAD_FAILED
+from mmrelay.constants.plugins import TELEMETRY_DEFAULT_HOURS, TELEMETRY_MAX_DATA_ROWS
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
 class Plugin(BasePlugin):
     plugin_name = "telemetry"
     is_core_plugin = True
-    max_data_rows_per_node = 50
+    max_data_rows_per_node = TELEMETRY_MAX_DATA_ROWS
 
     def commands(self) -> list[str]:
         """
@@ -42,7 +45,9 @@ class Plugin(BasePlugin):
         """
         return "Graph of avg Mesh telemetry value for last 12 hours"
 
-    def _generate_timeperiods(self, hours: int = 12) -> list[datetime]:
+    def _generate_timeperiods(
+        self, hours: int = TELEMETRY_DEFAULT_HOURS
+    ) -> list[datetime]:
         """
         Generate hourly datetime anchors spanning the past `hours` hours up to the current time.
 
@@ -89,7 +94,7 @@ class Plugin(BasePlugin):
         if (
             "decoded" in packet
             and "portnum" in packet["decoded"]
-            and packet["decoded"]["portnum"] == "TELEMETRY_APP"
+            and packet["decoded"]["portnum"] == TELEMETRY_APP_PORTNUM
             and "telemetry" in packet["decoded"]
             and "deviceMetrics" in packet["decoded"]["telemetry"]
         ):
@@ -262,7 +267,9 @@ class Plugin(BasePlugin):
         from mmrelay.matrix_utils import ImageUploadError, send_image
 
         try:
-            await send_image(matrix_client, room.room_id, pil_image, "graph.png")
+            await send_image(
+                matrix_client, room.room_id, pil_image, TELEMETRY_GRAPH_FILENAME
+            )
         except ImageUploadError:
             self.logger.exception("Failed to send telemetry graph")
             await matrix_client.room_send(
@@ -270,7 +277,7 @@ class Plugin(BasePlugin):
                 message_type="m.room.message",
                 content={
                     "msgtype": "m.notice",
-                    "body": "Failed to generate graph: Image upload failed.",
+                    "body": MSG_GRAPH_UPLOAD_FAILED,
                 },
             )
             return False

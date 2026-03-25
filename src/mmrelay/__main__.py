@@ -10,6 +10,8 @@ Usage:
 
 import sys
 
+from mmrelay.constants.app import EXIT_CODE_SIGINT
+
 if __name__ == "__main__":
     try:
         from mmrelay.cli import main
@@ -21,7 +23,7 @@ if __name__ == "__main__":
         sys.exit(1)
     except KeyboardInterrupt:
         print("Interrupted.", file=sys.stderr)
-        sys.exit(130)
+        sys.exit(EXIT_CODE_SIGINT)
     except SystemExit:
         raise
     except Exception as e:

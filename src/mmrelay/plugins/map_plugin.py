@@ -19,6 +19,16 @@ from nio import (
 )
 from PIL import Image as PILImage, ImageFont, ImageDraw as _PILImageDraw
 
+from mmrelay.constants.formats import (
+    DEFAULT_LABEL_FONT_SIZE,
+    DEFAULT_MAP_ZOOM,
+    LABEL_ARROW_SIZE_PX,
+    LABEL_MARGIN_PX,
+    MAP_IMAGE_FILENAME,
+    MAP_LABEL_FONT_SIZE,
+    MAP_ZOOM_MAX,
+    MAP_ZOOM_MIN,
+)
 from mmrelay.constants.plugins import (
     S2_PRECISION_BITS_TO_METERS_CONSTANT,
     MAX_MAP_IMAGE_SIZE,
@@ -90,7 +100,12 @@ _PILImageDraw.ImageDraw.textsize = textsize  # type: ignore[attr-defined]
 
 
 class TextLabel(staticmaps.Object):  # type: ignore[misc]
-    def __init__(self, latlng: s2sphere.LatLng, text: str, fontSize: int = 12) -> None:
+    def __init__(
+        self,
+        latlng: s2sphere.LatLng,
+        text: str,
+        fontSize: int = DEFAULT_LABEL_FONT_SIZE,
+    ) -> None:
         """
         Initialize a TextLabel anchored at a geographic LatLng with the provided text and font size.
 
@@ -102,8 +117,8 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
         staticmaps.Object.__init__(self)
         self._latlng = latlng
         self._text = text
-        self._margin = 4
-        self._arrow = 16
+        self._margin = LABEL_MARGIN_PX
+        self._arrow = LABEL_ARROW_SIZE_PX
         self._font_size = fontSize
 
     def latlng(self) -> s2sphere.LatLng:
@@ -338,7 +353,9 @@ def get_map(
                     color=color_cls(0, 0, 0, 64),
                 )
             )
-        context.add_object(TextLabel(radio, str(location["label"]), fontSize=50))
+        context.add_object(
+            TextLabel(radio, str(location["label"]), fontSize=MAP_LABEL_FONT_SIZE)
+        )
 
     # render non-anti-aliased png
     if image_size:
@@ -417,7 +434,7 @@ class Plugin(BasePlugin):
     def get_matrix_commands(self) -> list[str]:
         """
         List the Matrix command names registered by this plugin.
-        
+
         Returns:
             list[str]: Command names the plugin handles; empty list if the plugin has no configured name.
         """
@@ -476,12 +493,12 @@ class Plugin(BasePlugin):
             zoom = int(zoom)  # type: ignore[arg-type]
         except (TypeError, ValueError):
             try:
-                zoom = int(self.config.get("zoom", 8))
+                zoom = int(self.config.get("zoom", DEFAULT_MAP_ZOOM))
             except (TypeError, ValueError):
-                zoom = 8
+                zoom = DEFAULT_MAP_ZOOM
 
-        if not 0 <= zoom <= 30:
-            zoom = 8
+        if not MAP_ZOOM_MIN <= zoom <= MAP_ZOOM_MAX:
+            zoom = DEFAULT_MAP_ZOOM
 
         try:
             image_size = (int(image_size[0]), int(image_size[1]))  # type: ignore[arg-type]
@@ -568,7 +585,9 @@ class Plugin(BasePlugin):
         )
 
         try:
-            await send_image(matrix_client, room.room_id, pillow_image, "location.png")
+            await send_image(
+                matrix_client, room.room_id, pillow_image, MAP_IMAGE_FILENAME
+            )
         except ImageUploadError:
             self.logger.exception("Failed to send map image")
             await matrix_client.room_send(

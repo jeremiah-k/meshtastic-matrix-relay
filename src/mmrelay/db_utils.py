@@ -8,15 +8,22 @@ import threading
 from collections.abc import Collection
 from typing import Any, Callable, NamedTuple, cast
 
+from mmrelay.constants.app import DATABASE_FILENAME, LEGACY_DATA_SUBDIR
 from mmrelay.constants.database import (
+    DEBUG_ID_SAMPLE_LIMIT,
     DEFAULT_BUSY_TIMEOUT_MS,
     DEFAULT_ENABLE_WAL,
     DEFAULT_EXTRA_PRAGMAS,
     DEFAULT_NAME_PRUNE_CHUNK_SIZE,
+    LEGACY_DATABASE_SUBDIR,
+    MESSAGE_MAP_COLUMNS,
+    MESSAGE_MAP_TABLE,
     NAMES_FIELD_LONGNAME,
     NAMES_FIELD_SHORTNAME,
     NAMES_TABLE_LONGNAMES,
     NAMES_TABLE_SHORTNAMES,
+    PLUGIN_DATA_COLUMNS,
+    PLUGIN_DATA_TABLE,
     PROTO_NODE_NAME_LONG,
     PROTO_NODE_NAME_SHORT,
     PragmaValue,
@@ -62,7 +69,7 @@ class NodeNameEntry(NamedTuple):
 NodeNameState = tuple[NodeNameEntry, ...]
 
 _CONFLICT_SENTINEL = object()
-_NODE_NAME_DEBUG_ID_SAMPLE_LIMIT = 20
+_NODE_NAME_DEBUG_ID_SAMPLE_LIMIT = DEBUG_ID_SAMPLE_LIMIT
 
 # Table name to singular field-name mapping used for logging and column lookup.
 _NAME_FIELD_BY_TABLE = {
@@ -328,7 +335,7 @@ def get_db_path() -> str:
         logger.warning("Could not create database directory %s: %s", database_dir, e)
         # Continue anyway - the database connection will fail later if needed
 
-    default_path = os.path.join(database_dir, "meshtastic.sqlite")
+    default_path = os.path.join(database_dir, DATABASE_FILENAME)
 
     # If default path doesn't exist, check legacy locations
     if not os.path.exists(default_path) and is_deprecation_window_active():
@@ -336,9 +343,9 @@ def get_db_path() -> str:
         for legacy_dir in legacy_dirs:
             # Check various possible legacy locations
             candidates = [
-                os.path.join(legacy_dir, "meshtastic.sqlite"),
-                os.path.join(legacy_dir, "data", "meshtastic.sqlite"),
-                os.path.join(legacy_dir, "database", "meshtastic.sqlite"),
+                os.path.join(legacy_dir, DATABASE_FILENAME),
+                os.path.join(legacy_dir, LEGACY_DATA_SUBDIR, DATABASE_FILENAME),
+                os.path.join(legacy_dir, LEGACY_DATABASE_SUBDIR, DATABASE_FILENAME),
             ]
             for candidate in candidates:
                 if os.path.exists(candidate):
@@ -566,10 +573,10 @@ def initialize_database() -> None:
         cursor.execute(_CREATE_TABLE_NAMES_LONG_SQL)
         cursor.execute(_CREATE_TABLE_NAMES_SHORT_SQL)
         cursor.execute(
-            "CREATE TABLE IF NOT EXISTS plugin_data (plugin_name TEXT, meshtastic_id TEXT, data TEXT, PRIMARY KEY (plugin_name, meshtastic_id))"
+            f"CREATE TABLE IF NOT EXISTS {PLUGIN_DATA_TABLE} ({PLUGIN_DATA_COLUMNS[0]} TEXT, {PLUGIN_DATA_COLUMNS[1]} TEXT, {PLUGIN_DATA_COLUMNS[2]} TEXT, PRIMARY KEY ({PLUGIN_DATA_COLUMNS[0]}, {PLUGIN_DATA_COLUMNS[1]}))"
         )
         cursor.execute(
-            "CREATE TABLE IF NOT EXISTS message_map (meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
+            f"CREATE TABLE IF NOT EXISTS {MESSAGE_MAP_TABLE} ({MESSAGE_MAP_COLUMNS[0]} TEXT, {MESSAGE_MAP_COLUMNS[1]} TEXT PRIMARY KEY, {MESSAGE_MAP_COLUMNS[2]} TEXT, {MESSAGE_MAP_COLUMNS[3]} TEXT, {MESSAGE_MAP_COLUMNS[4]} TEXT)"
         )
         # Attempt schema adjustments for upgrades
         try:

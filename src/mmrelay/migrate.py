@@ -57,7 +57,32 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
-from mmrelay.constants.app import CREDENTIALS_FILENAME, MATRIX_DIRNAME, STORE_DIRNAME
+from mmrelay.constants.app import (
+    CREDENTIALS_FILENAME,
+    MATRIX_DIRNAME,
+    STORE_DIRNAME,
+    WINERR_ACCESS_DENIED,
+    WINERR_LOCK_VIOLATION,
+    WINERR_SHARING_VIOLATION,
+)
+from mmrelay.constants.database import SQLITE_SIDECAR_SUFFIXES
+from mmrelay.constants.formats import (
+    BACKUP_TIMESTAMP_FORMAT,
+    MIGRATION_TIMESTAMP_FORMAT,
+)
+from mmrelay.constants.migration import (
+    MIGRATION_BACKUP_DIRNAME,
+    MIGRATION_INITIAL_RETRY_DELAY,
+    MIGRATION_LOCK_FILENAME,
+    MIGRATION_MAX_RETRIES,
+    MIGRATION_MAX_RETRY_DELAY,
+    MIGRATION_MIN_FREE_SPACE_BYTES,
+    MIGRATION_STAGING_DIRNAME,
+)
+from mmrelay.constants.network import (
+    PROCESS_CHECK_SHORT_TIMEOUT_SECONDS,
+    PROCESS_CHECK_TIMEOUT_SECONDS,
+)
 from mmrelay.log_utils import get_logger
 from mmrelay.paths import resolve_all_paths
 
@@ -69,10 +94,10 @@ logger = get_logger("Migration")
 # Global reference to current lock file for cleanup on signal
 _current_lock_file: Path | None = None
 
-# Retry configuration for Windows file-in-use errors
-_MAX_RETRIES = 5
-_INITIAL_RETRY_DELAY = 0.1  # 100ms
-_MAX_RETRY_DELAY = 2.0  # 2 seconds
+# Retry configuration aliases for code clarity
+_MAX_RETRIES = MIGRATION_MAX_RETRIES
+_INITIAL_RETRY_DELAY = MIGRATION_INITIAL_RETRY_DELAY
+_MAX_RETRY_DELAY = MIGRATION_MAX_RETRY_DELAY
 
 
 def _is_windows_file_in_use_error(exc: OSError) -> bool:
@@ -95,7 +120,11 @@ def _is_windows_file_in_use_error(exc: OSError) -> bool:
 
     # Get Windows error code if available
     winerror = getattr(exc, "winerror", None)
-    if winerror in (5, 32, 33):  # ACCESS_DENIED, SHARING_VIOLATION, LOCK_VIOLATION
+    if winerror in (
+        WINERR_ACCESS_DENIED,
+        WINERR_SHARING_VIOLATION,
+        WINERR_LOCK_VIOLATION,
+    ):
         return True
 
     # Fallback: check errno for common locking errors
@@ -271,7 +300,7 @@ def _is_mmrelay_running() -> bool:
                 [pgrep_path, "-f", r"(^|/)mmrelay($|\s)|python.*\bmmrelay\b"],
                 capture_output=True,
                 text=True,
-                timeout=5,
+                timeout=PROCESS_CHECK_TIMEOUT_SECONDS,
             )
             if result.returncode == 0 and result.stdout.strip():
                 for pid_str in result.stdout.strip().split("\n"):
@@ -298,7 +327,7 @@ def _is_mmrelay_running() -> bool:
                                         ["ps", "-p", str(pid), "-o", "command="],
                                         capture_output=True,
                                         text=True,
-                                        timeout=2,
+                                        timeout=PROCESS_CHECK_SHORT_TIMEOUT_SECONDS,
                                     )
                                     if exe_result.returncode == 0:
                                         cmd = exe_result.stdout.strip()
@@ -478,7 +507,7 @@ def _find_legacy_data(legacy_root: Path) -> list[dict[str, str]]:
         legacy_root / "data" / "meshtastic.sqlite",
         legacy_root / "database" / "meshtastic.sqlite",
     ]
-    db_sidecar_suffixes = [".sqlite-wal", ".sqlite-shm"]
+    db_sidecar_suffixes = SQLITE_SIDECAR_SUFFIXES[:2]  # .sqlite-wal, .sqlite-shm
     for candidate in db_candidates:
         if candidate.exists():
             add_finding("database", candidate)
@@ -844,13 +873,13 @@ def print_migration_verification(report: dict[str, Any]) -> None:
             print(f"   - {error}")
 
 
-STAGING_DIRNAME = ".migration_staging"
-BACKUP_DIRNAME = ".migration_backups"
-LOCK_FILENAME = ".migration.lock"
+STAGING_DIRNAME = MIGRATION_STAGING_DIRNAME
+BACKUP_DIRNAME = MIGRATION_BACKUP_DIRNAME
+LOCK_FILENAME = MIGRATION_LOCK_FILENAME
 
 # Minimum free space required for migration (in bytes)
 # Allowing for staging + backups with 50% safety margin
-MIN_FREE_SPACE_BYTES = 500 * 1024 * 1024  # 500 MB minimum
+MIN_FREE_SPACE_BYTES = MIGRATION_MIN_FREE_SPACE_BYTES
 
 
 def _get_staging_path(new_home: Path, unit_name: str) -> Path:
@@ -870,7 +899,7 @@ def _backup_file(src_path: Path, suffix: str = ".bak") -> Path:
     Returns:
         Path: Path under `<src_path.parent>/.migration_backups/` with the format `<original_name><suffix>.<YYYYMMDD_HHMMSS>`.
     """
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime(BACKUP_TIMESTAMP_FORMAT)
     backup_dir = src_path.parent / BACKUP_DIRNAME
     backup_dir.mkdir(parents=True, exist_ok=True)
     backup_name = f"{src_path.name}{suffix}.{timestamp}"
@@ -1398,8 +1427,11 @@ def migrate_database(
             continue
         if legacy_db.exists():
             candidates.append(legacy_db)
-            for suffix in ["-wal", "-shm", "-journal"]:
-                sidecar = legacy_db.with_suffix(f".sqlite{suffix}")
+            for suffix in SQLITE_SIDECAR_SUFFIXES:
+                sidecar_suffix = (
+                    suffix if suffix.startswith(".") else f".sqlite{suffix}"
+                )
+                sidecar = legacy_db.with_suffix(sidecar_suffix)
                 if sidecar.exists():
                     candidates.append(sidecar)
 
@@ -1410,8 +1442,11 @@ def migrate_database(
                 continue
             if partial_db.exists():
                 candidates.append(partial_db)
-                for suffix in ["-wal", "-shm", "-journal"]:
-                    sidecar = partial_db.with_suffix(f".sqlite{suffix}")
+                for suffix in SQLITE_SIDECAR_SUFFIXES:
+                    sidecar_suffix = (
+                        suffix if suffix.startswith(".") else f".sqlite{suffix}"
+                    )
+                    sidecar = partial_db.with_suffix(sidecar_suffix)
                     if sidecar.exists():
                         candidates.append(sidecar)
 
@@ -1434,8 +1469,11 @@ def migrate_database(
                 continue
             if legacy_db.exists():
                 candidates.append(legacy_db)
-                for suffix in ["-wal", "-shm", "-journal"]:
-                    sidecar = legacy_db.with_suffix(f".sqlite{suffix}")
+                for suffix in SQLITE_SIDECAR_SUFFIXES:
+                    sidecar_suffix = (
+                        suffix if suffix.startswith(".") else f".sqlite{suffix}"
+                    )
+                    sidecar = legacy_db.with_suffix(sidecar_suffix)
                     if sidecar.exists():
                         candidates.append(sidecar)
 
@@ -1714,7 +1752,7 @@ def migrate_logs(
         migrated_count = 0
         for idx, log_file in enumerate(old_logs_dir.glob("*.log")):
             # Include microseconds and index to avoid filename collisions
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            timestamp = datetime.now().strftime(MIGRATION_TIMESTAMP_FORMAT)
             new_name = f"{log_file.stem}_migrated_{timestamp}_{idx}.log"
             dest_staged = staging_dir / new_name
             shutil.move(str(log_file), str(dest_staged))
@@ -2344,7 +2382,7 @@ def migrate_gpxtracker(
         # 2. Stage GPX files with timestamped names
         for idx, gpx_file in enumerate(old_gpx_dir.glob("*.gpx")):
             # Include microseconds and index to avoid filename collisions
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            timestamp = datetime.now().strftime(MIGRATION_TIMESTAMP_FORMAT)
             new_name = f"{gpx_file.stem}_migrated_{timestamp}_{idx}.gpx"
             dest_staged = staging_dir / new_name
             shutil.move(str(gpx_file), str(dest_staged))

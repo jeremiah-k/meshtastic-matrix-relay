@@ -14,16 +14,27 @@ from nio import (
     RoomMessageText,
 )
 
-from mmrelay.constants.formats import TEXT_MESSAGE_APP
+from mmrelay.constants.formats import KM_TO_MILES_FACTOR, TEXT_MESSAGE_APP
 from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
-from mmrelay.constants.plugins import MAX_FORECAST_LENGTH
+from mmrelay.constants.plugins import (
+    DAILY_FORECAST_DAYS,
+    GEOCODING_RESULT_COUNT,
+    HOURLY_FORECAST_DAYS,
+    HOURLY_FORECAST_OFFSETS_HOURS,
+    HOURLY_FORECAST_SLOT_LABELS,
+    MAX_FORECAST_LENGTH,
+    OPEN_METEO_FORECAST_API_URL,
+    OPEN_METEO_GEOCODING_API_URL,
+    WEATHER_API_TIMEOUT_SECONDS,
+    WEATHER_COMMANDS,
+)
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
 class Plugin(BasePlugin):
     plugin_name = "weather"
     is_core_plugin = True
-    mesh_commands = ("weather", "hourly", "daily")
+    mesh_commands = WEATHER_COMMANDS
 
     # No __init__ method needed with the simplified plugin system
     # The BasePlugin will automatically use the class-level plugin_name
@@ -73,7 +84,9 @@ class Plugin(BasePlugin):
 
         units = self.config.get("units", "metric")  # Default to metric
         temperature_unit = "°C" if units == "metric" else "°F"
-        daily_days = 5 if mode_key == "daily" else 3
+        daily_days = (
+            DAILY_FORECAST_DAYS if mode_key == "daily" else HOURLY_FORECAST_DAYS
+        )
 
         hourly_config = {
             "weather": {
@@ -82,15 +95,15 @@ class Plugin(BasePlugin):
             },
             "hourly": {
                 # Keep the hourly forecast compact to fit mesh payload limits
-                "slots": ["+3h", "+6h", "+12h"],
-                "offsets": [3, 6, 12],
+                "slots": HOURLY_FORECAST_SLOT_LABELS,
+                "offsets": HOURLY_FORECAST_OFFSETS_HOURS,
             },
         }
         mode_offsets = hourly_config.get(mode_key, hourly_config["weather"])
         offsets = mode_offsets["offsets"]  # type: ignore[index]
 
         url = (
-            f"https://api.open-meteo.com/v1/forecast?"
+            f"{OPEN_METEO_FORECAST_API_URL}?"
             f"latitude={latitude}&longitude={longitude}&"
             f"hourly=temperature_2m,precipitation_probability,weathercode,is_day,"
             f"relativehumidity_2m,windspeed_10m,winddirection_10m&"
@@ -99,7 +112,7 @@ class Plugin(BasePlugin):
         )
 
         try:
-            response = requests.get(url, timeout=10)
+            response = requests.get(url, timeout=WEATHER_API_TIMEOUT_SECONDS)
             response.raise_for_status()
         except (requests.exceptions.RequestException, AttributeError):
             self.logger.exception("Error fetching weather data")
@@ -244,7 +257,7 @@ class Plugin(BasePlugin):
                 precip_now = now_slot[1] if now_slot else None
                 wind_unit = "km/h"
                 if units == "imperial" and wind_speed is not None:
-                    wind_speed = wind_speed * 0.621371
+                    wind_speed = wind_speed * KM_TO_MILES_FACTOR
                     wind_unit = "mph"
                 parts = [
                     (
@@ -757,12 +770,16 @@ class Plugin(BasePlugin):
         if not query:
             return None
 
-        url = "https://geocoding-api.open-meteo.com/v1/search"
+        url = OPEN_METEO_GEOCODING_API_URL
         try:
             response = requests.get(
                 url,
-                params={"name": query, "count": 1, "format": "json"},
-                timeout=10,
+                params={
+                    "name": query,
+                    "count": GEOCODING_RESULT_COUNT,
+                    "format": "json",
+                },
+                timeout=WEATHER_API_TIMEOUT_SECONDS,
             )
             response.raise_for_status()
         except requests.exceptions.RequestException:
