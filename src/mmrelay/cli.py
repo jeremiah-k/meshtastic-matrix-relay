@@ -1563,7 +1563,7 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                             return False
                         if option == "nodedb_refresh_interval" and value < 0:
                             print(
-                                "Error: 'nodedb_refresh_interval' must be a finite number >= 0 seconds, "
+                                "Error: 'nodedb_refresh_interval' must be >= 0 seconds (use 0 to disable), "
                                 f"got: {value}",
                                 file=sys.stderr,
                             )

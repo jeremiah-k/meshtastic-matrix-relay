@@ -11,7 +11,6 @@ import re
 import sys
 import threading
 import time
-from concurrent.futures import CancelledError as FuturesCancelledError
 from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Any, Awaitable, Callable, Coroutine, cast

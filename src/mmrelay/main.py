@@ -40,7 +40,6 @@ from mmrelay.constants.config import (
     CONFIG_SECTION_DATABASE,
     CONFIG_SECTION_DATABASE_LEGACY,
     CONFIG_SECTION_MESHTASTIC,
-    DEFAULT_HEALTH_CHECK_ENABLED,
 )
 from mmrelay.constants.queue import DEFAULT_MESSAGE_DELAY
 from mmrelay.db_utils import (
@@ -241,7 +240,7 @@ def _coerce_config_bool(value: Any) -> bool:
         )
         return False
     if isinstance(value, (int, float)):
-        if value in (0, 1, 0.0, 1.0):
+        if value in (0, 1):
             return bool(value)
         logger.debug(
             "Unexpected numeric config value %r; treating as False",

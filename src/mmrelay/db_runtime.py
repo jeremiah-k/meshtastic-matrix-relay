@@ -12,7 +12,7 @@ import asyncio
 import re
 import sqlite3
 import threading
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from functools import lru_cache
@@ -60,12 +60,12 @@ def _validate_sqlite_json_each_support() -> bool:
     Returns:
         bool: True when json_each() is available, False otherwise.
     """
-    current_version = _get_sqlite_runtime_version_info()
     conn = sqlite3.connect(":memory:")
     try:
         _probe_sqlite_json_each_support(conn)
         return True
     except RuntimeError:
+        current_version = _get_sqlite_runtime_version_info()
         logger.warning(
             "SQLite json_each() is unavailable (runtime %s.%s.%s); "
             "falling back to non-JSON1 node-name query paths.",
@@ -86,7 +86,6 @@ def _probe_sqlite_json_each_support(conn: sqlite3.Connection) -> None:
     RuntimeError. Other sqlite failures (for example, corrupted database files)
     are re-raised unchanged so callers can handle the underlying database error.
     """
-    current_version = _get_sqlite_runtime_version_info()
     try:
         conn.execute(
             SQLITE_JSON_EACH_PROBE_SQL, (SQLITE_JSON_EACH_PROBE_PAYLOAD,)
@@ -97,6 +96,7 @@ def _probe_sqlite_json_each_support(conn: sqlite3.Connection) -> None:
             "no such function: json_each" in error_message
             or "no such table: json_each" in error_message
         ):
+            current_version = _get_sqlite_runtime_version_info()
             raise RuntimeError(
                 "SQLite json_each() support is required for node-name queries. "
                 f"Detected SQLite version: {current_version[0]}.{current_version[1]}.{current_version[2]}. "
@@ -419,7 +419,7 @@ class DatabaseManager:
                 except asyncio.CancelledError:
                     pass
                 except BaseException:
-                    logger.debug(
+                    logger.warning(
                         "Write future finished with an error after caller cancellation",
                         exc_info=True,
                     )

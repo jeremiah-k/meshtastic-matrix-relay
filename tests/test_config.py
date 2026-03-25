@@ -519,7 +519,7 @@ class TestEnvironmentVariableHelpers(unittest.TestCase):
         """Test conversion of invalid float values."""
         with self.assertRaises(ValueError) as cm:
             _convert_env_float("not_a_float", "TEST_VAR")
-        self.assertIn("TEST_VAR must be a finite number", str(cm.exception))
+        self.assertIn("Invalid float value for TEST_VAR", str(cm.exception))
 
     def test_convert_env_float_rejects_non_finite_values(self):
         """Test conversion rejects NaN/Infinity values."""

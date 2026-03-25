@@ -77,7 +77,7 @@ fi
 
 # Names-table SQL identifiers loaded from app constants.
 mapfile -t names_table_constants < <(
-	"${PYTHON_BIN}" - <<'PY' || true
+	"${PYTHON_BIN}" - <<'PY'
 import pathlib
 import sys
 
