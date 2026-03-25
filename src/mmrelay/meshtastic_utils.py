@@ -4469,6 +4469,33 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         )
 
 
+def requires_continuous_health_monitor(config: dict[str, Any]) -> bool:
+    """
+    Return True when periodic health monitoring should run for the given config.
+
+    Health monitoring is disabled for BLE connections (which have real-time disconnect
+    detection) and when health_check.enabled is explicitly set to False.
+
+    Args:
+        config: The full configuration dictionary.
+
+    Returns:
+        True if health monitoring should run continuously, False otherwise.
+    """
+    meshtastic_config = config.get(CONFIG_SECTION_MESHTASTIC)
+    if not isinstance(meshtastic_config, dict):
+        return DEFAULT_HEALTH_CHECK_ENABLED
+    if meshtastic_config.get(CONFIG_KEY_CONNECTION_TYPE) == CONNECTION_TYPE_BLE:
+        return False
+    health_config = meshtastic_config.get("health_check")
+    if not isinstance(health_config, dict):
+        return DEFAULT_HEALTH_CHECK_ENABLED
+    raw_enabled = health_config.get("enabled", DEFAULT_HEALTH_CHECK_ENABLED)
+    return _coerce_bool(
+        raw_enabled, DEFAULT_HEALTH_CHECK_ENABLED, "health_check.enabled"
+    )
+
+
 async def check_connection() -> None:
     """
     Periodically verify the Meshtastic connection and trigger a reconnect when the device appears unresponsive.
@@ -4503,6 +4530,17 @@ async def check_connection() -> None:
         logger.error("No configuration available. Cannot check connection.")
         return
 
+    # Exit early if health monitoring is not required for this connection type/config
+    if not requires_continuous_health_monitor(config):
+        connection_type = config[CONFIG_SECTION_MESHTASTIC][CONFIG_KEY_CONNECTION_TYPE]
+        if connection_type == CONNECTION_TYPE_BLE:
+            logger.debug(
+                "BLE connection uses real-time disconnection detection; periodic health checks disabled"
+            )
+        else:
+            logger.info("Connection health checks are disabled in configuration")
+        return
+
     connection_type = config[CONFIG_SECTION_MESHTASTIC][CONFIG_KEY_CONNECTION_TYPE]
 
     # Get health check configuration
@@ -4513,14 +4551,6 @@ async def check_connection() -> None:
             health_config,
         )
         health_config = {}
-    raw_health_check_enabled = health_config.get(
-        "enabled", DEFAULT_HEALTH_CHECK_ENABLED
-    )
-    health_check_enabled = _coerce_bool(
-        raw_health_check_enabled,
-        DEFAULT_HEALTH_CHECK_ENABLED,
-        "meshtastic.health_check.enabled",
-    )
     heartbeat_interval = health_config.get("heartbeat_interval", 60)
     initial_delay = health_config.get("initial_delay", INITIAL_HEALTH_CHECK_DELAY)
     probe_timeout = health_config.get(
@@ -4546,17 +4576,6 @@ async def check_connection() -> None:
         float(DEFAULT_MESHTASTIC_OPERATION_TIMEOUT),
         "meshtastic.health_check.probe_timeout",
     )
-
-    # Exit early if health checks are disabled
-    if not health_check_enabled:
-        logger.info("Connection health checks are disabled in configuration")
-        return
-
-    if connection_type == CONNECTION_TYPE_BLE:
-        logger.debug(
-            "BLE connection uses real-time disconnection detection; periodic health checks disabled"
-        )
-        return
 
     # Initial delay before first health check to allow connection to settle.
     # This is particularly important for fast-responding systems like MeshMonitor

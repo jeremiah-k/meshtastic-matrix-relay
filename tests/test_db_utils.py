@@ -58,6 +58,43 @@ from mmrelay.db_utils import (
 )
 
 
+def _make_failing_cursor_proxy_side_effect(write_failed_flag: list[bool]):
+    """
+    Create a side effect for DatabaseManager.run_sync that fails once on first write.
+
+    Returns a tuple of (side_effect_function, original_run_sync) for use with patch.object.
+    The write_failed_flag is a mutable list containing a single bool to track failure state.
+    """
+    original_run_sync = DatabaseManager.run_sync
+
+    class _FailingCursorProxy:
+        def __init__(self, inner_cursor):
+            self._inner_cursor = inner_cursor
+            self._execute_calls = 0
+
+        def execute(self, *args, **kwargs):
+            self._execute_calls += 1
+            result = self._inner_cursor.execute(*args, **kwargs)
+            if self._execute_calls == 1 and not write_failed_flag[0]:
+                write_failed_flag[0] = True
+                raise sqlite3.Error("forced longname write failure")
+            return result
+
+        def __getattr__(self, attr):
+            return getattr(self._inner_cursor, attr)
+
+    def fail_on_first_write(self, func, *, write=False):
+        if write and not write_failed_flag[0]:
+
+            def wrapped(cursor):
+                return func(_FailingCursorProxy(cursor))
+
+            return original_run_sync(self, wrapped, write=write)
+        return original_run_sync(self, func, write=write)
+
+    return fail_on_first_write, original_run_sync
+
+
 class TestDbUtils(unittest.TestCase):
     """Test cases for database utilities."""
 
@@ -539,47 +576,20 @@ class TestDbUtils(unittest.TestCase):
                 "user": {"id": "!1", "longName": "Alpha Prime", "shortName": "A1"}
             },
         }
-        original_run_sync = DatabaseManager.run_sync
-        write_failed = False
-
-        def fail_longname_insert_once(self, func, *, write=False):
-            nonlocal write_failed
-            if write and not write_failed:
-
-                class _FailingCursorProxy:
-                    def __init__(self, inner_cursor):
-                        self._inner_cursor = inner_cursor
-                        self._execute_calls = 0
-
-                    def execute(self, *args, **kwargs):
-                        nonlocal write_failed
-                        self._execute_calls += 1
-                        result = self._inner_cursor.execute(*args, **kwargs)
-                        if self._execute_calls == 1 and not write_failed:
-                            write_failed = True
-                            raise sqlite3.Error("forced longname write failure")
-                        return result
-
-                    def __getattr__(self, attr):
-                        return getattr(self._inner_cursor, attr)
-
-                def wrapped(cursor):
-                    return func(_FailingCursorProxy(cursor))
-
-                return original_run_sync(self, wrapped, write=write)
-            return original_run_sync(self, func, write=write)
+        write_failed_flag = [False]
+        side_effect, _ = _make_failing_cursor_proxy_side_effect(write_failed_flag)
 
         with patch.object(
             DatabaseManager,
             "run_sync",
             autospec=True,
-            side_effect=fail_longname_insert_once,
+            side_effect=side_effect,
         ):
             second_state = sync_name_tables_if_changed(
                 updated_nodes, previous_state=first_state
             )
 
-        self.assertTrue(write_failed, "forced write failure was not triggered")
+        self.assertTrue(write_failed_flag[0], "forced write failure was not triggered")
         self.assertEqual(second_state, first_state)
         self.assertEqual(get_longname("!1"), "Alpha")
         self.assertEqual(get_shortname("!1"), "A")
@@ -597,45 +607,18 @@ class TestDbUtils(unittest.TestCase):
         nodes = {
             "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
         }
-        original_run_sync = DatabaseManager.run_sync
-        write_failed = False
-
-        def fail_longname_insert_once(self, func, *, write=False):
-            nonlocal write_failed
-            if write and not write_failed:
-
-                class _FailingCursorProxy:
-                    def __init__(self, inner_cursor):
-                        self._inner_cursor = inner_cursor
-                        self._execute_calls = 0
-
-                    def execute(self, *args, **kwargs):
-                        nonlocal write_failed
-                        self._execute_calls += 1
-                        result = self._inner_cursor.execute(*args, **kwargs)
-                        if self._execute_calls == 1 and not write_failed:
-                            write_failed = True
-                            raise sqlite3.Error("forced longname write failure")
-                        return result
-
-                    def __getattr__(self, attr):
-                        return getattr(self._inner_cursor, attr)
-
-                def wrapped(cursor):
-                    return func(_FailingCursorProxy(cursor))
-
-                return original_run_sync(self, wrapped, write=write)
-            return original_run_sync(self, func, write=write)
+        write_failed_flag = [False]
+        side_effect, _ = _make_failing_cursor_proxy_side_effect(write_failed_flag)
 
         with patch.object(
             DatabaseManager,
             "run_sync",
             autospec=True,
-            side_effect=fail_longname_insert_once,
+            side_effect=side_effect,
         ):
             state = sync_name_tables_if_changed(nodes, previous_state=None)
 
-        self.assertTrue(write_failed, "forced write failure was not triggered")
+        self.assertTrue(write_failed_flag[0], "forced write failure was not triggered")
         self.assertIsNone(state)
         self.assertIsNone(get_longname("!1"))
         self.assertIsNone(get_shortname("!1"))

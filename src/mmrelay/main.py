@@ -260,18 +260,11 @@ def _coerce_config_bool(value: Any) -> bool:
 def _requires_continuous_health_monitor(config: dict[str, Any]) -> bool:
     """
     Return True when check_connection() is expected to run continuously.
+
+    Delegates to meshtastic_utils.requires_continuous_health_monitor() for the
+    actual predicate logic to avoid duplication.
     """
-    meshtastic_config = config.get(CONFIG_SECTION_MESHTASTIC)
-    if not isinstance(meshtastic_config, dict):
-        return DEFAULT_HEALTH_CHECK_ENABLED
-    if meshtastic_config.get("connection_type") == "ble":
-        return False
-    health_config = meshtastic_config.get("health_check")
-    if not isinstance(health_config, dict):
-        return DEFAULT_HEALTH_CHECK_ENABLED
-    return _coerce_config_bool(
-        health_config.get("enabled", DEFAULT_HEALTH_CHECK_ENABLED)
-    )
+    return meshtastic_utils.requires_continuous_health_monitor(config)
 
 
 async def main(config: dict[str, Any]) -> None:
@@ -427,6 +420,8 @@ async def main(config: dict[str, Any]) -> None:
             return
 
         if result is not None:
+            if isinstance(result, (KeyboardInterrupt, SystemExit)):
+                raise result
             logger.error(
                 "Error while stopping %s",
                 step_name,

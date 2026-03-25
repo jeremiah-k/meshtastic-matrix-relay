@@ -64,6 +64,9 @@ from tests.helpers import (
 from tests.helpers import (
     make_patched_get_running_loop as _make_patched_get_running_loop,
 )
+from tests.helpers import (
+    reset_meshtastic_utils_globals,
+)
 
 
 def _make_async_return(value: Any):
@@ -181,97 +184,11 @@ def _make_async_raise(exc: Exception):
 def _reset_meshtastic_utils_globals(*, shutdown_executors: bool = False) -> None:
     """
     Reset meshtastic_utils globals shared across main-path tests.
+
+    Delegates to tests.helpers.reset_meshtastic_utils_globals for the actual
+    reset logic to avoid duplication with conftest.py.
     """
-    if "mmrelay.meshtastic_utils" not in sys.modules:
-        return
-
-    module = sys.modules["mmrelay.meshtastic_utils"]
-    if hasattr(module, "config"):
-        module.config = None  # type: ignore[attr-defined]
-    if hasattr(module, "matrix_rooms"):
-        module.matrix_rooms = []  # type: ignore[attr-defined]
-    if hasattr(module, "meshtastic_client"):
-        module.meshtastic_client = None  # type: ignore[attr-defined]
-    if hasattr(module, "meshtastic_iface"):
-        module.meshtastic_iface = None  # type: ignore[attr-defined]
-    if hasattr(module, "event_loop"):
-        module.event_loop = None  # type: ignore[attr-defined]
-    if hasattr(module, "reconnecting"):
-        module.reconnecting = False  # type: ignore[attr-defined]
-    if hasattr(module, "shutting_down"):
-        module.shutting_down = False  # type: ignore[attr-defined]
-    if hasattr(module, "reconnect_task"):
-        module.reconnect_task = None  # type: ignore[attr-defined]
-    if hasattr(module, "subscribed_to_messages"):
-        module.subscribed_to_messages = False  # type: ignore[attr-defined]
-    if hasattr(module, "subscribed_to_connection_lost"):
-        module.subscribed_to_connection_lost = False  # type: ignore[attr-defined]
-    if hasattr(module, "_metadata_future"):
-        module._metadata_future = None  # type: ignore[attr-defined]
-    if hasattr(module, "_metadata_future_started_at"):
-        module._metadata_future_started_at = None  # type: ignore[attr-defined]
-    if hasattr(module, "_ble_future"):
-        module._ble_future = None  # type: ignore[attr-defined]
-    if hasattr(module, "_ble_future_address"):
-        module._ble_future_address = None  # type: ignore[attr-defined]
-    if hasattr(module, "_ble_future_started_at"):
-        module._ble_future_started_at = None  # type: ignore[attr-defined]
-    if hasattr(module, "_ble_future_timeout_secs"):
-        module._ble_future_timeout_secs = None  # type: ignore[attr-defined]
-    if hasattr(module, "_ble_timeout_counts"):
-        module._ble_timeout_counts = {}  # type: ignore[attr-defined]
-    if hasattr(module, "_ble_executor_orphaned_workers_by_address"):
-        module._ble_executor_orphaned_workers_by_address = {}  # type: ignore[attr-defined]
-    if hasattr(module, "_metadata_executor_orphaned_workers"):
-        module._metadata_executor_orphaned_workers = 0  # type: ignore[attr-defined]
-    if hasattr(module, "_ble_executor_degraded_addresses"):
-        module._ble_executor_degraded_addresses = set()  # type: ignore[attr-defined]
-    if hasattr(module, "_metadata_executor_degraded"):
-        module._metadata_executor_degraded = False  # type: ignore[attr-defined]
-    if hasattr(module, "_health_probe_request_deadlines"):
-        module._health_probe_request_deadlines = {}  # type: ignore[attr-defined]
-    if hasattr(module, "_ble_future_watchdog_secs"):
-        module._ble_future_watchdog_secs = getattr(  # type: ignore[attr-defined]
-            module, "BLE_FUTURE_WATCHDOG_SECS", module._ble_future_watchdog_secs
-        )
-    if hasattr(module, "_ble_timeout_reset_threshold"):
-        module._ble_timeout_reset_threshold = getattr(  # type: ignore[attr-defined]
-            module, "BLE_TIMEOUT_RESET_THRESHOLD", module._ble_timeout_reset_threshold
-        )
-    if hasattr(module, "_ble_scan_timeout_secs"):
-        module._ble_scan_timeout_secs = getattr(  # type: ignore[attr-defined]
-            module, "BLE_SCAN_TIMEOUT_SECS", module._ble_scan_timeout_secs
-        )
-    if hasattr(module, "_ble_future_stale_grace_secs"):
-        module._ble_future_stale_grace_secs = getattr(  # type: ignore[attr-defined]
-            module, "BLE_FUTURE_STALE_GRACE_SECS", module._ble_future_stale_grace_secs
-        )
-    if hasattr(module, "_ble_interface_create_timeout_secs"):
-        module._ble_interface_create_timeout_secs = getattr(  # type: ignore[attr-defined]
-            module,
-            "BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS",
-            module._ble_interface_create_timeout_secs,
-        )
-
-    def _shutdown_executor(executor: Any) -> None:
-        try:
-            executor.shutdown(wait=False, cancel_futures=True)
-        except TypeError:
-            with contextlib.suppress(RuntimeError):
-                executor.shutdown(wait=False)
-        except RuntimeError:
-            pass
-
-    if shutdown_executors and hasattr(module, "_metadata_executor"):
-        executor = module._metadata_executor  # type: ignore[attr-defined]
-        if executor is not None:
-            _shutdown_executor(executor)
-        module._metadata_executor = None  # type: ignore[attr-defined]
-    if shutdown_executors and hasattr(module, "_ble_executor"):
-        executor = module._ble_executor  # type: ignore[attr-defined]
-        if executor is not None:
-            _shutdown_executor(executor)
-        module._ble_executor = None  # type: ignore[attr-defined]
+    reset_meshtastic_utils_globals(shutdown_executors=shutdown_executors)
 
 
 def _reset_all_mmrelay_globals() -> None:
