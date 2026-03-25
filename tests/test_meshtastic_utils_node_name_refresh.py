@@ -40,6 +40,7 @@ class _TimeoutThenSetEvent:
         self._wait_calls += 1
         if self._wait_calls == 1:
             try:
+                # Sleep long enough to be cancelled by the refresh loop's timeout
                 await asyncio.sleep(1)
             except asyncio.CancelledError:
                 self.first_wait_cancelled = True

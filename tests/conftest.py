@@ -315,7 +315,18 @@ def _drain_awaitable_result_safely(awaitable: Any, timeout: float = 0.2) -> None
                 awaitable.add_done_callback(_consume_result)
             return
         if loop is not None and not loop.is_closed():
-            loop.run_until_complete(asyncio.wait_for(awaitable, timeout=timeout))
+            try:
+                loop.run_until_complete(asyncio.wait_for(awaitable, timeout=timeout))
+            except asyncio.TimeoutError:
+                pass
+            except asyncio.CancelledError:
+                pass
+            except RuntimeError as exc:
+                logger = logging.getLogger(__name__)
+                logger.debug(
+                    "Unexpected RuntimeError in drain_awaitable_result_safely: %s",
+                    exc,
+                )
         return
 
     if asyncio.iscoroutine(awaitable):

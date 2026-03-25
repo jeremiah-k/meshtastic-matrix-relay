@@ -237,7 +237,7 @@ def _reset_all_mmrelay_globals() -> None:
     if "mmrelay.message_queue" in sys.modules:
         from mmrelay.message_queue import get_message_queue
 
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(AttributeError, RuntimeError):
             queue = get_message_queue()
             if hasattr(queue, "stop"):
                 queue.stop()

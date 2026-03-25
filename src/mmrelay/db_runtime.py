@@ -471,4 +471,3 @@ class DatabaseManager:
 
 # Convenience alias for type hints
 DbCallable = Callable[[sqlite3.Cursor], Any]
-AsyncDbCallable = Callable[[sqlite3.Cursor], Awaitable[Any]]
