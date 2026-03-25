@@ -4,7 +4,6 @@ import asyncio
 import base64
 import binascii
 import json
-import re
 from typing import Any, Iterable, cast
 
 from meshtastic import mesh_pb2

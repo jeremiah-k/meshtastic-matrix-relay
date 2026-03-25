@@ -7,7 +7,6 @@ import inspect
 import io
 import logging
 import math
-import re
 import sys
 import threading
 import time

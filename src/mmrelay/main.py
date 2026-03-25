@@ -47,7 +47,6 @@ from mmrelay.constants.config import (
 )
 from mmrelay.constants.network import (
     MATRIX_CLIENT_CLOSE_TIMEOUT_SECONDS,
-    MATRIX_SYNC_RETRY_DELAY_SECONDS,
     MESHTASTIC_CLOSE_TIMEOUT_SECONDS,
     NODEDB_BACKOFF_INITIAL_SECONDS,
     NODEDB_BACKOFF_MAX_SECONDS,

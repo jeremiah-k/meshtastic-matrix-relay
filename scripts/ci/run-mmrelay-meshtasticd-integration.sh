@@ -76,7 +76,7 @@ if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
 fi
 
 # Names-table SQL identifiers loaded from app constants.
-mapfile -t names_table_constants < <(
+names_table_output=$(
 	"${PYTHON_BIN}" - <<'PY'
 import pathlib
 import sys
@@ -98,6 +98,7 @@ PY
 	echo "Failed to load names-table constants via '${PYTHON_BIN}'." >&2
 	exit 1
 }
+mapfile -t names_table_constants <<<"${names_table_output}"
 if [[ ${#names_table_constants[@]} -ne 4 ]]; then
 	echo "Failed to parse names-table constants from '${PYTHON_BIN}' output." >&2
 	exit 1

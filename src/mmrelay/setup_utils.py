@@ -20,11 +20,9 @@ if TYPE_CHECKING:
     pass
 
 from mmrelay.constants.app import (
-    DIAGNOSTICS_PARTIAL_ERROR_THRESHOLD,
     SERVICE_FILENAME,
     SERVICE_RESTART_SECONDS,
     SYSTEMD_USER_DIR,
-    WINDOWS_PATH_LENGTH_WARNING,
 )
 from mmrelay.constants.database import PROGRESS_COMPLETE, PROGRESS_TOTAL_STEPS
 from mmrelay.constants.migration import DEFAULT_SERVICE_ARGS_SUFFIX

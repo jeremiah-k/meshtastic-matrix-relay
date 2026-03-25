@@ -1,5 +1,4 @@
 import asyncio
-import re
 from typing import TYPE_CHECKING, Any
 
 from haversine import haversine
