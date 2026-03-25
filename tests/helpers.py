@@ -159,6 +159,10 @@ def reset_meshtastic_utils_globals(*, shutdown_executors: bool = False) -> None:
     if hasattr(module, "shutting_down"):
         module.shutting_down = False  # type: ignore[attr-defined]
     if hasattr(module, "reconnect_task"):
+        task = module.reconnect_task  # type: ignore[attr-defined]
+        if task is not None and hasattr(task, "cancel"):
+            with contextlib.suppress(Exception):
+                task.cancel()
         module.reconnect_task = None  # type: ignore[attr-defined]
     if hasattr(module, "subscribed_to_messages"):
         if module.subscribed_to_messages:  # type: ignore[attr-defined]
@@ -173,10 +177,18 @@ def reset_meshtastic_utils_globals(*, shutdown_executors: bool = False) -> None:
                 )  # type: ignore[attr-defined]
         module.subscribed_to_connection_lost = False  # type: ignore[attr-defined]
     if hasattr(module, "_metadata_future"):
+        future = module._metadata_future  # type: ignore[attr-defined]
+        if future is not None and hasattr(future, "cancel"):
+            with contextlib.suppress(Exception):
+                future.cancel()
         module._metadata_future = None  # type: ignore[attr-defined]
     if hasattr(module, "_metadata_future_started_at"):
         module._metadata_future_started_at = None  # type: ignore[attr-defined]
     if hasattr(module, "_ble_future"):
+        future = module._ble_future  # type: ignore[attr-defined]
+        if future is not None and hasattr(future, "cancel"):
+            with contextlib.suppress(Exception):
+                future.cancel()
         module._ble_future = None  # type: ignore[attr-defined]
     if hasattr(module, "_ble_future_address"):
         module._ble_future_address = None  # type: ignore[attr-defined]

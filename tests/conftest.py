@@ -30,6 +30,7 @@ from typing import Any, Generator
 from unittest.mock import MagicMock
 
 import pytest
+from pubsub import pub
 
 # Mock all external dependencies before any imports can occur
 # This prevents ImportError and allows tests to run in isolation
@@ -985,6 +986,8 @@ def reset_meshtastic_globals():
         "_metadata_executor_degraded": getattr(
             mu, "_metadata_executor_degraded", False
         ),
+        "_ble_executor": getattr(mu, "_ble_executor", None),
+        "_metadata_executor": getattr(mu, "_metadata_executor", None),
     }
 
     # Reset mutable globals to a clean state; keep logger and event_loop usable
@@ -1066,6 +1069,14 @@ def reset_meshtastic_globals():
         mu.reconnect_task = None
         mu._metadata_future = None
         mu._metadata_future_started_at = None
+        if mu.subscribed_to_messages:
+            with contextlib.suppress(Exception):
+                pub.unsubscribe(mu.on_meshtastic_message, "meshtastic.receive")
+        if mu.subscribed_to_connection_lost:
+            with contextlib.suppress(Exception):
+                pub.unsubscribe(
+                    mu.on_lost_meshtastic_connection, "meshtastic.connection.lost"
+                )
         mu.subscribed_to_messages = False
         mu.subscribed_to_connection_lost = False
         cleanup_ble_future_state(mu)
