@@ -99,6 +99,12 @@ except ImportError:
     BleakError = Exception  # type: ignore[misc,assignment]
 
 
+class BleExecutorDegradedError(Exception):
+    """Raised when a BLE address has too many orphaned workers and needs manual recovery."""
+
+    pass
+
+
 # Global config variable that will be set from config.py
 config = None
 
@@ -1613,12 +1619,7 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
             ble_future_to_cancel.cancel()
             try:
                 ble_future_to_cancel.result(timeout=0.2)
-            except FuturesTimeoutError:
-                logger.debug(
-                    "Timed out waiting for cancelled BLE future for %s",
-                    ble_address,
-                )
-            except (FuturesCancelledError, RuntimeError) as exc:
+            except Exception as exc:  # noqa: BLE001 - best-effort degraded cleanup
                 logger.debug(
                     "BLE future cancellation raised error for %s: %s",
                     ble_address,
@@ -3362,7 +3363,7 @@ def connect_meshtastic(
                                             "Reconnect or restart required to restore BLE connectivity.",
                                             ble_address,
                                         )
-                                        raise RuntimeError(
+                                        raise BleExecutorDegradedError(
                                             f"BLE executor degraded for {ble_address}; reset required"
                                         )
                                     try:
@@ -3517,7 +3518,7 @@ def connect_meshtastic(
                                     "Reconnect or restart required to restore BLE connectivity.",
                                     ble_address,
                                 )
-                                raise RuntimeError(
+                                raise BleExecutorDegradedError(
                                     f"BLE executor degraded for {ble_address}; reset required"
                                 )
                             try:
@@ -3716,7 +3717,7 @@ def connect_meshtastic(
                     subscribed_to_connection_lost = True
                     logger.debug("Subscribed to meshtastic.connection.lost")
 
-        except (ConnectionRefusedError, MemoryError):
+        except (ConnectionRefusedError, MemoryError, BleExecutorDegradedError):
             # Handle critical errors that should not be retried
             logger.exception("Critical connection error")
             return None

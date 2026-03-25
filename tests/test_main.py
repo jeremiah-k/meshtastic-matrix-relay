@@ -295,6 +295,25 @@ class _OnePassEvent:
         return await waiter
 
 
+class _AutoSetAfterWaitEvent:
+    """Event that auto-sets after the first wait() call completes."""
+
+    def __init__(self) -> None:
+        self._set = False
+
+    def is_set(self) -> bool:
+        return self._set
+
+    def set(self) -> None:
+        self._set = True
+
+    async def wait(self) -> bool:
+        if self._set:
+            return True
+        self._set = True
+        return True
+
+
 class _CloseFutureBase(concurrent.futures.Future):
     """Future with a cancel flag for shutdown test assertions."""
 
@@ -814,12 +833,14 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.connect_meshtastic")
     @patch("mmrelay.main.connect_matrix")
     @patch("mmrelay.main.join_matrix_room")
+    @patch("mmrelay.main.get_message_queue")
     @patch("mmrelay.main.stop_message_queue")
     @patch("mmrelay.main.meshtastic_utils._disconnect_ble_interface")
     def test_main_shutdown_disconnects_ble_interface(
         self,
         mock_disconnect_iface,
         _mock_stop_queue,
+        mock_get_queue,
         mock_join_room,
         mock_connect_matrix,
         mock_connect_meshtastic,
@@ -852,6 +873,10 @@ class TestMain(unittest.TestCase):
         mock_matrix_client.close = AsyncMock()
         mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
         mock_join_room.side_effect = _async_noop
+
+        mock_queue = MagicMock()
+        mock_queue.ensure_processor_started = MagicMock()
+        mock_get_queue.return_value = mock_queue
 
         with (
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
@@ -1003,6 +1028,7 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.connect_meshtastic")
     @patch("mmrelay.main.connect_matrix")
     @patch("mmrelay.main.join_matrix_room")
+    @patch("mmrelay.main.get_message_queue")
     @patch("mmrelay.main.shutdown_plugins")
     @patch("mmrelay.main.stop_message_queue")
     @patch("mmrelay.main.meshtastic_logger")
@@ -1011,6 +1037,7 @@ class TestMain(unittest.TestCase):
         mock_meshtastic_logger,
         _mock_stop_queue,
         _mock_shutdown_plugins,
+        mock_get_queue,
         mock_join_room,
         mock_connect_matrix,
         mock_connect_meshtastic,
@@ -1042,6 +1069,10 @@ class TestMain(unittest.TestCase):
         mock_matrix_client.close = AsyncMock()
         mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
         mock_join_room.side_effect = _async_noop
+
+        mock_queue = MagicMock()
+        mock_queue.ensure_processor_started = MagicMock()
+        mock_get_queue.return_value = mock_queue
 
         import mmrelay.meshtastic_utils as mu
 
@@ -1087,6 +1118,7 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.connect_meshtastic")
     @patch("mmrelay.main.connect_matrix")
     @patch("mmrelay.main.join_matrix_room")
+    @patch("mmrelay.main.get_message_queue")
     @patch("mmrelay.main.shutdown_plugins")
     @patch("mmrelay.main.stop_message_queue")
     @patch("mmrelay.main.meshtastic_logger")
@@ -1095,6 +1127,7 @@ class TestMain(unittest.TestCase):
         mock_meshtastic_logger,
         _mock_stop_queue,
         _mock_shutdown_plugins,
+        mock_get_queue,
         mock_join_room,
         mock_connect_matrix,
         mock_connect_meshtastic,
@@ -1109,6 +1142,10 @@ class TestMain(unittest.TestCase):
         mock_matrix_client.close = AsyncMock()
         mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
         mock_join_room.side_effect = _async_noop
+
+        mock_queue = MagicMock()
+        mock_queue.ensure_processor_started = MagicMock()
+        mock_get_queue.return_value = mock_queue
 
         import mmrelay.meshtastic_utils as mu
 
@@ -1152,6 +1189,7 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.connect_meshtastic")
     @patch("mmrelay.main.connect_matrix")
     @patch("mmrelay.main.join_matrix_room")
+    @patch("mmrelay.main.get_message_queue")
     @patch("mmrelay.main.shutdown_plugins")
     @patch("mmrelay.main.stop_message_queue")
     @patch("mmrelay.main.meshtastic_utils._run_blocking_with_timeout")
@@ -1160,6 +1198,7 @@ class TestMain(unittest.TestCase):
         mock_run_blocking_with_timeout,
         _mock_stop_queue,
         _mock_shutdown_plugins,
+        mock_get_queue,
         mock_join_room,
         mock_connect_matrix,
         mock_connect_meshtastic,
@@ -1176,6 +1215,10 @@ class TestMain(unittest.TestCase):
         mock_matrix_client.close = AsyncMock()
         mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
         mock_join_room.side_effect = _async_noop
+
+        mock_queue = MagicMock()
+        mock_queue.ensure_processor_started = MagicMock()
+        mock_get_queue.return_value = mock_queue
 
         import mmrelay.meshtastic_utils as mu
 
@@ -1224,6 +1267,7 @@ class TestMain(unittest.TestCase):
     @patch("mmrelay.main.connect_meshtastic")
     @patch("mmrelay.main.connect_matrix")
     @patch("mmrelay.main.join_matrix_room")
+    @patch("mmrelay.main.get_message_queue")
     @patch("mmrelay.main.stop_message_queue")
     @patch("mmrelay.main.meshtastic_logger")
     @patch("mmrelay.main.meshtastic_utils._run_blocking_with_timeout")
@@ -1232,6 +1276,7 @@ class TestMain(unittest.TestCase):
         mock_run_blocking_with_timeout,
         mock_meshtastic_logger,
         _mock_stop_queue,
+        mock_get_queue,
         mock_join_room,
         mock_connect_matrix,
         mock_connect_meshtastic,
@@ -1246,6 +1291,10 @@ class TestMain(unittest.TestCase):
         mock_matrix_client.close = AsyncMock()
         mock_connect_matrix.side_effect = _make_async_return(mock_matrix_client)
         mock_join_room.side_effect = _async_noop
+
+        mock_queue = MagicMock()
+        mock_queue.ensure_processor_started = MagicMock()
+        mock_get_queue.return_value = mock_queue
 
         import mmrelay.meshtastic_utils as mu
 
@@ -1666,8 +1715,8 @@ class TestMainFunctionEdgeCases(unittest.TestCase):
         ):
             result = asyncio.run(
                 meshtastic_module.refresh_node_name_tables(
-                    _OnePassEvent(),  # pyright: ignore[reportArgumentType]
-                    refresh_interval_seconds=0.0,
+                    _AutoSetAfterWaitEvent(),  # pyright: ignore[reportArgumentType]
+                    refresh_interval_seconds=0.01,
                 )
             )
 
@@ -2738,24 +2787,22 @@ class TestStartupRollback(unittest.TestCase):
 
         config = {"matrix_rooms": [{"id": "!room:matrix.org"}]}
 
+        async def mock_check_conn():
+            return None
+
         def mock_create_task(coro, *args, **kwargs):
             if inspect.iscoroutine(coro):
                 coro_name = getattr(getattr(coro, "cr_code", None), "co_name", "")
-                if coro_name == "check_connection":
+                if coro_name == "mock_check_conn":
                     return mock_check_task
                 if coro_name == "_node_name_refresh_supervisor":
                     return mock_supervisor_task
-                if coro_name == "_execute_mock_call":
-                    return mock_check_task
                 coro.close()
                 raise AssertionError(f"Unexpected task scheduled: {coro_name}")
             raise AssertionError(f"Unexpected non-coroutine scheduled: {coro!r}")
 
         async def mock_gather(*args, **kwargs):
             return [None] * len(args)
-
-        async def mock_check_conn():
-            return None
 
         with (
             patch(
@@ -2768,7 +2815,7 @@ class TestStartupRollback(unittest.TestCase):
             patch("mmrelay.main.asyncio.gather", side_effect=mock_gather),
             patch(
                 "mmrelay.main.meshtastic_utils.check_connection",
-                side_effect=mock_check_conn,
+                new=mock_check_conn,
             ),
             patch("mmrelay.main.logger"),
         ):
@@ -3206,7 +3253,6 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
             ),
             patch("mmrelay.main.asyncio.wait_for") as mock_wait_for,
             patch("mmrelay.main.asyncio.create_task", side_effect=_capture_create_task),
-            contextlib.suppress(asyncio.TimeoutError),
         ):
             mock_matrix_client = AsyncMock()
             mock_matrix_client.add_event_callback = MagicMock()
@@ -3220,6 +3266,9 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
                 mock_wait_for.side_effect = _wait_for_side_effect
 
                 asyncio.run(main(config))
+
+            mock_connect_matrix.assert_called_once()
+            mock_matrix_client.close.assert_awaited_once()
 
         check_conn_tasks = []
         observed_coro_names: list[str] = []
@@ -3364,7 +3413,6 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
             ),
             patch("mmrelay.main.asyncio.wait_for", new=mock_wait_for),
             patch("mmrelay.main.asyncio.create_task", side_effect=_capture_create_task),
-            contextlib.suppress(asyncio.CancelledError),
         ):
             mock_matrix_client = AsyncMock()
             mock_matrix_client.add_event_callback = MagicMock()
@@ -3376,6 +3424,9 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
                 mock_get_queue.return_value = mock_queue
 
                 asyncio.run(main(config))
+
+            mock_connect_matrix.assert_called_once()
+            mock_matrix_client.close.assert_awaited_once()
 
         check_conn_tasks = []
         observed_coro_names: list[str] = []

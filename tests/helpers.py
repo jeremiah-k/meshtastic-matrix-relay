@@ -10,6 +10,8 @@ import contextlib
 import sys
 from typing import Any, Callable, TypeVar, cast
 
+from pubsub import pub
+
 T = TypeVar("T")
 
 
@@ -159,8 +161,14 @@ def reset_meshtastic_utils_globals(*, shutdown_executors: bool = False) -> None:
     if hasattr(module, "reconnect_task"):
         module.reconnect_task = None  # type: ignore[attr-defined]
     if hasattr(module, "subscribed_to_messages"):
+        if module.subscribed_to_messages:  # type: ignore[attr-defined]
+            pub.unsubscribe(module.on_meshtastic_message, "meshtastic.receive")  # type: ignore[attr-defined]
         module.subscribed_to_messages = False  # type: ignore[attr-defined]
     if hasattr(module, "subscribed_to_connection_lost"):
+        if module.subscribed_to_connection_lost:  # type: ignore[attr-defined]
+            pub.unsubscribe(
+                module.on_lost_meshtastic_connection, "meshtastic.connection.lost"
+            )  # type: ignore[attr-defined]
         module.subscribed_to_connection_lost = False  # type: ignore[attr-defined]
     if hasattr(module, "_metadata_future"):
         module._metadata_future = None  # type: ignore[attr-defined]

@@ -876,12 +876,14 @@ async def main(config: dict[str, Any]) -> None:
                             pass
                     except ClientError as exc:
                         matrix_logger.warning("Matrix sync failed, retrying: %s", exc)
+                        sync_task._exception_consumed = True  # type: ignore[attr-defined]
                         try:
                             await asyncio.wait_for(shutdown_event.wait(), timeout=5.0)
                         except asyncio.TimeoutError:
                             pass
                     except (ConnectionError, OSError, RuntimeError, ValueError):
                         matrix_logger.exception("Matrix sync failed")
+                        sync_task._exception_consumed = True  # type: ignore[attr-defined]
                         try:
                             await asyncio.wait_for(shutdown_event.wait(), timeout=5.0)
                         except asyncio.TimeoutError:
