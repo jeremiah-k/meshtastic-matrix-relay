@@ -61,7 +61,7 @@ class InlineExecutorLoop:
         fut = self._loop.create_future()
         try:
             result = func(*args)
-        except Exception as exc:
+        except BaseException as exc:
             # Mirror run_in_executor semantics where all failures are captured on
             # the returned Future instead of escaping synchronously.
             fut.set_exception(exc)

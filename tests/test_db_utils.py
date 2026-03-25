@@ -413,7 +413,20 @@ class TestDbUtils(unittest.TestCase):
         self.assertEqual(get_longname("!stale"), "Stale Longname")
         self.assertEqual(get_shortname("!stale"), "STL")
 
-        second_state = sync_name_tables_if_changed(nodes, previous_state=first_state)
+        with (
+            patch(
+                "mmrelay.db_utils.save_longname", wraps=save_longname
+            ) as mock_save_long,
+            patch(
+                "mmrelay.db_utils.save_shortname", wraps=save_shortname
+            ) as mock_save_short,
+        ):
+            second_state = sync_name_tables_if_changed(
+                nodes, previous_state=first_state
+            )
+
+        mock_save_long.assert_not_called()
+        mock_save_short.assert_not_called()
         self.assertEqual(second_state, first_state)
         self.assertEqual(get_longname("!1"), "Alpha")
         self.assertEqual(get_shortname("!1"), "A")
@@ -428,7 +441,20 @@ class TestDbUtils(unittest.TestCase):
         }
         first_state = sync_name_tables_if_changed(nodes, previous_state=None)
 
-        second_state = sync_name_tables_if_changed(nodes, previous_state=first_state)
+        with (
+            patch(
+                "mmrelay.db_utils.save_longname", wraps=save_longname
+            ) as mock_save_long,
+            patch(
+                "mmrelay.db_utils.save_shortname", wraps=save_shortname
+            ) as mock_save_short,
+        ):
+            second_state = sync_name_tables_if_changed(
+                nodes, previous_state=first_state
+            )
+
+        mock_save_long.assert_not_called()
+        mock_save_short.assert_not_called()
 
         self.assertEqual(second_state, first_state)
         self.assertEqual(get_longname("!1"), "Alpha")

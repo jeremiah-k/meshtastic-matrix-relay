@@ -1761,7 +1761,7 @@ class TestMainFunctionEdgeCases(unittest.TestCase):
         """Invalid nodedb refresh intervals should fall back to the default value."""
         import mmrelay.meshtastic_utils as meshtastic_module
 
-        for raw_value in ("inf", "not-a-number", True, False):
+        for raw_value in ("inf", "not-a-number", True, False, -1.0):
             with self.subTest(raw_value=raw_value):
                 interval = meshtastic_module.get_nodedb_refresh_interval_seconds(
                     {"meshtastic": {"nodedb_refresh_interval": raw_value}}
@@ -2666,7 +2666,7 @@ class TestReadyHeartbeatEnvVarParsing:
     """Tests for MMRELAY_READY_HEARTBEAT_SECONDS environment variable parsing."""
 
     @pytest.fixture(autouse=True)
-    def _restore_main_logger(self):
+    def _reload_main_module(self):
         import importlib
 
         import mmrelay.main as main_module

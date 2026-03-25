@@ -153,6 +153,7 @@ class TestMeshtasticUtils(unittest.TestCase):
                 with contextlib.suppress(
                     asyncio.CancelledError,
                     asyncio.TimeoutError,
+                    ConcurrentTimeoutError,
                     OSError,
                     RuntimeError,
                 ):
@@ -2886,6 +2887,30 @@ class TestGetDeviceMetadata(unittest.TestCase):
             METADATA_WATCHDOG_SECS,
             "submit-retry",
         )
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_submit_metadata_probe_resets_on_submission_failure(self, mock_logger):
+        """Submission failures should trigger metadata executor reset for recovery."""
+        import mmrelay.meshtastic_utils as mu
+
+        mock_executor = MagicMock()
+        mock_executor.submit.side_effect = RuntimeError("executor closed")
+        probe = Mock()
+
+        with (
+            patch(
+                "mmrelay.meshtastic_utils._get_metadata_executor",
+                return_value=mock_executor,
+            ),
+            patch(
+                "mmrelay.meshtastic_utils._reset_metadata_executor_for_stale_probe"
+            ) as mock_reset,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "executor closed"):
+                mu._submit_metadata_probe(probe)
+
+        mock_reset.assert_called_once()
+        self.assertTrue(mock_logger.debug.called)
 
     def test_get_device_metadata_raise_on_error_reraises_non_io_value_error(self):
         """Non-I/O ValueError failures from getMetadata() should propagate."""

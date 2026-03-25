@@ -397,8 +397,6 @@ async def main(config: dict[str, Any]) -> None:
             try:
                 step_func()
             except BaseException as exc:
-                if isinstance(exc, (KeyboardInterrupt, SystemExit)):
-                    raise
                 step_error = exc
 
             def _publish_result() -> None:

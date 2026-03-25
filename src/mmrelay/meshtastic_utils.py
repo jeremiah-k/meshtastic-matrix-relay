@@ -478,8 +478,8 @@ def _reset_metadata_executor_for_stale_probe() -> None:
     Replace the shared metadata executor after stale probe detection.
 
     A wedged single-worker executor can block all later probe submissions.
-    This function abandons the old executor and creates a fresh one so probe
-    retries are not queued behind a stuck worker.
+    This function abandons the old executor and usually creates a fresh one so
+    probe retries are not queued behind a stuck worker.
 
     When the number of orphaned workers reaches EXECUTOR_ORPHAN_THRESHOLD,
     the executor enters a degraded state: submission of new probes is refused
@@ -496,39 +496,44 @@ def _reset_metadata_executor_for_stale_probe() -> None:
         )
         return
 
+    stale_executor: ThreadPoolExecutor | None = None
+    orphaned_workers: int | None = None
+    degraded_now = False
+
     with _metadata_future_lock:
-        if _metadata_executor_orphaned_workers + 1 >= EXECUTOR_ORPHAN_THRESHOLD:
+        projected_orphans = _metadata_executor_orphaned_workers + 1
+        if projected_orphans >= EXECUTOR_ORPHAN_THRESHOLD:
             _metadata_executor_degraded = True
+            _metadata_executor_orphaned_workers = projected_orphans
             logger.error(
                 "METADATA EXECUTOR DEGRADED: %s workers have been orphaned due to "
                 "repeated hangs. Further automatic recovery is disabled. "
                 "Reconnect or restart the relay to restore metadata probing.",
-                _metadata_executor_orphaned_workers + 1,
+                projected_orphans,
             )
             _metadata_future = None
             _metadata_future_started_at = None
-            old_executor = _metadata_executor
+            stale_executor = _metadata_executor
+            # Keep degraded mode fail-fast: stop automatic executor recreation.
+            _metadata_executor = None
+            degraded_now = True
+
+        if not degraded_now:
+            stale_executor = _metadata_executor
+            _metadata_future = None
+            _metadata_future_started_at = None
             _metadata_executor = ThreadPoolExecutor(max_workers=1)
-            if old_executor is not None and not getattr(
-                old_executor, "_shutdown", False
+            if stale_executor is not None and not getattr(
+                stale_executor, "_shutdown", False
             ):
-                try:
-                    old_executor.shutdown(wait=False, cancel_futures=True)
-                except TypeError:
-                    old_executor.shutdown(wait=False)
-            return
+                _metadata_executor_orphaned_workers = projected_orphans
+                orphaned_workers = _metadata_executor_orphaned_workers
 
-        old_executor = _metadata_executor
-        _metadata_future = None
-        _metadata_future_started_at = None
-        _metadata_executor = ThreadPoolExecutor(max_workers=1)
-        if old_executor is not None and not getattr(old_executor, "_shutdown", False):
-            _metadata_executor_orphaned_workers += 1
-            orphaned_workers = _metadata_executor_orphaned_workers
-        else:
-            orphaned_workers = None
-
-    if old_executor is not None and not getattr(old_executor, "_shutdown", False):
+    if (
+        not degraded_now
+        and stale_executor is not None
+        and not getattr(stale_executor, "_shutdown", False)
+    ):
         logger.warning(
             "Replacing stale metadata executor after probe timeout; "
             "orphaned metadata workers=%s (threshold=%s)",
@@ -536,9 +541,18 @@ def _reset_metadata_executor_for_stale_probe() -> None:
             EXECUTOR_ORPHAN_THRESHOLD,
         )
         try:
-            old_executor.shutdown(wait=False, cancel_futures=True)
+            stale_executor.shutdown(wait=False, cancel_futures=True)
         except TypeError:
-            old_executor.shutdown(wait=False)
+            stale_executor.shutdown(wait=False)
+    elif (
+        degraded_now
+        and stale_executor is not None
+        and not getattr(stale_executor, "_shutdown", False)
+    ):
+        try:
+            stale_executor.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            stale_executor.shutdown(wait=False)
 
 
 def _schedule_metadata_future_cleanup(
@@ -607,21 +621,37 @@ def _submit_metadata_probe(probe: Callable[[], Any]) -> Future[Any] | None:
         )
         _reset_metadata_executor_for_stale_probe()
 
-    if _metadata_executor_degraded:
-        logger.error(
-            "Metadata executor degraded: too many orphaned workers. "
-            "Reconnect or restart required to restore metadata probing."
-        )
-        raise MetadataExecutorDegradedError(
-            "Metadata executor is degraded; reconnect or restart required"
-        )
-
+    submission_error: RuntimeError | None = None
     with _metadata_future_lock:
+        if _metadata_executor_degraded:
+            logger.error(
+                "Metadata executor degraded: too many orphaned workers. "
+                "Reconnect or restart required to restore metadata probing."
+            )
+            raise MetadataExecutorDegradedError(
+                "Metadata executor is degraded; reconnect or restart required"
+            )
         if _metadata_future is not None and not _metadata_future.done():
             return None
-        future = _get_metadata_executor().submit(probe)
-        _metadata_future = future
-        _metadata_future_started_at = time.monotonic()
+        try:
+            future = _get_metadata_executor().submit(probe)
+        except RuntimeError as exc:
+            submission_error = exc
+            future = None
+        if future is not None:
+            _metadata_future = future
+            _metadata_future_started_at = time.monotonic()
+
+    if submission_error is not None:
+        logger.debug(
+            "Metadata probe submission failed; resetting metadata executor",
+            exc_info=submission_error,
+        )
+        _reset_metadata_executor_for_stale_probe()
+        raise submission_error
+
+    if future is None:
+        return None
 
     future.add_done_callback(_clear_metadata_future_if_current)
     _schedule_metadata_future_cleanup(future, reason="metadata-probe")
@@ -722,6 +752,8 @@ def _parse_refresh_interval_seconds(raw_interval: Any) -> float | None:
         interval = float(raw_interval)
         if not math.isfinite(interval):
             raise ValueError("non-finite interval")
+        if interval < 0:
+            raise ValueError("negative interval")
         return interval
     except (TypeError, ValueError, OverflowError):
         return None
@@ -813,7 +845,7 @@ async def refresh_node_name_tables(
     Periodically sync longname/shortname tables from the current Meshtastic node DB.
 
     The first refresh attempt runs immediately. When `refresh_interval_seconds`
-    is zero or negative, one immediate refresh is attempted and periodic refresh
+    is zero, one immediate refresh is attempted and periodic refresh
     is disabled afterward.
 
     Current scope: this task updates only long/short name cache tables from the
@@ -1601,11 +1633,6 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
                 stale_executor.shutdown(wait=False)
         return
 
-    if stale_executor is not None and not getattr(stale_executor, "_shutdown", False):
-        try:
-            stale_executor.shutdown(wait=False, cancel_futures=True)
-        except TypeError:
-            stale_executor.shutdown(wait=False)
     if ble_future_to_cancel is not None:
         ble_future_to_cancel.cancel()
         try:
@@ -1614,6 +1641,11 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
             pass
         except Exception as exc:  # noqa: BLE001 - best-effort reset cleanup
             logger.debug("BLE worker errored during reset: %s", exc)
+    if stale_executor is not None and not getattr(stale_executor, "_shutdown", False):
+        try:
+            stale_executor.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            stale_executor.shutdown(wait=False)
     with _ble_timeout_lock:
         _ble_timeout_counts[ble_address] = 0
 
@@ -3201,6 +3233,7 @@ def connect_meshtastic(
 
                     iface = None
                     supports_auto_reconnect = False
+                    late_creation_disposer_future: Future[Any] | None = None
                     with meshtastic_iface_lock:
                         # If BLE address has changed, re-create the interface
                         if (
@@ -3390,11 +3423,7 @@ def connect_meshtastic(
                                             ble_address,
                                             reason="interface creation timeout",
                                         )
-                                        _attach_late_ble_interface_disposer(
-                                            future,
-                                            ble_address,
-                                            reason="interface creation timeout",
-                                        )
+                                        late_creation_disposer_future = future
                                         timeout_count = _record_ble_timeout(ble_address)
                                         _maybe_reset_ble_executor(
                                             ble_address, timeout_count
@@ -3427,6 +3456,13 @@ def connect_meshtastic(
                                     supports_auto_reconnect = False
 
                         iface = meshtastic_iface
+
+                    if late_creation_disposer_future is not None:
+                        _attach_late_ble_interface_disposer(
+                            late_creation_disposer_future,
+                            ble_address,
+                            reason="interface creation timeout",
+                        )
 
                     # Connect outside singleton-creation lock to avoid blocking other threads.
                     # Interfaces that expose auto_reconnect support use explicit connect()
