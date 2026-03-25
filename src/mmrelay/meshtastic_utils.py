@@ -504,18 +504,18 @@ def _reset_metadata_executor_for_stale_probe() -> None:
     global _metadata_executor, _metadata_future, _metadata_future_started_at
     global _metadata_executor_orphaned_workers, _metadata_executor_degraded
 
-    if _metadata_executor_degraded:
-        logger.debug(
-            "Metadata executor is in degraded state; refusing to reset. "
-            "Reconnect or restart required to recover."
-        )
-        return
-
     stale_executor: ThreadPoolExecutor | None = None
     orphaned_workers: int | None = None
     degraded_now = False
 
     with _metadata_future_lock:
+        if _metadata_executor_degraded:
+            logger.debug(
+                "Metadata executor is in degraded state; refusing to reset. "
+                "Reconnect or restart required to recover."
+            )
+            return
+
         projected_orphans = _metadata_executor_orphaned_workers + 1
         if projected_orphans >= EXECUTOR_ORPHAN_THRESHOLD:
             _metadata_executor_degraded = True

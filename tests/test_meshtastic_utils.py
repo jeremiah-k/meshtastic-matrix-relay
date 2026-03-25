@@ -2961,6 +2961,34 @@ class TestGetDeviceMetadata(unittest.TestCase):
         mock_executor.submit.assert_not_called()
         mock_logger.error.assert_called()
 
+    def test_reset_metadata_executor_checks_degraded_state_under_lock(self):
+        """Degraded metadata reset checks should execute while holding the metadata lock."""
+        import mmrelay.meshtastic_utils as mu
+
+        class _TrackingLock:
+            def __init__(self) -> None:
+                self.entered = False
+
+            def __enter__(self) -> "_TrackingLock":
+                self.entered = True
+                return self
+
+            def __exit__(self, *_args: Any) -> bool:
+                return False
+
+        tracking_lock = _TrackingLock()
+        original_lock = mu._metadata_future_lock
+        original_degraded = mu._metadata_executor_degraded
+        try:
+            mu._metadata_future_lock = tracking_lock  # type: ignore[assignment]
+            mu._metadata_executor_degraded = True
+            mu._reset_metadata_executor_for_stale_probe()
+        finally:
+            mu._metadata_future_lock = original_lock
+            mu._metadata_executor_degraded = original_degraded
+
+        self.assertTrue(tracking_lock.entered)
+
     def test_get_device_metadata_raise_on_error_reraises_non_io_value_error(self):
         """Non-I/O ValueError failures from getMetadata() should propagate."""
         mock_client = MagicMock()

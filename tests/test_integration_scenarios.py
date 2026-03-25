@@ -396,8 +396,6 @@ plugins:
             self.assertIn("plugins", config)
 
             # Test configuration validation
-            from unittest.mock import MagicMock
-
             from mmrelay.cli import check_config
 
             # Create mock args
@@ -652,8 +650,6 @@ plugins:
                                     "mmrelay.matrix_utils.message_storage_enabled"
                                 ):
                                     # Set up global state
-                                    import asyncio
-
                                     import mmrelay.meshtastic_utils
 
                                     mmrelay.meshtastic_utils.config = config

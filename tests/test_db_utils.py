@@ -25,12 +25,14 @@ from unittest.mock import MagicMock, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.database import DEFAULT_BUSY_TIMEOUT_MS
 from mmrelay.db_runtime import DatabaseManager
 from mmrelay.db_utils import (
     _get_db_manager,
     _parse_bool,
     _parse_int,
     _reset_db_manager,
+    _resolve_database_options,
     async_prune_message_map,
     async_store_message_map,
     build_node_name_state,
@@ -138,6 +140,21 @@ class TestDbUtils(unittest.TestCase):
         """
         path = get_db_path()
         self.assertEqual(path, self.test_db_path)
+
+    def test_resolve_database_options_rejects_boolean_busy_timeout(self):
+        """
+        Boolean busy_timeout values should fall back to the configured default.
+        """
+        import mmrelay.db_utils as db_utils_module
+
+        for cfg in (
+            {"database": {"busy_timeout_ms": False}},
+            {"db": {"busy_timeout_ms": True}},
+        ):
+            with self.subTest(cfg=cfg):
+                with patch.object(db_utils_module, "config", cfg):
+                    _, busy_timeout_ms, _ = _resolve_database_options()
+                self.assertEqual(busy_timeout_ms, DEFAULT_BUSY_TIMEOUT_MS)
 
     def test_get_db_path_caching(self):
         """
