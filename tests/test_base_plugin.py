@@ -26,6 +26,8 @@ import schedule
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.database import DEFAULT_MAX_DATA_ROWS_PER_NODE_BASE
+from mmrelay.constants.plugins import DEFAULT_PLUGIN_PRIORITY
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
@@ -117,8 +119,10 @@ class TestBasePlugin(unittest.TestCase):
         plugin = MockPlugin()
 
         self.assertEqual(plugin.plugin_name, "test_plugin")
-        self.assertEqual(plugin.max_data_rows_per_node, 100)
-        self.assertEqual(plugin.priority, 10)
+        self.assertEqual(
+            plugin.max_data_rows_per_node, DEFAULT_MAX_DATA_ROWS_PER_NODE_BASE
+        )
+        self.assertEqual(plugin.priority, DEFAULT_PLUGIN_PRIORITY)
         self.assertTrue(plugin.config["active"])
 
     def test_plugin_initialization_with_parameter_name(self):

@@ -2930,6 +2930,37 @@ class TestGetDeviceMetadata(unittest.TestCase):
         mock_reset.assert_called_once()
         self.assertTrue(mock_logger.debug.called)
 
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_submit_metadata_probe_rejects_when_degraded(self, mock_logger):
+        """Degraded metadata executor should fail fast and skip submission."""
+        import mmrelay.meshtastic_utils as mu
+
+        probe = Mock()
+        mock_executor = MagicMock()
+
+        with (
+            patch(
+                "mmrelay.meshtastic_utils._get_metadata_executor",
+                return_value=mock_executor,
+            ),
+        ):
+            original_degraded = mu._metadata_executor_degraded
+            original_future = mu._metadata_future
+            original_started_at = mu._metadata_future_started_at
+            mu._metadata_executor_degraded = True
+            mu._metadata_future = None
+            mu._metadata_future_started_at = None
+            try:
+                with self.assertRaises(mu.MetadataExecutorDegradedError):
+                    mu._submit_metadata_probe(probe)
+            finally:
+                mu._metadata_executor_degraded = original_degraded
+                mu._metadata_future = original_future
+                mu._metadata_future_started_at = original_started_at
+
+        mock_executor.submit.assert_not_called()
+        mock_logger.error.assert_called()
+
     def test_get_device_metadata_raise_on_error_reraises_non_io_value_error(self):
         """Non-I/O ValueError failures from getMetadata() should propagate."""
         mock_client = MagicMock()

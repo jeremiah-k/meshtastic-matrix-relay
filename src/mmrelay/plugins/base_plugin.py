@@ -99,8 +99,10 @@ class BasePlugin(ABC):
 
     Attributes:
         plugin_name (str): Unique identifier for the plugin
-        max_data_rows_per_node (int): Maximum data rows stored per node (default: 100)
-        priority (int): Plugin execution priority (lower = higher priority, default: 10)
+        max_data_rows_per_node (int): Maximum data rows stored per node
+            (default: DEFAULT_MAX_DATA_ROWS_PER_NODE_BASE)
+        priority (int): Plugin execution priority (lower = higher priority,
+            default: DEFAULT_PLUGIN_PRIORITY)
 
     Subclasses must:
     - Set plugin_name as a class attribute

@@ -3115,6 +3115,90 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
             "Expected cancel() to be called on check_connection task during shutdown",
         )
 
+    def test_check_connection_exception_is_raised_after_cleanup(self):
+        """Exceptions from the health task should become main() failures."""
+        config = {
+            "matrix_rooms": [{"id": "!room:matrix.org"}],
+            "matrix": {"homeserver": "https://matrix.org"},
+            "meshtastic": {"connection_type": "serial"},
+        }
+
+        async def _check_connection_raises() -> None:
+            raise RuntimeError("health monitor failed")
+
+        with (
+            patch("mmrelay.main.initialize_database"),
+            patch("mmrelay.main.load_plugins"),
+            patch("mmrelay.main.start_message_queue"),
+            patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
+            patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
+            patch("mmrelay.main.get_message_queue") as mock_get_queue,
+            patch("mmrelay.main.shutdown_plugins"),
+            patch("mmrelay.main.stop_message_queue"),
+            patch(
+                "mmrelay.main.meshtastic_utils.check_connection",
+                new=_check_connection_raises,
+            ),
+        ):
+            mock_matrix_client = AsyncMock()
+            mock_matrix_client.add_event_callback = MagicMock()
+            mock_matrix_client.close = AsyncMock()
+            mock_connect_matrix = AsyncMock(return_value=mock_matrix_client)
+            with patch("mmrelay.main.connect_matrix", mock_connect_matrix):
+                mock_queue = MagicMock()
+                mock_queue.ensure_processor_started = MagicMock()
+                mock_get_queue.return_value = mock_queue
+
+                with self.assertRaisesRegex(RuntimeError, "health monitor failed"):
+                    asyncio.run(main(config))
+
+    def test_check_connection_unexpected_return_is_raised_after_cleanup(self):
+        """Unexpected clean health-task exits should raise a fatal RuntimeError."""
+        config = {
+            "matrix_rooms": [{"id": "!room:matrix.org"}],
+            "matrix": {"homeserver": "https://matrix.org"},
+            "meshtastic": {
+                "connection_type": "serial",
+                "health_check": {"enabled": True},
+            },
+        }
+
+        async def _check_connection_returns() -> None:
+            return None
+
+        with (
+            patch("mmrelay.main.initialize_database"),
+            patch("mmrelay.main.load_plugins"),
+            patch("mmrelay.main.start_message_queue"),
+            patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
+            patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
+            patch("mmrelay.main.get_message_queue") as mock_get_queue,
+            patch("mmrelay.main.shutdown_plugins"),
+            patch("mmrelay.main.stop_message_queue"),
+            patch(
+                "mmrelay.main._DEFAULT_CHECK_CONNECTION_CALLABLE",
+                new=_check_connection_returns,
+            ),
+            patch(
+                "mmrelay.main.meshtastic_utils.check_connection",
+                new=_check_connection_returns,
+            ),
+        ):
+            mock_matrix_client = AsyncMock()
+            mock_matrix_client.add_event_callback = MagicMock()
+            mock_matrix_client.close = AsyncMock()
+            mock_connect_matrix = AsyncMock(return_value=mock_matrix_client)
+            with patch("mmrelay.main.connect_matrix", mock_connect_matrix):
+                mock_queue = MagicMock()
+                mock_queue.ensure_processor_started = MagicMock()
+                mock_get_queue.return_value = mock_queue
+
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "Connection health task exited unexpectedly without an exception",
+                ):
+                    asyncio.run(main(config))
+
     def test_exception_during_shutdown_wait_logs_error(self):
         """Exception during shutdown wait should log error and continue.
 

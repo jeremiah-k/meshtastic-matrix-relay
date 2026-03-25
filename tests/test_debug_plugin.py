@@ -17,6 +17,7 @@ from unittest.mock import MagicMock, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.plugins import DEBUG_PLUGIN_PRIORITY
 from mmrelay.plugins.debug_plugin import Plugin
 
 
@@ -40,7 +41,7 @@ class TestDebugPlugin(unittest.TestCase):
         """
         Verify that the debug plugin's priority is set to 1, ensuring it executes early in the plugin chain.
         """
-        self.assertEqual(self.plugin.priority, 1)
+        self.assertEqual(self.plugin.priority, DEBUG_PLUGIN_PRIORITY)
 
     def test_description_property(self):
         """Test that the plugin has a description."""

@@ -526,6 +526,86 @@ class TestDatabaseManager(unittest.TestCase):
             loop.close()
         self.assertEqual(result, "async_result")
 
+    def test_run_async_rejects_submission_when_closing(self):
+        """run_async should fail fast when new submissions are disabled."""
+        with self.manager._executor_lock:
+            self.manager._accepting_submissions = False
+
+        async def run_test() -> None:
+            with self.assertRaises(sqlite3.ProgrammingError):
+                await self.manager.run_async(lambda _cursor: None, write=False)
+
+        asyncio.run(run_test())
+
+    def test_run_async_cancelled_read_cancels_worker_future(self):
+        """Caller cancellation on read work should cancel unfinished worker future."""
+        worker_future = MagicMock()
+        worker_future.done.return_value = False
+
+        async def _raise_cancelled() -> None:
+            raise asyncio.CancelledError()
+
+        with (
+            patch.object(
+                self.manager._async_executor, "submit", return_value=worker_future
+            ),
+            patch(
+                "mmrelay.db_runtime.asyncio.wrap_future",
+                side_effect=lambda _future: _raise_cancelled(),
+            ),
+        ):
+
+            async def run_test() -> None:
+                with self.assertRaises(asyncio.CancelledError):
+                    await self.manager.run_async(lambda _cursor: None, write=False)
+
+            asyncio.run(run_test())
+
+        worker_future.cancel.assert_called_once()
+
+    def test_run_async_cancelled_write_logs_worker_error(self):
+        """Caller cancellation on write waits for worker and logs late worker errors."""
+        worker_future = MagicMock()
+        worker_future.cancel = MagicMock()
+        wrap_call_count = 0
+
+        async def _raise_cancelled() -> None:
+            raise asyncio.CancelledError()
+
+        async def _raise_worker_error() -> None:
+            raise RuntimeError("worker failed after caller cancellation")
+
+        def _wrap_future_side_effect(_future):
+            nonlocal wrap_call_count
+            wrap_call_count += 1
+            if wrap_call_count == 1:
+                return _raise_cancelled()
+            return _raise_worker_error()
+
+        with (
+            patch.object(
+                self.manager._async_executor, "submit", return_value=worker_future
+            ),
+            patch(
+                "mmrelay.db_runtime.asyncio.wrap_future",
+                side_effect=_wrap_future_side_effect,
+            ),
+            patch(
+                "mmrelay.db_runtime.asyncio.shield",
+                side_effect=lambda awaitable: awaitable,
+            ),
+            patch("mmrelay.db_runtime.logger") as mock_logger,
+        ):
+
+            async def run_test() -> None:
+                with self.assertRaises(asyncio.CancelledError):
+                    await self.manager.run_async(lambda _cursor: None, write=True)
+
+            asyncio.run(run_test())
+
+        worker_future.cancel.assert_not_called()
+        mock_logger.warning.assert_called_once()
+
     def test_run_async_queued_work_completes_during_close(self):
         """Queued run_async work accepted before close() should still complete."""
 

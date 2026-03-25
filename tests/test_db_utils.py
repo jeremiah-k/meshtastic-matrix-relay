@@ -438,6 +438,38 @@ class TestDbUtils(unittest.TestCase):
         self.assertEqual(get_longname("!1"), "Legacy Long")
         self.assertEqual(get_shortname("!1"), "OLD")
 
+    def test_sync_name_tables_if_changed_shortname_conflict_keeps_longname(self):
+        """Short-name conflicts should still apply unambiguous long-name updates."""
+        initialize_database()
+        nodes = {
+            "node_first": {
+                "user": {"id": "!1", "longName": "Alpha", "shortName": "ONE"}
+            },
+            "node_second": {
+                "user": {"id": "!1", "longName": "Alpha", "shortName": "TWO"}
+            },
+        }
+
+        state = sync_name_tables_if_changed(nodes, previous_state=None)
+
+        self.assertEqual(state, (("!1", "Alpha", None),))
+        self.assertEqual(get_longname("!1"), "Alpha")
+        self.assertIsNone(get_shortname("!1"))
+
+    def test_sync_name_tables_if_changed_longname_conflict_keeps_shortname(self):
+        """Long-name conflicts should still apply unambiguous short-name updates."""
+        initialize_database()
+        nodes = {
+            "node_first": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
+            "node_second": {"user": {"id": "!1", "longName": "Beta", "shortName": "A"}},
+        }
+
+        state = sync_name_tables_if_changed(nodes, previous_state=None)
+
+        self.assertEqual(state, (("!1", None, "A"),))
+        self.assertIsNone(get_longname("!1"))
+        self.assertEqual(get_shortname("!1"), "A")
+
     def test_sync_name_tables_if_changed_skips_redundant_updates(self):
         """A matching state should skip upserts while still pruning stale rows."""
         initialize_database()
