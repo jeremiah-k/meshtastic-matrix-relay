@@ -17,7 +17,12 @@ import threading
 import unittest
 from unittest.mock import MagicMock, patch
 
-from mmrelay.db_runtime import DatabaseManager, _validate_sqlite_json_each_support
+from mmrelay.db_runtime import (
+    DatabaseManager,
+    _get_sqlite_runtime_version_info,
+    _probe_sqlite_json_each_support,
+    _validate_sqlite_json_each_support,
+)
 
 
 class TestDatabaseManager(unittest.TestCase):
@@ -135,6 +140,21 @@ class TestDatabaseManager(unittest.TestCase):
             finally:
                 manager.close()
         probe_conn.close.assert_called()
+
+    def test_get_sqlite_runtime_version_info_falls_back_to_string(self):
+        """Version parsing should gracefully fall back to sqlite_version string."""
+        with (
+            patch("mmrelay.db_runtime.sqlite3.sqlite_version_info", ("bad",)),
+            patch("mmrelay.db_runtime.sqlite3.sqlite_version", "3.bad"),
+        ):
+            self.assertEqual(_get_sqlite_runtime_version_info(), (3, 0, 0))
+
+    def test_probe_sqlite_json_each_support_reraises_non_json_errors(self):
+        """Non-json_each sqlite errors should propagate unchanged."""
+        conn = MagicMock()
+        conn.execute.side_effect = sqlite3.OperationalError("database is malformed")
+        with self.assertRaises(sqlite3.OperationalError):
+            _probe_sqlite_json_each_support(conn)
 
     def test_pragma_validation_valid_names(self):
         """Test that valid pragma names are accepted."""
@@ -606,6 +626,70 @@ class TestDatabaseManager(unittest.TestCase):
         worker_future.cancel.assert_not_called()
         mock_logger.warning.assert_called_once()
 
+    def test_run_async_cancelled_write_swallows_followup_cancellation(self):
+        """Write cancellation should swallow follow-up CancelledError from worker wait."""
+        worker_future = MagicMock()
+        worker_future.cancel = MagicMock()
+        wrap_call_count = 0
+
+        async def _raise_cancelled() -> None:
+            raise asyncio.CancelledError()
+
+        def _wrap_future_side_effect(_future):
+            nonlocal wrap_call_count
+            wrap_call_count += 1
+            return _raise_cancelled()
+
+        with (
+            patch.object(
+                self.manager._async_executor, "submit", return_value=worker_future
+            ),
+            patch(
+                "mmrelay.db_runtime.asyncio.wrap_future",
+                side_effect=_wrap_future_side_effect,
+            ),
+            patch(
+                "mmrelay.db_runtime.asyncio.shield",
+                side_effect=lambda awaitable: awaitable,
+            ),
+            patch("mmrelay.db_runtime.logger") as mock_logger,
+        ):
+
+            async def run_test() -> None:
+                with self.assertRaises(asyncio.CancelledError):
+                    await self.manager.run_async(lambda _cursor: None, write=True)
+
+            asyncio.run(run_test())
+
+        worker_future.cancel.assert_not_called()
+        mock_logger.warning.assert_not_called()
+
+    def test_run_async_cancelled_read_does_not_cancel_finished_future(self):
+        """Read cancellation should not cancel an already completed worker future."""
+        worker_future = MagicMock()
+        worker_future.done.return_value = True
+
+        async def _raise_cancelled() -> None:
+            raise asyncio.CancelledError()
+
+        with (
+            patch.object(
+                self.manager._async_executor, "submit", return_value=worker_future
+            ),
+            patch(
+                "mmrelay.db_runtime.asyncio.wrap_future",
+                side_effect=lambda _future: _raise_cancelled(),
+            ),
+        ):
+
+            async def run_test() -> None:
+                with self.assertRaises(asyncio.CancelledError):
+                    await self.manager.run_async(lambda _cursor: None, write=False)
+
+            asyncio.run(run_test())
+
+        worker_future.cancel.assert_not_called()
+
     def test_run_async_queued_work_completes_during_close(self):
         """Queued run_async work accepted before close() should still complete."""
 
@@ -782,6 +866,30 @@ class TestDatabaseManager(unittest.TestCase):
         self.manager.close()
         self.assertEqual(len(self.manager._connections), 0)
 
+    def test_get_connection_rejects_when_manager_closing(self):
+        """_get_connection should reject new non-admitted access while closing."""
+        with self.manager._connections_lock:
+            self.manager._closing = True
+        with self.assertRaises(sqlite3.ProgrammingError):
+            self.manager._get_connection()
+
+    def test_get_connection_recreates_closed_thread_local_connection(self):
+        """A closed thread-local connection should be discarded and replaced."""
+        original = self.manager._get_connection()
+        original.close()
+        replacement = self.manager._get_connection()
+        self.assertIsNot(original, replacement)
+        self.assertIn(replacement, self.manager._connections)
+        self.assertNotIn(original, self.manager._connections)
+
+    def test_read_rejects_new_work_when_manager_closing(self):
+        """read() should reject new work when manager is closing."""
+        with self.manager._connections_lock:
+            self.manager._closing = True
+        with self.assertRaises(sqlite3.ProgrammingError):
+            with self.manager.read():
+                pass
+
     def test_close_cleanup(self):
         """Test close method properly cleans up resources."""
         # Create some connections
@@ -831,6 +939,51 @@ class TestDatabaseManager(unittest.TestCase):
 
         # Verify cleanup happened
         self.assertEqual(len(test_manager._connections), 0)
+
+    def test_close_waits_for_active_sync_work_to_finish(self):
+        """close() should wait until active sync activity drains."""
+        import time
+
+        manager = DatabaseManager(self.db_path)
+        with manager._connections_lock:
+            manager._active_sync_count = 1
+
+        def release_activity() -> None:
+            time.sleep(0.05)
+            with manager._connections_lock:
+                manager._active_sync_count = 0
+                manager._active_sync_condition.notify_all()
+
+        releaser = threading.Thread(target=release_activity, daemon=True)
+        releaser.start()
+        manager.close()
+        releaser.join(timeout=1.0)
+        self.assertFalse(releaser.is_alive())
+
+    def test_close_logs_sqlite_errors_when_connection_close_fails(self):
+        """close() should log sqlite close failures and continue cleanup."""
+        manager = DatabaseManager(self.db_path)
+        real_conn = manager._get_connection()
+        bad_conn = MagicMock()
+        bad_conn.close.side_effect = sqlite3.OperationalError("close failed")
+        with manager._connections_lock:
+            manager._connections = {real_conn, bad_conn}
+        with patch("mmrelay.db_runtime.logger") as mock_logger:
+            manager.close()
+        mock_logger.debug.assert_called()
+
+    def test_close_ignores_attributeerror_while_deleting_thread_local_connection(self):
+        """close() should ignore AttributeError from unusual thread-local implementations."""
+
+        class _DelattrRaises:
+            connection = object()
+
+            def __delattr__(self, name: str) -> None:
+                raise AttributeError(name)
+
+        manager = DatabaseManager(self.db_path)
+        manager._thread_local = _DelattrRaises()
+        manager.close()
 
     def test_write_lock_serialization(self):
         """Test that write operations are serialized."""

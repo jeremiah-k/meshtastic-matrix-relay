@@ -75,3 +75,15 @@ def test_is_running_as_service_false_on_proc_parse_or_file_errors() -> None:
 
         with patch("builtins.open", side_effect=FileNotFoundError("missing /proc")):
             assert runtime_utils.is_running_as_service() is False
+
+
+def test_is_running_as_service_false_when_status_has_no_ppid_line() -> None:
+    """Missing PPid field in /proc/self/status should return False."""
+    with (
+        patch.dict(os.environ, {}, clear=True),
+        patch(
+            "builtins.open",
+            return_value=mock_open(read_data="Name:\tpython\n").return_value,
+        ),
+    ):
+        assert runtime_utils.is_running_as_service() is False
