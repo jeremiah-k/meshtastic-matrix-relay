@@ -8,8 +8,9 @@ import functools
 import os
 import signal
 import sys
+import threading
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Callable, cast
 
 from aiohttp import ClientError
 from nio import (
@@ -25,12 +26,24 @@ from nio.events.room_events import RoomMemberEvent
 # Import meshtastic_utils as a module to set event_loop
 from mmrelay import __version__, meshtastic_utils
 from mmrelay.cli_utils import msg_suggest_check_config, msg_suggest_generate_config
-from mmrelay.constants.app import APP_DISPLAY_NAME, WINDOWS_PLATFORM
+from mmrelay.constants.app import (
+    APP_DISPLAY_NAME,
+    DEFAULT_READY_HEARTBEAT_SECONDS,
+    MESSAGE_QUEUE_SHUTDOWN_TIMEOUT_SECONDS,
+    PLUGIN_SHUTDOWN_TIMEOUT_SECONDS,
+    WINDOWS_PLATFORM,
+)
+from mmrelay.constants.config import (
+    CONFIG_KEY_MESSAGE_DELAY,
+    CONFIG_KEY_MSG_MAP,
+    CONFIG_KEY_WIPE_ON_RESTART,
+    CONFIG_SECTION_DATABASE,
+    CONFIG_SECTION_DATABASE_LEGACY,
+    CONFIG_SECTION_MESHTASTIC,
+)
 from mmrelay.constants.queue import DEFAULT_MESSAGE_DELAY
 from mmrelay.db_utils import (
     initialize_database,
-    update_longnames,
-    update_shortnames,
     wipe_message_map,
 )
 from mmrelay.log_utils import get_logger
@@ -58,20 +71,27 @@ from mmrelay.plugin_loader import load_plugins, shutdown_plugins
 
 # Initialize logger
 logger = get_logger(name=APP_DISPLAY_NAME)
+_DEFAULT_CHECK_CONNECTION_CALLABLE = meshtastic_utils.check_connection
 
 
 # Flag to track if banner has been printed
 _banner_printed = False
 _ready_file_path = os.environ.get("MMRELAY_READY_FILE")
-_ready_heartbeat_seconds_raw = os.environ.get("MMRELAY_READY_HEARTBEAT_SECONDS", "60")
+_ready_heartbeat_seconds_raw = os.environ.get(
+    "MMRELAY_READY_HEARTBEAT_SECONDS",
+    str(DEFAULT_READY_HEARTBEAT_SECONDS),
+)
+_PLUGIN_SHUTDOWN_TIMEOUT_SECONDS = PLUGIN_SHUTDOWN_TIMEOUT_SECONDS
+_MESSAGE_QUEUE_SHUTDOWN_TIMEOUT_SECONDS = MESSAGE_QUEUE_SHUTDOWN_TIMEOUT_SECONDS
 try:
     _ready_heartbeat_seconds = int(_ready_heartbeat_seconds_raw)
 except (TypeError, ValueError):
     logger.warning(
-        "Invalid MMRELAY_READY_HEARTBEAT_SECONDS=%r; defaulting to 60",
+        "Invalid MMRELAY_READY_HEARTBEAT_SECONDS=%r; defaulting to %d",
         _ready_heartbeat_seconds_raw,
+        DEFAULT_READY_HEARTBEAT_SECONDS,
     )
-    _ready_heartbeat_seconds = 60
+    _ready_heartbeat_seconds = DEFAULT_READY_HEARTBEAT_SECONDS
 
 
 def _write_ready_file() -> None:
@@ -157,7 +177,13 @@ async def _ready_heartbeat(shutdown_event: asyncio.Event) -> None:
         return
     while not shutdown_event.is_set():
         await asyncio.to_thread(_touch_ready_file)
-        await asyncio.sleep(_ready_heartbeat_seconds)
+        try:
+            await asyncio.wait_for(
+                shutdown_event.wait(),
+                timeout=_ready_heartbeat_seconds,
+            )
+        except asyncio.TimeoutError:
+            continue
 
 
 def _remove_ready_file() -> None:
@@ -193,6 +219,53 @@ def print_banner() -> None:
         _banner_printed = True
 
 
+def _coerce_config_bool(value: Any) -> bool:
+    """
+    Normalize config values to a strict boolean.
+
+    Accepts booleans directly plus common boolean-like strings and 0/1 values.
+    Unknown values are treated as False.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"", "0", "false", "no", "off"}:
+            return False
+        logger.debug(
+            "Unrecognized boolean config value %r; treating as False",
+            value,
+        )
+        return False
+    if isinstance(value, (int, float)):
+        if value in (0, 1):
+            return bool(value)
+        logger.debug(
+            "Unexpected numeric config value %r; treating as False",
+            value,
+        )
+        return False
+    if value is not None:
+        logger.debug(
+            "Unexpected config value type %s for %r; treating as False",
+            type(value).__name__,
+            value,
+        )
+    return False
+
+
+def _requires_continuous_health_monitor(config: dict[str, Any]) -> bool:
+    """
+    Return True when check_connection() is expected to run continuously.
+
+    Delegates to meshtastic_utils.requires_continuous_health_monitor() for the
+    actual predicate logic to avoid duplication.
+    """
+    return meshtastic_utils.requires_continuous_health_monitor(config)
+
+
 async def main(config: dict[str, Any]) -> None:
     """
     Run the relay: initialize core services, connect to Meshtastic and Matrix, run the Matrix sync loop with health-monitoring and retry behavior, and perform an orderly shutdown.
@@ -218,18 +291,42 @@ async def main(config: dict[str, Any]) -> None:
     initialize_database()
 
     # Check database config for wipe_on_restart (preferred format)
-    database_config = config.get("database", {})
-    msg_map_config = database_config.get("msg_map", {})
-    wipe_on_restart = msg_map_config.get("wipe_on_restart", False)
+    database_config = config.get(CONFIG_SECTION_DATABASE)
+    msg_map_config = (
+        database_config.get(CONFIG_KEY_MSG_MAP)
+        if isinstance(database_config, dict)
+        else None
+    )
+    preferred_msg_map_config = (
+        msg_map_config if isinstance(msg_map_config, dict) else {}
+    )
+    has_preferred_wipe_on_restart = (
+        CONFIG_KEY_WIPE_ON_RESTART in preferred_msg_map_config
+    )
+    preferred_wipe_on_restart = preferred_msg_map_config.get(
+        CONFIG_KEY_WIPE_ON_RESTART, False
+    )
+    wipe_on_restart = (
+        _coerce_config_bool(preferred_wipe_on_restart)
+        if has_preferred_wipe_on_restart
+        else False
+    )
 
     # If not found in database config, check legacy db config
-    if not wipe_on_restart:
-        db_config = config.get("db", {})
-        legacy_msg_map_config = db_config.get("msg_map", {})
-        legacy_wipe_on_restart = legacy_msg_map_config.get("wipe_on_restart", False)
+    if not has_preferred_wipe_on_restart:
+        db_config = config.get(CONFIG_SECTION_DATABASE_LEGACY)
+        legacy_msg_map_config = (
+            db_config.get(CONFIG_KEY_MSG_MAP) if isinstance(db_config, dict) else None
+        )
+        if not isinstance(legacy_msg_map_config, dict):
+            legacy_msg_map_config = {}
+        legacy_wipe_on_restart_value = legacy_msg_map_config.get(
+            CONFIG_KEY_WIPE_ON_RESTART, False
+        )
+        legacy_wipe_on_restart = _coerce_config_bool(legacy_wipe_on_restart_value)
 
         if legacy_wipe_on_restart:
-            wipe_on_restart = legacy_wipe_on_restart
+            wipe_on_restart = True
             logger.warning(
                 "Using 'db.msg_map' configuration (legacy). 'database.msg_map' is now the preferred format and 'db.msg_map' will be deprecated in a future version."
             )
@@ -238,67 +335,16 @@ async def main(config: dict[str, Any]) -> None:
         logger.debug("wipe_on_restart enabled. Wiping message_map now (startup).")
         wipe_message_map()
 
-    # Load plugins early (run in executor to avoid blocking event loop with time.sleep)
-    await loop.run_in_executor(
-        None, functools.partial(load_plugins, passed_config=config)
-    )
-
-    # Start message queue with configured message delay
-    message_delay = config.get("meshtastic", {}).get(
-        "message_delay", DEFAULT_MESSAGE_DELAY
-    )
-    start_message_queue(message_delay=message_delay)
-
-    # Connect to Meshtastic
-    meshtastic_utils.meshtastic_client = await asyncio.to_thread(
-        connect_meshtastic, passed_config=config
-    )
-
-    # Connect to Matrix
-    matrix_client = await connect_matrix(passed_config=config)
-
-    # Check if Matrix connection was successful
-    if matrix_client is None:
-        # The error is logged by connect_matrix, so we can just raise here.
-        raise ConnectionError(
-            "Failed to connect to Matrix. Cannot continue without Matrix client."
-        )
-
-    # Join the rooms specified in the config.yaml
-    for room in matrix_rooms:
-        await join_matrix_room(matrix_client, room["id"])
-
-    # Register the message callback for Matrix
-    matrix_logger.info("Listening for inbound Matrix messages...")
-    matrix_client.add_event_callback(
-        cast(Any, on_room_message),
-        cast(
-            Any,
-            (RoomMessageText, RoomMessageNotice, RoomMessageEmote, ReactionEvent),
-        ),
-    )
-    # Add E2EE callbacks - MegolmEvent only goes to decryption failure handler
-    # Successfully decrypted messages will be converted to RoomMessageText etc. by matrix-nio
-    matrix_client.add_event_callback(
-        cast(Any, on_decryption_failure), cast(Any, (MegolmEvent,))
-    )
-    # Add RoomMemberEvent callback to track room-specific display name changes
-    matrix_client.add_event_callback(
-        cast(Any, on_room_member), cast(Any, (RoomMemberEvent,))
-    )
-    # Add InviteMemberEvent callback to automatically join mapped rooms on invite
-    matrix_client.add_event_callback(
-        cast(Any, on_invite), cast(Any, (InviteMemberEvent,))
-    )
-
     # Set up shutdown event
     shutdown_event = asyncio.Event()
 
-    # Signal readiness after core services and callbacks are initialized.
-    _write_ready_file()
     ready_task: asyncio.Task[None] | None = None
-    if _ready_heartbeat_seconds > 0:
-        ready_task = asyncio.create_task(_ready_heartbeat(shutdown_event))
+    check_connection_task: asyncio.Task[Any] | None = None
+    node_name_refresh_task: asyncio.Task[None] | None = None
+    matrix_client: Any | None = None
+    fatal_exception: BaseException | None = None
+    plugins_cleanup_needed = False
+    message_queue_cleanup_needed = False
 
     def _set_shutdown_flag() -> None:
         """
@@ -322,44 +368,454 @@ async def main(config: dict[str, Any]) -> None:
         """
         shutdown()
 
-    # Handle signals differently based on the platform
-    if sys.platform != WINDOWS_PLATFORM:
-        signals = [signal.SIGINT, signal.SIGTERM]
-        # Handle terminal hangups (e.g., SSH session closes) when supported.
-        if hasattr(signal, "SIGHUP"):
-            signals.append(signal.SIGHUP)
-        for sig in signals:
-            loop.add_signal_handler(sig, signal_handler)
-    else:
-        # On Windows, we can't use add_signal_handler, so we'll handle KeyboardInterrupt
-        pass
+    async def _run_blocking_shutdown_step(
+        step_func: Callable[[], None],
+        *,
+        step_name: str,
+        timeout_seconds: float,
+    ) -> None:
+        """
+        Run a potentially blocking shutdown step off the event loop with a timeout.
 
-    # Start connection health monitoring using getMetadata() heartbeat
-    # This provides proactive connection detection for all interface types
-    _ = asyncio.create_task(meshtastic_utils.check_connection())
+        The callable executes on a daemon thread so shutdown can continue even if
+        the step hangs. Exceptions are logged and swallowed so remaining cleanup
+        still runs.
+        """
+        loop = asyncio.get_running_loop()
+        step_result: asyncio.Future[BaseException | None] = loop.create_future()
 
-    # Ensure message queue processor is started now that event loop is running
-    get_message_queue().ensure_processor_started()
+        def _run_step() -> None:
+            step_error: BaseException | None = None
+            try:
+                step_func()
+            except BaseException as exc:
+                step_error = exc
+
+            def _publish_result() -> None:
+                if not step_result.done():
+                    step_result.set_result(step_error)
+
+            try:
+                loop.call_soon_threadsafe(_publish_result)
+            except RuntimeError:
+                # Event loop is closing; no further action is needed.
+                return
+
+        worker = threading.Thread(
+            target=_run_step,
+            name=f"shutdown-{step_name.replace(' ', '-')}",
+            daemon=True,
+        )
+        worker.start()
+
+        try:
+            result = await asyncio.wait_for(step_result, timeout=timeout_seconds)
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Timed out stopping %s after %.1fs; continuing shutdown",
+                step_name,
+                timeout_seconds,
+            )
+            return
+
+        if result is not None:
+            if isinstance(result, (KeyboardInterrupt, SystemExit)):
+                raise result
+            logger.error(
+                "Error while stopping %s",
+                step_name,
+                exc_info=(type(result), result, result.__traceback__),
+            )
+
+    async def _close_matrix_client_best_effort(*, context: str) -> None:
+        """
+        Close the Matrix client without aborting remaining shutdown work.
+        """
+        if matrix_client is None:
+            return
+        matrix_logger.info("Closing Matrix client...")
+        try:
+            await asyncio.wait_for(matrix_client.close(), timeout=10.0)
+        except asyncio.TimeoutError:
+            matrix_logger.error(
+                "Timed out closing Matrix client during %s; continuing shutdown",
+                context,
+            )
+        except BaseException as exc:
+            if isinstance(exc, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
+                raise
+            matrix_logger.exception("Failed to close Matrix client during %s", context)
+
+    async def _close_meshtastic_client_best_effort(*, context: str) -> None:
+        """
+        Close the Meshtastic client using BLE-aware blocking shutdown safeguards.
+        """
+        if not meshtastic_utils.meshtastic_client:
+            return
+
+        meshtastic_logger.info("Closing Meshtastic client...")
+
+        def _close_meshtastic() -> None:
+            if not meshtastic_utils.meshtastic_client:
+                return
+            if meshtastic_utils.meshtastic_client is meshtastic_utils.meshtastic_iface:
+                # BLE shutdown needs explicit disconnect to release BlueZ state.
+                meshtastic_utils._disconnect_ble_interface(
+                    meshtastic_utils.meshtastic_iface,
+                    reason=context,
+                )
+                meshtastic_utils.meshtastic_iface = None
+            else:
+                meshtastic_utils.meshtastic_client.close()
+
+        try:
+            await asyncio.to_thread(
+                meshtastic_utils._run_blocking_with_timeout,
+                _close_meshtastic,
+                timeout=10.0,
+                label=f"meshtastic-client-close-{context.replace(' ', '-')}",
+                timeout_log_level=None,
+            )
+            meshtastic_logger.info("Meshtastic client closed successfully")
+        except TimeoutError:
+            meshtastic_logger.warning(
+                "Meshtastic client close timed out during %s - may cause notification errors",
+                context,
+            )
+        except BaseException as exc:
+            if isinstance(exc, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
+                raise
+            meshtastic_logger.exception(
+                "Unexpected error during Meshtastic client close during %s",
+                context,
+            )
+        finally:
+            meshtastic_utils.meshtastic_client = None
+            meshtastic_utils.meshtastic_iface = None
+
+    try:
+        # Load plugins early (run in executor to avoid blocking event loop with time.sleep)
+        plugins_cleanup_needed = True
+        await loop.run_in_executor(
+            None, functools.partial(load_plugins, passed_config=config)
+        )
+
+        # Start message queue with configured message delay
+        meshtastic_config = config.get(CONFIG_SECTION_MESHTASTIC)
+        if not isinstance(meshtastic_config, dict):
+            meshtastic_config = {}
+        message_delay = meshtastic_config.get(
+            CONFIG_KEY_MESSAGE_DELAY,
+            DEFAULT_MESSAGE_DELAY,
+        )
+        message_queue_cleanup_needed = True
+        start_message_queue(message_delay=message_delay)
+
+        # Connect to Meshtastic
+        meshtastic_utils.meshtastic_client = await asyncio.to_thread(
+            connect_meshtastic, passed_config=config
+        )
+        if meshtastic_utils.meshtastic_client is None:
+            raise ConnectionError(
+                "Failed to connect to Meshtastic. Cannot continue without a relay client."
+            )
+
+        # Connect to Matrix
+        matrix_client = await connect_matrix(passed_config=config)
+
+        # Check if Matrix connection was successful
+        if matrix_client is None:
+            # The error is logged by connect_matrix, so we can just raise here.
+            raise ConnectionError(
+                "Failed to connect to Matrix. Cannot continue without Matrix client."
+            )
+
+        # Join the rooms specified in the config.yaml
+        for room in matrix_rooms:
+            await join_matrix_room(matrix_client, room["id"])
+
+        # Register the message callback for Matrix
+        matrix_logger.info("Listening for inbound Matrix messages...")
+        matrix_client.add_event_callback(
+            cast(Any, on_room_message),
+            cast(
+                Any,
+                (RoomMessageText, RoomMessageNotice, RoomMessageEmote, ReactionEvent),
+            ),
+        )
+        # Add E2EE callbacks - MegolmEvent only goes to decryption failure handler
+        # Successfully decrypted messages will be converted to RoomMessageText etc. by matrix-nio
+        matrix_client.add_event_callback(
+            cast(Any, on_decryption_failure), cast(Any, (MegolmEvent,))
+        )
+        # Add RoomMemberEvent callback to track room-specific display name changes
+        matrix_client.add_event_callback(
+            cast(Any, on_room_member), cast(Any, (RoomMemberEvent,))
+        )
+        # Add InviteMemberEvent callback to automatically join mapped rooms on invite
+        matrix_client.add_event_callback(
+            cast(Any, on_invite), cast(Any, (InviteMemberEvent,))
+        )
+
+        # Handle signals differently based on the platform
+        if sys.platform != WINDOWS_PLATFORM:
+            signals = [signal.SIGINT, signal.SIGTERM]
+            # Handle terminal hangups (e.g., SSH session closes) when supported.
+            if hasattr(signal, "SIGHUP"):
+                signals.append(signal.SIGHUP)
+            for sig in signals:
+                loop.add_signal_handler(sig, signal_handler)
+        else:
+            # On Windows, we can't use add_signal_handler, so we'll handle KeyboardInterrupt
+            pass
+
+        # Start connection health monitoring using getMetadata() heartbeat
+        # This provides proactive connection detection for all interface types
+        check_connection_callable = meshtastic_utils.check_connection
+        check_connection_task = asyncio.create_task(check_connection_callable())
+
+        def _on_check_connection_done(task: asyncio.Task[Any]) -> None:
+            nonlocal fatal_exception
+            if task.cancelled():
+                return
+            if shutdown_event.is_set():
+                return
+            exc = task.exception()
+            if exc is not None:
+                fatal_exception = exc
+                meshtastic_logger.error(
+                    "Connection health task exited unexpectedly",
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                )
+                _set_shutdown_flag()
+                # Mark exception as consumed to prevent double-logging in _await_background_task_shutdown
+                task._exception_consumed = True  # type: ignore[attr-defined]
+                return
+
+            if (
+                check_connection_callable is _DEFAULT_CHECK_CONNECTION_CALLABLE
+                and _requires_continuous_health_monitor(config)
+            ):
+                fatal_exception = RuntimeError(
+                    "Connection health task exited unexpectedly without an exception"
+                )
+                meshtastic_logger.error(
+                    "Connection health task exited unexpectedly without an exception"
+                )
+                _set_shutdown_flag()
+
+        check_connection_task.add_done_callback(_on_check_connection_done)
+        # Give the health-check task one scheduling opportunity before readiness logic.
+        # This only guards against immediate startup failures in check_connection().
+        await asyncio.sleep(0)
+    except BaseException:
+        _set_shutdown_flag()
+        if check_connection_task is not None:
+            check_connection_task.cancel()
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(check_connection_task, return_exceptions=True),
+                    timeout=5.0,
+                )
+            except asyncio.TimeoutError:
+                meshtastic_logger.warning(
+                    "Timed out waiting for connection health task during startup rollback"
+                )
+        _remove_ready_file()
+        if plugins_cleanup_needed:
+            await _run_blocking_shutdown_step(
+                shutdown_plugins,
+                step_name="plugins",
+                timeout_seconds=_PLUGIN_SHUTDOWN_TIMEOUT_SECONDS,
+            )
+        if message_queue_cleanup_needed:
+            await _run_blocking_shutdown_step(
+                stop_message_queue,
+                step_name="message queue",
+                timeout_seconds=_MESSAGE_QUEUE_SHUTDOWN_TIMEOUT_SECONDS,
+            )
+        await _close_matrix_client_best_effort(context="startup rollback")
+        await _close_meshtastic_client_best_effort(context="startup rollback")
+        await asyncio.to_thread(meshtastic_utils.shutdown_shared_executors)
+        raise
+
+    async def _node_name_refresh_supervisor(refresh_interval_seconds: float) -> None:
+        """
+        Run and supervise periodic NodeDB-derived name-cache refresh work.
+
+        Current scope is refreshing long/short name tables from `client.nodes`.
+        The interval setting is future-oriented and may be reused for broader
+        NodeDB persistence in later releases.
+        """
+        restart_attempt = 0
+        backoff_seconds = 1.0
+        max_backoff_seconds = 30.0
+        first_pass = True
+
+        while first_pass or not shutdown_event.is_set():
+            first_pass = False
+            refresh_task = asyncio.create_task(
+                meshtastic_utils.refresh_node_name_tables(
+                    shutdown_event,
+                    refresh_interval_seconds=refresh_interval_seconds,
+                )
+            )
+            [refresh_result] = await asyncio.gather(
+                refresh_task,
+                return_exceptions=True,
+            )
+
+            if isinstance(refresh_result, asyncio.CancelledError):
+                return
+
+            if isinstance(refresh_result, Exception):
+                if shutdown_event.is_set():
+                    return
+                if refresh_interval_seconds <= 0:
+                    meshtastic_logger.error(
+                        "NodeDB name-cache refresh task failed in one-shot mode (refresh_interval_seconds=%.1f); exiting",
+                        refresh_interval_seconds,
+                        exc_info=(
+                            type(refresh_result),
+                            refresh_result,
+                            refresh_result.__traceback__,
+                        ),
+                    )
+                    return
+                restart_attempt += 1
+                meshtastic_logger.error(
+                    "NodeDB name-cache refresh task failed (attempt %d); restarting in %.1fs",
+                    restart_attempt,
+                    backoff_seconds,
+                    exc_info=(
+                        type(refresh_result),
+                        refresh_result,
+                        refresh_result.__traceback__,
+                    ),
+                )
+            else:
+                if shutdown_event.is_set() or refresh_interval_seconds <= 0:
+                    return
+                restart_attempt = 0
+                backoff_seconds = 1.0
+                meshtastic_logger.warning(
+                    "NodeDB name-cache refresh task exited unexpectedly; restarting in %.1fs",
+                    backoff_seconds,
+                )
+
+            try:
+                await asyncio.wait_for(shutdown_event.wait(), timeout=backoff_seconds)
+                return
+            except asyncio.TimeoutError:
+                backoff_seconds = min(backoff_seconds * 2.0, max_backoff_seconds)
+
+    async def _await_background_task_shutdown(
+        task: asyncio.Task[Any] | None,
+        *,
+        task_name: str,
+        timeout_seconds: float,
+    ) -> None:
+        """
+        Let a background task exit after shutdown is signaled, then cancel as fallback.
+        """
+        if task is None:
+            return
+
+        wait_error: BaseException | None = None
+        if not task.done():
+            try:
+                await asyncio.wait_for(asyncio.shield(task), timeout=timeout_seconds)
+            except asyncio.TimeoutError:
+                task.cancel()
+            except asyncio.CancelledError:
+                task.cancel()
+                return
+            except BaseException as exc:
+                if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                    raise
+                wait_error = exc
+                logger.error(
+                    "Error while waiting for %s to finish during shutdown",
+                    task_name,
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                )
+
+        if not task.done():
+            task.cancel()
+            try:
+                cleanup_results = await asyncio.wait_for(
+                    asyncio.gather(task, return_exceptions=True),
+                    timeout=1.0,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "Timed out cancelling %s; continuing shutdown",
+                    task_name,
+                )
+                return
+            except asyncio.CancelledError:
+                return
+
+            result = cleanup_results[0]
+            if (
+                isinstance(result, Exception)
+                and not isinstance(result, asyncio.CancelledError)
+                and result is not wait_error
+            ):
+                logger.error(
+                    "Error during %s cleanup",
+                    task_name,
+                    exc_info=(type(result), result, result.__traceback__),
+                )
+            return
+
+        cleanup_results = await asyncio.gather(task, return_exceptions=True)
+        done_result: object = cleanup_results[0]
+        if getattr(task, "_exception_consumed", False):
+            return
+        if (
+            isinstance(done_result, Exception)
+            and not isinstance(
+                done_result,
+                asyncio.CancelledError,
+            )
+            and done_result is not wait_error
+        ):
+            logger.error(
+                "Error during %s cleanup",
+                task_name,
+                exc_info=(type(done_result), done_result, done_result.__traceback__),
+            )
 
     # Start the Matrix client sync loop
     try:
-        while not shutdown_event.is_set():
-            try:
-                if meshtastic_utils.meshtastic_client:
-                    nodes_snapshot = dict(meshtastic_utils.meshtastic_client.nodes)
-                    await loop.run_in_executor(
-                        None,
-                        update_longnames,
-                        nodes_snapshot,
-                    )
-                    await loop.run_in_executor(
-                        None,
-                        update_shortnames,
-                        nodes_snapshot,
-                    )
-                else:
-                    meshtastic_logger.warning("Meshtastic client is not connected.")
+        nodedb_refresh_interval_seconds = (
+            meshtastic_utils.get_nodedb_refresh_interval_seconds(config)
+        )
+        if shutdown_event.is_set():
+            matrix_logger.warning(
+                "Skipping readiness publication because shutdown was requested during startup"
+            )
+        else:
+            node_name_refresh_task = asyncio.create_task(
+                _node_name_refresh_supervisor(
+                    nodedb_refresh_interval_seconds,
+                )
+            )
 
+            # Ensure message queue processor is started now that event loop is running.
+            get_message_queue().ensure_processor_started()
+
+            # Publish readiness only after startup wiring in this section is complete.
+            _write_ready_file()
+
+            # Start heartbeat AFTER readiness is confirmed
+            if _ready_heartbeat_seconds > 0:
+                ready_task = asyncio.create_task(_ready_heartbeat(shutdown_event))
+        while not shutdown_event.is_set():
+            sync_task: asyncio.Task[Any] | None = None
+            shutdown_task: asyncio.Task[Any] | None = None
+            try:
                 matrix_logger.info("Starting Matrix sync loop...")
                 sync_filter = getattr(matrix_client, "mmrelay_sync_filter", None)
                 first_sync_filter = getattr(
@@ -382,12 +838,14 @@ async def main(config: dict[str, Any]) -> None:
                 )
 
                 # Cancel any pending tasks
-                for task in pending:
-                    task.cancel()
-                    try:
-                        await task
-                    except asyncio.CancelledError:
-                        pass
+                for pending_task in pending:
+                    if pending_task is shutdown_task:
+                        pending_task.cancel()
+                    await _await_background_task_shutdown(
+                        pending_task,
+                        task_name="matrix sync pending task",
+                        timeout_seconds=0.0 if pending_task is shutdown_task else 5.0,
+                    )
 
                 if shutdown_event.is_set():
                     matrix_logger.info("Shutdown event detected. Stopping sync loop...")
@@ -402,89 +860,94 @@ async def main(config: dict[str, Any]) -> None:
                         matrix_logger.warning(
                             "Matrix sync_forever completed unexpectedly"
                         )
-                    except (
-                        Exception
-                    ) as exc:  # noqa: BLE001 — sync loop must keep retrying
-                        if isinstance(exc, (asyncio.TimeoutError, ClientError)):
-                            matrix_logger.warning(
-                                "Matrix sync timed out, retrying: %s", exc
-                            )
-                        else:
-                            matrix_logger.exception("Matrix sync failed")
-                        # The outer try/catch will handle the retry logic
+                        try:
+                            await asyncio.wait_for(shutdown_event.wait(), timeout=5.0)
+                        except asyncio.TimeoutError:
+                            pass
+                    except asyncio.TimeoutError as exc:
+                        matrix_logger.warning(
+                            "Matrix sync timed out, retrying: %s", exc
+                        )
+                        sync_task._exception_consumed = True  # type: ignore[attr-defined]
+                        try:
+                            await asyncio.wait_for(shutdown_event.wait(), timeout=5.0)
+                        except asyncio.TimeoutError:
+                            pass
+                    except ClientError as exc:
+                        matrix_logger.warning("Matrix sync failed, retrying: %s", exc)
+                        sync_task._exception_consumed = True  # type: ignore[attr-defined]
+                        try:
+                            await asyncio.wait_for(shutdown_event.wait(), timeout=5.0)
+                        except asyncio.TimeoutError:
+                            pass
+                    except (ConnectionError, OSError, RuntimeError, ValueError):
+                        matrix_logger.exception("Matrix sync failed")
+                        sync_task._exception_consumed = True  # type: ignore[attr-defined]
+                        try:
+                            await asyncio.wait_for(shutdown_event.wait(), timeout=5.0)
+                        except asyncio.TimeoutError:
+                            pass
 
-            except Exception:  # noqa: BLE001 — keep loop alive for retries
+            except (ClientError, ConnectionError, OSError, RuntimeError, ValueError):
                 if shutdown_event.is_set():
                     break
                 matrix_logger.exception("Error syncing with Matrix server")
-                await asyncio.sleep(5)  # Wait briefly before retrying
+                try:
+                    await asyncio.wait_for(shutdown_event.wait(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    pass
+            finally:
+                tasks_to_cleanup: list[asyncio.Task[Any]] = []
+                for cleanup_task in (sync_task, shutdown_task):
+                    if cleanup_task is None:
+                        continue
+                    if not cleanup_task.done():
+                        cleanup_task.cancel()
+                    tasks_to_cleanup.append(cleanup_task)
+
+                if tasks_to_cleanup:
+                    for cleanup_task in tasks_to_cleanup:
+                        await _await_background_task_shutdown(
+                            cleanup_task,
+                            task_name="matrix sync cleanup task",
+                            timeout_seconds=5.0,
+                        )
     except KeyboardInterrupt:
         shutdown()
     finally:
-        if ready_task is not None:
-            ready_task.cancel()
-            try:
-                await ready_task
-            except asyncio.CancelledError:
-                pass
+        _set_shutdown_flag()
+        await _await_background_task_shutdown(
+            ready_task,
+            task_name="ready heartbeat task",
+            timeout_seconds=5.0,
+        )
         _remove_ready_file()
+        await _await_background_task_shutdown(
+            node_name_refresh_task,
+            task_name="NodeDB name-cache refresh task",
+            timeout_seconds=10.0,
+        )
+        await _await_background_task_shutdown(
+            check_connection_task,
+            task_name="connection health task",
+            timeout_seconds=5.0,
+        )
         # Cleanup
         matrix_logger.info("Stopping plugins...")
-        await loop.run_in_executor(None, shutdown_plugins)
+        await _run_blocking_shutdown_step(
+            shutdown_plugins,
+            step_name="plugins",
+            timeout_seconds=_PLUGIN_SHUTDOWN_TIMEOUT_SECONDS,
+        )
         matrix_logger.info("Stopping message queue...")
-        await loop.run_in_executor(None, stop_message_queue)
-
-        matrix_logger.info("Closing Matrix client...")
-        await matrix_client.close()
-        if meshtastic_utils.meshtastic_client:
-            meshtastic_logger.info("Closing Meshtastic client...")
-            try:
-                # Timeout wrapper to prevent infinite hanging during shutdown
-                # The meshtastic library can sometimes hang indefinitely during close()
-                # operations, especially with BLE connections. This timeout ensures
-                # the application can shut down gracefully within 10 seconds.
-
-                def _close_meshtastic() -> None:
-                    """
-                    Close and clean up the active Meshtastic client connection.
-
-                    If a BLE interface is the active client, perform an explicit BLE disconnect to release the adapter.
-                    Clears meshtastic_utils.meshtastic_client (and meshtastic_utils.meshtastic_iface when applicable).
-                    Does nothing if no client is present.
-                    """
-                    if meshtastic_utils.meshtastic_client:
-                        if (
-                            meshtastic_utils.meshtastic_client
-                            is meshtastic_utils.meshtastic_iface
-                        ):
-                            # BLE shutdown needs an explicit disconnect to release
-                            # the adapter; a plain close() can leave BlueZ stuck.
-                            meshtastic_utils._disconnect_ble_interface(
-                                meshtastic_utils.meshtastic_iface,
-                                reason="shutdown",
-                            )
-                            meshtastic_utils.meshtastic_iface = None
-                        else:
-                            meshtastic_utils.meshtastic_client.close()
-                        meshtastic_utils.meshtastic_client = None
-
-                # Run close on a daemon worker so a hung library close call
-                # cannot block interpreter shutdown.
-                meshtastic_utils._run_blocking_with_timeout(
-                    _close_meshtastic,
-                    timeout=10.0,
-                    label="meshtastic-client-close-shutdown",
-                    timeout_log_level=None,
-                )
-                meshtastic_logger.info("Meshtastic client closed successfully")
-            except TimeoutError:
-                meshtastic_logger.warning(
-                    "Meshtastic client close timed out - may cause notification errors"
-                )
-            except Exception:  # noqa: BLE001 - shutdown must keep going
-                meshtastic_logger.exception(
-                    "Unexpected error during Meshtastic client close"
-                )
+        await _run_blocking_shutdown_step(
+            stop_message_queue,
+            step_name="message queue",
+            timeout_seconds=_MESSAGE_QUEUE_SHUTDOWN_TIMEOUT_SECONDS,
+        )
+        await _close_matrix_client_best_effort(context="shutdown")
+        await _close_meshtastic_client_best_effort(context="shutdown")
+        await asyncio.to_thread(meshtastic_utils.shutdown_shared_executors)
 
         # Attempt to wipe message_map on shutdown if enabled
         if wipe_on_restart:
@@ -496,21 +959,9 @@ async def main(config: dict[str, Any]) -> None:
             meshtastic_utils.reconnect_task.cancel()
             meshtastic_logger.info("Cancelled Meshtastic reconnect task.")
 
-        # Cancel any remaining tasks (including the check_conn_task)
-        current_task = asyncio.current_task()
-        pending_tasks = [
-            task
-            for task in asyncio.all_tasks(loop)
-            if task is not current_task and not task.done()
-        ]
-
-        for task in pending_tasks:
-            task.cancel()
-
-        if pending_tasks:
-            await asyncio.gather(*pending_tasks, return_exceptions=True)
-
         matrix_logger.info("Shutdown complete.")
+        if fatal_exception is not None and sys.exc_info()[1] is None:
+            raise fatal_exception
 
 
 def run_main(args: Any) -> int:

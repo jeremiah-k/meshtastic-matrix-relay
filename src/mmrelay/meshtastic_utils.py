@@ -28,10 +28,13 @@ from pubsub import pub
 from mmrelay.config import get_meshtastic_config_value
 from mmrelay.constants.config import (
     CONFIG_KEY_MESHNET_NAME,
+    CONFIG_KEY_NODEDB_REFRESH_INTERVAL,
     CONFIG_SECTION_MESHTASTIC,
     DEFAULT_DETECTION_SENSOR,
     DEFAULT_HEALTH_CHECK_ENABLED,
+    DEFAULT_NODEDB_REFRESH_INTERVAL,
 )
+from mmrelay.constants.database import PROTO_NODE_NAME_LONG, PROTO_NODE_NAME_SHORT
 from mmrelay.constants.formats import (
     DETECTION_SENSOR_APP,
     EMOJI_FLAG_VALUE,
@@ -63,17 +66,20 @@ from mmrelay.constants.network import (
     DEFAULT_MESHTASTIC_TIMEOUT,
     DEFAULT_TCP_PORT,
     ERRNO_BAD_FILE_DESCRIPTOR,
+    EXECUTOR_ORPHAN_THRESHOLD,
     INFINITE_RETRIES,
     INITIAL_HEALTH_CHECK_DELAY,
     MAX_TIMEOUT_RETRIES_INFINITE,
     METADATA_WATCHDOG_SECS,
 )
 from mmrelay.db_utils import (
+    NodeNameState,
     get_longname,
     get_message_map_by_meshtastic_id,
     get_shortname,
     save_longname,
     save_shortname,
+    sync_name_tables_if_changed,
 )
 from mmrelay.log_utils import get_logger
 from mmrelay.runtime_utils import is_running_as_service
@@ -90,6 +96,12 @@ try:
 except ImportError:
     BleakDBusError = Exception  # type: ignore[misc,assignment]
     BleakError = Exception  # type: ignore[misc,assignment]
+
+
+class BleExecutorDegradedError(Exception):
+    """Raised when a BLE address has too many orphaned workers and needs manual recovery."""
+
+    pass
 
 
 # Global config variable that will be set from config.py
@@ -134,6 +146,7 @@ _metadata_executor: ThreadPoolExecutor | None = ThreadPoolExecutor(max_workers=1
 _metadata_future: Future[Any] | None = None
 _metadata_future_started_at: float | None = None
 _metadata_future_lock = threading.Lock()
+_metadata_executor_orphaned_workers = 0
 _health_probe_request_deadlines: dict[int, float] = {}
 _health_probe_request_lock = threading.Lock()
 _HEALTH_PROBE_TRACK_GRACE_SECS = 60.0
@@ -144,11 +157,61 @@ _ble_executor: ThreadPoolExecutor | None = ThreadPoolExecutor(max_workers=1)
 _ble_executor_lock = threading.Lock()
 _ble_future: Future[Any] | None = None
 _ble_future_address: str | None = None
+_ble_future_started_at: float | None = None
+_ble_future_timeout_secs: float | None = None
 _ble_timeout_counts: dict[str, int] = {}
+_ble_executor_orphaned_workers_by_address: dict[str, int] = {}
 _ble_timeout_lock = threading.Lock()
 _ble_future_watchdog_secs = BLE_FUTURE_WATCHDOG_SECS
 _ble_timeout_reset_threshold = BLE_TIMEOUT_RESET_THRESHOLD
 _ble_scan_timeout_secs = BLE_SCAN_TIMEOUT_SECS
+BLE_FUTURE_STALE_GRACE_SECS = 2.0
+BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS = 90.0
+_ble_future_stale_grace_secs = BLE_FUTURE_STALE_GRACE_SECS
+_ble_interface_create_timeout_secs = BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS
+
+_ble_executor_degraded_addresses: set[str] = set()
+_metadata_executor_degraded: bool = False
+
+
+class MetadataExecutorDegradedError(RuntimeError):
+    """
+    Raised when the metadata executor is in degraded state.
+
+    This exception indicates that too many orphaned workers have accumulated
+    and the executor requires a reconnect or restart to restore normal operation.
+    Callers should trigger recovery logic (reconnection) when this is raised.
+    """
+
+
+def _coerce_nonnegative_float(value: Any, default: float) -> float:
+    """
+    Coerce runtime BLE tuning values to a finite non-negative float.
+    """
+    try:
+        if isinstance(value, bool):
+            raise TypeError
+        parsed = float(value)
+        if not math.isfinite(parsed) or parsed < 0:
+            raise ValueError
+        return parsed
+    except (TypeError, ValueError, OverflowError):
+        return default
+
+
+def _coerce_positive_int(value: Any, default: int) -> int:
+    """
+    Coerce runtime BLE tuning values to a positive integer.
+    """
+    try:
+        if isinstance(value, bool):
+            raise TypeError
+        parsed = int(value)
+        if parsed <= 0:
+            raise ValueError
+        return parsed
+    except (TypeError, ValueError, OverflowError):
+        return default
 
 
 def _normalize_room_channel(room: dict[str, Any]) -> int | None:
@@ -193,46 +256,181 @@ def _shutdown_shared_executors() -> None:
     cleanup without waiting to avoid blocking the interpreter exit sequence.
     """
     global _ble_executor, _ble_future, _ble_future_address
+    global _ble_future_started_at, _ble_future_timeout_secs
     global _metadata_executor, _metadata_future, _metadata_future_started_at
+    global _health_probe_request_deadlines
+    global _metadata_executor_orphaned_workers, _ble_executor_orphaned_workers_by_address
+    global _ble_executor_degraded_addresses, _metadata_executor_degraded
 
     # Cancel any pending BLE operation
+    # Capture future ref inside lock, cancel outside to avoid deadlock with done callbacks
+    ble_future_to_cancel = None
     with _ble_executor_lock:
-        stale_address = _ble_future_address
         if _ble_future and not _ble_future.done():
             logger.debug("Cancelling pending BLE future during executor shutdown")
-            _ble_future.cancel()
+            ble_future_to_cancel = _ble_future
         _ble_future = None
         _ble_future_address = None
-        if stale_address:
-            with _ble_timeout_lock:
-                _ble_timeout_counts.pop(stale_address, None)
+        _ble_future_started_at = None
+        _ble_future_timeout_secs = None
+        with _ble_timeout_lock:
+            _ble_timeout_counts.clear()
+            _ble_executor_orphaned_workers_by_address.clear()
+        _ble_executor_degraded_addresses.clear()
 
         executor = _ble_executor
         _ble_executor = None
-        if executor is not None and not getattr(executor, "_shutdown", False):
-            try:
-                executor.shutdown(wait=False, cancel_futures=True)
-            except TypeError:
-                executor.shutdown(wait=False)
+    if ble_future_to_cancel is not None:
+        ble_future_to_cancel.cancel()
+    if executor is not None and not getattr(executor, "_shutdown", False):
+        try:
+            executor.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            executor.shutdown(wait=False)
 
     # Cancel any pending metadata operation
+    # Capture future ref inside lock, cancel outside to avoid deadlock with done callbacks
+    metadata_future_to_cancel = None
     with _metadata_future_lock:
         if _metadata_future and not _metadata_future.done():
             logger.debug("Cancelling pending metadata future during executor shutdown")
-            _metadata_future.cancel()
+            metadata_future_to_cancel = _metadata_future
         _metadata_future = None
         _metadata_future_started_at = None
+        _metadata_executor_orphaned_workers = 0
+        _metadata_executor_degraded = False
 
         executor = _metadata_executor
         _metadata_executor = None
-        if executor is not None and not getattr(executor, "_shutdown", False):
+    with _health_probe_request_lock:
+        _health_probe_request_deadlines.clear()
+    if metadata_future_to_cancel is not None:
+        metadata_future_to_cancel.cancel()
+    if executor is not None and not getattr(executor, "_shutdown", False):
+        try:
+            executor.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            executor.shutdown(wait=False)
+
+
+def shutdown_shared_executors() -> None:
+    """
+    Public wrapper for shutting down shared Meshtastic executors.
+
+    This is primarily intended for test teardown and explicit cleanup paths.
+    """
+    _shutdown_shared_executors()
+
+
+def reset_executor_degraded_state(
+    ble_address: str | None = None, *, reset_all: bool = False
+) -> bool:
+    """
+    Reset degraded state for executors, allowing recovery after reconnect.
+
+    When executors reach the orphan threshold, they enter a degraded state
+    and refuse new work submissions. This function clears that state so normal
+    operation can resume after a successful reconnect or manual intervention.
+
+    Note:
+        When ble_address is provided (and reset_all is False), this function
+        resets both the BLE executor degraded state AND the metadata executor
+        degraded state. This connection-scoped behavior reflects that a successful
+        BLE reconnect typically also restores the metadata probe path.
+
+    Parameters:
+        ble_address (str | None): Specific BLE address to reset. If None and
+            reset_all is False, only metadata executor is reset.
+        reset_all (bool): If True, reset all degraded state including all
+            BLE addresses and metadata executor.
+
+    Returns:
+        bool: True if any degraded state was reset, False otherwise.
+    """
+    global _ble_executor_degraded_addresses, _metadata_executor_degraded
+    global _metadata_executor_orphaned_workers, _ble_executor_orphaned_workers_by_address
+    global _ble_executor, _metadata_executor
+
+    reset_any = False
+
+    if reset_all:
+        stale_ble_executor = None
+        with _ble_executor_lock:
+            if _ble_executor_degraded_addresses:
+                logger.info(
+                    "Resetting degraded state for all BLE executors: %s",
+                    ", ".join(sorted(_ble_executor_degraded_addresses)),
+                )
+                _ble_executor_degraded_addresses.clear()
+                with _ble_timeout_lock:
+                    _ble_executor_orphaned_workers_by_address.clear()
+                if _ble_executor is not None:
+                    stale_ble_executor = _ble_executor
+                    _ble_executor = None
+                reset_any = True
+        if stale_ble_executor is not None:
             try:
-                executor.shutdown(wait=False, cancel_futures=True)
+                stale_ble_executor.shutdown(wait=False, cancel_futures=True)
             except TypeError:
-                executor.shutdown(wait=False)
+                stale_ble_executor.shutdown(wait=False)
+        stale_metadata_executor = None
+        with _metadata_future_lock:
+            if _metadata_executor_degraded:
+                logger.info("Resetting degraded state for metadata executor")
+                _metadata_executor_degraded = False
+                _metadata_executor_orphaned_workers = 0
+                if _metadata_executor is not None:
+                    stale_metadata_executor = _metadata_executor
+                    _metadata_executor = None
+                reset_any = True
+        if stale_metadata_executor is not None:
+            try:
+                stale_metadata_executor.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                stale_metadata_executor.shutdown(wait=False)
+        return reset_any
+
+    if ble_address is not None:
+        stale_ble_executor = None
+        with _ble_executor_lock:
+            if ble_address in _ble_executor_degraded_addresses:
+                logger.info(
+                    "Resetting degraded state for BLE executor: %s",
+                    ble_address,
+                )
+                _ble_executor_degraded_addresses.discard(ble_address)
+                with _ble_timeout_lock:
+                    _ble_executor_orphaned_workers_by_address.pop(ble_address, None)
+                if _ble_executor is not None:
+                    stale_ble_executor = _ble_executor
+                    _ble_executor = None
+                reset_any = True
+        if stale_ble_executor is not None:
+            try:
+                stale_ble_executor.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                stale_ble_executor.shutdown(wait=False)
+
+    stale_metadata_executor = None
+    with _metadata_future_lock:
+        if _metadata_executor_degraded:
+            logger.info("Resetting degraded state for metadata executor")
+            _metadata_executor_degraded = False
+            _metadata_executor_orphaned_workers = 0
+            if _metadata_executor is not None:
+                stale_metadata_executor = _metadata_executor
+                _metadata_executor = None
+            reset_any = True
+    if stale_metadata_executor is not None:
+        try:
+            stale_metadata_executor.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            stale_metadata_executor.shutdown(wait=False)
+
+    return reset_any
 
 
-atexit.register(_shutdown_shared_executors)
+atexit.register(shutdown_shared_executors)
 
 
 def _get_ble_executor() -> ThreadPoolExecutor:
@@ -285,22 +483,81 @@ def _reset_metadata_executor_for_stale_probe() -> None:
     Replace the shared metadata executor after stale probe detection.
 
     A wedged single-worker executor can block all later probe submissions.
-    This function abandons the old executor and creates a fresh one so probe
-    retries are not queued behind a stuck worker.
+    This function abandons the old executor and usually creates a fresh one so
+    probe retries are not queued behind a stuck worker.
+
+    When the number of orphaned workers reaches EXECUTOR_ORPHAN_THRESHOLD,
+    the executor enters a degraded state: submission of new probes is refused
+    and further automatic recovery is disabled. Recovery requires an explicit
+    reconnect or process restart.
     """
     global _metadata_executor, _metadata_future, _metadata_future_started_at
+    global _metadata_executor_orphaned_workers, _metadata_executor_degraded
+
+    if _metadata_executor_degraded:
+        logger.debug(
+            "Metadata executor is in degraded state; refusing to reset. "
+            "Reconnect or restart required to recover."
+        )
+        return
+
+    stale_executor: ThreadPoolExecutor | None = None
+    orphaned_workers: int | None = None
+    degraded_now = False
 
     with _metadata_future_lock:
-        old_executor = _metadata_executor
-        _metadata_future = None
-        _metadata_future_started_at = None
-        _metadata_executor = ThreadPoolExecutor(max_workers=1)
+        projected_orphans = _metadata_executor_orphaned_workers + 1
+        if projected_orphans >= EXECUTOR_ORPHAN_THRESHOLD:
+            _metadata_executor_degraded = True
+            _metadata_executor_orphaned_workers = projected_orphans
+            logger.error(
+                "METADATA EXECUTOR DEGRADED: %s workers have been orphaned due to "
+                "repeated hangs. Further automatic recovery is disabled. "
+                "Reconnect or restart the relay to restore metadata probing.",
+                projected_orphans,
+            )
+            _metadata_future = None
+            _metadata_future_started_at = None
+            stale_executor = _metadata_executor
+            # Keep degraded mode fail-fast: stop automatic executor recreation.
+            _metadata_executor = None
+            degraded_now = True
 
-    if old_executor is not None and not getattr(old_executor, "_shutdown", False):
+        if not degraded_now:
+            stale_executor = _metadata_executor
+            _metadata_future = None
+            _metadata_future_started_at = None
+            _metadata_executor = ThreadPoolExecutor(max_workers=1)
+            if stale_executor is not None and not getattr(
+                stale_executor, "_shutdown", False
+            ):
+                _metadata_executor_orphaned_workers = projected_orphans
+                orphaned_workers = _metadata_executor_orphaned_workers
+
+    if (
+        not degraded_now
+        and stale_executor is not None
+        and not getattr(stale_executor, "_shutdown", False)
+    ):
+        logger.warning(
+            "Replacing stale metadata executor after probe timeout; "
+            "orphaned metadata workers=%s (threshold=%s)",
+            orphaned_workers,
+            EXECUTOR_ORPHAN_THRESHOLD,
+        )
         try:
-            old_executor.shutdown(wait=False, cancel_futures=True)
+            stale_executor.shutdown(wait=False, cancel_futures=True)
         except TypeError:
-            old_executor.shutdown(wait=False)
+            stale_executor.shutdown(wait=False)
+    elif (
+        degraded_now
+        and stale_executor is not None
+        and not getattr(stale_executor, "_shutdown", False)
+    ):
+        try:
+            stale_executor.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            stale_executor.shutdown(wait=False)
 
 
 def _schedule_metadata_future_cleanup(
@@ -369,12 +626,37 @@ def _submit_metadata_probe(probe: Callable[[], Any]) -> Future[Any] | None:
         )
         _reset_metadata_executor_for_stale_probe()
 
+    submission_error: RuntimeError | None = None
     with _metadata_future_lock:
+        if _metadata_executor_degraded:
+            logger.error(
+                "Metadata executor degraded: too many orphaned workers. "
+                "Reconnect or restart required to restore metadata probing."
+            )
+            raise MetadataExecutorDegradedError(
+                "Metadata executor is degraded; reconnect or restart required"
+            )
         if _metadata_future is not None and not _metadata_future.done():
             return None
-        future = _get_metadata_executor().submit(probe)
-        _metadata_future = future
-        _metadata_future_started_at = time.monotonic()
+        try:
+            future = _get_metadata_executor().submit(probe)
+        except RuntimeError as exc:
+            submission_error = exc
+            future = None
+        if future is not None:
+            _metadata_future = future
+            _metadata_future_started_at = time.monotonic()
+
+    if submission_error is not None:
+        logger.debug(
+            "Metadata probe submission failed; resetting metadata executor",
+            exc_info=submission_error,
+        )
+        _reset_metadata_executor_for_stale_probe()
+        raise submission_error
+
+    if future is None:
+        return None
 
     future.add_done_callback(_clear_metadata_future_if_current)
     _schedule_metadata_future_cleanup(future, reason="metadata-probe")
@@ -414,10 +696,12 @@ def _coerce_positive_float(value: Any, default: float, setting_name: str) -> flo
     value is not a finite positive number.
     """
     try:
+        if isinstance(value, bool):
+            raise TypeError
         parsed = float(value)
         if math.isfinite(parsed) and parsed > 0:
             return parsed
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         pass
 
     logger.warning(
@@ -459,6 +743,177 @@ def _coerce_bool(value: Any, default: bool, setting_name: str) -> bool:
         default,
     )
     return default
+
+
+def _parse_refresh_interval_seconds(raw_interval: Any) -> float | None:
+    """
+    Parse and validate a refresh interval value.
+
+    Returns the parsed float if valid, or None if invalid (wrong type, non-finite, etc.).
+    """
+    try:
+        if isinstance(raw_interval, bool):
+            raise TypeError("boolean interval")
+        interval = float(raw_interval)
+        if not math.isfinite(interval):
+            raise ValueError("non-finite interval")
+        if interval < 0:
+            raise ValueError("negative interval")
+        return interval
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def get_nodedb_refresh_interval_seconds(
+    passed_config: dict[str, Any] | None = None,
+) -> float:
+    """
+    Return the configured nodedb refresh interval (seconds).
+
+    Reads `meshtastic.nodedb_refresh_interval` and falls back to
+    `DEFAULT_NODEDB_REFRESH_INTERVAL` when missing or invalid.
+
+    Current scope: this interval controls periodic refresh of cached long/short
+    node-name tables derived from the Meshtastic NodeDB. The key name is
+    future-oriented because later releases may expand persistence beyond names.
+
+    Parameters:
+        passed_config (dict[str, Any] | None): Optional config to read from.
+            When omitted, uses this module's global `config`.
+    """
+    config_source = passed_config if passed_config is not None else config
+    if not isinstance(config_source, dict):
+        config_source = {}
+    raw_interval = get_meshtastic_config_value(
+        config_source,
+        CONFIG_KEY_NODEDB_REFRESH_INTERVAL,
+        DEFAULT_NODEDB_REFRESH_INTERVAL,
+    )
+    interval = _parse_refresh_interval_seconds(raw_interval)
+    if interval is not None:
+        return interval
+
+    logger.warning(
+        "Invalid meshtastic.nodedb_refresh_interval=%r; defaulting to %.1f",
+        raw_interval,
+        DEFAULT_NODEDB_REFRESH_INTERVAL,
+    )
+    return DEFAULT_NODEDB_REFRESH_INTERVAL
+
+
+def _snapshot_node_name_rows() -> tuple[dict[str, Any] | None, bool]:
+    """
+    Build a minimal node-name snapshot under meshtastic_lock.
+
+    Returns:
+        tuple[dict[str, Any] | None, bool]:
+            - Snapshot suitable for sync_name_tables_if_changed(), or None when unavailable.
+            - True when the Meshtastic client is unavailable.
+    """
+    with meshtastic_lock:
+        client = meshtastic_client
+        if client is None:
+            return None, True
+
+        raw_nodes = getattr(client, "nodes", None)
+        if not isinstance(raw_nodes, dict):
+            return None, False
+
+        nodes_snapshot: dict[str, Any] = {}
+        for node_id, raw_node in raw_nodes.items():
+            node_key = str(node_id)
+            if not isinstance(raw_node, dict):
+                nodes_snapshot[node_key] = {"user": None}
+                continue
+
+            raw_user = raw_node.get("user")
+            if not isinstance(raw_user, dict):
+                nodes_snapshot[node_key] = {"user": {"id": None}}
+                continue
+
+            user_snapshot: dict[str, Any] = {
+                "id": raw_user.get("id"),
+                PROTO_NODE_NAME_LONG: raw_user.get(PROTO_NODE_NAME_LONG),
+                PROTO_NODE_NAME_SHORT: raw_user.get(PROTO_NODE_NAME_SHORT),
+            }
+            nodes_snapshot[node_key] = {"user": user_snapshot}
+
+        return nodes_snapshot, False
+
+
+async def refresh_node_name_tables(
+    shutdown_event: asyncio.Event,
+    *,
+    refresh_interval_seconds: float | None = None,
+) -> None:
+    """
+    Periodically sync longname/shortname tables from the current Meshtastic node DB.
+
+    The first refresh attempt runs immediately. When `refresh_interval_seconds`
+    is zero, one immediate refresh is attempted and periodic refresh
+    is disabled afterward.
+
+    Current scope: this task updates only long/short name cache tables from the
+    NodeDB snapshot. Future releases may extend persistence to broader NodeDB
+    fields while keeping this interval setting.
+
+    Note: Exceptions are intentionally propagated to the caller (the supervisor in
+    main.py) which catches them and restarts this task with exponential backoff.
+    This prevents silent infinite retry loops on persistent errors while still
+    allowing recovery from transient failures.
+    """
+    if refresh_interval_seconds is None:
+        interval = get_nodedb_refresh_interval_seconds()
+    else:
+        parsed = _parse_refresh_interval_seconds(refresh_interval_seconds)
+        if parsed is None:
+            configured_interval = get_nodedb_refresh_interval_seconds()
+            logger.warning(
+                "Invalid NodeDB name-cache refresh interval override %r; defaulting to configured interval %.1f",
+                refresh_interval_seconds,
+                configured_interval,
+            )
+            interval = configured_interval
+        else:
+            interval = parsed
+
+    previous_state: NodeNameState | None = None
+    while not shutdown_event.is_set():
+        try:
+            nodes_snapshot, client_missing = await asyncio.to_thread(
+                _snapshot_node_name_rows
+            )
+
+            if nodes_snapshot is None:
+                if client_missing:
+                    logger.debug(
+                        "Skipping name-cache refresh from NodeDB because Meshtastic client is unavailable"
+                    )
+                else:
+                    logger.debug(
+                        "Skipping name-cache refresh from NodeDB because client.nodes is unavailable"
+                    )
+            else:
+                previous_state = await asyncio.to_thread(
+                    sync_name_tables_if_changed,
+                    nodes_snapshot,
+                    previous_state,
+                )
+        except Exception:
+            logger.exception("Failed to refresh name-cache tables from NodeDB snapshot")
+            raise
+
+        if interval <= 0:
+            logger.debug(
+                "NodeDB name-cache periodic refresh disabled (interval=%.3f)",
+                float(interval),
+            )
+            return
+
+        try:
+            await asyncio.wait_for(shutdown_event.wait(), timeout=float(interval))
+        except asyncio.TimeoutError:
+            continue
 
 
 def _extract_packet_request_id(packet: Any) -> int | None:
@@ -880,6 +1335,7 @@ def _clear_ble_future(done_future: Future[Any]) -> None:
         done_future (concurrent.futures.Future | asyncio.Future): The future that has completed and should be cleared if it matches the active BLE task.
     """
     global _ble_future, _ble_future_address
+    global _ble_future_started_at, _ble_future_timeout_secs
     with _ble_executor_lock:
         if _ble_future is done_future:
             _ble_future = None
@@ -887,6 +1343,8 @@ def _clear_ble_future(done_future: Future[Any]) -> None:
                 with _ble_timeout_lock:
                     _ble_timeout_counts.pop(_ble_future_address, None)
             _ble_future_address = None
+            _ble_future_started_at = None
+            _ble_future_timeout_secs = None
 
 
 def _schedule_ble_future_cleanup(
@@ -900,12 +1358,17 @@ def _schedule_ble_future_cleanup(
     If a BLE task cannot be cancelled, we avoid blocking all future retries by
     clearing the shared future reference after a grace period.
     """
+    watchdog_secs = _coerce_positive_float(
+        _ble_future_watchdog_secs,
+        BLE_FUTURE_WATCHDOG_SECS,
+        "_ble_future_watchdog_secs",
+    )
 
     def _cleanup() -> None:
         """
         Clear a stale BLE worker future when it exceeds the watchdog timeout.
 
-        If the provided future is still running and remains the active BLE future, logs a warning including the watchdog duration, BLE address, and reason, then clears the stale future.
+        If the provided future is still running and remains the active BLE future, logs a warning including the watchdog duration, BLE address, and reason, then attempts to reset the executor.
         """
         if future.done():
             return
@@ -913,17 +1376,80 @@ def _schedule_ble_future_cleanup(
             if _ble_future is not future:
                 return
         logger.warning(
-            "BLE worker still running after %.0fs for %s; clearing stale future (%s)",
-            _ble_future_watchdog_secs,
+            "BLE worker still running after %.0fs for %s; resetting executor (%s)",
+            watchdog_secs,
             ble_address,
             reason,
         )
-        _clear_ble_future(future)
+        reset_threshold = _coerce_positive_int(
+            _ble_timeout_reset_threshold,
+            BLE_TIMEOUT_RESET_THRESHOLD,
+        )
+        _maybe_reset_ble_executor(ble_address, reset_threshold)
 
-    timer = threading.Timer(_ble_future_watchdog_secs, _cleanup)
+    timer = threading.Timer(watchdog_secs, _cleanup)
     timer.daemon = True
     future.add_done_callback(lambda _f: timer.cancel())
     timer.start()
+
+
+def _attach_late_ble_interface_disposer(
+    future: Future[Any],
+    ble_address: str,
+    reason: str,
+    *,
+    fallback_iface: Any | None = None,
+) -> None:
+    """
+    Dispose interfaces created by abandoned BLE futures that complete late.
+
+    Timeout paths can drop `_ble_future` while a worker thread is still running.
+    If that worker later succeeds, this callback prevents orphaned interfaces
+    from remaining connected outside normal ownership.
+    """
+
+    def _dispose(done_future: Future[Any]) -> None:
+        if done_future.cancelled():
+            return
+
+        late_iface = fallback_iface
+        try:
+            result = done_future.result()
+            if result is not None:
+                late_iface = result
+        except Exception:  # noqa: BLE001 - futures can raise backend-specific errors
+            late_iface = fallback_iface
+
+        if late_iface is None:
+            return
+
+        if not (hasattr(late_iface, "disconnect") or hasattr(late_iface, "close")):
+            return
+
+        with meshtastic_iface_lock:
+            active_iface = meshtastic_iface
+        if active_iface is late_iface:
+            return
+
+        logger.warning(
+            "Cleaning up late BLE interface completion for %s (%s)",
+            ble_address,
+            reason,
+        )
+        try:
+            _disconnect_ble_interface(
+                late_iface,
+                reason=f"late completion after {reason}",
+            )
+        except Exception:  # noqa: BLE001 - cleanup must not propagate
+            logger.debug(
+                "Late BLE interface cleanup failed for %s (%s)",
+                ble_address,
+                reason,
+                exc_info=True,
+            )
+
+    future.add_done_callback(_dispose)
 
 
 def _record_ble_timeout(ble_address: str) -> int:
@@ -943,6 +1469,62 @@ def _record_ble_timeout(ble_address: str) -> int:
         return _ble_timeout_counts[ble_address]
 
 
+def _ensure_ble_worker_available(ble_address: str, *, operation: str) -> None:
+    """
+    Ensure the shared BLE worker is available for a new operation.
+
+    When a previous BLE future remains in-flight beyond its timeout budget, treat
+    it as stale and force-reset the worker so retries can make forward progress.
+    """
+    stale_elapsed_secs: float | None = None
+    stale_timeout_secs: float | None = None
+    stale_address: str | None = None
+    stale_grace_secs = _coerce_nonnegative_float(
+        _ble_future_stale_grace_secs, BLE_FUTURE_STALE_GRACE_SECS
+    )
+    reset_threshold = _coerce_positive_int(
+        _ble_timeout_reset_threshold, BLE_TIMEOUT_RESET_THRESHOLD
+    )
+
+    with _ble_executor_lock:
+        active_future = _ble_future
+        if active_future is None or active_future.done():
+            return
+
+        if _ble_future_started_at is not None and _ble_future_timeout_secs is not None:
+            elapsed = time.monotonic() - _ble_future_started_at
+            stale_after = _ble_future_timeout_secs + stale_grace_secs
+            if elapsed >= stale_after:
+                stale_elapsed_secs = elapsed
+                stale_timeout_secs = _ble_future_timeout_secs
+                stale_address = _ble_future_address or ble_address
+
+    if (
+        stale_elapsed_secs is not None
+        and stale_timeout_secs is not None
+        and stale_address is not None
+    ):
+        logger.warning(
+            "BLE worker appears stale during %s for %s (elapsed=%.1fs, timeout=%.1fs); forcing worker reset",
+            operation,
+            stale_address,
+            stale_elapsed_secs,
+            stale_timeout_secs,
+        )
+        timeout_count = _record_ble_timeout(stale_address)
+        _maybe_reset_ble_executor(
+            stale_address,
+            max(timeout_count, reset_threshold),
+        )
+
+    with _ble_executor_lock:
+        if _ble_future and not _ble_future.done():
+            logger.debug("BLE worker busy; skipping %s for %s", operation, ble_address)
+            raise TimeoutError(
+                f"BLE {operation} already in progress for {ble_address}."
+            )
+
+
 def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
     """
     Reset the BLE worker executor when an address has reached the timeout threshold.
@@ -952,35 +1534,118 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
     best-effort cancellation and cleanup of a possibly stuck BLE task and resets the per-address
     timeout counter to zero.
 
+    When the number of orphaned workers for a BLE address reaches EXECUTOR_ORPHAN_THRESHOLD,
+    that address enters a degraded state: submission of new BLE work is refused and further
+    automatic recovery is disabled. Recovery requires an explicit reconnect or process restart.
+
     Parameters:
         ble_address (str): BLE device address associated with the observed timeouts.
         timeout_count (int): Number of consecutive timeouts recorded for that address.
     """
     global _ble_executor, _ble_future, _ble_future_address
-    with _ble_executor_lock:
-        if timeout_count < _ble_timeout_reset_threshold:
-            return
-        logger.warning(
-            "BLE worker timed out %s times for %s; recreating executor",
-            timeout_count,
+    global _ble_future_started_at, _ble_future_timeout_secs
+    global _ble_executor_orphaned_workers_by_address, _ble_executor_degraded_addresses
+
+    if ble_address in _ble_executor_degraded_addresses:
+        logger.debug(
+            "BLE executor for %s is in degraded state; refusing to reset. "
+            "Reconnect or restart required to recover.",
             ble_address,
         )
-        if _ble_future and not _ble_future.done():
-            _ble_future.cancel()
+        return
+
+    reset_threshold = _coerce_positive_int(
+        _ble_timeout_reset_threshold, BLE_TIMEOUT_RESET_THRESHOLD
+    )
+    # Capture future ref inside lock, cancel outside to avoid deadlock with done callbacks
+    ble_future_to_cancel = None
+    orphaned_workers = 0
+    stale_executor: ThreadPoolExecutor | None = None
+    with _ble_executor_lock:
+        if timeout_count < reset_threshold:
+            return
+
+        current_orphans = _ble_executor_orphaned_workers_by_address.get(ble_address, 0)
+        if current_orphans + 1 >= EXECUTOR_ORPHAN_THRESHOLD:
+            _ble_executor_degraded_addresses.add(ble_address)
+            logger.error(
+                "BLE EXECUTOR DEGRADED for %s: %s workers have been orphaned due to "
+                "repeated hangs. Further automatic recovery is disabled for this device. "
+                "Reconnect or restart the relay to restore BLE connectivity.",
+                ble_address,
+                current_orphans + 1,
+            )
+            ble_future_to_cancel = _ble_future
+            _ble_future = None
+            stale_executor = _ble_executor
+            _ble_future_address = None
+            _ble_future_started_at = None
+            _ble_future_timeout_secs = None
+            with _ble_timeout_lock:
+                _ble_timeout_counts[ble_address] = 0
+
+        if ble_address in _ble_executor_degraded_addresses:
+            degraded_now = True
+        else:
+            degraded_now = False
+            if _ble_future and not _ble_future.done():
+                ble_future_to_cancel = _ble_future
+            if _ble_executor is not None and not getattr(
+                _ble_executor, "_shutdown", False
+            ):
+                with _ble_timeout_lock:
+                    orphaned_workers = current_orphans + 1
+                    _ble_executor_orphaned_workers_by_address[ble_address] = (
+                        orphaned_workers
+                    )
+                stale_executor = _ble_executor
+            logger.warning(
+                "BLE worker timed out %s times for %s; recreating executor "
+                "(orphaned BLE workers=%s, threshold=%s)",
+                timeout_count,
+                ble_address,
+                orphaned_workers,
+                EXECUTOR_ORPHAN_THRESHOLD,
+            )
+            _ble_executor = ThreadPoolExecutor(max_workers=1)
+            _ble_future = None
+            _ble_future_address = None
+            _ble_future_started_at = None
+            _ble_future_timeout_secs = None
+
+    if degraded_now:
+        if ble_future_to_cancel is not None:
+            ble_future_to_cancel.cancel()
             try:
-                _ble_future.result(timeout=0.2)
-            except FuturesTimeoutError:
-                pass
-            except Exception as exc:  # noqa: BLE001 - best-effort reset cleanup
-                logger.debug("BLE worker errored during reset: %s", exc)
-        if _ble_executor is not None and not _ble_executor._shutdown:
+                ble_future_to_cancel.result(timeout=0.2)
+            except Exception as exc:  # noqa: BLE001 - best-effort degraded cleanup
+                logger.debug(
+                    "BLE future cancellation raised error for %s: %s",
+                    ble_address,
+                    exc,
+                )
+        if stale_executor is not None and not getattr(
+            stale_executor, "_shutdown", False
+        ):
             try:
-                _ble_executor.shutdown(wait=False, cancel_futures=True)
+                stale_executor.shutdown(wait=False, cancel_futures=True)
             except TypeError:
-                _ble_executor.shutdown(wait=False)
-        _ble_executor = ThreadPoolExecutor(max_workers=1)
-        _ble_future = None
-        _ble_future_address = None
+                stale_executor.shutdown(wait=False)
+        return
+
+    if ble_future_to_cancel is not None:
+        ble_future_to_cancel.cancel()
+        try:
+            ble_future_to_cancel.result(timeout=0.2)
+        except FuturesTimeoutError:
+            pass
+        except Exception as exc:  # noqa: BLE001 - best-effort reset cleanup
+            logger.debug("BLE worker errored during reset: %s", exc)
+    if stale_executor is not None and not getattr(stale_executor, "_shutdown", False):
+        try:
+            stale_executor.shutdown(wait=False, cancel_futures=True)
+        except TypeError:
+            stale_executor.shutdown(wait=False)
     with _ble_timeout_lock:
         _ble_timeout_counts[ble_address] = 0
 
@@ -1647,9 +2312,15 @@ def _get_device_metadata(
 
         try:
             future = _submit_metadata_probe(call_get_metadata)
+        except MetadataExecutorDegradedError:
+            logger.error(
+                "Metadata executor degraded; skipping metadata retrieval. "
+                "Reconnect or restart required to restore metadata probing."
+            )
+            if raise_on_error:
+                raise
+            return result
         except RuntimeError as exc:
-            # The shared executor may already be shutting down; treat this as
-            # a non-fatal metadata miss so we don't block connections.
             logger.debug(
                 "getMetadata() submission failed; skipping metadata retrieval",
                 exc_info=exc,
@@ -2318,7 +2989,7 @@ def _get_portnum_name(portnum: Any) -> str:
 
     if isinstance(portnum, int):
         try:
-            return portnums_pb2.PortNum.Name(portnum)  # type: ignore[no-any-return]
+            return portnums_pb2.PortNum.Name(portnum)  # type: ignore[no-any-return, arg-type]
         except ValueError:
             return f"UNKNOWN (portnum={portnum})"
 
@@ -2399,6 +3070,7 @@ def connect_meshtastic(
     global meshtastic_client, meshtastic_iface, shutting_down, reconnecting, config
     global RELAY_START_TIME
     global matrix_rooms, _ble_future, _ble_future_address
+    global _ble_future_started_at, _ble_future_timeout_secs
     if shutting_down:
         logger.debug("Shutdown in progress. Not attempting to connect.")
         return None
@@ -2512,6 +3184,14 @@ def connect_meshtastic(
                 DEFAULT_MESHTASTIC_TIMEOUT,
             )
         timeout = DEFAULT_MESHTASTIC_TIMEOUT
+    configured_timeout_secs = float(timeout)
+    configured_timeout_arg = max(1, math.ceil(configured_timeout_secs))
+    create_timeout_floor_secs = _coerce_positive_float(
+        _ble_interface_create_timeout_secs,
+        BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS,
+        "_ble_interface_create_timeout_secs",
+    )
+    ble_create_timeout_secs = max(configured_timeout_secs, create_timeout_floor_secs)
 
     while (
         not successful
@@ -2542,7 +3222,7 @@ def connect_meshtastic(
                     )
 
                 client = meshtastic.serial_interface.SerialInterface(
-                    serial_port, timeout=timeout
+                    serial_port, timeout=configured_timeout_arg
                 )
 
             elif connection_type == CONNECTION_TYPE_BLE:
@@ -2553,6 +3233,7 @@ def connect_meshtastic(
 
                     iface = None
                     supports_auto_reconnect = False
+                    late_creation_disposer_future: Future[Any] | None = None
                     with meshtastic_iface_lock:
                         # If BLE address has changed, re-create the interface
                         if (
@@ -2592,7 +3273,8 @@ def connect_meshtastic(
                                 "noProto": False,
                                 "debugOut": None,
                                 "noNodes": False,
-                                "timeout": timeout,
+                                # Preserve user-configured Meshtastic reply timeout.
+                                "timeout": configured_timeout_arg,
                             }
 
                             # Configure auto_reconnect only when supported.
@@ -2610,56 +3292,62 @@ def connect_meshtastic(
                                     "BLEInterface auto_reconnect parameter not available; using compatibility mode"
                                 )
                             if ble_scan_after_failure and not supports_auto_reconnect:
+                                scan_timeout_secs = _coerce_positive_float(
+                                    _ble_scan_timeout_secs,
+                                    BLE_SCAN_TIMEOUT_SECS,
+                                    "_ble_scan_timeout_secs",
+                                )
                                 logger.debug(
                                     "Scanning for BLE device before retrying %s (%s)",
                                     ble_address,
                                     ble_scan_reason or "previous failure",
                                 )
-                                _scan_for_ble_address(
-                                    ble_address, _ble_scan_timeout_secs
-                                )
+                                _scan_for_ble_address(ble_address, scan_timeout_secs)
                                 ble_scan_after_failure = False
                                 ble_scan_reason = None
 
+                            # Create BLE interface with timeout protection to prevent indefinite hangs
+                            # Use ThreadPoolExecutor to run with timeout, as BLEInterface.__init__
+                            # can potentially block indefinitely if BlueZ is in a bad state.
+                            def create_ble_interface(
+                                kwargs: dict[str, Any],
+                            ) -> Any:
+                                """
+                                Create a BLEInterface configured for Meshtastic BLE connections.
+
+                                Parameters:
+                                    kwargs (dict): Keyword arguments forwarded to the Meshtastic BLEInterface constructor (e.g., `address`, `adapter`, `auto_reconnect`, `timeout`). Valid keys depend on the Meshtastic BLEInterface implementation.
+
+                                Returns:
+                                    BLEInterface: A newly constructed Meshtastic BLEInterface instance.
+                                """
+                                return meshtastic.ble_interface.BLEInterface(**kwargs)
+
+                            # Use the larger of configured connect timeout and the safety floor.
+                            # This keeps stale-worker detection and future.result() budget aligned
+                            # with the actual BLEInterface constructor timeout.
+                            create_timeout_secs = ble_create_timeout_secs
+
+                            # Guard against overlapping BLE tasks: if a previous BLE operation is
+                            # still running (often due to a hung BlueZ/DBus call), we skip queuing
+                            # a new task. Raising TimeoutError here intentionally reuses the
+                            # existing retry/backoff logic rather than silently proceeding.
+                            if shutting_down:
+                                logger.debug(
+                                    "Skipping BLE interface creation for %s (shutting down)",
+                                    ble_address,
+                                )
+                                raise TimeoutError(
+                                    f"BLE interface creation cancelled for {ble_address} (shutting down)."
+                                )
+
+                            _ensure_ble_worker_available(
+                                ble_address,
+                                operation="interface creation",
+                            )
+
                             try:
-                                # Create BLE interface with timeout protection to prevent indefinite hangs
-                                # Use ThreadPoolExecutor to run with timeout, as BLEInterface.__init__
-                                # can potentially block indefinitely if BlueZ is in a bad state
-                                def create_ble_interface(
-                                    kwargs: dict[str, Any],
-                                ) -> Any:
-                                    """
-                                    Create a BLEInterface configured for Meshtastic BLE connections.
-
-                                    Parameters:
-                                        kwargs (dict): Keyword arguments forwarded to the Meshtastic BLEInterface constructor (e.g., `address`, `adapter`, `auto_reconnect`, `timeout`). Valid keys depend on the Meshtastic BLEInterface implementation.
-
-                                    Returns:
-                                        BLEInterface: A newly constructed Meshtastic BLEInterface instance.
-                                    """
-                                    return meshtastic.ble_interface.BLEInterface(
-                                        **kwargs
-                                    )
-
-                                # Use 90-second timeout (3x 30s connection timeout + overhead)
-                                # This provides multiple retry cycles while ensuring eventual failure
-                                # if connection truly cannot be established.
-                                #
-                                # Guard against overlapping BLE tasks: if a previous BLE operation is
-                                # still running (often due to a hung BlueZ/DBus call), we skip queuing
-                                # a new task. Raising TimeoutError here intentionally reuses the
-                                # existing retry/backoff logic rather than silently proceeding.
                                 with _ble_executor_lock:
-                                    # Check if shutting down before submitting new BLE tasks
-                                    if shutting_down:
-                                        logger.debug(
-                                            "Skipping BLE interface creation for %s (shutting down)",
-                                            ble_address,
-                                        )
-                                        raise TimeoutError(
-                                            f"BLE interface creation cancelled for {ble_address} (shutting down)."
-                                        )
-
                                     if _ble_future and not _ble_future.done():
                                         logger.debug(
                                             "BLE worker busy; skipping interface creation for %s",
@@ -2667,6 +3355,15 @@ def connect_meshtastic(
                                         )
                                         raise TimeoutError(
                                             f"BLE interface creation already in progress for {ble_address}."
+                                        )
+                                    if ble_address in _ble_executor_degraded_addresses:
+                                        logger.error(
+                                            "BLE executor degraded for %s: too many orphaned workers. "
+                                            "Reconnect or restart required to restore BLE connectivity.",
+                                            ble_address,
+                                        )
+                                        raise BleExecutorDegradedError(
+                                            f"BLE executor degraded for {ble_address}; reset required"
                                         )
                                     try:
                                         future = _get_ble_executor().submit(
@@ -2684,21 +3381,28 @@ def connect_meshtastic(
                                         ) from exc
                                     _ble_future = future
                                     _ble_future_address = ble_address
+                                    _ble_future_started_at = time.monotonic()
+                                    _ble_future_timeout_secs = create_timeout_secs
                                 future.add_done_callback(_clear_ble_future)
                                 try:
-                                    meshtastic_iface = future.result(timeout=90.0)
+                                    meshtastic_iface = future.result(
+                                        timeout=create_timeout_secs
+                                    )
                                     logger.debug(
                                         f"BLE interface created successfully for {ble_address}"
                                     )
                                     if hasattr(meshtastic_iface, "auto_reconnect"):
                                         supports_auto_reconnect = True
+                                    else:
+                                        reset_executor_degraded_state(
+                                            ble_address=ble_address
+                                        )
                                 except FuturesTimeoutError as err:
-                                    # Use logger.exception so we retain the timeout context (TRY400),
-                                    # but keep the raised exception concise (TRY003) and emit guidance
-                                    # as separate log lines for operators.
-                                    logger.exception(
-                                        "BLE interface creation timed out after 90 seconds for %s.",
+                                    logger.error(
+                                        "BLE interface creation timed out after %.1f seconds for %s.",
+                                        create_timeout_secs,
                                         ble_address,
+                                        exc_info=True,
                                     )
                                     logger.warning(
                                         "This may indicate a stale BlueZ connection or Bluetooth adapter issue."
@@ -2719,6 +3423,7 @@ def connect_meshtastic(
                                             ble_address,
                                             reason="interface creation timeout",
                                         )
+                                        late_creation_disposer_future = future
                                         timeout_count = _record_ble_timeout(ble_address)
                                         _maybe_reset_ble_executor(
                                             ble_address, timeout_count
@@ -2727,6 +3432,8 @@ def connect_meshtastic(
                                     raise TimeoutError(
                                         f"BLE connection attempt timed out for {ble_address}."
                                     ) from err
+                            except TimeoutError:
+                                raise
                             except Exception:
                                 # BLEInterface constructor failed - this is a critical error
                                 logger.exception("BLE interface creation failed")
@@ -2749,6 +3456,13 @@ def connect_meshtastic(
                                     supports_auto_reconnect = False
 
                         iface = meshtastic_iface
+
+                    if late_creation_disposer_future is not None:
+                        _attach_late_ble_interface_disposer(
+                            late_creation_disposer_future,
+                            ble_address,
+                            reason="interface creation timeout",
+                        )
 
                     # Connect outside singleton-creation lock to avoid blocking other threads.
                     # Interfaces that expose auto_reconnect support use explicit connect()
@@ -2773,17 +3487,22 @@ def connect_meshtastic(
                             """
                             iface_param.connect()
 
-                        with _ble_executor_lock:
-                            # Check if shutting down before submitting connect() tasks
-                            if shutting_down:
-                                logger.debug(
-                                    "Skipping BLE connect() for %s (shutting down)",
-                                    ble_address,
-                                )
-                                raise TimeoutError(
-                                    f"BLE connect cancelled for {ble_address} (shutting down)."
-                                )
+                        # Check if shutting down before submitting connect() tasks
+                        if shutting_down:
+                            logger.debug(
+                                "Skipping BLE connect() for %s (shutting down)",
+                                ble_address,
+                            )
+                            raise TimeoutError(
+                                f"BLE connect cancelled for {ble_address} (shutting down)."
+                            )
 
+                        _ensure_ble_worker_available(
+                            ble_address,
+                            operation="connect",
+                        )
+
+                        with _ble_executor_lock:
                             if _ble_future and not _ble_future.done():
                                 logger.debug(
                                     "BLE worker busy; skipping connect() for %s",
@@ -2791,6 +3510,15 @@ def connect_meshtastic(
                                 )
                                 raise TimeoutError(
                                     f"BLE connect already in progress for {ble_address}."
+                                )
+                            if ble_address in _ble_executor_degraded_addresses:
+                                logger.error(
+                                    "BLE executor degraded for %s: too many orphaned workers. "
+                                    "Reconnect or restart required to restore BLE connectivity.",
+                                    ble_address,
+                                )
+                                raise BleExecutorDegradedError(
+                                    f"BLE executor degraded for {ble_address}; reset required"
                                 )
                             try:
                                 connect_future = _get_ble_executor().submit(
@@ -2806,10 +3534,13 @@ def connect_meshtastic(
                                 ) from exc
                             _ble_future = connect_future
                             _ble_future_address = ble_address
+                            _ble_future_started_at = time.monotonic()
+                            _ble_future_timeout_secs = BLE_CONNECT_TIMEOUT_SECS
                         connect_future.add_done_callback(_clear_ble_future)
                         try:
                             connect_future.result(timeout=BLE_CONNECT_TIMEOUT_SECS)
                             logger.info(f"BLE connection established to {ble_address}")
+                            reset_executor_degraded_state(ble_address=ble_address)
                         except FuturesTimeoutError as err:
                             # Use logger.exception so timeouts include stack context (TRY400),
                             # but raise a short error and keep operator guidance in logs (TRY003).
@@ -2828,10 +3559,22 @@ def connect_meshtastic(
                             if connect_future.cancel():
                                 _clear_ble_future(connect_future)
                             else:
+                                timed_out_iface = iface
+                                # Clear global/local references before attaching late
+                                # disposer so late completions cannot observe stale active
+                                # globals and skip cleanup.
+                                iface = None
+                                meshtastic_iface = None
                                 _schedule_ble_future_cleanup(
                                     connect_future,
                                     ble_address,
                                     reason="connect timeout",
+                                )
+                                _attach_late_ble_interface_disposer(
+                                    connect_future,
+                                    ble_address,
+                                    reason="connect timeout",
+                                    fallback_iface=timed_out_iface,
                                 )
                                 timeout_count = _record_ble_timeout(ble_address)
                                 _maybe_reset_ble_executor(ble_address, timeout_count)
@@ -2881,7 +3624,9 @@ def connect_meshtastic(
 
                 # Connect without progress indicator
                 client = meshtastic.tcp_interface.TCPInterface(
-                    hostname=target_host, portNumber=target_port, timeout=timeout
+                    hostname=target_host,
+                    portNumber=target_port,
+                    timeout=configured_timeout_arg,
                 )
             else:
                 logger.error(f"Unknown connection type: {connection_type}")
@@ -2971,7 +3716,7 @@ def connect_meshtastic(
                     subscribed_to_connection_lost = True
                     logger.debug("Subscribed to meshtastic.connection.lost")
 
-        except (ConnectionRefusedError, MemoryError):
+        except (ConnectionRefusedError, MemoryError, BleExecutorDegradedError):
             # Handle critical errors that should not be retried
             logger.exception("Critical connection error")
             return None
@@ -3042,7 +3787,19 @@ def on_lost_meshtastic_connection(
         detection_source (str): Identifier for where or how the loss was detected; if `"unknown"`, the function will prefer an interface-provided `_last_disconnect_source`, then derive a name from `topic`, and finally fall back to `"meshtastic.connection.lost"`.
         topic (Any): Optional pubsub topic object (from pypubsub); when provided and `detection_source` is `"unknown"`, the topic's name will be used to derive the detection source.
     """
-    global meshtastic_client, meshtastic_iface, reconnecting, shutting_down, event_loop, reconnect_task, _ble_future, _ble_future_address
+    # Keep these as one-global-per-line to minimize merge churn as this list evolves.
+    global meshtastic_client
+    global meshtastic_iface
+    global reconnecting
+    global shutting_down
+    global event_loop
+    global reconnect_task
+    global _ble_future
+    global _ble_future_address
+    global _ble_future_started_at
+    global _ble_future_timeout_secs
+    global _ble_executor
+
     with meshtastic_lock:
         if shutting_down:
             logger.debug("Shutdown in progress. Not attempting to reconnect.")
@@ -3105,17 +3862,55 @@ def on_lost_meshtastic_connection(
                 except Exception as e:
                     logger.warning(f"Error closing Meshtastic client: {e}")
         meshtastic_client = None
+        ble_future_to_cancel = None
+        stale_executor = None
+        stale_ble_address: str | None = None
         with _ble_executor_lock:
+            stale_ble_address = _ble_future_address
             if _ble_future and not _ble_future.done():
                 logger.debug(
                     "Clearing stale BLE future before reconnect (%s)",
                     detection_source,
                 )
+                ble_future_to_cancel = _ble_future
                 _ble_future = None
                 if _ble_future_address:
                     with _ble_timeout_lock:
                         _ble_timeout_counts.pop(_ble_future_address, None)
                 _ble_future_address = None
+                _ble_future_started_at = None
+                _ble_future_timeout_secs = None
+                if _ble_executor is not None:
+                    stale_executor = _ble_executor
+                    _ble_executor = ThreadPoolExecutor(max_workers=1)
+
+        if ble_future_to_cancel is not None:
+            if stale_ble_address:
+                _attach_late_ble_interface_disposer(
+                    ble_future_to_cancel,
+                    stale_ble_address,
+                    reason=f"connection loss: {detection_source}",
+                )
+            ble_future_to_cancel.cancel()
+        if stale_executor is not None:
+            try:
+                stale_executor.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                stale_executor.shutdown(wait=False)
+
+        if stale_ble_address is not None:
+            reset_executor_degraded_state(ble_address=stale_ble_address)
+        else:
+            should_reset_all_degraded = False
+            with _ble_executor_lock:
+                if _ble_executor_degraded_addresses:
+                    should_reset_all_degraded = True
+                    logger.debug(
+                        "Resetting degraded BLE executor state during reconnect "
+                        "(no stale_ble_address but degraded addresses exist)"
+                    )
+            if should_reset_all_degraded:
+                reset_executor_degraded_state(reset_all=True)
 
         if event_loop and not event_loop.is_closed():
             reconnect_task = event_loop.create_task(reconnect())
@@ -3674,6 +4469,39 @@ def on_meshtastic_message(packet: dict[str, Any], interface: Any) -> None:
         )
 
 
+def requires_continuous_health_monitor(config: dict[str, Any]) -> bool:
+    """
+    Return True when periodic health monitoring should run for the given config.
+
+    Health monitoring is disabled for BLE connections (which have real-time disconnect
+    detection) and when health_check.enabled is explicitly set to False.
+
+    Note: This function only returns False for "clean" exit cases (BLE or explicitly
+    disabled). Malformed health_check configs return True so that check_connection
+    can log appropriate warnings before exiting.
+
+    Args:
+        config: The full configuration dictionary.
+
+    Returns:
+        True if health monitoring should run continuously, False otherwise.
+    """
+    meshtastic_config = config.get(CONFIG_SECTION_MESHTASTIC)
+    if not isinstance(meshtastic_config, dict):
+        return DEFAULT_HEALTH_CHECK_ENABLED
+    if meshtastic_config.get(CONFIG_KEY_CONNECTION_TYPE) == CONNECTION_TYPE_BLE:
+        return False
+    health_config = meshtastic_config.get("health_check")
+    if health_config is None:
+        return DEFAULT_HEALTH_CHECK_ENABLED
+    if not isinstance(health_config, dict):
+        return True
+    raw_enabled = health_config.get("enabled", DEFAULT_HEALTH_CHECK_ENABLED)
+    return _coerce_bool(
+        raw_enabled, DEFAULT_HEALTH_CHECK_ENABLED, "health_check.enabled"
+    )
+
+
 async def check_connection() -> None:
     """
     Periodically verify the Meshtastic connection and trigger a reconnect when the device appears unresponsive.
@@ -3708,6 +4536,17 @@ async def check_connection() -> None:
         logger.error("No configuration available. Cannot check connection.")
         return
 
+    # Exit early if health monitoring is not required for this connection type/config
+    if not requires_continuous_health_monitor(config):
+        connection_type = config[CONFIG_SECTION_MESHTASTIC][CONFIG_KEY_CONNECTION_TYPE]
+        if connection_type == CONNECTION_TYPE_BLE:
+            logger.debug(
+                "BLE connection uses real-time disconnection detection; periodic health checks disabled"
+            )
+        else:
+            logger.info("Connection health checks are disabled in configuration")
+        return
+
     connection_type = config[CONFIG_SECTION_MESHTASTIC][CONFIG_KEY_CONNECTION_TYPE]
 
     # Get health check configuration
@@ -3718,6 +4557,7 @@ async def check_connection() -> None:
             health_config,
         )
         health_config = {}
+
     raw_health_check_enabled = health_config.get(
         "enabled", DEFAULT_HEALTH_CHECK_ENABLED
     )
@@ -3726,6 +4566,11 @@ async def check_connection() -> None:
         DEFAULT_HEALTH_CHECK_ENABLED,
         "meshtastic.health_check.enabled",
     )
+
+    if not health_check_enabled:
+        logger.info("Connection health checks are disabled in configuration")
+        return
+
     heartbeat_interval = health_config.get("heartbeat_interval", 60)
     initial_delay = health_config.get("initial_delay", INITIAL_HEALTH_CHECK_DELAY)
     probe_timeout = health_config.get(
@@ -3752,17 +4597,6 @@ async def check_connection() -> None:
         "meshtastic.health_check.probe_timeout",
     )
 
-    # Exit early if health checks are disabled
-    if not health_check_enabled:
-        logger.info("Connection health checks are disabled in configuration")
-        return
-
-    if connection_type == CONNECTION_TYPE_BLE:
-        logger.debug(
-            "BLE connection uses real-time disconnection detection; periodic health checks disabled"
-        )
-        return
-
     # Initial delay before first health check to allow connection to settle.
     # This is particularly important for fast-responding systems like MeshMonitor
     # where the connection may be established quickly but ACK handling may not be
@@ -3776,6 +4610,7 @@ async def check_connection() -> None:
         if meshtastic_client and not reconnecting:
             submitted_client = meshtastic_client
             probe_submission_failed = False
+            degraded_error = False
             try:
                 probe_future = _submit_metadata_probe(
                     functools.partial(
@@ -3784,6 +4619,10 @@ async def check_connection() -> None:
                         probe_timeout,
                     )
                 )
+            except MetadataExecutorDegradedError:
+                logger.error("Metadata executor degraded; triggering reconnection")
+                probe_future = None
+                degraded_error = True
             except RuntimeError as exc:
                 logger.debug(
                     "Skipping connection check - metadata probe submission failed",
@@ -3792,7 +4631,13 @@ async def check_connection() -> None:
                 probe_future = None
                 probe_submission_failed = True
 
-            if probe_future is None:
+            if degraded_error:
+                if not reconnecting and meshtastic_client is submitted_client:
+                    on_lost_meshtastic_connection(
+                        interface=submitted_client,
+                        detection_source="metadata executor degraded",
+                    )
+            elif probe_future is None:
                 if not probe_submission_failed:
                     logger.debug(
                         "Skipping connection check - metadata probe already in progress"

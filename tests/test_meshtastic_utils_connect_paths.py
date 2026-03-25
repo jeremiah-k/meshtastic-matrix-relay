@@ -1,3 +1,4 @@
+import time
 from unittest.mock import MagicMock, patch
 
 import serial
@@ -129,6 +130,73 @@ def test_connect_meshtastic_ble_missing_address_returns_none(
 
     assert result is None
     mock_logger.error.assert_called_with("No BLE address provided.")
+
+
+def test_connect_meshtastic_ble_recovers_from_stale_worker(
+    reset_meshtastic_globals,
+):
+    """Stale in-flight BLE worker futures should be reset so retries can proceed."""
+    ble_address = "AA:BB:CC:DD:EE:FF"
+    config = {
+        "meshtastic": {
+            "connection_type": "ble",
+            "ble_address": ble_address,
+            "retries": 1,
+        }
+    }
+
+    stale_future = MagicMock()
+    stale_future.done.return_value = False
+    stale_future.cancel.return_value = True
+
+    class _FakeBLEInterface:
+        def __init__(self, **kwargs: object) -> None:
+            self.address = kwargs.get("address")
+            self.auto_reconnect = kwargs.get("auto_reconnect")
+
+        def connect(self) -> None:
+            return None
+
+        def getMyNodeInfo(self) -> dict[str, dict[str, str]]:
+            return {"user": {"shortName": "Node", "hwModel": "HW"}}
+
+    mu._ble_future = stale_future
+    mu._ble_future_address = ble_address
+    mu._ble_future_started_at = time.monotonic() - 60.0
+    mu._ble_future_timeout_secs = 1.0
+
+    with (
+        patch(
+            "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
+            new=_FakeBLEInterface,
+        ),
+        patch("mmrelay.meshtastic_utils._disconnect_ble_by_address"),
+        patch(
+            "mmrelay.meshtastic_utils._validate_ble_connection_address",
+            return_value=True,
+        ),
+        patch(
+            "mmrelay.meshtastic_utils._get_device_metadata",
+            return_value={"firmware_version": "unknown", "success": False},
+        ),
+        patch("mmrelay.meshtastic_utils.pub.subscribe"),
+        patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+    ):
+        result = connect_meshtastic(passed_config=config)
+
+    assert result is not None
+    assert result is mu.meshtastic_client
+    assert stale_future.cancel.called
+    stale_warning_calls = [
+        call
+        for call in mock_logger.warning.call_args_list
+        if call.args
+        and "BLE worker appears stale during %s for %s" in str(call.args[0])
+        and len(call.args) >= 3
+        and call.args[2] == ble_address
+    ]
+    assert stale_warning_calls, "Expected stale BLE worker recovery warning"
+    assert stale_warning_calls[0].args[1] in {"interface creation", "connect"}
 
 
 def test_connect_meshtastic_tcp_missing_host_returns_none(
@@ -365,3 +433,212 @@ def test_on_lost_meshtastic_connection_logs_unexpected_close_error(
         on_lost_meshtastic_connection(detection_source="test")
 
     mock_logger.warning.assert_any_call("Error closing Meshtastic client: boom")
+
+
+class TestBleDegradedStateSubmissionBlocking:
+    """Test that degraded BLE state properly blocks work submission."""
+
+    def test_ble_degraded_state_blocks_constructor_path(self, reset_meshtastic_globals):
+        """Degraded BLE state should block work submission in compatibility (constructor-only) path."""
+        ble_address = "AA:BB:CC:DD:EE:FF"
+        config = {
+            "meshtastic": {
+                "connection_type": "ble",
+                "ble_address": ble_address,
+                "retries": 1,
+            }
+        }
+
+        mu._ble_executor_degraded_addresses.add(ble_address)
+
+        class _FakeBLEInterfaceNoAutoReconnect:
+            def __init__(self, **kwargs: object) -> None:
+                self.address = kwargs.get("address")
+
+            def getMyNodeInfo(self) -> dict[str, dict[str, str]]:
+                return {"user": {"shortName": "Node", "hwModel": "HW"}}
+
+        with (
+            patch(
+                "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
+                new=_FakeBLEInterfaceNoAutoReconnect,
+            ),
+            patch("mmrelay.meshtastic_utils._disconnect_ble_by_address"),
+            patch(
+                "mmrelay.meshtastic_utils._validate_ble_connection_address",
+                return_value=True,
+            ),
+            patch(
+                "mmrelay.meshtastic_utils._get_device_metadata",
+                return_value={"firmware_version": "unknown", "success": False},
+            ),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            result = connect_meshtastic(passed_config=config)
+
+        assert result is None
+        error_calls = [
+            call
+            for call in mock_logger.error.call_args_list
+            if call.args and "degraded" in str(call.args).lower()
+        ]
+        assert error_calls, "Expected error about degraded BLE executor"
+        assert ble_address in str(error_calls[0].args)
+
+    def test_ble_degraded_state_blocks_explicit_connect_path(
+        self, reset_meshtastic_globals
+    ):
+        """Degraded BLE state should block work submission in explicit connect() path."""
+        ble_address = "AA:BB:CC:DD:EE:FF"
+        config = {
+            "meshtastic": {
+                "connection_type": "ble",
+                "ble_address": ble_address,
+                "retries": 1,
+            }
+        }
+
+        mu._ble_executor_degraded_addresses.add(ble_address)
+
+        class _FakeBLEInterfaceWithAutoReconnect:
+            def __init__(self, **kwargs: object) -> None:
+                self.address = kwargs.get("address")
+                self.auto_reconnect = False
+
+            def connect(self) -> None:
+                return None
+
+            def getMyNodeInfo(self) -> dict[str, dict[str, str]]:
+                return {"user": {"shortName": "Node", "hwModel": "HW"}}
+
+        with (
+            patch(
+                "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
+                new=_FakeBLEInterfaceWithAutoReconnect,
+            ),
+            patch("mmrelay.meshtastic_utils._disconnect_ble_by_address"),
+            patch(
+                "mmrelay.meshtastic_utils._validate_ble_connection_address",
+                return_value=True,
+            ),
+            patch(
+                "mmrelay.meshtastic_utils._get_device_metadata",
+                return_value={"firmware_version": "unknown", "success": False},
+            ),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            result = connect_meshtastic(passed_config=config)
+
+        assert result is None
+        error_calls = [
+            call
+            for call in mock_logger.error.call_args_list
+            if call.args and "degraded" in str(call.args).lower()
+        ]
+        assert error_calls, "Expected error about degraded BLE executor"
+        assert ble_address in str(error_calls[0].args)
+
+    def test_ble_degraded_state_not_present_after_constructor_success_compatibility_mode(
+        self, reset_meshtastic_globals
+    ):
+        """In compatibility mode, successful connection should not leave degraded state.
+
+        This verifies that for interfaces without auto_reconnect support (where constructor
+        success IS the full connection), the degraded state is not present after a successful
+        connection. Note: This test does not verify clearing behavior - see
+        test_ble_degraded_state_blocks_constructor_path for blocking behavior.
+        """
+        ble_address = "AA:BB:CC:DD:EE:FF"
+        config = {
+            "meshtastic": {
+                "connection_type": "ble",
+                "ble_address": ble_address,
+                "retries": 1,
+            }
+        }
+
+        class _FakeBLEInterfaceNoAutoReconnect:
+            def __init__(self, **kwargs: object) -> None:
+                self.address = kwargs.get("address")
+
+            def getMyNodeInfo(self) -> dict[str, dict[str, str]]:
+                return {"user": {"shortName": "Node", "hwModel": "HW"}}
+
+        with (
+            patch(
+                "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
+                new=_FakeBLEInterfaceNoAutoReconnect,
+            ),
+            patch("mmrelay.meshtastic_utils._disconnect_ble_by_address"),
+            patch(
+                "mmrelay.meshtastic_utils._validate_ble_connection_address",
+                return_value=True,
+            ),
+            patch(
+                "mmrelay.meshtastic_utils._get_device_metadata",
+                return_value={"firmware_version": "unknown", "success": False},
+            ),
+            patch("mmrelay.meshtastic_utils.logger"),
+        ):
+            result = connect_meshtastic(passed_config=config)
+
+        assert result is not None
+        assert ble_address not in mu._ble_executor_degraded_addresses
+
+    def test_ble_degraded_state_not_present_after_full_connection_auto_reconnect_mode(
+        self, reset_meshtastic_globals
+    ):
+        """In auto_reconnect mode, successful connection should not leave degraded state.
+
+        This verifies that for interfaces with auto_reconnect support, the degraded
+        state is not present after both constructor and connect() succeed.
+        Note: This test does not verify clearing behavior - see
+        test_ble_degraded_state_blocks_explicit_connect_path for blocking behavior.
+        """
+        ble_address = "AA:BB:CC:DD:EE:FF"
+        config = {
+            "meshtastic": {
+                "connection_type": "ble",
+                "ble_address": ble_address,
+                "retries": 1,
+            }
+        }
+
+        class _FakeBLEInterfaceWithAutoReconnect:
+            def __init__(self, **kwargs: object) -> None:
+                self.address = kwargs.get("address")
+                self.auto_reconnect = False
+
+            def connect(self) -> None:
+                return None
+
+            def getMyNodeInfo(self) -> dict[str, dict[str, str]]:
+                return {"user": {"shortName": "Node", "hwModel": "HW"}}
+
+        with (
+            patch(
+                "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
+                new=_FakeBLEInterfaceWithAutoReconnect,
+            ),
+            patch("mmrelay.meshtastic_utils._disconnect_ble_by_address"),
+            patch(
+                "mmrelay.meshtastic_utils._validate_ble_connection_address",
+                return_value=True,
+            ),
+            patch(
+                "mmrelay.meshtastic_utils._get_device_metadata",
+                return_value={"firmware_version": "unknown", "success": False},
+            ),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            result = connect_meshtastic(passed_config=config)
+
+        assert result is not None
+        assert ble_address not in mu._ble_executor_degraded_addresses
+
+        info_calls = [
+            call
+            for call in mock_logger.info.call_args_list
+            if call.args and "BLE connection established" in str(call.args[0])
+        ]
+        assert info_calls, "Expected 'BLE connection established' log message"

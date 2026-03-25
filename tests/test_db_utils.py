@@ -19,11 +19,13 @@ import sqlite3
 import sys
 import tempfile
 import unittest
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.db_runtime import DatabaseManager
 from mmrelay.db_utils import (
     _get_db_manager,
     _parse_bool,
@@ -31,6 +33,7 @@ from mmrelay.db_utils import (
     _reset_db_manager,
     async_prune_message_map,
     async_store_message_map,
+    build_node_name_state,
     clear_db_path_cache,
     delete_plugin_data,
     delete_stale_longnames,
@@ -48,10 +51,48 @@ from mmrelay.db_utils import (
     save_shortname,
     store_message_map,
     store_plugin_data,
+    sync_name_tables_if_changed,
     update_longnames,
     update_shortnames,
     wipe_message_map,
 )
+
+
+def _make_failing_cursor_proxy_side_effect(write_failed_flag: list[bool]):
+    """
+    Create a side effect for DatabaseManager.run_sync that fails once on first write.
+
+    Returns a tuple of (side_effect_function, original_run_sync) for use with patch.object.
+    The write_failed_flag is a mutable list containing a single bool to track failure state.
+    """
+    original_run_sync = DatabaseManager.run_sync
+
+    class _FailingCursorProxy:
+        def __init__(self, inner_cursor):
+            self._inner_cursor = inner_cursor
+            self._execute_calls = 0
+
+        def execute(self, *args, **kwargs):
+            self._execute_calls += 1
+            result = self._inner_cursor.execute(*args, **kwargs)
+            if self._execute_calls == 1 and not write_failed_flag[0]:
+                write_failed_flag[0] = True
+                raise sqlite3.Error("forced longname write failure")
+            return result
+
+        def __getattr__(self, attr):
+            return getattr(self._inner_cursor, attr)
+
+    def fail_on_first_write(self, func, *, write=False):
+        if write and not write_failed_flag[0]:
+
+            def wrapped(cursor):
+                return func(_FailingCursorProxy(cursor))
+
+            return original_run_sync(self, wrapped, write=write)
+        return original_run_sync(self, func, write=write)
+
+    return fail_on_first_write, original_run_sync
 
 
 class TestDbUtils(unittest.TestCase):
@@ -267,6 +308,357 @@ class TestDbUtils(unittest.TestCase):
         self.assertEqual(get_shortname("!12345678"), "AS")
         self.assertEqual(get_shortname("!87654321"), "BJ")
 
+    def test_update_shortnames_ignores_invalid_longname_field(self):
+        """
+        Invalid longName payloads must not block shortname updates for the same node.
+        """
+        initialize_database()
+        save_shortname("!12345678", "OLD")
+
+        nodes = {
+            "!12345678": {
+                "user": {
+                    "id": "!12345678",
+                    "longName": 123,
+                    "shortName": "NEW",
+                }
+            }
+        }
+
+        self.assertTrue(update_shortnames(nodes))
+        self.assertEqual(get_shortname("!12345678"), "NEW")
+
+    def test_update_longnames_ignores_invalid_shortname_field(self):
+        """
+        Invalid shortName payloads must not block longname updates for the same node.
+        """
+        initialize_database()
+        save_longname("!12345678", "Old Name")
+
+        nodes = {
+            "!12345678": {
+                "user": {
+                    "id": "!12345678",
+                    "longName": "Updated Name",
+                    "shortName": {"bad": "type"},
+                }
+            }
+        }
+
+        self.assertTrue(update_longnames(nodes))
+        self.assertEqual(get_longname("!12345678"), "Updated Name")
+
+    def test_build_node_name_state_is_sorted_and_stable(self):
+        """Node-name state snapshot should be deterministic for change detection."""
+        nodes = {
+            "node_b": {"user": {"id": "!2", "longName": "Beta", "shortName": "B"}},
+            "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
+            "bad_node": {"user": {"longName": "Missing ID"}},
+        }
+        state = build_node_name_state(nodes)
+        self.assertEqual(
+            state,
+            (
+                ("!1", "Alpha", "A"),
+                ("!2", "Beta", "B"),
+            ),
+        )
+
+    def test_build_node_name_state_deduplicates_duplicate_ids(self):
+        """Duplicate Meshtastic IDs should be merged into one stable state row."""
+        nodes = {
+            "node_first": {"user": {"id": "!1", "longName": None, "shortName": "A"}},
+            "node_second": {
+                "user": {"id": "!1", "longName": "Alpha", "shortName": None}
+            },
+            "node_other": {"user": {"id": "!2", "longName": "Beta", "shortName": "B"}},
+        }
+
+        state = build_node_name_state(nodes)
+
+        self.assertEqual(
+            state,
+            (
+                ("!1", "Alpha", "A"),
+                ("!2", "Beta", "B"),
+            ),
+        )
+
+    def test_sync_name_tables_if_changed_uses_canonical_snapshot_for_duplicate_ids(
+        self,
+    ):
+        """Duplicate IDs should merge to the same canonical snapshot regardless of input order."""
+        initialize_database()
+        nodes = {
+            "node_first": {"user": {"id": "!1", "shortName": "ONE"}},
+            "node_second": {"user": {"id": "!1", "shortName": None}},
+        }
+        nodes_reversed = {
+            "node_second": {"user": {"id": "!1", "shortName": None}},
+            "node_first": {"user": {"id": "!1", "shortName": "ONE"}},
+        }
+
+        state = sync_name_tables_if_changed(nodes, previous_state=None)
+        state_reversed = sync_name_tables_if_changed(
+            nodes_reversed, previous_state=None
+        )
+
+        self.assertEqual(state, (("!1", None, "ONE"),))
+        self.assertEqual(state_reversed, (("!1", None, "ONE"),))
+        self.assertEqual(get_shortname("!1"), "ONE")
+
+    def test_sync_name_tables_if_changed_skips_conflicting_duplicates(self):
+        """Conflicting duplicate IDs skip the entire ID to preserve DB stability."""
+        initialize_database()
+        nodes = {
+            "node_first": {"user": {"id": "!1", "shortName": "ONE"}},
+            "node_second": {"user": {"id": "!1", "shortName": "TWO"}},
+            "node_other": {"user": {"id": "!2", "longName": "Beta", "shortName": "B"}},
+        }
+
+        state = sync_name_tables_if_changed(nodes, previous_state=None)
+
+        self.assertEqual(state, (("!2", "Beta", "B"),))
+        self.assertIsNone(get_shortname("!1"))
+
+    def test_sync_name_tables_if_changed_conflicts_preserve_existing_rows(self):
+        """Conflicting duplicate IDs skip the entire ID; existing DB rows are preserved."""
+        initialize_database()
+        save_longname("!1", "Legacy Long")
+        save_shortname("!1", "OLD")
+        nodes = {
+            "node_first": {"user": {"id": "!1", "shortName": "ONE"}},
+            "node_second": {"user": {"id": "!1", "shortName": "TWO"}},
+            "node_other": {"user": {"id": "!2", "longName": "Beta", "shortName": "B"}},
+        }
+
+        state = sync_name_tables_if_changed(nodes, previous_state=None)
+
+        self.assertEqual(state, (("!2", "Beta", "B"),))
+        self.assertEqual(get_longname("!1"), "Legacy Long")
+        self.assertEqual(get_shortname("!1"), "OLD")
+
+    def test_sync_name_tables_if_changed_skips_redundant_updates(self):
+        """A matching state should skip upserts while still pruning stale rows."""
+        initialize_database()
+        nodes = {
+            "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
+        }
+        first_state = sync_name_tables_if_changed(nodes, previous_state=None)
+        save_longname("!stale", "Stale Longname")
+        save_shortname("!stale", "STL")
+        self.assertEqual(get_longname("!stale"), "Stale Longname")
+        self.assertEqual(get_shortname("!stale"), "STL")
+
+        with (
+            patch(
+                "mmrelay.db_utils.save_longname", wraps=save_longname
+            ) as mock_save_long,
+            patch(
+                "mmrelay.db_utils.save_shortname", wraps=save_shortname
+            ) as mock_save_short,
+        ):
+            second_state = sync_name_tables_if_changed(
+                nodes, previous_state=first_state
+            )
+
+        mock_save_long.assert_not_called()
+        mock_save_short.assert_not_called()
+        self.assertEqual(second_state, first_state)
+        self.assertEqual(get_longname("!1"), "Alpha")
+        self.assertEqual(get_shortname("!1"), "A")
+        self.assertIsNone(get_longname("!stale"))
+        self.assertIsNone(get_shortname("!stale"))
+
+    def test_sync_name_tables_if_changed_unchanged_snapshot_without_stale_rows(self):
+        """Unchanged snapshots without stale rows should keep state/data unchanged."""
+        initialize_database()
+        nodes = {
+            "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
+        }
+        first_state = sync_name_tables_if_changed(nodes, previous_state=None)
+
+        with (
+            patch(
+                "mmrelay.db_utils.save_longname", wraps=save_longname
+            ) as mock_save_long,
+            patch(
+                "mmrelay.db_utils.save_shortname", wraps=save_shortname
+            ) as mock_save_short,
+        ):
+            second_state = sync_name_tables_if_changed(
+                nodes, previous_state=first_state
+            )
+
+        mock_save_long.assert_not_called()
+        mock_save_short.assert_not_called()
+
+        self.assertEqual(second_state, first_state)
+        self.assertEqual(get_longname("!1"), "Alpha")
+        self.assertEqual(get_shortname("!1"), "A")
+        self.assertIsNone(get_longname("!unknown"))
+        self.assertIsNone(get_shortname("!unknown"))
+
+    def test_sync_name_tables_if_changed_partial_snapshot_skips_pruning(self):
+        """Unchanged partial snapshots should skip stale-row pruning for safety."""
+        initialize_database()
+        nodes = {
+            "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
+            "bad_node": {"user": {"longName": "Missing ID"}},
+        }
+        first_state = sync_name_tables_if_changed(nodes, previous_state=None)
+        save_longname("!stale", "Stale Longname")
+        save_shortname("!stale", "STL")
+        self.assertEqual(get_longname("!stale"), "Stale Longname")
+        self.assertEqual(get_shortname("!stale"), "STL")
+
+        second_state = sync_name_tables_if_changed(nodes, previous_state=first_state)
+
+        self.assertEqual(second_state, first_state)
+        self.assertEqual(get_longname("!1"), "Alpha")
+        self.assertEqual(get_shortname("!1"), "A")
+        self.assertEqual(get_longname("!stale"), "Stale Longname")
+        self.assertEqual(get_shortname("!stale"), "STL")
+
+    def test_sync_name_tables_if_changed_heals_missing_row_on_unchanged_state(self):
+        """Unchanged snapshots should repair missing per-ID name rows when drift is detected."""
+        initialize_database()
+        nodes = {
+            "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
+        }
+        first_state = sync_name_tables_if_changed(nodes, previous_state=None)
+
+        with sqlite3.connect(self.test_db_path) as conn:
+            conn.execute("DELETE FROM longnames WHERE meshtastic_id = ?", ("!1",))
+
+        self.assertIsNone(get_longname("!1"))
+        second_state = sync_name_tables_if_changed(nodes, previous_state=first_state)
+
+        self.assertEqual(second_state, first_state)
+        self.assertEqual(get_longname("!1"), "Alpha")
+        self.assertEqual(get_shortname("!1"), "A")
+
+    def test_sync_name_tables_if_changed_updates_on_change(self):
+        """State changes should trigger table updates and return the new state."""
+        initialize_database()
+        nodes = {
+            "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
+        }
+        first_state = sync_name_tables_if_changed(nodes, previous_state=None)
+
+        updated_nodes = {
+            "node_a": {
+                "user": {"id": "!1", "longName": "Alpha Prime", "shortName": "A1"}
+            },
+        }
+        second_state = sync_name_tables_if_changed(
+            updated_nodes, previous_state=first_state
+        )
+
+        self.assertNotEqual(second_state, first_state)
+        self.assertEqual(
+            second_state,
+            (("!1", "Alpha Prime", "A1"),),
+        )
+        self.assertEqual(get_longname("!1"), "Alpha Prime")
+        self.assertEqual(get_shortname("!1"), "A1")
+
+    def test_sync_name_tables_if_changed_retries_after_write_failure(self):
+        """Changed snapshots should not advance or partially persist when a names-table update fails."""
+        initialize_database()
+        nodes = {
+            "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
+        }
+        first_state = sync_name_tables_if_changed(nodes, previous_state=None)
+
+        updated_nodes = {
+            "node_a": {
+                "user": {"id": "!1", "longName": "Alpha Prime", "shortName": "A1"}
+            },
+        }
+        write_failed_flag = [False]
+        side_effect, _ = _make_failing_cursor_proxy_side_effect(write_failed_flag)
+
+        with patch.object(
+            DatabaseManager,
+            "run_sync",
+            autospec=True,
+            side_effect=side_effect,
+        ):
+            second_state = sync_name_tables_if_changed(
+                updated_nodes, previous_state=first_state
+            )
+
+        self.assertTrue(write_failed_flag[0], "forced write failure was not triggered")
+        self.assertEqual(second_state, first_state)
+        self.assertEqual(get_longname("!1"), "Alpha")
+        self.assertEqual(get_shortname("!1"), "A")
+
+        retry_state = sync_name_tables_if_changed(
+            updated_nodes, previous_state=second_state
+        )
+        self.assertEqual(retry_state, (("!1", "Alpha Prime", "A1"),))
+        self.assertEqual(get_longname("!1"), "Alpha Prime")
+        self.assertEqual(get_shortname("!1"), "A1")
+
+    def test_sync_name_tables_if_changed_retries_from_cold_start_on_write_failure(self):
+        """A first-run write failure should keep state unset and avoid partial writes."""
+        initialize_database()
+        nodes = {
+            "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
+        }
+        write_failed_flag = [False]
+        side_effect, _ = _make_failing_cursor_proxy_side_effect(write_failed_flag)
+
+        with patch.object(
+            DatabaseManager,
+            "run_sync",
+            autospec=True,
+            side_effect=side_effect,
+        ):
+            state = sync_name_tables_if_changed(nodes, previous_state=None)
+
+        self.assertTrue(write_failed_flag[0], "forced write failure was not triggered")
+        self.assertIsNone(state)
+        self.assertIsNone(get_longname("!1"))
+        self.assertIsNone(get_shortname("!1"))
+
+        retry_state = sync_name_tables_if_changed(nodes, previous_state=state)
+        self.assertEqual(retry_state, (("!1", "Alpha", "A"),))
+        self.assertEqual(get_longname("!1"), "Alpha")
+        self.assertEqual(get_shortname("!1"), "A")
+
+    def test_sync_name_tables_if_changed_handles_none_nodes(self):
+        """None node snapshots should return previous_state without modifying the database."""
+        initialize_database()
+
+        state = sync_name_tables_if_changed(None, previous_state=None)
+
+        self.assertIsNone(state)
+        with sqlite3.connect(self.test_db_path) as conn:
+            longname_rows = conn.execute("SELECT COUNT(*) FROM longnames").fetchone()
+            shortname_rows = conn.execute("SELECT COUNT(*) FROM shortnames").fetchone()
+        self.assertIsNotNone(longname_rows)
+        self.assertIsNotNone(shortname_rows)
+        self.assertEqual(longname_rows[0], 0)
+        self.assertEqual(shortname_rows[0], 0)
+
+    def test_sync_name_tables_if_changed_handles_non_dict_nodes(self):
+        """Non-dict node snapshots should return previous_state without modifying the database."""
+        initialize_database()
+
+        bad_nodes: Any = []
+        state = sync_name_tables_if_changed(bad_nodes, previous_state=None)
+
+        self.assertIsNone(state)
+        with sqlite3.connect(self.test_db_path) as conn:
+            longname_rows = conn.execute("SELECT COUNT(*) FROM longnames").fetchone()
+            shortname_rows = conn.execute("SELECT COUNT(*) FROM shortnames").fetchone()
+        self.assertIsNotNone(longname_rows)
+        self.assertIsNotNone(shortname_rows)
+        self.assertEqual(longname_rows[0], 0)
+        self.assertEqual(shortname_rows[0], 0)
+
     def test_update_names_preserve_zero_id_for_stale_tracking(self):
         """
         Test that numeric zero IDs are treated as valid IDs, not skipped as missing.
@@ -292,6 +684,27 @@ class TestDbUtils(unittest.TestCase):
         self.assertEqual(get_shortname("0"), "Z0")
         self.assertIsNone(get_longname("1"))
         self.assertIsNone(get_shortname("1"))
+
+    def test_update_names_clear_rows_when_name_is_missing(self):
+        """
+        Test that empty/None name values clear existing per-node rows.
+        """
+        initialize_database()
+
+        initial_nodes = {
+            "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
+        }
+        update_longnames(initial_nodes)
+        update_shortnames(initial_nodes)
+
+        cleared_nodes = {
+            "node_a": {"user": {"id": "!1", "longName": "", "shortName": None}},
+        }
+        update_longnames(cleared_nodes)
+        update_shortnames(cleared_nodes)
+
+        self.assertIsNone(get_longname("!1"))
+        self.assertIsNone(get_shortname("!1"))
 
     def test_update_longnames_removes_stale_entries(self):
         """
@@ -636,8 +1049,18 @@ class TestDbUtils(unittest.TestCase):
             initialize_database()
             store_plugin_data("plugin", "nodeA", {"value": 1})
             store_plugin_data("plugin", "nodeB", {"value": 2})
-            # Only the initial connection should be created; subsequent calls reuse it.
-            self.assertEqual(mock_connect.call_count, 1)
+            # DatabaseManager may open an in-memory probe connection during startup
+            # capability checks; assert reuse for the real configured database path.
+            real_db_connect_calls = []
+            for call in mock_connect.call_args_list:
+                path = ""
+                if call.args:
+                    path = str(call.args[0])
+                elif "database" in call.kwargs:
+                    path = str(call.kwargs["database"])
+                if path and os.path.abspath(path) == os.path.abspath(self.test_db_path):
+                    real_db_connect_calls.append(call)
+            self.assertEqual(len(real_db_connect_calls), 1)
 
     def test_async_store_and_prune_message_map(self):
         """

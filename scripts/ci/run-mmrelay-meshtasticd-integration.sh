@@ -22,6 +22,7 @@ set -euo pipefail
 #   4. E2EE Matrix user message in encrypted room → Mesh A + Mesh B
 #   5. E2EE Matrix user reply in encrypted room → both meshes as structured replies
 #   6. E2EE Matrix user reaction in encrypted room → both meshes
+#   7. Stale name rows are pruned to match current node DB
 #
 # Environment Variables:
 #   MESHTASTICD_IMAGE: Docker image for meshtasticd (default: meshtastic/meshtasticd:latest)
@@ -31,6 +32,8 @@ set -euo pipefail
 #   MESH_CHANNEL_NAME_A / MESH_CHANNEL_NAME_B: Channel names for isolated meshnets
 #   MESH_PRIMARY_PSK_A / MESH_PRIMARY_PSK_B: Primary channel keys for isolated meshnets
 #   MATRIX_EVENT_TIMEOUT_SECONDS: Matrix event polling timeout per assertion
+#   NODEDB_REFRESH_INTERVAL_SECONDS: Node-name refresh cadence in MMRelay config
+#   NAME_PRUNE_WAIT_TIMEOUT_SECONDS: Timeout for stale-name prune assertions
 # =============================================================================
 
 # Meshtasticd Configuration
@@ -63,7 +66,47 @@ MESHNET_NAME_A="${MESHNET_NAME_A:-Mesh A}"
 MESHNET_NAME_B="${MESHNET_NAME_B:-Mesh B}"
 MATRIX_EVENT_TIMEOUT_SECONDS="${MATRIX_EVENT_TIMEOUT_SECONDS:-60}"
 MESSAGE_MAP_WAIT_TIMEOUT_SECONDS="${MESSAGE_MAP_WAIT_TIMEOUT_SECONDS:-60}"
+NAME_PRUNE_WAIT_TIMEOUT_SECONDS="${NAME_PRUNE_WAIT_TIMEOUT_SECONDS:-75}"
+NODEDB_REFRESH_INTERVAL_SECONDS="${NODEDB_REFRESH_INTERVAL_SECONDS:-5}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
+
+if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
+	echo "Python runtime '${PYTHON_BIN}' is required." >&2
+	exit 1
+fi
+
+# Names-table SQL identifiers loaded from app constants.
+mapfile -t names_table_constants < <(
+	"${PYTHON_BIN}" - <<'PY'
+import pathlib
+import sys
+
+sys.path.insert(0, str(pathlib.Path.cwd() / "src"))
+from mmrelay.constants.database import (
+    NAMES_FIELD_LONGNAME,
+    NAMES_FIELD_SHORTNAME,
+    NAMES_TABLE_LONGNAMES,
+    NAMES_TABLE_SHORTNAMES,
+)
+
+print(NAMES_TABLE_LONGNAMES)
+print(NAMES_TABLE_SHORTNAMES)
+print(NAMES_FIELD_LONGNAME)
+print(NAMES_FIELD_SHORTNAME)
+PY
+) || {
+	echo "Failed to load names-table constants via '${PYTHON_BIN}'." >&2
+	exit 1
+}
+if [[ ${#names_table_constants[@]} -ne 4 ]]; then
+	echo "Failed to parse names-table constants from '${PYTHON_BIN}' output." >&2
+	exit 1
+fi
+
+NAMES_TABLE_LONGNAMES="${names_table_constants[0]}"
+NAMES_TABLE_SHORTNAMES="${names_table_constants[1]}"
+NAMES_FIELD_LONGNAME="${names_table_constants[2]}"
+NAMES_FIELD_SHORTNAME="${names_table_constants[3]}"
 
 # Artifacts and Logging - Separated by Instance
 CI_ARTIFACT_DIR="${CI_ARTIFACT_DIR:-${PWD}/.ci-artifacts/meshtasticd-integration}"
@@ -1338,6 +1381,336 @@ raise SystemExit(1)
 PY
 }
 
+# upsert_name_entry inserts or updates one row in longnames/shortnames for test setup.
+upsert_name_entry() {
+	local db_path=$1
+	local table_name=$2
+	local column_name=$3
+	local meshtastic_id=$4
+	local name_value=$5
+	"${PYTHON_BIN}" - \
+		"${db_path}" \
+		"${table_name}" \
+		"${column_name}" \
+		"${meshtastic_id}" \
+		"${name_value}" \
+		"${NAMES_TABLE_LONGNAMES}" \
+		"${NAMES_FIELD_LONGNAME}" \
+		"${NAMES_TABLE_SHORTNAMES}" \
+		"${NAMES_FIELD_SHORTNAME}" <<'PY'
+import sqlite3
+import sys
+
+(
+    db_path,
+    table_name,
+    column_name,
+    meshtastic_id,
+    name_value,
+    longnames_table,
+    longname_column,
+    shortnames_table,
+    shortname_column,
+) = sys.argv[1:10]
+allowed_columns = {
+    longnames_table: longname_column,
+    shortnames_table: shortname_column,
+}
+expected_column = allowed_columns.get(table_name)
+if expected_column is None or expected_column != column_name:
+    raise SystemExit(f"Invalid table/column pair: {table_name}.{column_name}")
+
+with sqlite3.connect(db_path, timeout=5) as conn:
+    conn.execute("PRAGMA busy_timeout = 5000")
+    conn.execute(
+        f"INSERT INTO {table_name} (meshtastic_id, {column_name}) VALUES (?, ?) "
+        f"ON CONFLICT(meshtastic_id) DO UPDATE SET {column_name}=excluded.{column_name}",
+        (meshtastic_id, name_value),
+    )
+PY
+}
+
+# get_existing_name_entry returns one current meshtastic_id for a specific names table.
+get_existing_name_entry() {
+	local db_path=$1
+	local table_name=$2
+	"${PYTHON_BIN}" - \
+		"${db_path}" \
+		"${table_name}" \
+		"${NAMES_TABLE_LONGNAMES}" \
+		"${NAMES_TABLE_SHORTNAMES}" <<'PY'
+import pathlib
+import sqlite3
+import sys
+
+db_path, table_name, longnames_table, shortnames_table = sys.argv[1:5]
+
+allowed_tables = {longnames_table, shortnames_table}
+if table_name not in allowed_tables:
+    print(f"Invalid table name: {table_name}", file=sys.stderr)
+    raise SystemExit(1)
+db_uri = pathlib.Path(db_path).resolve().as_uri() + "?mode=ro"
+try:
+    with sqlite3.connect(db_uri, uri=True, timeout=5) as conn:
+        conn.execute("PRAGMA busy_timeout = 5000")
+        row = conn.execute(
+            f"SELECT meshtastic_id FROM {table_name} "
+            "WHERE meshtastic_id IS NOT NULL AND meshtastic_id != '' "
+            "ORDER BY meshtastic_id LIMIT 1"
+        ).fetchone()
+except sqlite3.Error as exc:
+    error_text = str(exc).lower()
+    if (
+        "no such table" in error_text
+        or "database is locked" in error_text
+        or "database schema is locked" in error_text
+    ):
+        print(f"Transient SQLite state for {table_name}, will retry: {exc}", file=sys.stderr)
+        raise SystemExit(2)
+    print(f"SQLite error querying {table_name}: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+
+if row and row[0]:
+    print(row[0])
+    raise SystemExit(0)
+
+raise SystemExit(2)
+PY
+}
+
+# poll_for_existing_name_entry polls until a name entry exists, using global timeout settings.
+# Sets the result variable and returns 0 on success, calls fail_test on timeout.
+_fail_if_relay_not_running_during_poll() {
+	local relay_pid=${1-}
+	local relay_name=${2:-MMRelay}
+	local relay_log_path=${3-}
+	local detail=${4:-poll}
+	if [[ -z ${relay_pid} ]]; then
+		return 0
+	fi
+	if kill -0 "${relay_pid}" >/dev/null 2>&1; then
+		return 0
+	fi
+
+	if [[ -n ${relay_log_path} ]] && [[ -f ${relay_log_path} ]]; then
+		{
+			echo "Last 20 lines from ${relay_name} log (${relay_log_path}):"
+			tail -n 20 "${relay_log_path}" || true
+		} >&2
+	fi
+	fail_test "${relay_name} process (pid=${relay_pid}) exited while waiting during ${detail}"
+}
+
+poll_for_existing_name_entry() {
+	local result_var_name=$1
+	local db_path=$2
+	local table_name=$3
+	local instance_label=$4
+	local relay_pid=${5-}
+	local relay_name=${6:-MMRelay}
+	local relay_log_path=${7-}
+
+	local poll_start poll_now poll_elapsed captured_value capture_status
+	poll_start=$(date +%s)
+	while true; do
+		_fail_if_relay_not_running_during_poll \
+			"${relay_pid}" \
+			"${relay_name}" \
+			"${relay_log_path}" \
+			"precondition poll for ${table_name} in ${instance_label}"
+		run_with_status run_capture_with_status \
+			captured_value \
+			get_existing_name_entry \
+			"${db_path}" \
+			"${table_name}"
+		capture_status=$?
+		if ((capture_status == 2)); then
+			captured_value=""
+		elif ((capture_status != 0)); then
+			fail_test \
+				"Failed reading ${table_name} in ${instance_label} while waiting for first sync"
+		fi
+
+		if [[ -n ${captured_value} ]]; then
+			printf -v "${result_var_name}" "%s" "${captured_value}"
+			return 0
+		fi
+
+		poll_now=$(date +%s)
+		poll_elapsed=$((poll_now - poll_start))
+		if [[ ${poll_elapsed} -ge ${POLL_TIMEOUT_SECONDS} ]]; then
+			fail_test "Timed out waiting for existing ${table_name} row in ${instance_label} (${poll_elapsed}s)"
+		fi
+
+		sleep "${POLL_INTERVAL_SECONDS}"
+	done
+}
+
+# wait_for_name_entry_state waits until a names-table row reaches expected state for an ID.
+wait_for_name_entry_state() {
+	local db_path=$1
+	local table_name=$2
+	local meshtastic_id=$3
+	local timeout_seconds=$4
+	local relay_pid=${5-}
+	local relay_name=${6:-MMRelay}
+	local relay_log_path=${7-}
+	local expect_present=$8
+	"${PYTHON_BIN}" - \
+		"${db_path}" \
+		"${table_name}" \
+		"${meshtastic_id}" \
+		"${timeout_seconds}" \
+		"${relay_pid}" \
+		"${relay_name}" \
+		"${relay_log_path}" \
+		"${NAMES_TABLE_LONGNAMES}" \
+		"${NAMES_TABLE_SHORTNAMES}" \
+		"${expect_present}" <<'PY'
+import os
+import pathlib
+import sqlite3
+import sys
+import time
+from collections import deque
+
+(
+    db_path,
+    table_name,
+    meshtastic_id,
+    timeout_seconds_raw,
+    relay_pid_raw,
+    relay_name,
+    relay_log_path,
+    longnames_table,
+    shortnames_table,
+    expect_present_raw,
+) = sys.argv[1:11]
+timeout_seconds = int(timeout_seconds_raw)
+allowed_tables = {longnames_table, shortnames_table}
+if table_name not in allowed_tables:
+    raise SystemExit(f"Invalid table name: {table_name}")
+expect_present = expect_present_raw == "1"
+expected_state = "presence" if expect_present else "absence"
+db_uri = pathlib.Path(db_path).resolve().as_uri() + "?mode=ro"
+
+relay_pid = int(relay_pid_raw) if relay_pid_raw else None
+deadline = time.monotonic() + timeout_seconds
+last_error = None
+attempts = 0
+while time.monotonic() < deadline:
+    attempts += 1
+    if relay_pid is not None:
+        try:
+            os.kill(relay_pid, 0)
+        except OSError:
+            print(
+                f"{relay_name} process (pid={relay_pid}) exited while waiting for names row {expected_state}",
+                file=sys.stderr,
+            )
+            if relay_log_path and os.path.exists(relay_log_path):
+                print(
+                    f"Last 20 lines from {relay_name} log ({relay_log_path}):",
+                    file=sys.stderr,
+                )
+                with open(relay_log_path, encoding="utf-8", errors="replace") as handle:
+                    for line in deque(handle, 20):
+                        print(line.rstrip("\n"), file=sys.stderr)
+            raise SystemExit(1)
+
+    try:
+        with sqlite3.connect(db_uri, uri=True, timeout=5) as conn:
+            conn.execute("PRAGMA busy_timeout = 5000")
+            row = conn.execute(
+                f"SELECT 1 FROM {table_name} WHERE meshtastic_id=? LIMIT 1",
+                (meshtastic_id,),
+            ).fetchone()
+            is_present = row is not None
+            if is_present == expect_present:
+                raise SystemExit(0)
+    except sqlite3.Error as exc:  # pragma: no cover - retry loop
+        last_error = str(exc)
+    time.sleep(1)
+
+if last_error:
+    print(f"Last SQLite error: {last_error}", file=sys.stderr)
+try:
+    with sqlite3.connect(db_uri, uri=True, timeout=5) as conn:
+        conn.execute("PRAGMA busy_timeout = 5000")
+        target_row = conn.execute(
+            f"SELECT * FROM {table_name} WHERE meshtastic_id=? LIMIT 1",
+            (meshtastic_id,),
+        ).fetchone()
+        row_count = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()
+except sqlite3.Error as exc:
+    target_row = None
+    row_count = None
+    print(f"Failed to read debug rows from {table_name}: {exc}", file=sys.stderr)
+print(
+    f"Timed out waiting for names row {expected_state} in {table_name} "
+    f"for meshtastic_id={meshtastic_id} after {attempts} checks",
+    file=sys.stderr,
+)
+if row_count is not None:
+    print(f"{table_name} row count at timeout: {row_count[0]}", file=sys.stderr)
+if target_row is not None:
+    print(f"Target row at timeout: {target_row}", file=sys.stderr)
+raise SystemExit(1)
+PY
+}
+
+# wait_for_name_entry_absent waits until a names-table row is absent for an ID.
+wait_for_name_entry_absent() {
+	local db_path=$1
+	local table_name=$2
+	local meshtastic_id=$3
+	local timeout_seconds=$4
+	local relay_pid=${5-}
+	local relay_name=${6:-MMRelay}
+	local relay_log_path=${7-}
+	wait_for_name_entry_state \
+		"${db_path}" \
+		"${table_name}" \
+		"${meshtastic_id}" \
+		"${timeout_seconds}" \
+		"${relay_pid}" \
+		"${relay_name}" \
+		"${relay_log_path}" \
+		0
+}
+
+# wait_for_name_entry_present waits until a names-table row is present for an ID.
+wait_for_name_entry_present() {
+	local db_path=$1
+	local table_name=$2
+	local meshtastic_id=$3
+	local timeout_seconds=$4
+	local relay_pid=${5-}
+	local relay_name=${6:-MMRelay}
+	local relay_log_path=${7-}
+	wait_for_name_entry_state \
+		"${db_path}" \
+		"${table_name}" \
+		"${meshtastic_id}" \
+		"${timeout_seconds}" \
+		"${relay_pid}" \
+		"${relay_name}" \
+		"${relay_log_path}" \
+		1
+}
+
+# generate_unique_test_id returns a reproducibly prefixed random ID for test rows.
+generate_unique_test_id() {
+	local prefix=$1
+	"${PYTHON_BIN}" - "${prefix}" <<'PY'
+import secrets
+import sys
+
+prefix = sys.argv[1]
+print(f"!{prefix}_{secrets.token_hex(12)}")
+PY
+}
+
 # =============================================================================
 # Validation
 # =============================================================================
@@ -1346,11 +1719,6 @@ trap cleanup EXIT
 
 if ! command -v docker >/dev/null 2>&1; then
 	echo "docker is required for meshtasticd integration tests." >&2
-	exit 1
-fi
-
-if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
-	echo "Python runtime '${PYTHON_BIN}' is required." >&2
 	exit 1
 fi
 
@@ -1376,6 +1744,8 @@ require_regex "${SYNAPSE_PORT}" '^[0-9]+$' "SYNAPSE_PORT"
 require_regex "${MMRELAY_READY_TIMEOUT_SECONDS}" '^[0-9]+$' "MMRELAY_READY_TIMEOUT_SECONDS"
 require_regex "${MATRIX_EVENT_TIMEOUT_SECONDS}" '^[0-9]+$' "MATRIX_EVENT_TIMEOUT_SECONDS"
 require_regex "${MESSAGE_MAP_WAIT_TIMEOUT_SECONDS}" '^[0-9]+$' "MESSAGE_MAP_WAIT_TIMEOUT_SECONDS"
+require_regex "${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" '^[0-9]+$' "NAME_PRUNE_WAIT_TIMEOUT_SECONDS"
+require_regex "${NODEDB_REFRESH_INTERVAL_SECONDS}" '^[0-9]+([.][0-9]+)?$' "NODEDB_REFRESH_INTERVAL_SECONDS"
 require_regex "${MESH_CHANNEL_NAME_A}" '^[[:print:]]+$' "MESH_CHANNEL_NAME_A"
 require_regex "${MESH_CHANNEL_NAME_B}" '^[[:print:]]+$' "MESH_CHANNEL_NAME_B"
 require_regex "${MESH_PRIMARY_PSK_A}" '^0x[0-9A-Fa-f]{64}$' "MESH_PRIMARY_PSK_A"
@@ -1414,6 +1784,38 @@ if ((10#${MATRIX_EVENT_TIMEOUT_SECONDS} <= 0)); then
 fi
 if ((10#${MESSAGE_MAP_WAIT_TIMEOUT_SECONDS} <= 0)); then
 	echo "MESSAGE_MAP_WAIT_TIMEOUT_SECONDS must be greater than zero." >&2
+	exit 1
+fi
+if ((10#${NAME_PRUNE_WAIT_TIMEOUT_SECONDS} <= 0)); then
+	echo "NAME_PRUNE_WAIT_TIMEOUT_SECONDS must be greater than zero." >&2
+	exit 1
+fi
+if ! "${PYTHON_BIN}" - "${NODEDB_REFRESH_INTERVAL_SECONDS}" <<'PY'; then
+import math
+import sys
+
+value = float(sys.argv[1])
+if not math.isfinite(value) or value <= 0:
+    raise SystemExit(1)
+PY
+	echo "NODEDB_REFRESH_INTERVAL_SECONDS must be a finite value greater than zero." >&2
+	exit 1
+fi
+if ! "${PYTHON_BIN}" - "${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" "${NODEDB_REFRESH_INTERVAL_SECONDS}" <<'PY'; then
+import math
+import sys
+
+name_prune_wait_timeout = float(sys.argv[1])
+nodedb_refresh_interval = float(sys.argv[2])
+minimum_timeout = nodedb_refresh_interval + 2.0
+if (
+    not math.isfinite(name_prune_wait_timeout)
+    or not math.isfinite(nodedb_refresh_interval)
+    or name_prune_wait_timeout < minimum_timeout
+):
+    raise SystemExit(1)
+PY
+	echo "NAME_PRUNE_WAIT_TIMEOUT_SECONDS must be at least 2 seconds greater than NODEDB_REFRESH_INTERVAL_SECONDS." >&2
 	exit 1
 fi
 if [[ -z ${MESHNET_NAME_A} || -z ${MESHNET_NAME_B} ]]; then
@@ -1826,6 +2228,7 @@ meshtastic:
   host: "${MESHTASTICD_HOST_A}"
   port: ${MESHTASTICD_PORT_A_DEC}
   meshnet_name: "${MESHNET_NAME_A}"
+  nodedb_refresh_interval: ${NODEDB_REFRESH_INTERVAL_SECONDS}
   health_check:
     enabled: false
   broadcast_enabled: true
@@ -1858,6 +2261,7 @@ meshtastic:
   host: "${MESHTASTICD_HOST_B}"
   port: ${MESHTASTICD_PORT_B_DEC}
   meshnet_name: "${MESHNET_NAME_B}"
+  nodedb_refresh_interval: ${NODEDB_REFRESH_INTERVAL_SECONDS}
   health_check:
     enabled: false
   broadcast_enabled: true
@@ -2203,6 +2607,172 @@ run_or_fail "Reaction did not relay to Mesh B" \
 	"${log_offset_before_u2react_b}" \
 	60
 pass_test "Encrypted-room user reaction relayed to both meshes"
+
+# Test 7: stale name rows are pruned to match current node DB snapshot.
+start_test "Test 7" "Test 7: stale name rows are pruned to match current node DB..."
+
+POLL_TIMEOUT_SECONDS=$(
+	"${PYTHON_BIN}" - "${NODEDB_REFRESH_INTERVAL_SECONDS}" <<'PY'
+import math
+import sys
+
+DEFAULT_TIMEOUT_SECONDS = 30
+SAFETY_MARGIN_SECONDS = 10
+try:
+    refresh_interval = float(sys.argv[1])
+except (TypeError, ValueError):
+    refresh_interval = float(DEFAULT_TIMEOUT_SECONDS)
+refresh_interval = max(refresh_interval, 0.0)
+print(max(DEFAULT_TIMEOUT_SECONDS, math.ceil(refresh_interval + SAFETY_MARGIN_SECONDS)))
+PY
+)
+POLL_INTERVAL_SECONDS=1
+
+CURRENT_LONGNAME_ID_A=""
+poll_for_existing_name_entry \
+	CURRENT_LONGNAME_ID_A \
+	"${MMRELAY_DB_PATH_A}" \
+	"${NAMES_TABLE_LONGNAMES}" \
+	"instance A" \
+	"${MMRELAY_PID_A}" \
+	"MMRelay A" \
+	"${MMRELAY_LOG_PATH_A}"
+
+CURRENT_SHORTNAME_ID_A=""
+poll_for_existing_name_entry \
+	CURRENT_SHORTNAME_ID_A \
+	"${MMRELAY_DB_PATH_A}" \
+	"${NAMES_TABLE_SHORTNAMES}" \
+	"instance A" \
+	"${MMRELAY_PID_A}" \
+	"MMRelay A" \
+	"${MMRELAY_LOG_PATH_A}"
+
+CURRENT_LONGNAME_ID_B=""
+poll_for_existing_name_entry \
+	CURRENT_LONGNAME_ID_B \
+	"${MMRELAY_DB_PATH_B}" \
+	"${NAMES_TABLE_LONGNAMES}" \
+	"instance B" \
+	"${MMRELAY_PID_B}" \
+	"MMRelay B" \
+	"${MMRELAY_LOG_PATH_B}"
+
+CURRENT_SHORTNAME_ID_B=""
+poll_for_existing_name_entry \
+	CURRENT_SHORTNAME_ID_B \
+	"${MMRELAY_DB_PATH_B}" \
+	"${NAMES_TABLE_SHORTNAMES}" \
+	"instance B" \
+	"${MMRELAY_PID_B}" \
+	"MMRelay B" \
+	"${MMRELAY_LOG_PATH_B}"
+
+STALE_NAME_ID_A=$(generate_unique_test_id "MMRELAY_STALE_A")
+STALE_NAME_ID_B=$(generate_unique_test_id "MMRELAY_STALE_B")
+run_or_fail "Failed to seed stale longname in instance A" \
+	upsert_name_entry \
+	"${MMRELAY_DB_PATH_A}" \
+	"${NAMES_TABLE_LONGNAMES}" \
+	"${NAMES_FIELD_LONGNAME}" \
+	"${STALE_NAME_ID_A}" \
+	"CI stale longname A"
+run_or_fail "Failed to seed stale shortname in instance A" \
+	upsert_name_entry \
+	"${MMRELAY_DB_PATH_A}" \
+	"${NAMES_TABLE_SHORTNAMES}" \
+	"${NAMES_FIELD_SHORTNAME}" \
+	"${STALE_NAME_ID_A}" \
+	"CSA"
+run_or_fail "Failed to seed stale longname in instance B" \
+	upsert_name_entry \
+	"${MMRELAY_DB_PATH_B}" \
+	"${NAMES_TABLE_LONGNAMES}" \
+	"${NAMES_FIELD_LONGNAME}" \
+	"${STALE_NAME_ID_B}" \
+	"CI stale longname B"
+run_or_fail "Failed to seed stale shortname in instance B" \
+	upsert_name_entry \
+	"${MMRELAY_DB_PATH_B}" \
+	"${NAMES_TABLE_SHORTNAMES}" \
+	"${NAMES_FIELD_SHORTNAME}" \
+	"${STALE_NAME_ID_B}" \
+	"CSB"
+
+run_or_fail "Stale longname row in instance A was not pruned" \
+	wait_for_name_entry_absent \
+	"${MMRELAY_DB_PATH_A}" \
+	"${NAMES_TABLE_LONGNAMES}" \
+	"${STALE_NAME_ID_A}" \
+	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" \
+	"${MMRELAY_PID_A}" \
+	"MMRelay A" \
+	"${MMRELAY_LOG_PATH_A}"
+run_or_fail "Stale shortname row in instance A was not pruned" \
+	wait_for_name_entry_absent \
+	"${MMRELAY_DB_PATH_A}" \
+	"${NAMES_TABLE_SHORTNAMES}" \
+	"${STALE_NAME_ID_A}" \
+	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" \
+	"${MMRELAY_PID_A}" \
+	"MMRelay A" \
+	"${MMRELAY_LOG_PATH_A}"
+run_or_fail "Stale longname row in instance B was not pruned" \
+	wait_for_name_entry_absent \
+	"${MMRELAY_DB_PATH_B}" \
+	"${NAMES_TABLE_LONGNAMES}" \
+	"${STALE_NAME_ID_B}" \
+	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" \
+	"${MMRELAY_PID_B}" \
+	"MMRelay B" \
+	"${MMRELAY_LOG_PATH_B}"
+run_or_fail "Stale shortname row in instance B was not pruned" \
+	wait_for_name_entry_absent \
+	"${MMRELAY_DB_PATH_B}" \
+	"${NAMES_TABLE_SHORTNAMES}" \
+	"${STALE_NAME_ID_B}" \
+	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" \
+	"${MMRELAY_PID_B}" \
+	"MMRelay B" \
+	"${MMRELAY_LOG_PATH_B}"
+run_or_fail "Current longnames row in instance A disappeared unexpectedly" \
+	wait_for_name_entry_present \
+	"${MMRELAY_DB_PATH_A}" \
+	"${NAMES_TABLE_LONGNAMES}" \
+	"${CURRENT_LONGNAME_ID_A}" \
+	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" \
+	"${MMRELAY_PID_A}" \
+	"MMRelay A" \
+	"${MMRELAY_LOG_PATH_A}"
+run_or_fail "Current shortnames row in instance A disappeared unexpectedly" \
+	wait_for_name_entry_present \
+	"${MMRELAY_DB_PATH_A}" \
+	"${NAMES_TABLE_SHORTNAMES}" \
+	"${CURRENT_SHORTNAME_ID_A}" \
+	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" \
+	"${MMRELAY_PID_A}" \
+	"MMRelay A" \
+	"${MMRELAY_LOG_PATH_A}"
+run_or_fail "Current longnames row in instance B disappeared unexpectedly" \
+	wait_for_name_entry_present \
+	"${MMRELAY_DB_PATH_B}" \
+	"${NAMES_TABLE_LONGNAMES}" \
+	"${CURRENT_LONGNAME_ID_B}" \
+	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" \
+	"${MMRELAY_PID_B}" \
+	"MMRelay B" \
+	"${MMRELAY_LOG_PATH_B}"
+run_or_fail "Current shortnames row in instance B disappeared unexpectedly" \
+	wait_for_name_entry_present \
+	"${MMRELAY_DB_PATH_B}" \
+	"${NAMES_TABLE_SHORTNAMES}" \
+	"${CURRENT_SHORTNAME_ID_B}" \
+	"${NAME_PRUNE_WAIT_TIMEOUT_SECONDS}" \
+	"${MMRELAY_PID_B}" \
+	"MMRelay B" \
+	"${MMRELAY_LOG_PATH_B}"
+pass_test "Periodic node-name refresh pruned stale rows in both relays"
+
 write_observability_report
 
 # =============================================================================

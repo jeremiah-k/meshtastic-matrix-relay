@@ -13,6 +13,7 @@ Tests integration scenarios including:
 """
 
 import asyncio
+import logging
 import os
 import sys
 import tempfile
@@ -27,6 +28,7 @@ from mmrelay.config import load_config
 from mmrelay.db_utils import initialize_database
 from mmrelay.matrix_utils import connect_matrix
 from mmrelay.meshtastic_utils import connect_meshtastic, on_meshtastic_message
+from tests.conftest import cleanup_ble_future_state
 
 
 class TestIntegrationScenarios(unittest.TestCase):
@@ -56,12 +58,48 @@ class TestIntegrationScenarios(unittest.TestCase):
             module.config = None
             module.matrix_rooms = []
             module.meshtastic_client = None
+            if hasattr(module, "meshtastic_iface"):
+                iface = module.meshtastic_iface
+                if iface is not None:
+                    try:
+                        disconnect_iface = getattr(
+                            module,
+                            "_disconnect_ble_interface",
+                            None,
+                        )
+                        if callable(disconnect_iface):
+                            disconnect_iface(iface, reason="test-reset")
+                    except (
+                        asyncio.CancelledError,
+                        asyncio.TimeoutError,
+                        TimeoutError,
+                        OSError,
+                    ) as e:
+                        logging.getLogger(__name__).debug(
+                            "Expected error during BLE teardown: %s", e
+                        )
+                module.meshtastic_iface = None
             module.event_loop = None
             module.reconnecting = False
             module.shutting_down = False
             module.reconnect_task = None
             module.subscribed_to_messages = False
             module.subscribed_to_connection_lost = False
+            if hasattr(module, "_ble_future"):
+                cleanup_ble_future_state(module)
+            if hasattr(module, "_ble_timeout_counts"):
+                module._ble_timeout_counts = {}
+            if hasattr(module, "_ble_executor_orphaned_workers_by_address"):
+                module._ble_executor_orphaned_workers_by_address = {}
+            if hasattr(module, "_metadata_executor_orphaned_workers"):
+                module._metadata_executor_orphaned_workers = 0
+            try:
+                if hasattr(module, "_shutdown_shared_executors"):
+                    module._shutdown_shared_executors()
+            except (RuntimeError, OSError) as e:
+                logging.getLogger(__name__).debug(
+                    "Error during executor shutdown: %s", e
+                )
 
         # Reset matrix_utils globals
         if "mmrelay.matrix_utils" in sys.modules:
@@ -490,6 +528,85 @@ plugins:
 
                                 result = connect_meshtastic(config)
                                 self.assertIsNone(result)
+
+    def test_ble_stale_worker_recovery_scenario(self):
+        """
+        Test BLE connection recovery when a stale in-flight worker future is present.
+
+        Simulates a prior BLE worker task that exceeded its timeout budget and verifies
+        that connect_meshtastic can recover by resetting worker state and establishing
+        a new BLE interface in the same startup flow.
+        """
+
+        class _FakeBLEInterface:
+            def __init__(self, **kwargs):
+                self.address = kwargs.get("address")
+                self.auto_reconnect = kwargs.get("auto_reconnect")
+
+            def connect(self):
+                return None
+
+            def getMyNodeInfo(self):
+                return {"user": {"shortName": "Node", "hwModel": "HW"}}
+
+        import mmrelay.meshtastic_utils as mu
+
+        ble_address = "AA:BB:CC:DD:EE:FF"
+        stale_future = MagicMock()
+        stale_future.done.return_value = False
+        stale_future.cancel.return_value = True
+        mu._ble_future = stale_future
+        mu._ble_future_address = ble_address
+        mu._ble_future_started_at = time.monotonic() - 60.0
+        mu._ble_future_timeout_secs = 1.0
+        mu._ble_timeout_counts = {ble_address: 0}
+
+        config = {
+            "meshtastic": {
+                "connection_type": "ble",
+                "ble_address": ble_address,
+                "retries": 1,
+            },
+            "matrix_rooms": [],
+        }
+
+        with (
+            patch("mmrelay.meshtastic_utils._ble_timeout_reset_threshold", 1),
+            patch("mmrelay.meshtastic_utils._ble_future_stale_grace_secs", 30.0),
+            patch(
+                "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
+                new=_FakeBLEInterface,
+            ),
+            patch("mmrelay.meshtastic_utils._disconnect_ble_by_address"),
+            patch(
+                "mmrelay.meshtastic_utils._validate_ble_connection_address",
+                return_value=True,
+            ),
+            patch(
+                "mmrelay.meshtastic_utils._get_device_metadata",
+                return_value={"firmware_version": "unknown", "success": False},
+            ),
+            patch("mmrelay.meshtastic_utils.pub.subscribe"),
+            patch("mmrelay.meshtastic_utils.logger") as mock_logger,
+        ):
+            result = connect_meshtastic(config)
+
+        self.assertIsNotNone(result)
+        self.assertIs(result, mu.meshtastic_client)
+        stale_future.cancel.assert_called()
+        stale_warning_calls = [
+            call
+            for call in mock_logger.warning.call_args_list
+            if call.args
+            and "BLE worker appears stale during %s for %s" in str(call.args[0])
+            and len(call.args) >= 3
+            and call.args[2] == ble_address
+        ]
+        self.assertTrue(
+            stale_warning_calls,
+            "Expected warning about stale BLE worker was not logged",
+        )
+        self.assertIn(stale_warning_calls[0].args[1], {"interface creation", "connect"})
 
     def test_multi_room_message_routing(self):
         """

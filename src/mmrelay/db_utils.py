@@ -1,15 +1,25 @@
 import asyncio
 import contextlib
 import json
+import logging
 import os
 import sqlite3
 import threading
-from typing import Any, Callable, Dict, Tuple, cast
+from collections.abc import Collection
+from typing import Any, Callable, NamedTuple, cast
 
 from mmrelay.constants.database import (
     DEFAULT_BUSY_TIMEOUT_MS,
     DEFAULT_ENABLE_WAL,
     DEFAULT_EXTRA_PRAGMAS,
+    DEFAULT_NAME_PRUNE_CHUNK_SIZE,
+    NAMES_FIELD_LONGNAME,
+    NAMES_FIELD_SHORTNAME,
+    NAMES_TABLE_LONGNAMES,
+    NAMES_TABLE_SHORTNAMES,
+    PROTO_NODE_NAME_LONG,
+    PROTO_NODE_NAME_SHORT,
+    PragmaValue,
 )
 from mmrelay.db_runtime import DatabaseManager
 from mmrelay.log_utils import get_logger
@@ -37,26 +47,124 @@ _cached_config_hash = None
 
 # Database manager cache
 _db_manager: DatabaseManager | None = None
-_db_manager_signature: Tuple[str, bool, int, Tuple[Tuple[str, Any], ...]] | None = None
+_db_manager_signature: tuple[str, bool, int, tuple[tuple[str, Any], ...]] | None = None
 _db_manager_lock = threading.Lock()
 
 logger = get_logger(name="db_utils")
 
-# Table name to singular name type mapping for logging
-_NAME_TYPE_BY_TABLE = {
-    "longnames": "longname",
-    "shortnames": "shortname",
+
+class NodeNameEntry(NamedTuple):
+    meshtastic_id: str
+    long_name: str | None
+    short_name: str | None
+
+
+NodeNameState = tuple[NodeNameEntry, ...]
+
+_CONFLICT_SENTINEL = object()
+_NODE_NAME_DEBUG_ID_SAMPLE_LIMIT = 20
+
+# Table name to singular field-name mapping used for logging and column lookup.
+_NAME_FIELD_BY_TABLE = {
+    NAMES_TABLE_LONGNAMES: NAMES_FIELD_LONGNAME,
+    NAMES_TABLE_SHORTNAMES: NAMES_FIELD_SHORTNAME,
 }
 
+# Explicit protocol-field -> DB-column translation so Meshtastic payload keys
+# are not confused with SQLite column names.
+_DB_COLUMN_BY_PROTO_NODE_NAME_FIELD = {
+    PROTO_NODE_NAME_LONG: _NAME_FIELD_BY_TABLE[NAMES_TABLE_LONGNAMES],
+    PROTO_NODE_NAME_SHORT: _NAME_FIELD_BY_TABLE[NAMES_TABLE_SHORTNAMES],
+}
+_LONGNAME_DB_FIELD = _NAME_FIELD_BY_TABLE[NAMES_TABLE_LONGNAMES]
+_SHORTNAME_DB_FIELD = _NAME_FIELD_BY_TABLE[NAMES_TABLE_SHORTNAMES]
+
+# SQL templates are defined as static literals to keep linting deterministic.
+_SELECT_STALE_IDS_FROM_LONGNAMES_SQL = "SELECT meshtastic_id FROM longnames"
+_SELECT_STALE_IDS_FROM_SHORTNAMES_SQL = "SELECT meshtastic_id FROM shortnames"
 _SELECT_STALE_IDS_SQL_BY_TABLE = {
-    "longnames": "SELECT meshtastic_id FROM longnames",
-    "shortnames": "SELECT meshtastic_id FROM shortnames",
+    NAMES_TABLE_LONGNAMES: _SELECT_STALE_IDS_FROM_LONGNAMES_SQL,
+    NAMES_TABLE_SHORTNAMES: _SELECT_STALE_IDS_FROM_SHORTNAMES_SQL,
 }
 
+_DELETE_STALE_ID_FROM_LONGNAMES_SQL = "DELETE FROM longnames WHERE meshtastic_id = ?"
+_DELETE_STALE_ID_FROM_SHORTNAMES_SQL = "DELETE FROM shortnames WHERE meshtastic_id = ?"
 _DELETE_STALE_ID_SQL_BY_TABLE = {
-    "longnames": "DELETE FROM longnames WHERE meshtastic_id = ?",
-    "shortnames": "DELETE FROM shortnames WHERE meshtastic_id = ?",
+    NAMES_TABLE_LONGNAMES: _DELETE_STALE_ID_FROM_LONGNAMES_SQL,
+    NAMES_TABLE_SHORTNAMES: _DELETE_STALE_ID_FROM_SHORTNAMES_SQL,
 }
+
+_SELECT_NAME_VALUES_JSON_FROM_LONGNAMES_SQL = (
+    "SELECT meshtastic_id, longname FROM longnames "
+    "WHERE meshtastic_id IN (SELECT value FROM json_each(?))"
+)
+_SELECT_NAME_VALUES_JSON_FROM_SHORTNAMES_SQL = (
+    "SELECT meshtastic_id, shortname FROM shortnames "
+    "WHERE meshtastic_id IN (SELECT value FROM json_each(?))"
+)
+_SELECT_NAME_VALUES_SQL_BY_TABLE = {
+    NAMES_TABLE_LONGNAMES: _SELECT_NAME_VALUES_JSON_FROM_LONGNAMES_SQL,
+    NAMES_TABLE_SHORTNAMES: _SELECT_NAME_VALUES_JSON_FROM_SHORTNAMES_SQL,
+}
+
+_SELECT_NAME_VALUES_IN_PREFIX_FROM_LONGNAMES_SQL = (
+    "SELECT meshtastic_id, longname FROM longnames WHERE meshtastic_id IN ("
+)
+_SELECT_NAME_VALUES_IN_PREFIX_FROM_SHORTNAMES_SQL = (
+    "SELECT meshtastic_id, shortname FROM shortnames WHERE meshtastic_id IN ("
+)
+_SELECT_NAME_VALUES_IN_PREFIX_SQL_BY_TABLE = {
+    NAMES_TABLE_LONGNAMES: _SELECT_NAME_VALUES_IN_PREFIX_FROM_LONGNAMES_SQL,
+    NAMES_TABLE_SHORTNAMES: _SELECT_NAME_VALUES_IN_PREFIX_FROM_SHORTNAMES_SQL,
+}
+
+_UPSERT_LONGNAME_SQL = (
+    "INSERT INTO longnames (meshtastic_id, longname) VALUES (?, ?) "
+    "ON CONFLICT(meshtastic_id) DO UPDATE SET longname=excluded.longname"
+)
+_UPSERT_SHORTNAME_SQL = (
+    "INSERT INTO shortnames (meshtastic_id, shortname) VALUES (?, ?) "
+    "ON CONFLICT(meshtastic_id) DO UPDATE SET shortname=excluded.shortname"
+)
+_UPSERT_NAME_SQL_BY_TABLE = {
+    NAMES_TABLE_LONGNAMES: _UPSERT_LONGNAME_SQL,
+    NAMES_TABLE_SHORTNAMES: _UPSERT_SHORTNAME_SQL,
+}
+
+_SELECT_LONGNAME_BY_ID_SQL = "SELECT longname FROM longnames WHERE meshtastic_id=?"
+_SELECT_SHORTNAME_BY_ID_SQL = "SELECT shortname FROM shortnames WHERE meshtastic_id=?"
+_CREATE_TABLE_NAMES_LONG_SQL = (
+    "CREATE TABLE IF NOT EXISTS longnames "
+    "(meshtastic_id TEXT PRIMARY KEY, longname TEXT)"
+)
+_CREATE_TABLE_NAMES_SHORT_SQL = (
+    "CREATE TABLE IF NOT EXISTS shortnames "
+    "(meshtastic_id TEXT PRIMARY KEY, shortname TEXT)"
+)
+
+if (
+    NAMES_TABLE_LONGNAMES,
+    NAMES_TABLE_SHORTNAMES,
+    NAMES_FIELD_LONGNAME,
+    NAMES_FIELD_SHORTNAME,
+) != ("longnames", "shortnames", "longname", "shortname"):
+    raise RuntimeError(
+        "Names-table constants changed; update static SQL literals in db_utils."
+    )
+
+
+def _format_node_id_sample(ids: Collection[str]) -> str:
+    """
+    Render a deterministic, bounded list of node IDs for debug logging.
+    """
+    if not ids:
+        return "[]"
+    ordered_ids = sorted(ids)
+    sample = ordered_ids[:_NODE_NAME_DEBUG_ID_SAMPLE_LIMIT]
+    remaining = len(ordered_ids) - len(sample)
+    if remaining > 0:
+        return f"{sample} (+{remaining} more)"
+    return str(sample)
 
 
 def clear_db_path_cache() -> None:
@@ -71,6 +179,57 @@ def clear_db_path_cache() -> None:
     _cached_config_hash = None
 
 
+def _normalize_database_section(section: Any) -> dict[str, Any]:
+    """
+    Return a dictionary section for database config, defaulting invalid shapes to {}.
+    """
+    return section if isinstance(section, dict) else {}
+
+
+def _canonicalize_signature_value(value: Any) -> Any:
+    """
+    Convert arbitrary config values to deterministic JSON-safe values.
+    """
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, dict):
+        return {
+            str(key): _canonicalize_signature_value(nested_value)
+            for key, nested_value in sorted(
+                value.items(),
+                key=lambda item: str(item[0]),
+            )
+        }
+    if isinstance(value, set):
+        return [_canonicalize_signature_value(item) for item in sorted(value, key=repr)]
+    if isinstance(value, (list, tuple)):
+        return [_canonicalize_signature_value(item) for item in value]
+    try:
+        value_repr = repr(value)
+    except Exception:  # noqa: BLE001 - defensive fallback for arbitrary objects
+        value_repr = f"<unrepresentable {type(value).__name__}>"
+    return {"__type__": type(value).__name__, "__repr__": value_repr}
+
+
+def _build_database_config_signature(raw_config: Any) -> str | None:
+    """
+    Build a stable cache signature from normalized database config sections.
+    """
+    if not isinstance(raw_config, dict):
+        return None
+    db_config = {
+        "database": _normalize_database_section(raw_config.get("database")),
+        "db": _normalize_database_section(raw_config.get("db")),
+    }
+    signature_payload = _canonicalize_signature_value(db_config)
+    return json.dumps(
+        signature_payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=True,
+    )
+
+
 # Get the database path
 def get_db_path() -> str:
     """
@@ -83,15 +242,9 @@ def get_db_path() -> str:
     """
     global config, _cached_db_path, _db_path_logged, _cached_config_hash
 
-    # Create a deterministic JSON representation of relevant config sections to detect changes
-    current_config_hash = None
-    if config is not None:
-        # Use only the database-related config sections
-        db_config = {
-            "database": config.get("database", {}),
-            "db": config.get("db", {}),  # Legacy format
-        }
-        current_config_hash = json.dumps(db_config, sort_keys=True)
+    # Create a deterministic representation of relevant config sections to
+    # detect changes without assuming serializable value shapes.
+    current_config_hash = _build_database_config_signature(config)
 
     # Check if cache is valid (path exists and config hasn't changed)
     if _cached_db_path is not None and current_config_hash == _cached_config_hash:
@@ -104,11 +257,14 @@ def get_db_path() -> str:
         _cached_config_hash = current_config_hash
 
     # Check if config is available
-    if config is not None:
+    if isinstance(config, dict):
+        database_section = _normalize_database_section(config.get("database"))
+        legacy_db_section = _normalize_database_section(config.get("db"))
+
         # Check if database path is specified in config (preferred format)
-        if "database" in config and "path" in config["database"]:
-            custom_path = config["database"]["path"]
-            if custom_path:
+        if "path" in database_section:
+            custom_path = database_section["path"]
+            if isinstance(custom_path, str) and custom_path:
                 # Ensure the directory exists
                 db_dir = os.path.dirname(custom_path)
                 if db_dir:
@@ -126,11 +282,16 @@ def get_db_path() -> str:
                     logger.info("Using database path from config: %s", custom_path)
                     _db_path_logged = True
                 return custom_path
+            if custom_path not in (None, ""):
+                logger.warning(
+                    "Ignoring invalid database.path value of type %s",
+                    type(custom_path).__name__,
+                )
 
         # Check legacy format (db section)
-        if "db" in config and "path" in config["db"]:
-            custom_path = config["db"]["path"]
-            if custom_path:
+        if "path" in legacy_db_section:
+            custom_path = legacy_db_section["path"]
+            if isinstance(custom_path, str) and custom_path:
                 # Ensure the directory exists
                 db_dir = os.path.dirname(custom_path)
                 if db_dir:
@@ -150,6 +311,11 @@ def get_db_path() -> str:
                     )
                     _db_path_logged = True
                 return custom_path
+            if custom_path not in (None, ""):
+                logger.warning(
+                    "Ignoring invalid db.path value of type %s",
+                    type(custom_path).__name__,
+                )
 
     # Use unified path resolution for database
     paths_info = resolve_all_paths()
@@ -206,7 +372,10 @@ def _reset_db_manager() -> None:
     """
     Reset the cached global DatabaseManager so a new instance will be created on next access.
 
-    If a manager exists, it is closed while holding the manager lock to avoid race conditions. Intended for testing and when configuration changes require recreating the manager.
+    The manager reference is cleared atomically under lock, then closed outside the lock.
+    This avoids holding the lock during a potentially blocking close() operation while
+    still ensuring no new threads can acquire the old manager after this call returns.
+    Intended for testing and when configuration changes require recreating the manager.
     """
     global _db_manager, _db_manager_signature
     manager_to_close = None
@@ -216,9 +385,8 @@ def _reset_db_manager() -> None:
             _db_manager = None
             _db_manager_signature = None
 
-            # Close old manager inside the lock to prevent race condition
-            # where another thread might be using connections from the old manager
-            _close_manager_safely(manager_to_close)
+    if manager_to_close is not None:
+        _close_manager_safely(manager_to_close)
 
 
 def _parse_bool(value: Any, default: bool) -> bool:
@@ -260,7 +428,7 @@ def _parse_int(value: Any, default: int) -> int:
         return default
 
 
-def _resolve_database_options() -> Tuple[bool, int, Dict[str, Any]]:
+def _resolve_database_options() -> tuple[bool, int, dict[str, PragmaValue]]:
     """
     Resolve database options (WAL, busy timeout, and SQLite pragmas) from the global config, supporting legacy keys and falling back to module defaults.
 
@@ -271,11 +439,15 @@ def _resolve_database_options() -> Tuple[bool, int, Dict[str, Any]]:
         busy_timeout_ms (int): Busy timeout in milliseconds to use for SQLite connections.
         extra_pragmas (dict): Mapping of pragma names to values, starting from DEFAULT_EXTRA_PRAGMAS and overridden by config-provided pragmas.
     """
-    database_cfg: dict[str, Any] = (
+    raw_database_cfg: Any = (
         config.get("database", {}) if isinstance(config, dict) else {}
     )
+    database_cfg: dict[str, Any] = (
+        raw_database_cfg if isinstance(raw_database_cfg, dict) else {}
+    )
+    raw_legacy_cfg: Any = config.get("db", {}) if isinstance(config, dict) else {}
     legacy_cfg: dict[str, Any] = (
-        config.get("db", {}) if isinstance(config, dict) else {}
+        raw_legacy_cfg if isinstance(raw_legacy_cfg, dict) else {}
     )
 
     enable_wal = _parse_bool(
@@ -285,10 +457,15 @@ def _resolve_database_options() -> Tuple[bool, int, Dict[str, Any]]:
         DEFAULT_ENABLE_WAL,
     )
 
+    raw_busy_timeout_ms = database_cfg.get(
+        "busy_timeout_ms",
+        legacy_cfg.get("busy_timeout_ms", DEFAULT_BUSY_TIMEOUT_MS),
+    )
     busy_timeout_ms = _parse_int(
-        database_cfg.get(
-            "busy_timeout_ms",
-            legacy_cfg.get("busy_timeout_ms", DEFAULT_BUSY_TIMEOUT_MS),
+        (
+            DEFAULT_BUSY_TIMEOUT_MS
+            if isinstance(raw_busy_timeout_ms, bool)
+            else raw_busy_timeout_ms
         ),
         DEFAULT_BUSY_TIMEOUT_MS,
     )
@@ -386,12 +563,8 @@ def initialize_database() -> None:
         Parameters:
             cursor: An sqlite3.Cursor positioned on the target database; used to execute DDL statements.
         """
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS longnames (meshtastic_id TEXT PRIMARY KEY, longname TEXT)"
-        )
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS shortnames (meshtastic_id TEXT PRIMARY KEY, shortname TEXT)"
-        )
+        cursor.execute(_CREATE_TABLE_NAMES_LONG_SQL)
+        cursor.execute(_CREATE_TABLE_NAMES_SHORT_SQL)
         cursor.execute(
             "CREATE TABLE IF NOT EXISTS plugin_data (plugin_name TEXT, meshtastic_id TEXT, data TEXT, PRIMARY KEY (plugin_name, meshtastic_id))"
         )
@@ -665,10 +838,7 @@ def get_longname(meshtastic_id: int | str) -> str | None:
         Returns:
             tuple[Any, ...] | None: The first row as a tuple, or `None` if no row is available.
         """
-        cursor.execute(
-            "SELECT longname FROM longnames WHERE meshtastic_id=?",
-            (id_key,),
-        )
+        cursor.execute(_SELECT_LONGNAME_BY_ID_SQL, (id_key,))
         return cast(tuple[Any, ...] | None, cursor.fetchone())
 
     try:
@@ -701,8 +871,7 @@ def save_longname(meshtastic_id: int | str, longname: str) -> bool:
         This executes an upsert into the `longnames` table for `id_key` with `longname` taken from the enclosing scope.
         """
         cursor.execute(
-            "INSERT INTO longnames (meshtastic_id, longname) VALUES (?, ?) "
-            "ON CONFLICT(meshtastic_id) DO UPDATE SET longname=excluded.longname",
+            _UPSERT_NAME_SQL_BY_TABLE[NAMES_TABLE_LONGNAMES],
             (id_key, longname),
         )
 
@@ -715,36 +884,240 @@ def save_longname(meshtastic_id: int | str, longname: str) -> bool:
         return True
 
 
-def _update_names_core(
-    nodes: dict[str, Any],
-    *,
-    name_key: str,
-    save_name: Callable[[str, str], bool],
-    delete_stale_names: Callable[[set[str]], int],
-) -> None:
+def _delete_name_by_id(table: str, meshtastic_id: int | str) -> bool:
     """
-    Persist one user name field from a node snapshot and prune stale rows.
-
-    Stale-name pruning runs only when every node in the snapshot has a usable
-    `user.id` AND all name saves succeeded. If any node is present without enough
-    identity data, or if any save operation fails, existing names are preserved
-    rather than risking false deletions from an incomplete snapshot.
+    Delete one names-table row by Meshtastic ID.
 
     Parameters:
-        nodes (dict[str, Any]): Snapshot of node records containing optional
-            `user` dictionaries.
-        name_key (str): User field to read (`"longName"` or `"shortName"`).
-        save_name (Callable[[str, str], bool]): Function used to persist one name.
-            Returns True on success, False on failure.
-        delete_stale_names (Callable[[set[str]], int]): Function used to delete
-            rows whose Meshtastic IDs are absent from the snapshot.
-    """
-    if not nodes:
-        return
+        table (str): Names table identifier (`longnames` or `shortnames`).
+        meshtastic_id (int | str): Node identifier to delete.
 
-    current_ids: set[str] = set()
+    Returns:
+        bool: True when deletion succeeded, False on database errors.
+    """
+    delete_sql = _DELETE_STALE_ID_SQL_BY_TABLE.get(table)
+    if delete_sql is None:
+        raise _InvalidNamesTableError(table)
+
+    name_type = _NAME_FIELD_BY_TABLE.get(table, table)
+    id_key = str(meshtastic_id)
+    manager = _get_db_manager()
+
+    def _delete(cursor: sqlite3.Cursor) -> None:
+        cursor.execute(delete_sql, (id_key,))
+
+    try:
+        manager.run_sync(_delete, write=True)
+    except sqlite3.Error:
+        logger.exception("Database error deleting %s for %s", name_type, meshtastic_id)
+        return False
+    else:
+        return True
+
+
+def delete_longname(meshtastic_id: int | str) -> bool:
+    """
+    Delete one longname row for the given Meshtastic ID.
+
+    Parameters:
+        meshtastic_id (int | str): Node identifier to delete.
+
+    Returns:
+        bool: True when deletion succeeded, False on database errors.
+    """
+    return _delete_name_by_id(NAMES_TABLE_LONGNAMES, meshtastic_id)
+
+
+def delete_shortname(meshtastic_id: int | str) -> bool:
+    """
+    Delete one shortname row for the given Meshtastic ID.
+
+    Parameters:
+        meshtastic_id (int | str): Node identifier to delete.
+
+    Returns:
+        bool: True when deletion succeeded, False on database errors.
+    """
+    return _delete_name_by_id(NAMES_TABLE_SHORTNAMES, meshtastic_id)
+
+
+def _normalize_node_name_value(name_value: Any) -> str | None:
+    """
+    Normalize a node-name value to a string suitable for state comparison.
+
+    Parameters:
+        name_value (Any): Raw long/short name value from node data.
+
+    Returns:
+        str | None: Normalized string value, or None when value is absent/empty.
+    """
+    if name_value is None:
+        return None
+    if not isinstance(name_value, str):
+        logger.warning(
+            "Ignoring non-string node-name value of type %s",
+            type(name_value).__name__,
+        )
+        return None
+    return name_value or None
+
+
+def _read_name_values_for_ids(
+    table: str, current_ids: set[str]
+) -> dict[str, str | None] | None:
+    """
+    Read current name-table values for the supplied Meshtastic IDs.
+
+    Parameters:
+        table (str): Names table identifier (`longnames` or `shortnames`).
+        current_ids (set[str]): Meshtastic IDs to fetch.
+
+    Returns:
+        dict[str, str | None] | None: Mapping of ID -> normalized table value for
+        rows that currently exist in the table; `None` on database errors.
+
+    Notes:
+        Uses a json_each() batched query when available, and falls back to
+        chunked IN-clause parameterized selects on runtimes without JSON1 support.
+    """
+    if not current_ids:
+        return {}
+
+    column_name = _NAME_FIELD_BY_TABLE.get(table)
+    select_sql = _SELECT_NAME_VALUES_SQL_BY_TABLE.get(table)
+    select_in_prefix_sql = _SELECT_NAME_VALUES_IN_PREFIX_SQL_BY_TABLE.get(table)
+    if column_name is None or select_sql is None or select_in_prefix_sql is None:
+        raise _InvalidNamesTableError(table)
+
+    manager = _get_db_manager()
+    sorted_ids = sorted(current_ids)
+    supports_json_each = manager.supports_json_each()
+
+    def _fetch(cursor: sqlite3.Cursor) -> dict[str, str | None]:
+        rows_by_id: dict[str, str | None] = {}
+
+        for offset in range(0, len(sorted_ids), DEFAULT_NAME_PRUNE_CHUNK_SIZE):
+            chunk_ids = sorted_ids[offset : offset + DEFAULT_NAME_PRUNE_CHUNK_SIZE]
+            fetched_rows: list[tuple[Any, Any]]
+            if supports_json_each:
+                cursor.execute(
+                    select_sql,
+                    (json.dumps(chunk_ids),),
+                )
+                fetched_rows = cast(list[tuple[Any, Any]], cursor.fetchall())
+            else:
+                placeholders = ",".join("?" for _ in chunk_ids)
+                select_in_sql = f"{select_in_prefix_sql}{placeholders})"
+                cursor.execute(select_in_sql, tuple(chunk_ids))
+                fetched_rows = cast(list[tuple[Any, Any]], cursor.fetchall())
+            rows_by_id.update(
+                {
+                    str(row[0]): _normalize_node_name_value(row[1])
+                    for row in fetched_rows
+                }
+            )
+        return rows_by_id
+
+    try:
+        rows = manager.run_sync(_fetch)
+        return cast(dict[str, str | None], rows)
+    except sqlite3.Error:
+        logger.exception(
+            "Database error reading %s values for drift check", column_name
+        )
+        return None
+
+
+def _name_table_matches_state(
+    state: NodeNameState,
+    *,
+    table: str,
+    get_name: Callable[[NodeNameEntry], str | None],
+) -> bool:
+    """
+    Check whether one names table currently matches the expected node-name state.
+
+    Parameters:
+        state (NodeNameState): Expected normalized node-name snapshot.
+        table (str): Names table identifier (`longnames` or `shortnames`).
+        get_name (Callable[[NodeNameEntry], str | None]): Function to extract
+            the relevant name field from a NodeNameEntry.
+
+    Returns:
+        bool: True when database rows for current IDs match expected normalized
+        values; otherwise False.
+    """
+    current_ids = {entry.meshtastic_id for entry in state}
+    actual_by_id = _read_name_values_for_ids(table, current_ids)
+    if actual_by_id is None:
+        return False
+
+    for state_row in state:
+        id_key = state_row.meshtastic_id
+        expected_value = get_name(state_row)
+        if expected_value is None:
+            # None means "unknown / preserve existing" in partial snapshots
+            continue
+
+        if id_key not in actual_by_id:
+            return False
+
+        actual_value = actual_by_id[id_key]
+        if actual_value is None or actual_value == "":
+            return False
+        if expected_value != actual_value:
+            return False
+    return True
+
+
+def _name_tables_match_state(state: NodeNameState) -> bool:
+    """
+    Check whether both longname and shortname tables match the expected state.
+
+    Parameters:
+        state (NodeNameState): Expected normalized node-name snapshot.
+
+    Returns:
+        bool: True when both names tables match state for all current IDs.
+    """
+    if not state:
+        return True
+    return _name_table_matches_state(
+        state,
+        table=NAMES_TABLE_LONGNAMES,
+        get_name=lambda entry: entry.long_name,
+    ) and _name_table_matches_state(
+        state,
+        table=NAMES_TABLE_SHORTNAMES,
+        get_name=lambda entry: entry.short_name,
+    )
+
+
+def _collect_node_name_snapshot(
+    nodes: dict[str, Any] | None,
+) -> tuple[NodeNameState, set[str], bool]:
+    """
+    Build a normalized node-name state snapshot and metadata from node data.
+
+    Parameters:
+        nodes (dict[str, Any] | None): Current Meshtastic nodes snapshot.
+
+    Returns:
+        tuple[NodeNameState, set[str], bool]:
+            - Normalized sorted node-name state
+            - Current Meshtastic IDs extracted from the snapshot
+            - Snapshot completeness flag used for safe stale-row pruning
+    """
+    if nodes is None or not isinstance(nodes, dict):
+        return (), set(), False
+    if not nodes:
+        return (), set(), True
+
     snapshot_complete = True
-    all_saves_ok = True
+    current_ids: set[str] = set()
+    state_by_id: dict[str, tuple[str | None, str | None]] = {}
+    skipped_ids: set[str] = set()
+
     for node in nodes.values():
         if not isinstance(node, dict):
             snapshot_complete = False
@@ -756,24 +1129,550 @@ def _update_names_core(
             continue
 
         meshtastic_id = user.get("id")
-        if meshtastic_id is None or (
-            isinstance(meshtastic_id, str) and meshtastic_id == ""
-        ):
+        if meshtastic_id is None:
+            logger.debug("Skipping node-name snapshot entry because user.id is missing")
+            snapshot_complete = False
+            continue
+        if isinstance(meshtastic_id, bool) or not isinstance(meshtastic_id, (str, int)):
+            logger.debug(
+                "Skipping node-name snapshot entry because user.id has invalid type %s",
+                type(meshtastic_id).__name__,
+            )
+            snapshot_complete = False
+            continue
+        if isinstance(meshtastic_id, str) and meshtastic_id == "":
+            logger.debug("Skipping node-name snapshot entry because user.id is empty")
             snapshot_complete = False
             continue
 
         id_key = str(meshtastic_id)
+        if id_key in skipped_ids:
+            continue
         current_ids.add(id_key)
-        name_value = user.get(name_key)
-        if name_value:
-            if not save_name(id_key, name_value):
+
+        raw_long_name = user.get(PROTO_NODE_NAME_LONG)
+        raw_short_name = user.get(PROTO_NODE_NAME_SHORT)
+        if raw_long_name is not None and not isinstance(raw_long_name, str):
+            logger.warning(
+                "Skipping %s for %s due to non-string value type %s",
+                PROTO_NODE_NAME_LONG,
+                id_key,
+                type(raw_long_name).__name__,
+            )
+            snapshot_complete = False
+            raw_long_name = None
+        if raw_short_name is not None and not isinstance(raw_short_name, str):
+            logger.warning(
+                "Skipping %s for %s due to non-string value type %s",
+                PROTO_NODE_NAME_SHORT,
+                id_key,
+                type(raw_short_name).__name__,
+            )
+            snapshot_complete = False
+            raw_short_name = None
+
+        long_name = _normalize_node_name_value(raw_long_name)
+        short_name = _normalize_node_name_value(raw_short_name)
+
+        existing_entry = state_by_id.get(id_key)
+        if existing_entry is None:
+            state_by_id[id_key] = (long_name, short_name)
+            continue
+
+        # Duplicate IDs can appear in transient snapshots. Merge deterministically
+        # so state and DB writes are order-independent.
+        merged_long_name = _merge_node_name_values(existing_entry[0], long_name)
+        merged_short_name = _merge_node_name_values(existing_entry[1], short_name)
+
+        long_name_conflict = merged_long_name is _CONFLICT_SENTINEL
+        short_name_conflict = merged_short_name is _CONFLICT_SENTINEL
+        if long_name_conflict and short_name_conflict:
+            logger.warning(
+                "Skipping node %s due to conflicting duplicate %s/%s values in snapshot",
+                id_key,
+                PROTO_NODE_NAME_LONG,
+                PROTO_NODE_NAME_SHORT,
+            )
+            snapshot_complete = False
+            state_by_id.pop(id_key, None)
+            skipped_ids.add(id_key)
+            continue
+        if long_name_conflict or short_name_conflict:
+            snapshot_complete = False
+            if long_name_conflict:
+                logger.warning(
+                    "Ignoring conflicting duplicate %s values for node %s",
+                    PROTO_NODE_NAME_LONG,
+                    id_key,
+                )
+            if short_name_conflict:
+                logger.warning(
+                    "Ignoring conflicting duplicate %s values for node %s",
+                    PROTO_NODE_NAME_SHORT,
+                    id_key,
+                )
+            resolved_long_name = (
+                None if long_name_conflict else cast(str | None, merged_long_name)
+            )
+            resolved_short_name = (
+                None if short_name_conflict else cast(str | None, merged_short_name)
+            )
+            # If no unambiguous field remains for this ID, preserve existing DB state
+            # by skipping updates for this snapshot cycle.
+            if resolved_long_name is None and resolved_short_name is None:
+                state_by_id.pop(id_key, None)
+                skipped_ids.add(id_key)
+                continue
+            state_by_id[id_key] = (resolved_long_name, resolved_short_name)
+            continue
+        state_by_id[id_key] = cast(
+            tuple[str | None, str | None],
+            (merged_long_name, merged_short_name),
+        )
+
+    state_entries = [
+        NodeNameEntry(id_key, long_name, short_name)
+        for id_key, (long_name, short_name) in state_by_id.items()
+    ]
+    state_entries.sort(key=lambda entry: entry.meshtastic_id)
+    return tuple(state_entries), current_ids, snapshot_complete
+
+
+def _merge_node_name_values(
+    existing_value: str | None, incoming_value: str | None
+) -> str | None | object:
+    """
+    Merge duplicate-ID name values into a deterministic canonical value.
+
+    When both values are non-empty and different, returns _CONFLICT_SENTINEL
+    to signal that the conflict cannot be resolved safely and the field
+    should be skipped for this ID.
+    """
+    if existing_value is None:
+        return incoming_value
+    if incoming_value is None:
+        return existing_value
+    if existing_value == incoming_value:
+        return existing_value
+    return _CONFLICT_SENTINEL
+
+
+def _sync_name_tables_atomic(
+    state: NodeNameState,
+    current_ids: set[str],
+    snapshot_complete: bool,
+) -> bool:
+    """
+    Persist longname/shortname rows for one snapshot in a single transaction.
+
+    This keeps names tables consistent if any write fails mid-sync.
+
+    Parameters:
+        state (NodeNameState): Precomputed node-name state snapshot.
+        current_ids (set[str]): Precomputed set of current Meshtastic IDs.
+        snapshot_complete (bool): Precomputed snapshot completeness flag.
+    """
+    manager = _get_db_manager()
+    long_delete_sql = _DELETE_STALE_ID_SQL_BY_TABLE[NAMES_TABLE_LONGNAMES]
+    short_delete_sql = _DELETE_STALE_ID_SQL_BY_TABLE[NAMES_TABLE_SHORTNAMES]
+    long_upsert_sql = _UPSERT_NAME_SQL_BY_TABLE[NAMES_TABLE_LONGNAMES]
+    short_upsert_sql = _UPSERT_NAME_SQL_BY_TABLE[NAMES_TABLE_SHORTNAMES]
+    long_upsert_ids: set[str] = set()
+    short_upsert_ids: set[str] = set()
+    long_clear_ids: set[str] = set()
+    short_clear_ids: set[str] = set()
+    stale_long_ids: set[str] = set()
+    stale_short_ids: set[str] = set()
+
+    def _sync(cursor: sqlite3.Cursor) -> None:
+        for id_key, long_name, short_name in state:
+            if long_name is None:
+                if snapshot_complete:
+                    cursor.execute(long_delete_sql, (id_key,))
+                    long_clear_ids.add(id_key)
+            else:
+                cursor.execute(long_upsert_sql, (id_key, long_name))
+                long_upsert_ids.add(id_key)
+
+            if short_name is None:
+                if snapshot_complete:
+                    cursor.execute(short_delete_sql, (id_key,))
+                    short_clear_ids.add(id_key)
+            else:
+                cursor.execute(short_upsert_sql, (id_key, short_name))
+                short_upsert_ids.add(id_key)
+
+        if snapshot_complete:
+            _delete_stale_names_core(
+                cursor,
+                NAMES_TABLE_LONGNAMES,
+                current_ids,
+                deleted_ids=stale_long_ids,
+            )
+            _delete_stale_names_core(
+                cursor,
+                NAMES_TABLE_SHORTNAMES,
+                current_ids,
+                deleted_ids=stale_short_ids,
+            )
+
+    try:
+        manager.run_sync(_sync, write=True)
+    except sqlite3.Error:
+        logger.exception("Database error syncing longname/shortname tables")
+        return False
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "Node-name DB sync applied: long_upserts=%d short_upserts=%d "
+            "long_clears=%d short_clears=%d stale_long_pruned=%d "
+            "stale_short_pruned=%d snapshot_complete=%s current_ids=%d",
+            len(long_upsert_ids),
+            len(short_upsert_ids),
+            len(long_clear_ids),
+            len(short_clear_ids),
+            len(stale_long_ids),
+            len(stale_short_ids),
+            snapshot_complete,
+            len(current_ids),
+        )
+        if long_upsert_ids:
+            logger.debug(
+                "Longname upsert IDs: %s", _format_node_id_sample(long_upsert_ids)
+            )
+        if short_upsert_ids:
+            logger.debug(
+                "Shortname upsert IDs: %s",
+                _format_node_id_sample(short_upsert_ids),
+            )
+        if long_clear_ids:
+            logger.debug(
+                "Longname cleared IDs: %s",
+                _format_node_id_sample(long_clear_ids),
+            )
+        if short_clear_ids:
+            logger.debug(
+                "Shortname cleared IDs: %s",
+                _format_node_id_sample(short_clear_ids),
+            )
+        if stale_long_ids:
+            logger.debug(
+                "Stale longname pruned IDs: %s",
+                _format_node_id_sample(stale_long_ids),
+            )
+        if stale_short_ids:
+            logger.debug(
+                "Stale shortname pruned IDs: %s",
+                _format_node_id_sample(stale_short_ids),
+            )
+    return True
+
+
+def _prune_stale_name_rows_atomic(current_ids: set[str]) -> bool:
+    """
+    Prune stale rows from both names tables in a single write transaction.
+
+    Returns:
+        bool: True when both table prunes succeed, False on database errors.
+    """
+    manager = _get_db_manager()
+
+    def _prune(cursor: sqlite3.Cursor) -> None:
+        _delete_stale_names_core(cursor, NAMES_TABLE_LONGNAMES, current_ids)
+        _delete_stale_names_core(cursor, NAMES_TABLE_SHORTNAMES, current_ids)
+
+    try:
+        manager.run_sync(_prune, write=True)
+    except sqlite3.Error:
+        logger.exception(
+            "Database error deleting stale %s/%s entries",
+            NAMES_FIELD_LONGNAME,
+            NAMES_FIELD_SHORTNAME,
+        )
+        return False
+    return True
+
+
+def build_node_name_state(nodes: dict[str, Any] | None) -> NodeNameState:
+    """
+    Build a deterministic node-name state snapshot used for change detection.
+
+    Parameters:
+        nodes (dict[str, Any] | None): Current Meshtastic nodes snapshot.
+
+    Returns:
+        NodeNameState: Sorted tuples of (meshtastic_id, longName, shortName).
+    """
+    state, _current_ids, _snapshot_complete = _collect_node_name_snapshot(nodes)
+    return state
+
+
+def sync_name_tables_if_changed(
+    nodes: dict[str, Any] | None,
+    previous_state: NodeNameState | None = None,
+) -> NodeNameState | None:
+    """
+    Sync longname/shortname tables only when node-name state changes.
+
+    When the state has not changed, this function still performs safe stale-row
+    pruning for complete snapshots so periodic refresh keeps the DB aligned with
+    current node IDs without rewriting unchanged names.
+
+    Parameters:
+        nodes (dict[str, Any] | None): Current Meshtastic nodes snapshot.
+        previous_state (NodeNameState | None): Last successful state snapshot.
+
+    Returns:
+        NodeNameState | None: Current normalized state for the next iteration
+        when writes succeed; otherwise the previous state to force retry on the
+        next identical snapshot.
+    """
+    if nodes is None or not isinstance(nodes, dict):
+        return previous_state
+
+    # Empty snapshots should preserve prior state to avoid transient data loss
+    # from temporary network disconnects or incomplete refreshes.
+    # CRITICAL: When previous_state is None (first run after restart), we cannot
+    # distinguish between a genuinely empty NodeDB and a transient empty snapshot.
+    # We must NOT prune tables on first run - return None to defer pruning until
+    # we have established a baseline state.
+    if not nodes:
+        if previous_state is not None:
+            return previous_state
+        return None
+
+    current_state, current_ids, snapshot_complete = _collect_node_name_snapshot(nodes)
+    # Empty snapshots are only authoritative if snapshot_complete=True from the collector.
+    # Don't force snapshot_complete=True here - that allows transient empty cycles to
+    # wipe tables. Let the collector's snapshot_complete value propagate naturally.
+
+    # When snapshot is incomplete, preserve previous values for None fields to avoid
+    # deleting existing DB rows due to invalid/incomplete data.
+    if not snapshot_complete and previous_state is not None:
+        previous_by_id = {e.meshtastic_id: e for e in previous_state}
+        merged_entries: list[NodeNameEntry] = []
+        for entry in current_state:
+            prev = previous_by_id.pop(entry.meshtastic_id, None)
+            if prev is not None:
+                long_name = (
+                    entry.long_name if entry.long_name is not None else prev.long_name
+                )
+                short_name = (
+                    entry.short_name
+                    if entry.short_name is not None
+                    else prev.short_name
+                )
+                merged_entries.append(
+                    NodeNameEntry(entry.meshtastic_id, long_name, short_name)
+                )
+            else:
+                merged_entries.append(entry)
+        merged_entries.extend(previous_by_id.values())
+        merged_entries.sort(key=lambda e: e.meshtastic_id)
+        current_state = tuple(merged_entries)
+
+    # Non-authoritative empty states (for example conflict-only/invalid snapshots)
+    # must not replace previous_state, otherwise a subsequent authoritative empty
+    # snapshot could incorrectly prune all rows after a single transient cycle.
+    if nodes != {} and not snapshot_complete and not current_state:
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "Skipping non-authoritative empty node-name snapshot (nodes=%d)",
+                len(nodes),
+            )
+        return previous_state
+
+    if logger.isEnabledFor(logging.DEBUG):
+        current_state_ids = {entry.meshtastic_id for entry in current_state}
+        if previous_state is None:
+            logger.debug(
+                "Node-name snapshot initialized with %d IDs (snapshot_complete=%s): %s",
+                len(current_state_ids),
+                snapshot_complete,
+                _format_node_id_sample(current_state_ids),
+            )
+        else:
+            previous_state_ids = {entry.meshtastic_id for entry in previous_state}
+            added_ids = current_state_ids - previous_state_ids
+            removed_ids = previous_state_ids - current_state_ids
+            if added_ids or removed_ids:
+                logger.debug(
+                    "Node-name snapshot ID delta: added=%d removed=%d "
+                    "(snapshot_complete=%s) added_ids=%s removed_ids=%s",
+                    len(added_ids),
+                    len(removed_ids),
+                    snapshot_complete,
+                    _format_node_id_sample(added_ids),
+                    _format_node_id_sample(removed_ids),
+                )
+
+    if previous_state is not None and current_state == previous_state:
+        if snapshot_complete:
+            if not _prune_stale_name_rows_atomic(current_ids):
+                return previous_state
+        # For partial snapshots, equal current/previous state means we intentionally
+        # avoid stale-row pruning. A non-authoritative partial view can miss IDs, so
+        # pruning here could delete valid rows. Drift repair still runs below.
+        if not _name_tables_match_state(current_state):
+            if not _sync_name_tables_atomic(
+                current_state, current_ids, snapshot_complete
+            ):
+                return previous_state
+        return current_state
+
+    if _sync_name_tables_atomic(current_state, current_ids, snapshot_complete):
+        return current_state
+    return previous_state
+
+
+def _update_names_core(
+    nodes: dict[str, Any],
+    *,
+    name_key: str,
+    save_name: Callable[[str, str], bool],
+    delete_name: Callable[[str], bool],
+    delete_stale_names: Callable[[set[str]], int | None],
+) -> bool:
+    """
+    Persist one user name field from a node snapshot and prune stale rows.
+
+    Stale-name pruning runs only when every node in the snapshot has a usable
+    `user.id` AND all name saves succeeded. If any node is present without enough
+    identity data, or if any save operation fails, existing names are preserved
+    rather than risking false deletions from an incomplete snapshot.
+
+    .. note::
+
+        This function performs updates non-atomically. Each call to ``save_name``
+        or ``delete_name`` initiates a separate database transaction. If an error
+        occurs midway through the loop, the database could be left in a partially
+        updated state. For atomic updates, use :func:`_sync_name_tables_atomic`
+        instead.
+
+    Parameters:
+        nodes (dict[str, Any]): Snapshot of node records containing optional
+            `user` dictionaries.
+        name_key (str): Protocol user field to read (`"longName"` or
+            `"shortName"`).
+        save_name (Callable[[str, str], bool]): Function used to persist one name.
+            Returns True on success, False on failure.
+        delete_name (Callable[[str], bool]): Function used to delete one row for
+            a Meshtastic ID when the normalized name is absent/empty.
+        delete_stale_names (Callable[[set[str]], int]): Function used to delete
+            rows whose Meshtastic IDs are absent from the snapshot.
+
+    Returns:
+        bool: True when all save operations succeeded; False if any save failed.
+    """
+    if not nodes:
+        return True
+
+    if name_key not in _DB_COLUMN_BY_PROTO_NODE_NAME_FIELD:
+        raise ValueError(f"Unsupported node name key: {name_key}")
+
+    def _collect_single_name_snapshot(
+        node_rows: dict[str, Any],
+    ) -> tuple[dict[str, str | None], set[str], bool]:
+        """
+        Collect one name-field snapshot without depending on the sibling field.
+
+        This allows update_longnames()/update_shortnames() to proceed for a valid
+        field even when the other field is malformed or conflicting.
+        """
+        snapshot_complete = True
+        current_ids: set[str] = set()
+        state_by_id: dict[str, str | None] = {}
+        skipped_ids: set[str] = set()
+
+        for node in node_rows.values():
+            if not isinstance(node, dict):
+                snapshot_complete = False
+                continue
+
+            user = node.get("user")
+            if not isinstance(user, dict):
+                snapshot_complete = False
+                continue
+
+            meshtastic_id = user.get("id")
+            if meshtastic_id is None:
+                logger.debug(
+                    "Skipping node-name snapshot entry because user.id is missing"
+                )
+                snapshot_complete = False
+                continue
+            if isinstance(meshtastic_id, bool) or not isinstance(
+                meshtastic_id,
+                (str, int),
+            ):
+                logger.debug(
+                    "Skipping node-name snapshot entry because user.id has invalid type %s",
+                    type(meshtastic_id).__name__,
+                )
+                snapshot_complete = False
+                continue
+            if isinstance(meshtastic_id, str) and meshtastic_id == "":
+                logger.debug(
+                    "Skipping node-name snapshot entry because user.id is empty"
+                )
+                snapshot_complete = False
+                continue
+
+            id_key = str(meshtastic_id)
+            if id_key in skipped_ids:
+                continue
+            current_ids.add(id_key)
+
+            raw_name = user.get(name_key)
+            if raw_name is not None and not isinstance(raw_name, str):
+                logger.warning(
+                    "Skipping %s update for %s due to non-string value type %s",
+                    name_key,
+                    id_key,
+                    type(raw_name).__name__,
+                )
+                snapshot_complete = False
+                continue
+
+            normalized_name = _normalize_node_name_value(raw_name)
+            existing_name = state_by_id.get(id_key)
+            if existing_name is None:
+                state_by_id[id_key] = normalized_name
+                continue
+
+            merged_name = _merge_node_name_values(existing_name, normalized_name)
+            if merged_name is _CONFLICT_SENTINEL:
+                logger.warning(
+                    "Skipping %s update for %s due to conflicting duplicate values",
+                    name_key,
+                    id_key,
+                )
+                snapshot_complete = False
+                state_by_id.pop(id_key, None)
+                skipped_ids.add(id_key)
+                continue
+
+            state_by_id[id_key] = cast(str | None, merged_name)
+
+        return state_by_id, current_ids, snapshot_complete
+
+    state_by_id, current_ids, snapshot_complete = _collect_single_name_snapshot(nodes)
+    all_saves_ok = True
+    for id_key, normalized_name in state_by_id.items():
+        if normalized_name is None:
+            if snapshot_complete and not delete_name(id_key):
                 all_saves_ok = False
+            continue
+        if not save_name(id_key, normalized_name):
+            all_saves_ok = False
 
     if current_ids and snapshot_complete and all_saves_ok:
-        delete_stale_names(current_ids)
+        stale_delete_count = delete_stale_names(current_ids)
+        if stale_delete_count is None:
+            all_saves_ok = False
+    return all_saves_ok
 
 
-def update_longnames(nodes: dict[str, Any]) -> None:
+def update_longnames(nodes: dict[str, Any]) -> bool:
     """
     Persist each node's `longName` and prune stale longname rows.
 
@@ -783,12 +1682,21 @@ def update_longnames(nodes: dict[str, Any]) -> None:
     Parameters:
         nodes (dict[str, Any]): Mapping of node identifiers to node dictionaries;
             each node may expose a `user` dict with `id` and `longName`.
+
+    Returns:
+        bool: True when longname writes succeeded for all rows attempted; False
+        when any write failed.
     """
-    _update_names_core(
+    return _update_names_core(
         nodes,
-        name_key="longName",
+        name_key=PROTO_NODE_NAME_LONG,
         save_name=save_longname,
-        delete_stale_names=delete_stale_longnames,
+        delete_name=delete_longname,
+        delete_stale_names=lambda current_ids: _delete_stale_names(
+            NAMES_TABLE_LONGNAMES,
+            current_ids,
+            return_none_on_error=True,
+        ),
     )
 
 
@@ -814,10 +1722,7 @@ def get_shortname(meshtastic_id: int | str) -> str | None:
         Returns:
             tuple[Any, ...] | None: The first row returned by the query (typically a single-item tuple containing the `shortname`), or `None` if no row is found.
         """
-        cursor.execute(
-            "SELECT shortname FROM shortnames WHERE meshtastic_id=?",
-            (id_key,),
-        )
+        cursor.execute(_SELECT_SHORTNAME_BY_ID_SQL, (id_key,))
         return cast(tuple[Any, ...] | None, cursor.fetchone())
 
     try:
@@ -849,8 +1754,7 @@ def save_shortname(meshtastic_id: int | str, shortname: str) -> bool:
         Upserts the shortname for the captured Meshtastic ID into the shortnames table using the provided database cursor.
         """
         cursor.execute(
-            "INSERT INTO shortnames (meshtastic_id, shortname) VALUES (?, ?) "
-            "ON CONFLICT(meshtastic_id) DO UPDATE SET shortname=excluded.shortname",
+            _UPSERT_NAME_SQL_BY_TABLE[NAMES_TABLE_SHORTNAMES],
             (id_key, shortname),
         )
 
@@ -864,7 +1768,11 @@ def save_shortname(meshtastic_id: int | str, shortname: str) -> bool:
 
 
 def _delete_stale_names_core(
-    cursor: sqlite3.Cursor, table: str, current_ids: set[str]
+    cursor: sqlite3.Cursor,
+    table: str,
+    current_ids: set[str],
+    *,
+    deleted_ids: set[str] | None = None,
 ) -> int:
     """
     Delete rows whose `meshtastic_id` is missing from the current node snapshot.
@@ -902,16 +1810,23 @@ def _delete_stale_names_core(
     # Delete stale IDs in batches to avoid SQLite parameter limits.
     # Use a fixed, parameterized delete statement selected from the allow-list.
     total_deleted = 0
-    chunk_size = 900  # Safe chunk size below SQLite's limit
+    chunk_size = DEFAULT_NAME_PRUNE_CHUNK_SIZE
     for i in range(0, len(stale_ids), chunk_size):
         chunk = stale_ids[i : i + chunk_size]
         cursor.executemany(delete_sql, ((stale_id,) for stale_id in chunk))
+        if deleted_ids is not None:
+            deleted_ids.update(chunk)
         total_deleted += cursor.rowcount
 
     return total_deleted
 
 
-def _delete_stale_names(table_name: str, current_ids: set[str]) -> int:
+def _delete_stale_names(
+    table_name: str,
+    current_ids: set[str],
+    *,
+    return_none_on_error: bool = False,
+) -> int | None:
     """
     Remove name entries for nodes no longer in the device's nodedb.
 
@@ -920,10 +1835,11 @@ def _delete_stale_names(table_name: str, current_ids: set[str]) -> int:
         current_ids (set[str]): Set of Meshtastic node IDs currently known to the device.
 
     Returns:
-        int: Number of stale entries removed.
+        int | None: Number of stale entries removed, or `None` when
+        `return_none_on_error=True` and a database error occurs.
     """
     manager = _get_db_manager()
-    name_type = _NAME_TYPE_BY_TABLE.get(table_name, table_name)
+    name_type = _NAME_FIELD_BY_TABLE.get(table_name, table_name)
 
     def _delete(cursor: sqlite3.Cursor) -> int:
         """
@@ -935,11 +1851,12 @@ def _delete_stale_names(table_name: str, current_ids: set[str]) -> int:
         deleted = manager.run_sync(_delete, write=True)
     except sqlite3.Error:
         logger.exception("Database error deleting stale %s entries", name_type)
-        return 0
+        return None if return_none_on_error else 0
     else:
-        if deleted > 0:
-            logger.debug("Removed %d stale %s entries", deleted, name_type)
-        return deleted
+        deleted_count = cast(int, deleted)
+        if deleted_count > 0:
+            logger.debug("Removed %d stale %s entries", deleted_count, name_type)
+        return deleted_count
 
 
 def delete_stale_longnames(current_ids: set[str]) -> int:
@@ -957,7 +1874,8 @@ def delete_stale_longnames(current_ids: set[str]) -> int:
     Returns:
         int: Number of rows removed from the longnames table.
     """
-    return _delete_stale_names("longnames", current_ids)
+    deleted = _delete_stale_names(NAMES_TABLE_LONGNAMES, current_ids)
+    return 0 if deleted is None else deleted
 
 
 def delete_stale_shortnames(current_ids: set[str]) -> int:
@@ -974,26 +1892,39 @@ def delete_stale_shortnames(current_ids: set[str]) -> int:
     Returns:
         int: Number of stale entries removed.
     """
-    return _delete_stale_names("shortnames", current_ids)
+    deleted = _delete_stale_names(NAMES_TABLE_SHORTNAMES, current_ids)
+    return 0 if deleted is None else deleted
 
 
-def update_shortnames(nodes: dict[str, Any]) -> None:
+def update_shortnames(nodes: dict[str, Any]) -> bool:
     """
     Update persisted short names for nodes that include a user object.
 
-    For each node in the provided mapping, if the node contains a `user` dictionary with a present `shortName`, the function uses `user["id"]` as the Meshtastic ID and stores the short name in the database. Nodes with missing `shortName` are skipped to avoid overwriting existing database entries with placeholder values.
+    For each node in the provided mapping, if the node contains `user["id"]`, the
+    normalized `user["shortName"]` value is applied to the corresponding shortnames
+    row. When `user["shortName"]` normalizes to `None`, the existing shortnames row
+    for that Meshtastic ID is deleted.
 
     After updating, removes stale entries from the database only when every node
-    in the snapshot has a usable `user.id`.
+    in the snapshot has a usable `user["id"]`.
 
     Parameters:
         nodes (dict[str, Any]): Mapping of node identifiers to node objects; nodes without a `user` entry are ignored.
+
+    Returns:
+        bool: True when shortname writes succeeded for all rows attempted; False
+        when any write failed.
     """
-    _update_names_core(
+    return _update_names_core(
         nodes,
-        name_key="shortName",
+        name_key=PROTO_NODE_NAME_SHORT,
         save_name=save_shortname,
-        delete_stale_names=delete_stale_shortnames,
+        delete_name=delete_shortname,
+        delete_stale_names=lambda current_ids: _delete_stale_names(
+            NAMES_TABLE_SHORTNAMES,
+            current_ids,
+            return_none_on_error=True,
+        ),
     )
 
 

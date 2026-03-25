@@ -1,6 +1,7 @@
 import asyncio
 import functools
 import json
+import math
 import ntpath
 import os
 import re
@@ -20,6 +21,7 @@ from mmrelay.constants.config import (
     CONFIG_KEY_ACCESS_TOKEN,
     CONFIG_KEY_BOT_USER_ID,
     CONFIG_KEY_HOMESERVER,
+    CONFIG_KEY_NODEDB_REFRESH_INTERVAL,
     CONFIG_SECTION_MATRIX,
 )
 
@@ -489,6 +491,8 @@ def _convert_env_float(
         float_value = float(value)
     except ValueError:
         raise ValueError(f"Invalid float value for {var_name}: '{value}'") from None
+    if not math.isfinite(float_value):
+        raise ValueError(f"{var_name} must be a finite number, got '{value}'")
 
     if min_value is not None and float_value < min_value:
         raise ValueError(f"{var_name} must be >= {min_value}, got {float_value}")
@@ -1036,6 +1040,12 @@ _MESHTASTIC_ENV_VAR_MAPPINGS: list[dict[str, Any]] = [
         "config_key": "message_delay",
         "type": "float",
         "min_value": 2.0,
+    },
+    {
+        "env_var": "MMRELAY_MESHTASTIC_NODEDB_REFRESH_INTERVAL",
+        "config_key": CONFIG_KEY_NODEDB_REFRESH_INTERVAL,
+        "type": "float",
+        "min_value": 0.0,
     },
 ]
 

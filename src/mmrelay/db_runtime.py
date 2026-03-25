@@ -12,10 +12,97 @@ import asyncio
 import re
 import sqlite3
 import threading
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from functools import partial
+from functools import lru_cache
 from typing import Any, Generator, Optional
+
+from mmrelay.constants.database import (
+    SQLITE_JSON_EACH_PROBE_PAYLOAD,
+    SQLITE_JSON_EACH_PROBE_SQL,
+)
+from mmrelay.log_utils import get_logger
+
+logger = get_logger(__name__)
+
+
+def _get_sqlite_runtime_version_info() -> tuple[int, int, int]:
+    """
+    Return the runtime SQLite version as a normalized 3-int tuple.
+    """
+    version_info = getattr(sqlite3, "sqlite_version_info", None)
+    if (
+        isinstance(version_info, tuple)
+        and len(version_info) >= 3
+        and all(isinstance(part, int) for part in version_info[:3])
+    ):
+        return (version_info[0], version_info[1], version_info[2])
+
+    version_str = str(getattr(sqlite3, "sqlite_version", "0.0.0"))
+    raw_parts = version_str.split(".")
+    numeric_parts: list[int] = []
+    for raw_part in raw_parts[:3]:
+        try:
+            numeric_parts.append(int(raw_part))
+        except ValueError:
+            numeric_parts.append(0)
+    while len(numeric_parts) < 3:
+        numeric_parts.append(0)
+    return (numeric_parts[0], numeric_parts[1], numeric_parts[2])
+
+
+@lru_cache(maxsize=1)
+def _validate_sqlite_json_each_support() -> bool:
+    """
+    Detect runtime json_each() capability for optional name-state optimizations.
+
+    Returns:
+        bool: True when json_each() is available, False otherwise.
+    """
+    conn = sqlite3.connect(":memory:")
+    try:
+        _probe_sqlite_json_each_support(conn)
+        return True
+    except RuntimeError:
+        current_version = _get_sqlite_runtime_version_info()
+        logger.warning(
+            "SQLite json_each() is unavailable (runtime %s.%s.%s); "
+            "falling back to non-JSON1 node-name query paths.",
+            current_version[0],
+            current_version[1],
+            current_version[2],
+        )
+        return False
+    finally:
+        conn.close()
+
+
+def _probe_sqlite_json_each_support(conn: sqlite3.Connection) -> None:
+    """
+    Verify json_each() support on an active SQLite connection.
+
+    Only translate explicit "missing json_each support" failures to a
+    RuntimeError. Other sqlite failures (for example, corrupted database files)
+    are re-raised unchanged so callers can handle the underlying database error.
+    """
+    try:
+        conn.execute(
+            SQLITE_JSON_EACH_PROBE_SQL, (SQLITE_JSON_EACH_PROBE_PAYLOAD,)
+        ).fetchall()
+    except sqlite3.Error as exc:
+        error_message = str(exc).lower()
+        if (
+            "no such function: json_each" in error_message
+            or "no such table: json_each" in error_message
+        ):
+            current_version = _get_sqlite_runtime_version_info()
+            raise RuntimeError(
+                "SQLite json_each() support is required for node-name queries. "
+                f"Detected SQLite version: {current_version[0]}.{current_version[1]}.{current_version[2]}. "
+                "Ensure SQLite is built with JSON support."
+            ) from exc
+        raise
 
 
 class DatabaseManager:
@@ -35,7 +122,14 @@ class DatabaseManager:
     _thread_local: threading.local
     _write_lock: threading.RLock
     _connections: set[sqlite3.Connection]
-    _connections_lock: threading.Lock
+    _connections_lock: threading.RLock
+    _active_sync_condition: threading.Condition
+    _active_sync_count: int
+    _executor_lock: threading.Lock
+    _accepting_submissions: bool
+    _closing: bool
+    _supports_json_each: bool
+    _async_executor: ThreadPoolExecutor
 
     def __init__(
         self,
@@ -55,7 +149,14 @@ class DatabaseManager:
             extra_pragmas (Optional[dict[str, Any]]): Additional PRAGMA directives to apply to each connection.
                 Keys are pragma names and values are either numeric or string pragma values. Invalid pragma
                 names or values will raise when a connection is created.
+
+        Notes:
+            Construction eagerly creates and validates the first SQLite connection
+            so path and PRAGMA misconfiguration fail before a manager instance is
+            published.
         """
+        self._supports_json_each = _validate_sqlite_json_each_support()
+
         self._path = path
         self._enable_wal = enable_wal
         self._busy_timeout_ms = busy_timeout_ms
@@ -64,7 +165,21 @@ class DatabaseManager:
         self._thread_local = threading.local()
         self._write_lock = threading.RLock()
         self._connections: set[sqlite3.Connection] = set()
-        self._connections_lock = threading.Lock()
+        self._connections_lock = threading.RLock()
+        self._active_sync_condition = threading.Condition(self._connections_lock)
+        self._active_sync_count = 0
+        self._executor_lock = threading.Lock()
+        self._async_executor = ThreadPoolExecutor(max_workers=1)
+        self._accepting_submissions = True
+        self._closing = False
+
+        # Fail fast before publishing a manager that cannot create a usable
+        # SQLite connection for the configured path/PRAGMA set.
+        try:
+            self._thread_local.connection = self._create_connection()
+        except BaseException:
+            self._async_executor.shutdown(wait=False)
+            raise
 
     # ------------------------------------------------------------------ #
     # Internal helpers
@@ -121,7 +236,7 @@ class DatabaseManager:
                         conn.execute(f"PRAGMA {pragma} = {value}")
                     else:
                         raise TypeError(f"Invalid pragma value type: {type(value)}")
-        except (sqlite3.Error, ValueError, TypeError):
+        except BaseException:
             # Ensure partially configured connection does not leak
             conn.close()
             raise
@@ -136,22 +251,63 @@ class DatabaseManager:
 
         Returns:
             sqlite3.Connection: The per-thread SQLite connection.
-        """
-        conn = getattr(self._thread_local, "connection", None)
-        if conn is not None:
-            try:
-                # Using cursor() is a lightweight way to check if the connection is open.
-                conn.cursor().close()
-            except sqlite3.ProgrammingError:
-                # Connection is closed, so we'll create a new one.
-                with self._connections_lock:
-                    self._connections.discard(conn)
-                conn = None
 
-        if conn is None:
-            conn = self._create_connection()
-            self._thread_local.connection = conn
-        return conn
+        Raises:
+            sqlite3.ProgrammingError: If the manager is closing and cannot create new connections.
+        """
+        with self._connections_lock:
+            if self._closing and not self._is_admitted_during_close():
+                raise sqlite3.ProgrammingError(
+                    "DatabaseManager is closing, cannot create new connections"
+                )
+            conn = getattr(self._thread_local, "connection", None)
+            if conn is not None:
+                try:
+                    conn.cursor().close()
+                except sqlite3.ProgrammingError:
+                    self._connections.discard(conn)
+                    conn = None
+
+            if conn is None:
+                conn = self._create_connection()
+                self._thread_local.connection = conn
+            return conn
+
+    @contextmanager
+    def _sync_activity(self) -> Generator[None, None, None]:
+        """
+        Track active synchronous DB usage and block new work while closing.
+        """
+        previously_admitted = bool(
+            getattr(self._thread_local, "_allow_during_close", False)
+        )
+        with self._connections_lock:
+            if self._closing and not previously_admitted:
+                raise sqlite3.ProgrammingError(
+                    "DatabaseManager is closing, cannot submit new work"
+                )
+            self._thread_local._allow_during_close = True
+            self._active_sync_count += 1
+        try:
+            yield
+        finally:
+            with self._connections_lock:
+                self._active_sync_count -= 1
+                self._thread_local._allow_during_close = previously_admitted
+                if self._active_sync_count == 0:
+                    self._active_sync_condition.notify_all()
+
+    def _is_admitted_during_close(self) -> bool:
+        """
+        Return True when the current thread is admitted to keep working during close().
+        """
+        return bool(getattr(self._thread_local, "_allow_during_close", False))
+
+    def supports_json_each(self) -> bool:
+        """
+        Report whether json_each() optimization paths are available at runtime.
+        """
+        return self._supports_json_each
 
     # ------------------------------------------------------------------ #
     # Context managers
@@ -167,12 +323,13 @@ class DatabaseManager:
         Returns:
             sqlite3.Cursor: A cursor tied to the manager's per-thread connection.
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        try:
-            yield cursor
-        finally:
-            cursor.close()
+        with self._sync_activity():
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            try:
+                yield cursor
+            finally:
+                cursor.close()
 
     @contextmanager
     def write(self) -> Generator[sqlite3.Cursor, None, None]:
@@ -184,17 +341,18 @@ class DatabaseManager:
         Returns:
             cursor (sqlite3.Cursor): Cursor for executing write statements; committed on success, rolled back on exception.
         """
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        with self._write_lock:
-            try:
-                yield cursor
-                conn.commit()
-            except Exception:
-                conn.rollback()
-                raise
-            finally:
-                cursor.close()
+        with self._sync_activity():
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            with self._write_lock:
+                try:
+                    yield cursor
+                    conn.commit()
+                except BaseException:
+                    conn.rollback()
+                    raise
+                finally:
+                    cursor.close()
 
     # ------------------------------------------------------------------ #
     # Execution helpers
@@ -227,22 +385,47 @@ class DatabaseManager:
         func: Callable[[sqlite3.Cursor], Any],
         *,
         write: bool = False,
-        loop: Optional[asyncio.AbstractEventLoop] = None,
     ) -> Any:
         """
-        Run a database callable in the event loop's executor and return its result.
+        Run a database callable asynchronously and return its result.
 
         Parameters:
             func (Callable[[sqlite3.Cursor], Any]): Callable that will be invoked with a managed SQLite cursor.
             write (bool, optional): If true, the callable receives a cursor from a transactional write context; otherwise a read-only context is used. Defaults to False.
-            loop (asyncio.AbstractEventLoop, optional): Event loop whose executor will run the callable. If omitted, the running event loop is used.
 
         Returns:
             Any: The value returned by `func` when invoked with the cursor.
         """
-        loop = loop or asyncio.get_running_loop()
-        executor_func = partial(self.run_sync, func, write=write)
-        return await loop.run_in_executor(None, executor_func)
+
+        def executor_func() -> Any:
+            self._thread_local._allow_during_close = True
+            try:
+                return self.run_sync(func, write=write)
+            finally:
+                self._thread_local._allow_during_close = False
+
+        with self._executor_lock:
+            if not self._accepting_submissions:
+                raise sqlite3.ProgrammingError(
+                    "DatabaseManager is closing, cannot submit new work"
+                )
+            worker_future = self._async_executor.submit(executor_func)
+        try:
+            return await asyncio.wrap_future(worker_future)
+        except asyncio.CancelledError:
+            if write:
+                try:
+                    await asyncio.shield(asyncio.wrap_future(worker_future))
+                except asyncio.CancelledError:
+                    pass
+                except BaseException:
+                    logger.warning(
+                        "Write future finished with an error after caller cancellation",
+                        exc_info=True,
+                    )
+            elif not worker_future.done():
+                worker_future.cancel()
+            raise
 
     # ------------------------------------------------------------------ #
     # Lifecycle
@@ -254,18 +437,31 @@ class DatabaseManager:
 
         Removes every connection from the manager's internal registry, attempts to close each connection (suppressing sqlite3.Error), and clears the current thread's stored connection reference.
         """
+        with self._executor_lock:
+            with self._connections_lock:
+                if self._is_admitted_during_close():
+                    raise RuntimeError(
+                        "DatabaseManager.close() cannot be called from inside an active database operation"
+                    )
+                self._accepting_submissions = False
+                self._closing = True
+
+        with self._executor_lock:
+            self._async_executor.shutdown(wait=True)
+
         with self._connections_lock:
+            while self._active_sync_count > 0:
+                self._active_sync_condition.wait()
             connections = list(self._connections)
             self._connections.clear()
-            # Close connections while holding the lock to prevent race conditions
-            # where new connections might be created and missed during cleanup.
             for conn in connections:
                 try:
                     conn.close()
                 except sqlite3.Error:
-                    pass
+                    logger.debug(
+                        "Error closing connection during shutdown", exc_info=True
+                    )
 
-        # Clear thread-local references in the current thread
         if hasattr(self._thread_local, "connection"):
             try:
                 del self._thread_local.connection
@@ -275,4 +471,3 @@ class DatabaseManager:
 
 # Convenience alias for type hints
 DbCallable = Callable[[sqlite3.Cursor], Any]
-AsyncDbCallable = Callable[[sqlite3.Cursor], Awaitable[Any]]

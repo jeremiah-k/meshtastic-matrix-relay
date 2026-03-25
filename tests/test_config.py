@@ -521,6 +521,14 @@ class TestEnvironmentVariableHelpers(unittest.TestCase):
             _convert_env_float("not_a_float", "TEST_VAR")
         self.assertIn("Invalid float value for TEST_VAR", str(cm.exception))
 
+    def test_convert_env_float_rejects_non_finite_values(self):
+        """Test conversion rejects NaN/Infinity values."""
+        for raw_value in ("nan", "inf", "-inf"):
+            with self.subTest(raw_value=raw_value):
+                with self.assertRaises(ValueError) as cm:
+                    _convert_env_float(raw_value, "TEST_VAR")
+                self.assertIn("TEST_VAR must be a finite number", str(cm.exception))
+
 
 class TestMeshtasticEnvironmentVariables(unittest.TestCase):
     """Test Meshtastic configuration loading from environment variables."""
@@ -536,6 +544,7 @@ class TestMeshtasticEnvironmentVariables(unittest.TestCase):
             "MMRELAY_MESHTASTIC_BROADCAST_ENABLED",
             "MMRELAY_MESHTASTIC_MESHNET_NAME",
             "MMRELAY_MESHTASTIC_MESSAGE_DELAY",
+            "MMRELAY_MESHTASTIC_NODEDB_REFRESH_INTERVAL",
         ]
         for var in self.env_vars:
             if var in os.environ:
@@ -591,6 +600,7 @@ class TestMeshtasticEnvironmentVariables(unittest.TestCase):
         os.environ["MMRELAY_MESHTASTIC_BROADCAST_ENABLED"] = "true"
         os.environ["MMRELAY_MESHTASTIC_MESHNET_NAME"] = "Test Mesh"
         os.environ["MMRELAY_MESHTASTIC_MESSAGE_DELAY"] = "2.5"
+        os.environ["MMRELAY_MESHTASTIC_NODEDB_REFRESH_INTERVAL"] = "15.0"
 
         config = load_meshtastic_config_from_env()
 
@@ -598,6 +608,7 @@ class TestMeshtasticEnvironmentVariables(unittest.TestCase):
         self.assertEqual(config["broadcast_enabled"], True)
         self.assertEqual(config["meshnet_name"], "Test Mesh")
         self.assertEqual(config["message_delay"], 2.5)
+        self.assertEqual(config["nodedb_refresh_interval"], 15.0)
 
     def test_invalid_connection_type(self):
         """Test invalid connection type handling."""
@@ -626,6 +637,24 @@ class TestMeshtasticEnvironmentVariables(unittest.TestCase):
 
         config = load_meshtastic_config_from_env()
         self.assertIsNone(config)
+
+    def test_invalid_nodedb_refresh_interval(self):
+        """Test invalid nodedb refresh interval handling."""
+        os.environ["MMRELAY_MESHTASTIC_NODEDB_REFRESH_INTERVAL"] = (
+            "-1.0"  # Must be >= 0
+        )
+
+        config = load_meshtastic_config_from_env()
+        self.assertIsNone(config)
+
+    def test_zero_nodedb_refresh_interval(self):
+        """Test disabling periodic NodeDB refresh with a zero interval."""
+        os.environ["MMRELAY_MESHTASTIC_NODEDB_REFRESH_INTERVAL"] = "0"
+
+        config = load_meshtastic_config_from_env()
+
+        self.assertIsNotNone(config)
+        self.assertEqual(config["nodedb_refresh_interval"], 0.0)
 
     def test_no_env_vars_returns_none(self):
         """Test that no environment variables returns None."""
@@ -728,6 +757,7 @@ class TestEnvironmentVariableIntegration(unittest.TestCase):
             "MMRELAY_MESHTASTIC_CONNECTION_TYPE",
             "MMRELAY_MESHTASTIC_HOST",
             "MMRELAY_MESHTASTIC_PORT",
+            "MMRELAY_MESHTASTIC_NODEDB_REFRESH_INTERVAL",
             "MMRELAY_LOGGING_LEVEL",
             "MMRELAY_DATABASE_PATH",
         ]

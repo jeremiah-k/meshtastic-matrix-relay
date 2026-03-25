@@ -13,9 +13,11 @@ Tests edge cases and error handling including:
 """
 
 import os
-import subprocess  # nosec B404 - Used for controlled test environment operations
+import subprocess  # nosec B404
 import sys
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 # Add src to path for imports
@@ -269,38 +271,60 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         """
         Test that install_service succeeds using python -m mmrelay fallback when mmrelay binary is not found.
         """
-        with patch("shutil.which", return_value=None):  # mmrelay not in PATH
-            with patch(
-                "mmrelay.setup_utils.get_template_service_content",
-                return_value="[Unit]\nTest",
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fake_home = Path(tmpdir)
+            with (
+                patch("pathlib.Path.home", return_value=fake_home),
+                patch("shutil.which", return_value=None),
+                patch(
+                    "mmrelay.setup_utils.get_template_service_content",
+                    return_value="[Unit]\nTest",
+                ),
+                patch("mmrelay.setup_utils.get_user_service_path") as mock_service_path,
+                patch("mmrelay.setup_utils.logger") as mock_logger,
+                patch("builtins.input", return_value="n"),
             ):
-                with patch(
-                    "mmrelay.setup_utils.read_service_file", return_value=None
-                ):  # No existing service
-                    with patch("mmrelay.setup_utils.logger") as mock_logger:
-                        with patch(
-                            "builtins.input", return_value="n"
-                        ):  # Mock input to avoid stdin issues
-                            result = install_service()
-                            self.assertTrue(result)  # Should succeed with fallback
-                            mock_logger.warning.assert_any_call(
-                                "Could not find mmrelay executable in PATH. Using current Python interpreter."
-                            )
+                mock_path = MagicMock()
+                mock_path.exists.return_value = False
+                mock_service_path.return_value = mock_path
+                result = install_service()
+                self.assertTrue(result)
+                mock_logger.warning.assert_any_call(
+                    "Could not find mmrelay executable in PATH. Using current Python interpreter."
+                )
 
     def test_install_service_create_file_failure(self):
         """
         Test that install_service returns False when service file creation fails.
         """
-        with patch(
-            "mmrelay.setup_utils.get_executable_path", return_value="/usr/bin/mmrelay"
-        ):
-            with patch("mmrelay.setup_utils.create_service_file", return_value=False):
-                with patch("mmrelay.setup_utils.logger"):
-                    with patch(
-                        "builtins.input", return_value="y"
-                    ):  # Mock input to avoid stdin issues
-                        result = install_service()
-                        self.assertFalse(result)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fake_home = Path(tmpdir)
+            with (
+                patch("pathlib.Path.home", return_value=fake_home),
+                patch(
+                    "mmrelay.setup_utils.get_executable_path",
+                    return_value="/usr/bin/mmrelay",
+                ),
+                patch(
+                    "mmrelay.setup_utils.get_template_service_content",
+                    return_value=(
+                        "[Unit]\n"
+                        "Description=MMRelay\n"
+                        "[Service]\n"
+                        "WorkingDirectory=%h/meshtastic-matrix-relay\n"
+                        "ExecStart=/usr/bin/env mmrelay --config %h/.mmrelay/config/config.yaml\n"
+                    ),
+                ),
+                patch("mmrelay.setup_utils.get_user_service_path") as mock_service_path,
+                patch("mmrelay.setup_utils.logger"),
+                patch("builtins.input", return_value="y"),
+            ):
+                mock_path = MagicMock()
+                mock_path.exists.return_value = False
+                mock_path.write_text.side_effect = PermissionError("Permission denied")
+                mock_service_path.return_value = mock_path
+                result = install_service()
+                self.assertFalse(result)
 
     def test_install_service_daemon_reload_failure(self):
         """
@@ -314,8 +338,11 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
             with patch("mmrelay.setup_utils.create_service_file", return_value=True):
                 with patch("mmrelay.setup_utils.reload_daemon", return_value=False):
                     with patch(
-                        "mmrelay.setup_utils.read_service_file", return_value=None
-                    ):
+                        "mmrelay.setup_utils.get_user_service_path"
+                    ) as mock_service_path:
+                        mock_path = MagicMock()
+                        mock_path.exists.return_value = False
+                        mock_service_path.return_value = mock_path
                         with patch(
                             "mmrelay.setup_utils.service_needs_update",
                             return_value=(True, "test"),

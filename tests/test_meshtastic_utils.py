@@ -11,6 +11,7 @@ Tests the Meshtastic client functionality including:
 """
 
 import asyncio
+import contextlib
 import os
 import sys
 import unittest
@@ -27,6 +28,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.constants.network import (
     BLE_CONNECT_TIMEOUT_SECS,
+    MAX_TIMEOUT_RETRIES_INFINITE,
     METADATA_WATCHDOG_SECS,
 )
 from mmrelay.meshtastic_utils import (
@@ -43,6 +45,7 @@ from mmrelay.meshtastic_utils import (
     send_text_reply,
     serial_port_exists,
 )
+from tests.conftest import cleanup_ble_future_state
 
 TEST_PACKET_RX_TIME = 1234567890
 
@@ -86,6 +89,31 @@ class _FakeEvent:
         This method currently performs no action and exists to be overridden or implemented to reset the instance's state.
         """
         return None
+
+
+def _reset_ble_inflight_state(module: Any) -> None:
+    """
+    Reset shared BLE in-flight tracking globals for test isolation.
+    """
+    cleanup_ble_future_state(module)
+
+
+def _make_timeout_future() -> Mock:
+    """
+    Create a mock future that simulates a timeout.
+
+    Returns a Mock configured with:
+    - result() raises FuturesTimeoutError
+    - done() returns False
+    - cancel() returns True
+    """
+    from concurrent.futures import TimeoutError as FuturesTimeoutError
+
+    future = Mock()
+    future.result = Mock(side_effect=FuturesTimeoutError())
+    future.done.return_value = False
+    future.cancel = Mock(return_value=True)
+    return future
 
 
 @pytest.mark.usefixtures("stable_relay_start_time")
@@ -132,10 +160,31 @@ class TestMeshtasticUtils(unittest.TestCase):
         mmrelay.meshtastic_utils.reconnecting = False
         mmrelay.meshtastic_utils.shutting_down = False
         mmrelay.meshtastic_utils.reconnect_task = None
-        mmrelay.meshtastic_utils._ble_future = None
-        mmrelay.meshtastic_utils._ble_future_address = None
+        iface = mmrelay.meshtastic_utils.meshtastic_iface
+        if iface is not None:
+            disconnect_iface = getattr(
+                mmrelay.meshtastic_utils,
+                "_disconnect_ble_interface",
+                None,
+            )
+            if callable(disconnect_iface):
+                with contextlib.suppress(
+                    asyncio.CancelledError,
+                    asyncio.TimeoutError,
+                    ConcurrentTimeoutError,
+                    OSError,
+                    RuntimeError,
+                ):
+                    disconnect_iface(iface, reason="test-reset")
+        mmrelay.meshtastic_utils.meshtastic_iface = None
+        _reset_ble_inflight_state(mmrelay.meshtastic_utils)
+        mmrelay.meshtastic_utils.shutdown_shared_executors()
         mmrelay.meshtastic_utils._metadata_future = None
         mmrelay.meshtastic_utils._ble_timeout_counts = {}
+        mmrelay.meshtastic_utils._ble_executor_degraded_addresses = set()
+        mmrelay.meshtastic_utils._ble_executor_orphaned_workers_by_address = {}
+        mmrelay.meshtastic_utils._metadata_executor_degraded = False
+        mmrelay.meshtastic_utils._metadata_executor_orphaned_workers = 0
 
     def test_on_meshtastic_message_basic(self):
         """
@@ -1489,8 +1538,7 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
         mu.meshtastic_iface = None
         mu.reconnecting = False
         mu.shutting_down = False
-        mu._ble_future = None
-        mu._ble_future_address = None
+        _reset_ble_inflight_state(mu)
         mu._metadata_future = None
         mu._ble_timeout_counts = {}
 
@@ -2858,6 +2906,30 @@ class TestGetDeviceMetadata(unittest.TestCase):
             "submit-retry",
         )
 
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_submit_metadata_probe_resets_on_submission_failure(self, mock_logger):
+        """Submission failures should trigger metadata executor reset for recovery."""
+        import mmrelay.meshtastic_utils as mu
+
+        mock_executor = MagicMock()
+        mock_executor.submit.side_effect = RuntimeError("executor closed")
+        probe = Mock()
+
+        with (
+            patch(
+                "mmrelay.meshtastic_utils._get_metadata_executor",
+                return_value=mock_executor,
+            ),
+            patch(
+                "mmrelay.meshtastic_utils._reset_metadata_executor_for_stale_probe"
+            ) as mock_reset,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "executor closed"):
+                mu._submit_metadata_probe(probe)
+
+        mock_reset.assert_called_once()
+        self.assertTrue(mock_logger.debug.called)
+
     def test_get_device_metadata_raise_on_error_reraises_non_io_value_error(self):
         """Non-I/O ValueError failures from getMetadata() should propagate."""
         mock_client = MagicMock()
@@ -3617,13 +3689,11 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         mock_iface.close.assert_called_once()
 
     @patch("mmrelay.meshtastic_utils.logger")
-    @patch("mmrelay.meshtastic_utils.time")
+    @patch("mmrelay.meshtastic_utils.time.sleep")
     def test_connect_meshtastic_ble_interface_creation_timeout(
-        self, _mock_time, mock_logger
+        self, _mock_sleep, mock_logger
     ):
         """Test connect_meshtastic handles BLEInterface creation timeout."""
-        from concurrent.futures import TimeoutError as FuturesTimeoutError
-
         from mmrelay.meshtastic_utils import connect_meshtastic
 
         config = {
@@ -3634,43 +3704,40 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             "matrix_rooms": [],
         }
 
-        # Mock BLE interface creation with the shared BLE executor
-        # Create a mock future whose .result() method raises FuturesTimeoutError
-        mock_future = Mock()
-        mock_future.result = Mock(side_effect=FuturesTimeoutError())
-        mock_future.cancel = Mock(return_value=True)
-
         mock_executor = Mock()
         mock_executor._shutdown = False
-        mock_executor.submit.return_value = mock_future
+        mock_executor.submit.side_effect = [
+            _make_timeout_future() for _ in range(MAX_TIMEOUT_RETRIES_INFINITE + 1)
+        ]
 
-        with patch("mmrelay.meshtastic_utils._ble_executor", mock_executor):
+        with (
+            patch("mmrelay.meshtastic_utils._ble_executor", mock_executor),
+            patch("bleak.BleakClient") as mock_bleak_client,
+        ):
+            mock_client_instance = Mock()
+            mock_client_instance.is_connected = False
+            mock_bleak_client.return_value = mock_client_instance
+
             import mmrelay.meshtastic_utils as mu
 
-            mu._ble_future = None
-            mu._ble_future_address = None
+            _reset_ble_inflight_state(mu)
             mu._metadata_future = None
-            # The function will retry 6 times (MAX_TIMEOUT_RETRIES_INFINITE = 5 + 1)
-            # After all retries, it returns None (doesn't raise)
             result = connect_meshtastic(passed_config=config)
             self.assertIsNone(result)
+            mock_bleak_client.assert_called_with("AA:BB:CC:DD:EE:FF")
 
-            # Verify meshtastic_iface was set to None
             self.assertIsNone(mu.meshtastic_iface)
 
-            # Verify timeout error was logged 6 times (once per attempt)
             error_calls = [
                 call
-                for call in mock_logger.exception.call_args_list
-                if "timed out after 90 seconds" in str(call)
+                for call in mock_logger.error.call_args_list
+                if "BLE interface creation timed out after" in str(call)
             ]
-            self.assertEqual(len(error_calls), 6)
+            self.assertEqual(len(error_calls), MAX_TIMEOUT_RETRIES_INFINITE + 1)
 
-            # Verify that last error call contains BLE address
             last_error_call = str(error_calls[-1])
             self.assertIn("AA:BB:CC:DD:EE:FF", last_error_call)
 
-            # Verify final abort was logged after max retries (using logger.exception)
             abort_calls = [
                 call
                 for call in mock_logger.exception.call_args_list
@@ -3679,13 +3746,12 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             ]
             self.assertEqual(len(abort_calls), 1)
 
-            # Verify warnings were logged for each retry (5 retries, not 6 - after 6th timeout it aborts)
             warning_calls = [
                 call
                 for call in mock_logger.warning.call_args_list
                 if "Connection attempt" in str(call) and "timed out" in str(call)
             ]
-            self.assertEqual(len(warning_calls), 5)
+            self.assertEqual(len(warning_calls), MAX_TIMEOUT_RETRIES_INFINITE)
 
     @patch("mmrelay.meshtastic_utils._disconnect_ble_interface")
     def test_connect_meshtastic_closes_existing_ble_interface(
@@ -3708,11 +3774,9 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         self.assertIsNone(mu.meshtastic_iface)
 
     @patch("mmrelay.meshtastic_utils.logger")
-    @patch("mmrelay.meshtastic_utils.time")
-    def test_connect_meshtastic_ble_connect_timeout(self, _mock_time, mock_logger):
+    @patch("mmrelay.meshtastic_utils.time.sleep")
+    def test_connect_meshtastic_ble_connect_timeout(self, _mock_sleep, mock_logger):
         """Test connect_meshtastic handles BLE connect() timeout."""
-        from concurrent.futures import TimeoutError as FuturesTimeoutError
-
         from mmrelay.meshtastic_utils import connect_meshtastic
 
         config = {
@@ -3723,75 +3787,65 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             "matrix_rooms": [],
         }
 
-        # Create two mock futures:
-        # 1. For interface creation: succeeds with a mock interface
-        # 2. For connect(): times out
         mock_iface = Mock()
         mock_iface.getMyNodeInfo.return_value = {"num": 123}
-        mock_iface.connect = Mock()  # Has connect() method to trigger connect() path
+        mock_iface.connect = Mock()
         mock_iface.auto_reconnect = False
 
-        interface_future = Mock()
-        interface_future.result = Mock(return_value=mock_iface)
-        interface_future.cancel = Mock(return_value=True)
+        def _make_interface_future():
+            future = Mock()
+            future.result = Mock(return_value=mock_iface)
+            future.cancel = Mock(return_value=True)
+            return future
 
-        connect_future = Mock()
-        connect_future.result = Mock(side_effect=FuturesTimeoutError())
-        connect_future.cancel = Mock(return_value=True)
-
-        # Track which submit call we're handling
-        call_count = [0]
+        future_sequence = iter(
+            future
+            for _ in range(MAX_TIMEOUT_RETRIES_INFINITE + 1)
+            for future in (_make_interface_future(), _make_timeout_future())
+        )
 
         def submit_side_effect(_func, *_args, **_kwargs):
-            """
-            Test helper used as a side-effect function to simulate a two-stage submission flow.
-
-            Increments the shared call_count[0] each time it is invoked and, on the first invocation, returns the precreated interface_future; on subsequent invocations, returns the connect_future. The provided positional and keyword arguments are ignored.
-            """
-            call_count[0] += 1
-            if call_count[0] == 1:
-                # First call: interface creation
-                return interface_future
-            else:
-                # Second call: connect()
-                return connect_future
+            return next(future_sequence)
 
         mock_executor = Mock()
         mock_executor._shutdown = False
         mock_executor.submit.side_effect = submit_side_effect
 
-        with patch("mmrelay.meshtastic_utils._ble_executor", mock_executor):
+        with (
+            patch("mmrelay.meshtastic_utils._ble_executor", mock_executor),
+            patch("bleak.BleakClient") as mock_bleak_client,
+        ):
+            mock_client_instance = Mock()
+            mock_client_instance.is_connected = False
+            mock_bleak_client.return_value = mock_client_instance
+
             import mmrelay.meshtastic_utils as mu
 
-            mu._ble_future = None
-            mu._ble_future_address = None
+            _reset_ble_inflight_state(mu)
             mu._metadata_future = None
-            # The function will retry 6 times and return None (doesn't raise)
             result = connect_meshtastic(passed_config=config)
             self.assertIsNone(result)
+            mock_bleak_client.assert_called_with("AA:BB:CC:DD:EE:FF")
 
-            # Verify meshtastic_iface was set to None
             self.assertIsNone(mu.meshtastic_iface)
 
-            # Verify connect() timeout error was logged on first attempt
             connect_timeout_calls = [
                 call
                 for call in mock_logger.exception.call_args_list
                 if f"connect() call timed out after {BLE_CONNECT_TIMEOUT_SECS} seconds"
                 in str(call)
             ]
-            self.assertEqual(len(connect_timeout_calls), 1)
+            self.assertEqual(
+                len(connect_timeout_calls), MAX_TIMEOUT_RETRIES_INFINITE + 1
+            )
 
-            # Verify that subsequent attempts show interface creation timeouts
-            # (because meshtastic_iface is set to None after connect timeout)
             interface_timeout_calls = [
                 call
-                for call in mock_logger.exception.call_args_list
-                if "timed out after 90 seconds" in str(call)
+                for call in mock_logger.error.call_args_list
+                if "BLE interface creation timed out after" in str(call)
             ]
-            self.assertEqual(len(interface_timeout_calls), 5)
+            self.assertEqual(len(interface_timeout_calls), 0)
 
-            # Verify final abort was logged after max retries (using logger.exception)
             abort_calls = [
                 call
                 for call in mock_logger.exception.call_args_list
@@ -3800,13 +3854,12 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             ]
             self.assertEqual(len(abort_calls), 1)
 
-            # Verify warnings were logged for each retry (5 warnings, not 6)
             warning_calls = [
                 call
                 for call in mock_logger.warning.call_args_list
                 if "Connection attempt" in str(call) and "timed out" in str(call)
             ]
-            self.assertEqual(len(warning_calls), 5)
+            self.assertEqual(len(warning_calls), MAX_TIMEOUT_RETRIES_INFINITE)
 
 
 if __name__ == "__main__":

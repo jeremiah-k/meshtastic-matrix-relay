@@ -80,6 +80,7 @@ class TestDatabaseManagerIntegration(unittest.TestCase):
     @patch("mmrelay.db_utils.os.makedirs")
     def test_get_db_manager_with_config(self, mock_makedirs):
         """Test _get_db_manager with custom configuration."""
+        real_sqlite_connect = sqlite3.connect
 
         # Mock config with proper structure
         test_config = {
@@ -91,7 +92,17 @@ class TestDatabaseManagerIntegration(unittest.TestCase):
             }
         }
 
-        with patch.object(mmrelay.db_utils, "config", test_config):
+        with (
+            patch.object(mmrelay.db_utils, "config", test_config),
+            patch(
+                "mmrelay.db_runtime.sqlite3.connect",
+                side_effect=lambda _path, *args, **kwargs: real_sqlite_connect(
+                    ":memory:",
+                    *args,
+                    **kwargs,
+                ),
+            ),
+        ):
             # Reset manager to ensure fresh creation
             _reset_db_manager()
 
@@ -112,6 +123,7 @@ class TestDatabaseManagerIntegration(unittest.TestCase):
     @patch("mmrelay.db_utils.os.makedirs")
     def test_get_db_manager_legacy_config(self, _mock_makedirs):
         """Test _get_db_manager with legacy configuration format."""
+        real_sqlite_connect = sqlite3.connect
 
         # Mock config with legacy format
         test_config = {
@@ -123,7 +135,17 @@ class TestDatabaseManagerIntegration(unittest.TestCase):
             }
         }
 
-        with patch.object(mmrelay.db_utils, "config", test_config):
+        with (
+            patch.object(mmrelay.db_utils, "config", test_config),
+            patch(
+                "mmrelay.db_runtime.sqlite3.connect",
+                side_effect=lambda _path, *args, **kwargs: real_sqlite_connect(
+                    ":memory:",
+                    *args,
+                    **kwargs,
+                ),
+            ),
+        ):
             # Reset manager to ensure fresh creation
             _reset_db_manager()
 

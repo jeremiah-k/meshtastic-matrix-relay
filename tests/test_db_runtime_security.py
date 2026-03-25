@@ -15,8 +15,9 @@ import sqlite3
 import tempfile
 import threading
 import unittest
+from unittest.mock import MagicMock, patch
 
-from mmrelay.db_runtime import DatabaseManager
+from mmrelay.db_runtime import DatabaseManager, _validate_sqlite_json_each_support
 
 
 class TestDatabaseManager(unittest.TestCase):
@@ -72,6 +73,68 @@ class TestDatabaseManager(unittest.TestCase):
             self.assertEqual(manager._extra_pragmas, custom_pragmas)
         finally:
             manager.close()
+
+    def test_initialization_allows_missing_json_each_support(self):
+        """DatabaseManager should initialize and mark json_each as unavailable."""
+        _validate_sqlite_json_each_support.cache_clear()
+        self.addCleanup(_validate_sqlite_json_each_support.cache_clear)
+        probe_conn = MagicMock()
+        probe_conn.execute.side_effect = sqlite3.OperationalError(
+            "no such function: json_each"
+        )
+
+        real_connect = sqlite3.connect
+
+        def _connect_side_effect(*args, **kwargs):
+            database = kwargs.get("database")
+            if database is None and args:
+                database = args[0]
+            if database == ":memory:":
+                return probe_conn
+            return real_connect(*args, **kwargs)
+
+        with patch(
+            "mmrelay.db_runtime.sqlite3.connect", side_effect=_connect_side_effect
+        ):
+            manager = DatabaseManager(self.db_path)
+            try:
+                with manager.read() as cursor:
+                    cursor.execute("SELECT 1")
+                self.assertFalse(manager.supports_json_each())
+            finally:
+                manager.close()
+        probe_conn.close.assert_called()
+
+    def test_initialization_marks_json_each_supported_when_probe_succeeds(self):
+        """DatabaseManager should mark json_each support when probe succeeds."""
+        _validate_sqlite_json_each_support.cache_clear()
+        self.addCleanup(_validate_sqlite_json_each_support.cache_clear)
+        probe_result = MagicMock()
+        probe_result.fetchall.return_value = [("probe",)]
+        probe_conn = MagicMock()
+        probe_conn.execute.return_value = probe_result
+
+        real_connect = sqlite3.connect
+
+        def _connect_side_effect(*args, **kwargs):
+            database = kwargs.get("database")
+            if database is None and args:
+                database = args[0]
+            if database == ":memory:":
+                return probe_conn
+            return real_connect(*args, **kwargs)
+
+        with patch(
+            "mmrelay.db_runtime.sqlite3.connect", side_effect=_connect_side_effect
+        ):
+            manager = DatabaseManager(self.db_path)
+            try:
+                with manager.read() as cursor:
+                    cursor.execute("SELECT 1")
+                self.assertTrue(manager.supports_json_each())
+            finally:
+                manager.close()
+        probe_conn.close.assert_called()
 
     def test_pragma_validation_valid_names(self):
         """Test that valid pragma names are accepted."""
@@ -341,6 +404,25 @@ class TestDatabaseManager(unittest.TestCase):
             result = cursor.execute("SELECT value FROM test").fetchone()
             self.assertEqual(result[0], "initial")
 
+    def test_write_context_manager_rollback_on_keyboard_interrupt(self):
+        """Write context manager should roll back on KeyboardInterrupt."""
+        with self.manager.write() as cursor:
+            cursor.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
+            cursor.execute("INSERT INTO test (value) VALUES (?)", ("initial",))
+
+        with self.assertRaises(KeyboardInterrupt):
+            with self.manager.write() as cursor:
+                cursor.execute(
+                    "INSERT INTO test (value) VALUES (?)", ("should_be_rolled_back",)
+                )
+                raise KeyboardInterrupt()
+
+        with self.manager.read() as cursor:
+            result = cursor.execute("SELECT COUNT(*) FROM test").fetchone()
+            self.assertEqual(result[0], 1)
+            result = cursor.execute("SELECT value FROM test").fetchone()
+            self.assertEqual(result[0], "initial")
+
     def test_write_context_manager_partial_transaction_rollback(self):
         """Test that partial transactions are properly rolled back on non-SQLite exceptions."""
         # Create initial table with some data
@@ -436,9 +518,144 @@ class TestDatabaseManager(unittest.TestCase):
             result = await self.manager.run_async(async_func, write=False)
             return result
 
-        # Run the async function
-        result = asyncio.run(test_async())
+        # Run in an isolated loop to avoid interference from global loop fixtures.
+        loop = asyncio.new_event_loop()
+        try:
+            result = loop.run_until_complete(test_async())
+        finally:
+            loop.close()
         self.assertEqual(result, "async_result")
+
+    def test_run_async_queued_work_completes_during_close(self):
+        """Queued run_async work accepted before close() should still complete."""
+
+        with self.manager.write() as cursor:
+            cursor.execute(
+                "CREATE TABLE test_async_close (id INTEGER PRIMARY KEY, value TEXT)"
+            )
+
+        first_started = threading.Event()
+        first_release = threading.Event()
+        second_started = threading.Event()
+        second_release = threading.Event()
+
+        def first_write(cursor):
+            first_started.set()
+            if not first_release.wait(timeout=10.0):
+                raise AssertionError("Timed out waiting to release first_write")
+            cursor.execute(
+                "INSERT INTO test_async_close (value) VALUES (?)",
+                ("first",),
+            )
+            return "first"
+
+        def second_write(cursor):
+            second_started.set()
+            if not second_release.wait(timeout=10.0):
+                raise AssertionError("Timed out waiting to release second_write")
+            cursor.execute(
+                "INSERT INTO test_async_close (value) VALUES (?)",
+                ("second",),
+            )
+            return "second"
+
+        async def run_test() -> tuple[str, str]:
+            operation_timeout = 10.0
+            task1 = asyncio.create_task(self.manager.run_async(first_write, write=True))
+            start_deadline = asyncio.get_running_loop().time() + operation_timeout
+            while (
+                not first_started.is_set()
+                and asyncio.get_running_loop().time() < start_deadline
+            ):
+                await asyncio.sleep(0.01)
+            self.assertTrue(first_started.is_set(), "First queued write never started")
+            task2 = asyncio.create_task(
+                self.manager.run_async(second_write, write=True)
+            )
+            await asyncio.sleep(0)
+
+            close_started = threading.Event()
+            close_done = threading.Event()
+            close_error: list[Exception] = []
+
+            def _close_manager() -> None:
+                close_started.set()
+                try:
+                    self.manager.close()
+                except Exception as err:
+                    close_error.append(err)
+                finally:
+                    close_done.set()
+
+            close_thread = threading.Thread(target=_close_manager, daemon=True)
+            close_thread.start()
+            close_deadline = asyncio.get_running_loop().time() + operation_timeout
+            while (
+                not close_started.is_set()
+                and asyncio.get_running_loop().time() < close_deadline
+            ):
+                await asyncio.sleep(0.01)
+            self.assertTrue(close_started.is_set(), "close() never started")
+
+            # Brief wait to allow any incorrect early execution to manifest
+            await asyncio.sleep(0.1)
+            self.assertFalse(
+                second_started.is_set(), "second_write should not have started yet"
+            )
+
+            first_release.set()
+
+            await asyncio.sleep(0)
+
+            deadline = asyncio.get_running_loop().time() + operation_timeout
+            while (
+                not second_started.is_set()
+                and asyncio.get_running_loop().time() < deadline
+            ):
+                await asyncio.sleep(0.01)
+            self.assertTrue(
+                second_started.is_set(),
+                "second_write should have started after first_release",
+            )
+
+            second_release.set()
+
+            # Both tasks should have completed by now
+            try:
+                result1, result2 = await asyncio.wait_for(
+                    asyncio.gather(task1, task2),
+                    timeout=operation_timeout,
+                )
+                join_deadline = asyncio.get_running_loop().time() + operation_timeout
+                while (
+                    not close_done.is_set()
+                    and asyncio.get_running_loop().time() < join_deadline
+                ):
+                    await asyncio.sleep(0.01)
+                self.assertTrue(close_done.is_set(), "close() did not complete")
+                close_thread.join(timeout=operation_timeout)
+                self.assertFalse(close_thread.is_alive(), "close thread did not exit")
+                if close_error:
+                    raise close_error[0]
+            except asyncio.TimeoutError as err:
+                # Check if tasks are done after close
+                results = []
+                for i, task in enumerate((task1, task2)):
+                    if task.done():
+                        results.append(task.result())
+                    else:
+                        task.cancel()
+                        results.append(f"task{i + 1}_cancelled")
+                raise AssertionError(f"Tasks did not complete: {results}") from err
+
+            return result1, result2
+
+        result1, result2 = asyncio.run(run_test())
+        self.assertEqual((result1, result2), ("first", "second"))
+
+        with sqlite3.connect(self.db_path) as conn:
+            count = conn.execute("SELECT COUNT(*) FROM test_async_close").fetchone()[0]
+        self.assertEqual(count, 2)
 
     def test_thread_local_connections(self):
         """Test that connections are thread-local."""
@@ -471,15 +688,15 @@ class TestDatabaseManager(unittest.TestCase):
         self.assertEqual(len(set(connections)), 3)  # All should be different
 
     def test_connection_tracking(self):
-        """Test that connections are properly tracked."""
+        """Test that connections are tracked and reused per thread."""
         initial_count = len(self.manager._connections)
 
-        # Create a connection
+        # Fetching again on the same thread should reuse the eager connection.
         conn = self.manager._get_connection()
 
         # Connection should be tracked
         self.assertIn(conn, self.manager._connections)
-        self.assertEqual(len(self.manager._connections), initial_count + 1)
+        self.assertEqual(len(self.manager._connections), initial_count)
 
         # Close manager and verify connection cleanup
         self.manager.close()
@@ -501,6 +718,18 @@ class TestDatabaseManager(unittest.TestCase):
         # Verify cleanup
         self.assertEqual(len(self.manager._connections), 0)
         self.assertFalse(hasattr(self.manager._thread_local, "connection"))
+
+    def test_close_rejected_during_active_database_operation(self):
+        """close() should reject reentrant invocation from active DB work."""
+
+        def close_inside_operation(_cursor: sqlite3.Cursor) -> None:
+            self.manager.close()
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "cannot be called from inside an active database operation",
+        ):
+            self.manager.run_sync(close_inside_operation, write=False)
 
     def test_close_handles_connection_errors(self):
         """Test close method handles connection errors gracefully."""

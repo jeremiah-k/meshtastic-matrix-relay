@@ -7,6 +7,7 @@ import importlib
 import importlib.resources
 import ipaddress
 import logging
+import math
 import os
 import platform
 import re
@@ -1504,6 +1505,10 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                         "type": (int, float),
                         "description": "Delay in seconds between messages sent to mesh (minimum: 2.0)",
                     },
+                    "nodedb_refresh_interval": {
+                        "type": (int, float),
+                        "description": "Seconds between periodic long/short name-cache refreshes from NodeDB (set to 0 to disable periodic refresh)",
+                    },
                     "meshnet_name": {
                         "type": str,
                         "description": "Name displayed for your meshnet in Matrix messages",
@@ -1515,6 +1520,15 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                     if option in meshtastic_section:
                         value = meshtastic_section[option]
                         expected_type = config_info["type"]
+                        if option in {
+                            "message_delay",
+                            "nodedb_refresh_interval",
+                        } and isinstance(value, bool):
+                            print(
+                                f"Error: '{option}' must be a number, got boolean: {value}",
+                                file=sys.stderr,
+                            )
+                            return False
                         if not isinstance(value, expected_type):
                             if isinstance(expected_type, tuple):
                                 type_name = " or ".join(
@@ -1531,10 +1545,26 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                             )
                             return False
 
+                        if option in {"message_delay", "nodedb_refresh_interval"} and (
+                            not math.isfinite(value)
+                        ):
+                            print(
+                                f"Error: '{option}' must be a finite number, got: {value}",
+                                file=sys.stderr,
+                            )
+                            return False
+
                         # Special validation for message_delay
                         if option == "message_delay" and value < 2.0:
                             print(
                                 f"Error: 'message_delay' must be at least 2.0 seconds (firmware limitation), got: {value}",
+                                file=sys.stderr,
+                            )
+                            return False
+                        if option == "nodedb_refresh_interval" and value < 0:
+                            print(
+                                "Error: 'nodedb_refresh_interval' must be >= 0 seconds (use 0 to disable), "
+                                f"got: {value}",
                                 file=sys.stderr,
                             )
                             return False

@@ -1859,6 +1859,27 @@ class TestMigrationRealWorldScenarios:
     3. Partially migrated data is handled properly
     """
 
+    @pytest.fixture(autouse=True)
+    def _disable_running_process_guard(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """
+        Prevent host-process detection from causing false negatives in isolated tests.
+
+        Patches the external probe (shutil.which) so the guard's internal logic
+        executes but returns False, rather than replacing the guard function entirely.
+        """
+        original_which = migrate_module.shutil.which
+
+        def mock_which(
+            cmd: str,
+            mode: int = os.F_OK | os.X_OK,
+            path: str | None = None,
+        ) -> str | None:
+            if cmd == "pgrep":
+                return None
+            return original_which(cmd, mode=mode, path=path)
+
+        monkeypatch.setattr(migrate_module.shutil, "which", mock_which)
+
     def test_windows_upgrade_from_old_install_location(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
