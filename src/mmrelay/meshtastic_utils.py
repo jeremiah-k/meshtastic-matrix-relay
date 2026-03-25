@@ -11,6 +11,7 @@ import re
 import sys
 import threading
 import time
+from concurrent.futures import CancelledError as FuturesCancelledError
 from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Any, Awaitable, Callable, Coroutine, cast
@@ -1547,43 +1548,59 @@ def _maybe_reset_ble_executor(ble_address: str, timeout_count: int) -> None:
                 _ble_timeout_counts[ble_address] = 0
 
         if ble_address in _ble_executor_degraded_addresses:
-            if ble_future_to_cancel is not None:
-                ble_future_to_cancel.cancel()
-                try:
-                    ble_future_to_cancel.result(timeout=0.2)
-                except Exception:
-                    pass
-            if stale_executor is not None and not getattr(
-                stale_executor, "_shutdown", False
+            degraded_now = True
+        else:
+            degraded_now = False
+            if _ble_future and not _ble_future.done():
+                ble_future_to_cancel = _ble_future
+            if _ble_executor is not None and not getattr(
+                _ble_executor, "_shutdown", False
             ):
-                try:
-                    stale_executor.shutdown(wait=False, cancel_futures=True)
-                except TypeError:
-                    stale_executor.shutdown(wait=False)
-            return
+                with _ble_timeout_lock:
+                    orphaned_workers = current_orphans + 1
+                    _ble_executor_orphaned_workers_by_address[ble_address] = (
+                        orphaned_workers
+                    )
+                stale_executor = _ble_executor
+            logger.warning(
+                "BLE worker timed out %s times for %s; recreating executor "
+                "(orphaned BLE workers=%s, threshold=%s)",
+                timeout_count,
+                ble_address,
+                orphaned_workers,
+                EXECUTOR_ORPHAN_THRESHOLD,
+            )
+            _ble_executor = ThreadPoolExecutor(max_workers=1)
+            _ble_future = None
+            _ble_future_address = None
+            _ble_future_started_at = None
+            _ble_future_timeout_secs = None
 
-        if _ble_future and not _ble_future.done():
-            ble_future_to_cancel = _ble_future
-        if _ble_executor is not None and not getattr(_ble_executor, "_shutdown", False):
-            with _ble_timeout_lock:
-                orphaned_workers = current_orphans + 1
-                _ble_executor_orphaned_workers_by_address[ble_address] = (
-                    orphaned_workers
+    if degraded_now:
+        if ble_future_to_cancel is not None:
+            ble_future_to_cancel.cancel()
+            try:
+                ble_future_to_cancel.result(timeout=0.2)
+            except FuturesTimeoutError:
+                logger.debug(
+                    "Timed out waiting for cancelled BLE future for %s",
+                    ble_address,
                 )
-            stale_executor = _ble_executor
-        logger.warning(
-            "BLE worker timed out %s times for %s; recreating executor "
-            "(orphaned BLE workers=%s, threshold=%s)",
-            timeout_count,
-            ble_address,
-            orphaned_workers,
-            EXECUTOR_ORPHAN_THRESHOLD,
-        )
-        _ble_executor = ThreadPoolExecutor(max_workers=1)
-        _ble_future = None
-        _ble_future_address = None
-        _ble_future_started_at = None
-        _ble_future_timeout_secs = None
+            except (FuturesCancelledError, RuntimeError) as exc:
+                logger.debug(
+                    "BLE future cancellation raised error for %s: %s",
+                    ble_address,
+                    exc,
+                )
+        if stale_executor is not None and not getattr(
+            stale_executor, "_shutdown", False
+        ):
+            try:
+                stale_executor.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                stale_executor.shutdown(wait=False)
+        return
+
     if stale_executor is not None and not getattr(stale_executor, "_shutdown", False):
         try:
             stale_executor.shutdown(wait=False, cancel_futures=True)
@@ -2263,7 +2280,7 @@ def _get_device_metadata(
 
         try:
             future = _submit_metadata_probe(call_get_metadata)
-        except MetadataExecutorDegradedError as exc:
+        except MetadataExecutorDegradedError:
             logger.error(
                 "Metadata executor degraded; skipping metadata retrieval. "
                 "Reconnect or restart required to restore metadata probing."

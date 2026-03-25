@@ -231,23 +231,23 @@ def _reset_meshtastic_utils_globals(*, shutdown_executors: bool = False) -> None
     if hasattr(module, "_health_probe_request_deadlines"):
         module._health_probe_request_deadlines = {}  # type: ignore[attr-defined]
     if hasattr(module, "_ble_future_watchdog_secs"):
-        module._ble_future_watchdog_secs = getattr(
+        module._ble_future_watchdog_secs = getattr(  # type: ignore[attr-defined]
             module, "BLE_FUTURE_WATCHDOG_SECS", module._ble_future_watchdog_secs
         )
     if hasattr(module, "_ble_timeout_reset_threshold"):
-        module._ble_timeout_reset_threshold = getattr(
+        module._ble_timeout_reset_threshold = getattr(  # type: ignore[attr-defined]
             module, "BLE_TIMEOUT_RESET_THRESHOLD", module._ble_timeout_reset_threshold
         )
     if hasattr(module, "_ble_scan_timeout_secs"):
-        module._ble_scan_timeout_secs = getattr(
+        module._ble_scan_timeout_secs = getattr(  # type: ignore[attr-defined]
             module, "BLE_SCAN_TIMEOUT_SECS", module._ble_scan_timeout_secs
         )
     if hasattr(module, "_ble_future_stale_grace_secs"):
-        module._ble_future_stale_grace_secs = getattr(
+        module._ble_future_stale_grace_secs = getattr(  # type: ignore[attr-defined]
             module, "BLE_FUTURE_STALE_GRACE_SECS", module._ble_future_stale_grace_secs
         )
     if hasattr(module, "_ble_interface_create_timeout_secs"):
-        module._ble_interface_create_timeout_secs = getattr(
+        module._ble_interface_create_timeout_secs = getattr(  # type: ignore[attr-defined]
             module,
             "BLE_INTERFACE_CREATE_TIMEOUT_FLOOR_SECS",
             module._ble_interface_create_timeout_secs,
@@ -272,6 +272,50 @@ def _reset_meshtastic_utils_globals(*, shutdown_executors: bool = False) -> None
         if executor is not None:
             _shutdown_executor(executor)
         module._ble_executor = None  # type: ignore[attr-defined]
+
+
+def _reset_all_mmrelay_globals() -> None:
+    """
+    Reset module-level global state in mmrelay submodules to a clean default for tests.
+
+    This restores or clears runtime-set globals in mmrelay.meshtastic_utils, mmrelay.matrix_utils,
+    mmrelay.main, mmrelay.plugin_loader, and mmrelay.message_queue so tests do not leak state
+    between runs. The reset may shut down internal executors and invoke available cleanup helpers
+    (e.g., message queue stop) to ensure resources are released and tests remain isolated.
+    """
+    _reset_meshtastic_utils_globals(shutdown_executors=True)
+
+    if "mmrelay.matrix_utils" in sys.modules:
+        module = sys.modules["mmrelay.matrix_utils"]
+        module.config = None  # type: ignore[attr-defined]
+        module.matrix_homeserver = None  # type: ignore[attr-defined]
+        module.matrix_rooms = None  # type: ignore[attr-defined]
+        module.matrix_access_token = None  # type: ignore[attr-defined]
+        module.bot_user_id = None  # type: ignore[attr-defined]
+        module.bot_user_name = None  # type: ignore[attr-defined]
+        module.matrix_client = None  # type: ignore[attr-defined]
+        import time
+
+        module.bot_start_time = int(time.time() * 1000)  # type: ignore[attr-defined]
+
+    if "mmrelay.main" in sys.modules:
+        module = sys.modules["mmrelay.main"]
+        module._banner_printed = False  # type: ignore[attr-defined]
+        module._ready_file_path = None  # type: ignore[attr-defined]
+        module._ready_heartbeat_seconds = 60  # type: ignore[attr-defined]
+
+    if "mmrelay.plugin_loader" in sys.modules:
+        module = sys.modules["mmrelay.plugin_loader"]
+        if hasattr(module, "_reset_caches_for_tests"):
+            module._reset_caches_for_tests()
+
+    if "mmrelay.message_queue" in sys.modules:
+        from mmrelay.message_queue import get_message_queue
+
+        with contextlib.suppress(Exception):
+            queue = get_message_queue()
+            if hasattr(queue, "stop"):
+                queue.stop()
 
 
 class _ImmediateEvent:
@@ -2188,55 +2232,7 @@ class TestMainAsyncFunction(unittest.TestCase):
         gc.collect()
 
     def _reset_global_state(self):
-        """
-        Reset module-level global state in mmrelay submodules to a clean default for tests.
-
-        This restores or clears runtime-set globals in mmrelay.meshtastic_utils, mmrelay.matrix_utils,
-        mmrelay.main, mmrelay.plugin_loader, and mmrelay.message_queue so tests do not leak state
-        between runs. The reset may shut down internal executors and invoke available cleanup helpers
-        (e.g., message queue stop) to ensure resources are released and tests remain isolated.
-        """
-
-        _reset_meshtastic_utils_globals(shutdown_executors=True)
-
-        # Reset matrix_utils globals
-        if "mmrelay.matrix_utils" in sys.modules:
-            module = sys.modules["mmrelay.matrix_utils"]
-            module.config = None  # type: ignore[attr-defined]
-            module.matrix_homeserver = None  # type: ignore[attr-defined]
-            module.matrix_rooms = None  # type: ignore[attr-defined]
-            module.matrix_access_token = None  # type: ignore[attr-defined]
-            module.bot_user_id = None  # type: ignore[attr-defined]
-            module.bot_user_name = None  # type: ignore[attr-defined]
-            module.matrix_client = None  # type: ignore[attr-defined]
-            # Reset bot_start_time to current time to avoid stale timestamps
-            import time
-
-            module.bot_start_time = int(time.time() * 1000)  # type: ignore[attr-defined]
-
-        # Reset main module globals if any
-        if "mmrelay.main" in sys.modules:
-            module = sys.modules["mmrelay.main"]
-            # Reset banner printed state to ensure consistent test behavior
-            module._banner_printed = False  # type: ignore[attr-defined]
-            # Reset ready file globals
-            module._ready_file_path = None  # type: ignore[attr-defined]
-            module._ready_heartbeat_seconds = 60  # type: ignore[attr-defined]
-
-        # Reset plugin_loader caches
-        if "mmrelay.plugin_loader" in sys.modules:
-            module = sys.modules["mmrelay.plugin_loader"]
-            if hasattr(module, "_reset_caches_for_tests"):
-                module._reset_caches_for_tests()
-
-        # Reset message_queue state
-        if "mmrelay.message_queue" in sys.modules:
-            from mmrelay.message_queue import get_message_queue
-
-            with contextlib.suppress(Exception):
-                queue = get_message_queue()
-                if hasattr(queue, "stop"):
-                    queue.stop()
+        _reset_all_mmrelay_globals()
 
     def test_main_async_initialization_sequence(self):
         """Verify that the asynchronous main() startup sequence invokes database initialization, plugin loading, message-queue startup, and both Matrix and Meshtastic connection routines.
@@ -2780,55 +2776,7 @@ class TestStartupRollback(unittest.TestCase):
         self._reset_global_state()
 
     def _reset_global_state(self):
-        """
-        Reset module-level global state in mmrelay submodules to a clean default for tests.
-
-        This restores or clears runtime-set globals in mmrelay.meshtastic_utils, mmrelay.matrix_utils,
-        mmrelay.main, mmrelay.plugin_loader, and mmrelay.message_queue so tests do not leak state
-        between runs. The reset may shut down internal executors and invoke available cleanup helpers
-        (e.g., message queue stop) to ensure resources are released and tests remain isolated.
-        """
-
-        _reset_meshtastic_utils_globals(shutdown_executors=True)
-
-        # Reset matrix_utils globals
-        if "mmrelay.matrix_utils" in sys.modules:
-            module = sys.modules["mmrelay.matrix_utils"]
-            module.config = None  # type: ignore[attr-defined]
-            module.matrix_homeserver = None  # type: ignore[attr-defined]
-            module.matrix_rooms = None  # type: ignore[attr-defined]
-            module.matrix_access_token = None  # type: ignore[attr-defined]
-            module.bot_user_id = None  # type: ignore[attr-defined]
-            module.bot_user_name = None  # type: ignore[attr-defined]
-            module.matrix_client = None  # type: ignore[attr-defined]
-            # Reset bot_start_time to current time to avoid stale timestamps
-            import time
-
-            module.bot_start_time = int(time.time() * 1000)  # type: ignore[attr-defined]
-
-        # Reset main module globals if any
-        if "mmrelay.main" in sys.modules:
-            module = sys.modules["mmrelay.main"]
-            # Reset banner printed state to ensure consistent test behavior
-            module._banner_printed = False  # type: ignore[attr-defined]
-            # Reset ready file globals
-            module._ready_file_path = None  # type: ignore[attr-defined]
-            module._ready_heartbeat_seconds = 60  # type: ignore[attr-defined]
-
-        # Reset plugin_loader caches
-        if "mmrelay.plugin_loader" in sys.modules:
-            module = sys.modules["mmrelay.plugin_loader"]
-            if hasattr(module, "_reset_caches_for_tests"):
-                module._reset_caches_for_tests()
-
-        # Reset message_queue state
-        if "mmrelay.message_queue" in sys.modules:
-            from mmrelay.message_queue import get_message_queue
-
-            with contextlib.suppress(Exception):
-                queue = get_message_queue()
-                if hasattr(queue, "stop"):
-                    queue.stop()
+        _reset_all_mmrelay_globals()
 
     @patch("mmrelay.main.initialize_database")
     @patch("mmrelay.main.load_plugins")
@@ -3065,7 +3013,6 @@ class TestStartupRollback(unittest.TestCase):
 
         config = {"matrix_rooms": [{"id": "!room:matrix.org"}]}
 
-        create_task_call_count = [0]
         shutdown_event = _OnePassEvent()
 
         def mock_create_task(coro):
@@ -3693,55 +3640,7 @@ class TestMatrixSyncLoopErrorHandling(unittest.TestCase):
         self._reset_global_state()
 
     def _reset_global_state(self):
-        """
-        Reset module-level global state in mmrelay submodules to a clean default for tests.
-
-        This restores or clears runtime-set globals in mmrelay.meshtastic_utils, mmrelay.matrix_utils,
-        mmrelay.main, mmrelay.plugin_loader, and mmrelay.message_queue so tests do not leak state
-        between runs. The reset may shut down internal executors and invoke available cleanup helpers
-        (e.g., message queue stop) to ensure resources are released and tests remain isolated.
-        """
-
-        _reset_meshtastic_utils_globals(shutdown_executors=True)
-
-        # Reset matrix_utils globals
-        if "mmrelay.matrix_utils" in sys.modules:
-            module = sys.modules["mmrelay.matrix_utils"]
-            module.config = None  # type: ignore[attr-defined]
-            module.matrix_homeserver = None  # type: ignore[attr-defined]
-            module.matrix_rooms = None  # type: ignore[attr-defined]
-            module.matrix_access_token = None  # type: ignore[attr-defined]
-            module.bot_user_id = None  # type: ignore[attr-defined]
-            module.bot_user_name = None  # type: ignore[attr-defined]
-            module.matrix_client = None  # type: ignore[attr-defined]
-            # Reset bot_start_time to current time to avoid stale timestamps
-            import time
-
-            module.bot_start_time = int(time.time() * 1000)  # type: ignore[attr-defined]
-
-        # Reset main module globals if any
-        if "mmrelay.main" in sys.modules:
-            module = sys.modules["mmrelay.main"]
-            # Reset banner printed state to ensure consistent test behavior
-            module._banner_printed = False  # type: ignore[attr-defined]
-            # Reset ready file globals
-            module._ready_file_path = None  # type: ignore[attr-defined]
-            module._ready_heartbeat_seconds = 60  # type: ignore[attr-defined]
-
-        # Reset plugin_loader caches
-        if "mmrelay.plugin_loader" in sys.modules:
-            module = sys.modules["mmrelay.plugin_loader"]
-            if hasattr(module, "_reset_caches_for_tests"):
-                module._reset_caches_for_tests()
-
-        # Reset message_queue state
-        if "mmrelay.message_queue" in sys.modules:
-            from mmrelay.message_queue import get_message_queue
-
-            with contextlib.suppress(Exception):
-                queue = get_message_queue()
-                if hasattr(queue, "stop"):
-                    queue.stop()
+        _reset_all_mmrelay_globals()
 
     def test_sync_timeout_logs_warning_and_retries(self):
         """TimeoutError from sync_task.result() logs warning and retries."""

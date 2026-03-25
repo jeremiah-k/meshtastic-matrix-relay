@@ -3676,17 +3676,19 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         with (
             patch("mmrelay.meshtastic_utils._ble_executor", mock_executor),
-            patch(
-                "mmrelay.meshtastic_utils._disconnect_ble_by_address"
-            ) as mock_disconnect,
+            patch("bleak.BleakClient") as mock_bleak_client,
         ):
+            mock_client_instance = Mock()
+            mock_client_instance.is_connected = False
+            mock_bleak_client.return_value = mock_client_instance
+
             import mmrelay.meshtastic_utils as mu
 
             _reset_ble_inflight_state(mu)
             mu._metadata_future = None
             result = connect_meshtastic(passed_config=config)
             self.assertIsNone(result)
-            mock_disconnect.assert_called()
+            mock_bleak_client.assert_called_with("AA:BB:CC:DD:EE:FF")
 
             self.assertIsNone(mu.meshtastic_iface)
 
@@ -3772,8 +3774,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             future.cancel = Mock(return_value=True)
             return future
 
-        from mmrelay.constants.network import MAX_TIMEOUT_RETRIES_INFINITE
-
         future_sequence = iter(
             future
             for _ in range(MAX_TIMEOUT_RETRIES_INFINITE + 1)
@@ -3789,17 +3789,19 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         with (
             patch("mmrelay.meshtastic_utils._ble_executor", mock_executor),
-            patch(
-                "mmrelay.meshtastic_utils._disconnect_ble_by_address"
-            ) as mock_disconnect,
+            patch("bleak.BleakClient") as mock_bleak_client,
         ):
+            mock_client_instance = Mock()
+            mock_client_instance.is_connected = False
+            mock_bleak_client.return_value = mock_client_instance
+
             import mmrelay.meshtastic_utils as mu
 
             _reset_ble_inflight_state(mu)
             mu._metadata_future = None
             result = connect_meshtastic(passed_config=config)
             self.assertIsNone(result)
-            mock_disconnect.assert_called()
+            mock_bleak_client.assert_called_with("AA:BB:CC:DD:EE:FF")
 
             self.assertIsNone(mu.meshtastic_iface)
 

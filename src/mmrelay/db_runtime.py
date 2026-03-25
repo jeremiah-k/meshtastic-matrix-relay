@@ -421,7 +421,7 @@ class DatabaseManager:
                         "Write future finished with an error after caller cancellation",
                         exc_info=True,
                     )
-            if not worker_future.done():
+            elif not worker_future.done():
                 worker_future.cancel()
             raise
 
