@@ -4476,6 +4476,10 @@ def requires_continuous_health_monitor(config: dict[str, Any]) -> bool:
     Health monitoring is disabled for BLE connections (which have real-time disconnect
     detection) and when health_check.enabled is explicitly set to False.
 
+    Note: This function only returns False for "clean" exit cases (BLE or explicitly
+    disabled). Malformed health_check configs return True so that check_connection
+    can log appropriate warnings before exiting.
+
     Args:
         config: The full configuration dictionary.
 
@@ -4488,8 +4492,10 @@ def requires_continuous_health_monitor(config: dict[str, Any]) -> bool:
     if meshtastic_config.get(CONFIG_KEY_CONNECTION_TYPE) == CONNECTION_TYPE_BLE:
         return False
     health_config = meshtastic_config.get("health_check")
-    if not isinstance(health_config, dict):
+    if health_config is None:
         return DEFAULT_HEALTH_CHECK_ENABLED
+    if not isinstance(health_config, dict):
+        return True
     raw_enabled = health_config.get("enabled", DEFAULT_HEALTH_CHECK_ENABLED)
     return _coerce_bool(
         raw_enabled, DEFAULT_HEALTH_CHECK_ENABLED, "health_check.enabled"
@@ -4551,6 +4557,20 @@ async def check_connection() -> None:
             health_config,
         )
         health_config = {}
+
+    raw_health_check_enabled = health_config.get(
+        "enabled", DEFAULT_HEALTH_CHECK_ENABLED
+    )
+    health_check_enabled = _coerce_bool(
+        raw_health_check_enabled,
+        DEFAULT_HEALTH_CHECK_ENABLED,
+        "meshtastic.health_check.enabled",
+    )
+
+    if not health_check_enabled:
+        logger.info("Connection health checks are disabled in configuration")
+        return
+
     heartbeat_interval = health_config.get("heartbeat_interval", 60)
     initial_delay = health_config.get("initial_delay", INITIAL_HEALTH_CHECK_DELAY)
     probe_timeout = health_config.get(
