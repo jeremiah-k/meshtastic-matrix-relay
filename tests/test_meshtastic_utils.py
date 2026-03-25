@@ -3689,15 +3689,19 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         }
 
         # Mock BLE interface creation with the shared BLE executor
-        # Create a mock future whose .result() method raises FuturesTimeoutError
-        mock_future = Mock()
-        mock_future.result = Mock(side_effect=FuturesTimeoutError())
-        mock_future.done.return_value = False
-        mock_future.cancel = Mock(return_value=True)
+        # Create a fresh mock future per submit() call to avoid state leakage across retries
+        def _make_timeout_future():
+            future = Mock()
+            future.result = Mock(side_effect=FuturesTimeoutError())
+            future.done.return_value = False
+            future.cancel = Mock(return_value=True)
+            return future
 
         mock_executor = Mock()
         mock_executor._shutdown = False
-        mock_executor.submit.return_value = mock_future
+        mock_executor.submit.side_effect = [
+            _make_timeout_future() for _ in range(MAX_TIMEOUT_RETRIES_INFINITE + 1)
+        ]
 
         with (
             patch("mmrelay.meshtastic_utils._ble_executor", mock_executor),

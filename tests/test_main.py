@@ -1803,9 +1803,12 @@ def test_main_database_wipe_config(
         mock_shutdown_plugins.return_value = None
         mock_stop_queue.return_value = None
 
-        # Run the test with proper exception handling
-        with contextlib.suppress(KeyboardInterrupt):
-            asyncio.run(main(config))
+        _reset_all_mmrelay_globals()
+        try:
+            with contextlib.suppress(KeyboardInterrupt):
+                asyncio.run(main(config))
+        finally:
+            _reset_all_mmrelay_globals()
 
         # Should wipe message map on startup
         mock_wipe.assert_called()
@@ -1870,8 +1873,12 @@ def test_main_database_wipe_preferred_false_wins_over_legacy_true(
         mock_shutdown_plugins.return_value = None
         mock_stop_queue.return_value = None
 
-        with contextlib.suppress(KeyboardInterrupt):
-            asyncio.run(main(config))
+        _reset_all_mmrelay_globals()
+        try:
+            with contextlib.suppress(KeyboardInterrupt):
+                asyncio.run(main(config))
+        finally:
+            _reset_all_mmrelay_globals()
 
         mock_wipe.assert_not_called()
         mock_queue.ensure_processor_started.assert_called()

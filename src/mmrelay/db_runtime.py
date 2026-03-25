@@ -15,6 +15,7 @@ import threading
 from collections.abc import Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from functools import lru_cache
 from typing import Any, Generator, Optional
 
 from mmrelay.constants.database import (
@@ -51,6 +52,7 @@ def _get_sqlite_runtime_version_info() -> tuple[int, int, int]:
     return (numeric_parts[0], numeric_parts[1], numeric_parts[2])
 
 
+@lru_cache(maxsize=1)
 def _validate_sqlite_json_each_support() -> bool:
     """
     Detect runtime json_each() capability for optional name-state optimizations.

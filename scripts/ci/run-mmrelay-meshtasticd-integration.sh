@@ -1459,8 +1459,13 @@ try:
             "ORDER BY meshtastic_id LIMIT 1"
         ).fetchone()
 except sqlite3.Error as exc:
-    if "no such table" in str(exc).lower():
-        print(f"Table {table_name} not yet created: {exc}", file=sys.stderr)
+    error_text = str(exc).lower()
+    if (
+        "no such table" in error_text
+        or "database is locked" in error_text
+        or "database schema is locked" in error_text
+    ):
+        print(f"Transient SQLite state for {table_name}, will retry: {exc}", file=sys.stderr)
         raise SystemExit(2)
     print(f"SQLite error querying {table_name}: {exc}", file=sys.stderr)
     raise SystemExit(1)

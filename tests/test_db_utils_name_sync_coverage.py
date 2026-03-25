@@ -557,7 +557,6 @@ class TestSyncNameTablesIfChangedDebugLoggingIdDelta:
     @pytest.mark.usefixtures("configured_temp_db")
     def test_debug_log_for_initial_snapshot(self) -> None:
         """Debug log for initial snapshot (previous_state is None)."""
-        _ = configured_temp_db
         nodes = {
             "node_a": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
         }
