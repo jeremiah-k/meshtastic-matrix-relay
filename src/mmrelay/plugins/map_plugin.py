@@ -104,7 +104,7 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
         self,
         latlng: s2sphere.LatLng,
         text: str,
-        fontSize: int = DEFAULT_LABEL_FONT_SIZE,
+        font_size: int = DEFAULT_LABEL_FONT_SIZE,
     ) -> None:
         """
         Initialize a TextLabel anchored at a geographic LatLng with the provided text and font size.
@@ -112,14 +112,14 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
         Parameters:
             latlng (s2sphere.LatLng): Geographic anchor point for the label.
             text (str): Label text to render.
-            fontSize (int): Font size in pixels used for rendering (default DEFAULT_LABEL_FONT_SIZE).
+            font_size (int): Font size in pixels used for rendering (default DEFAULT_LABEL_FONT_SIZE).
         """
         staticmaps.Object.__init__(self)
         self._latlng = latlng
         self._text = text
         self._margin = LABEL_MARGIN_PX
         self._arrow = LABEL_ARROW_SIZE_PX
-        self._font_size = fontSize
+        self._font_size = font_size
 
     def latlng(self) -> s2sphere.LatLng:
         return self._latlng
@@ -354,7 +354,7 @@ def get_map(
                 )
             )
         context.add_object(
-            TextLabel(radio, str(location["label"]), fontSize=MAP_LABEL_FONT_SIZE)
+            TextLabel(radio, str(location["label"]), font_size=MAP_LABEL_FONT_SIZE)
         )
 
     # render non-anti-aliased png

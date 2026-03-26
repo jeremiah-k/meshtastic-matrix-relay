@@ -46,19 +46,48 @@ class _InvalidNamesTableError(ValueError):
 
 _VALID_TABLE_NAMES: frozenset[str] = frozenset(
     {
-        MESSAGE_MAP_TABLE,
-        PLUGIN_DATA_TABLE,
-        NAMES_TABLE_LONGNAMES,
-        NAMES_TABLE_SHORTNAMES,
-        f"{MESSAGE_MAP_TABLE}_legacy",
+        "message_map",
+        "message_map_legacy",
+        "plugin_data",
+        "longnames",
+        "shortnames",
     }
 )
 
 _VALID_COLUMN_NAMES: frozenset[str] = frozenset(
-    set(MESSAGE_MAP_COLUMNS)
-    | set(PLUGIN_DATA_COLUMNS)
-    | {NAMES_FIELD_LONGNAME, NAMES_FIELD_SHORTNAME, "meshtastic_id"}
+    {
+        "meshtastic_id",
+        "matrix_event_id",
+        "matrix_room_id",
+        "meshtastic_text",
+        "meshtastic_meshnet",
+        "plugin_name",
+        "data",
+        "longname",
+        "shortname",
+    }
 )
+
+if (
+    MESSAGE_MAP_TABLE != "message_map"
+    or PLUGIN_DATA_TABLE != "plugin_data"
+    or NAMES_TABLE_LONGNAMES != "longnames"
+    or NAMES_TABLE_SHORTNAMES != "shortnames"
+    or MESSAGE_MAP_COLUMNS
+    != (
+        "meshtastic_id",
+        "matrix_event_id",
+        "matrix_room_id",
+        "meshtastic_text",
+        "meshtastic_meshnet",
+    )
+    or PLUGIN_DATA_COLUMNS != ("plugin_name", "meshtastic_id", "data")
+    or NAMES_FIELD_LONGNAME != "longname"
+    or NAMES_FIELD_SHORTNAME != "shortname"
+):
+    raise RuntimeError(
+        "Database constants changed; update literal allowlists in db_utils."
+    )
 
 
 def _validate_identifier(name: str, allowlist: frozenset[str]) -> str:
@@ -176,6 +205,54 @@ _CREATE_TABLE_NAMES_SHORT_SQL = (
     "CREATE TABLE IF NOT EXISTS shortnames "
     "(meshtastic_id TEXT PRIMARY KEY, shortname TEXT)"
 )
+_CREATE_TABLE_PLUGIN_DATA_SQL = (
+    "CREATE TABLE IF NOT EXISTS plugin_data "
+    "(plugin_name TEXT, meshtastic_id TEXT, data TEXT, "
+    "PRIMARY KEY (plugin_name, meshtastic_id))"
+)
+_CREATE_TABLE_MESSAGE_MAP_SQL = (
+    "CREATE TABLE IF NOT EXISTS message_map "
+    "(meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, "
+    "matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
+)
+_ALTER_TABLE_MESSAGE_MAP_ADD_MESH_SQL = (
+    "ALTER TABLE message_map ADD COLUMN meshtastic_meshnet TEXT"
+)
+_PRAGMA_MESSAGE_MAP_INFO_SQL = "PRAGMA table_info(message_map)"
+_PRAGMA_MESSAGE_MAP_LEGACY_INFO_SQL = "PRAGMA table_info(message_map_legacy)"
+_DROP_TABLE_MESSAGE_MAP_LEGACY_SQL = "DROP TABLE message_map_legacy"
+_RENAME_MESSAGE_MAP_TO_LEGACY_SQL = (
+    "ALTER TABLE message_map RENAME TO message_map_legacy"
+)
+_CREATE_TABLE_MESSAGE_MAP_FROM_SCRATCH_SQL = (
+    "CREATE TABLE message_map "
+    "(meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, "
+    "matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
+)
+_INSERT_MESSAGE_MAP_FROM_LEGACY_WITH_MESH_SQL = (
+    "INSERT INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
+    "SELECT CAST(meshtastic_id AS TEXT), matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet "
+    "FROM message_map_legacy"
+)
+_INSERT_MESSAGE_MAP_FROM_LEGACY_WITHOUT_MESH_SQL = (
+    "INSERT INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
+    "SELECT CAST(meshtastic_id AS TEXT), matrix_event_id, matrix_room_id, meshtastic_text, NULL "
+    "FROM message_map_legacy"
+)
+_INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITH_MESH_SQL = (
+    "INSERT OR IGNORE INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
+    "SELECT CAST(meshtastic_id AS TEXT), matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet "
+    "FROM message_map_legacy"
+)
+_INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITHOUT_MESH_SQL = (
+    "INSERT OR IGNORE INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
+    "SELECT CAST(meshtastic_id AS TEXT), matrix_event_id, matrix_room_id, meshtastic_text, NULL "
+    "FROM message_map_legacy"
+)
+_CREATE_INDEX_MESSAGE_MAP_ID_SQL = "CREATE INDEX IF NOT EXISTS idx_message_map_meshtastic_id ON message_map (meshtastic_id)"
+_DELETE_FROM_MESSAGE_MAP_SQL = "DELETE FROM message_map"
+_SELECT_COUNT_MESSAGE_MAP_SQL = "SELECT COUNT(*) FROM message_map"
+_DELETE_OLDEST_MESSAGE_MAP_SQL = "DELETE FROM message_map WHERE rowid IN (SELECT rowid FROM message_map ORDER BY rowid ASC LIMIT ?)"
 
 if (
     NAMES_TABLE_LONGNAMES,
@@ -600,28 +677,20 @@ def initialize_database() -> None:
         """
         cursor.execute(_CREATE_TABLE_NAMES_LONG_SQL)
         cursor.execute(_CREATE_TABLE_NAMES_SHORT_SQL)
-        cursor.execute(
-            f"CREATE TABLE IF NOT EXISTS {PLUGIN_DATA_TABLE} ({PLUGIN_DATA_COLUMNS[0]} TEXT, {PLUGIN_DATA_COLUMNS[1]} TEXT, {PLUGIN_DATA_COLUMNS[2]} TEXT, PRIMARY KEY ({PLUGIN_DATA_COLUMNS[0]}, {PLUGIN_DATA_COLUMNS[1]}))"
-        )
-        cursor.execute(
-            f"CREATE TABLE IF NOT EXISTS {MESSAGE_MAP_TABLE} ({MESSAGE_MAP_COLUMNS[0]} TEXT, {MESSAGE_MAP_COLUMNS[1]} TEXT PRIMARY KEY, {MESSAGE_MAP_COLUMNS[2]} TEXT, {MESSAGE_MAP_COLUMNS[3]} TEXT, {MESSAGE_MAP_COLUMNS[4]} TEXT)"
-        )
+        cursor.execute(_CREATE_TABLE_PLUGIN_DATA_SQL)
+        cursor.execute(_CREATE_TABLE_MESSAGE_MAP_SQL)
         _legacy_table = f"{MESSAGE_MAP_TABLE}_legacy"
         _validate_identifier(_legacy_table, _VALID_TABLE_NAMES)
         _col_id, _col_evt, _col_room, _col_text, _col_mesh = MESSAGE_MAP_COLUMNS
         for _c in MESSAGE_MAP_COLUMNS:
             _validate_identifier(_c, _VALID_COLUMN_NAMES)
 
-        # Attempt schema adjustments for upgrades
         try:
-            cursor.execute(
-                f"ALTER TABLE {MESSAGE_MAP_TABLE} ADD COLUMN {_col_mesh} TEXT"
-            )
+            cursor.execute(_ALTER_TABLE_MESSAGE_MAP_ADD_MESH_SQL)
         except sqlite3.OperationalError:
             pass
 
-        # Migrate legacy message_map schema where meshtastic_id used INTEGER affinity.
-        cursor.execute(f"PRAGMA table_info({MESSAGE_MAP_TABLE})")
+        cursor.execute(_PRAGMA_MESSAGE_MAP_INFO_SQL)
         columns = cursor.fetchall()
         column_map = {column[1]: column for column in columns}
         meshtastic_column = column_map.get(_col_id)
@@ -635,49 +704,30 @@ def initialize_database() -> None:
         if legacy_exists and (
             not meshtastic_column or str(meshtastic_column[2]).upper() == "TEXT"
         ):
-            # Recover from a previously interrupted migration by merging legacy rows.
-            cursor.execute(f"PRAGMA table_info({_legacy_table})")
+            cursor.execute(_PRAGMA_MESSAGE_MAP_LEGACY_INFO_SQL)
             legacy_columns = {column[1]: column for column in cursor.fetchall()}
             if _col_mesh in legacy_columns:
-                cursor.execute(
-                    f"INSERT OR IGNORE INTO {MESSAGE_MAP_TABLE} ({_col_id}, {_col_evt}, {_col_room}, {_col_text}, {_col_mesh}) "
-                    f"SELECT CAST({_col_id} AS TEXT), {_col_evt}, {_col_room}, {_col_text}, {_col_mesh} "
-                    f"FROM {_legacy_table}"
-                )
+                cursor.execute(_INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITH_MESH_SQL)
             else:
                 cursor.execute(
-                    f"INSERT OR IGNORE INTO {MESSAGE_MAP_TABLE} ({_col_id}, {_col_evt}, {_col_room}, {_col_text}, {_col_mesh}) "
-                    f"SELECT CAST({_col_id} AS TEXT), {_col_evt}, {_col_room}, {_col_text}, NULL "
-                    f"FROM {_legacy_table}"
+                    _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITHOUT_MESH_SQL
                 )
-            cursor.execute(f"DROP TABLE {_legacy_table}")
+            cursor.execute(_DROP_TABLE_MESSAGE_MAP_LEGACY_SQL)
             legacy_exists = False
 
         if meshtastic_column and str(meshtastic_column[2]).upper() != "TEXT":
             if legacy_exists:
-                cursor.execute(f"DROP TABLE {_legacy_table}")
-            cursor.execute(f"ALTER TABLE {MESSAGE_MAP_TABLE} RENAME TO {_legacy_table}")
-            cursor.execute(
-                f"CREATE TABLE {MESSAGE_MAP_TABLE} ({_col_id} TEXT, {_col_evt} TEXT PRIMARY KEY, {_col_room} TEXT, {_col_text} TEXT, {_col_mesh} TEXT)"
-            )
+                cursor.execute(_DROP_TABLE_MESSAGE_MAP_LEGACY_SQL)
+            cursor.execute(_RENAME_MESSAGE_MAP_TO_LEGACY_SQL)
+            cursor.execute(_CREATE_TABLE_MESSAGE_MAP_FROM_SCRATCH_SQL)
             if meshnet_column:
-                cursor.execute(
-                    f"INSERT INTO {MESSAGE_MAP_TABLE} ({_col_id}, {_col_evt}, {_col_room}, {_col_text}, {_col_mesh}) "
-                    f"SELECT CAST({_col_id} AS TEXT), {_col_evt}, {_col_room}, {_col_text}, {_col_mesh} "
-                    f"FROM {_legacy_table}"
-                )
+                cursor.execute(_INSERT_MESSAGE_MAP_FROM_LEGACY_WITH_MESH_SQL)
             else:
-                cursor.execute(
-                    f"INSERT INTO {MESSAGE_MAP_TABLE} ({_col_id}, {_col_evt}, {_col_room}, {_col_text}, {_col_mesh}) "
-                    f"SELECT CAST({_col_id} AS TEXT), {_col_evt}, {_col_room}, {_col_text}, NULL "
-                    f"FROM {_legacy_table}"
-                )
-            cursor.execute(f"DROP TABLE {_legacy_table}")
+                cursor.execute(_INSERT_MESSAGE_MAP_FROM_LEGACY_WITHOUT_MESH_SQL)
+            cursor.execute(_DROP_TABLE_MESSAGE_MAP_LEGACY_SQL)
 
         try:
-            cursor.execute(
-                f"CREATE INDEX IF NOT EXISTS idx_{MESSAGE_MAP_TABLE}_{_col_id} ON {MESSAGE_MAP_TABLE} ({_col_id})"
-            )
+            cursor.execute(_CREATE_INDEX_MESSAGE_MAP_ID_SQL)
         except sqlite3.OperationalError:
             pass
 
@@ -2169,7 +2219,7 @@ def wipe_message_map() -> None:
         Parameters:
             cursor (sqlite3.Cursor): Cursor used to execute the deletion.
         """
-        cursor.execute(f"DELETE FROM {MESSAGE_MAP_TABLE}")
+        cursor.execute(_DELETE_FROM_MESSAGE_MAP_SQL)
 
     try:
         manager.run_sync(_wipe, write=True)
@@ -2185,16 +2235,13 @@ def _prune_message_map_core(cursor: sqlite3.Cursor, msgs_to_keep: int) -> int:
     Returns:
         int: Number of rows deleted (0 if no rows were removed).
     """
-    cursor.execute(f"SELECT COUNT(*) FROM {MESSAGE_MAP_TABLE}")
+    cursor.execute(_SELECT_COUNT_MESSAGE_MAP_SQL)
     row = cursor.fetchone()
     total = row[0] if row else 0
 
     if total > msgs_to_keep:
         to_delete = total - msgs_to_keep
-        cursor.execute(
-            f"DELETE FROM {MESSAGE_MAP_TABLE} WHERE rowid IN (SELECT rowid FROM {MESSAGE_MAP_TABLE} ORDER BY rowid ASC LIMIT ?)",
-            (to_delete,),
-        )
+        cursor.execute(_DELETE_OLDEST_MESSAGE_MAP_SQL, (to_delete,))
         return to_delete
     return 0
 

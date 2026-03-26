@@ -101,8 +101,11 @@ SENSITIVE_URL_PARAMS: Final[frozenset[str]] = frozenset(
 WEATHER_COMMANDS: Final[tuple[str, ...]] = ("weather", "hourly", "daily")
 DAILY_FORECAST_DAYS: Final[int] = 5
 HOURLY_FORECAST_DAYS: Final[int] = 3
-HOURLY_FORECAST_OFFSETS_HOURS: Final[tuple[int, ...]] = (3, 6, 12)
-HOURLY_FORECAST_SLOT_LABELS: Final[tuple[str, ...]] = ("+3h", "+6h", "+12h")
+HOURLY_FORECAST_SLOTS: Final[tuple[tuple[int, str], ...]] = (
+    (3, "+3h"),
+    (6, "+6h"),
+    (12, "+12h"),
+)
 GEOCODING_RESULT_COUNT: Final[int] = 1
 
 # Open-Meteo API URLs

@@ -20,8 +20,7 @@ from mmrelay.constants.plugins import (
     DAILY_FORECAST_DAYS,
     GEOCODING_RESULT_COUNT,
     HOURLY_FORECAST_DAYS,
-    HOURLY_FORECAST_OFFSETS_HOURS,
-    HOURLY_FORECAST_SLOT_LABELS,
+    HOURLY_FORECAST_SLOTS,
     MAX_FORECAST_LENGTH,
     OPEN_METEO_FORECAST_API_URL,
     OPEN_METEO_GEOCODING_API_URL,
@@ -95,8 +94,8 @@ class Plugin(BasePlugin):
             },
             "hourly": {
                 # Keep the hourly forecast compact to fit mesh payload limits
-                "slots": HOURLY_FORECAST_SLOT_LABELS,
-                "offsets": HOURLY_FORECAST_OFFSETS_HOURS,
+                "slots": [label for _, label in HOURLY_FORECAST_SLOTS],
+                "offsets": [offset for offset, _ in HOURLY_FORECAST_SLOTS],
             },
         }
         mode_offsets = hourly_config.get(mode_key, hourly_config["weather"])

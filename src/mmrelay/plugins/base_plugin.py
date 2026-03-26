@@ -179,20 +179,26 @@ class BasePlugin(ABC):
         self.config: dict[str, Any] = {"active": False}
         self.mapped_channels: list[int | None] = []
         self._global_require_bot_mention: bool | None = None
-        self.plugin_type: str = "core"
+        self.plugin_type: str | None = "core" if self.is_core_plugin else None
         global config
         plugin_levels = list(PLUGIN_CONFIG_SECTIONS)
+        plugin_type_by_section = {
+            "plugins": "core",
+            "community-plugins": "community",
+            "custom-plugins": "custom",
+        }
 
         if config is not None:
             for level in plugin_levels:
-                if level in config and self.plugin_name in config[level]:
-                    self.config = config[level][self.plugin_name]
-                    if level == "plugins":
-                        self.plugin_type = "core"
-                    elif level == "community-plugins":
-                        self.plugin_type = "community"
-                    elif level == "custom-plugins":
-                        self.plugin_type = "custom"
+                section_config = config.get(level, {})
+                if (
+                    isinstance(section_config, dict)
+                    and self.plugin_name in section_config
+                ):
+                    self.config = section_config[self.plugin_name]
+                    self.plugin_type = plugin_type_by_section.get(
+                        level, self.plugin_type
+                    )
                     break
 
             # Cache global plugin-level settings (for options like require_bot_mention)

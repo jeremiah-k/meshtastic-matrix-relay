@@ -79,10 +79,10 @@ MESSAGE_MAP_COLUMNS: Final[tuple[str, ...]] = (
 PRAGMA_JOURNAL_MODE_WAL: Final[str] = "PRAGMA journal_mode=WAL"
 PRAGMA_FOREIGN_KEYS_ON: Final[str] = "PRAGMA foreign_keys=ON"
 
-# SQLite sidecar file suffixes
+# SQLite sidecar file suffixes (appended to database filename)
 SQLITE_SIDECAR_SUFFIXES: Final[tuple[str, ...]] = (
-    ".sqlite-wal",
-    ".sqlite-shm",
+    "-wal",
+    "-shm",
     "-journal",
 )
 

@@ -71,6 +71,7 @@ class MessageQueue:
         self._queue: deque[QueuedMessage] = deque()  # Explicit size checks in enqueue()
         self._processor_task: Optional[asyncio.Task[None]] = None
         self._running = False
+        self._stopping = False
         self._lock = threading.Lock()
         self._last_send_time = 0.0
         self._last_send_mono = 0.0
@@ -93,7 +94,7 @@ class MessageQueue:
             message_delay (float): Desired delay between consecutive sends in seconds; may trigger a warning if less than or equal to the firmware minimum.
         """
         with self._lock:
-            if self._running:
+            if self._running or self._stopping:
                 return
 
             # Set the message delay as requested
@@ -151,6 +152,7 @@ class MessageQueue:
                 return
 
             self._running = False
+            self._stopping = True
             task = self._processor_task
             exec_ref = self._executor
             self._processor_task = None
@@ -165,7 +167,21 @@ class MessageQueue:
             if task_loop.is_closed():
                 pass
             elif current_loop is task_loop:
-                task.cancel()
+                task_cancel_done = threading.Event()
+
+                def _cancel_and_mark() -> None:
+                    task.cancel()
+                    if task.done():
+                        task_cancel_done.set()
+                        return
+
+                    def _mark_done(_finished_task: asyncio.Task[Any]) -> None:
+                        task_cancel_done.set()
+
+                    task.add_done_callback(_mark_done)
+
+                task_loop.call_soon_threadsafe(_cancel_and_mark)
+                task_cancel_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC)
             elif task_loop.is_running():
                 task_done = threading.Event()
 
@@ -208,6 +224,8 @@ class MessageQueue:
             else:
                 _shutdown(exec_ref)
 
+        with self._lock:
+            self._stopping = False
         logger.info("Message queue stopped")
 
     def enqueue(

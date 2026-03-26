@@ -510,10 +510,10 @@ def _find_legacy_data(legacy_root: Path) -> list[dict[str, str]]:
     for candidate in db_candidates:
         if candidate.exists():
             add_finding("database", candidate)
-        sidecars: list[Path] = []
-        _collect_db_sidecars(candidate, sidecars)
-        for sidecar in sidecars:
-            add_finding("database", sidecar)
+            sidecars: list[Path] = []
+            _collect_db_sidecars(candidate, sidecars)
+            for sidecar in sidecars:
+                add_finding("database", sidecar)
 
     logs_dir = legacy_root / "logs"
     if _dir_has_entries(logs_dir):
@@ -1384,16 +1384,15 @@ def _collect_db_sidecars(db_path: Path, candidates: list[Path]) -> None:
     """
     Append existing SQLite sidecar files for a database to the candidates list.
 
-    Iterates over SQLITE_SIDECAR_SUFFIXES and constructs sidecar paths. Suffixes
-    like "-wal" are converted to ".sqlite-wal" for use with Path.with_suffix().
+    Iterates over SQLITE_SIDECAR_SUFFIXES and constructs sidecar paths by
+    appending the suffix to the database filename.
 
     Parameters:
         db_path: Path to the main SQLite database file.
         candidates: List to append discovered sidecar paths to.
     """
     for suffix in SQLITE_SIDECAR_SUFFIXES:
-        sidecar_suffix = suffix if suffix.startswith(".") else f".sqlite{suffix}"
-        sidecar = db_path.with_suffix(sidecar_suffix)
+        sidecar = db_path.with_name(f"{db_path.name}{suffix}")
         if sidecar.exists():
             candidates.append(sidecar)
 

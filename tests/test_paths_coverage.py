@@ -156,6 +156,7 @@ def test_get_legacy_env_vars_and_deprecation_window(monkeypatch) -> None:
         call for call in mock_logger.warning.call_args_list if "Deprecated" in str(call)
     ]
     assert len(warning_calls) == 1
+    paths_module._reset_deprecation_warning_flag()
 
 
 def test_get_legacy_dirs_includes_windows_installer_path(monkeypatch) -> None:

@@ -2012,6 +2012,8 @@ def _resolve_plugin_timeout(
             raw_value = default
 
     try:
+        if isinstance(raw_value, bool):
+            raise TypeError("boolean timeout")
         timeout = float(raw_value)
         if timeout > 0 and math.isfinite(timeout):
             return timeout
@@ -2397,13 +2399,11 @@ def _get_device_metadata(
         if future_error is not None:
             raise future_error
 
-        # Cap raw_output length to avoid memory bloat
-        if len(console_output) > METADATA_OUTPUT_MAX_LENGTH:
-            console_output = console_output[:METADATA_OUTPUT_MAX_LENGTH] + "…"
-        result["raw_output"] = console_output
+        raw_output = console_output
+        if len(raw_output) > METADATA_OUTPUT_MAX_LENGTH:
+            raw_output = raw_output[: max(METADATA_OUTPUT_MAX_LENGTH - 1, 0)] + "…"
+        result["raw_output"] = raw_output
 
-        # Parse firmware version from the output using robust regex
-        # Case-insensitive, handles quotes, whitespace, and various formats
         match = FIRMWARE_VERSION_REGEX.search(console_output)
         parsed_output_firmware = (
             _normalize_firmware_version(match.group(1)) if match else None

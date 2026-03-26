@@ -237,9 +237,11 @@ class TestFindLegacyData:
         )
 
     def test_finds_database_wal_sidecar(self, tmp_path: Path) -> None:
-        """Test finds database WAL sidecar file."""
+        """Test finds database WAL sidecar file when main database exists."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
+        db = legacy_root / "meshtastic.sqlite"
+        db.write_text("fake db")
         wal = legacy_root / "meshtastic.sqlite-wal"
         wal.write_text("fake wal")
 
@@ -250,9 +252,11 @@ class TestFindLegacyData:
         )
 
     def test_finds_database_shm_sidecar(self, tmp_path: Path) -> None:
-        """Test finds database SHM sidecar file."""
+        """Test finds database SHM sidecar file when main database exists."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
+        db = legacy_root / "meshtastic.sqlite"
+        db.write_text("fake db")
         shm = legacy_root / "meshtastic.sqlite-shm"
         shm.write_text("fake shm")
 

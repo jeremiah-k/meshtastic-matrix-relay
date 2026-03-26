@@ -42,7 +42,7 @@ class TestTextLabel(unittest.TestCase):
         Initialize a TextLabel instance with a San Francisco coordinate and label for use in tests.
         """
         self.latlng = s2sphere.LatLng.from_degrees(37.7749, -122.4194)  # San Francisco
-        self.text_label = TextLabel(self.latlng, "Test Label", fontSize=12)
+        self.text_label = TextLabel(self.latlng, "Test Label", font_size=12)
 
     def test_init(self):
         """Test TextLabel initialization."""
