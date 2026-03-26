@@ -776,7 +776,10 @@ def initialize_database() -> None:
             cursor.execute(f"DROP TABLE IF EXISTS {_temp_table}")
             cursor.execute(_DROP_TABLE_MESSAGE_MAP_LEGACY_SQL)
 
-        cursor.execute(_CREATE_INDEX_MESSAGE_MAP_ID_SQL)
+        try:
+            cursor.execute(_CREATE_INDEX_MESSAGE_MAP_ID_SQL)
+        except sqlite3.OperationalError:
+            pass
 
     try:
         manager.run_sync(_initialize, write=True)
