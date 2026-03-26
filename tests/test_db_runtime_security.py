@@ -801,15 +801,17 @@ class TestDatabaseManager(unittest.TestCase):
 
     def test_close_waits_for_active_sync_work_to_finish(self):
         """close() should wait until active sync activity drains."""
-        import time
-
         manager = DatabaseManager(self.db_path)
         with manager._connections_lock:
             manager._active_sync_count = 1
         close_done = threading.Event()
+        allow_release = threading.Event()
 
         def release_activity() -> None:
-            time.sleep(0.05)
+            self.assertTrue(
+                allow_release.wait(timeout=1.0),
+                "test never allowed release_activity to continue",
+            )
             with manager._connections_lock:
                 manager._active_sync_count = 0
                 manager._active_sync_condition.notify_all()
@@ -822,11 +824,12 @@ class TestDatabaseManager(unittest.TestCase):
         closer = threading.Thread(target=close_manager, daemon=True)
         releaser.start()
         closer.start()
-        time.sleep(0.01)
         self.assertFalse(
-            close_done.is_set(),
+            close_done.wait(timeout=0.05),
             "close() returned before active sync work drained",
         )
+        self.assertTrue(closer.is_alive(), "close() did not block before release")
+        allow_release.set()
         releaser.join(timeout=1.0)
         closer.join(timeout=1.0)
         self.assertFalse(releaser.is_alive())

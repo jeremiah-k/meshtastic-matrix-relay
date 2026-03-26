@@ -19,7 +19,7 @@ import sys
 import tempfile
 import unittest
 from types import ModuleType
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import ANY, MagicMock, call, patch
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -4163,8 +4163,11 @@ class TestDependencyInstallation(BaseGitTest):
         )
 
         self.assertFalse(result)
-        mock_logger.exception.assert_called_with(
-            f"Error cloning repository repo; please manually clone into {self.temp_repo_path}: Command 'git' returned non-zero exit status 1."
+        mock_logger.error.assert_called_with(
+            "Error cloning repository %s; please manually clone into %s: %s",
+            "repo",
+            self.temp_repo_path,
+            ANY,
         )
 
     @patch("mmrelay.plugin_loader._run_git")

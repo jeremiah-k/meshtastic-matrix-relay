@@ -319,18 +319,18 @@ with self.assertLogs("mmrelay.cli", level="WARNING"):
 - Use descriptive test method names that explain the scenario
 - Include expected behavior in the name
 
-### 3. Arrange-Act-Assert Pattern
+### 4. Arrange-Act-Assert Pattern
 
 - **Arrange**: Set up test data and mocks
 - **Act**: Execute the code under test
 - **Assert**: Verify the expected behavior
 
-### 4. Mock at the Right Level
+### 5. Mock at the Right Level
 
 - Mock external dependencies, not internal logic
 - Mock at the boundary of your system under test
 
-### 5. Test Error Conditions
+### 6. Test Error Conditions
 
 - Test both success and failure scenarios
 - Test exception handling and edge cases
@@ -343,7 +343,7 @@ with self.assertLogs("mmrelay.cli", level="WARNING"):
       self.assertIn("expected failure detail", "\n".join(cm.output))
   ```
 
-### 6. Avoid Test Interdependence
+### 7. Avoid Test Interdependence
 
 - Each test should be independent
 - Use `setUp()` and `tearDown()` for common initialization

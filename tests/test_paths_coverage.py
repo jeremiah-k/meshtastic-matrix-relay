@@ -142,21 +142,25 @@ def test_get_legacy_env_vars_and_deprecation_window(monkeypatch) -> None:
     import mmrelay.paths as paths_module
 
     paths_module._reset_deprecation_warning_flag()
-    reset_home_override()
-    monkeypatch.delenv("MMRELAY_HOME", raising=False)
-    monkeypatch.setenv("MMRELAY_BASE_DIR", "/legacy/base")
-    monkeypatch.setenv("MMRELAY_DATA_DIR", "/legacy/data")
-    with patch("mmrelay.paths.logger") as mock_logger:
-        legacy_vars = get_legacy_env_vars()
-        assert sorted(legacy_vars) == ["MMRELAY_BASE_DIR", "MMRELAY_DATA_DIR"]
-        assert is_deprecation_window_active() is True
-        assert is_deprecation_window_active() is True
+    try:
+        reset_home_override()
+        monkeypatch.delenv("MMRELAY_HOME", raising=False)
+        monkeypatch.setenv("MMRELAY_BASE_DIR", "/legacy/base")
+        monkeypatch.setenv("MMRELAY_DATA_DIR", "/legacy/data")
+        with patch("mmrelay.paths.logger") as mock_logger:
+            legacy_vars = get_legacy_env_vars()
+            assert sorted(legacy_vars) == ["MMRELAY_BASE_DIR", "MMRELAY_DATA_DIR"]
+            assert is_deprecation_window_active() is True
+            assert is_deprecation_window_active() is True
 
-    warning_calls = [
-        call for call in mock_logger.warning.call_args_list if "Deprecated" in str(call)
-    ]
-    assert len(warning_calls) == 1
-    paths_module._reset_deprecation_warning_flag()
+        warning_calls = [
+            call
+            for call in mock_logger.warning.call_args_list
+            if "Deprecated" in str(call)
+        ]
+        assert len(warning_calls) == 1
+    finally:
+        paths_module._reset_deprecation_warning_flag()
 
 
 def test_get_legacy_dirs_includes_windows_installer_path(monkeypatch) -> None:

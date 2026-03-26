@@ -2282,6 +2282,13 @@ def handle_auth_status(args: argparse.Namespace) -> int:
                 with open(credentials_path, "r", encoding="utf-8") as f:
                     credentials = json.load(f)
 
+                if not isinstance(credentials, dict):
+                    print(
+                        f"⚠️  Skipping invalid credentials.json at {credentials_path} "
+                        "(top-level JSON must be an object)"
+                    )
+                    continue
+
                 required = REQUIRED_CREDENTIALS_KEYS
                 if not all(
                     isinstance(credentials.get(k), str) and credentials.get(k).strip()

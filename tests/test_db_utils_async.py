@@ -591,7 +591,9 @@ class TestDatabasePathCaching(unittest.TestCase):
                 },
             ):
                 path = get_db_path()
-                self.assertEqual(path, f"/default/data/dir/{DEFAULT_DB_FILENAME}")
+                self.assertEqual(
+                    path, os.path.join("/default/data/dir", DEFAULT_DB_FILENAME)
+                )
 
                 # Verify data directory creation was attempted
                 mock_makedirs.assert_called_with("/default/data/dir", exist_ok=True)

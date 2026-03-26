@@ -197,6 +197,11 @@ class TestMigrateAdditionalCoverage:
         self, tmp_path: Path
     ) -> None:
         """Candidate paths resolving to target should be skipped and return already_migrated."""
+        import sys
+
+        if sys.platform == "win32":
+            pytest.skip("Symlinks not supported reliably on Windows")
+
         new_home = tmp_path / "home"
         new_db_dir = new_home / "database"
         new_db_dir.mkdir(parents=True)

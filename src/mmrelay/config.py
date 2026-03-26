@@ -819,7 +819,11 @@ def load_credentials() -> dict[str, Any] | None:
             continue
 
         creds_dir = os.path.abspath(os.path.dirname(credentials_path))
-        if creds_dir in legacy_dirs:
+        is_legacy = creds_dir in legacy_dirs or any(
+            creds_dir == os.path.abspath(os.path.join(legacy_dir, MATRIX_DIRNAME))
+            for legacy_dir in legacy_dirs
+        )
+        if is_legacy:
             _get_config_logger().warning(
                 "Credentials found in legacy location: %s. "
                 "Please run 'mmrelay migrate' to move to new unified structure. "

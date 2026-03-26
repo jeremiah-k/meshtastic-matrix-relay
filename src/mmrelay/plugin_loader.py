@@ -1758,12 +1758,17 @@ def _clone_new_repo_to_branch_or_tag(
             return False
 
     if last_exc:
-        logger.exception(
-            f"Error cloning repository {repo_name}; please manually clone into {repo_path}: {last_exc}"
+        logger.error(
+            "Error cloning repository %s; please manually clone into %s: %s",
+            repo_name,
+            repo_path,
+            last_exc,
         )
     else:
-        logger.exception(
-            f"Error cloning repository {repo_name}; please manually clone into {repo_path}"
+        logger.error(
+            "Error cloning repository %s; please manually clone into %s",
+            repo_name,
+            repo_path,
         )
     return False
 

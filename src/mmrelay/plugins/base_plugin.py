@@ -190,7 +190,16 @@ class BasePlugin(ABC):
                     isinstance(section_config, dict)
                     and self.plugin_name in section_config
                 ):
-                    self.config = section_config[self.plugin_name]
+                    plugin_config = section_config[self.plugin_name]
+                    if plugin_config is None:
+                        plugin_config = {}
+                    if not isinstance(plugin_config, dict):
+                        self.logger.warning(
+                            "Ignoring invalid config for plugin '%s': expected a mapping",
+                            self.plugin_name,
+                        )
+                        plugin_config = {}
+                    self.config = plugin_config
                     self.plugin_type = PLUGIN_SECTION_TYPES.get(level, self.plugin_type)
                     break
 
