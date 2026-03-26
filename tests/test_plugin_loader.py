@@ -4162,7 +4162,7 @@ class TestDependencyInstallation(BaseGitTest):
 
         self.assertFalse(result)
         mock_logger.exception.assert_called_with(
-            f"Error cloning repository repo; please manually clone into {self.temp_repo_path}"
+            f"Error cloning repository repo; please manually clone into {self.temp_repo_path}: Command 'git' returned non-zero exit status 1."
         )
 
     @patch("mmrelay.plugin_loader._run_git")

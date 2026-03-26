@@ -24,6 +24,7 @@ from mmrelay.constants.formats import (
 )
 from mmrelay.constants.messages import MSG_GRAPH_UPLOAD_FAILED
 from mmrelay.constants.plugins import TELEMETRY_DEFAULT_HOURS, TELEMETRY_MAX_DATA_ROWS
+from mmrelay.meshtastic_utils import _get_portnum_name
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
@@ -99,8 +100,8 @@ class Plugin(BasePlugin):
         _ = formatted_message, longname, meshnet_name
         if (
             "decoded" in packet
-            and "portnum" in packet["decoded"]
-            and packet["decoded"]["portnum"] == TELEMETRY_APP_PORTNUM
+            and _get_portnum_name(packet["decoded"].get("portnum"))
+            == TELEMETRY_APP_PORTNUM
             and "telemetry" in packet["decoded"]
             and "deviceMetrics" in packet["decoded"]["telemetry"]
         ):

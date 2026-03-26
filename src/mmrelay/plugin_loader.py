@@ -1073,12 +1073,7 @@ def _run_git(
     Returns:
         subprocess.CompletedProcess[str]: Completed process containing `returncode`, `stdout`, and `stderr`.
     """
-    default_retry_attempts = (
-        1
-        if len(cmd) >= 2 and cmd[0] == "git" and cmd[1] == "clone"
-        else GIT_RETRY_ATTEMPTS
-    )
-    kwargs.setdefault("retry_attempts", default_retry_attempts)
+    kwargs.setdefault("retry_attempts", GIT_RETRY_ATTEMPTS)
     kwargs.setdefault("retry_delay", GIT_RETRY_DELAY_SECONDS)
     # Ensure non-interactive git by default
     env = dict(os.environ)
@@ -1704,6 +1699,7 @@ def _clone_new_repo_to_branch_or_tag(
             )
         )
 
+    last_exc: subprocess.CalledProcessError | subprocess.TimeoutExpired | None = None
     for command, branch_name in clone_commands:
         try:
             if os.path.isdir(repo_path):
@@ -1751,7 +1747,8 @@ def _clone_new_repo_to_branch_or_tag(
 
             if success:
                 return True
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+            last_exc = e
             logger.warning(
                 f"Could not clone with {ref_type} {branch_name}, trying next option."
             )
@@ -1760,9 +1757,14 @@ def _clone_new_repo_to_branch_or_tag(
             logger.exception(f"Error cloning repository {repo_name}; git not found.")
             return False
 
-    logger.exception(
-        f"Error cloning repository {repo_name}; please manually clone into {repo_path}"
-    )
+    if last_exc:
+        logger.exception(
+            f"Error cloning repository {repo_name}; please manually clone into {repo_path}: {last_exc}"
+        )
+    else:
+        logger.exception(
+            f"Error cloning repository {repo_name}; please manually clone into {repo_path}"
+        )
     return False
 
 

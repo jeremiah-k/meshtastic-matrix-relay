@@ -7,10 +7,6 @@ import warnings
 from typing import Any, Optional, Tuple
 from unittest.mock import MagicMock, mock_open, patch
 
-from mmrelay.constants.config import DEFAULT_NODEDB_REFRESH_INTERVAL
-from mmrelay.constants.network import DEFAULT_TCP_PORT
-from mmrelay.constants.queue import DEFAULT_MESSAGE_DELAY
-
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -39,6 +35,9 @@ from mmrelay.config import (
     set_secure_file_permissions,
     validate_yaml_syntax,
 )
+from mmrelay.constants.config import DEFAULT_NODEDB_REFRESH_INTERVAL
+from mmrelay.constants.network import DEFAULT_TCP_PORT
+from mmrelay.constants.queue import DEFAULT_MESSAGE_DELAY
 
 
 class TestConfig(unittest.TestCase):

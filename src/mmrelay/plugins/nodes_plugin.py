@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 # matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
@@ -47,7 +47,7 @@ def get_relative_time(timestamp: float) -> str:
     seconds = delta.seconds
 
     # Convert the time difference into a relative timeframe
-    if days > RELATIVE_TIME_DAYS_THRESHOLD:
+    if int(delta.total_seconds()) > RELATIVE_TIME_DAYS_THRESHOLD * 24 * 3600:
         return dt.strftime(
             DATE_FORMAT_LONG
         )  # Return the timestamp in a specific format if it's older than 7 days

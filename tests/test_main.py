@@ -3141,9 +3141,16 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
                 new=_check_connection_raises,
             ),
         ):
+
+            async def _sync_forever_blocks(*_args: Any, **_kwargs: Any) -> None:
+                await asyncio.Event().wait()
+
             mock_matrix_client = AsyncMock()
             mock_matrix_client.add_event_callback = MagicMock()
             mock_matrix_client.close = AsyncMock()
+            mock_matrix_client.sync_forever = AsyncMock(
+                side_effect=_sync_forever_blocks
+            )
             mock_connect_matrix = AsyncMock(return_value=mock_matrix_client)
             with patch("mmrelay.main.connect_matrix", mock_connect_matrix):
                 mock_queue = MagicMock()
@@ -3190,9 +3197,16 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
                 new=_check_connection_returns,
             ),
         ):
+
+            async def _sync_forever_blocks(*_args: Any, **_kwargs: Any) -> None:
+                await asyncio.Event().wait()
+
             mock_matrix_client = AsyncMock()
             mock_matrix_client.add_event_callback = MagicMock()
             mock_matrix_client.close = AsyncMock()
+            mock_matrix_client.sync_forever = AsyncMock(
+                side_effect=_sync_forever_blocks
+            )
             mock_connect_matrix = AsyncMock(return_value=mock_matrix_client)
             with patch("mmrelay.main.connect_matrix", mock_connect_matrix):
                 mock_queue = MagicMock()

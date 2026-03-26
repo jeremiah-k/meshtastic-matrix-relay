@@ -468,9 +468,9 @@ def _handle_matrix_error(
     if isinstance(exception, (NioLoginError, NioLogoutError)):
         errcode = getattr(exception, "errcode", None)
         status_code = getattr(exception, "status_code", None)
-        if errcode == "M_FORBIDDEN" or status_code == 401:
+        if errcode == "M_FORBIDDEN" or (status_code and int(status_code) == 401):
             error_category = "credentials"
-        elif status_code in HTTP_SERVER_ERROR_CODES:
+        elif status_code and int(status_code) in HTTP_SERVER_ERROR_CODES:
             error_category = "server"
         else:
             error_category = "other"

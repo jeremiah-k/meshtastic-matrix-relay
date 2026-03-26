@@ -208,17 +208,23 @@ def test_get_legacy_dirs_includes_env_and_docker_sources(monkeypatch) -> None:
 
 def test_resolve_all_paths_tracks_env_vars_and_home_source(monkeypatch) -> None:
     """resolve_all_paths should expose detected env vars and select expected home source."""
+    import mmrelay.paths as paths_module
+
+    paths_module._reset_deprecation_warning_flag()
     monkeypatch.delenv("MMRELAY_HOME", raising=False)
     monkeypatch.setenv("MMRELAY_BASE_DIR", "/legacy/base")
     monkeypatch.setenv("MMRELAY_DATA_DIR", "/legacy/data")
     monkeypatch.setenv("MMRELAY_LOG_PATH", "/legacy/logs/mmrelay.log")
 
-    resolved = resolve_all_paths()
-    detected = resolved["env_vars_detected"]
-    assert detected["MMRELAY_BASE_DIR"] == "/legacy/base"
-    assert detected["MMRELAY_DATA_DIR"] == "/legacy/data"
-    assert detected["MMRELAY_LOG_PATH"] == "/legacy/logs/mmrelay.log"
-    assert resolved["home_source"] == "MMRELAY_BASE_DIR env var"
+    try:
+        resolved = resolve_all_paths()
+        detected = resolved["env_vars_detected"]
+        assert detected["MMRELAY_BASE_DIR"] == "/legacy/base"
+        assert detected["MMRELAY_DATA_DIR"] == "/legacy/data"
+        assert detected["MMRELAY_LOG_PATH"] == "/legacy/logs/mmrelay.log"
+        assert resolved["home_source"] == "MMRELAY_BASE_DIR env var"
+    finally:
+        paths_module._reset_deprecation_warning_flag()
 
 
 def test_ensure_directories_creates_missing_tree() -> None:

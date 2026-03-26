@@ -17,10 +17,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from mmrelay.constants.app import CONFIG_FILENAME, CREDENTIALS_FILENAME
-
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+from mmrelay.constants.app import CONFIG_FILENAME, CREDENTIALS_FILENAME
 
 try:
     from mmrelay.e2ee_utils import (

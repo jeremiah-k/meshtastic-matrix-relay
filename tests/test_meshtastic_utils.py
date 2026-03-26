@@ -2977,6 +2977,7 @@ class TestGetDeviceMetadata(unittest.TestCase):
                 return self
 
             def __exit__(self, *_args: Any) -> bool:
+                self.entered = False
                 return False
 
         class _DegradedFlag:
@@ -3000,7 +3001,6 @@ class TestGetDeviceMetadata(unittest.TestCase):
             mu._metadata_future_lock = original_lock
             mu._metadata_executor_degraded = original_degraded
 
-        self.assertTrue(tracking_lock.entered)
         self.assertTrue(degraded_flag.checked_while_locked)
 
     def test_get_device_metadata_raise_on_error_reraises_non_io_value_error(self):

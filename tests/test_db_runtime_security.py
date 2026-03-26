@@ -806,6 +806,7 @@ class TestDatabaseManager(unittest.TestCase):
         manager = DatabaseManager(self.db_path)
         with manager._connections_lock:
             manager._active_sync_count = 1
+        close_done = threading.Event()
 
         def release_activity() -> None:
             time.sleep(0.05)
@@ -813,11 +814,23 @@ class TestDatabaseManager(unittest.TestCase):
                 manager._active_sync_count = 0
                 manager._active_sync_condition.notify_all()
 
+        def close_manager() -> None:
+            manager.close()
+            close_done.set()
+
         releaser = threading.Thread(target=release_activity, daemon=True)
+        closer = threading.Thread(target=close_manager, daemon=True)
         releaser.start()
-        manager.close()
+        closer.start()
+        time.sleep(0.01)
+        self.assertFalse(
+            close_done.is_set(),
+            "close() returned before active sync work drained",
+        )
         releaser.join(timeout=1.0)
+        closer.join(timeout=1.0)
         self.assertFalse(releaser.is_alive())
+        self.assertTrue(close_done.is_set(), "close() did not finish after release")
 
     def test_close_logs_sqlite_errors_when_connection_close_fails(self):
         """close() should log sqlite close failures and continue cleanup."""

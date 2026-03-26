@@ -163,7 +163,10 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
         try:
             font = ImageFont.truetype(MAP_LABEL_FONT_FILE, self._font_size)
         except OSError:
-            font = ImageFont.load_default(size=self._font_size)
+            try:
+                font = ImageFont.load_default(size=self._font_size)
+            except TypeError:
+                font = ImageFont.load_default()
 
         bbox = renderer.draw().textbbox((0, 0), self._text, font=font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]

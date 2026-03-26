@@ -11,10 +11,10 @@ import sys
 import unittest
 from unittest.mock import patch
 
-from mmrelay.constants.app import EXIT_CODE_SIGINT
-
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+
+from mmrelay.constants.app import EXIT_CODE_SIGINT
 
 
 class TestMainEntryPoint(unittest.TestCase):

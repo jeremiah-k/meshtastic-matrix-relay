@@ -48,6 +48,7 @@ _VALID_TABLE_NAMES: frozenset[str] = frozenset(
     {
         "message_map",
         "message_map_legacy",
+        "message_map_old_temp",
         "plugin_data",
         "longnames",
         "shortnames",
@@ -708,8 +709,9 @@ def initialize_database() -> None:
 
         try:
             cursor.execute(_ALTER_TABLE_MESSAGE_MAP_ADD_MESH_SQL)
-        except sqlite3.OperationalError:
-            pass
+        except sqlite3.OperationalError as exc:
+            if "duplicate column name" not in str(exc).lower():
+                raise
 
         cursor.execute(_PRAGMA_MESSAGE_MAP_INFO_SQL)
         columns = cursor.fetchall()
@@ -737,20 +739,44 @@ def initialize_database() -> None:
             legacy_exists = False
 
         if meshtastic_column and str(meshtastic_column[2]).upper() != "TEXT":
-            if legacy_exists:
-                cursor.execute(_DROP_TABLE_MESSAGE_MAP_LEGACY_SQL)
-            cursor.execute(_RENAME_MESSAGE_MAP_TO_LEGACY_SQL)
+            _temp_table = "message_map_old_temp"
+            _validate_identifier(_temp_table, _VALID_TABLE_NAMES)
+            cursor.execute(f"ALTER TABLE message_map RENAME TO {_temp_table}")
             cursor.execute(_CREATE_TABLE_MESSAGE_MAP_FROM_SCRATCH_SQL)
             if meshnet_column:
-                cursor.execute(_INSERT_MESSAGE_MAP_FROM_LEGACY_WITH_MESH_SQL)
+                cursor.execute(
+                    _INSERT_MESSAGE_MAP_FROM_LEGACY_WITH_MESH_SQL.replace(
+                        "message_map_legacy", _temp_table
+                    )
+                )
             else:
-                cursor.execute(_INSERT_MESSAGE_MAP_FROM_LEGACY_WITHOUT_MESH_SQL)
+                cursor.execute(
+                    _INSERT_MESSAGE_MAP_FROM_LEGACY_WITHOUT_MESH_SQL.replace(
+                        "message_map_legacy", _temp_table
+                    )
+                )
+            if legacy_exists:
+                cursor.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                    (_legacy_table,),
+                )
+                if cursor.fetchone():
+                    cursor.execute(_PRAGMA_MESSAGE_MAP_LEGACY_INFO_SQL)
+                    legacy_columns_local = {
+                        column[1]: column for column in cursor.fetchall()
+                    }
+                    if _col_mesh in legacy_columns_local:
+                        cursor.execute(
+                            _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITH_MESH_SQL
+                        )
+                    else:
+                        cursor.execute(
+                            _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITHOUT_MESH_SQL
+                        )
+            cursor.execute(f"DROP TABLE IF EXISTS {_temp_table}")
             cursor.execute(_DROP_TABLE_MESSAGE_MAP_LEGACY_SQL)
 
-        try:
-            cursor.execute(_CREATE_INDEX_MESSAGE_MAP_ID_SQL)
-        except sqlite3.OperationalError:
-            pass
+        cursor.execute(_CREATE_INDEX_MESSAGE_MAP_ID_SQL)
 
     try:
         manager.run_sync(_initialize, write=True)
