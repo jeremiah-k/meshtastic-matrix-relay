@@ -28,6 +28,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.constants.network import (
     BLE_CONNECT_TIMEOUT_SECS,
+    DEFAULT_MESHTASTIC_TIMEOUT,
+    DEFAULT_TCP_PORT,
     MAX_TIMEOUT_RETRIES_INFINITE,
     METADATA_WATCHDOG_SECS,
 )
@@ -591,7 +593,9 @@ class TestMeshtasticUtils(unittest.TestCase):
         result = connect_meshtastic(passed_config=config)
 
         self.assertEqual(result, mock_client)
-        mock_serial.assert_called_once_with("/dev/ttyUSB0", timeout=300)
+        mock_serial.assert_called_once_with(
+            "/dev/ttyUSB0", timeout=DEFAULT_MESHTASTIC_TIMEOUT
+        )
 
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
     @patch("mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface")
@@ -627,8 +631,8 @@ class TestMeshtasticUtils(unittest.TestCase):
         self.assertEqual(result, mock_client)
         mock_tcp.assert_called_once_with(
             hostname="192.168.1.100",
-            portNumber=4403,
-            timeout=300,
+            portNumber=DEFAULT_TCP_PORT,
+            timeout=DEFAULT_MESHTASTIC_TIMEOUT,
         )
 
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
@@ -667,7 +671,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         mock_tcp.assert_called_once_with(
             hostname="192.168.1.101",
             portNumber=4404,
-            timeout=300,
+            timeout=DEFAULT_MESHTASTIC_TIMEOUT,
         )
 
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")
@@ -713,7 +717,7 @@ class TestMeshtasticUtils(unittest.TestCase):
             noProto=False,
             debugOut=None,
             noNodes=False,
-            timeout=300,
+            timeout=DEFAULT_MESHTASTIC_TIMEOUT,
         )
 
     @patch("mmrelay.meshtastic_utils.meshtastic.serial_interface.SerialInterface")

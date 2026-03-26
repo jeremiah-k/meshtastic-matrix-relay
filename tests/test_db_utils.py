@@ -25,7 +25,7 @@ from unittest.mock import MagicMock, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from mmrelay.constants.database import DEFAULT_BUSY_TIMEOUT_MS
+from mmrelay.constants.database import DEFAULT_BUSY_TIMEOUT_MS, DEFAULT_DB_FILENAME
 from mmrelay.db_runtime import DatabaseManager
 from mmrelay.db_utils import (
     _get_db_manager,
@@ -189,7 +189,7 @@ class TestDbUtils(unittest.TestCase):
                 return_value={"database_dir": temp_dir, "legacy_sources": []},
             ):
                 path = get_db_path()
-                expected_path = os.path.join(temp_dir, "meshtastic.sqlite")
+                expected_path = os.path.join(temp_dir, DEFAULT_DB_FILENAME)
                 self.assertEqual(path, expected_path)
 
     def test_get_db_path_legacy_config(self):
@@ -1269,7 +1269,7 @@ class TestDbUtils(unittest.TestCase):
             with patch("os.makedirs", side_effect=PermissionError("Permission denied")):
                 with patch("mmrelay.db_utils.logger") as mock_logger:
                     path = get_db_path()
-                    self.assertTrue(path.endswith("meshtastic.sqlite"))
+                    self.assertTrue(path.endswith(DEFAULT_DB_FILENAME))
                     mock_logger.warning.assert_called_once()
 
     def test_database_manager_config_change_fallback(self):

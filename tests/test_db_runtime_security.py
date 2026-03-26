@@ -19,6 +19,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from mmrelay.constants.database import DEFAULT_BUSY_TIMEOUT_MS
 from mmrelay.db_runtime import (
     DatabaseManager,
     _get_sqlite_runtime_version_info,
@@ -60,7 +61,7 @@ class TestDatabaseManager(unittest.TestCase):
         try:
             self.assertEqual(manager._path, self.db_path)
             self.assertTrue(manager._enable_wal)
-            self.assertEqual(manager._busy_timeout_ms, 5000)
+            self.assertEqual(manager._busy_timeout_ms, DEFAULT_BUSY_TIMEOUT_MS)
             self.assertEqual(manager._extra_pragmas, {})
         finally:
             manager.close()

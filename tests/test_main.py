@@ -57,6 +57,7 @@ from aiohttp import ClientError
 
 from mmrelay.constants.app import DEFAULT_READY_HEARTBEAT_SECONDS
 from mmrelay.constants.config import DEFAULT_NODEDB_REFRESH_INTERVAL
+from mmrelay.constants.network import MESHTASTIC_CLOSE_TIMEOUT_SECONDS
 from mmrelay.main import main, print_banner, run_main
 from tests.helpers import (
     InlineExecutorLoop,
@@ -1260,7 +1261,7 @@ class TestMain(unittest.TestCase):
             close_callable = args[0]
             self.assertTrue(callable(close_callable))
             mock_connect_meshtastic.return_value.close.assert_called_once()
-            self.assertEqual(kwargs.get("timeout"), 10.0)
+            self.assertEqual(kwargs.get("timeout"), MESHTASTIC_CLOSE_TIMEOUT_SECONDS)
             self.assertEqual(kwargs.get("label"), "meshtastic-client-close-shutdown")
             self.assertIsNone(kwargs.get("timeout_log_level"))
         finally:

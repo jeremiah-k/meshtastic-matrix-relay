@@ -24,6 +24,7 @@ from meshtastic.mesh_interface import BROADCAST_NUM
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.network import DEFAULT_PLUGIN_TIMEOUT_SECS
 from mmrelay.meshtastic_utils import (
     connect_meshtastic,
     is_running_as_service,
@@ -465,16 +466,16 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         ):
             on_meshtastic_message(packet, interface)
 
-            self.assertEqual(future.calls, [5.0])
+            self.assertEqual(future.calls, [DEFAULT_PLUGIN_TIMEOUT_SECS])
             mock_logger.warning.assert_any_call(
                 "Invalid meshtastic.plugin_timeout value %r; using %ss fallback.",
                 "invalid",
-                5.0,
+                DEFAULT_PLUGIN_TIMEOUT_SECS,
             )
             mock_logger.warning.assert_any_call(
                 "Plugin %s did not respond within %ss: %s",
                 "timeout_plugin",
-                5.0,
+                DEFAULT_PLUGIN_TIMEOUT_SECS,
                 timeout_exc,
             )
             self.assertEqual(mock_submit_coro.call_count, 1)
@@ -795,8 +796,8 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             # Verify timeout was logged
             mock_logger.warning.assert_any_call(
                 "Plugin %s did not respond within %ss: %s",
-                "test_plugin",
-                5.0,
+                "telemetry_plugin",
+                DEFAULT_PLUGIN_TIMEOUT_SECS,
                 ANY,
             )
             # Verify Matrix relay was NOT called (message was handled by plugin even though it timed out)
@@ -853,7 +854,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             mock_logger.warning.assert_any_call(
                 "Plugin %s did not respond within %ss: %s",
                 "test_plugin",
-                5.0,
+                DEFAULT_PLUGIN_TIMEOUT_SECS,
                 ANY,
             )
             # Verify Matrix relay was NOT called (DM was handled by plugin even though it timed out)
@@ -907,8 +908,8 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             # Verify timeout was logged
             mock_logger.warning.assert_any_call(
                 "Plugin %s did not respond within %ss: %s",
-                "telemetry_plugin",
-                5.0,
+                "test_plugin",
+                DEFAULT_PLUGIN_TIMEOUT_SECS,
                 ANY,
             )
             # Verify debug log was called (confirming found_matching_plugin was True)

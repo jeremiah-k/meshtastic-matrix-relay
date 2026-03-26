@@ -22,6 +22,7 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.network import RECOMMENDED_MINIMUM_DELAY
 from mmrelay.constants.queue import MAX_QUEUE_SIZE
 from mmrelay.message_queue import (
     MessageQueue,
@@ -199,7 +200,9 @@ class TestMessageQueue(unittest.TestCase):
             - after another ~1.0s asserts the second is still not sent,
             - after an additional ~1.5s asserts the second message has been sent.
             """
-            message_delay = 2.1  # Use minimum message delay for testing
+            message_delay = (
+                RECOMMENDED_MINIMUM_DELAY  # Use minimum message delay for testing
+            )
             self.queue.start(message_delay=message_delay)
             self.queue.ensure_processor_started()
 

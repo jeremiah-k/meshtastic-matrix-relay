@@ -18,6 +18,17 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from mmrelay.constants.app import (
+    CONFIG_FILENAME,
+    CREDENTIALS_FILENAME,
+    DATABASE_DIRNAME,
+    LOGS_DIRNAME,
+    MATRIX_DIRNAME,
+    PLUGINS_DIRNAME,
+    STORE_DIRNAME,
+)
+from mmrelay.constants.database import DEFAULT_DB_FILENAME
+
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
@@ -294,7 +305,7 @@ class TestPathResolutionDatabase(unittest.TestCase):
         ):
             result = get_database_path()
 
-            expected = Path("/home/database") / "meshtastic.sqlite"
+            expected = Path("/home/database") / DEFAULT_DB_FILENAME
             self.assertEqual(result, expected)
 
 
@@ -396,13 +407,13 @@ class TestPathDirectoryCreation(unittest.TestCase):
 
             base = Path(temp_dir)
             expected_dirs = [
-                base / "database",
-                base / "logs",
-                base / "matrix" / "store",
-                base / "plugins",
-                base / "plugins" / "custom",
-                base / "plugins" / "community",
-                base / "plugins" / "core",
+                base / DATABASE_DIRNAME,
+                base / LOGS_DIRNAME,
+                base / MATRIX_DIRNAME / STORE_DIRNAME,
+                base / PLUGINS_DIRNAME,
+                base / PLUGINS_DIRNAME / "custom",
+                base / PLUGINS_DIRNAME / "community",
+                base / PLUGINS_DIRNAME / "core",
             ]
             for dir_path in expected_dirs:
                 self.assertTrue(dir_path.exists(), f"Missing directory: {dir_path}")
@@ -422,13 +433,13 @@ class TestPathDirectoryCreation(unittest.TestCase):
 
             base = Path(temp_dir)
             expected_missing = [
-                base / "database",
-                base / "logs",
-                base / "matrix" / "store",
-                base / "plugins",
-                base / "plugins" / "custom",
-                base / "plugins" / "community",
-                base / "plugins" / "core",
+                base / DATABASE_DIRNAME,
+                base / LOGS_DIRNAME,
+                base / MATRIX_DIRNAME / STORE_DIRNAME,
+                base / PLUGINS_DIRNAME,
+                base / PLUGINS_DIRNAME / "custom",
+                base / PLUGINS_DIRNAME / "community",
+                base / PLUGINS_DIRNAME / "core",
             ]
             for dir_path in expected_missing:
                 self.assertFalse(dir_path.exists(), f"Unexpected directory: {dir_path}")
@@ -443,13 +454,13 @@ class TestPathDirectoryCreation(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             base = Path(temp_dir)
             precreate = [
-                base / "database",
-                base / "logs",
-                base / "matrix" / "store",
-                base / "plugins",
-                base / "plugins" / "custom",
-                base / "plugins" / "community",
-                base / "plugins" / "core",
+                base / DATABASE_DIRNAME,
+                base / LOGS_DIRNAME,
+                base / MATRIX_DIRNAME / STORE_DIRNAME,
+                base / PLUGINS_DIRNAME,
+                base / PLUGINS_DIRNAME / "custom",
+                base / PLUGINS_DIRNAME / "community",
+                base / PLUGINS_DIRNAME / "core",
             ]
             for dir_path in precreate:
                 dir_path.mkdir(parents=True, exist_ok=True)
@@ -565,14 +576,14 @@ class TestInternalArtifactDetection(unittest.TestCase):
         """Test _has_mmrelay_artifacts returns True when config.yaml exists."""
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            (root / "config.yaml").write_text("")
+            (root / CONFIG_FILENAME).write_text("")
             self.assertTrue(_has_mmrelay_artifacts(root))
 
     def test_has_artifacts_credentials(self):
         """Test _has_mmrelay_artifacts returns True when credentials.json exists."""
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            (root / "credentials.json").write_text("")
+            (root / CREDENTIALS_FILENAME).write_text("")
             self.assertTrue(_has_mmrelay_artifacts(root))
 
     def test_has_artifacts_none(self):

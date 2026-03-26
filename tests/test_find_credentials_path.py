@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from mmrelay.cli import _find_credentials_json_path
+from mmrelay.constants.app import CREDENTIALS_FILENAME
 
 
 def test_legacy_credentials_search(
@@ -32,7 +33,7 @@ def test_legacy_credentials_search(
     home.mkdir()
     legacy.mkdir()
 
-    legacy_creds = legacy / "credentials.json"
+    legacy_creds = legacy / CREDENTIALS_FILENAME
     legacy_creds.write_text(
         '{"homeserver": "https://matrix.org", "access_token": "test"}'
     )
@@ -41,8 +42,8 @@ def test_legacy_credentials_search(
     monkeypatch.setattr(
         "mmrelay.config.get_credentials_search_paths",
         lambda **_kwargs: [
-            str(home / "credentials.json"),
-            str(legacy / "credentials.json"),
+            str(home / CREDENTIALS_FILENAME),
+            str(legacy / CREDENTIALS_FILENAME),
         ],
     )
 

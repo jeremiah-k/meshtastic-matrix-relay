@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from mmrelay.constants.app import CONFIG_FILENAME, CREDENTIALS_FILENAME
 from mmrelay.e2ee_utils import (
     _check_credentials_available,
     get_e2ee_status,
@@ -37,8 +38,8 @@ def e2ee_test_config():
     """
     # Create temporary directory
     temp_dir = tempfile.mkdtemp()
-    config_path = os.path.join(temp_dir, "config.yaml")
-    credentials_path = os.path.join(temp_dir, "matrix", "credentials.json")
+    config_path = os.path.join(temp_dir, CONFIG_FILENAME)
+    credentials_path = os.path.join(temp_dir, "matrix", CREDENTIALS_FILENAME)
 
     # Basic config
     base_config = {

@@ -13,6 +13,7 @@ import pytest
 from nio import SyncError, ToDeviceError, ToDeviceResponse
 
 import mmrelay.matrix_utils as matrix_utils_module
+from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
 from mmrelay.matrix_utils import (
     ImageUploadError,
     NioLocalTransportError,
@@ -1403,7 +1404,7 @@ def test_get_msgs_to_keep_config_default():
     Test that the default message retention value is returned when no configuration is set.
     """
     result = _get_msgs_to_keep_config()
-    assert result == 500
+    assert result == DEFAULT_MSGS_TO_KEEP
 
 
 @patch("mmrelay.matrix_utils.config", {"db": {"msg_map": {"msgs_to_keep": 100}}})

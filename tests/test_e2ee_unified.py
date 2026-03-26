@@ -17,6 +17,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from mmrelay.constants.app import CONFIG_FILENAME, CREDENTIALS_FILENAME
+
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
@@ -70,8 +72,8 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
 
         # Create temporary config file
         self.temp_dir = tempfile.mkdtemp()
-        self.config_path = os.path.join(self.temp_dir, "config.yaml")
-        self.credentials_path = os.path.join(self.temp_dir, "credentials.json")
+        self.config_path = os.path.join(self.temp_dir, CONFIG_FILENAME)
+        self.credentials_path = os.path.join(self.temp_dir, CREDENTIALS_FILENAME)
 
         # Basic config
         self.base_config = {

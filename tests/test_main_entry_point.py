@@ -11,6 +11,8 @@ import sys
 import unittest
 from unittest.mock import patch
 
+from mmrelay.constants.app import EXIT_CODE_SIGINT
+
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -87,7 +89,7 @@ class TestMainEntryPoint(unittest.TestCase):
         exec(code, {"__name__": "__main__"})  # nosec B102
 
         mock_print.assert_called_once_with("Interrupted.", file=sys.stderr)
-        mock_exit.assert_called_once_with(130)
+        mock_exit.assert_called_once_with(EXIT_CODE_SIGINT)
 
     @patch("mmrelay.cli.main", side_effect=SystemExit(42))
     @patch("sys.exit")

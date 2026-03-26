@@ -18,6 +18,14 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import mmrelay.db_utils
+from mmrelay.constants.database import (
+    DEFAULT_BUSY_TIMEOUT_MS,
+    DEFAULT_DB_FILENAME,
+    MESSAGE_MAP_TABLE,
+    NAMES_TABLE_LONGNAMES,
+    NAMES_TABLE_SHORTNAMES,
+    PLUGIN_DATA_TABLE,
+)
 from mmrelay.db_utils import (
     _delete_stale_names_core,
     _get_db_manager,
@@ -176,9 +184,9 @@ class TestDatabaseManagerIntegration(unittest.TestCase):
                 manager = _get_db_manager()
 
             self.assertIsNotNone(manager)
-            self.assertEqual(manager._path, os.path.join(temp_dir, "meshtastic.sqlite"))
+            self.assertEqual(manager._path, os.path.join(temp_dir, DEFAULT_DB_FILENAME))
         self.assertTrue(manager._enable_wal)
-        self.assertEqual(manager._busy_timeout_ms, 5000)
+        self.assertEqual(manager._busy_timeout_ms, DEFAULT_BUSY_TIMEOUT_MS)
         self.assertEqual(
             manager._extra_pragmas, {"synchronous": "NORMAL", "temp_store": "MEMORY"}
         )
@@ -480,7 +488,7 @@ class TestConfigurationParsing(unittest.TestCase):
             enable_wal, busy_timeout, pragmas = _resolve_database_options()
 
         self.assertTrue(enable_wal)  # Default
-        self.assertEqual(busy_timeout, 5000)  # Default
+        self.assertEqual(busy_timeout, DEFAULT_BUSY_TIMEOUT_MS)  # Default
         expected_pragmas = {
             "synchronous": "OFF",  # Valid override
             "temp_store": "MEMORY",  # Default
@@ -497,7 +505,7 @@ class TestConfigurationParsing(unittest.TestCase):
             enable_wal, busy_timeout, pragmas = _resolve_database_options()
 
             self.assertTrue(enable_wal)  # Default
-            self.assertEqual(busy_timeout, 5000)  # Default
+            self.assertEqual(busy_timeout, DEFAULT_BUSY_TIMEOUT_MS)  # Default
             expected_pragmas = {"synchronous": "NORMAL", "temp_store": "MEMORY"}
             self.assertEqual(pragmas, expected_pragmas)
         finally:
@@ -589,7 +597,7 @@ class TestDatabasePathCaching(unittest.TestCase):
                 },
             ):
                 path = get_db_path()
-                self.assertEqual(path, "/default/data/dir/meshtastic.sqlite")
+                self.assertEqual(path, f"/default/data/dir/{DEFAULT_DB_FILENAME}")
 
                 # Verify data directory creation was attempted
                 mock_makedirs.assert_called_with("/default/data/dir", exist_ok=True)
@@ -1204,7 +1212,12 @@ class TestIntegrationWithRealDatabase(unittest.TestCase):
             ).fetchall()
             table_names = [row[0] for row in tables]
 
-            expected_tables = ["longnames", "shortnames", "plugin_data", "message_map"]
+            expected_tables = [
+                NAMES_TABLE_LONGNAMES,
+                NAMES_TABLE_SHORTNAMES,
+                PLUGIN_DATA_TABLE,
+                MESSAGE_MAP_TABLE,
+            ]
             for table in expected_tables:
                 self.assertIn(table, table_names)
 

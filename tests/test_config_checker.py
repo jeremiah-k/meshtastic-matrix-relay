@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.cli import check_config
 from mmrelay.config import get_config_paths
+from mmrelay.constants.app import CONFIG_FILENAME
 from mmrelay.paths import get_home_dir
 
 
@@ -142,7 +143,7 @@ class TestConfigChecker(unittest.TestCase):
 
         # Verify all paths end with config.yaml
         for path in paths:
-            self.assertTrue(path.endswith("config.yaml"))
+            self.assertTrue(path.endswith(CONFIG_FILENAME))
 
     @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")

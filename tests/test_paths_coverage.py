@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import pytest
 
-from mmrelay.constants.app import WINDOWS_INSTALLER_DIR_NAME
+from mmrelay.constants.app import LOG_FILENAME, WINDOWS_INSTALLER_DIR_NAME
 from mmrelay.paths import (
     E2EENotSupportedError,
     ensure_directories,
@@ -341,7 +341,7 @@ def test_get_diagnostics_maps_resolved_fields() -> None:
         "database_dir": "/h/database",
         "store_dir": "/h/matrix/store",
         "logs_dir": "/h/logs",
-        "log_file": "/h/logs/mmrelay.log",
+        "log_file": f"/h/logs/{LOG_FILENAME}",
         "plugins_dir": "/h/plugins",
         "custom_plugins_dir": "/h/plugins/custom",
         "community_plugins_dir": "/h/plugins/community",
