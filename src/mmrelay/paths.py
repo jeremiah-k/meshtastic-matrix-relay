@@ -113,7 +113,6 @@ def _has_mmrelay_artifacts(root: Path) -> bool:
         root / MATRIX_DIRNAME / STORE_DIRNAME,
         root / LOGS_DIRNAME,
         root / LOGS_DIRNAME / LOG_FILENAME,
-        root / PLUGINS_DIRNAME,
     ]
     return any(candidate.exists() for candidate in candidates)
 

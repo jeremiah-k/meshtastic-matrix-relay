@@ -247,10 +247,6 @@ class TestCheckWindowsRequirements(unittest.TestCase):
 class TestTestConfigGenerationWindows:
     """Test cases for test_config_generation_windows function."""
 
-    @pytest.fixture(autouse=True)
-    def setup_tmp_path(self, tmp_path):
-        self.tmp_path = tmp_path
-
     @patch("sys.platform", "linux")
     def test_test_config_generation_windows_non_windows(self):
         """Test test_config_generation_windows returns error on non-Windows."""
@@ -297,10 +293,10 @@ class TestTestConfigGenerationWindows:
         assert result["overall_status"] == "partial"
         assert result["sample_config_path"]["status"] == "error"
 
-    def test_test_config_generation_windows_sample_path_missing(self):
+    def test_test_config_generation_windows_sample_path_missing(self, tmp_path):
         """Missing sample config path should mark sample test as error."""
-        missing_sample = str(self.tmp_path / "missing_sample.yaml")
-        config_path = str(self.tmp_path / "config.yaml")
+        missing_sample = str(tmp_path / "missing_sample.yaml")
+        config_path = str(tmp_path / "config.yaml")
         with (
             patch("mmrelay.windows_utils.is_windows", return_value=True),
             patch(
@@ -319,10 +315,10 @@ class TestTestConfigGenerationWindows:
         assert result["sample_config_path"]["status"] == "error"
         assert result["overall_status"] == "partial"
 
-    def test_test_config_generation_windows_importlib_resources_error(self):
+    def test_test_config_generation_windows_importlib_resources_error(self, tmp_path):
         """importlib.resources errors should be captured in diagnostics."""
-        sample_config = str(self.tmp_path / "sample_config.yaml")
-        config_path = str(self.tmp_path / "config.yaml")
+        sample_config = str(tmp_path / "sample_config.yaml")
+        config_path = str(tmp_path / "config.yaml")
         with (
             patch("mmrelay.windows_utils.is_windows", return_value=True),
             patch(
@@ -340,9 +336,9 @@ class TestTestConfigGenerationWindows:
         assert result["importlib_resources"]["status"] == "error"
         assert result["overall_status"] == "partial"
 
-    def test_test_config_generation_windows_config_paths_error(self):
+    def test_test_config_generation_windows_config_paths_error(self, tmp_path):
         """Config path resolution failures should be recorded as errors."""
-        sample_config = str(self.tmp_path / "sample_config.yaml")
+        sample_config = str(tmp_path / "sample_config.yaml")
         with (
             patch("mmrelay.windows_utils.is_windows", return_value=True),
             patch(
@@ -361,11 +357,11 @@ class TestTestConfigGenerationWindows:
         assert result["config_paths"]["status"] == "error"
         assert result["directory_creation"]["status"] == "error"
 
-    def test_test_config_generation_windows_creates_missing_dirs(self):
+    def test_test_config_generation_windows_creates_missing_dirs(self, tmp_path):
         """Directory creation diagnostic should report created directories."""
-        sample_config = str(self.tmp_path / "sample_config.yaml")
-        new_dir = str(self.tmp_path / "new")
-        new_config = str(self.tmp_path / "new" / "config.yaml")
+        sample_config = str(tmp_path / "sample_config.yaml")
+        new_dir = str(tmp_path / "new")
+        new_config = str(tmp_path / "new" / "config.yaml")
         with (
             patch("mmrelay.windows_utils.is_windows", return_value=True),
             patch(
@@ -394,10 +390,10 @@ class TestTestConfigGenerationWindows:
         assert result["directory_creation"]["status"] == "ok"
         assert new_dir in result["directory_creation"]["details"]
 
-    def test_test_config_generation_windows_directory_creation_oserror(self):
+    def test_test_config_generation_windows_directory_creation_oserror(self, tmp_path):
         """Directory creation OSError should be captured as diagnostic error."""
-        sample_config = str(self.tmp_path / "sample_config.yaml")
-        new_config = str(self.tmp_path / "new" / "config.yaml")
+        sample_config = str(tmp_path / "sample_config.yaml")
+        new_config = str(tmp_path / "new" / "config.yaml")
         with (
             patch("mmrelay.windows_utils.is_windows", return_value=True),
             patch(
@@ -416,14 +412,16 @@ class TestTestConfigGenerationWindows:
 
         assert result["directory_creation"]["status"] == "error"
 
-    def test_test_config_generation_windows_outer_oserror_sets_overall_error(self):
+    def test_test_config_generation_windows_outer_oserror_sets_overall_error(
+        self, tmp_path
+    ):
         """Unexpected outer OSError should mark overall_status=error with details.
 
         This validates the outer OSError handler by forcing the status aggregation
         helper to raise after inner check handlers have completed.
         """
-        sample_config = str(self.tmp_path / "sample_config.yaml")
-        config_path = str(self.tmp_path / "config.yaml")
+        sample_config = str(tmp_path / "sample_config.yaml")
+        config_path = str(tmp_path / "config.yaml")
         with (
             patch("mmrelay.windows_utils.is_windows", return_value=True),
             patch(

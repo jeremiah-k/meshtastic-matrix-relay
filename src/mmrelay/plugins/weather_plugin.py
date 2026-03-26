@@ -2,7 +2,7 @@ import asyncio
 import math
 import re
 from datetime import datetime
-from typing import Any
+from typing import Any, Final
 
 import requests
 from meshtastic.mesh_interface import BROADCAST_NUM
@@ -39,7 +39,9 @@ from mmrelay.constants.plugins import (
 )
 from mmrelay.plugins.base_plugin import BasePlugin
 
-DEFAULT_WEATHER_MODE = WEATHER_COMMANDS[0] if WEATHER_COMMANDS else "weather"
+CANONICAL_WEATHER_MODE: Final[str] = (
+    "weather"  # Explicit canonical default, independent of WEATHER_COMMANDS ordering
+)
 
 
 class Plugin(BasePlugin):
@@ -67,13 +69,13 @@ class Plugin(BasePlugin):
         Returns:
             str: A valid mode from WEATHER_COMMANDS. Unrecognized or empty inputs yield the default.
         """
-        cmd = (mode or DEFAULT_WEATHER_MODE).lower()
+        cmd = (mode or CANONICAL_WEATHER_MODE).lower()
         if cmd in WEATHER_COMMANDS:
             return cmd
-        return DEFAULT_WEATHER_MODE
+        return CANONICAL_WEATHER_MODE
 
     def generate_forecast(
-        self, latitude: float, longitude: float, mode: str = DEFAULT_WEATHER_MODE
+        self, latitude: float, longitude: float, mode: str = CANONICAL_WEATHER_MODE
     ) -> str:
         """
         Generate a concise one-line weather forecast for the given GPS coordinates and requested mode.
@@ -579,7 +581,7 @@ class Plugin(BasePlugin):
 
         weather_notice = "Cannot determine location"
         if coords:
-            mode = parsed_command if parsed_command else DEFAULT_WEATHER_MODE
+            mode = parsed_command if parsed_command else CANONICAL_WEATHER_MODE
             weather_notice = await asyncio.to_thread(
                 self.generate_forecast,
                 latitude=coords[0],

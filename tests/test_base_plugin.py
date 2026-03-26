@@ -36,7 +36,7 @@ class MockPlugin(BasePlugin):
     """Mock plugin implementation for testing BasePlugin functionality."""
 
     plugin_name = "test_plugin"
-    is_core_plugin = True
+    is_core_plugin = False
 
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name
@@ -118,7 +118,11 @@ class TestBasePlugin(unittest.TestCase):
 
     def test_plugin_initialization_with_class_name(self):
         """Test plugin initialization using class-level plugin_name."""
-        plugin = MockPlugin()
+
+        class CoreMockPlugin(MockPlugin):
+            is_core_plugin = True
+
+        plugin = CoreMockPlugin()
 
         self.assertEqual(plugin.plugin_name, "test_plugin")
         self.assertEqual(
@@ -186,7 +190,11 @@ class TestBasePlugin(unittest.TestCase):
 
         Verifies that the plugin is active, the response delay is set to 3.0 seconds, and the enabled channels are [0, 1] when these values are provided in the configuration.
         """
-        plugin = MockPlugin()
+
+        class CoreMockPlugin(MockPlugin):
+            is_core_plugin = True
+
+        plugin = CoreMockPlugin()
 
         self.assertTrue(plugin.config["active"])
         self.assertEqual(plugin.response_delay, 3.0)
@@ -487,7 +495,11 @@ class TestBasePlugin(unittest.TestCase):
         """
         Test that is_channel_enabled returns True for a channel that is enabled in the plugin configuration.
         """
-        plugin = MockPlugin()
+
+        class CoreMockPlugin(MockPlugin):
+            is_core_plugin = True
+
+        plugin = CoreMockPlugin()
 
         result = plugin.is_channel_enabled(0)
         self.assertTrue(result)
@@ -676,7 +688,11 @@ class TestBasePlugin(unittest.TestCase):
         """
         Tests that the get_plugin_data_dir method returns the correct plugin data directory path using the patched utility function.
         """
-        plugin = MockPlugin()
+
+        class CoreMockPlugin(MockPlugin):
+            is_core_plugin = True
+
+        plugin = CoreMockPlugin()
 
         with patch("mmrelay.plugins.base_plugin.get_plugin_data_dir") as mock_get_dir:
             mock_get_dir.return_value = "/path/to/plugin/data"
@@ -1281,9 +1297,13 @@ class TestBasePlugin(unittest.TestCase):
     @patch("mmrelay.plugins.base_plugin.get_plugin_data_dir")
     def test_get_plugin_data_dir_with_subdir(self, mock_get_dir):
         """Test get_plugin_data_dir with subdirectory (lines 607-609)."""
+
+        class CoreMockPlugin(MockPlugin):
+            is_core_plugin = True
+
         mock_get_dir.return_value = "/base/plugin/dir/subdir"
 
-        plugin = MockPlugin()
+        plugin = CoreMockPlugin()
         result = plugin.get_plugin_data_dir("subdir")
 
         expected_path = "/base/plugin/dir/subdir"

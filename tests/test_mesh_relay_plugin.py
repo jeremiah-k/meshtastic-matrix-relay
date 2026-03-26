@@ -19,11 +19,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from mmrelay.plugins.mesh_relay_plugin import (
-    MATRIX_PACKET_KEY,
-    MATRIX_SUPPRESS_KEY,
-    Plugin,
-)
+from mmrelay.constants.formats import MATRIX_PACKET_KEY, MATRIX_SUPPRESS_KEY
+from mmrelay.plugins.mesh_relay_plugin import Plugin
 
 
 class TestMeshRelayPlugin(unittest.TestCase):

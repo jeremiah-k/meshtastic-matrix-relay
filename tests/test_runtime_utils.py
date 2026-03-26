@@ -8,9 +8,7 @@ import sys
 from typing import IO, Any, Callable
 from unittest.mock import mock_open, patch
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-
-import mmrelay.runtime_utils as runtime_utils
+from mmrelay import runtime_utils
 
 
 def _open_side_effect_for_proc(

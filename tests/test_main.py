@@ -3128,7 +3128,7 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
             "matrix": {"homeserver": "https://matrix.org"},
             "meshtastic": {
                 "connection_type": "serial",
-                "health_check": {"enabled": False},
+                "health_check": {"enabled": True},
             },
         }
 

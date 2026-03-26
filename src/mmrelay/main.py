@@ -8,6 +8,7 @@ import functools
 import os
 import signal
 import sys
+import tempfile
 import threading
 from pathlib import Path
 from typing import Any, Callable, cast
@@ -137,23 +138,21 @@ def _write_ready_file() -> None:
                     exc_info=True,
                 )
 
-        # Write atomically using a temp file in the same directory
+        # Write atomically using a secure unique temp file in the same directory
         ready_path = Path(_ready_file_path)
-        temp_path = ready_path.with_suffix(".tmp")
-
-        # Create temp file with restrictive permissions (owner read/write only)
-        with os.fdopen(
-            os.open(
-                temp_path,
-                os.O_CREAT | os.O_WRONLY | os.O_TRUNC,
-                SECURE_FILE_PERMISSIONS,
-            ),
-            "w",
-        ):
-            pass
-
-        # Atomically rename temp file to target
-        temp_path.replace(ready_path)
+        fd, temp_name = tempfile.mkstemp(
+            prefix=f".{ready_path.name}.",
+            dir=ready_path.parent,
+            text=True,
+        )
+        temp_path = Path(temp_name)
+        try:
+            os.close(fd)
+            os.chmod(temp_path, SECURE_FILE_PERMISSIONS)
+            temp_path.replace(ready_path)
+        except OSError:
+            temp_path.unlink(missing_ok=True)
+            raise
         logger.debug("Wrote readiness file: %s", _ready_file_path)
     except OSError:
         logger.debug(

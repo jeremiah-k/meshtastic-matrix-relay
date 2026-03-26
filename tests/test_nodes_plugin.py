@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.formats import DATE_FORMAT_LONG
 from mmrelay.plugins.nodes_plugin import Plugin, get_relative_time
 
 
@@ -113,7 +114,7 @@ class TestGetRelativeTime(unittest.TestCase):
         result = get_relative_time(timestamp)
 
         # Should return formatted date like "Jan 15, 2024"
-        expected_format = ten_days_ago.strftime("%b %d, %Y")
+        expected_format = ten_days_ago.strftime(DATE_FORMAT_LONG)
         self.assertEqual(result, expected_format)
 
     def test_get_relative_time_exactly_seven_days(self):
@@ -142,7 +143,7 @@ class TestGetRelativeTime(unittest.TestCase):
             mock_datetime.fromtimestamp.side_effect = datetime.fromtimestamp
             result = get_relative_time(timestamp)
 
-        expected_format = eight_days_ago.strftime("%b %d, %Y")
+        expected_format = eight_days_ago.strftime(DATE_FORMAT_LONG)
         self.assertEqual(result, expected_format)
 
 

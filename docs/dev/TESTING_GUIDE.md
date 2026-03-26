@@ -277,7 +277,7 @@ The project uses a custom logger configuration (`log_utils.get_logger`) that man
 
 ```python
 @patch("mmrelay.cli._get_logger")
-@patch("os.path.exists")
+@patch("mmrelay.cli.os.path.exists")
 def test_validation_logs_warning(self, mock_exists, mock_get_logger):
     """Test that validation logs appropriate warnings."""
     import logging

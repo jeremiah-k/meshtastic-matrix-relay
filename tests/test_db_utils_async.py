@@ -11,6 +11,7 @@ This test module covers:
 
 import asyncio
 import os
+import re
 import shutil
 import sqlite3
 import tempfile
@@ -732,13 +733,22 @@ class TestInitializeDatabaseErrors(unittest.TestCase):
 
         # Verify that execute was called multiple times and index creation was attempted
         self.assertGreater(mock_cursor.execute.call_count, 5)
+
+        def normalize_sql(sql: str) -> str:
+            """Normalize SQL by collapsing whitespace and lowercasing."""
+            return re.sub(r"\s+", " ", sql).strip().lower()
+
         expected_index_sql = (
             f"CREATE INDEX IF NOT EXISTS idx_{MESSAGE_MAP_TABLE}_meshtastic_id "
             f"ON {MESSAGE_MAP_TABLE} (meshtastic_id)"
         )
+        normalized_expected = normalize_sql(expected_index_sql)
+        executed_sqls = [
+            normalize_sql(call.args[0]) for call in mock_cursor.execute.call_args_list
+        ]
         self.assertIn(
-            expected_index_sql,
-            [call.args[0] for call in mock_cursor.execute.call_args_list],
+            normalized_expected,
+            executed_sqls,
         )
 
     @patch("mmrelay.db_utils._get_db_manager")

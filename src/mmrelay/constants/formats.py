@@ -69,7 +69,6 @@ MATRIX_PACKET_KEY: Final[str] = "meshtastic_packet"
 
 # Format templates
 FORMAT_PROCESSED_PACKET: Final[str] = "Processed {packet_type} radio packet"
-FORMAT_COMMAND_HELP: Final[str] = "`!{command}`: {description}"
 
 # Image filenames
 MAP_IMAGE_FILENAME: Final[str] = "location.png"

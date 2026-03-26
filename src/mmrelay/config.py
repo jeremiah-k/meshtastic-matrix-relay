@@ -821,9 +821,13 @@ def load_credentials() -> dict[str, Any] | None:
             continue
 
         creds_dir = os.path.abspath(os.path.dirname(credentials_path))
-        is_legacy = creds_dir in legacy_dirs or any(
-            creds_dir == os.path.abspath(os.path.join(legacy_dir, MATRIX_DIRNAME))
-            for legacy_dir in legacy_dirs
+        is_primary = os.path.abspath(credentials_path) == primary_credentials_path
+        is_legacy = not is_primary and (
+            creds_dir in legacy_dirs
+            or any(
+                creds_dir == os.path.abspath(os.path.join(legacy_dir, MATRIX_DIRNAME))
+                for legacy_dir in legacy_dirs
+            )
         )
         if is_legacy:
             _get_config_logger().warning(

@@ -208,17 +208,19 @@ class TestMessageQueue(unittest.TestCase):
                 self.queue.enqueue(mock_send_function, text="First")
                 self.queue.enqueue(mock_send_function, text="Second")
 
-                # Wait less than configured delay; only first message should send
-                await asyncio.sleep(0.02)
-                self.assertEqual(len(self.sent_messages), 1)
+                # Wait for both messages with timeout (poll up to 1 second)
+                for _ in range(20):
+                    if len(self.sent_messages) >= 2:
+                        break
+                    await asyncio.sleep(0.05)
 
-                # Still below full delay budget for second send
-                await asyncio.sleep(0.02)
-                self.assertEqual(len(self.sent_messages), 1)
-
-                # Cross delay threshold and verify second send
-                await asyncio.sleep(0.05)
                 self.assertEqual(len(self.sent_messages), 2)
+                # Verify rate limiting: second message delayed by at least message_delay
+                self.assertGreaterEqual(
+                    self.sent_messages[1]["timestamp"]
+                    - self.sent_messages[0]["timestamp"],
+                    message_delay,
+                )
 
         self.loop.run_until_complete(async_test())
 

@@ -2041,7 +2041,7 @@ class TestGitOperations(BaseGitTest):
         call_args = mock_run.call_args
         self.assertEqual(call_args[0][0], ["git", "status"])
         self.assertEqual(call_args[1]["timeout"], 120)
-        self.assertEqual(call_args[1]["retry_attempts"], 1)
+        self.assertEqual(call_args[1]["retry_attempts"], pl.GIT_RETRY_ATTEMPTS)
         self.assertEqual(call_args[1]["retry_delay"], 2)
         self.assertIn("env", call_args[1])
         self.assertEqual(call_args[1]["env"]["GIT_TERMINAL_PROMPT"], "0")
@@ -2320,8 +2320,8 @@ class TestGitOperations(BaseGitTest):
 
         env = mock_run.call_args.kwargs["env"]
         self.assertEqual(env["CUSTOM_FLAG"], "1")
-        # Caller-provided value must be preserved (setdefault behavior).
-        self.assertEqual(env["GIT_TERMINAL_PROMPT"], "1")
+        # GIT_TERMINAL_PROMPT is enforced to "0" (cannot be overridden).
+        self.assertEqual(env["GIT_TERMINAL_PROMPT"], "0")
 
     @patch("mmrelay.plugin_loader.logger")
     @patch("mmrelay.plugin_loader._run_git")

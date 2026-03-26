@@ -52,7 +52,7 @@ def get_relative_time(timestamp: float) -> str:
     if delta.total_seconds() > RELATIVE_TIME_DAYS_THRESHOLD * SECONDS_PER_DAY:
         return dt.strftime(
             DATE_FORMAT_LONG
-        )  # Return the timestamp in a specific format if it's older than 7 days
+        )  # Return formatted date if older than RELATIVE_TIME_DAYS_THRESHOLD days
     elif days >= 1:
         return f"{days} days ago"
     elif seconds >= SECONDS_PER_HOUR:
