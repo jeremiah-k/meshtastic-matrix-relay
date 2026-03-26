@@ -200,7 +200,7 @@ def get_credentials_search_paths(
             _add(normalized_path)
         else:
             normalized_dir = os.path.normpath(expanded_path)
-            _add(os.path.join(normalized_dir, "credentials.json"))
+            _add(os.path.join(normalized_dir, CREDENTIALS_FILENAME))
 
     if include_base_data:
         # Unified credentials path has HIGHEST priority (above legacy paths and config-adjacent paths)
@@ -213,16 +213,16 @@ def get_credentials_search_paths(
             if not config_path:
                 continue
             config_dir = os.path.dirname(os.path.abspath(config_path))
-            _add(os.path.join(config_dir, "credentials.json"))
-            _add(os.path.join(config_dir, MATRIX_DIRNAME, "credentials.json"))
+            _add(os.path.join(config_dir, CREDENTIALS_FILENAME))
+            _add(os.path.join(config_dir, MATRIX_DIRNAME, CREDENTIALS_FILENAME))
 
     # Compatibility fallback for pre-1.3 credentials location (deprecated, lower priority)
     _add(os.path.join(str(get_home_dir()), CREDENTIALS_FILENAME))
 
     if is_deprecation_window_active():
         for legacy_dir in get_legacy_dirs():
-            _add(os.path.join(legacy_dir, "credentials.json"))
-            _add(os.path.join(legacy_dir, MATRIX_DIRNAME, "credentials.json"))
+            _add(os.path.join(legacy_dir, CREDENTIALS_FILENAME))
+            _add(os.path.join(legacy_dir, MATRIX_DIRNAME, CREDENTIALS_FILENAME))
 
     return candidate_paths
 
@@ -911,7 +911,7 @@ def save_credentials(
         or (path_module.altsep and raw_target_path.endswith(path_module.altsep))
     ):
         target_path = path_module.join(
-            path_module.normpath(target_path), "credentials.json"
+            path_module.normpath(target_path), CREDENTIALS_FILENAME
         )
 
     # Ensure target directory exists

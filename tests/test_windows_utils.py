@@ -89,14 +89,16 @@ class TestSetupWindowsConsole(unittest.TestCase):
         mock_stdout = MagicMock()
         mock_stderr = MagicMock()
         mock_kernel32 = MagicMock()
+        mock_stdout_handle = MagicMock()
+        mock_stderr_handle = MagicMock()
 
         def _get_console_mode(_handle, mode_ref):
             mode_ref._obj.value = 7
             return True
 
         mock_kernel32.GetStdHandle.side_effect = [
-            WINDOWS_STD_OUTPUT_HANDLE,
-            WINDOWS_STD_ERROR_HANDLE,
+            mock_stdout_handle,
+            mock_stderr_handle,
         ]
         mock_kernel32.GetConsoleMode.side_effect = _get_console_mode
 
@@ -114,7 +116,9 @@ class TestSetupWindowsConsole(unittest.TestCase):
         self.assertEqual(mock_kernel32.GetConsoleMode.call_count, 2)
         self.assertEqual(mock_kernel32.SetConsoleMode.call_count, 2)
         set_calls = mock_kernel32.SetConsoleMode.call_args_list
+        self.assertIs(set_calls[0].args[0], mock_stdout_handle)
         self.assertEqual(set_calls[0].args[1], 7 | WINDOWS_VTP_FLAG)
+        self.assertIs(set_calls[1].args[0], mock_stderr_handle)
         self.assertEqual(set_calls[1].args[1], 7 | WINDOWS_VTP_FLAG)
 
     def test_setup_windows_console_skips_invalid_std_handles(self):

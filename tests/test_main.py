@@ -100,6 +100,11 @@ async def _async_noop(*_args, **_kwargs) -> None:
     return None
 
 
+async def _sync_forever_blocks(*_args: Any, **_kwargs: Any) -> None:
+    """Block indefinitely for shutdown tests."""
+    await asyncio.Event().wait()
+
+
 async def _thread_backed_to_thread(
     func: Callable[..., Any], *args: Any, **kwargs: Any
 ) -> Any:
@@ -3141,10 +3146,6 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
                 new=_check_connection_raises,
             ),
         ):
-
-            async def _sync_forever_blocks(*_args: Any, **_kwargs: Any) -> None:
-                await asyncio.Event().wait()
-
             mock_matrix_client = AsyncMock()
             mock_matrix_client.add_event_callback = MagicMock()
             mock_matrix_client.close = AsyncMock()
@@ -3197,10 +3198,6 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
                 new=_check_connection_returns,
             ),
         ):
-
-            async def _sync_forever_blocks(*_args: Any, **_kwargs: Any) -> None:
-                await asyncio.Event().wait()
-
             mock_matrix_client = AsyncMock()
             mock_matrix_client.add_event_callback = MagicMock()
             mock_matrix_client.close = AsyncMock()

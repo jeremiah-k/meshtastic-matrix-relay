@@ -774,7 +774,7 @@ def initialize_database() -> None:
                             _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITHOUT_MESH_SQL
                         )
             cursor.execute(f"DROP TABLE IF EXISTS {_temp_table}")
-            cursor.execute(_DROP_TABLE_MESSAGE_MAP_LEGACY_SQL)
+            cursor.execute("DROP TABLE IF EXISTS message_map_legacy")
 
         cursor.execute(_CREATE_INDEX_MESSAGE_MAP_ID_SQL)
 

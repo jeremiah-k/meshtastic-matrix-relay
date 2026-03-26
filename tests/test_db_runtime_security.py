@@ -830,6 +830,7 @@ class TestDatabaseManager(unittest.TestCase):
         releaser.join(timeout=1.0)
         closer.join(timeout=1.0)
         self.assertFalse(releaser.is_alive())
+        self.assertFalse(closer.is_alive(), "closer thread did not exit")
         self.assertTrue(close_done.is_set(), "close() did not finish after release")
 
     def test_close_logs_sqlite_errors_when_connection_close_fails(self):

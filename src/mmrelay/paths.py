@@ -26,6 +26,7 @@ import platformdirs
 from mmrelay.constants.app import (
     APP_AUTHOR,
     APP_NAME,
+    CONFIG_FILENAME,
     CREDENTIALS_FILENAME,
     DATABASE_DIRNAME,
     DATABASE_FILENAME,
@@ -102,14 +103,14 @@ def _has_mmrelay_artifacts(root: Path) -> bool:
         True if any known MMRelay artifact is present in `root`, False otherwise.
     """
     candidates = [
-        root / "config.yaml",
-        root / "credentials.json",
-        root / "matrix" / "credentials.json",
-        root / "meshtastic.sqlite",
-        root / "data" / "meshtastic.sqlite",
-        root / "database" / "meshtastic.sqlite",
-        root / "store",
-        root / "matrix" / "store",
+        root / CONFIG_FILENAME,
+        root / CREDENTIALS_FILENAME,
+        root / MATRIX_DIRNAME / CREDENTIALS_FILENAME,
+        root / DATABASE_FILENAME,
+        root / "data" / DATABASE_FILENAME,
+        root / DATABASE_DIRNAME / DATABASE_FILENAME,
+        root / STORE_DIRNAME,
+        root / MATRIX_DIRNAME / STORE_DIRNAME,
     ]
     return any(candidate.exists() for candidate in candidates)
 
@@ -251,13 +252,13 @@ def get_config_paths(*, explicit: str | None = None) -> list[Path]:
 
     # 2. MMRELAY_HOME/config.yaml
     home = get_home_dir()
-    config_path = home / "config.yaml"
+    config_path = home / CONFIG_FILENAME
     if config_path not in candidates:
         candidates.append(config_path)
 
     # 3. Current working directory (fallback)
     cwd = Path.cwd()
-    cwd_config = cwd / "config.yaml"
+    cwd_config = cwd / CONFIG_FILENAME
     if cwd != home and cwd_config not in candidates:
         candidates.append(cwd_config)
 
@@ -265,16 +266,16 @@ def get_config_paths(*, explicit: str | None = None) -> list[Path]:
     # These are searched for migration purposes
     legacy_home = Path.home() / f".{APP_NAME}"
     if legacy_home != home and legacy_home.exists():
-        if (legacy_home / "config.yaml") not in candidates:
-            candidates.append(legacy_home / "config.yaml")
+        if (legacy_home / CONFIG_FILENAME) not in candidates:
+            candidates.append(legacy_home / CONFIG_FILENAME)
 
     # 5. Platform-specific legacy user data dir (e.g., Windows AppData)
     # This handles configs from older Windows installations
     try:
         platform_user_data = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
         if platform_user_data != home and platform_user_data.exists():
-            if (platform_user_data / "config.yaml") not in candidates:
-                candidates.append(platform_user_data / "config.yaml")
+            if (platform_user_data / CONFIG_FILENAME) not in candidates:
+                candidates.append(platform_user_data / CONFIG_FILENAME)
     except (OSError, RuntimeError):
         # platformdirs may fail in some environments, skip it
         pass

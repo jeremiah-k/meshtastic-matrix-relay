@@ -210,16 +210,16 @@ class TestMessageQueue(unittest.TestCase):
             self.queue.enqueue(mock_send_function, text="First")
             self.queue.enqueue(mock_send_function, text="Second")
 
-            # Wait for first message
-            await asyncio.sleep(1.0)
+            # Wait less than configured delay; only first message should send
+            await asyncio.sleep(max(0.1, message_delay * 0.45))
             self.assertEqual(len(self.sent_messages), 1)
 
-            # Second message should not be sent yet (rate limit not passed)
-            await asyncio.sleep(1.0)
+            # Still below full delay budget for second send
+            await asyncio.sleep(max(0.1, message_delay * 0.35))
             self.assertEqual(len(self.sent_messages), 1)
 
-            # Wait for rate limit to pass
-            await asyncio.sleep(1.5)
+            # Cross delay threshold and verify second send
+            await asyncio.sleep(max(0.2, message_delay * 0.35))
             self.assertEqual(len(self.sent_messages), 2)
 
         self.loop.run_until_complete(async_test())
@@ -239,7 +239,9 @@ class TestMessageQueue(unittest.TestCase):
         fake_task.add_done_callback.side_effect = lambda callback: callback(fake_task)
         queue._processor_task = fake_task
 
-        fake_loop.call_soon_threadsafe.side_effect = lambda callback: callback()
+        fake_loop.call_soon_threadsafe.side_effect = (
+            lambda callback, *args, **kwargs: callback(*args, **kwargs)
+        )
 
         queue.stop()
 
@@ -271,7 +273,9 @@ class TestMessageQueue(unittest.TestCase):
         fake_task.done.return_value = True
         queue._processor_task = fake_task
 
-        fake_loop.call_soon_threadsafe.side_effect = lambda callback: callback()
+        fake_loop.call_soon_threadsafe.side_effect = (
+            lambda callback, *args, **kwargs: callback(*args, **kwargs)
+        )
 
         queue.stop()
 
@@ -297,7 +301,9 @@ class TestMessageQueue(unittest.TestCase):
         fake_task.done.return_value = True
         queue._processor_task = fake_task
 
-        task_loop.call_soon_threadsafe.side_effect = lambda callback: callback()
+        task_loop.call_soon_threadsafe.side_effect = (
+            lambda callback, *args, **kwargs: callback(*args, **kwargs)
+        )
 
         queue.stop()
 

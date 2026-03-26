@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 # matrix-nio is not marked py.typed; keep import-untyped for strict mypy.

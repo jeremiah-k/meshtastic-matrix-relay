@@ -244,6 +244,8 @@ class MessageQueue:
                 ).start()
             else:
                 _shutdown(exec_ref)
+            with self._lock:
+                self._stopping = False
         elif task is None:
             with self._lock:
                 self._stopping = False
