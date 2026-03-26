@@ -12,6 +12,7 @@ from mmrelay.constants import (
     formats,
     messages,
     network,
+    plugins,
     queue,
 )
 
@@ -135,6 +136,10 @@ class TestConstantsValidity:
         assert network.MINIMUM_MESSAGE_DELAY >= 0
         assert network.MILLISECONDS_PER_SECOND == 1000
         assert network.ERRNO_BAD_FILE_DESCRIPTOR == 9
+
+    def test_git_retry_defaults_are_constant_backed(self):
+        """Git retry defaults should be centralized and set to the expected value."""
+        assert plugins.GIT_RETRY_ATTEMPTS == 3
 
     def test_message_constants_valid(self):
         """

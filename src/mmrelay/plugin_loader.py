@@ -1060,7 +1060,11 @@ def _run(
 
 
 def _run_git(
-    cmd: list[str], timeout: float = GIT_COMMAND_TIMEOUT_SECONDS, **kwargs: Any
+    cmd: list[str],
+    timeout: float = GIT_COMMAND_TIMEOUT_SECONDS,
+    retry_attempts: int = GIT_RETRY_ATTEMPTS,
+    retry_delay: float = GIT_RETRY_DELAY_SECONDS,
+    **kwargs: Any,
 ) -> subprocess.CompletedProcess[str]:
     """
     Execute a git command with conservative retry defaults and a non-interactive environment.
@@ -1073,8 +1077,8 @@ def _run_git(
     Returns:
         subprocess.CompletedProcess[str]: Completed process containing `returncode`, `stdout`, and `stderr`.
     """
-    kwargs.setdefault("retry_attempts", GIT_RETRY_ATTEMPTS)
-    kwargs.setdefault("retry_delay", GIT_RETRY_DELAY_SECONDS)
+    kwargs.setdefault("retry_attempts", retry_attempts)
+    kwargs.setdefault("retry_delay", retry_delay)
     # Ensure non-interactive git by default
     env = dict(os.environ)
     if "env" in kwargs:

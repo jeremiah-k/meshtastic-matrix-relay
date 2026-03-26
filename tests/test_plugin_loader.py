@@ -2042,7 +2042,7 @@ class TestGitOperations(BaseGitTest):
         self.assertEqual(call_args[0][0], ["git", "status"])
         self.assertEqual(call_args[1]["timeout"], 120)
         self.assertEqual(call_args[1]["retry_attempts"], pl.GIT_RETRY_ATTEMPTS)
-        self.assertEqual(call_args[1]["retry_delay"], 2)
+        self.assertEqual(call_args[1]["retry_delay"], pl.GIT_RETRY_DELAY_SECONDS)
         self.assertIn("env", call_args[1])
         self.assertEqual(call_args[1]["env"]["GIT_TERMINAL_PROMPT"], "0")
 
