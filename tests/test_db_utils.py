@@ -1253,7 +1253,7 @@ class TestDbUtils(unittest.TestCase):
         """
         initialize_database()
 
-        manager = _get_db_manager()
+        _get_db_manager()
 
         async def _to_thread_inline(func, *args, **kwargs):
             """
@@ -1275,12 +1275,9 @@ class TestDbUtils(unittest.TestCase):
             )
             await async_prune_message_map(1)
 
-        with (
-            patch(
-                "mmrelay.db_utils.asyncio.to_thread",
-                side_effect=_to_thread_inline,
-            ),
-            patch("mmrelay.db_utils._get_db_manager", return_value=manager),
+        with patch(
+            "mmrelay.db_utils.asyncio.to_thread",
+            side_effect=_to_thread_inline,
         ):
             asyncio.run(exercise())
 
