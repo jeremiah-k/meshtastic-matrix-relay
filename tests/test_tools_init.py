@@ -2,7 +2,7 @@
 
 import unittest
 
-from mmrelay.constants.app import SERVICE_FILENAME
+from mmrelay.constants.app import SYSTEMD_SERVICE_FILENAME
 from mmrelay.tools import get_sample_config_path, get_service_template_path
 
 
@@ -21,7 +21,7 @@ class TestToolsInit(unittest.TestCase):
         # This should work on modern Python versions
         path = get_service_template_path()
         self.assertIsInstance(path, str)
-        self.assertIn(SERVICE_FILENAME, path)
+        self.assertIn(SYSTEMD_SERVICE_FILENAME, path)
 
 
 if __name__ == "__main__":

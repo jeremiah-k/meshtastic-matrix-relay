@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mmrelay.constants.app import SERVICE_FILENAME
+from mmrelay.constants.app import SYSTEMD_SERVICE_FILENAME
 from mmrelay.tools import get_sample_config_path, get_service_template_path
 
 
@@ -11,7 +11,7 @@ from mmrelay.tools import get_sample_config_path, get_service_template_path
     "func,expected_filename",
     [
         (get_sample_config_path, "sample_config.yaml"),
-        (get_service_template_path, SERVICE_FILENAME),
+        (get_service_template_path, SYSTEMD_SERVICE_FILENAME),
     ],
 )
 def test_path_functions_use_package_resource_files(func, expected_filename) -> None:
