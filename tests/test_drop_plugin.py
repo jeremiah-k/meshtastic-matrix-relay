@@ -90,10 +90,11 @@ class TestDropPlugin(unittest.TestCase):
     ):
         """When client is unavailable, drop command detection should still return True."""
         packet = {
+            "fromId": "!12345678",
             "decoded": {
                 "portnum": TEXT_MESSAGE_APP,
                 "text": "!drop cached message",
-            }
+            },
         }
 
         async def run_test():
@@ -118,7 +119,7 @@ class TestDropPlugin(unittest.TestCase):
         packet = {
             "fromId": "!12345678",
             "decoded": {
-                "portnum": "TEXT_MESSAGE_APP",
+                "portnum": TEXT_MESSAGE_APP,
                 "text": "!drop This is a test message",
             },
         }
@@ -155,9 +156,9 @@ class TestDropPlugin(unittest.TestCase):
         mock_connect.return_value = self.mock_meshtastic_client
 
         packet = {
-            "fromId": "!11111111",  # Node without position
+            "fromId": "!11111111",
             "decoded": {
-                "portnum": "TEXT_MESSAGE_APP",
+                "portnum": TEXT_MESSAGE_APP,
                 "text": "!drop This should fail",
             },
         }
@@ -191,7 +192,7 @@ class TestDropPlugin(unittest.TestCase):
         packet = {
             "fromId": "!12345678",
             "decoded": {
-                "portnum": "TEXT_MESSAGE_APP",
+                "portnum": TEXT_MESSAGE_APP,
                 "text": "Just a regular message",
             },
         }
@@ -219,8 +220,8 @@ class TestDropPlugin(unittest.TestCase):
         packet = {
             "fromId": "!12345678",
             "decoded": {
-                "portnum": "TEXT_MESSAGE_APP",
-                "text": "!drop",  # No message content
+                "portnum": TEXT_MESSAGE_APP,
+                "text": "!drop",
             },
         }
 
@@ -262,8 +263,8 @@ class TestDropPlugin(unittest.TestCase):
         self.plugin.get_node_data.return_value = stored_messages
 
         packet = {
-            "fromId": "!12345678",  # Node1 with position
-            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "Some message"},
+            "fromId": "!12345678",
+            "decoded": {"portnum": TEXT_MESSAGE_APP, "text": "Some message"},
         }
 
         async def run_test():
@@ -311,8 +312,8 @@ class TestDropPlugin(unittest.TestCase):
         self.plugin.get_node_data.return_value = stored_messages
 
         packet = {
-            "fromId": "!12345678",  # Node1 with position
-            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "Some message"},
+            "fromId": "!12345678",
+            "decoded": {"portnum": TEXT_MESSAGE_APP, "text": "Some message"},
         }
 
         async def run_test():
@@ -362,8 +363,8 @@ class TestDropPlugin(unittest.TestCase):
         self.plugin.get_node_data.return_value = stored_messages
 
         packet = {
-            "fromId": "!12345678",  # Same as originator
-            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "Some message"},
+            "fromId": "!12345678",
+            "decoded": {"portnum": TEXT_MESSAGE_APP, "text": "Some message"},
         }
 
         async def run_test():
@@ -415,7 +416,7 @@ class TestDropPlugin(unittest.TestCase):
 
         packet = {
             "fromId": "!12345678",
-            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "Some message"},
+            "decoded": {"portnum": TEXT_MESSAGE_APP, "text": "Some message"},
         }
 
         async def run_test():
@@ -450,8 +451,8 @@ class TestDropPlugin(unittest.TestCase):
         mock_connect.return_value = self.mock_meshtastic_client
 
         packet = {
-            "fromId": "!relay123",  # Same as relay node ID
-            "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "Message from relay"},
+            "fromId": "!relay123",
+            "decoded": {"portnum": TEXT_MESSAGE_APP, "text": "Message from relay"},
         }
 
         async def run_test():

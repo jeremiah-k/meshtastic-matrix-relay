@@ -2343,7 +2343,7 @@ class TestGitOperations(BaseGitTest):
         mock_run_git.side_effect = _side_effect
 
         result = pl._update_existing_repo_to_commit(
-            "/tmp/repo",
+            self.temp_repo_path,
             "deadbeef",
             "repo",
         )
@@ -2365,24 +2365,24 @@ class TestGitOperations(BaseGitTest):
             if cmd == [
                 "git",
                 "-C",
-                "/tmp/repo",
+                self.temp_repo_path,
                 "fetch",
                 "origin",
                 "refs/tags/v1.0.0",
-            ] or cmd == ["git", "-C", "/tmp/repo", "fetch", "--tags"]:
+            ] or cmd == ["git", "-C", self.temp_repo_path, "fetch", "--tags"]:
                 raise subprocess.CalledProcessError(1, cmd)
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
         mock_run_git.side_effect = _side_effect
 
-        result = pl._try_fetch_and_checkout_tag("/tmp/repo", "v1.0.0", "repo")
+        result = pl._try_fetch_and_checkout_tag(self.temp_repo_path, "v1.0.0", "repo")
         self.assertTrue(result)
         self.assertIn(
             call(
                 [
                     "git",
                     "-C",
-                    "/tmp/repo",
+                    self.temp_repo_path,
                     "fetch",
                     "origin",
                     "refs/tags/v1.0.0:refs/tags/v1.0.0",
@@ -2402,7 +2402,7 @@ class TestGitOperations(BaseGitTest):
     ):
         """Default branch fallback should warn when no branch can be checked out."""
         result = pl._fallback_to_default_branches(
-            "/tmp/repo",
+            self.temp_repo_path,
             ["main", "master"],
             "v1.0.0",
             "repo",
@@ -2420,7 +2420,7 @@ class TestGitOperations(BaseGitTest):
     ):
         """Missing git during remote fetch should be logged and return False."""
         result = pl._update_existing_repo_to_branch_or_tag(
-            "/tmp/repo",
+            self.temp_repo_path,
             "branch",
             "main",
             "repo",
@@ -2451,7 +2451,7 @@ class TestGitOperations(BaseGitTest):
         mock_run_git.side_effect = _side_effect
 
         result = pl._update_existing_repo_to_branch_or_tag(
-            "/tmp/repo",
+            self.temp_repo_path,
             "tag",
             "v1.0.0",
             "repo",
@@ -2480,7 +2480,7 @@ class TestGitOperations(BaseGitTest):
         mock_run_git.side_effect = _side_effect
 
         result = pl._update_existing_repo_to_branch_or_tag(
-            "/tmp/repo",
+            self.temp_repo_path,
             "tag",
             "v1.0.1",
             "repo",
@@ -2489,7 +2489,9 @@ class TestGitOperations(BaseGitTest):
         )
 
         self.assertTrue(result)
-        mock_try_fetch_tag.assert_called_once_with("/tmp/repo", "v1.0.1", "repo")
+        mock_try_fetch_tag.assert_called_once_with(
+            self.temp_repo_path, "v1.0.1", "repo"
+        )
 
     @patch("mmrelay.plugin_loader.os.path.isdir", return_value=False)
     @patch("mmrelay.plugin_loader._try_fetch_and_checkout_tag")
@@ -2512,11 +2514,11 @@ class TestGitOperations(BaseGitTest):
 
         result = pl._clone_new_repo_to_branch_or_tag(
             "https://github.com/user/repo.git",
-            "/tmp/plugins/repo",
+            self.temp_repo_path,
             "tag",
             "v2.0.0",
             "repo",
-            "/tmp/plugins",
+            self.temp_plugins_dir,
             False,
         )
 

@@ -153,7 +153,14 @@ class TestMigrateAdditionalCoverage:
             "mmrelay.migrate.shutil.which", lambda _cmd: "/usr/bin/pgrep"
         )
         monkeypatch.setattr("mmrelay.migrate.os.getpid", lambda: 100)
-        monkeypatch.setattr(Path, "exists", lambda _self: False)
+        original_exists = Path.exists
+
+        def selective_exists(self):
+            if "/proc" in str(self) and "cmdline" in str(self):
+                return False
+            return original_exists(self)
+
+        monkeypatch.setattr(Path, "exists", selective_exists)
 
         responses = [
             subprocess.CompletedProcess(
