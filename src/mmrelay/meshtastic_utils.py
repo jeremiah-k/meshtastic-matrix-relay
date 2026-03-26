@@ -3003,7 +3003,7 @@ def _get_portnum_name(portnum: Any) -> str:
 
     if isinstance(portnum, int):
         try:
-            return portnums_pb2.PortNum.Name(portnum)  # type: ignore[no-any-return, arg-type]
+            return portnums_pb2.PortNum.Name(portnum)  # type: ignore[no-any-return]
         except ValueError:
             return f"UNKNOWN (portnum={portnum})"
 

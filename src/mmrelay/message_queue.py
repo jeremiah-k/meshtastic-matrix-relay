@@ -152,7 +152,8 @@ class MessageQueue:
 
             if self._processor_task:
                 # Wait for the task to complete on its owning loop
-                task_loop = self._processor_task.get_loop()
+                task = self._processor_task
+                task_loop = task.get_loop()
                 current_loop = None
                 with contextlib.suppress(RuntimeError):
                     current_loop = asyncio.get_running_loop()
@@ -162,30 +163,39 @@ class MessageQueue:
                     pass
                 elif current_loop is task_loop:
                     # Same thread: safe to cancel directly, skip blocking await
-                    self._processor_task.cancel()
+                    task.cancel()
                 elif task_loop.is_running():
                     # Cross-thread: use call_soon_threadsafe for cancel
-                    task_loop.call_soon_threadsafe(self._processor_task.cancel)
+                    task_loop.call_soon_threadsafe(task.cancel)
 
                     # Create a proper coroutine for awaiting the task
                     async def _await_processor_task() -> None:
-                        await self._processor_task
+                        await task
 
                     from asyncio import run_coroutine_threadsafe
 
-                    with contextlib.suppress(Exception):
-                        fut: Any = run_coroutine_threadsafe(
-                            _await_processor_task(), task_loop
-                        )
-                        # Wait for completion; ignore exceptions raised due to cancellation
-                        fut.result(timeout=TASK_SHUTDOWN_TIMEOUT_SEC)
+                    coro = _await_processor_task()
+                    fut: Any | None = None
+                    try:
+                        fut = run_coroutine_threadsafe(coro, task_loop)
+                    except Exception:
+                        # Submission failed - close coroutine to avoid warning
+                        coro.close()
+
+                    if fut is not None:
+                        try:
+                            # Wait for completion; ignore exceptions
+                            fut.result(timeout=TASK_SHUTDOWN_TIMEOUT_SEC)
+                        except Exception:
+                            # Coroutine already scheduled on loop, will be cleaned up
+                            pass
                 else:
                     # Non-running loop: safe to cancel directly, then run_until_complete
-                    self._processor_task.cancel()
+                    task.cancel()
                     with contextlib.suppress(
                         asyncio.CancelledError, RuntimeError, Exception
                     ):
-                        task_loop.run_until_complete(self._processor_task)
+                        task_loop.run_until_complete(task)
 
                 self._processor_task = None
 
