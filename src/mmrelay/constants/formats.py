@@ -112,5 +112,5 @@ LONGITUDE_MAX: Final[int] = 180
 DEGREE_SYMBOL: Final[str] = "°"
 
 # Telemetry graph constants
-GRAPH_IMAGE_FORMAT: Final[str] = TELEMETRY_GRAPH_FILENAME.rsplit(".", 1)[-1]
+GRAPH_IMAGE_FORMAT: Final[str] = "png"
 GRAPH_XLABEL_ROTATION_DEGREES: Final[int] = 45

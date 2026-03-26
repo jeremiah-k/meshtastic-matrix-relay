@@ -27,6 +27,7 @@ import schedule
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.constants.database import DEFAULT_MAX_DATA_ROWS_PER_NODE_BASE
+from mmrelay.constants.network import MINIMUM_MESSAGE_DELAY
 from mmrelay.constants.plugins import DEFAULT_PLUGIN_PRIORITY
 from mmrelay.plugins.base_plugin import BasePlugin
 
@@ -224,7 +225,7 @@ class TestBasePlugin(unittest.TestCase):
 
     def test_response_delay_minimum_enforcement(self):
         """
-        Test that the plugin enforces a minimum response delay of 2.1 seconds when configured with a lower value.
+        Test that the plugin enforces a minimum response delay when configured with a lower value.
         """
         config_low_delay = {
             "plugins": {"test_plugin": {"active": True}},
@@ -234,7 +235,7 @@ class TestBasePlugin(unittest.TestCase):
         with patch("mmrelay.plugins.base_plugin.config", config_low_delay):
             plugin = MockPlugin()
             self.assertEqual(
-                plugin.response_delay, 2.1
+                plugin.response_delay, MINIMUM_MESSAGE_DELAY
             )  # Should be enforced to minimum
 
     def test_response_delay_smart_logging(self):
@@ -253,14 +254,17 @@ class TestBasePlugin(unittest.TestCase):
             # First plugin instance - should log WARNING (generic + specific)
             with self.assertLogs("Plugins", level="WARNING") as cm1:
                 plugin1 = MockPlugin()
-                self.assertEqual(plugin1.response_delay, 2.1)
+                self.assertEqual(plugin1.response_delay, MINIMUM_MESSAGE_DELAY)
 
                 # Should have two warnings: generic + specific
                 self.assertEqual(len(cm1.output), 2)
                 self.assertIn(
-                    "One or more plugins have message_delay below 2.1s", cm1.output[0]
+                    f"One or more plugins have message_delay below {MINIMUM_MESSAGE_DELAY}s",
+                    cm1.output[0],
                 )
-                self.assertIn("below minimum of 2.1s", cm1.output[1])
+                self.assertIn(
+                    f"below minimum of {MINIMUM_MESSAGE_DELAY}s", cm1.output[1]
+                )
 
             # Second plugin instance with same delay - should NOT log additional warnings
             # but should log a debug message for troubleshooting.
@@ -269,7 +273,7 @@ class TestBasePlugin(unittest.TestCase):
             with patch.object(logger, "warning") as mock_warning:
                 with patch.object(logger, "debug") as mock_debug:
                     plugin2 = MockPlugin()
-                    self.assertEqual(plugin2.response_delay, 2.1)
+                    self.assertEqual(plugin2.response_delay, MINIMUM_MESSAGE_DELAY)
 
                     # Warning should not be called the second time
                     mock_warning.assert_not_called()
@@ -277,7 +281,9 @@ class TestBasePlugin(unittest.TestCase):
                     # A debug message should be logged for subsequent occurrences
                     mock_debug.assert_called_once()
                     debug_call_args = mock_debug.call_args[0][0]
-                    self.assertIn("below minimum of 2.1s", debug_call_args)
+                    self.assertIn(
+                        f"below minimum of {MINIMUM_MESSAGE_DELAY}s", debug_call_args
+                    )
 
                     # Verify the delay value is tracked in the global set
                     self.assertIn(0.5, self._warned_delay_values)
@@ -297,12 +303,13 @@ class TestBasePlugin(unittest.TestCase):
             # First plugin with low delay - should show generic + specific warning
             with self.assertLogs("Plugins", level="WARNING") as cm1:
                 plugin1 = MockPlugin()
-                self.assertEqual(plugin1.response_delay, 2.1)
+                self.assertEqual(plugin1.response_delay, MINIMUM_MESSAGE_DELAY)
 
                 # Should have two warnings: generic + specific
                 self.assertEqual(len(cm1.output), 2)
                 self.assertIn(
-                    "One or more plugins have message_delay below 2.1s", cm1.output[0]
+                    f"One or more plugins have message_delay below {MINIMUM_MESSAGE_DELAY}s",
+                    cm1.output[0],
                 )
                 self.assertIn("message_delay of 0.5s is below minimum", cm1.output[1])
 
@@ -311,7 +318,7 @@ class TestBasePlugin(unittest.TestCase):
             with patch.object(logger, "warning") as mock_warning:
                 with patch.object(logger, "debug") as mock_debug:
                     plugin2 = MockPlugin()
-                    self.assertEqual(plugin2.response_delay, 2.1)
+                    self.assertEqual(plugin2.response_delay, MINIMUM_MESSAGE_DELAY)
 
                     mock_warning.assert_not_called()
                     mock_debug.assert_called_once()
@@ -324,7 +331,7 @@ class TestBasePlugin(unittest.TestCase):
             with patch("mmrelay.plugins.base_plugin.config", config_different_delay):
                 with self.assertLogs("Plugins", level="WARNING") as cm3:
                     plugin3 = MockPlugin()
-                    self.assertEqual(plugin3.response_delay, 2.1)
+                    self.assertEqual(plugin3.response_delay, MINIMUM_MESSAGE_DELAY)
 
                     # Should have only 1 warning: specific (generic already shown)
                     self.assertEqual(len(cm3.output), 1)
@@ -353,12 +360,12 @@ class TestBasePlugin(unittest.TestCase):
         with patch("mmrelay.plugins.base_plugin.config", config_low_delay_1):
             with self.assertLogs("Plugins", level="WARNING") as cm_generic:
                 plugin1 = MockPlugin()
-                self.assertEqual(plugin1.response_delay, 2.1)
+                self.assertEqual(plugin1.response_delay, MINIMUM_MESSAGE_DELAY)
 
                 # Should have two warnings in Plugins logger: generic + specific delay
                 self.assertEqual(len(cm_generic.output), 2)
                 self.assertIn(
-                    "One or more plugins have message_delay below 2.1s",
+                    f"One or more plugins have message_delay below {MINIMUM_MESSAGE_DELAY}s",
                     cm_generic.output[0],
                 )
                 self.assertIn("0.5s is below minimum", cm_generic.output[1])
@@ -366,7 +373,7 @@ class TestBasePlugin(unittest.TestCase):
         with patch("mmrelay.plugins.base_plugin.config", config_low_delay_2):
             with self.assertLogs("Plugins", level="WARNING") as cm2:
                 plugin2 = MockPlugin()
-                self.assertEqual(plugin2.response_delay, 2.1)
+                self.assertEqual(plugin2.response_delay, MINIMUM_MESSAGE_DELAY)
 
                 # Should have one warning for 1.0s delay (different value, generic already shown)
                 self.assertEqual(len(cm2.output), 1)

@@ -174,6 +174,7 @@ class MessageQueue:
                 if exec_ref is not None and self._executor is exec_ref:
                     self._executor = None
                 self._stopping = False
+                logger.info("Message queue stopped")
 
         if task is not None:
             task_loop = task.get_loop()
@@ -273,7 +274,6 @@ class MessageQueue:
                 _finalize_stop_state()
 
         _finalize_stop_state()
-        logger.info("Message queue stopped")
 
     def enqueue(
         self,

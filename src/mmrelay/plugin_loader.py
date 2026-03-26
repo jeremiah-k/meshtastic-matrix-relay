@@ -914,7 +914,6 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
     except (
         OSError,
         subprocess.CalledProcessError,
-        FileNotFoundError,
         subprocess.TimeoutExpired,
     ):
         logger.exception(
@@ -2066,7 +2065,6 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
                         except (
                             OSError,
                             subprocess.CalledProcessError,
-                            FileNotFoundError,
                             subprocess.TimeoutExpired,
                         ):
                             logger.exception(

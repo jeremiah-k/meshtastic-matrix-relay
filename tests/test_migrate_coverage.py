@@ -604,8 +604,6 @@ class TestGetMostRecentDatabase:
 
         Creates two files with a small time difference and asserts the function returns the path of the file with the later modification time.
         """
-        import time
-
         # Create multiple databases to test sorting with different mtimes
         db1 = tmp_path / "db1.sqlite"
         db1.write_text("db1")
@@ -624,8 +622,6 @@ class TestGetMostRecentDatabase:
 
     def test_get_most_recent_database_with_sidecars(self, tmp_path: Path) -> None:
         """Test selecting most recent database with sidecars."""
-        import time
-
         # Create older database
         old_db = tmp_path / "old.sqlite"
         old_db.write_text("old db")

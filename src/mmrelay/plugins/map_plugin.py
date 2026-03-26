@@ -419,7 +419,7 @@ class Plugin(BasePlugin):
 
     Commands:
         !map: Generate map with default settings
-        !map zoom=N: Set zoom level (0-30)
+        !map zoom=N: Set zoom level
         !map size=W,H: Set image dimensions (max 1000x1000)
 
     Configuration:

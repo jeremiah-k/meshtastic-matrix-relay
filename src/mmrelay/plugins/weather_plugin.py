@@ -39,7 +39,7 @@ from mmrelay.constants.plugins import (
 )
 from mmrelay.plugins.base_plugin import BasePlugin
 
-DEFAULT_WEATHER_MODE = WEATHER_COMMANDS[0]
+DEFAULT_WEATHER_MODE = WEATHER_COMMANDS[0] if WEATHER_COMMANDS else "weather"
 
 
 class Plugin(BasePlugin):
@@ -579,7 +579,7 @@ class Plugin(BasePlugin):
 
         weather_notice = "Cannot determine location"
         if coords:
-            mode = parsed_command if parsed_command else "weather"
+            mode = parsed_command if parsed_command else DEFAULT_WEATHER_MODE
             weather_notice = await asyncio.to_thread(
                 self.generate_forecast,
                 latitude=coords[0],

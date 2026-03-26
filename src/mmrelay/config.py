@@ -94,7 +94,9 @@ def set_secure_file_permissions(
     """
     Set restrictive Unix permission bits on a file to limit access.
 
-    On Linux/macOS attempts to set the file's mode (defaults to SECURE_FILE_PERMISSIONS). No action is performed on other platforms; failures are logged and not raised.
+    On Linux/macOS attempts to set the file's mode (defaults to
+    SECURE_FILE_PERMISSIONS). No action is performed on other platforms;
+    failures are logged and not raised.
 
     Parameters:
         file_path (str): Path to the file to modify.
