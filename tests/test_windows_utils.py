@@ -239,6 +239,7 @@ class TestCheckWindowsRequirements(unittest.TestCase):
             patch("sys.base_prefix", "/usr"),
             patch("sys.prefix", "/venv"),
             patch("os.getcwd", return_value="C:\\relay"),
+            patch("importlib.util.find_spec", return_value=None),
         ):
             self.assertIsNone(check_windows_requirements())
 

@@ -19,8 +19,8 @@ from unittest import mock
 
 import pytest
 
+from mmrelay.constants.migration import MIGRATION_BACKUP_DIRNAME
 from mmrelay.migrate import (
-    BACKUP_DIRNAME,
     MigrationError,
     _backup_file,
     _dir_has_entries,
@@ -200,10 +200,14 @@ class TestMigrateAdditionalCoverage:
         new_home.mkdir()
         staging_path = _get_staging_path(new_home, "config")
 
+        staging_path.parent.mkdir(parents=True, exist_ok=True)
+        staging_path.write_text("stale staging data", encoding="utf-8")
+        assert staging_path.exists(), "Precondition: staging file should exist"
+
         result = migrate_config([legacy_root], new_home, dry_run=False, force=False)
 
         assert result["success"] is True
-        assert staging_path.exists() is False
+        assert not staging_path.exists(), "Staging file should be cleaned up"
         assert (
             new_home / "config.yaml"
         ).exists(), "config.yaml was not moved to target"
@@ -1724,7 +1728,7 @@ class TestMigratePluginsEdgeCases:
         assert not old_plugins_dir.exists(), "Old plugins directory should be moved"
 
         # The backup directory should exist (moved there for cleanup)
-        backup_dir = legacy_root_dir / BACKUP_DIRNAME
+        backup_dir = legacy_root_dir / MIGRATION_BACKUP_DIRNAME
         assert backup_dir.exists(), "Backup directory should exist"
 
         # Find the backup of the old plugins directory (has timestamp suffix)

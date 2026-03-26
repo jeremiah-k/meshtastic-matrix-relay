@@ -102,10 +102,10 @@ class TestMainEntryPoint(unittest.TestCase):
 
         real_import = _builtins.__import__
 
-        def _import_side_effect(name, globals=None, locals=None, fromlist=(), level=0):
+        def _import_side_effect(name, globs=None, locs=None, fromlist=(), level=0):
             if "mmrelay.constants" in name:
                 raise ImportError("constants unavailable")
-            return real_import(name, globals, locals, fromlist, level)
+            return real_import(name, globs, locs, fromlist, level)
 
         with patch("builtins.__import__", side_effect=_import_side_effect):
             with open("src/mmrelay/__main__.py") as f:

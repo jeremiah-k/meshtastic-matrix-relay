@@ -162,23 +162,31 @@ class MessageQueue:
             with contextlib.suppress(RuntimeError):
                 current_loop = asyncio.get_running_loop()
 
-            def _make_cancel_handler(done_event: threading.Event) -> Callable[[], None]:
+            def _make_cancel_handler(
+                done_event: threading.Event,
+                orig_task: asyncio.Task[None],
+                orig_executor: Optional[ThreadPoolExecutor],
+            ) -> Callable[[], None]:
                 def _cancel_and_cleanup() -> None:
-                    task.cancel()
-                    if task.done():
+                    orig_task.cancel()
+                    if orig_task.done():
                         with self._lock:
-                            self._processor_task = None
-                            self._executor = None
+                            if self._stopping or self._processor_task is orig_task:
+                                self._processor_task = None
+                            if self._stopping or self._executor is orig_executor:
+                                self._executor = None
                         done_event.set()
                         return
 
                     def _on_task_done(_finished_task: asyncio.Task[Any]) -> None:
                         with self._lock:
-                            self._processor_task = None
-                            self._executor = None
+                            if self._stopping or self._processor_task is orig_task:
+                                self._processor_task = None
+                            if self._stopping or self._executor is orig_executor:
+                                self._executor = None
                         done_event.set()
 
-                    task.add_done_callback(_on_task_done)
+                    orig_task.add_done_callback(_on_task_done)
 
                 return _cancel_and_cleanup
 
@@ -189,19 +197,38 @@ class MessageQueue:
             elif current_loop is task_loop:
                 # Avoid blocking the owning event loop thread; schedule cancellation
                 # inline and let the task done-callback perform cleanup.
-                cancel_handler = _make_cancel_handler(threading.Event())
+                cancel_handler = _make_cancel_handler(threading.Event(), task, exec_ref)
                 task_loop.call_soon(cancel_handler)
             elif task_loop.is_running():
                 task_done = threading.Event()
-                cancel_handler = _make_cancel_handler(task_done)
+                cancel_handler = _make_cancel_handler(task_done, task, exec_ref)
                 with contextlib.suppress(RuntimeError):
                     task_loop.call_soon_threadsafe(cancel_handler)
-                task_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC)
-                if not task_done.is_set():
-                    logger.warning("Task wait timed out, forcing state reset")
-                    with self._lock:
-                        self._processor_task = None
-                        self._executor = None
+                if current_loop is None:
+                    task_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC)
+                    if not task_done.is_set():
+                        logger.warning("Task wait timed out, forcing state reset")
+                        with self._lock:
+                            if self._stopping or self._processor_task is task:
+                                self._processor_task = None
+                            if self._stopping or self._executor is exec_ref:
+                                self._executor = None
+                else:
+
+                    def _watchdog_cleanup() -> None:
+                        if not task_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC):
+                            logger.warning("Task wait timed out, forcing state reset")
+                            with self._lock:
+                                if self._stopping or self._processor_task is task:
+                                    self._processor_task = None
+                                if self._stopping or self._executor is exec_ref:
+                                    self._executor = None
+
+                    threading.Thread(
+                        target=_watchdog_cleanup,
+                        name="MessageQueueWatchdog",
+                        daemon=True,
+                    ).start()
             else:
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError, RuntimeError):

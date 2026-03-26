@@ -14,12 +14,12 @@ import mmrelay.runtime_utils as runtime_utils
 
 
 def _open_side_effect_for_proc(
-    status_text: str, comm_text: str
+    status_text: str, comm_text: str, ppid: int = 1
 ) -> Callable[[str, Any, Any], IO[Any]]:
     """Build an open() side effect for /proc status and comm file reads."""
     status_handle = mock_open(read_data=status_text).return_value
     comm_handle = mock_open(read_data=comm_text).return_value
-    target_comm_path = runtime_utils.PROC_COMM_PATH_TEMPLATE.format(ppid=1)
+    target_comm_path = runtime_utils.PROC_COMM_PATH_TEMPLATE.format(ppid=ppid)
 
     def _side_effect(path: str, *args: Any, **kwargs: Any) -> IO[Any]:
         if path == runtime_utils.PROC_SELF_STATUS_PATH:
@@ -44,8 +44,9 @@ def test_is_running_as_service_true_when_parent_is_systemd() -> None:
         patch(
             "builtins.open",
             side_effect=_open_side_effect_for_proc(
-                status_text="Name:\tpython\nPPid:\t1\n",
+                status_text="Name:\tpython\nPPid:\t1234\n",
                 comm_text=f"{runtime_utils.SYSTEMD_INIT_SYSTEM}\n",
+                ppid=1234,
             ),
         ),
     ):

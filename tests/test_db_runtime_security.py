@@ -808,19 +808,19 @@ class TestDatabaseManager(unittest.TestCase):
         self.assertEqual(len(test_manager._connections), 0)
 
     def test_close_waits_for_active_sync_work_to_finish(self):
-        """close() should wait until active sync activity drains."""
+        """close() should wait until active sync work drains."""
         manager = DatabaseManager(self.db_path)
         with manager._connections_lock:
             manager._active_sync_count = 1
         close_done = threading.Event()
         close_started = threading.Event()
         allow_release = threading.Event()
+        release_error: list[str] = []
 
         def release_activity() -> None:
-            self.assertTrue(
-                allow_release.wait(timeout=1.0),
-                "test never allowed release_activity to continue",
-            )
+            if not allow_release.wait(timeout=1.0):
+                release_error.append("test never allowed release_activity to continue")
+                return
             with manager._connections_lock:
                 manager._active_sync_count = 0
                 manager._active_sync_condition.notify_all()
@@ -834,15 +834,21 @@ class TestDatabaseManager(unittest.TestCase):
         closer = threading.Thread(target=close_manager, daemon=True)
         releaser.start()
         closer.start()
-        self.assertTrue(close_started.wait(timeout=1.0), "closer thread never started")
-        self.assertFalse(
-            close_done.wait(timeout=0.05),
-            "close() returned before active sync work drained",
-        )
-        self.assertTrue(closer.is_alive(), "close() did not block before release")
-        allow_release.set()
-        releaser.join(timeout=1.0)
-        closer.join(timeout=1.0)
+        try:
+            self.assertTrue(
+                close_started.wait(timeout=1.0), "closer thread never started"
+            )
+            self.assertFalse(
+                close_done.wait(timeout=0.05),
+                "close() returned before active sync work drained",
+            )
+            self.assertTrue(closer.is_alive(), "close() did not block before release")
+        finally:
+            allow_release.set()
+            releaser.join(timeout=1.0)
+            closer.join(timeout=1.0)
+
+        self.assertFalse(release_error, release_error[0] if release_error else "")
         self.assertFalse(releaser.is_alive())
         self.assertFalse(closer.is_alive(), "closer thread did not exit")
         self.assertTrue(close_done.is_set(), "close() did not finish after release")

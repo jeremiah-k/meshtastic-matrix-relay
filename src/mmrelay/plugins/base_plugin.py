@@ -185,6 +185,7 @@ class BasePlugin(ABC):
 
         if config is not None:
             resolved_section: str | None = None
+            expected_section = "plugins" if self.is_core_plugin else "community-plugins"
             candidate_sections = (
                 ("plugins",)
                 if self.is_core_plugin
@@ -215,16 +216,16 @@ class BasePlugin(ABC):
                     break
 
             # Cache global plugin-level settings (for options like require_bot_mention)
-            # Only check the section this plugin was resolved to, to avoid tier bleed
-            if resolved_section:
-                section_config = config.get(resolved_section, {})
-                if (
-                    isinstance(section_config, dict)
-                    and CONFIG_KEY_REQUIRE_BOT_MENTION in section_config
-                ):
-                    self._global_require_bot_mention = bool(
-                        section_config[CONFIG_KEY_REQUIRE_BOT_MENTION]
-                    )
+            # Check the expected section even if no per-plugin stanza exists
+            section_to_check = resolved_section or expected_section
+            section_config = config.get(section_to_check, {})
+            if (
+                isinstance(section_config, dict)
+                and CONFIG_KEY_REQUIRE_BOT_MENTION in section_config
+            ):
+                self._global_require_bot_mention = bool(
+                    section_config[CONFIG_KEY_REQUIRE_BOT_MENTION]
+                )
 
             # Get the list of mapped channels
             # Handle both list format and dict format for matrix_rooms

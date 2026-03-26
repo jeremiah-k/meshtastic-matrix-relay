@@ -2041,7 +2041,7 @@ class TestGitOperations(BaseGitTest):
         call_args = mock_run.call_args
         self.assertEqual(call_args[0][0], ["git", "status"])
         self.assertEqual(call_args[1]["timeout"], 120)
-        self.assertEqual(call_args[1]["retry_attempts"], 3)
+        self.assertEqual(call_args[1]["retry_attempts"], 1)
         self.assertEqual(call_args[1]["retry_delay"], 2)
         self.assertIn("env", call_args[1])
         self.assertEqual(call_args[1]["env"]["GIT_TERMINAL_PROMPT"], "0")
@@ -2526,13 +2526,13 @@ class TestGitOperations(BaseGitTest):
         mock_try_tag.assert_not_called()
 
     @patch("mmrelay.plugin_loader.logger")
-    @patch("mmrelay.plugin_loader._update_existing_repo_to_commit")
+    @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader.os.path.isdir", return_value=True)
     def test_clone_or_update_repo_validated_handles_update_exception(
-        self, _mock_isdir, mock_update_commit, mock_logger
+        self, _mock_isdir, mock_run_git, mock_logger
     ):
         """Validated update path should catch and log raised git errors."""
-        mock_update_commit.side_effect = subprocess.TimeoutExpired("git", 120)
+        mock_run_git.side_effect = FileNotFoundError("git")
 
         result = pl._clone_or_update_repo_validated(
             "https://github.com/user/repo.git",
@@ -2546,13 +2546,13 @@ class TestGitOperations(BaseGitTest):
         mock_logger.exception.assert_called_once()
 
     @patch("mmrelay.plugin_loader.logger")
-    @patch("mmrelay.plugin_loader._clone_new_repo_to_commit")
+    @patch("mmrelay.plugin_loader._run_git")
     @patch("mmrelay.plugin_loader.os.path.isdir", return_value=False)
     def test_clone_or_update_repo_validated_handles_clone_exception(
-        self, _mock_isdir, mock_clone_commit, mock_logger
+        self, _mock_isdir, mock_run_git, mock_logger
     ):
         """Validated clone path should catch and log raised git errors."""
-        mock_clone_commit.side_effect = FileNotFoundError("git")
+        mock_run_git.side_effect = FileNotFoundError("git")
 
         result = pl._clone_or_update_repo_validated(
             "https://github.com/user/repo.git",

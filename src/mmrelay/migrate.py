@@ -873,18 +873,9 @@ def print_migration_verification(report: dict[str, Any]) -> None:
             print(f"   - {error}")
 
 
-STAGING_DIRNAME = MIGRATION_STAGING_DIRNAME
-BACKUP_DIRNAME = MIGRATION_BACKUP_DIRNAME
-LOCK_FILENAME = MIGRATION_LOCK_FILENAME
-
-# Minimum free space required for migration (in bytes)
-# Allowing for staging + backups with 50% safety margin
-MIN_FREE_SPACE_BYTES = MIGRATION_MIN_FREE_SPACE_BYTES
-
-
 def _get_staging_path(new_home: Path, unit_name: str) -> Path:
     """Get the staging path for a migration unit."""
-    return new_home / STAGING_DIRNAME / unit_name
+    return new_home / MIGRATION_STAGING_DIRNAME / unit_name
 
 
 def _backup_file(src_path: Path, suffix: str = ".bak") -> Path:
@@ -900,7 +891,7 @@ def _backup_file(src_path: Path, suffix: str = ".bak") -> Path:
         Path: Path under `<src_path.parent>/.migration_backups/` with the format `<original_name><suffix>.<YYYYMMDD_HHMMSS>`.
     """
     timestamp = datetime.now().strftime(BACKUP_TIMESTAMP_FORMAT)
-    backup_dir = src_path.parent / BACKUP_DIRNAME
+    backup_dir = src_path.parent / MIGRATION_BACKUP_DIRNAME
     backup_dir.mkdir(parents=True, exist_ok=True)
     backup_name = f"{src_path.name}{suffix}.{timestamp}"
     return backup_dir / backup_name
@@ -914,7 +905,7 @@ def _check_disk_space(
 
     Parameters:
         path (Path): File or directory path to check. If the path is a file or does not exist, its parent directory is used.
-        required_bytes (int | None): Minimum required bytes. If omitted, defaults to MIN_FREE_SPACE_BYTES.
+        required_bytes (int | None): Minimum required bytes. If omitted, defaults to MIGRATION_MIN_FREE_SPACE_BYTES.
 
     Returns:
         tuple[bool, int]: Tuple of (has_sufficient_space, free_bytes_available).
@@ -922,7 +913,7 @@ def _check_disk_space(
             If disk usage cannot be determined, `(True, 0)` is returned.
     """
     if required_bytes is None:
-        required_bytes = MIN_FREE_SPACE_BYTES
+        required_bytes = MIGRATION_MIN_FREE_SPACE_BYTES
 
     # Use parent directory if path is a file or doesn't exist
     check_path = path
@@ -2640,7 +2631,7 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
         has_space, free_bytes = _check_disk_space(new_home)
         if not has_space:
             free_mb = free_bytes / (1024 * 1024)
-            min_mb = MIN_FREE_SPACE_BYTES / (1024 * 1024)
+            min_mb = MIGRATION_MIN_FREE_SPACE_BYTES / (1024 * 1024)
             report["success"] = False
             report["error"] = "Insufficient disk space"
             report["message"] = (
@@ -2665,7 +2656,7 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
         return report
 
     # Acquire migration lock to prevent concurrent migrations
-    lock_file = new_home / LOCK_FILENAME
+    lock_file = new_home / MIGRATION_LOCK_FILENAME
     if not dry_run:
         try:
             lock_file.touch(exist_ok=False)
@@ -2830,7 +2821,7 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
         report["message"] = "Migration failed"
 
         # Log detailed failure info
-        staging_dir = new_home / STAGING_DIRNAME
+        staging_dir = new_home / MIGRATION_STAGING_DIRNAME
         staged_note = (
             f" Staged data may be present in: {staging_dir}"
             if staging_dir.exists()
@@ -2949,8 +2940,8 @@ def rollback_migration(
         # Search in order: destination's parent backup dir, then home backup dir
         backup_dirs = [
             dest_path.parent
-            / BACKUP_DIRNAME,  # Primary: where _backup_file creates them
-            new_home / BACKUP_DIRNAME,  # Fallback: for top-level files
+            / MIGRATION_BACKUP_DIRNAME,  # Primary: where _backup_file creates them
+            new_home / MIGRATION_BACKUP_DIRNAME,  # Fallback: for top-level files
         ]
 
         for backup_dir in backup_dirs:
@@ -3094,7 +3085,7 @@ def rollback_migration(
 
     # Clean up staging directory if rollback succeeded
     if rollback_report["success"]:
-        staging_dir = new_home / STAGING_DIRNAME
+        staging_dir = new_home / MIGRATION_STAGING_DIRNAME
         if staging_dir.exists():
             try:
                 shutil.rmtree(str(staging_dir), ignore_errors=True)

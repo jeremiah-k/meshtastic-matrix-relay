@@ -3126,7 +3126,10 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
         config = {
             "matrix_rooms": [{"id": "!room:matrix.org"}],
             "matrix": {"homeserver": "https://matrix.org"},
-            "meshtastic": {"connection_type": "serial"},
+            "meshtastic": {
+                "connection_type": "serial",
+                "health_check": {"enabled": False},
+            },
         }
 
         async def _check_connection_raises() -> None:

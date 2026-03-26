@@ -269,9 +269,9 @@ filterwarnings =
 
 ### 2. Testing Code That Uses Custom Loggers
 
-The project uses a custom logger configuration (`log_utils.get_logger`) that sets `propagate=False` and manages its own handlers. This makes `unittest.TestCase.assertLogs()` unreliable because it relies on log propagation.
+The project uses a custom logger configuration (`log_utils.get_logger`) that manages its own handlers. This creates a conflict with `unittest.TestCase.assertLogs()`.
 
-**Problem**: `assertLogs()` clears and replaces handlers, but `_configure_logger` reconfigures them on access, causing captured logs to be lost.
+**Problem**: `assertLogs()` works by attaching a `_CapturingHandler` to the target logger (handler-based capture, not propagation-based). The conflict is that `_configure_logger` replaces the logger's handlers when called, which removes the capturing handler that `assertLogs()` attached, causing logs to be lost.
 
 **✅ CORRECT PATTERN** - Mock `_get_logger` to return a controllable logger:
 
@@ -286,6 +286,7 @@ def test_validation_logs_warning(self, mock_exists, mock_get_logger):
     mock_logger = logging.getLogger("mmrelay.test")
     mock_logger.handlers.clear()
     mock_logger.setLevel(logging.DEBUG)
+    # propagate=True is optional - only needed if child loggers should reach this logger
     mock_logger.propagate = True
     mock_get_logger.return_value = mock_logger
 

@@ -141,19 +141,23 @@ class TestSetupUtils(unittest.TestCase):
         # Verify all expected commands were logged with %-formatting
         expected_calls = [
             call(
-                "  systemctl --user start %s      # Start the service",
+                "  %s --user start %s      # Start the service",
+                SYSTEMCTL,
                 "mmrelay.service",
             ),
             call(
-                "  systemctl --user stop %s       # Stop the service",
+                "  %s --user stop %s       # Stop the service",
+                SYSTEMCTL,
                 "mmrelay.service",
             ),
             call(
-                "  systemctl --user restart %s    # Restart the service",
+                "  %s --user restart %s    # Restart the service",
+                SYSTEMCTL,
                 "mmrelay.service",
             ),
             call(
-                "  systemctl --user status %s     # Check service status",
+                "  %s --user status %s     # Check service status",
+                SYSTEMCTL,
                 "mmrelay.service",
             ),
         ]

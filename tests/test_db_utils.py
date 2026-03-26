@@ -1261,12 +1261,6 @@ class TestDbUtils(unittest.TestCase):
             """
             return func(*args, **kwargs)
 
-        async def _run_async_inline(func, *, write=False):
-            """
-            Execute async DB work inline via run_sync to avoid threadpool timing flake.
-            """
-            return manager.run_sync(func, write=write)
-
         async def exercise():
             """
             Store two message-map entries and prune the message map to keep only the most recent entry.
@@ -1287,7 +1281,6 @@ class TestDbUtils(unittest.TestCase):
                 side_effect=_to_thread_inline,
             ),
             patch("mmrelay.db_utils._get_db_manager", return_value=manager),
-            patch.object(manager, "run_async", side_effect=_run_async_inline),
         ):
             asyncio.run(exercise())
 

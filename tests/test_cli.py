@@ -2182,9 +2182,16 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         mock_file.return_value.read.return_value = json.dumps(credentials_data)
 
         # Import and call function
-        from mmrelay.cli import _validate_credentials_json
+        from mmrelay.cli import _get_logger, _validate_credentials_json
 
-        result = _validate_credentials_json(config_path)
+        logger = _get_logger()
+        original_propagate = logger.propagate
+        logger.propagate = True
+        try:
+            with self.assertLogs("mmrelay.cli", level="WARNING"):
+                result = _validate_credentials_json(config_path)
+        finally:
+            logger.propagate = original_propagate
 
         # Verify results
         self.assertFalse(result)

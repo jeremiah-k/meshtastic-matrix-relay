@@ -240,8 +240,14 @@ def test_resolve_all_paths_tracks_env_vars_and_home_source(monkeypatch) -> None:
 def test_ensure_directories_creates_missing_tree() -> None:
     """ensure_directories(create_missing=True) should create required paths."""
     with tempfile.TemporaryDirectory() as tmp_dir:
-        root = Path(tmp_dir)
-        home = root / "home"
+        home = Path(tmp_dir)
+
+        with (
+            patch("sys.platform", "linux"),
+            patch.dict(os.environ, {"MMRELAY_HOME": str(home)}, clear=False),
+        ):
+            ensure_directories(create_missing=True)
+
         matrix = home / "matrix"
         db = home / "database"
         logs = home / "logs"
@@ -249,24 +255,7 @@ def test_ensure_directories_creates_missing_tree() -> None:
         plugins = home / "plugins"
         custom_plugins = plugins / "custom"
         community_plugins = plugins / "community"
-        core_plugins = root / "core_plugins"
-
-        with (
-            patch("sys.platform", "linux"),
-            patch("mmrelay.paths.get_home_dir", return_value=home),
-            patch("mmrelay.paths.get_matrix_dir", return_value=matrix),
-            patch("mmrelay.paths.get_database_dir", return_value=db),
-            patch("mmrelay.paths.get_logs_dir", return_value=logs),
-            patch("mmrelay.paths.get_e2ee_store_dir", return_value=store),
-            patch("mmrelay.paths.get_plugins_dir", return_value=plugins),
-            patch("mmrelay.paths.get_custom_plugins_dir", return_value=custom_plugins),
-            patch(
-                "mmrelay.paths.get_community_plugins_dir",
-                return_value=community_plugins,
-            ),
-            patch("mmrelay.paths.get_core_plugins_dir", return_value=core_plugins),
-        ):
-            ensure_directories(create_missing=True)
+        core_plugins = plugins / "core"
 
         for path in (
             home,

@@ -26,7 +26,7 @@ if __name__ == "__main__":
 
             sys.exit(EXIT_CODE_SIGINT)
         except ImportError:
-            sys.exit(130)
+            sys.exit(130)  # POSIX convention: 128 + SIGINT(2)
     except SystemExit:
         raise
     except Exception as e:
