@@ -446,7 +446,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
             self.assertEqual(future.calls, [DEFAULT_PLUGIN_TIMEOUT_SECS])
             mock_logger.warning.assert_any_call(
-                "Invalid meshtastic.plugin_timeout value %r; using %ss fallback.",
+                "Invalid meshtastic.plugin_timeout value %r; using %.1fs fallback.",
                 "invalid",
                 DEFAULT_PLUGIN_TIMEOUT_SECS,
             )

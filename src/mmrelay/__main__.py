@@ -16,7 +16,7 @@ if __name__ == "__main__":
 
         sys.exit(main())
     except ImportError as e:
-        print(f"Error importing MMRelay module: {e}", file=sys.stderr)
+        print(f"Error importing MMRelay CLI: {e}", file=sys.stderr)
         print("Please ensure MMRelay is properly installed.", file=sys.stderr)
         sys.exit(1)
     except KeyboardInterrupt:

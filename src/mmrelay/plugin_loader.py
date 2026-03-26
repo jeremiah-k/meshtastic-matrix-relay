@@ -1806,12 +1806,12 @@ def _clone_or_update_repo_validated(
     # Commits are handled differently from branches and tags
     is_commit = ref_type == "commit"
 
-    if os.path.isdir(repo_path):
-        # Repository exists, update it
-        # Handle commits differently from branches and tags
-        if is_commit:
-            return _update_existing_repo_to_commit(repo_path, ref_value, repo_name)
-        else:
+    try:
+        if os.path.isdir(repo_path):
+            # Repository exists, update it
+            # Handle commits differently from branches and tags
+            if is_commit:
+                return _update_existing_repo_to_commit(repo_path, ref_value, repo_name)
             return _update_existing_repo_to_branch_or_tag(
                 repo_path,
                 ref_type,
@@ -1820,23 +1820,34 @@ def _clone_or_update_repo_validated(
                 is_default_branch,
                 default_branches,
             )
-    else:
+
         # Repository doesn't exist, clone it
         # Handle commits differently from branches and tags
         if is_commit:
             return _clone_new_repo_to_commit(
                 repo_url, repo_path, ref_value, repo_name, plugins_dir
             )
-        else:
-            return _clone_new_repo_to_branch_or_tag(
-                repo_url,
-                repo_path,
-                ref_type,
-                ref_value,
-                repo_name,
-                plugins_dir,
-                is_default_branch,
-            )
+        return _clone_new_repo_to_branch_or_tag(
+            repo_url,
+            repo_path,
+            ref_type,
+            ref_value,
+            repo_name,
+            plugins_dir,
+            is_default_branch,
+        )
+    except (
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+        FileNotFoundError,
+    ):
+        logger.exception(
+            "Error cloning/updating repository %s at %s %s",
+            repo_name,
+            ref_type,
+            ref_value,
+        )
+        return False
 
 
 def clone_or_update_repo(repo_url: str, ref: dict[str, str], plugins_dir: str) -> bool:

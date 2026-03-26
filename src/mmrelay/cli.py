@@ -2290,11 +2290,12 @@ def handle_auth_status(args: argparse.Namespace) -> int:
                     continue
 
                 required = REQUIRED_CREDENTIALS_KEYS
-                if not all(
-                    isinstance(v, str) and v.strip()
-                    for k in required
-                    if (v := credentials.get(k)) is not None
-                ):
+                missing_required = [
+                    key
+                    for key in required
+                    if not _is_valid_non_empty_string(credentials.get(key))
+                ]
+                if missing_required:
                     print(
                         f"⚠️  Skipping invalid credentials.json at {credentials_path} "
                         "(missing required fields)"

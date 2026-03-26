@@ -2167,7 +2167,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
     @patch("os.path.exists")
     @patch("builtins.open", new_callable=mock_open)
     def test_validate_credentials_json_missing_user_id(self, mock_file, mock_exists):
-        """Test validation when credentials.json is missing user_id field."""
+        """Test validation when credentials.json is missing optional user_id field."""
         # Setup mocks
         config_path = "/home/user/.mmrelay/config.yaml"
         mock_exists.return_value = True
@@ -2184,11 +2184,10 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         # Import and call function
         from mmrelay.cli import _validate_credentials_json
 
-        with self.assertLogs("mmrelay.cli", level="WARNING"):
-            result = _validate_credentials_json(config_path)
+        result = _validate_credentials_json(config_path)
 
         # Verify results
-        self.assertFalse(result)
+        self.assertTrue(result)
 
     @patch("os.path.exists")
     @patch("builtins.open", new_callable=mock_open)

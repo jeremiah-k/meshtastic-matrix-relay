@@ -3904,6 +3904,7 @@ class TestDependencyInstallation(BaseGitTest):
             ],
             cwd=self.temp_plugins_dir,
             timeout=120,
+            retry_attempts=1,
         )
         mock_logger.info.assert_called_with(
             "Cloned repository %s from %s at %s %s",
@@ -4044,6 +4045,7 @@ class TestDependencyInstallation(BaseGitTest):
                 ],
                 cwd=self.temp_plugins_dir,
                 timeout=120,
+                retry_attempts=1,
             ),
             # Check if already at the tag's commit
             call(
