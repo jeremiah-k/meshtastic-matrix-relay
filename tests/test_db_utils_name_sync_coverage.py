@@ -27,6 +27,7 @@ from mmrelay.db_utils import (
     _delete_name_by_id,
     _delete_stale_names_core,
     _format_node_id_sample,
+    _InvalidNamesTableError,
     _merge_node_name_values,
     _name_table_matches_state,
     _name_tables_match_state,
@@ -68,7 +69,7 @@ def configured_temp_db() -> Generator[str, None, None]:
 @pytest.mark.usefixtures("configured_temp_db")
 def test_delete_name_by_id_rejects_unknown_table() -> None:
     """Invalid names table identifiers should raise a clear error."""
-    with pytest.raises(dbu._InvalidNamesTableError):
+    with pytest.raises(_InvalidNamesTableError):
         _delete_name_by_id("unknown_names_table", "!1")
 
 
@@ -96,7 +97,7 @@ def test_normalize_node_name_value_preserves_string_subclass_values() -> None:
 @pytest.mark.usefixtures("configured_temp_db")
 def test_read_name_values_rejects_unknown_table() -> None:
     """Unknown names tables should be rejected before querying SQLite."""
-    with pytest.raises(dbu._InvalidNamesTableError):
+    with pytest.raises(_InvalidNamesTableError):
         _read_name_values_for_ids("unknown_names_table", {"!1"})
 
 
