@@ -2324,19 +2324,21 @@ class TestGitOperations(BaseGitTest):
         self.assertEqual(env["GIT_TERMINAL_PROMPT"], "1")
 
     @patch("mmrelay.plugin_loader.logger")
-    @patch("mmrelay.plugin_loader._fetch_commit_with_fallback", return_value=True)
     @patch("mmrelay.plugin_loader._run_git")
     def test_update_existing_repo_to_commit_logs_exception_on_final_checkout_failure(
-        self, mock_run_git, _mock_fetch, mock_logger
+        self, mock_run_git, mock_logger
     ):
         """Final checkout failure after fetch should hit the outer error handler."""
+        checkout_calls = 0
 
         def _side_effect(cmd, *args, **kwargs):
+            nonlocal checkout_calls
             if cmd[-2:] == ["rev-parse", "HEAD"]:
                 return subprocess.CompletedProcess(cmd, 0, stdout="head\n", stderr="")
             if cmd[-1].endswith("^{commit}"):
                 raise subprocess.CalledProcessError(1, cmd)
-            if cmd[-2] == "checkout":
+            if cmd[-2:] == ["checkout", "deadbeef"]:
+                checkout_calls += 1
                 raise subprocess.CalledProcessError(1, cmd)
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
@@ -2349,6 +2351,7 @@ class TestGitOperations(BaseGitTest):
         )
 
         self.assertFalse(result)
+        self.assertEqual(checkout_calls, 2)
         mock_logger.exception.assert_called_with(
             "Failed to checkout commit %s for %s",
             "deadbeef",
@@ -2461,10 +2464,9 @@ class TestGitOperations(BaseGitTest):
 
         self.assertTrue(result)
 
-    @patch("mmrelay.plugin_loader._try_fetch_and_checkout_tag", return_value=True)
     @patch("mmrelay.plugin_loader._run_git")
     def test_update_existing_repo_to_branch_or_tag_uses_tag_fetch_helper(
-        self, mock_run_git, mock_try_fetch_tag
+        self, mock_run_git
     ):
         """When tag differs from HEAD, update flow should call tag fetch/checkout helper."""
 
@@ -2489,15 +2491,32 @@ class TestGitOperations(BaseGitTest):
         )
 
         self.assertTrue(result)
-        mock_try_fetch_tag.assert_called_once_with(
-            self.temp_repo_path, "v1.0.1", "repo"
+        self.assertIn(
+            call(
+                [
+                    "git",
+                    "-C",
+                    self.temp_repo_path,
+                    "fetch",
+                    "origin",
+                    "refs/tags/v1.0.1",
+                ],
+                timeout=120,
+            ),
+            mock_run_git.call_args_list,
+        )
+        self.assertIn(
+            call(
+                ["git", "-C", self.temp_repo_path, "checkout", "v1.0.1"],
+                timeout=120,
+            ),
+            mock_run_git.call_args_list,
         )
 
     @patch("mmrelay.plugin_loader.os.path.isdir", return_value=False)
-    @patch("mmrelay.plugin_loader._try_fetch_and_checkout_tag")
     @patch("mmrelay.plugin_loader._run_git")
     def test_clone_new_repo_to_branch_or_tag_tag_returns_when_commit_matches(
-        self, mock_run_git, mock_try_tag, _mock_isdir
+        self, mock_run_git, _mock_isdir
     ):
         """Tag clones should return early when cloned HEAD already equals tag commit."""
 
@@ -2523,7 +2542,20 @@ class TestGitOperations(BaseGitTest):
         )
 
         self.assertTrue(result)
-        mock_try_tag.assert_not_called()
+        self.assertNotIn(
+            call(
+                [
+                    "git",
+                    "-C",
+                    self.temp_repo_path,
+                    "fetch",
+                    "origin",
+                    "refs/tags/v2.0.0",
+                ],
+                timeout=120,
+            ),
+            mock_run_git.call_args_list,
+        )
 
     @patch("mmrelay.plugin_loader.logger")
     @patch("mmrelay.plugin_loader._run_git")
@@ -3904,7 +3936,7 @@ class TestDependencyInstallation(BaseGitTest):
             ],
             cwd=self.temp_plugins_dir,
             timeout=120,
-            retry_attempts=1,
+            retry_attempts=pl.GIT_RETRY_ATTEMPTS,
         )
         mock_logger.info.assert_called_with(
             "Cloned repository %s from %s at %s %s",

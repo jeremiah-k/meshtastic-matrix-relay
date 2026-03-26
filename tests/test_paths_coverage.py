@@ -271,7 +271,9 @@ def test_ensure_directories_creates_missing_tree() -> None:
             assert path.exists(), f"expected created path: {path}"
 
 
-def test_ensure_directories_warns_when_missing_and_create_disabled() -> None:
+def test_ensure_directories_warns_when_missing_and_create_disabled(
+    monkeypatch,
+) -> None:
     """ensure_directories(create_missing=False) should warn for missing paths."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         root = Path(tmp_dir)
@@ -283,22 +285,14 @@ def test_ensure_directories_warns_when_missing_and_create_disabled() -> None:
         plugins = home / "plugins"
         custom_plugins = plugins / "custom"
         community_plugins = plugins / "community"
-        core_plugins = root / "core_plugins"
+        core_plugins = plugins / "core"
+
+        monkeypatch.setenv("MMRELAY_HOME", str(home))
+        monkeypatch.delenv("MMRELAY_BASE_DIR", raising=False)
+        monkeypatch.delenv("MMRELAY_DATA_DIR", raising=False)
 
         with (
             patch("sys.platform", "linux"),
-            patch("mmrelay.paths.get_home_dir", return_value=home),
-            patch("mmrelay.paths.get_matrix_dir", return_value=matrix),
-            patch("mmrelay.paths.get_database_dir", return_value=db),
-            patch("mmrelay.paths.get_logs_dir", return_value=logs),
-            patch("mmrelay.paths.get_e2ee_store_dir", return_value=store),
-            patch("mmrelay.paths.get_plugins_dir", return_value=plugins),
-            patch("mmrelay.paths.get_custom_plugins_dir", return_value=custom_plugins),
-            patch(
-                "mmrelay.paths.get_community_plugins_dir",
-                return_value=community_plugins,
-            ),
-            patch("mmrelay.paths.get_core_plugins_dir", return_value=core_plugins),
             patch("mmrelay.paths.logger") as mock_logger,
         ):
             ensure_directories(create_missing=False)

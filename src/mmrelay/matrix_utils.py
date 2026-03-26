@@ -93,6 +93,7 @@ from mmrelay.constants.config import (
     REQUIRED_CREDENTIALS_KEYS,
 )
 from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
+from mmrelay.constants.domain import MATRIX_EVENT_TYPE_ROOM_MESSAGE
 from mmrelay.constants.formats import (
     DEFAULT_MATRIX_PREFIX,
     DEFAULT_MESHTASTIC_PREFIX,
@@ -105,7 +106,6 @@ from mmrelay.constants.formats import (
 from mmrelay.constants.messages import (
     DEFAULT_MESSAGE_TRUNCATE_BYTES,
     DISPLAY_NAME_DEFAULT_LENGTH,
-    MATRIX_EVENT_TYPE_ROOM_MESSAGE,
     MAX_TRUNCATION_LENGTH,
     MESHNET_NAME_ABBREVIATION_LENGTH,
     MESSAGE_PREVIEW_LENGTH,

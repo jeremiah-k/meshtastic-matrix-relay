@@ -2631,12 +2631,12 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
         has_space, free_bytes = _check_disk_space(new_home)
         if not has_space:
             free_mb = free_bytes / (1024 * 1024)
-            min_mb = MIGRATION_MIN_FREE_SPACE_BYTES / (1024 * 1024)
+            required_mb = (MIGRATION_MIN_FREE_SPACE_BYTES * 1.5) / (1024 * 1024)
             report["success"] = False
             report["error"] = "Insufficient disk space"
             report["message"] = (
                 f"Insufficient disk space for migration. "
-                f"Available: {free_mb:.0f} MB, Required: {min_mb:.0f} MB (with safety margin). "
+                f"Available: {free_mb:.0f} MB, Required: {required_mb:.0f} MB (with safety margin). "
                 f"Free up disk space and try again."
             )
             return report

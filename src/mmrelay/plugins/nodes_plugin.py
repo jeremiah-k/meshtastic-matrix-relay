@@ -11,14 +11,14 @@ from nio import (
     RoomMessageText,
 )
 
-from mmrelay.constants.formats import DATE_FORMAT_LONG, SNR_UNIT_SUFFIX
-from mmrelay.constants.messages import (
+from mmrelay.constants.domain import (
     RELATIVE_TIME_DAYS_THRESHOLD,
     SECONDS_PER_DAY,
     SECONDS_PER_HOUR,
     SECONDS_PER_MINUTE,
     UNKNOWN_NODE_VALUE,
 )
+from mmrelay.constants.formats import DATE_FORMAT_LONG, SNR_UNIT_SUFFIX
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
@@ -34,8 +34,9 @@ def get_relative_time(timestamp: float) -> str:
                 - "Just now" for times less than 60 seconds ago
                 - "<N> minutes ago" for times between 60 seconds and 1 hour
                 - "<N> hours ago" for times between 1 hour and 24 hours
-                - "<N> days ago" for times between 1 day and 7 days
-                - a formatted date "Mon DD, YYYY" for times older than 7 days
+                - "<N> days ago" for times between 1 day and RELATIVE_TIME_DAYS_THRESHOLD days
+                - a timestamp formatted with DATE_FORMAT_LONG when
+                  delta > RELATIVE_TIME_DAYS_THRESHOLD * SECONDS_PER_DAY
     """
     now = datetime.now()
     dt = datetime.fromtimestamp(timestamp)

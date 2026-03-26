@@ -172,8 +172,18 @@ def _touch_ready_file() -> None:
     if not _ready_file_path:
         return
     try:
-        Path(_ready_file_path).touch(mode=SECURE_FILE_PERMISSIONS, exist_ok=True)
-        os.chmod(_ready_file_path, SECURE_FILE_PERMISSIONS)
+        ready_path = Path(_ready_file_path)
+        ready_path.touch(mode=SECURE_FILE_PERMISSIONS, exist_ok=True)
+        same_owner = not hasattr(os, "geteuid") or (
+            ready_path.stat().st_uid == os.geteuid()
+        )
+        if same_owner:
+            os.chmod(ready_path, SECURE_FILE_PERMISSIONS)
+        else:
+            logger.debug(
+                "Skipping readiness file chmod due to ownership mismatch: %s",
+                ready_path,
+            )
         logger.debug("Touched readiness file: %s", _ready_file_path)
     except OSError:
         logger.debug(

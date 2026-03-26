@@ -97,7 +97,14 @@ BLE_DISCONNECT_MAX_RETRIES: Final[int] = 3
 BLE_DISCONNECT_TIMEOUT_SECS: Final[float] = 3.0
 BLE_DISCONNECT_SETTLE_SECS: Final[float] = 2.0
 BLE_RETRY_DELAY_SECS: Final[float] = 0.5
-STALE_DISCONNECT_TIMEOUT_SECS: Final[float] = 10.0
+# Cover full disconnect retry budget plus one final cleanup pass:
+# retries * (disconnect + settle) + inter-retry sleeps + final (disconnect + settle)
+STALE_DISCONNECT_TIMEOUT_SECS: Final[float] = (
+    BLE_DISCONNECT_MAX_RETRIES
+    * (BLE_DISCONNECT_TIMEOUT_SECS + BLE_DISCONNECT_SETTLE_SECS)
+    + max(BLE_DISCONNECT_MAX_RETRIES - 1, 0) * BLE_RETRY_DELAY_SECS
+    + (BLE_DISCONNECT_TIMEOUT_SECS + BLE_DISCONNECT_SETTLE_SECS)
+)
 HEALTH_PROBE_TRACK_GRACE_SECS: Final[float] = 60.0
 
 # Future/cancel timing
@@ -123,7 +130,7 @@ PROCESS_CHECK_TIMEOUT_SECS: Final[float] = 5.0
 PROCESS_CHECK_SHORT_TIMEOUT_SECS: Final[float] = 2.0
 
 # HTTP status codes
-HTTP_SERVER_ERROR_CODES: Final[tuple[int, ...]] = (500, 502, 503)
+HTTP_SERVER_ERROR_CODES: Final[tuple[int, ...]] = tuple(range(500, 600))
 
 # Hostname validation limits
 MAX_HOSTNAME_LENGTH: Final[int] = 253

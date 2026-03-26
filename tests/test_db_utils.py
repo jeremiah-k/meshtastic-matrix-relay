@@ -1417,7 +1417,9 @@ class TestDbUtils(unittest.TestCase):
             with patch("os.makedirs", side_effect=PermissionError("Permission denied")):
                 with patch("mmrelay.db_utils.logger") as mock_logger:
                     path = get_db_path()
-                    self.assertTrue(path.endswith(DEFAULT_DB_FILENAME))
+                    self.assertEqual(
+                        path, os.path.join("/nonexistent/data", DEFAULT_DB_FILENAME)
+                    )
                     mock_logger.warning.assert_called_once()
 
     def test_database_manager_config_change_fallback(self):

@@ -156,6 +156,25 @@ class MessageQueue:
             task = self._processor_task
             exec_ref = self._executor
 
+        task_cleanup_complete = threading.Event()
+        executor_cleanup_complete = threading.Event()
+        if task is None:
+            task_cleanup_complete.set()
+        if exec_ref is None:
+            executor_cleanup_complete.set()
+
+        def _finalize_stop_state() -> None:
+            if not (
+                task_cleanup_complete.is_set() and executor_cleanup_complete.is_set()
+            ):
+                return
+            with self._lock:
+                if task is not None and self._processor_task is task:
+                    self._processor_task = None
+                if exec_ref is not None and self._executor is exec_ref:
+                    self._executor = None
+                self._stopping = False
+
         if task is not None:
             task_loop = task.get_loop()
             current_loop = None
@@ -165,66 +184,51 @@ class MessageQueue:
             def _make_cancel_handler(
                 done_event: threading.Event,
                 orig_task: asyncio.Task[None],
-                orig_executor: Optional[ThreadPoolExecutor],
             ) -> Callable[[], None]:
                 def _cancel_and_cleanup() -> None:
                     orig_task.cancel()
                     if orig_task.done():
-                        with self._lock:
-                            if self._stopping or self._processor_task is orig_task:
-                                self._processor_task = None
-                            if self._stopping or self._executor is orig_executor:
-                                self._executor = None
                         done_event.set()
+                        task_cleanup_complete.set()
+                        _finalize_stop_state()
                         return
 
                     def _on_task_done(_finished_task: asyncio.Task[Any]) -> None:
-                        with self._lock:
-                            if self._stopping or self._processor_task is orig_task:
-                                self._processor_task = None
-                            if self._stopping or self._executor is orig_executor:
-                                self._executor = None
-                            self._stopping = False
                         done_event.set()
+                        task_cleanup_complete.set()
+                        _finalize_stop_state()
 
                     orig_task.add_done_callback(_on_task_done)
 
                 return _cancel_and_cleanup
 
             if task_loop.is_closed():
-                with self._lock:
-                    self._processor_task = None
-                    self._executor = None
-                    self._stopping = False
+                task_cleanup_complete.set()
+                _finalize_stop_state()
             elif current_loop is task_loop:
                 # Avoid blocking the owning event loop thread; schedule cancellation
                 # inline and let the task done-callback perform cleanup.
-                cancel_handler = _make_cancel_handler(threading.Event(), task, exec_ref)
-                task_loop.call_soon(cancel_handler)
+                cancel_handler = _make_cancel_handler(threading.Event(), task)
+                with contextlib.suppress(RuntimeError):
+                    task_loop.call_soon(cancel_handler)
             elif task_loop.is_running():
                 task_done = threading.Event()
-                cancel_handler = _make_cancel_handler(task_done, task, exec_ref)
+                cancel_handler = _make_cancel_handler(task_done, task)
                 with contextlib.suppress(RuntimeError):
                     task_loop.call_soon_threadsafe(cancel_handler)
                 if current_loop is None:
                     task_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC)
                     if not task_done.is_set():
                         logger.warning("Task wait timed out, forcing state reset")
-                        with self._lock:
-                            if self._stopping or self._processor_task is task:
-                                self._processor_task = None
-                            if self._stopping or self._executor is exec_ref:
-                                self._executor = None
+                        task_cleanup_complete.set()
+                        _finalize_stop_state()
                 else:
 
                     def _watchdog_cleanup() -> None:
                         if not task_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC):
                             logger.warning("Task wait timed out, forcing state reset")
-                            with self._lock:
-                                if self._stopping or self._processor_task is task:
-                                    self._processor_task = None
-                                if self._stopping or self._executor is exec_ref:
-                                    self._executor = None
+                            task_cleanup_complete.set()
+                            _finalize_stop_state()
 
                     threading.Thread(
                         target=_watchdog_cleanup,
@@ -235,9 +239,8 @@ class MessageQueue:
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError, RuntimeError):
                     task_loop.run_until_complete(task)
-                with self._lock:
-                    self._processor_task = None
-                    self._executor = None
+                task_cleanup_complete.set()
+                _finalize_stop_state()
 
         if exec_ref is not None:
             on_loop_thread = False
@@ -250,21 +253,26 @@ class MessageQueue:
                 exec_ref.shutdown(wait=True, cancel_futures=True)
 
             if on_loop_thread:
+
+                def _shutdown_and_finalize(exec_obj: ThreadPoolExecutor) -> None:
+                    try:
+                        _shutdown(exec_obj)
+                    finally:
+                        executor_cleanup_complete.set()
+                        _finalize_stop_state()
+
                 threading.Thread(
-                    target=_shutdown,
+                    target=_shutdown_and_finalize,
                     args=(exec_ref,),
                     name="MessageQueueExecutorShutdown",
                     daemon=True,
                 ).start()
             else:
                 _shutdown(exec_ref)
-            with self._lock:
-                if task is None and self._executor is exec_ref:
-                    self._executor = None
-                self._stopping = False
-        elif task is None:
-            with self._lock:
-                self._stopping = False
+                executor_cleanup_complete.set()
+                _finalize_stop_state()
+
+        _finalize_stop_state()
         logger.info("Message queue stopped")
 
     def enqueue(

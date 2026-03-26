@@ -185,7 +185,7 @@ class BasePlugin(ABC):
 
         if config is not None:
             resolved_section: str | None = None
-            expected_section = "plugins" if self.is_core_plugin else "community-plugins"
+            expected_section: str | None = "plugins" if self.is_core_plugin else None
             candidate_sections = (
                 ("plugins",)
                 if self.is_core_plugin
@@ -195,6 +195,49 @@ class BasePlugin(ABC):
                     if section != "plugins"
                 )
             )
+            if not self.is_core_plugin:
+                configured_section = next(
+                    (
+                        section
+                        for section in candidate_sections
+                        if isinstance(config.get(section, {}), dict)
+                        and self.plugin_name
+                        in cast(dict[str, Any], config.get(section, {}))
+                    ),
+                    None,
+                )
+                if configured_section is not None:
+                    expected_section = configured_section
+                    self.plugin_type = PLUGIN_SECTION_TYPES.get(
+                        configured_section, self.plugin_type
+                    )
+                else:
+                    # Infer non-core tier from plugin source path when no local stanza exists.
+                    try:
+                        from mmrelay.plugin_loader import (
+                            get_community_plugin_dirs,
+                            get_custom_plugin_dirs,
+                        )
+
+                        class_file = os.path.realpath(inspect.getfile(self.__class__))
+
+                        def _is_under(plugin_root: str) -> bool:
+                            root = os.path.realpath(plugin_root)
+                            return class_file == root or class_file.startswith(
+                                f"{root}{os.sep}"
+                            )
+
+                        if any(_is_under(path) for path in get_custom_plugin_dirs()):
+                            self.plugin_type = "custom"
+                            expected_section = "custom-plugins"
+                        elif any(
+                            _is_under(path) for path in get_community_plugin_dirs()
+                        ):
+                            self.plugin_type = "community"
+                            expected_section = "community-plugins"
+                    except (OSError, ImportError, TypeError):
+                        pass
+
             for level in candidate_sections:
                 section_config = config.get(level, {})
                 if (
@@ -212,6 +255,7 @@ class BasePlugin(ABC):
                         plugin_config = {}
                     self.config = plugin_config
                     resolved_section = level
+                    expected_section = level
                     self.plugin_type = PLUGIN_SECTION_TYPES.get(level, self.plugin_type)
                     break
 

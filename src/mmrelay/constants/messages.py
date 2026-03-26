@@ -7,6 +7,16 @@ strings that are displayed to users or logged.
 
 from typing import Final
 
+from mmrelay.constants.domain import (
+    MATRIX_EVENT_TYPE_ROOM_MESSAGE,
+    METADATA_OUTPUT_MAX_LENGTH,
+    RELATIVE_TIME_DAYS_THRESHOLD,
+    SECONDS_PER_DAY,
+    SECONDS_PER_HOUR,
+    SECONDS_PER_MINUTE,
+    UNKNOWN_NODE_VALUE,
+)
+
 # Log configuration defaults
 DEFAULT_LOG_SIZE_MB: Final[int] = 5
 DEFAULT_LOG_BACKUP_COUNT: Final[int] = 1
@@ -27,15 +37,6 @@ MESHNET_NAME_ABBREVIATION_LENGTH: Final[int] = 4  # Characters for short meshnet
 SHORTNAME_FALLBACK_LENGTH: Final[int] = 3  # Characters for shortname fallback
 MESSAGE_PREVIEW_LENGTH: Final[int] = 40  # Characters for message preview in logs
 DISPLAY_NAME_DEFAULT_LENGTH: Final[int] = 5  # Default display name truncation
-
-# Time constants
-SECONDS_PER_MINUTE: Final[int] = 60
-SECONDS_PER_HOUR: Final[int] = 60 * SECONDS_PER_MINUTE
-SECONDS_PER_DAY: Final[int] = 24 * SECONDS_PER_HOUR
-RELATIVE_TIME_DAYS_THRESHOLD: Final[int] = 7
-
-# Node display values
-UNKNOWN_NODE_VALUE: Final[str] = "Unknown"
 
 # Ping plugin messages
 PING_FALLBACK_RESPONSE: Final[str] = "Pong..."
@@ -70,9 +71,3 @@ LEGACY_CREDENTIALS_NO_VERSION_MSG: Final[str] = (
 MSG_MISSING_MATRIX_ROOMS: Final[str] = "Missing required matrix_rooms configuration"
 MSG_MATRIX_SYNC_TIMEOUT: Final[str] = "Matrix sync timed out"
 MSG_MATRIX_SYNC_FAILED: Final[str] = "Matrix sync failed"
-
-# Metadata output limits
-METADATA_OUTPUT_MAX_LENGTH: Final[int] = 4096
-
-# Matrix event types
-MATRIX_EVENT_TYPE_ROOM_MESSAGE: Final[str] = "m.room.message"

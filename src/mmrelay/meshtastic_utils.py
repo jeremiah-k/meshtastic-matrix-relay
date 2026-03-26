@@ -34,6 +34,7 @@ from mmrelay.constants.config import (
     DEFAULT_NODEDB_REFRESH_INTERVAL,
 )
 from mmrelay.constants.database import PROTO_NODE_NAME_LONG, PROTO_NODE_NAME_SHORT
+from mmrelay.constants.domain import METADATA_OUTPUT_MAX_LENGTH
 from mmrelay.constants.formats import (
     DETECTION_SENSOR_APP,
     EMOJI_FLAG_VALUE,
@@ -42,7 +43,6 @@ from mmrelay.constants.formats import (
 )
 from mmrelay.constants.messages import (
     DEFAULT_CHANNEL_VALUE,
-    METADATA_OUTPUT_MAX_LENGTH,
     PORTNUM_DETECTION_SENSOR_APP,
     PORTNUM_TEXT_MESSAGE_APP,
 )

@@ -36,7 +36,7 @@ class Plugin(BasePlugin):
         r"""
         Produce a concise multi-line health summary for the mesh using metrics reported by discovered Meshtastic nodes.
 
-        The returned text reports total node count and, when available, average and median values for battery percentage, air utilization (tx), and SNR, plus a count of nodes with battery <= configured threshold (BATTERY_LOW_THRESHOLD).
+        The returned text reports total node count and, when available, average and median values for battery percentage, air utilization (tx), and SNR, plus a count of nodes with battery <= configured threshold (LOW_BATTERY_THRESHOLD_PERCENT, percent).
 
         Returns:
             str: A multi-line human-readable summary. Typical content:

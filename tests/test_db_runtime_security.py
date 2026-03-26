@@ -816,6 +816,7 @@ class TestDatabaseManager(unittest.TestCase):
         close_started = threading.Event()
         allow_release = threading.Event()
         release_error: list[str] = []
+        close_error: list[Exception] = []
 
         def release_activity() -> None:
             if not allow_release.wait(timeout=1.0):
@@ -827,8 +828,12 @@ class TestDatabaseManager(unittest.TestCase):
 
         def close_manager() -> None:
             close_started.set()
-            manager.close()
-            close_done.set()
+            try:
+                manager.close()
+            except Exception as err:  # pragma: no cover - defensive
+                close_error.append(err)
+            finally:
+                close_done.set()
 
         releaser = threading.Thread(target=release_activity, daemon=True)
         closer = threading.Thread(target=close_manager, daemon=True)
@@ -851,6 +856,7 @@ class TestDatabaseManager(unittest.TestCase):
         self.assertFalse(release_error, release_error[0] if release_error else "")
         self.assertFalse(releaser.is_alive())
         self.assertFalse(closer.is_alive(), "closer thread did not exit")
+        self.assertFalse(close_error, repr(close_error[0]) if close_error else "")
         self.assertTrue(close_done.is_set(), "close() did not finish after release")
 
     def test_close_logs_sqlite_errors_when_connection_close_fails(self):

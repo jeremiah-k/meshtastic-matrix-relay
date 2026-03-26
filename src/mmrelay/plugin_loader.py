@@ -14,7 +14,7 @@ import threading
 import time
 from contextlib import contextmanager
 from types import ModuleType
-from typing import Any, Iterator, NamedTuple, NoReturn
+from typing import Any, Iterator, NamedTuple, NoReturn, Sequence
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 import mmrelay.paths as paths_module
@@ -912,6 +912,7 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
         else:
             logger.info("No dependency installation run for plugin %s", repo_name)
     except (
+        OSError,
         subprocess.CalledProcessError,
         FileNotFoundError,
         subprocess.TimeoutExpired,
@@ -1393,7 +1394,7 @@ def _try_checkout_as_branch(repo_path: str, ref_value: str, repo_name: str) -> b
 
 
 def _fallback_to_default_branches(
-    repo_path: str, default_branches: list[str], ref_value: str, repo_name: str
+    repo_path: str, default_branches: Sequence[str], ref_value: str, repo_name: str
 ) -> bool:
     """
     Try each name in `default_branches` in order to check out and pull that branch in the repository; leave the repository unchanged if none succeed.
@@ -1432,7 +1433,7 @@ def _update_existing_repo_to_branch_or_tag(
     ref_value: str,
     repo_name: str,
     is_default_branch: bool,
-    default_branches: list[str],
+    default_branches: Sequence[str],
 ) -> bool:
     """
     Update an existing Git repository to the specified branch or tag.
@@ -1700,11 +1701,11 @@ def _clone_new_repo_to_branch_or_tag(
         )
 
     last_exc: subprocess.CalledProcessError | subprocess.TimeoutExpired | None = None
-    for command, branch_name in clone_commands:
+    for index, (command, branch_name) in enumerate(clone_commands):
         try:
             if os.path.isdir(repo_path):
                 shutil.rmtree(repo_path, ignore_errors=True)
-            clone_retry_attempts = 1 if len(clone_commands) > 1 else GIT_RETRY_ATTEMPTS
+            clone_retry_attempts = GIT_RETRY_ATTEMPTS if index == 0 else 1
             _run_git(
                 command,
                 cwd=plugins_dir,

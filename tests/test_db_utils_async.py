@@ -732,8 +732,12 @@ class TestInitializeDatabaseErrors(unittest.TestCase):
 
         # Verify that execute was called multiple times and index creation was attempted
         self.assertGreater(mock_cursor.execute.call_count, 5)
+        expected_index_sql = (
+            f"CREATE INDEX IF NOT EXISTS idx_{MESSAGE_MAP_TABLE}_meshtastic_id "
+            f"ON {MESSAGE_MAP_TABLE} (meshtastic_id)"
+        )
         self.assertIn(
-            "CREATE INDEX IF NOT EXISTS idx_message_map_meshtastic_id ON message_map (meshtastic_id)",
+            expected_index_sql,
             [call.args[0] for call in mock_cursor.execute.call_args_list],
         )
 

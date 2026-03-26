@@ -264,8 +264,8 @@ class Plugin(BasePlugin):
         fig.savefig(buf, format=GRAPH_IMAGE_FORMAT, bbox_inches="tight")
         plt.close(fig)
         buf.seek(0)
-        img = Image.open(buf)
-        pil_image = Image.frombytes(mode="RGBA", size=img.size, data=img.tobytes())
+        with Image.open(buf) as img:
+            pil_image = img.copy() if img.mode == "RGBA" else img.convert("RGBA")
 
         from mmrelay.matrix_utils import ImageUploadError, send_image
 

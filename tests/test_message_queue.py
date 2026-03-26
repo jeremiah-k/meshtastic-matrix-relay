@@ -22,7 +22,6 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from mmrelay.constants.network import RECOMMENDED_MINIMUM_DELAY
 from mmrelay.constants.queue import MAX_QUEUE_SIZE
 from mmrelay.message_queue import (
     MessageQueue,
@@ -200,27 +199,26 @@ class TestMessageQueue(unittest.TestCase):
             - after another ~1.0s asserts the second is still not sent,
             - after an additional ~1.5s asserts the second message has been sent.
             """
-            message_delay = (
-                RECOMMENDED_MINIMUM_DELAY  # Use minimum message delay for testing
-            )
-            self.queue.start(message_delay=message_delay)
-            self.queue.ensure_processor_started()
+            with patch("mmrelay.message_queue.MINIMUM_MESSAGE_DELAY", 0.05):
+                message_delay = 0.05
+                self.queue.start(message_delay=message_delay)
+                self.queue.ensure_processor_started()
 
-            # Queue two messages
-            self.queue.enqueue(mock_send_function, text="First")
-            self.queue.enqueue(mock_send_function, text="Second")
+                # Queue two messages
+                self.queue.enqueue(mock_send_function, text="First")
+                self.queue.enqueue(mock_send_function, text="Second")
 
-            # Wait less than configured delay; only first message should send
-            await asyncio.sleep(max(0.1, message_delay * 0.45))
-            self.assertEqual(len(self.sent_messages), 1)
+                # Wait less than configured delay; only first message should send
+                await asyncio.sleep(0.02)
+                self.assertEqual(len(self.sent_messages), 1)
 
-            # Still below full delay budget for second send
-            await asyncio.sleep(max(0.1, message_delay * 0.35))
-            self.assertEqual(len(self.sent_messages), 1)
+                # Still below full delay budget for second send
+                await asyncio.sleep(0.02)
+                self.assertEqual(len(self.sent_messages), 1)
 
-            # Cross delay threshold and verify second send
-            await asyncio.sleep(max(0.2, message_delay * 0.35))
-            self.assertEqual(len(self.sent_messages), 2)
+                # Cross delay threshold and verify second send
+                await asyncio.sleep(0.05)
+                self.assertEqual(len(self.sent_messages), 2)
 
         self.loop.run_until_complete(async_test())
 

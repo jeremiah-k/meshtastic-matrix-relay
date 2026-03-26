@@ -32,6 +32,7 @@ from mmrelay.constants.network import (
     DEFAULT_TCP_PORT,
     MAX_TIMEOUT_RETRIES_INFINITE,
     METADATA_WATCHDOG_SECS,
+    STALE_DISCONNECT_TIMEOUT_SECS,
 )
 from mmrelay.meshtastic_utils import (
     _get_device_metadata,
@@ -3761,7 +3762,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         # Verify warning was logged for timeout
         mock_logger.warning.assert_called_with(
-            "Stale connection disconnect timed out after 10s for AA:BB:CC:DD:EE:FF"
+            f"Stale connection disconnect timed out after {STALE_DISCONNECT_TIMEOUT_SECS:.0f}s for AA:BB:CC:DD:EE:FF"
         )
         # Verify future.cancel() was called
         mock_future.cancel.assert_called_once()

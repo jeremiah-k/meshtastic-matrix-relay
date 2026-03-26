@@ -21,6 +21,10 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from mmrelay.constants.app import CONFIG_FILENAME
+from mmrelay.constants.messages import (
+    MSG_E2EE_WINDOWS_UNSUPPORTED,
+    MSG_E2EE_WINDOWS_UNSUPPORTED_DETAIL,
+)
 
 try:
     from mmrelay.e2ee_utils import (
@@ -585,10 +589,8 @@ class TestE2EEErrorMessages(unittest.TestCase):
         instructions = get_e2ee_fix_instructions(e2ee_status)
 
         self.assertEqual(len(instructions), 2)
-        self.assertIn("not supported on Windows", instructions[0])
-        self.assertTrue(
-            len(instructions[1]) > 0, "Second instruction should not be empty"
-        )
+        self.assertEqual(instructions[0], MSG_E2EE_WINDOWS_UNSUPPORTED)
+        self.assertEqual(instructions[1], MSG_E2EE_WINDOWS_UNSUPPORTED_DETAIL)
 
     def test_get_e2ee_warning_messages(self):
         """Test that get_e2ee_warning_messages returns expected warning messages."""
