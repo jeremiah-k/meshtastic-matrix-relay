@@ -1991,13 +1991,14 @@ def _store_message_map_core(
         meshtastic_text (str): Text content of the Meshtastic message.
         meshtastic_meshnet (str | None): Optional meshnet flag or value associated with the Meshtastic message.
     """
+    _col_id, _col_evt, _col_room, _col_text, _col_mesh = MESSAGE_MAP_COLUMNS
     cursor.execute(
-        "INSERT INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) VALUES (?, ?, ?, ?, ?) "
-        "ON CONFLICT(matrix_event_id) DO UPDATE SET "
-        "meshtastic_id=excluded.meshtastic_id, "
-        "matrix_room_id=excluded.matrix_room_id, "
-        "meshtastic_text=excluded.meshtastic_text, "
-        "meshtastic_meshnet=excluded.meshtastic_meshnet",
+        f"INSERT INTO {MESSAGE_MAP_TABLE} ({_col_id}, {_col_evt}, {_col_room}, {_col_text}, {_col_mesh}) VALUES (?, ?, ?, ?, ?) "
+        f"ON CONFLICT({_col_evt}) DO UPDATE SET "
+        f"{_col_id}=excluded.{_col_id}, "
+        f"{_col_room}=excluded.{_col_room}, "
+        f"{_col_text}=excluded.{_col_text}, "
+        f"{_col_mesh}=excluded.{_col_mesh}",
         (
             meshtastic_id,
             matrix_event_id,
@@ -2168,7 +2169,7 @@ def wipe_message_map() -> None:
         Parameters:
             cursor (sqlite3.Cursor): Cursor used to execute the deletion.
         """
-        cursor.execute("DELETE FROM message_map")
+        cursor.execute(f"DELETE FROM {MESSAGE_MAP_TABLE}")
 
     try:
         manager.run_sync(_wipe, write=True)
@@ -2184,14 +2185,14 @@ def _prune_message_map_core(cursor: sqlite3.Cursor, msgs_to_keep: int) -> int:
     Returns:
         int: Number of rows deleted (0 if no rows were removed).
     """
-    cursor.execute("SELECT COUNT(*) FROM message_map")
+    cursor.execute(f"SELECT COUNT(*) FROM {MESSAGE_MAP_TABLE}")
     row = cursor.fetchone()
     total = row[0] if row else 0
 
     if total > msgs_to_keep:
         to_delete = total - msgs_to_keep
         cursor.execute(
-            "DELETE FROM message_map WHERE rowid IN (SELECT rowid FROM message_map ORDER BY rowid ASC LIMIT ?)",
+            f"DELETE FROM {MESSAGE_MAP_TABLE} WHERE rowid IN (SELECT rowid FROM {MESSAGE_MAP_TABLE} ORDER BY rowid ASC LIMIT ?)",
             (to_delete,),
         )
         return to_delete

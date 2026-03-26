@@ -179,14 +179,20 @@ class BasePlugin(ABC):
         self.config: dict[str, Any] = {"active": False}
         self.mapped_channels: list[int | None] = []
         self._global_require_bot_mention: bool | None = None
+        self.plugin_type: str = "core"
         global config
         plugin_levels = list(PLUGIN_CONFIG_SECTIONS)
 
-        # Check if config is available
         if config is not None:
             for level in plugin_levels:
                 if level in config and self.plugin_name in config[level]:
                     self.config = config[level][self.plugin_name]
+                    if level == "plugins":
+                        self.plugin_type = "core"
+                    elif level == "community-plugins":
+                        self.plugin_type = "community"
+                    elif level == "custom-plugins":
+                        self.plugin_type = "custom"
                     break
 
             # Cache global plugin-level settings (for options like require_bot_mention)
@@ -220,20 +226,6 @@ class BasePlugin(ABC):
                 ]
         else:
             self.mapped_channels = []
-
-        self.plugin_type: str = "core"
-        if isinstance(config, dict):
-            community_plugins = config.get("community-plugins", {})
-            custom_plugins = config.get("custom-plugins", {})
-            if (
-                isinstance(community_plugins, dict)
-                and self.plugin_name in community_plugins
-            ):
-                self.plugin_type = "community"
-            elif (
-                isinstance(custom_plugins, dict) and self.plugin_name in custom_plugins
-            ):
-                self.plugin_type = "custom"
 
         # Get the channels specified for this plugin, or default to all mapped channels
         self.channels = self.config.get("channels", self.mapped_channels)

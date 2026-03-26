@@ -1068,7 +1068,12 @@ def _run_git(
     Returns:
         subprocess.CompletedProcess[str]: Completed process containing `returncode`, `stdout`, and `stderr`.
     """
-    kwargs.setdefault("retry_attempts", GIT_RETRY_ATTEMPTS)
+    default_retry_attempts = (
+        1
+        if len(cmd) >= 2 and cmd[0] == "git" and cmd[1] == "clone"
+        else GIT_RETRY_ATTEMPTS
+    )
+    kwargs.setdefault("retry_attempts", default_retry_attempts)
     kwargs.setdefault("retry_delay", GIT_RETRY_DELAY_SECONDS)
     # Ensure non-interactive git by default
     env = dict(os.environ)

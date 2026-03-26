@@ -1359,7 +1359,7 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                             f"Error: Room {room['id']} is missing the 'meshtastic_channel' field"
                         )
                         print(
-                            "   Add the 'meshtastic_channel' field (0-7 for primary channels):"
+                            f"   Add the 'meshtastic_channel' field ({MESHTASTIC_CHANNEL_MIN}-{MESHTASTIC_CHANNEL_MAX} for primary channels):"
                         )
                         print(f'     - id: "{room["id"]}"')
                         print("       meshtastic_channel: 0")
@@ -1376,7 +1376,7 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                             f"Error: Room {room['id']} has invalid 'meshtastic_channel' value: {meshtastic_channel}"
                         )
                         print(
-                            "   meshtastic_channel must be a non-negative integer (0-7 for primary channels)"
+                            f"   meshtastic_channel must be a non-negative integer ({MESHTASTIC_CHANNEL_MIN}-{MESHTASTIC_CHANNEL_MAX} for primary channels)"
                         )
                         return False
 
