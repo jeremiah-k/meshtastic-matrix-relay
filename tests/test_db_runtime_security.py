@@ -298,7 +298,7 @@ class TestDatabaseManager(unittest.TestCase):
             {"not": "a dict"},
             ["not", "a list"],
             (None, "tuple"),
-            set([1, 2, 3]),
+            {1, 2, 3},
             None,
         ]
 

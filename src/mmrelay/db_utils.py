@@ -242,7 +242,7 @@ _ALTER_TABLE_MESSAGE_MAP_ADD_MESH_SQL = (
 )
 _PRAGMA_MESSAGE_MAP_INFO_SQL = "PRAGMA table_info(message_map)"
 _PRAGMA_MESSAGE_MAP_LEGACY_INFO_SQL = "PRAGMA table_info(message_map_legacy)"
-_DROP_TABLE_MESSAGE_MAP_LEGACY_SQL = "DROP TABLE message_map_legacy"
+_DROP_TABLE_MESSAGE_MAP_LEGACY_SQL = "DROP TABLE IF EXISTS message_map_legacy"
 _RENAME_MESSAGE_MAP_TO_LEGACY_SQL = (
     "ALTER TABLE message_map RENAME TO message_map_legacy"
 )
@@ -774,12 +774,9 @@ def initialize_database() -> None:
                             _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITHOUT_MESH_SQL
                         )
             cursor.execute(f"DROP TABLE IF EXISTS {_temp_table}")
-            cursor.execute("DROP TABLE IF EXISTS message_map_legacy")
+            cursor.execute(_DROP_TABLE_MESSAGE_MAP_LEGACY_SQL)
 
-        try:
-            cursor.execute(_CREATE_INDEX_MESSAGE_MAP_ID_SQL)
-        except sqlite3.OperationalError:
-            pass
+        cursor.execute(_CREATE_INDEX_MESSAGE_MAP_ID_SQL)
 
     try:
         manager.run_sync(_initialize, write=True)

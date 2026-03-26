@@ -107,7 +107,7 @@ def _has_mmrelay_artifacts(root: Path) -> bool:
         root / CREDENTIALS_FILENAME,
         root / MATRIX_DIRNAME / CREDENTIALS_FILENAME,
         root / DATABASE_FILENAME,
-        root / "data" / DATABASE_FILENAME,
+        root / "data" / DATABASE_FILENAME,  # Legacy v1.2 data directory layout
         root / DATABASE_DIRNAME / DATABASE_FILENAME,
         root / STORE_DIRNAME,
         root / MATRIX_DIRNAME / STORE_DIRNAME,
@@ -227,13 +227,13 @@ def get_home_dir() -> Path:
 
 def get_config_paths(*, explicit: str | None = None) -> list[Path]:
     """
-    Produce an ordered list of candidate config.yaml file locations to try, from highest to lowest priority.
+    Produce an ordered list of candidate config file locations to try, from highest to lowest priority.
 
     Order:
       1. Explicit CLI path (if provided) — always included first, even if the file does not exist.
-      2. MMRELAY_HOME/config.yaml (skipped when an explicit path is provided).
-      3. ./config.yaml in the current working directory (skipped if identical to home).
-      4. Legacy ~/.{APP_NAME}/config.yaml — included only if the directory exists and is not equal to the resolved home.
+      2. MMRELAY_HOME/<config file> (skipped when an explicit path is provided).
+      3. ./<config file> in the current working directory (skipped if identical to home).
+      4. Legacy ~/.{APP_NAME}/<config file> — included only if the directory exists and is not equal to the resolved home.
 
     Parameters:
         explicit (str | None): Optional explicit config file path from the CLI; when provided it is added first.
