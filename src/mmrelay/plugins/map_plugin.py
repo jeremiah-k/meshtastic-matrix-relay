@@ -159,7 +159,7 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
         try:
             font = ImageFont.truetype("DejaVuSans.ttf", self._font_size)
         except OSError:
-            font = ImageFont.load_default()
+            font = ImageFont.load_default(size=self._font_size)
 
         bbox = renderer.draw().textbbox((0, 0), self._text, font=font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]

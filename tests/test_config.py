@@ -71,7 +71,7 @@ class TestConfig(unittest.TestCase):
         Test that get_base_dir returns correct default base directory on Windows when platform detection and user data directory are mocked.
         """
         with patch.dict(os.environ, {}, clear=True):
-            with (patch("mmrelay.paths.sys.platform", "win32"),):
+            with patch("mmrelay.paths.sys.platform", "win32"):
                 mock_user_data_dir.return_value = (
                     "C:\\Users\\test\\AppData\\Local\\mmrelay"
                 )
@@ -151,7 +151,7 @@ class TestConfig(unittest.TestCase):
         Test that get_data_dir returns default data directory path on Linux platforms.
         """
         with patch.dict(os.environ, {}, clear=True):
-            with (patch("sys.platform", "linux"),):
+            with patch("sys.platform", "linux"):
                 with warnings.catch_warnings(record=True) as caught:
                     warnings.simplefilter("always", DeprecationWarning)
                     data_dir = get_data_dir(create=False)
@@ -177,7 +177,7 @@ class TestConfig(unittest.TestCase):
         Test that get_log_dir() returns the default logs directory on Linux platforms.
         """
         with patch.dict(os.environ, {}, clear=True):
-            with (patch("sys.platform", "linux"),):
+            with patch("sys.platform", "linux"):
                 log_dir = get_log_dir()
                 self.assertEqual(log_dir, os.path.expanduser("~/.mmrelay/logs"))
 
@@ -189,7 +189,7 @@ class TestConfig(unittest.TestCase):
         Ensures the function resolves both the default plugins data directory and a plugin-specific directory for the Linux platform.
         """
         with patch.dict(os.environ, {}, clear=True):
-            with (patch("sys.platform", "linux"),):
+            with patch("sys.platform", "linux"):
                 plugin_data_dir = get_plugin_data_dir()
                 # New unified layout: plugins under home directory
                 self.assertEqual(

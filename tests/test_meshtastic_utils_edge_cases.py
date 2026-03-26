@@ -796,7 +796,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             # Verify timeout was logged
             mock_logger.warning.assert_any_call(
                 "Plugin %s did not respond within %ss: %s",
-                "telemetry_plugin",
+                "test_plugin",
                 DEFAULT_PLUGIN_TIMEOUT_SECS,
                 ANY,
             )
@@ -908,7 +908,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             # Verify timeout was logged
             mock_logger.warning.assert_any_call(
                 "Plugin %s did not respond within %ss: %s",
-                "test_plugin",
+                "telemetry_plugin",
                 DEFAULT_PLUGIN_TIMEOUT_SECS,
                 ANY,
             )

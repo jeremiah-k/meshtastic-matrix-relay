@@ -18,21 +18,20 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from mmrelay.constants.app import (
-    CONFIG_FILENAME,
-    CREDENTIALS_FILENAME,
-    DATABASE_DIRNAME,
-    LOGS_DIRNAME,
-    MATRIX_DIRNAME,
-    PLUGINS_DIRNAME,
-    STORE_DIRNAME,
-)
-from mmrelay.constants.database import DEFAULT_DB_FILENAME
-
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 try:
+    from mmrelay.constants.app import (
+        CONFIG_FILENAME,
+        CREDENTIALS_FILENAME,
+        DATABASE_DIRNAME,
+        LOGS_DIRNAME,
+        MATRIX_DIRNAME,
+        PLUGINS_DIRNAME,
+        STORE_DIRNAME,
+    )
+    from mmrelay.constants.database import DEFAULT_DB_FILENAME
     from mmrelay.paths import (
         UnknownPluginTypeError,
         _has_mmrelay_artifacts,

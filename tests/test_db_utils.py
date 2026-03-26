@@ -1249,9 +1249,9 @@ class TestDbUtils(unittest.TestCase):
 
     def test_get_db_path_data_directory_creation_error(self):
         """
-        Verify get_db_path returns a default meshtastic.sqlite path and logs a warning when creating the default data directory fails.
+        Verify get_db_path returns the default database filename path and logs a warning when creating the default data directory fails.
 
-        Mocks resolve_all_paths to point to a non-existent data directory and forces os.makedirs to raise PermissionError; asserts the returned path ends with "meshtastic.sqlite" and that a single warning was logged.
+        Mocks resolve_all_paths to point to a non-existent data directory and forces os.makedirs to raise PermissionError; asserts the returned path ends with the default database filename and that a single warning was logged.
         """
         # Clear cache and remove any database config to force default path
         clear_db_path_cache()

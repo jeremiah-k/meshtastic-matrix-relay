@@ -11,6 +11,7 @@ This test module covers:
 """
 
 import asyncio
+import os
 import sqlite3
 import tempfile
 import threading
@@ -48,7 +49,6 @@ class TestDatabaseManager(unittest.TestCase):
     def tearDown(self):
         """Clean up test fixtures."""
         self.manager.close()
-        import os
 
         try:
             os.unlink(self.db_path)
@@ -994,8 +994,6 @@ async def test_run_async_rejects_submission_when_closing() -> None:
             await manager.run_async(lambda _cursor: None, write=False)
     finally:
         manager.close()
-        import os
-
         os.unlink(db_path)
 
 
@@ -1028,8 +1026,6 @@ async def test_run_async_cancelled_read_cancels_worker_future() -> None:
         worker_future.cancel.assert_called_once()
     finally:
         manager.close()
-        import os
-
         os.unlink(db_path)
 
 
@@ -1083,8 +1079,6 @@ async def test_run_async_cancelled_write_logs_worker_error() -> None:
         mock_logger.warning.assert_called_once()
     finally:
         manager.close()
-        import os
-
         os.unlink(db_path)
 
 
@@ -1129,8 +1123,6 @@ async def test_run_async_cancelled_write_swallows_followup_cancellation() -> Non
         mock_logger.warning.assert_not_called()
     finally:
         manager.close()
-        import os
-
         os.unlink(db_path)
 
 
@@ -1163,8 +1155,6 @@ async def test_run_async_cancelled_read_does_not_cancel_finished_future() -> Non
         worker_future.cancel.assert_not_called()
     finally:
         manager.close()
-        import os
-
         os.unlink(db_path)
 
 
@@ -1187,8 +1177,6 @@ class TestDatabaseManagerEdgeCases(unittest.TestCase):
 
         If removing the file fails (for example, because it does not exist or due to permission issues), the error is ignored.
         """
-        import os
-
         try:
             os.unlink(self.db_path)
         except OSError:
@@ -1236,7 +1224,6 @@ class TestDatabaseManagerEdgeCases(unittest.TestCase):
 
         Creates a table to ensure the database file exists, changes the file mode to read-only, attempts a write that may either succeed or raise sqlite3.OperationalError depending on the platform/SQLite build, restores the original permissions, and closes the manager to ensure cleanup.
         """
-        import os
         import stat
 
         # Create manager

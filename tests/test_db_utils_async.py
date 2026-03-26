@@ -15,7 +15,7 @@ import shutil
 import sqlite3
 import tempfile
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import mmrelay.db_utils
 from mmrelay.constants.database import (
@@ -258,7 +258,6 @@ class TestAsyncHelpers(unittest.TestCase):
     @patch("mmrelay.db_utils._get_db_manager")
     def test_async_store_message_map_success(self, mock_get_manager):
         """Test async_store_message_map successful execution."""
-        from unittest.mock import AsyncMock
 
         # Mock manager and its run_async method
         mock_manager = MagicMock()
@@ -298,8 +297,6 @@ class TestAsyncHelpers(unittest.TestCase):
 
         Calls async_store_message_map with a mocked DatabaseManager whose run_async raises sqlite3.Error and asserts that logger.exception is called once with a message containing "Database error storing message map".
         """
-        from unittest.mock import AsyncMock
-
         # Mock manager that raises an exception
         mock_manager = MagicMock()
         mock_get_manager.return_value = mock_manager
@@ -326,7 +323,6 @@ class TestAsyncHelpers(unittest.TestCase):
     @patch("mmrelay.db_utils._get_db_manager")
     def test_async_prune_message_map_success(self, mock_get_manager):
         """Test async_prune_message_map successful execution."""
-        from unittest.mock import AsyncMock
 
         # Mock manager and its run_async method
         mock_manager = MagicMock()
@@ -364,7 +360,6 @@ class TestAsyncHelpers(unittest.TestCase):
     @patch("mmrelay.db_utils._get_db_manager")
     def test_async_prune_message_map_no_pruning_needed(self, mock_get_manager):
         """Test async_prune_message_map when no pruning is needed."""
-        from unittest.mock import AsyncMock
 
         # Mock manager and its run_async method
         mock_manager = MagicMock()
@@ -392,7 +387,6 @@ class TestAsyncHelpers(unittest.TestCase):
     @patch("mmrelay.db_utils._get_db_manager")
     def test_async_prune_message_map_error(self, mock_get_manager):
         """Test async_prune_message_map error handling."""
-        from unittest.mock import AsyncMock
 
         # Mock manager that raises an exception
         mock_manager = MagicMock()

@@ -73,7 +73,7 @@ class Plugin(BasePlugin):
             self.logger.warning(
                 "Meshtastic client unavailable; skipping drop message handling"
             )
-            text = packet.get("decoded", {}).get("text", "")
+            text = packet.get("decoded", {}).get("text") or ""
             is_drop_command = packet.get("decoded", {}).get(
                 "portnum"
             ) == TEXT_MESSAGE_APP and DROP_COMMAND_REGEX.search(text)

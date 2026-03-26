@@ -1574,7 +1574,9 @@ def migrate_database(
 
         # 3. Verify integrity in staging
         main_db_staged = staging_dir / most_recent.name
-        if not most_recent.name.endswith(("-wal", "-shm")):
+        if not any(
+            most_recent.name.endswith(suffix) for suffix in SQLITE_SIDECAR_SUFFIXES
+        ):
             try:
                 db_uri = f"{main_db_staged.resolve().as_uri()}?mode=ro"
                 with sqlite3.connect(db_uri, uri=True) as conn:
