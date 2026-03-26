@@ -14,7 +14,7 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Callable, Optional, cast
+from typing import Any, Callable, Optional
 
 from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
 from mmrelay.constants.network import MINIMUM_MESSAGE_DELAY, RECOMMENDED_MINIMUM_DELAY
