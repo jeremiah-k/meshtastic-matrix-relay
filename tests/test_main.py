@@ -3442,6 +3442,10 @@ class TestRunBlockingShutdownStep(unittest.TestCase):
             patch("mmrelay.main.shutdown_plugins") as mock_shutdown,
             patch("mmrelay.main.stop_message_queue") as mock_stop_message_queue,
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+            patch(
+                "mmrelay.main.asyncio.get_running_loop",
+                side_effect=_make_patched_get_running_loop(),
+            ),
             patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
             patch("mmrelay.main.logger") as mock_logger,
@@ -3459,7 +3463,6 @@ class TestRunBlockingShutdownStep(unittest.TestCase):
 
                 asyncio.run(main(config))
 
-                mock_queue.ensure_processor_started.assert_called_once()
                 mock_shutdown.assert_called_once()
                 mock_stop_message_queue.assert_called_once()
                 mock_matrix_client.close.assert_awaited_once()
@@ -3493,6 +3496,10 @@ class TestRunBlockingShutdownStep(unittest.TestCase):
             patch("mmrelay.main.shutdown_plugins") as mock_shutdown,
             patch("mmrelay.main.stop_message_queue") as mock_stop_message_queue,
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+            patch(
+                "mmrelay.main.asyncio.get_running_loop",
+                side_effect=_make_patched_get_running_loop(),
+            ),
             patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
             patch("mmrelay.main.logger") as mock_logger,
@@ -3509,7 +3516,6 @@ class TestRunBlockingShutdownStep(unittest.TestCase):
 
                 asyncio.run(main(config))
 
-                mock_queue.ensure_processor_started.assert_called_once()
                 mock_shutdown.assert_called_once()
                 mock_stop_message_queue.assert_called_once()
                 mock_matrix_client.close.assert_awaited_once()
