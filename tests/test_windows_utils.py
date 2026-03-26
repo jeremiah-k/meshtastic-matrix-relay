@@ -422,10 +422,10 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
     def test_test_config_generation_windows_outer_oserror_sets_overall_error(self):
         """Unexpected outer OSError should mark overall_status=error with details.
 
-        Note: This test mocks builtins.sum because the outer OSError handler (line 289)
-        only catches errors outside inner try/except blocks. The sum() call at line 277
-        is the only code in that region. Mocking importlib.resources.files won't work
-        because its OSError is caught by the inner handler at line 246.
+        Note: This test mocks builtins.sum because the outer OSError handler only
+        catches errors outside inner try/except blocks. The sum() call in the status
+        aggregation is the only code in that region. Mocking importlib.resources.files
+        won't work because its OSError is caught by an inner handler.
         """
         sample_config = str(self.tmp_path / "sample_config.yaml")
         config_path = str(self.tmp_path / "config.yaml")

@@ -2075,7 +2075,7 @@ def get_message_map_by_meshtastic_id(
             `(matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)` tuple if a row exists, `None` otherwise.
         """
         cursor.execute(
-            "SELECT matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet FROM message_map WHERE meshtastic_id=?",
+            f"SELECT matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet FROM {MESSAGE_MAP_TABLE} WHERE meshtastic_id=?",
             (id_key,),
         )
         return cast(tuple[Any, ...] | None, cursor.fetchone())
@@ -2128,7 +2128,7 @@ def get_message_map_by_matrix_event_id(
             tuple[Any, ...] | None: Tuple (meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) if a matching row is found, `None` otherwise.
         """
         cursor.execute(
-            "SELECT meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet FROM message_map WHERE matrix_event_id=?",
+            f"SELECT meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet FROM {MESSAGE_MAP_TABLE} WHERE matrix_event_id=?",
             (matrix_event_id,),
         )
         return cast(tuple[Any, ...] | None, cursor.fetchone())

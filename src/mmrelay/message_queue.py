@@ -185,9 +185,7 @@ class MessageQueue:
                 task_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC)
             else:
                 task.cancel()
-                with contextlib.suppress(
-                    asyncio.CancelledError, RuntimeError, Exception
-                ):
+                with contextlib.suppress(asyncio.CancelledError, RuntimeError):
                     task_loop.run_until_complete(task)
 
         if exec_ref is not None:
@@ -197,15 +195,8 @@ class MessageQueue:
                 on_loop_thread = loop_chk.is_running()
 
             def _shutdown(exec_ref: ThreadPoolExecutor) -> None:
-                """
-                Shut down an executor, waiting for running tasks to finish; falls back for executors that don't support `cancel_futures`.
-
-                Attempts to call executor.shutdown(wait=True, cancel_futures=True) and, if that raises a TypeError (older Python versions or executors without the `cancel_futures` parameter), retries with executor.shutdown(wait=True). This call blocks until shutdown completes.
-                """
-                try:
-                    exec_ref.shutdown(wait=True, cancel_futures=True)
-                except TypeError:
-                    exec_ref.shutdown(wait=True)
+                """Shut down executor, cancelling pending futures."""
+                exec_ref.shutdown(wait=True, cancel_futures=True)
 
             if on_loop_thread:
                 threading.Thread(

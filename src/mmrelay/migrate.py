@@ -1381,6 +1381,16 @@ def migrate_config(
 
 
 def _collect_db_sidecars(db_path: Path, candidates: list[Path]) -> None:
+    """
+    Append existing SQLite sidecar files for a database to the candidates list.
+
+    Iterates over SQLITE_SIDECAR_SUFFIXES and constructs sidecar paths. Suffixes
+    like "-wal" are converted to ".sqlite-wal" for use with Path.with_suffix().
+
+    Parameters:
+        db_path: Path to the main SQLite database file.
+        candidates: List to append discovered sidecar paths to.
+    """
     for suffix in SQLITE_SIDECAR_SUFFIXES:
         sidecar_suffix = suffix if suffix.startswith(".") else f".sqlite{suffix}"
         sidecar = db_path.with_suffix(sidecar_suffix)
