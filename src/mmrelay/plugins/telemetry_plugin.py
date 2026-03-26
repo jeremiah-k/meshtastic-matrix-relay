@@ -283,5 +283,5 @@ class Plugin(BasePlugin):
                     "body": MSG_GRAPH_UPLOAD_FAILED,
                 },
             )
-            return False
+            return True
         return True

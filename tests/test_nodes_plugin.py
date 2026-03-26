@@ -120,11 +120,14 @@ class TestGetRelativeTime(unittest.TestCase):
         """
         Test that `get_relative_time` returns "7 days ago" for a timestamp exactly seven days in the past.
         """
-        now = datetime.now()
-        seven_days_ago = now - timedelta(days=7)
+        fixed_now = datetime(2026, 3, 26, 12, 0, 0)
+        seven_days_ago = fixed_now - timedelta(days=7)
         timestamp = seven_days_ago.timestamp()
 
-        result = get_relative_time(timestamp)
+        with patch("mmrelay.plugins.nodes_plugin.datetime") as mock_datetime:
+            mock_datetime.now.return_value = fixed_now
+            mock_datetime.fromtimestamp.side_effect = datetime.fromtimestamp
+            result = get_relative_time(timestamp)
 
         self.assertEqual(result, "7 days ago")
 

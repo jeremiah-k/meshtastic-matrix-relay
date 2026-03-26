@@ -1168,7 +1168,10 @@ def _wait_for_probe_ack(client: Any, timeout_secs: float) -> None:
         ):
             _reset_probe_ack_state(ack_state)
             return
-        time.sleep(ACK_POLL_INTERVAL_SECS)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        time.sleep(min(ACK_POLL_INTERVAL_SECS, remaining))
 
     raise _metadata_probe_ack_timeout_error(timeout_secs)
 

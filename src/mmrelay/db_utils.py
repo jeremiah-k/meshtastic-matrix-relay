@@ -757,6 +757,18 @@ def initialize_database() -> None:
             cursor.execute(f"DROP TABLE IF EXISTS {_temp_table}")
             temp_exists = False
 
+        if (
+            temp_exists
+            and meshtastic_column
+            and str(meshtastic_column[2]).upper() != "TEXT"
+        ):
+            logger.warning(
+                "Removing stale temporary table %s before message_map schema rebuild",
+                _temp_table,
+            )
+            cursor.execute(f"DROP TABLE IF EXISTS {_temp_table}")
+            temp_exists = False
+
         cursor.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
             (_legacy_table,),
@@ -817,10 +829,7 @@ def initialize_database() -> None:
             cursor.execute(f"DROP TABLE IF EXISTS {_temp_table}")
             cursor.execute(_DROP_TABLE_MESSAGE_MAP_LEGACY_SQL)
 
-        try:
-            cursor.execute(_CREATE_INDEX_MESSAGE_MAP_ID_SQL)
-        except sqlite3.OperationalError:
-            pass
+        cursor.execute(_CREATE_INDEX_MESSAGE_MAP_ID_SQL)
 
     try:
         manager.run_sync(_initialize, write=True)

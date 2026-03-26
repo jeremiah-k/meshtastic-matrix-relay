@@ -187,15 +187,10 @@ class MessageQueue:
                     self._processor_task = None
                     self._executor = None
             elif current_loop is task_loop:
-                task_cancel_done = threading.Event()
-                cancel_handler = _make_cancel_handler(task_cancel_done)
-                task_loop.call_soon_threadsafe(cancel_handler)
-                task_cancel_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC)
-                if not task_cancel_done.is_set():
-                    logger.warning("Task cancellation timed out, forcing state reset")
-                    with self._lock:
-                        self._processor_task = None
-                        self._executor = None
+                # Avoid blocking the owning event loop thread; schedule cancellation
+                # inline and let the task done-callback perform cleanup.
+                cancel_handler = _make_cancel_handler(threading.Event())
+                task_loop.call_soon(cancel_handler)
             elif task_loop.is_running():
                 task_done = threading.Event()
                 cancel_handler = _make_cancel_handler(task_done)
@@ -235,6 +230,8 @@ class MessageQueue:
             else:
                 _shutdown(exec_ref)
             with self._lock:
+                if task is None and self._executor is exec_ref:
+                    self._executor = None
                 self._stopping = False
         elif task is None:
             with self._lock:

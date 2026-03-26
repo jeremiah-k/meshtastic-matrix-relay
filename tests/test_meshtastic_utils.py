@@ -3797,16 +3797,22 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             exc_info=True,
         )
 
+    @patch("bleak.BleakClient")
     @patch("mmrelay.meshtastic_utils.logger")
     @patch("mmrelay.meshtastic_utils.asyncio.get_running_loop")
     @patch("mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe")
     def test_disconnect_ble_by_address_logs_completion_with_global_running_loop(
-        self, mock_run_coroutine_threadsafe, mock_get_running_loop, mock_logger
+        self,
+        mock_run_coroutine_threadsafe,
+        mock_get_running_loop,
+        mock_logger,
+        mock_bleak_client,
     ):
         """Global event-loop cleanup success should log completion."""
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
 
         mock_get_running_loop.side_effect = RuntimeError("no loop")
+        mock_bleak_client.return_value = Mock(is_connected=False)
         mock_future = Mock()
         mock_future.result.return_value = None
 

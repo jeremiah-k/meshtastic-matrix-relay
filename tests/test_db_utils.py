@@ -349,6 +349,44 @@ class TestDbUtils(unittest.TestCase):
             rows = cursor.fetchall()
             self.assertEqual(rows, [("123", "$evt2", None)])
 
+    def test_initialize_database_drops_stale_temp_before_non_text_rebuild(self):
+        """A stale message_map_old_temp should not block non-TEXT schema rebuild."""
+        with sqlite3.connect(self.test_db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "CREATE TABLE message_map (meshtastic_id INTEGER, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT)"
+            )
+            cursor.execute(
+                "INSERT INTO message_map VALUES (?, ?, ?, ?)",
+                (77, "$evt-stale", "!room", "payload"),
+            )
+            cursor.execute(
+                "CREATE TABLE message_map_old_temp (meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
+            )
+            cursor.execute(
+                "INSERT INTO message_map_old_temp VALUES (?, ?, ?, ?, ?)",
+                ("old", "$evt-old", "!room", "old-payload", "mesh-old"),
+            )
+            conn.commit()
+
+        initialize_database()
+
+        with sqlite3.connect(self.test_db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(message_map)")
+            table_info = {row[1]: row[2].upper() for row in cursor.fetchall()}
+            self.assertEqual(table_info["meshtastic_id"], "TEXT")
+
+            cursor.execute(
+                "SELECT meshtastic_id, matrix_event_id, meshtastic_meshnet FROM message_map"
+            )
+            self.assertEqual(cursor.fetchall(), [("77", "$evt-stale", None)])
+
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='message_map_old_temp'"
+            )
+            self.assertIsNone(cursor.fetchone())
+
     def test_longname_operations(self):
         """
         Tests saving and retrieving longnames by Meshtastic ID, including handling of non-existent entries.

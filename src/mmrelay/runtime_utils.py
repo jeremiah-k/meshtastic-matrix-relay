@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 import os
 
-from mmrelay import log_utils
 from mmrelay.constants.app import PROC_COMM_PATH_TEMPLATE, PROC_SELF_STATUS_PATH
 from mmrelay.constants.network import SYSTEMD_INIT_SYSTEM
 
@@ -34,7 +34,7 @@ def is_running_as_service() -> bool:
                     ) as comm_file:
                         return comm_file.read().strip() == SYSTEMD_INIT_SYSTEM
     except (FileNotFoundError, PermissionError, ValueError, IndexError) as e:
-        log_utils.get_logger(__name__).debug(
+        logging.getLogger(__name__).debug(
             "Service detection failed via proc filesystem",
             exc_info=True,
             extra={"error_type": type(e).__name__},

@@ -184,6 +184,7 @@ class BasePlugin(ABC):
         global config
 
         if config is not None:
+            resolved_section: str | None = None
             candidate_sections = (
                 ("plugins",)
                 if self.is_core_plugin
@@ -209,13 +210,14 @@ class BasePlugin(ABC):
                         )
                         plugin_config = {}
                     self.config = plugin_config
+                    resolved_section = level
                     self.plugin_type = PLUGIN_SECTION_TYPES.get(level, self.plugin_type)
                     break
 
             # Cache global plugin-level settings (for options like require_bot_mention)
             # Only check the section this plugin was resolved to, to avoid tier bleed
-            if self.plugin_type:
-                section_config = config.get(self.plugin_type, {})
+            if resolved_section:
+                section_config = config.get(resolved_section, {})
                 if (
                     isinstance(section_config, dict)
                     and CONFIG_KEY_REQUIRE_BOT_MENTION in section_config

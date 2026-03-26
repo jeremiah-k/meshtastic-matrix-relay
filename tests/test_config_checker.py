@@ -141,9 +141,9 @@ class TestConfigChecker(unittest.TestCase):
         expected_min = 2 if cwd_dir != home_dir else 1
         self.assertGreaterEqual(len(paths), expected_min)
 
-        # Verify all paths end with config.yaml
+        # Verify all paths use the expected config filename
         for path in paths:
-            self.assertTrue(path.endswith(CONFIG_FILENAME))
+            self.assertEqual(os.path.basename(path), CONFIG_FILENAME)
 
     @patch("mmrelay.cli.parse_arguments")
     @patch("mmrelay.cli.get_config_paths")

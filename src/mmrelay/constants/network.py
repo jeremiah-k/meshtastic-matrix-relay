@@ -109,6 +109,8 @@ DEFAULT_PLUGIN_TIMEOUT_SECS: Final[float] = 5.0
 # Close timeouts
 MATRIX_CLIENT_CLOSE_TIMEOUT_SECS: Final[float] = 10.0
 MESHTASTIC_CLOSE_TIMEOUT_SECS: Final[float] = 10.0
+# Backward-compatible alias for legacy imports.
+MESHTASTIC_CLOSE_TIMEOUT_SECONDS: Final[float] = MESHTASTIC_CLOSE_TIMEOUT_SECS
 
 # Sync and retry timing
 MATRIX_SYNC_RETRY_DELAY_SECS: Final[float] = 5.0

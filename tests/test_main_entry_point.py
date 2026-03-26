@@ -91,6 +91,30 @@ class TestMainEntryPoint(unittest.TestCase):
         mock_print.assert_called_once_with("Interrupted.", file=sys.stderr)
         mock_exit.assert_called_once_with(EXIT_CODE_SIGINT)
 
+    @patch("mmrelay.cli.main", side_effect=KeyboardInterrupt())
+    @patch("builtins.print")
+    @patch("sys.exit")
+    def test_main_entry_point_keyboard_interrupt_falls_back_to_130_on_import_error(
+        self, mock_exit, mock_print, _mock_main
+    ):
+        """KeyboardInterrupt branch should use exit 130 when EXIT_CODE_SIGINT import fails."""
+        import builtins as _builtins
+
+        real_import = _builtins.__import__
+
+        def _import_side_effect(name, globals=None, locals=None, fromlist=(), level=0):
+            if "mmrelay.constants" in name:
+                raise ImportError("constants unavailable")
+            return real_import(name, globals, locals, fromlist, level)
+
+        with patch("builtins.__import__", side_effect=_import_side_effect):
+            with open("src/mmrelay/__main__.py") as f:
+                code = f.read()
+            exec(code, {"__name__": "__main__"})  # nosec B102
+
+        mock_print.assert_called_once_with("Interrupted.", file=sys.stderr)
+        mock_exit.assert_called_once_with(130)
+
     @patch("mmrelay.cli.main", side_effect=SystemExit(42))
     @patch("sys.exit")
     def test_main_entry_point_system_exit_passthrough(self, mock_exit, mock_main):

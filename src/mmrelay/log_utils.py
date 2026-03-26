@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
 # Import logging configuration helpers and constants.
 from mmrelay.constants.app import APP_DISPLAY_NAME
-from mmrelay.constants.formats import RICH_LOG_TIME_FORMAT
+from mmrelay.constants.formats import DATETIME_FORMAT_WITH_TZ
 from mmrelay.constants.messages import (
     DEFAULT_LOG_BACKUP_COUNT,
     DEFAULT_LOG_SIZE_MB,
@@ -301,7 +301,7 @@ def _configure_logger(
                     show_level=True,
                     show_path=False,
                     markup=True,
-                    log_time_format=RICH_LOG_TIME_FORMAT,
+                    log_time_format=DATETIME_FORMAT_WITH_TZ,
                     omit_repeated_times=False,
                 )
             )
@@ -312,7 +312,7 @@ def _configure_logger(
             console_handler.setFormatter(
                 logging.Formatter(
                     fmt="%(asctime)s %(levelname)s:%(name)s:%(message)s",
-                    datefmt="%Y-%m-%d %H:%M:%S %z",  # Intentionally includes %z; RichHandler uses RICH_LOG_TIME_FORMAT without timezone
+                    datefmt=DATETIME_FORMAT_WITH_TZ,
                 )
             )
         logger.addHandler(console_handler)
@@ -375,7 +375,7 @@ def _configure_logger(
         file_handler.setFormatter(
             logging.Formatter(
                 fmt="%(asctime)s %(levelname)s:%(name)s:%(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S %z",  # Intentionally includes %z; RichHandler uses RICH_LOG_TIME_FORMAT without timezone
+                datefmt=DATETIME_FORMAT_WITH_TZ,
             )
         )
         logger.addHandler(file_handler)

@@ -1361,9 +1361,12 @@ def _missing_credentials_keys(credentials: dict[str, Any]) -> list[str]:
     Returns:
         list[str]: List of required keys that are not present or are empty in `credentials`.
     """
+    # user_id is required by Matrix startup/auth flows even if other CLI
+    # validation paths relax it for specific commands.
+    required_keys = tuple(dict.fromkeys((*REQUIRED_CREDENTIALS_KEYS, "user_id")))
     return [
         key
-        for key in REQUIRED_CREDENTIALS_KEYS
+        for key in required_keys
         if not isinstance(credentials.get(key), str)
         or not credentials.get(key, "").strip()
     ]

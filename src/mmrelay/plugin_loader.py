@@ -1704,7 +1704,13 @@ def _clone_new_repo_to_branch_or_tag(
         try:
             if os.path.isdir(repo_path):
                 shutil.rmtree(repo_path, ignore_errors=True)
-            _run_git(command, cwd=plugins_dir, timeout=120, retry_attempts=1)
+            clone_retry_attempts = 1 if len(clone_commands) > 1 else GIT_RETRY_ATTEMPTS
+            _run_git(
+                command,
+                cwd=plugins_dir,
+                timeout=120,
+                retry_attempts=clone_retry_attempts,
+            )
             logger.info(
                 "Cloned repository %s from %s at %s %s",
                 repo_name,
@@ -2057,6 +2063,7 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
                                 )
 
                         except (
+                            OSError,
                             subprocess.CalledProcessError,
                             FileNotFoundError,
                             subprocess.TimeoutExpired,

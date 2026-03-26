@@ -442,7 +442,7 @@ def _cleanup_local_session_data() -> bool:
 
 
 def _handle_matrix_error(
-    exception: Exception, context: str, log_level: str = "error"
+    exception: Any, context: str, log_level: str = "error"
 ) -> bool:
     """
     Classify a Matrix-related exception, log and print an appropriate user-facing message, and mark it handled.
@@ -465,7 +465,7 @@ def _handle_matrix_error(
     error_detail = None
 
     # Handle specific Matrix-nio exceptions
-    if isinstance(exception, (NioLoginError, NioLogoutError)):
+    if isinstance(exception, (NioLoginError, NioLogoutError, LoginError, LogoutError)):
         errcode = getattr(exception, "errcode", None)
         status_code = getattr(exception, "status_code", None)
         parsed_status_code: int | None = None
@@ -723,6 +723,9 @@ async def logout_matrix_bot(password: str) -> bool:
                 timeout=MATRIX_LOGIN_TIMEOUT,
             )
 
+            if isinstance(response, (LoginError, NioLoginError)):
+                _handle_matrix_error(response, "Password verification", "error")
+                return False
             if hasattr(response, "access_token"):
                 _get_logger().info("Password verified successfully.")
                 print("✅ Password verified successfully.")
@@ -790,7 +793,13 @@ async def logout_matrix_bot(password: str) -> bool:
                     "⚠️  Timeout during Matrix server logout, proceeding with local cleanup."
                 )
             else:
-                if hasattr(logout_response, "transport_response"):
+                if isinstance(logout_response, (LogoutError, NioLogoutError)):
+                    _handle_matrix_error(
+                        logout_response,
+                        "Server logout",
+                        "warning",
+                    )
+                elif hasattr(logout_response, "transport_response"):
                     _get_logger().info("Successfully logged out from Matrix server.")
                     print("✅ Successfully logged out from Matrix server.")
                 else:

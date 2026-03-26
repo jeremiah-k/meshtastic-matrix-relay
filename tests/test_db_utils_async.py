@@ -719,46 +719,25 @@ class TestInitializeDatabaseErrors(unittest.TestCase):
     def test_initialize_database_operational_error_on_index_creation(
         self, mock_get_manager
     ):
-        """Test initialize_database handles OperationalError during index creation gracefully."""
+        """Test initialize_database issues index creation SQL during setup."""
 
         # Mock manager and cursor
         mock_manager = MagicMock()
         mock_get_manager.return_value = mock_manager
 
-        # Mock cursor to raise OperationalError on specific execute calls
+        # Mock cursor and run_sync to execute the initialization callback
         mock_cursor = MagicMock()
         mock_manager.run_sync.side_effect = lambda func, write=True: func(mock_cursor)
+        mock_cursor.execute.return_value = None
 
-        def execute_side_effect(sql, *args, **kwargs):
-            # Raise OperationalError for index creation calls only
-            """
-            Simulates executing a SQL statement, failing for index creation and succeeding otherwise.
+        initialize_database()
 
-            Parameters:
-                sql (str): The SQL statement to simulate executing. `args` and `kwargs` are accepted for compatibility and ignored.
-
-            Returns:
-                None: Indicates the statement succeeded.
-
-            Raises:
-                sqlite3.OperationalError: If `sql` contains "CREATE INDEX", simulating an index already existing.
-            """
-            if "CREATE INDEX" in sql:
-                raise sqlite3.OperationalError("index already exists")
-            return None  # Table creation succeeds
-
-        mock_cursor.execute.side_effect = execute_side_effect
-
-        # Should not raise exception - should handle OperationalError gracefully
-        try:
-            initialize_database()
-        except Exception as e:
-            self.fail(
-                f"initialize_database() raised {e} unexpectedly! Should handle OperationalError gracefully."
-            )
-
-        # Verify that execute was called multiple times
+        # Verify that execute was called multiple times and index creation was attempted
         self.assertGreater(mock_cursor.execute.call_count, 5)
+        self.assertIn(
+            "CREATE INDEX IF NOT EXISTS idx_message_map_meshtastic_id ON message_map (meshtastic_id)",
+            [call.args[0] for call in mock_cursor.execute.call_args_list],
+        )
 
     @patch("mmrelay.db_utils._get_db_manager")
     @patch("mmrelay.db_utils.logger")

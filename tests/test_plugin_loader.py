@@ -4045,7 +4045,7 @@ class TestDependencyInstallation(BaseGitTest):
                 ],
                 cwd=self.temp_plugins_dir,
                 timeout=120,
-                retry_attempts=1,
+                retry_attempts=pl.GIT_RETRY_ATTEMPTS,
             ),
             # Check if already at the tag's commit
             call(

@@ -13,6 +13,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import time
 from pathlib import Path
 from unittest import mock
 
@@ -243,52 +244,33 @@ class TestMigrateAdditionalCoverage:
     def test_migrate_database_inserts_most_recent_and_appends_extra_sidecars(
         self, tmp_path: Path
     ) -> None:
-        """Selected group should include inserted main DB and discovered sidecars."""
-        legacy_root = tmp_path / "legacy"
-        legacy_root.mkdir()
-        candidate = legacy_root / "meshtastic.sqlite"
-        sqlite3.connect(candidate).close()
+        """Most-recent legacy DB selection should include discovered sidecars."""
+        legacy_root_old = tmp_path / "legacy_old"
+        legacy_root_old.mkdir()
+        old_db = legacy_root_old / "meshtastic.sqlite"
+        sqlite3.connect(old_db).close()
 
-        most_recent = legacy_root / "canonical.sqlite"
+        legacy_root_new = tmp_path / "legacy_new"
+        legacy_root_new.mkdir()
+        most_recent = legacy_root_new / "meshtastic.sqlite"
         sqlite3.connect(most_recent).close()
-        extra_sidecar = legacy_root / "canonical.sqlite-wal"
+        extra_sidecar = legacy_root_new / "meshtastic.sqlite-wal"
         extra_sidecar.write_text("", encoding="utf-8")
+
+        now = time.time()
+        os.utime(old_db, (now - 120, now - 120))
+        os.utime(most_recent, (now, now))
+        os.utime(extra_sidecar, (now + 5, now + 5))
 
         new_home = tmp_path / "new_home"
         new_home.mkdir()
 
-        from mmrelay import migrate as migrate_mod
-
-        original_get_db_base_path = migrate_mod._get_db_base_path
-
-        def _patched_get_db_base_path(path: Path) -> Path:
-            if path == candidate:
-                return most_recent
-            return original_get_db_base_path(path)
-
-        def _patched_collect_sidecars(db_path: Path, out: list[Path]) -> None:
-            if db_path == most_recent:
-                out.append(extra_sidecar)
-
-        with (
-            mock.patch(
-                "mmrelay.migrate._get_most_recent_database", return_value=most_recent
-            ),
-            mock.patch(
-                "mmrelay.migrate._get_db_base_path",
-                side_effect=_patched_get_db_base_path,
-            ),
-            mock.patch(
-                "mmrelay.migrate._collect_db_sidecars",
-                side_effect=_patched_collect_sidecars,
-            ),
-        ):
-            result = migrate_database(
-                [legacy_root],
-                new_home,
-                dry_run=False,
-                force=True,
-            )
+        result = migrate_database(
+            [legacy_root_old, legacy_root_new],
+            new_home,
+            dry_run=False,
+            force=True,
+        )
 
         assert result["success"] is True
         assert (new_home / "database" / most_recent.name).exists()

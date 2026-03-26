@@ -39,7 +39,7 @@ from mmrelay.constants.plugins import (
 )
 from mmrelay.plugins.base_plugin import BasePlugin
 
-DEFAULT_WEATHER_MODE = "weather"
+DEFAULT_WEATHER_MODE = WEATHER_COMMANDS[0]
 
 
 class Plugin(BasePlugin):

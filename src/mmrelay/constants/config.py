@@ -5,7 +5,8 @@ Contains configuration section names, key names, and default values
 used throughout the configuration system.
 """
 
-from typing import Final
+from types import MappingProxyType
+from typing import Final, Mapping
 
 from mmrelay.constants.app import CONFIG_FILENAME
 
@@ -123,6 +124,7 @@ NORMALIZABLE_CONFIG_SECTIONS: Final[tuple[str, ...]] = (
 REQUIRED_CREDENTIALS_KEYS: Final[tuple[str, ...]] = (
     CONFIG_KEY_HOMESERVER,
     CONFIG_KEY_ACCESS_TOKEN,
+    CONFIG_KEY_USER_ID,
 )
 
 # Required config keys
@@ -143,11 +145,13 @@ PLUGIN_CONFIG_SECTIONS: Final[tuple[str, ...]] = (
     CONFIG_SECTION_CUSTOM_PLUGINS,
 )
 
-PLUGIN_SECTION_TYPES: Final[dict[str, str]] = {
-    CONFIG_SECTION_PLUGINS: "core",
-    CONFIG_SECTION_COMMUNITY_PLUGINS: "community",
-    CONFIG_SECTION_CUSTOM_PLUGINS: "custom",
-}
+PLUGIN_SECTION_TYPES: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        CONFIG_SECTION_PLUGINS: "core",
+        CONFIG_SECTION_COMMUNITY_PLUGINS: "community",
+        CONFIG_SECTION_CUSTOM_PLUGINS: "custom",
+    }
+)
 
 # Versions where deprecation warnings were introduced
 # Each version marks when a feature became deprecated; removal follows in a later release
