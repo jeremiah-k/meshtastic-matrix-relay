@@ -2591,7 +2591,7 @@ class TestGitOperations(BaseGitTest):
             "commit",
             "deadbeef",
             "repo",
-            "/tmp/plugins",
+            self.temp_plugins_dir,
         )
 
         self.assertFalse(result)
@@ -2609,7 +2609,7 @@ class TestGitOperations(BaseGitTest):
 
         for var in ("PIPX_HOME", "PIPX_LOCAL_VENVS"):
             os.environ.pop(var, None)
-        os.environ["PIPX_HOME"] = "/tmp/pipx-home"
+        os.environ["PIPX_HOME"] = os.path.join(self.temp_plugins_dir, "pipx-home")
 
         def _run_side_effect(cmd, *args, **kwargs):
             sys.modules["missingdep_pipx"] = ModuleType("missingdep_pipx")
