@@ -19,7 +19,7 @@ from mmrelay.constants.messages import (
     PING_MATRIX_RESPONSE,
     PORTNUM_TEXT_MESSAGE_APP,
 )
-from mmrelay.constants.plugins import MAX_PUNCTUATION_LENGTH
+from mmrelay.constants.plugins import MAX_PUNCTUATION_LENGTH, PING_COMMAND_REGEX
 from mmrelay.plugins.base_plugin import BasePlugin
 
 
@@ -106,7 +106,7 @@ class Plugin(BasePlugin):
         channel = packet.get("channel", 0)  # Default to channel 0 if not provided
 
         # Updated regex to match optional punctuation before and after "ping"
-        match = re.search(r"(?<!\w)([!?]*)(ping)([!?]*)(?!\w)", message, re.IGNORECASE)
+        match = PING_COMMAND_REGEX.search(message)
 
         if not match:
             return False

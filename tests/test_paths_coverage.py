@@ -12,6 +12,7 @@ from unittest.mock import patch
 import pytest
 
 from mmrelay.constants.app import LOG_FILENAME, WINDOWS_INSTALLER_DIR_NAME
+from mmrelay.constants.config import DEFAULT_CONFIG_FILENAME
 from mmrelay.paths import (
     E2EENotSupportedError,
     ensure_directories,
@@ -71,7 +72,9 @@ class TestGetHomeDir:
             local_app_data = Path(tmp_dir)
             installer_path = local_app_data / "Programs" / WINDOWS_INSTALLER_DIR_NAME
             installer_path.mkdir(parents=True, exist_ok=True)
-            (installer_path / "config.yaml").write_text("test: true", encoding="utf-8")
+            (installer_path / DEFAULT_CONFIG_FILENAME).write_text(
+                "test: true", encoding="utf-8"
+            )
 
             monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
             monkeypatch.delenv("MMRELAY_HOME", raising=False)
@@ -106,10 +109,10 @@ def test_get_config_paths_dedupes_when_explicit_matches_home() -> None:
         patch("mmrelay.paths.Path.home", return_value=Path("/same")),
         patch.object(Path, "exists", return_value=False),
     ):
-        candidates = get_config_paths(explicit="/same/config.yaml")
+        candidates = get_config_paths(explicit=f"/same/{DEFAULT_CONFIG_FILENAME}")
 
     assert len(candidates) == 1
-    assert candidates[0] == Path("/same/config.yaml")
+    assert candidates[0] == Path(f"/same/{DEFAULT_CONFIG_FILENAME}")
 
 
 def test_plugin_data_dir_prefers_discovered_community_plugin() -> None:
@@ -198,7 +201,7 @@ def test_get_legacy_dirs_includes_env_and_docker_sources(monkeypatch) -> None:
         base_dir.mkdir(parents=True, exist_ok=True)
         data_dir.mkdir(parents=True, exist_ok=True)
         docker_dir.mkdir(parents=True, exist_ok=True)
-        (docker_dir / "config.yaml").write_text("", encoding="utf-8")
+        (docker_dir / DEFAULT_CONFIG_FILENAME).write_text("", encoding="utf-8")
 
         monkeypatch.setenv("MMRELAY_BASE_DIR", str(base_dir))
         monkeypatch.setenv("MMRELAY_DATA_DIR", str(data_dir))

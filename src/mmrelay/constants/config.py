@@ -7,8 +7,10 @@ used throughout the configuration system.
 
 from typing import Final
 
-# Configuration file names
-DEFAULT_CONFIG_FILENAME: Final[str] = "config.yaml"
+from mmrelay.constants.app import CONFIG_FILENAME
+
+# Re-export CONFIG_FILENAME as DEFAULT_CONFIG_FILENAME for backwards compatibility
+DEFAULT_CONFIG_FILENAME: Final[str] = CONFIG_FILENAME
 
 # Configuration section names
 CONFIG_SECTION_MATRIX: Final[str] = "matrix"

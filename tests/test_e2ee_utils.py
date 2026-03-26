@@ -78,7 +78,7 @@ def test_credentials_found_in_legacy_location(
 
         # Mock paths_info with legacy sources
         mock_resolve_all_paths.return_value = {
-            "credentials_path": "/primary/matrix/credentials.json",
+            "credentials_path": f"/primary/matrix/{CREDENTIALS_FILENAME}",
             "legacy_sources": ["/legacy1", "/legacy2", "/legacy3"],
             "legacy_active": True,
         }
@@ -94,7 +94,7 @@ def test_credentials_found_in_legacy_location(
             Returns:
                 bool: True if the path refers to the credentials file in "legacy2", False otherwise.
             """
-            if "credentials.json" in path:
+            if CREDENTIALS_FILENAME in path:
                 # Primary location doesn't have it
                 if "primary" in path:
                     return False
@@ -156,7 +156,7 @@ def test_credentials_not_found_in_legacy_locations(
 
         # Mock paths_info with legacy sources
         mock_resolve_all_paths.return_value = {
-            "credentials_path": "/primary/matrix/credentials.json",
+            "credentials_path": f"/primary/matrix/{CREDENTIALS_FILENAME}",
             "legacy_sources": ["/legacy1", "/legacy2"],
             "legacy_active": True,
         }
@@ -188,7 +188,7 @@ def test_credentials_not_found_in_legacy_locations(
         paths_checked = [call[0][0] for call in calls]
         # Should have checked primary and both legacy locations
         assert len(paths_checked) >= 3
-        assert "/primary/matrix/credentials.json" in paths_checked
+        assert f"/primary/matrix/{CREDENTIALS_FILENAME}" in paths_checked
 
 
 @patch("sys.platform", "linux")
@@ -211,7 +211,7 @@ def test_credentials_in_legacy_during_deprecation_window(
 
     # Mock paths_info with legacy sources
     mock_resolve_all_paths.return_value = {
-        "credentials_path": "/primary/matrix/credentials.json",
+        "credentials_path": f"/primary/matrix/{CREDENTIALS_FILENAME}",
         "legacy_sources": ["/legacy1", "/legacy2"],
     }
 
@@ -226,7 +226,7 @@ def test_credentials_in_legacy_during_deprecation_window(
         Returns:
             bool: True if `path` contains "credentials.json" and "legacy2", False otherwise.
         """
-        if "credentials.json" in path:
+        if CREDENTIALS_FILENAME in path:
             # Primary doesn't have it
             if "primary" in path:
                 return False
@@ -251,7 +251,7 @@ def test_credentials_in_legacy_during_deprecation_window(
     paths_checked = [call[0][0] for call in calls]
     # Should have checked primary, legacy1, and legacy2
     assert len(paths_checked) >= 3
-    assert "/primary/matrix/credentials.json" in paths_checked
+    assert f"/primary/matrix/{CREDENTIALS_FILENAME}" in paths_checked
 
 
 @patch("sys.platform", "linux")
@@ -273,7 +273,7 @@ def test_no_credentials_during_deprecation_window(
 
     # Mock paths_info with legacy sources
     mock_resolve_all_paths.return_value = {
-        "credentials_path": "/primary/matrix/credentials.json",
+        "credentials_path": f"/primary/matrix/{CREDENTIALS_FILENAME}",
         "legacy_sources": ["/legacy1", "/legacy2"],
     }
 
@@ -300,7 +300,7 @@ def test_no_credentials_during_deprecation_window(
     paths_checked = [call[0][0] for call in calls]
     # Should have checked primary and both legacy locations
     assert len(paths_checked) >= 3
-    assert "/primary/matrix/credentials.json" in paths_checked
+    assert f"/primary/matrix/{CREDENTIALS_FILENAME}" in paths_checked
 
 
 @patch("sys.platform", "linux")
@@ -322,7 +322,7 @@ def test_deprecation_window_not_active(
 
     # Mock paths_info with legacy sources (should not be checked)
     mock_resolve_all_paths.return_value = {
-        "credentials_path": "/primary/matrix/credentials.json",
+        "credentials_path": f"/primary/matrix/{CREDENTIALS_FILENAME}",
         "legacy_sources": ["/legacy1", "/legacy2"],
     }
 
@@ -337,5 +337,5 @@ def test_deprecation_window_not_active(
 
     calls = mock_exists.call_args_list
     paths_checked = [call[0][0] for call in calls]
-    assert "/primary/matrix/credentials.json" in paths_checked
+    assert f"/primary/matrix/{CREDENTIALS_FILENAME}" in paths_checked
     assert not any("legacy" in path for path in paths_checked)

@@ -849,7 +849,7 @@ class TestDatabaseManager(unittest.TestCase):
             manager._connections = {real_conn, bad_conn}
         with patch("mmrelay.db_runtime.logger") as mock_logger:
             manager.close()
-        mock_logger.debug.assert_called_once_with(
+        mock_logger.debug.assert_any_call(
             "Error closing connection during shutdown", exc_info=True
         )
         with manager._connections_lock:

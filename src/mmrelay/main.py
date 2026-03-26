@@ -46,11 +46,11 @@ from mmrelay.constants.config import (
     REQUIRED_CONFIG_KEYS_WITHOUT_CREDENTIALS,
 )
 from mmrelay.constants.network import (
-    MATRIX_CLIENT_CLOSE_TIMEOUT_SECONDS,
-    MESHTASTIC_CLOSE_TIMEOUT_SECONDS,
-    NODEDB_BACKOFF_INITIAL_SECONDS,
-    NODEDB_BACKOFF_MAX_SECONDS,
-    NODEDB_SHUTDOWN_TIMEOUT_SECONDS,
+    MATRIX_CLIENT_CLOSE_TIMEOUT_SECS,
+    MESHTASTIC_CLOSE_TIMEOUT_SECS,
+    NODEDB_BACKOFF_INITIAL_SECS,
+    NODEDB_BACKOFF_MAX_SECS,
+    NODEDB_SHUTDOWN_TIMEOUT_SECS,
 )
 from mmrelay.constants.queue import DEFAULT_MESSAGE_DELAY
 from mmrelay.db_utils import (
@@ -451,7 +451,7 @@ async def main(config: dict[str, Any]) -> None:
         matrix_logger.info("Closing Matrix client...")
         try:
             await asyncio.wait_for(
-                matrix_client.close(), timeout=MATRIX_CLIENT_CLOSE_TIMEOUT_SECONDS
+                matrix_client.close(), timeout=MATRIX_CLIENT_CLOSE_TIMEOUT_SECS
             )
         except asyncio.TimeoutError:
             matrix_logger.error(
@@ -489,7 +489,7 @@ async def main(config: dict[str, Any]) -> None:
             await asyncio.to_thread(
                 meshtastic_utils._run_blocking_with_timeout,
                 _close_meshtastic,
-                timeout=MESHTASTIC_CLOSE_TIMEOUT_SECONDS,
+                timeout=MESHTASTIC_CLOSE_TIMEOUT_SECS,
                 label=f"meshtastic-client-close-{context.replace(' ', '-')}",
                 timeout_log_level=None,
             )
@@ -665,8 +665,8 @@ async def main(config: dict[str, Any]) -> None:
         NodeDB persistence in later releases.
         """
         restart_attempt = 0
-        backoff_seconds = NODEDB_BACKOFF_INITIAL_SECONDS
-        max_backoff_seconds = NODEDB_BACKOFF_MAX_SECONDS
+        backoff_seconds = NODEDB_BACKOFF_INITIAL_SECS
+        max_backoff_seconds = NODEDB_BACKOFF_MAX_SECS
         first_pass = True
 
         while first_pass or not shutdown_event.is_set():
@@ -714,7 +714,7 @@ async def main(config: dict[str, Any]) -> None:
                 if shutdown_event.is_set() or refresh_interval_seconds <= 0:
                     return
                 restart_attempt = 0
-                backoff_seconds = NODEDB_BACKOFF_INITIAL_SECONDS
+                backoff_seconds = NODEDB_BACKOFF_INITIAL_SECS
                 meshtastic_logger.warning(
                     "NodeDB name-cache refresh task exited unexpectedly; restarting in %.1fs",
                     backoff_seconds,
@@ -942,7 +942,7 @@ async def main(config: dict[str, Any]) -> None:
         await _await_background_task_shutdown(
             node_name_refresh_task,
             task_name="NodeDB name-cache refresh task",
-            timeout_seconds=NODEDB_SHUTDOWN_TIMEOUT_SECONDS,
+            timeout_seconds=NODEDB_SHUTDOWN_TIMEOUT_SECS,
         )
         await _await_background_task_shutdown(
             check_connection_task,

@@ -14,11 +14,7 @@ import pytest
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from mmrelay.constants.app import (
-    WINDOWS_STD_ERROR_HANDLE,
-    WINDOWS_STD_OUTPUT_HANDLE,
-    WINDOWS_VTP_FLAG,
-)
+from mmrelay.constants.app import WINDOWS_VTP_FLAG
 from mmrelay.windows_utils import (
     check_windows_requirements,
     get_windows_error_message,
@@ -212,6 +208,7 @@ class TestCheckWindowsRequirements(unittest.TestCase):
         result = check_windows_requirements()
 
         self.assertIsNotNone(result)
+        assert result is not None
         self.assertIn("Python 3.10+ is required", result)
 
     @patch("sys.platform", "win32")
@@ -225,6 +222,7 @@ class TestCheckWindowsRequirements(unittest.TestCase):
         result = check_windows_requirements()
 
         self.assertIsNotNone(result)
+        assert result is not None
         self.assertIn("path is very long", result)
 
     @patch("sys.platform", "win32")
@@ -237,6 +235,7 @@ class TestCheckWindowsRequirements(unittest.TestCase):
         result = check_windows_requirements()
 
         self.assertIsNotNone(result)
+        assert result is not None
         self.assertIn("Consider using a virtual environment", result)
 
     def test_check_windows_requirements_returns_none_when_clean(self):
@@ -255,7 +254,7 @@ class TestTestConfigGenerationWindows:
     """Test cases for test_config_generation_windows function."""
 
     @pytest.fixture(autouse=True)
-    def _setup_tmp_path(self, tmp_path):
+    def setup_tmp_path(self, tmp_path):
         self.tmp_path = tmp_path
 
     @patch("sys.platform", "linux")

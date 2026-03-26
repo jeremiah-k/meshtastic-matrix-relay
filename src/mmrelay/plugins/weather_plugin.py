@@ -39,6 +39,8 @@ from mmrelay.constants.plugins import (
 )
 from mmrelay.plugins.base_plugin import BasePlugin
 
+DEFAULT_WEATHER_MODE = "weather"
+
 
 class Plugin(BasePlugin):
     plugin_name = "weather"
@@ -63,15 +65,15 @@ class Plugin(BasePlugin):
         Normalize a command string to a supported forecast mode.
 
         Returns:
-            str: A valid mode from WEATHER_COMMANDS. Unrecognized or empty inputs yield 'weather'.
+            str: A valid mode from WEATHER_COMMANDS. Unrecognized or empty inputs yield the default.
         """
-        cmd = (mode or "weather").lower()
+        cmd = (mode or DEFAULT_WEATHER_MODE).lower()
         if cmd in WEATHER_COMMANDS:
             return cmd
-        return WEATHER_COMMANDS[0]
+        return DEFAULT_WEATHER_MODE
 
     def generate_forecast(
-        self, latitude: float, longitude: float, mode: str = "weather"
+        self, latitude: float, longitude: float, mode: str = DEFAULT_WEATHER_MODE
     ) -> str:
         """
         Generate a concise one-line weather forecast for the given GPS coordinates and requested mode.

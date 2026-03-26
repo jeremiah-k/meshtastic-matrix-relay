@@ -81,8 +81,8 @@ from mmrelay.constants.migration import (
     MIGRATION_STAGING_DIRNAME,
 )
 from mmrelay.constants.network import (
-    PROCESS_CHECK_SHORT_TIMEOUT_SECONDS,
-    PROCESS_CHECK_TIMEOUT_SECONDS,
+    PROCESS_CHECK_SHORT_TIMEOUT_SECS,
+    PROCESS_CHECK_TIMEOUT_SECS,
 )
 from mmrelay.log_utils import get_logger
 from mmrelay.paths import resolve_all_paths
@@ -301,7 +301,7 @@ def _is_mmrelay_running() -> bool:
                 [pgrep_path, "-f", r"(^|/)mmrelay($|\s)|python.*\bmmrelay\b"],
                 capture_output=True,
                 text=True,
-                timeout=PROCESS_CHECK_TIMEOUT_SECONDS,
+                timeout=PROCESS_CHECK_TIMEOUT_SECS,
             )
             if result.returncode == 0 and result.stdout.strip():
                 for pid_str in result.stdout.strip().split("\n"):
@@ -328,7 +328,7 @@ def _is_mmrelay_running() -> bool:
                                         ["ps", "-p", str(pid), "-o", "command="],
                                         capture_output=True,
                                         text=True,
-                                        timeout=PROCESS_CHECK_SHORT_TIMEOUT_SECONDS,
+                                        timeout=PROCESS_CHECK_SHORT_TIMEOUT_SECS,
                                     )
                                     if exe_result.returncode == 0:
                                         cmd = exe_result.stdout.strip()

@@ -105,8 +105,9 @@ async def test_process_queue_connection_error_requeues_message() -> None:
             description="retry-me",
         )
     )
-    queue._should_send_message = lambda: True
 
+    connected_client = MagicMock()
+    connected_client.is_connected.return_value = True
     fake_loop = MagicMock()
     fake_loop.run_in_executor.side_effect = OSError("transport down")
 
@@ -114,6 +115,8 @@ async def test_process_queue_connection_error_requeues_message() -> None:
         queue._running = False
 
     with (
+        patch.object(meshtastic_utils, "reconnecting", False),
+        patch.object(meshtastic_utils, "meshtastic_client", connected_client),
         patch("mmrelay.message_queue.asyncio.get_running_loop", return_value=fake_loop),
         patch(
             "mmrelay.message_queue.asyncio.sleep",
@@ -140,7 +143,9 @@ async def test_process_queue_logs_warning_when_send_result_is_none() -> None:
             description="none-result",
         )
     )
-    queue._should_send_message = lambda: True
+
+    connected_client = MagicMock()
+    connected_client.is_connected.return_value = True
 
     class _LoopStub:
         def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
@@ -158,6 +163,8 @@ async def test_process_queue_logs_warning_when_send_result_is_none() -> None:
         queue._running = False
 
     with (
+        patch.object(meshtastic_utils, "reconnecting", False),
+        patch.object(meshtastic_utils, "meshtastic_client", connected_client),
         patch("mmrelay.message_queue.asyncio.get_running_loop", return_value=loop_stub),
         patch(
             "mmrelay.message_queue.asyncio.sleep",
