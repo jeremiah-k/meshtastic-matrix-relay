@@ -232,21 +232,17 @@ class TestMessageQueue(unittest.TestCase):
 
         fake_task = MagicMock()
         fake_task.get_loop.return_value = fake_loop
+        fake_task.done.return_value = False
+        fake_task.add_done_callback.side_effect = lambda callback: callback(fake_task)
         queue._processor_task = fake_task
 
-        mock_future = MagicMock()
-        mock_future.result.return_value = None
+        fake_loop.call_soon_threadsafe.side_effect = lambda callback: callback()
 
-        with (
-            patch(
-                "asyncio.run_coroutine_threadsafe", return_value=mock_future
-            ) as mock_run,
-            patch("asyncio.shield", side_effect=lambda task: task),
-        ):
-            queue.stop()
+        queue.stop()
 
-        mock_run.assert_called_once()
-        mock_future.result.assert_called_once_with(timeout=1.0)
+        fake_loop.call_soon_threadsafe.assert_called_once()
+        fake_task.cancel.assert_called_once()
+        fake_task.add_done_callback.assert_called_once()
 
     def test_should_send_message_import_error_stops_queue(self):
         """_should_send_message should stop when meshtastic_utils import fails."""

@@ -166,29 +166,22 @@ class MessageQueue:
                     task.cancel()
                 elif task_loop.is_running():
                     # Cross-thread: use call_soon_threadsafe for cancel
-                    task_loop.call_soon_threadsafe(task.cancel)
+                    task_done = threading.Event()
 
-                    # Create a proper coroutine for awaiting the task
-                    async def _await_processor_task() -> None:
-                        await task
+                    def _cancel_on_loop() -> None:
+                        task.cancel()
+                        if task.done():
+                            task_done.set()
+                            return
 
-                    from asyncio import run_coroutine_threadsafe
+                        def _mark_done(_finished_task: asyncio.Task[Any]) -> None:
+                            task_done.set()
 
-                    coro = _await_processor_task()
-                    fut: Any | None = None
-                    try:
-                        fut = run_coroutine_threadsafe(coro, task_loop)
-                    except Exception:
-                        # Submission failed - close coroutine to avoid warning
-                        coro.close()
+                        task.add_done_callback(_mark_done)
 
-                    if fut is not None:
-                        try:
-                            # Wait for completion; ignore exceptions
-                            fut.result(timeout=TASK_SHUTDOWN_TIMEOUT_SEC)
-                        except Exception:
-                            # Coroutine already scheduled on loop, will be cleaned up
-                            pass
+                    with contextlib.suppress(RuntimeError):
+                        task_loop.call_soon_threadsafe(_cancel_on_loop)
+                    task_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC)
                 else:
                     # Non-running loop: safe to cancel directly, then run_until_complete
                     task.cancel()
