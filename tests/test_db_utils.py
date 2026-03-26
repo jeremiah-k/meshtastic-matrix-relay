@@ -12,6 +12,7 @@ Tests the SQLite database operations including:
 """
 
 import asyncio
+import importlib
 import json
 import os
 import shutil
@@ -33,6 +34,7 @@ from mmrelay.db_utils import (
     _parse_int,
     _reset_db_manager,
     _resolve_database_options,
+    _validate_identifier,
     async_prune_message_map,
     async_store_message_map,
     build_node_name_state,
@@ -207,6 +209,37 @@ class TestDbUtils(unittest.TestCase):
         path = get_db_path()
         self.assertEqual(path, self.test_db_path)
 
+    def test_validate_identifier_rejects_unknown_name(self):
+        """_validate_identifier should reject identifiers not in allowlist."""
+        self.assertEqual(
+            _validate_identifier("message_map", frozenset({"message_map"})),
+            "message_map",
+        )
+        with self.assertRaises(ValueError):
+            _validate_identifier("DROP TABLE", frozenset({"message_map"}))
+
+    def test_db_utils_import_guard_for_message_constants(self):
+        """Changing message-map constants should fail module import guard."""
+        import mmrelay.constants.database as db_consts
+        import mmrelay.db_utils as db_utils_mod
+
+        with patch.object(db_consts, "MESSAGE_MAP_TABLE", "changed_message_map"):
+            with self.assertRaises(RuntimeError):
+                importlib.reload(db_utils_mod)
+
+        importlib.reload(db_utils_mod)
+
+    def test_db_utils_import_guard_for_names_constants(self):
+        """Changing names-table constants should fail static SQL import guard."""
+        import mmrelay.constants.database as db_consts
+        import mmrelay.db_utils as db_utils_mod
+
+        with patch.object(db_consts, "NAMES_TABLE_LONGNAMES", "bad_names_table"):
+            with self.assertRaises(RuntimeError):
+                importlib.reload(db_utils_mod)
+
+        importlib.reload(db_utils_mod)
+
     def test_initialize_database(self):
         """
         Verify that the database is initialized with the correct schema and required tables.
@@ -250,6 +283,69 @@ class TestDbUtils(unittest.TestCase):
             cursor.execute("PRAGMA table_info(message_map)")
             columns = [row[1] for row in cursor.fetchall()]
             self.assertIn("meshtastic_meshnet", columns)
+
+    def test_initialize_database_migrates_legacy_message_map_with_mesh_column(self):
+        """Legacy table with meshnet should be merged then dropped."""
+        with sqlite3.connect(self.test_db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "CREATE TABLE message_map (meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
+            )
+            cursor.execute(
+                "CREATE TABLE message_map_legacy (meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
+            )
+            cursor.execute(
+                "INSERT INTO message_map_legacy VALUES (?, ?, ?, ?, ?)",
+                ("!123", "$evt1", "!room", "hello", "mesh-a"),
+            )
+            conn.commit()
+
+        initialize_database()
+
+        with sqlite3.connect(self.test_db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT meshtastic_id, matrix_event_id, meshtastic_meshnet FROM message_map"
+            )
+            rows = cursor.fetchall()
+            self.assertEqual(rows, [("!123", "$evt1", "mesh-a")])
+
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='message_map_legacy'"
+            )
+            self.assertIsNone(cursor.fetchone())
+
+    def test_initialize_database_rebuilds_non_text_message_map_schema(self):
+        """INTEGER meshtastic_id schema should be rebuilt to TEXT with meshnet column."""
+        with sqlite3.connect(self.test_db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "CREATE TABLE message_map (meshtastic_id INTEGER, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT)"
+            )
+            cursor.execute(
+                "INSERT INTO message_map VALUES (?, ?, ?, ?)",
+                (123, "$evt2", "!room2", "payload"),
+            )
+            # Pre-create legacy table to exercise legacy_exists cleanup in rebuild branch.
+            cursor.execute(
+                "CREATE TABLE message_map_legacy (meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
+            )
+            conn.commit()
+
+        initialize_database()
+
+        with sqlite3.connect(self.test_db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(message_map)")
+            table_info = {row[1]: row[2].upper() for row in cursor.fetchall()}
+            self.assertEqual(table_info["meshtastic_id"], "TEXT")
+            self.assertIn("meshtastic_meshnet", table_info)
+
+            cursor.execute(
+                "SELECT meshtastic_id, matrix_event_id, meshtastic_meshnet FROM message_map"
+            )
+            rows = cursor.fetchall()
+            self.assertEqual(rows, [("123", "$evt2", None)])
 
     def test_longname_operations(self):
         """
@@ -1119,6 +1215,18 @@ class TestDbUtils(unittest.TestCase):
 
         manager = _get_db_manager()
 
+        async def _to_thread_inline(func, *args, **kwargs):
+            """
+            Execute asyncio.to_thread call sites inline for deterministic test behavior.
+            """
+            return func(*args, **kwargs)
+
+        async def _run_async_inline(func, *, write=False):
+            """
+            Execute async DB work inline via run_sync to avoid threadpool timing flake.
+            """
+            return manager.run_sync(func, write=write)
+
         async def exercise():
             """
             Store two message-map entries and prune the message map to keep only the most recent entry.
@@ -1133,7 +1241,14 @@ class TestDbUtils(unittest.TestCase):
             )
             await async_prune_message_map(1)
 
-        with patch("mmrelay.db_utils._get_db_manager", return_value=manager):
+        with (
+            patch(
+                "mmrelay.db_utils.asyncio.to_thread",
+                side_effect=_to_thread_inline,
+            ),
+            patch("mmrelay.db_utils._get_db_manager", return_value=manager),
+            patch.object(manager, "run_async", side_effect=_run_async_inline),
+        ):
             asyncio.run(exercise())
 
         # Oldest entry should have been pruned

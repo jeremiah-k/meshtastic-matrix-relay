@@ -11,6 +11,7 @@ Inline comments explain test assertions and expected behavior for clarity.
 import os
 import shutil
 import sqlite3
+import subprocess
 import sys
 from pathlib import Path
 from unittest import mock
@@ -24,6 +25,9 @@ from mmrelay.migrate import (
     _dir_has_entries,
     _find_legacy_data,
     _get_most_recent_database,
+    _get_staging_path,
+    _is_mmrelay_running,
+    _is_windows_file_in_use_error,
     _path_is_within_home,
     migrate_config,
     migrate_credentials,
@@ -127,6 +131,142 @@ class TestFindLegacyData:
         assert len(findings) == 1
         assert findings[0]["type"] == "credentials"
         assert findings[0]["path"] == str(creds)
+
+
+class TestMigrateAdditionalCoverage:
+    """Targeted coverage tests for migration helper branches."""
+
+    def test_is_windows_file_in_use_error_detects_winerror(self, monkeypatch) -> None:
+        """Windows winerror lock codes should be detected as file-in-use errors."""
+        exc = OSError("in use")
+        exc.winerror = 32  # WINERR_SHARING_VIOLATION
+        monkeypatch.setattr(sys, "platform", "win32")
+
+        assert _is_windows_file_in_use_error(exc) is True
+
+    def test_is_mmrelay_running_uses_ps_fallback_when_proc_cmdline_missing(
+        self, monkeypatch
+    ) -> None:
+        """When /proc cmdline is unavailable, ps output should be used for verification."""
+        monkeypatch.setattr(sys, "platform", "linux")
+        monkeypatch.setattr(
+            "mmrelay.migrate.shutil.which", lambda _cmd: "/usr/bin/pgrep"
+        )
+        monkeypatch.setattr("mmrelay.migrate.os.getpid", lambda: 100)
+        monkeypatch.setattr(Path, "exists", lambda _self: False)
+
+        responses = [
+            subprocess.CompletedProcess(
+                args=["pgrep", "-f", "mmrelay"], returncode=0, stdout="101\n", stderr=""
+            ),
+            subprocess.CompletedProcess(
+                args=["ps", "-p", "101", "-o", "command="],
+                returncode=0,
+                stdout="/usr/bin/mmrelay --daemon\n",
+                stderr="",
+            ),
+        ]
+
+        with mock.patch("mmrelay.migrate.subprocess.run", side_effect=responses):
+            assert _is_mmrelay_running() is True
+
+    def test_migrate_config_success_cleans_staging_file(self, tmp_path: Path) -> None:
+        """Successful config migration should unlink any leftover staging file."""
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        (legacy_root / "config.yaml").write_text("matrix: {}\n", encoding="utf-8")
+
+        new_home = tmp_path / "new_home"
+        new_home.mkdir()
+        staging_path = _get_staging_path(new_home, "config")
+
+        with mock.patch("mmrelay.migrate._finalize_move", return_value=None):
+            result = migrate_config([legacy_root], new_home, dry_run=False, force=False)
+
+        assert result["success"] is True
+        assert staging_path.exists() is False
+
+    def test_migrate_database_skips_paths_resolving_to_target_and_reports_already_migrated(
+        self, tmp_path: Path
+    ) -> None:
+        """Candidate paths resolving to target should be skipped and return already_migrated."""
+        new_home = tmp_path / "home"
+        new_db_dir = new_home / "database"
+        new_db_dir.mkdir(parents=True)
+        target_db = new_db_dir / "meshtastic.sqlite"
+        sqlite3.connect(target_db).close()
+
+        symlink_root = tmp_path / "symlink_root"
+        symlink_root.mkdir()
+        (symlink_root / "meshtastic.sqlite").symlink_to(target_db)
+
+        partial_root = tmp_path / "partial_root"
+        partial_root.mkdir()
+        (partial_root / "data").symlink_to(new_db_dir, target_is_directory=True)
+
+        result = migrate_database(
+            [symlink_root, partial_root, new_home],
+            new_home,
+            dry_run=False,
+            force=True,
+        )
+
+        assert result["success"] is True
+        assert result["action"] == "already_migrated"
+
+    def test_migrate_database_inserts_most_recent_and_appends_extra_sidecars(
+        self, tmp_path: Path
+    ) -> None:
+        """Selected group should include inserted main DB and discovered sidecars."""
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        candidate = legacy_root / "meshtastic.sqlite"
+        sqlite3.connect(candidate).close()
+
+        most_recent = legacy_root / "canonical.sqlite"
+        sqlite3.connect(most_recent).close()
+        extra_sidecar = legacy_root / "canonical.sqlite-wal"
+        extra_sidecar.write_text("", encoding="utf-8")
+
+        new_home = tmp_path / "new_home"
+        new_home.mkdir()
+
+        from mmrelay import migrate as migrate_mod
+
+        original_get_db_base_path = migrate_mod._get_db_base_path
+
+        def _patched_get_db_base_path(path: Path) -> Path:
+            if path == candidate:
+                return most_recent
+            return original_get_db_base_path(path)
+
+        def _patched_collect_sidecars(db_path: Path, out: list[Path]) -> None:
+            if db_path == most_recent:
+                out.append(extra_sidecar)
+
+        with (
+            mock.patch(
+                "mmrelay.migrate._get_most_recent_database", return_value=most_recent
+            ),
+            mock.patch(
+                "mmrelay.migrate._get_db_base_path",
+                side_effect=_patched_get_db_base_path,
+            ),
+            mock.patch(
+                "mmrelay.migrate._collect_db_sidecars",
+                side_effect=_patched_collect_sidecars,
+            ),
+        ):
+            result = migrate_database(
+                [legacy_root],
+                new_home,
+                dry_run=False,
+                force=True,
+            )
+
+        assert result["success"] is True
+        assert (new_home / "database" / most_recent.name).exists()
+        assert (new_home / "database" / extra_sidecar.name).exists()
 
     def test_find_legacy_data_database(self, tmp_path: Path) -> None:
         """Test finding meshtastic.sqlite."""

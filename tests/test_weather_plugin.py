@@ -308,6 +308,12 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(cmd)
         self.assertIsNone(args)
 
+    def test_normalize_mode_falls_back_to_weather(self):
+        """Unknown forecast mode should normalize to the default weather command."""
+        self.assertEqual(self.plugin._normalize_mode("hourly"), "hourly")
+        self.assertEqual(self.plugin._normalize_mode("unsupported-mode"), "weather")
+        self.assertEqual(self.plugin._normalize_mode(""), "weather")
+
     async def test_handle_room_message_with_override(self):
         """
         Matrix-side weather command should parse coordinates and send a forecast.
@@ -614,6 +620,36 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Error", forecast)
 
     @patch("mmrelay.plugins.weather_plugin.requests.get")
+    def test_generate_forecast_malformed_data_returns_parse_error(self, mock_get):
+        """Malformed payloads should be caught by the parse-error handler."""
+        malformed_payload = {
+            "current_weather": None,
+            "hourly": {},
+        }
+        mock_get.return_value = _make_ok_response(malformed_payload)
+
+        forecast = self.plugin.generate_forecast(40.7128, -74.0060)
+        self.assertEqual(forecast, "Error parsing weather data.")
+
+    def test_build_daily_forecast_imperial_converts_temperatures(self):
+        """Daily forecast builder should convert temperatures in imperial mode."""
+        daily_data = {
+            "daily": {
+                "weathercode": [1],
+                "temperature_2m_max": [10.0],
+                "temperature_2m_min": [0.0],
+                "time": ["2026-03-26"],
+            }
+        }
+        output = self.plugin._build_daily_forecast(
+            daily_data,
+            units="imperial",
+            temperature_unit="°F",
+            daily_days=1,
+        )
+        self.assertIn("50.0°F/32.0°F", output)
+
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
     def test_generate_forecast_empty_hourly_data(self, mock_get):
         """Test that empty hourly data is handled gracefully."""
         empty_hourly_data = {
@@ -727,6 +763,25 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
             packet, "formatted_message", "longname", "meshnet_name"
         )
         self.assertFalse(result)
+
+    def test_parse_location_override_validates_format_and_bounds(self):
+        """Location override parser should accept valid coords and reject invalid input."""
+        self.assertEqual(
+            self.plugin._parse_location_override("40.7128,-74.0060"),
+            (40.7128, -74.006),
+        )
+        self.assertIsNone(self.plugin._parse_location_override("40.7"))
+        self.assertIsNone(self.plugin._parse_location_override("95,10"))
+        self.assertIsNone(self.plugin._parse_location_override("abc,def"))
+
+    @patch("mmrelay.plugins.weather_plugin.requests.get")
+    def test_geocode_location_request_error_returns_none(self, mock_get):
+        """Request failures during geocoding should return None."""
+        import requests
+
+        mock_get.side_effect = requests.exceptions.RequestException("network down")
+        self.assertIsNone(self.plugin._geocode_location("Chicago"))
+        self.plugin.logger.exception.assert_called_with("Error geocoding location")
 
     @patch("mmrelay.meshtastic_utils.connect_meshtastic")
     async def test_handle_meshtastic_message_no_weather_command(self, mock_connect):

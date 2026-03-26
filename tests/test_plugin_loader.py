@@ -2310,6 +2310,349 @@ class TestGitOperations(BaseGitTest):
             result = clone_or_update_repo(repo_url, ref, plugins_dir)
             self.assertFalse(result)
 
+    @patch("mmrelay.plugin_loader._run")
+    def test_run_git_merges_custom_env(self, mock_run):
+        """Custom environment variables should be merged into git subprocess env."""
+        pl._run_git(
+            ["git", "status"],
+            env={"CUSTOM_FLAG": "1", "GIT_TERMINAL_PROMPT": "1"},
+        )
+
+        env = mock_run.call_args.kwargs["env"]
+        self.assertEqual(env["CUSTOM_FLAG"], "1")
+        # Caller-provided value must be preserved (setdefault behavior).
+        self.assertEqual(env["GIT_TERMINAL_PROMPT"], "1")
+
+    @patch("mmrelay.plugin_loader.logger")
+    @patch("mmrelay.plugin_loader._fetch_commit_with_fallback", return_value=True)
+    @patch("mmrelay.plugin_loader._run_git")
+    def test_update_existing_repo_to_commit_logs_exception_on_final_checkout_failure(
+        self, mock_run_git, _mock_fetch, mock_logger
+    ):
+        """Final checkout failure after fetch should hit the outer error handler."""
+
+        def _side_effect(cmd, *args, **kwargs):
+            if cmd[-2:] == ["rev-parse", "HEAD"]:
+                return subprocess.CompletedProcess(cmd, 0, stdout="head\n", stderr="")
+            if cmd[-1].endswith("^{commit}"):
+                raise subprocess.CalledProcessError(1, cmd)
+            if cmd[-2] == "checkout":
+                raise subprocess.CalledProcessError(1, cmd)
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        mock_run_git.side_effect = _side_effect
+
+        result = pl._update_existing_repo_to_commit(
+            "/tmp/repo",
+            "deadbeef",
+            "repo",
+        )
+
+        self.assertFalse(result)
+        mock_logger.exception.assert_called_with(
+            "Failed to checkout commit %s for %s",
+            "deadbeef",
+            "repo",
+        )
+
+    @patch("mmrelay.plugin_loader._run_git")
+    def test_try_fetch_and_checkout_tag_uses_explicit_refspec_fallback(
+        self, mock_run_git
+    ):
+        """Tag fetch should fall back to explicit refspec when direct and --tags fail."""
+
+        def _side_effect(cmd, *args, **kwargs):
+            if cmd == [
+                "git",
+                "-C",
+                "/tmp/repo",
+                "fetch",
+                "origin",
+                "refs/tags/v1.0.0",
+            ] or cmd == ["git", "-C", "/tmp/repo", "fetch", "--tags"]:
+                raise subprocess.CalledProcessError(1, cmd)
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        mock_run_git.side_effect = _side_effect
+
+        result = pl._try_fetch_and_checkout_tag("/tmp/repo", "v1.0.0", "repo")
+        self.assertTrue(result)
+        self.assertIn(
+            call(
+                [
+                    "git",
+                    "-C",
+                    "/tmp/repo",
+                    "fetch",
+                    "origin",
+                    "refs/tags/v1.0.0:refs/tags/v1.0.0",
+                ],
+                timeout=120,
+            ),
+            mock_run_git.call_args_list,
+        )
+
+    @patch("mmrelay.plugin_loader.logger")
+    @patch(
+        "mmrelay.plugin_loader._run_git",
+        side_effect=subprocess.CalledProcessError(1, "git"),
+    )
+    def test_fallback_to_default_branches_logs_warning_when_all_fail(
+        self, _mock_run_git, mock_logger
+    ):
+        """Default branch fallback should warn when no branch can be checked out."""
+        result = pl._fallback_to_default_branches(
+            "/tmp/repo",
+            ["main", "master"],
+            "v1.0.0",
+            "repo",
+        )
+
+        self.assertFalse(result)
+        mock_logger.warning.assert_called_with(
+            "Could not checkout any branch for repo, using current state"
+        )
+
+    @patch("mmrelay.plugin_loader.logger")
+    @patch("mmrelay.plugin_loader._run_git", side_effect=FileNotFoundError())
+    def test_update_existing_repo_to_branch_or_tag_handles_missing_git_binary(
+        self, _mock_run_git, mock_logger
+    ):
+        """Missing git during remote fetch should be logged and return False."""
+        result = pl._update_existing_repo_to_branch_or_tag(
+            "/tmp/repo",
+            "branch",
+            "main",
+            "repo",
+            False,
+            ["main", "master"],
+        )
+        self.assertFalse(result)
+        mock_logger.exception.assert_called_with(
+            "Error updating repository %s; git not found.",
+            "repo",
+        )
+
+    @patch("mmrelay.plugin_loader._run_git")
+    def test_update_existing_repo_to_branch_or_tag_returns_true_when_tag_matches_head(
+        self, mock_run_git
+    ):
+        """Tag update should short-circuit when HEAD already matches tag commit."""
+
+        def _side_effect(cmd, *args, **kwargs):
+            if cmd[-2:] == ["fetch", "origin"]:
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+            if cmd[-2:] == ["rev-parse", "HEAD"]:
+                return subprocess.CompletedProcess(cmd, 0, stdout="abc123\n", stderr="")
+            if cmd[-1] == "v1.0.0^{commit}":
+                return subprocess.CompletedProcess(cmd, 0, stdout="abc123\n", stderr="")
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        mock_run_git.side_effect = _side_effect
+
+        result = pl._update_existing_repo_to_branch_or_tag(
+            "/tmp/repo",
+            "tag",
+            "v1.0.0",
+            "repo",
+            False,
+            ["main", "master"],
+        )
+
+        self.assertTrue(result)
+
+    @patch("mmrelay.plugin_loader._try_fetch_and_checkout_tag", return_value=True)
+    @patch("mmrelay.plugin_loader._run_git")
+    def test_update_existing_repo_to_branch_or_tag_uses_tag_fetch_helper(
+        self, mock_run_git, mock_try_fetch_tag
+    ):
+        """When tag differs from HEAD, update flow should call tag fetch/checkout helper."""
+
+        def _side_effect(cmd, *args, **kwargs):
+            if cmd[-2:] == ["fetch", "origin"]:
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+            if cmd[-2:] == ["rev-parse", "HEAD"]:
+                return subprocess.CompletedProcess(cmd, 0, stdout="abc123\n", stderr="")
+            if cmd[-1] == "v1.0.1^{commit}":
+                return subprocess.CompletedProcess(cmd, 0, stdout="def456\n", stderr="")
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        mock_run_git.side_effect = _side_effect
+
+        result = pl._update_existing_repo_to_branch_or_tag(
+            "/tmp/repo",
+            "tag",
+            "v1.0.1",
+            "repo",
+            False,
+            ["main", "master"],
+        )
+
+        self.assertTrue(result)
+        mock_try_fetch_tag.assert_called_once_with("/tmp/repo", "v1.0.1", "repo")
+
+    @patch("mmrelay.plugin_loader.os.path.isdir", return_value=False)
+    @patch("mmrelay.plugin_loader._try_fetch_and_checkout_tag")
+    @patch("mmrelay.plugin_loader._run_git")
+    def test_clone_new_repo_to_branch_or_tag_tag_returns_when_commit_matches(
+        self, mock_run_git, mock_try_tag, _mock_isdir
+    ):
+        """Tag clones should return early when cloned HEAD already equals tag commit."""
+
+        def _side_effect(cmd, *args, **kwargs):
+            if cmd[:3] == ["git", "clone", "--filter=blob:none"]:
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+            if cmd[-2:] == ["rev-parse", "HEAD"]:
+                return subprocess.CompletedProcess(cmd, 0, stdout="abc123\n", stderr="")
+            if cmd[-1] == "v2.0.0^{commit}":
+                return subprocess.CompletedProcess(cmd, 0, stdout="abc123\n", stderr="")
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        mock_run_git.side_effect = _side_effect
+
+        result = pl._clone_new_repo_to_branch_or_tag(
+            "https://github.com/user/repo.git",
+            "/tmp/plugins/repo",
+            "tag",
+            "v2.0.0",
+            "repo",
+            "/tmp/plugins",
+            False,
+        )
+
+        self.assertTrue(result)
+        mock_try_tag.assert_not_called()
+
+    @patch("mmrelay.plugin_loader.logger")
+    @patch("mmrelay.plugin_loader._update_existing_repo_to_commit")
+    @patch("mmrelay.plugin_loader.os.path.isdir", return_value=True)
+    def test_clone_or_update_repo_validated_handles_update_exception(
+        self, _mock_isdir, mock_update_commit, mock_logger
+    ):
+        """Validated update path should catch and log raised git errors."""
+        mock_update_commit.side_effect = subprocess.TimeoutExpired("git", 120)
+
+        result = pl._clone_or_update_repo_validated(
+            "https://github.com/user/repo.git",
+            "commit",
+            "deadbeef",
+            "repo",
+            "/tmp/plugins",
+        )
+
+        self.assertFalse(result)
+        mock_logger.exception.assert_called_once()
+
+    @patch("mmrelay.plugin_loader.logger")
+    @patch("mmrelay.plugin_loader._clone_new_repo_to_commit")
+    @patch("mmrelay.plugin_loader.os.path.isdir", return_value=False)
+    def test_clone_or_update_repo_validated_handles_clone_exception(
+        self, _mock_isdir, mock_clone_commit, mock_logger
+    ):
+        """Validated clone path should catch and log raised git errors."""
+        mock_clone_commit.side_effect = FileNotFoundError("git")
+
+        result = pl._clone_or_update_repo_validated(
+            "https://github.com/user/repo.git",
+            "commit",
+            "deadbeef",
+            "repo",
+            "/tmp/plugins",
+        )
+
+        self.assertFalse(result)
+        mock_logger.exception.assert_called_once()
+
+    def test_load_plugins_from_directory_auto_install_uses_pipx_inject(self):
+        """Missing deps should use pipx inject when running inside pipx."""
+        plugin_file = os.path.join(self.temp_plugins_dir, "pipx_plugin.py")
+        with open(plugin_file, "w", encoding="utf-8") as handle:
+            handle.write("import missingdep_pipx\n\nclass Plugin:\n    pass\n")
+
+        for var in ("PIPX_HOME", "PIPX_LOCAL_VENVS"):
+            os.environ.pop(var, None)
+        os.environ["PIPX_HOME"] = "/tmp/pipx-home"
+
+        def _run_side_effect(cmd, *args, **kwargs):
+            sys.modules["missingdep_pipx"] = ModuleType("missingdep_pipx")
+            return subprocess.CompletedProcess(args=cmd, returncode=0)
+
+        try:
+            with (
+                patch(
+                    "mmrelay.plugin_loader.shutil.which", return_value="/usr/bin/pipx"
+                ),
+                patch(
+                    "mmrelay.plugin_loader._run", side_effect=_run_side_effect
+                ) as mock_run,
+            ):
+                plugins = load_plugins_from_directory(self.temp_plugins_dir)
+        finally:
+            os.environ.pop("PIPX_HOME", None)
+            sys.modules.pop("missingdep_pipx", None)
+
+        self.assertEqual(len(plugins), 1)
+        mock_run.assert_any_call(
+            ["/usr/bin/pipx", "inject", "mmrelay", "missingdep_pipx"],
+            timeout=pl.PIP_INSTALL_MISSING_DEP_TIMEOUT,
+        )
+
+    def test_load_plugins_from_directory_auto_install_pip_adds_user_flag(self):
+        """Outside a venv, auto-install should append --user to pip install command."""
+        plugin_file = os.path.join(self.temp_plugins_dir, "pip_plugin.py")
+        with open(plugin_file, "w", encoding="utf-8") as handle:
+            handle.write("import missingdep_pip\n\nclass Plugin:\n    pass\n")
+
+        for var in ("PIPX_HOME", "PIPX_LOCAL_VENVS", "VIRTUAL_ENV"):
+            os.environ.pop(var, None)
+
+        def _run_side_effect(cmd, *args, **kwargs):
+            sys.modules["missingdep_pip"] = ModuleType("missingdep_pip")
+            return subprocess.CompletedProcess(args=cmd, returncode=0)
+
+        try:
+            with (
+                patch.object(pl.sys, "prefix", "/usr"),
+                patch.object(pl.sys, "base_prefix", "/usr"),
+                patch(
+                    "mmrelay.plugin_loader._run", side_effect=_run_side_effect
+                ) as mock_run,
+            ):
+                plugins = load_plugins_from_directory(self.temp_plugins_dir)
+        finally:
+            sys.modules.pop("missingdep_pip", None)
+
+        self.assertEqual(len(plugins), 1)
+        pip_calls = [c for c in mock_run.call_args_list if "pip" in c.args[0]]
+        self.assertTrue(pip_calls)
+        self.assertIn("--user", pip_calls[0].args[0])
+
+    @patch("mmrelay.plugin_loader.logger")
+    def test_load_plugins_from_directory_auto_install_failure_logs_manual_instructions(
+        self, mock_logger
+    ):
+        """Auto-install subprocess errors should log manual install guidance."""
+        plugin_file = os.path.join(self.temp_plugins_dir, "fail_plugin.py")
+        with open(plugin_file, "w", encoding="utf-8") as handle:
+            handle.write("import missingdep_fail\n\nclass Plugin:\n    pass\n")
+
+        for var in ("PIPX_HOME", "PIPX_LOCAL_VENVS", "VIRTUAL_ENV"):
+            os.environ.pop(var, None)
+
+        with patch(
+            "mmrelay.plugin_loader._run",
+            side_effect=subprocess.CalledProcessError(1, "pip"),
+        ):
+            plugins = load_plugins_from_directory(self.temp_plugins_dir)
+
+        self.assertEqual(plugins, [])
+        self.assertTrue(
+            any(
+                "Failed to automatically install missingdep_fail" in str(c.args[0])
+                for c in mock_logger.exception.call_args_list
+            )
+        )
+
 
 class TestCommandRunner(unittest.TestCase):
     """Verify helper command execution behavior."""

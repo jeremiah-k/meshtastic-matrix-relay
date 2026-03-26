@@ -413,6 +413,55 @@ class TestHandleMatrixError:
         assert result is True
         mock_logger.error.assert_called()
 
+    @patch("mmrelay.cli_utils._get_logger")
+    def test_handle_matrix_error_login_server_status_code(self, mock_get_logger):
+        """Nio login/logout errors with 5xx status should be categorized as server errors."""
+        from mmrelay.cli_utils import NioLoginError, _handle_matrix_error
+
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
+
+        error = MagicMock(spec=NioLoginError)
+        error.status_code = 503
+        error.errcode = None
+
+        result = _handle_matrix_error(error, "Password verification")
+        assert result is True
+        mock_logger.error.assert_called()
+
+    @patch("mmrelay.cli_utils._get_logger")
+    def test_handle_matrix_error_login_other_status_code_sets_detail(
+        self, mock_get_logger
+    ):
+        """Non-auth, non-5xx login errors should flow through the 'other' category."""
+        from mmrelay.cli_utils import NioLogoutError, _handle_matrix_error
+
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
+
+        error = MagicMock(spec=NioLogoutError)
+        error.status_code = 418
+        error.errcode = "M_UNKNOWN"
+
+        result = _handle_matrix_error(error, "Logout")
+        assert result is True
+        mock_logger.error.assert_called()
+
+    @patch("mmrelay.cli_utils._get_logger")
+    def test_handle_matrix_error_unknown_connection_string_maps_to_network(
+        self, mock_get_logger
+    ):
+        """Fallback string matching should classify connection/timeout errors as network."""
+        from mmrelay.cli_utils import _handle_matrix_error
+
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
+
+        error = Exception("Connection timeout while contacting homeserver")
+        result = _handle_matrix_error(error, "Server logout", log_level="warning")
+        assert result is True
+        mock_logger.warning.assert_called()
+
 
 class TestLogoutMatrixBot:
     """Test the logout_matrix_bot function."""

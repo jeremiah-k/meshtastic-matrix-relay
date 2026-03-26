@@ -18,7 +18,7 @@ import unittest
 from concurrent.futures import TimeoutError as ConcurrentTimeoutError
 from types import SimpleNamespace
 from typing import Any, Callable
-from unittest.mock import AsyncMock, MagicMock, Mock, mock_open, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, Mock, mock_open, patch
 
 import pytest
 from meshtastic.mesh_interface import BROADCAST_NUM
@@ -3092,6 +3092,67 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
         mock_logger.warning.assert_not_called()
 
     @patch("mmrelay.meshtastic_utils.logger")
+    def test_resolve_plugin_timeout_zero_logs_warning(self, mock_logger):
+        """Non-positive timeout values should fall back and log a warning."""
+        from mmrelay.meshtastic_utils import _resolve_plugin_timeout
+
+        result = _resolve_plugin_timeout({"meshtastic": {"plugin_timeout": 0}}, 7.0)
+        self.assertEqual(result, 7.0)
+        mock_logger.warning.assert_called_once()
+
+    @patch("mmrelay.meshtastic_utils.ThreadPoolExecutor")
+    def test_maybe_reset_ble_executor_handles_cancel_timeout_and_stale_executor_shutdown(
+        self, mock_thread_pool
+    ):
+        """BLE executor reset should cancel stale futures and shutdown old executors."""
+        import mmrelay.meshtastic_utils as mu
+
+        old_executor = mu._ble_executor
+        old_future = mu._ble_future
+        old_future_address = mu._ble_future_address
+        old_future_started_at = mu._ble_future_started_at
+        old_future_timeout_secs = mu._ble_future_timeout_secs
+        old_threshold = mu._ble_timeout_reset_threshold
+        old_timeout_counts = dict(mu._ble_timeout_counts)
+        old_orphans = dict(mu._ble_executor_orphaned_workers_by_address)
+        old_degraded = set(mu._ble_executor_degraded_addresses)
+
+        stale_executor = Mock()
+        stale_executor._shutdown = False
+        stale_future = Mock()
+        stale_future.done.return_value = False
+        stale_future.result.side_effect = ConcurrentTimeoutError()
+
+        replacement_executor = Mock()
+        mock_thread_pool.return_value = replacement_executor
+
+        try:
+            mu._ble_timeout_reset_threshold = 1
+            mu._ble_executor = stale_executor
+            mu._ble_future = stale_future
+            mu._ble_future_address = "AA:BB:CC:DD:EE:FF"
+            mu._ble_future_started_at = 1.0
+            mu._ble_future_timeout_secs = 1.0
+            mu._ble_timeout_counts = {"AA:BB:CC:DD:EE:FF": 4}
+            mu._ble_executor_orphaned_workers_by_address = {}
+            mu._ble_executor_degraded_addresses = set()
+
+            mu._maybe_reset_ble_executor("AA:BB:CC:DD:EE:FF", timeout_count=1)
+        finally:
+            mu._ble_executor = old_executor
+            mu._ble_future = old_future
+            mu._ble_future_address = old_future_address
+            mu._ble_future_started_at = old_future_started_at
+            mu._ble_future_timeout_secs = old_future_timeout_secs
+            mu._ble_timeout_reset_threshold = old_threshold
+            mu._ble_timeout_counts = old_timeout_counts
+            mu._ble_executor_orphaned_workers_by_address = old_orphans
+            mu._ble_executor_degraded_addresses = old_degraded
+
+        stale_future.cancel.assert_called_once()
+        stale_executor.shutdown.assert_called_once_with(wait=False, cancel_futures=True)
+
+    @patch("mmrelay.meshtastic_utils.logger")
     def test_get_device_metadata_no_localnode(self, mock_logger):
         """Test _get_device_metadata when client has no localNode attribute."""
         from mmrelay.meshtastic_utils import _get_device_metadata
@@ -3704,6 +3765,65 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         )
         # Verify future.cancel() was called
         mock_future.cancel.assert_called_once()
+
+    @patch("mmrelay.meshtastic_utils.asyncio.get_running_loop")
+    @patch("mmrelay.meshtastic_utils.asyncio.sleep")
+    @patch("mmrelay.meshtastic_utils.logger")
+    @patch("bleak.BleakClient")
+    def test_disconnect_ble_by_address_disconnect_errors_log_final_retry_warning(
+        self, mock_bleak, mock_logger, mock_sleep, mock_get_running_loop
+    ):
+        """Repeated BLE disconnect errors should log the final failure warning."""
+        from mmrelay.meshtastic_utils import _disconnect_ble_by_address
+
+        async def _noop(*_args, **_kwargs):
+            return None
+
+        mock_get_running_loop.side_effect = RuntimeError("no loop")
+        mock_sleep.side_effect = _noop
+
+        mock_client = Mock()
+        mock_client.is_connected = True
+        mock_client.disconnect.side_effect = RuntimeError("disconnect failed")
+        mock_bleak.return_value = mock_client
+
+        _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
+
+        mock_logger.warning.assert_any_call(
+            "Disconnect for %s failed after %s attempts: %s",
+            "AA:BB:CC:DD:EE:FF",
+            3,
+            ANY,
+            exc_info=True,
+        )
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    @patch("mmrelay.meshtastic_utils.asyncio.get_running_loop")
+    @patch("mmrelay.meshtastic_utils.asyncio.run_coroutine_threadsafe")
+    def test_disconnect_ble_by_address_logs_completion_with_global_running_loop(
+        self, mock_run_coroutine_threadsafe, mock_get_running_loop, mock_logger
+    ):
+        """Global event-loop cleanup success should log completion."""
+        from mmrelay.meshtastic_utils import _disconnect_ble_by_address
+
+        mock_get_running_loop.side_effect = RuntimeError("no loop")
+        mock_future = Mock()
+        mock_future.result.return_value = None
+
+        def _submit(coro, _loop):
+            coro.close()
+            return mock_future
+
+        mock_run_coroutine_threadsafe.side_effect = _submit
+
+        mock_loop = Mock()
+        mock_loop.is_running.return_value = True
+        with patch("mmrelay.meshtastic_utils.event_loop", mock_loop):
+            _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
+
+        mock_logger.debug.assert_any_call(
+            "Stale connection disconnect completed for AA:BB:CC:DD:EE:FF"
+        )
 
     def test_disconnect_ble_interface_none_input(self):
         """Test _disconnect_ble_interface returns early when iface is None."""

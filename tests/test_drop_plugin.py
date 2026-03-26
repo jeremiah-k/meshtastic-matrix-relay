@@ -18,6 +18,7 @@ from unittest.mock import MagicMock, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.plugins.drop_plugin import Plugin
 
 
@@ -82,6 +83,28 @@ class TestDropPlugin(unittest.TestCase):
         position = self.plugin.get_position(self.mock_meshtastic_client, "!99999999")
 
         self.assertIsNone(position)
+
+    @patch("mmrelay.plugins.drop_plugin.connect_meshtastic", return_value=None)
+    def test_handle_meshtastic_message_returns_true_for_drop_command_without_client(
+        self, _mock_connect
+    ):
+        """When client is unavailable, drop command detection should still return True."""
+        packet = {
+            "decoded": {
+                "portnum": TEXT_MESSAGE_APP,
+                "text": "!drop cached message",
+            }
+        }
+
+        async def run_test():
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted", "longname", "meshnet"
+            )
+            self.assertTrue(result)
+
+        import asyncio
+
+        asyncio.run(run_test())
 
     @patch("mmrelay.plugins.drop_plugin.connect_meshtastic")
     def test_handle_meshtastic_message_drop_valid(self, mock_connect):

@@ -22,6 +22,7 @@ import s2sphere
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.matrix_utils import (
+    ImageUploadError,
     send_image,
     send_room_image,
     upload_image,
@@ -98,6 +99,25 @@ class TestTextLabel(unittest.TestCase):
         mock_draw.polygon.assert_called_once()
         mock_draw.line.assert_called_once()
         mock_draw.text.assert_called_once()
+
+    @patch("mmrelay.plugins.map_plugin.ImageFont.load_default")
+    @patch("mmrelay.plugins.map_plugin.ImageFont.truetype")
+    def test_render_pillow_falls_back_to_default_font(
+        self, mock_truetype, mock_load_default
+    ):
+        """TextLabel should fall back to ImageFont.load_default when truetype fails."""
+        mock_truetype.side_effect = OSError("missing font")
+        fallback_font = MagicMock()
+        mock_load_default.return_value = fallback_font
+
+        mock_renderer = MagicMock()
+        mock_renderer.transformer.return_value.ll2pixel.return_value = (100, 100)
+        mock_renderer.offset_x.return_value = 0
+        mock_renderer.draw.return_value.textbbox.return_value = (0, 0, 50, 12)
+
+        self.text_label.render_pillow(mock_renderer)
+
+        mock_load_default.assert_called_once_with(size=self.text_label._font_size)
 
     @patch("staticmaps.SvgRenderer")
     def test_render_svg(self, mock_renderer_class):
@@ -658,6 +678,55 @@ class TestMapPlugin(unittest.TestCase):
     @patch("mmrelay.plugins.map_plugin.get_map")
     @patch("mmrelay.plugins.map_plugin._connect_meshtastic_async")
     @patch("mmrelay.matrix_utils.connect_matrix")
+    def test_handle_room_message_invalid_config_zoom_falls_back_to_default(
+        self,
+        mock_connect_matrix,
+        mock_connect_meshtastic_async,
+        mock_get_map,
+        _mock_send_image,
+    ):
+        """Invalid configured zoom should fall back to default when no zoom arg is provided."""
+
+        async def run_test():
+            self.plugin.config["zoom"] = "bad-zoom"
+
+            mock_room = MagicMock()
+            mock_room.room_id = "!test:example.com"
+            mock_event = MagicMock()
+            mock_event.body = "!map"
+
+            mock_matrix_client = MagicMock()
+            mock_matrix_client.room_send = AsyncMock()
+            mock_connect_matrix.return_value = mock_matrix_client
+
+            mock_meshtastic_client = MagicMock()
+            mock_meshtastic_client.nodes = {
+                "!nodeid": {
+                    "user": {"shortName": "Test"},
+                    "position": {
+                        "latitude": 37.7749,
+                        "longitude": -122.4194,
+                        "precisionBits": 12,
+                    },
+                }
+            }
+            mock_connect_meshtastic_async.return_value = mock_meshtastic_client
+            mock_get_map.return_value = MagicMock()
+
+            with patch.object(self.plugin, "matches", return_value=True):
+                result = await self.plugin.handle_room_message(
+                    mock_room, mock_event, "user: !map"
+                )
+
+            self.assertTrue(result)
+            self.assertEqual(mock_get_map.call_args.kwargs["zoom"], 8)
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.matrix_utils.send_image")
+    @patch("mmrelay.plugins.map_plugin.get_map")
+    @patch("mmrelay.plugins.map_plugin._connect_meshtastic_async")
+    @patch("mmrelay.matrix_utils.connect_matrix")
     def test_handle_room_message_oversized_image(
         self,
         mock_connect_matrix,
@@ -762,6 +831,54 @@ class TestMapPlugin(unittest.TestCase):
             self.plugin.send_matrix_message.assert_awaited_once()
             mock_get_map.assert_not_called()
             _mock_send_image.assert_not_called()
+
+        asyncio.run(run_test())
+
+    @patch("mmrelay.matrix_utils.send_image")
+    @patch("mmrelay.plugins.map_plugin.get_map")
+    @patch("mmrelay.plugins.map_plugin._connect_meshtastic_async")
+    @patch("mmrelay.matrix_utils.connect_matrix")
+    def test_handle_room_message_image_upload_error_returns_false(
+        self,
+        mock_connect_matrix,
+        mock_connect_meshtastic_async,
+        mock_get_map,
+        mock_send_image,
+    ):
+        """Image upload errors should send a notice and return False."""
+
+        async def run_test():
+            mock_room = MagicMock()
+            mock_room.room_id = "!test:example.com"
+            mock_event = MagicMock()
+            mock_event.body = "!map"
+
+            mock_matrix_client = MagicMock()
+            mock_matrix_client.room_send = AsyncMock()
+            mock_connect_matrix.return_value = mock_matrix_client
+
+            mock_meshtastic_client = MagicMock()
+            mock_meshtastic_client.nodes = {
+                "!nodeid": {
+                    "user": {"shortName": "Test"},
+                    "position": {
+                        "latitude": 37.7749,
+                        "longitude": -122.4194,
+                        "precisionBits": 12,
+                    },
+                }
+            }
+            mock_connect_meshtastic_async.return_value = mock_meshtastic_client
+            mock_get_map.return_value = MagicMock()
+            mock_send_image.side_effect = ImageUploadError("upload failed")
+
+            with patch.object(self.plugin, "matches", return_value=True):
+                result = await self.plugin.handle_room_message(
+                    mock_room, mock_event, "user: !map"
+                )
+
+            self.assertFalse(result)
+            mock_matrix_client.room_send.assert_awaited_once()
 
         asyncio.run(run_test())
 

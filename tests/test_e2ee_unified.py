@@ -573,6 +573,21 @@ class TestE2EEErrorMessages(unittest.TestCase):
         self.assertIn("Enable E2EE in configuration", instruction_text)
         self.assertIn("Verify configuration", instruction_text)
 
+    def test_fix_instructions_windows_unsupported_short_circuit(self):
+        """Unsupported platforms should return the two Windows guidance lines."""
+        e2ee_status = {
+            "overall_status": "unavailable",
+            "platform_supported": False,
+            "dependencies_installed": False,
+            "credentials_available": False,
+            "enabled": False,
+        }
+
+        instructions = get_e2ee_fix_instructions(e2ee_status)
+
+        self.assertEqual(len(instructions), 2)
+        self.assertIn("not supported on Windows", instructions[0])
+
     def test_get_e2ee_warning_messages(self):
         """Test that get_e2ee_warning_messages returns expected warning messages."""
         warnings = get_e2ee_warning_messages()

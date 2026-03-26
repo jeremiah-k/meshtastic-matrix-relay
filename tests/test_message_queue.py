@@ -247,6 +247,155 @@ class TestMessageQueue(unittest.TestCase):
         fake_task.cancel.assert_called_once()
         fake_task.add_done_callback.assert_called_once()
 
+    @patch("mmrelay.message_queue.asyncio.get_running_loop", side_effect=RuntimeError())
+    def test_start_creates_executor_without_event_loop(self, _mock_get_running_loop):
+        """start() should still initialize a dedicated executor without an active loop."""
+        self.assertIsNone(self.queue._executor)
+        self.queue.start(message_delay=1.0)
+        self.assertIsNotNone(self.queue._executor)
+
+    @patch("mmrelay.message_queue.asyncio.get_running_loop")
+    def test_stop_same_loop_done_task_short_circuits_callback(
+        self, mock_get_running_loop
+    ):
+        """When task is already done, same-loop stop should set event without callback."""
+        queue = MessageQueue()
+        queue._running = True
+
+        fake_loop = MagicMock()
+        fake_loop.is_closed.return_value = False
+        mock_get_running_loop.return_value = fake_loop
+
+        fake_task = MagicMock()
+        fake_task.get_loop.return_value = fake_loop
+        fake_task.done.return_value = True
+        queue._processor_task = fake_task
+
+        fake_loop.call_soon_threadsafe.side_effect = lambda callback: callback()
+
+        queue.stop()
+
+        fake_task.cancel.assert_called_once()
+        fake_task.add_done_callback.assert_not_called()
+
+    @patch("mmrelay.message_queue.asyncio.get_running_loop")
+    def test_stop_other_loop_done_task_short_circuits_callback(
+        self, mock_get_running_loop
+    ):
+        """When task is already done, cross-loop stop should set event without callback."""
+        queue = MessageQueue()
+        queue._running = True
+
+        task_loop = MagicMock()
+        task_loop.is_closed.return_value = False
+        task_loop.is_running.return_value = True
+        current_loop = MagicMock()
+        mock_get_running_loop.return_value = current_loop
+
+        fake_task = MagicMock()
+        fake_task.get_loop.return_value = task_loop
+        fake_task.done.return_value = True
+        queue._processor_task = fake_task
+
+        task_loop.call_soon_threadsafe.side_effect = lambda callback: callback()
+
+        queue.stop()
+
+        fake_task.cancel.assert_called_once()
+        fake_task.add_done_callback.assert_not_called()
+
+    def test_enqueue_wait_returns_false_if_queue_stops_while_waiting(self):
+        """wait=True enqueue should abort when queue stops during backoff sleep."""
+        self.queue._running = True
+        self.queue._stopping = False
+        self.queue._queue.extend([None] * MAX_QUEUE_SIZE)
+
+        with (
+            patch.object(self.queue, "ensure_processor_started"),
+            patch("mmrelay.message_queue.time.sleep") as mock_sleep,
+        ):
+
+            def _stop_queue(_seconds: float) -> None:
+                self.queue._running = False
+
+            mock_sleep.side_effect = _stop_queue
+            accepted = self.queue.enqueue(
+                mock_send_function,
+                text="blocked",
+                description="blocked",
+                wait=True,
+                timeout=1.0,
+            )
+
+        self.assertFalse(accepted)
+
+    def test_process_queue_requeues_when_connection_drops_during_rate_limit(self):
+        """Rate-limit sleep must recheck connection and requeue when link drops."""
+
+        async def run_test():
+            queue = MessageQueue()
+            queue._running = True
+            queue._message_delay = 5.0
+            queue._last_send_mono = 100.0
+            msg = QueuedMessage(
+                timestamp=0.0,
+                send_function=mock_send_function,
+                args=(),
+                kwargs={"text": "rate-limited"},
+                description="rate-limited",
+                mapping_info=None,
+            )
+            queue._queue.append(msg)
+            queue._requeue_message = MagicMock(return_value=True)
+
+            checks = iter([True, False])
+            queue._should_send_message = lambda: next(checks)
+
+            async def _fake_sleep(_seconds: float) -> None:
+                queue._running = False
+
+            with (
+                patch("mmrelay.message_queue.time.monotonic", return_value=101.0),
+                patch("mmrelay.message_queue.asyncio.sleep", side_effect=_fake_sleep),
+            ):
+                await queue._process_queue()
+
+            queue._requeue_message.assert_called_once_with(msg)
+
+        self.loop.run_until_complete(run_test())
+
+    def test_process_queue_requeues_when_connection_not_ready_before_send(self):
+        """Final pre-send connection check should requeue and continue safely."""
+
+        async def run_test():
+            queue = MessageQueue()
+            queue._running = True
+            queue._message_delay = 1.0
+            queue._last_send_mono = 0.0
+            msg = QueuedMessage(
+                timestamp=0.0,
+                send_function=mock_send_function,
+                args=(),
+                kwargs={"text": "pre-send"},
+                description="pre-send",
+                mapping_info=None,
+            )
+            queue._queue.append(msg)
+            queue._requeue_message = MagicMock(return_value=True)
+
+            checks = iter([True, False])
+            queue._should_send_message = lambda: next(checks)
+
+            async def _fake_sleep(_seconds: float) -> None:
+                queue._running = False
+
+            with patch("mmrelay.message_queue.asyncio.sleep", side_effect=_fake_sleep):
+                await queue._process_queue()
+
+            queue._requeue_message.assert_called_once_with(msg)
+
+        self.loop.run_until_complete(run_test())
+
     def test_should_send_message_import_error_stops_queue(self):
         """_should_send_message should stop when meshtastic_utils import fails."""
         queue = MessageQueue()

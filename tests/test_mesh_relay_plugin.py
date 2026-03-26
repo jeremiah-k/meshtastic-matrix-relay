@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from mmrelay.plugins.mesh_relay_plugin import Plugin
+from mmrelay.plugins.mesh_relay_plugin import MATRIX_SUPPRESS_KEY, Plugin
 
 
 class TestMeshRelayPlugin(unittest.TestCase):
@@ -198,6 +198,15 @@ class TestMeshRelayPlugin(unittest.TestCase):
         result = self.plugin.matches(event)
 
         self.assertFalse(result)
+
+    def test_matches_returns_true_for_suppressed_packet_marker(self):
+        """MATRIX_SUPPRESS_KEY marker should match without regex body parsing."""
+        event = MagicMock()
+        event.source = {"content": {MATRIX_SUPPRESS_KEY: True, "body": 123}}
+
+        result = self.plugin.matches(event)
+
+        self.assertTrue(result)
 
     @patch("mmrelay.plugins.mesh_relay_plugin.config", None)
     @patch("mmrelay.matrix_utils.connect_matrix")
