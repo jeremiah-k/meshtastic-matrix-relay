@@ -195,7 +195,7 @@ class BasePlugin(ABC):
                     break
 
             # Cache global plugin-level settings (for options like require_bot_mention)
-            for section_name in plugin_levels:
+            for section_name in PLUGIN_CONFIG_SECTIONS:
                 section_config = config.get(section_name, {})
                 if (
                     isinstance(section_config, dict)
