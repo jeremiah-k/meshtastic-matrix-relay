@@ -3067,7 +3067,7 @@ def _retry_backoff_delay(
     Returns:
         float: Delay in seconds to wait before the next retry; equals base_delay * 2**attempt_index capped at max_delay.
     """
-    return float(min(base_delay * (2**attempt_index), max_delay))
+    return min(base_delay * (2**attempt_index), max_delay)
 
 
 async def _send_matrix_message_with_retry(

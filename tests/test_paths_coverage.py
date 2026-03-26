@@ -107,7 +107,7 @@ def test_get_config_paths_dedupes_when_explicit_matches_home() -> None:
         patch("mmrelay.paths.get_home_dir", return_value=Path("/same")),
         patch("mmrelay.paths.Path.cwd", return_value=Path("/same")),
         patch("mmrelay.paths.Path.home", return_value=Path("/same")),
-        patch.object(Path, "exists", return_value=False),
+        patch.object(Path, "exists", autospec=True, side_effect=lambda self: False),
     ):
         candidates = get_config_paths(explicit=f"/same/{DEFAULT_CONFIG_FILENAME}")
 
@@ -314,12 +314,25 @@ def test_ensure_directories_warns_when_missing_and_create_disabled() -> None:
         ):
             ensure_directories(create_missing=False)
 
+        expected_missing_dirs = [
+            home,
+            matrix,
+            db,
+            logs,
+            store,
+            plugins,
+            custom_plugins,
+            community_plugins,
+            core_plugins,
+        ]
         warning_calls = [
             call
             for call in mock_logger.warning.call_args_list
             if "Directory missing" in str(call)
         ]
-        assert len(warning_calls) == 9, f"Expected 9 warnings, got {len(warning_calls)}"
+        assert len(warning_calls) == len(
+            expected_missing_dirs
+        ), f"Expected {len(expected_missing_dirs)} warnings, got {len(warning_calls)}"
 
 
 def test_get_plugin_code_dir_covers_type_and_discovery_branches() -> None:
@@ -345,7 +358,7 @@ def test_get_plugin_code_dir_covers_type_and_discovery_branches() -> None:
             assert discovered == community_root / "demo"
             core_path = get_plugin_code_dir("mesh_relay", plugin_type="core")
             assert core_path.name == "mesh_relay"
-            assert "plugins" in str(core_path.parent)
+            assert core_path.parent.name == "plugins" or "plugins" in core_path.parts
 
 
 def test_get_diagnostics_maps_resolved_fields() -> None:

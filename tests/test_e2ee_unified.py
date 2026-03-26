@@ -20,7 +20,7 @@ from unittest.mock import MagicMock, patch
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from mmrelay.constants.app import CONFIG_FILENAME, CREDENTIALS_FILENAME
+from mmrelay.constants.app import CONFIG_FILENAME
 
 try:
     from mmrelay.e2ee_utils import (
@@ -65,7 +65,7 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
         """
         Prepare the test environment: skip tests if E2EE utilities are unavailable, create a temporary directory with config and credentials paths, and initialize a baseline config used by tests.
 
-        The baseline config enables matrix E2EE, sets a meshtastic meshnet name ("TestNet"), and includes a single matrix room entry ("!room:test.org") mapped to meshtastic channel 0. Temporary paths created: self.temp_dir, self.config_path, and self.credentials_path.
+        The baseline config enables matrix E2EE, sets a meshtastic meshnet name ("TestNet"), and includes a single matrix room entry ("!room:test.org") mapped to meshtastic channel 0. Temporary paths created: self.temp_dir and self.config_path.
         """
         if not IMPORTS_AVAILABLE:
             self.skipTest("Required imports not available")
@@ -73,7 +73,6 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
         # Create temporary config file
         self.temp_dir = tempfile.mkdtemp()
         self.config_path = os.path.join(self.temp_dir, CONFIG_FILENAME)
-        self.credentials_path = os.path.join(self.temp_dir, CREDENTIALS_FILENAME)
 
         # Basic config
         self.base_config = {

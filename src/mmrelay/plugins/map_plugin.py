@@ -33,6 +33,28 @@ from mmrelay.constants.formats import (
     MAP_ZOOM_MAX,
     MAP_ZOOM_MIN,
 )
+
+# Cairo colors (normalized RGB 0-1) derived from RGBA constants
+CAIRO_LABEL_FILL_COLOR = (
+    MAP_LABEL_FILL_COLOR[0] / 255,
+    MAP_LABEL_FILL_COLOR[1] / 255,
+    MAP_LABEL_FILL_COLOR[2] / 255,
+)
+CAIRO_LABEL_OUTLINE_COLOR = (
+    MAP_LABEL_OUTLINE_COLOR[0] / 255,
+    MAP_LABEL_OUTLINE_COLOR[1] / 255,
+    MAP_LABEL_OUTLINE_COLOR[2] / 255,
+)
+CAIRO_LABEL_TEXT_COLOR = (
+    MAP_LABEL_TEXT_COLOR[0] / 255,
+    MAP_LABEL_TEXT_COLOR[1] / 255,
+    MAP_LABEL_TEXT_COLOR[2] / 255,
+)
+
+# SVG colors (hex) derived from RGBA constants
+SVG_LABEL_FILL_COLOR = f"#{MAP_LABEL_FILL_COLOR[0]:02x}{MAP_LABEL_FILL_COLOR[1]:02x}{MAP_LABEL_FILL_COLOR[2]:02x}"
+SVG_LABEL_OUTLINE_COLOR = f"#{MAP_LABEL_OUTLINE_COLOR[0]:02x}{MAP_LABEL_OUTLINE_COLOR[1]:02x}{MAP_LABEL_OUTLINE_COLOR[2]:02x}"
+SVG_LABEL_TEXT_COLOR = f"#{MAP_LABEL_TEXT_COLOR[0]:02x}{MAP_LABEL_TEXT_COLOR[1]:02x}{MAP_LABEL_TEXT_COLOR[2]:02x}"
 from mmrelay.constants.plugins import (
     S2_PRECISION_BITS_TO_METERS_CONSTANT,
     MAX_MAP_IMAGE_SIZE,
@@ -230,14 +252,14 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
             (x - self._arrow / 2, y - self._arrow),
         ]
 
-        ctx.set_source_rgb(1, 1, 1)
+        ctx.set_source_rgb(*CAIRO_LABEL_FILL_COLOR)
         ctx.new_path()
         for p in path:
             ctx.line_to(*p)
         ctx.close_path()
         ctx.fill()
 
-        ctx.set_source_rgb(1, 0, 0)
+        ctx.set_source_rgb(*CAIRO_LABEL_OUTLINE_COLOR)
         ctx.set_line_width(1)
         ctx.new_path()
         for p in path:
@@ -245,7 +267,7 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
         ctx.close_path()
         ctx.stroke()
 
-        ctx.set_source_rgb(0, 0, 0)
+        ctx.set_source_rgb(*CAIRO_LABEL_TEXT_COLOR)
         ctx.set_line_width(1)
         ctx.move_to(
             x - tw / 2 - x_bearing, y - self._arrow - h / 2 - y_bearing - th / 2
@@ -270,8 +292,8 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
         h = th + 2 * self._margin
 
         path = renderer.drawing().path(
-            fill="#ffffff",
-            stroke="#ff0000",
+            fill=SVG_LABEL_FILL_COLOR,
+            stroke=SVG_LABEL_OUTLINE_COLOR,
             stroke_width=1,
             opacity=1.0,
         )
@@ -293,7 +315,7 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
                 insert=(x, y - self._arrow - h / 2),
                 font_family="sans-serif",
                 font_size=f"{self._font_size}px",
-                fill="#000000",
+                fill=SVG_LABEL_TEXT_COLOR,
             )
         )
 

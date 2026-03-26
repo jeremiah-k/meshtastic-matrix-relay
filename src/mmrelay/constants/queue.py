@@ -36,6 +36,7 @@ CONNECTION_RETRY_SLEEP_SEC: Final[float] = 1.0
 QUEUE_EXECUTOR_MAX_WORKERS: Final[int] = 1
 
 # Connection error keywords for detection
+# Note: Keywords are lowercase; normalize error messages with .lower() before checking
 CONNECTION_ERROR_KEYWORDS: Final[frozenset[str]] = frozenset(
     {
         "connection",

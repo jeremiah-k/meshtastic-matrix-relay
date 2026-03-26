@@ -11,9 +11,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-# Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-
 from mmrelay.constants.app import WINDOWS_VTP_FLAG
 from mmrelay.windows_utils import (
     check_windows_requirements,
@@ -208,7 +205,6 @@ class TestCheckWindowsRequirements(unittest.TestCase):
         result = check_windows_requirements()
 
         self.assertIsNotNone(result)
-        assert result is not None
         self.assertIn("Python 3.10+ is required", result)
 
     @patch("sys.platform", "win32")
@@ -276,16 +272,16 @@ class TestTestConfigGenerationWindows:
         mock_get_sample_config_path.return_value = "/path/to/sample_config.yaml"
         mock_exists.return_value = True
 
-        with patch("importlib.resources.files") as mock_files:
+        with (
+            patch("importlib.resources.files") as mock_files,
+            patch("mmrelay.config.get_config_paths") as mock_get_config_paths,
+            patch("os.makedirs"),
+        ):
             mock_joinpath = MagicMock()
             mock_joinpath.read_text.return_value = "sample: config"
             mock_files.return_value.joinpath.return_value = mock_joinpath
-
-            with patch("mmrelay.config.get_config_paths") as mock_get_config_paths:
-                mock_get_config_paths.return_value = ["/path/to/config.yaml"]
-
-                with patch("os.makedirs"):
-                    result = windows_test_config_generation(None)
+            mock_get_config_paths.return_value = ["/path/to/config.yaml"]
+            result = windows_test_config_generation(None)
 
         # Verify
         assert result["overall_status"] == "ok"

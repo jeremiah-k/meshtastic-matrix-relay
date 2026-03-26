@@ -6,11 +6,14 @@ formatting across all components of the meshtastic-matrix-relay application.
 """
 
 import importlib
+import logging
 import os
 import sys
 from typing import Any, Dict, List, Literal, Optional, TypedDict
 
 from mmrelay.cli_utils import get_command
+
+logger = logging.getLogger("E2EE")
 from mmrelay.constants.app import (
     CREDENTIALS_FILENAME,
     MATRIX_DIRNAME,
@@ -76,6 +79,7 @@ def get_e2ee_status(
     if sys.platform == WINDOWS_PLATFORM or sys.platform.startswith(("msys", "cygwin")):
         status["platform_supported"] = False
         status["issues"].append(MSG_E2EE_WINDOWS_UNSUPPORTED)
+        logger.debug("E2EE platform check: Windows/msys/cygwin not supported")
 
     # Check dependencies
     try:
@@ -90,11 +94,13 @@ def get_e2ee_status(
             raise ImportError("nio.store.SqliteStore is unavailable")
 
         status["dependencies_installed"] = True
+        logger.debug("E2EE dependency check: olm and nio components available")
     except ImportError:
         status["dependencies_installed"] = False
         status["issues"].append(
             f"E2EE dependencies not installed ({PYTHON_OLM_PACKAGE})"
         )
+        logger.debug("E2EE dependency check: missing olm or nio components")
 
     # Check configuration
     matrix_section = config.get("matrix", {})
@@ -106,6 +112,7 @@ def get_e2ee_status(
 
     if not status["enabled"]:
         status["issues"].append(MSG_E2EE_DISABLED)
+        logger.debug("E2EE config check: not enabled in configuration")
 
     # Check credentials
     paths_info = resolve_all_paths()
@@ -115,6 +122,7 @@ def get_e2ee_status(
 
     if not status["credentials_available"]:
         status["issues"].append(MSG_E2EE_NO_AUTH)
+        logger.debug("E2EE credentials check: no credentials.json found")
 
     # Determine overall availability and status
     status["available"] = (
@@ -131,6 +139,14 @@ def get_e2ee_status(
         status["overall_status"] = "disabled"
     else:
         status["overall_status"] = "incomplete"
+
+    logger.debug(
+        "E2EE status determined: %s (enabled=%s, available=%s, configured=%s)",
+        status["overall_status"],
+        status["enabled"],
+        status["available"],
+        status["configured"],
+    )
 
     return status
 

@@ -136,7 +136,9 @@ class TestFindLegacyData:
 class TestMigrateAdditionalCoverage:
     """Targeted coverage tests for migration helper branches."""
 
-    def test_is_windows_file_in_use_error_detects_winerror(self, monkeypatch) -> None:
+    def test_is_windows_file_in_use_error_detects_winerror(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Windows winerror lock codes should be detected as file-in-use errors."""
         exc = OSError("in use")
         exc.winerror = 32  # WINERR_SHARING_VIOLATION
@@ -145,7 +147,7 @@ class TestMigrateAdditionalCoverage:
         assert _is_windows_file_in_use_error(exc) is True
 
     def test_is_mmrelay_running_uses_ps_fallback_when_proc_cmdline_missing(
-        self, monkeypatch
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """When /proc cmdline is unavailable, ps output should be used for verification."""
         monkeypatch.setattr(sys, "platform", "linux")
@@ -209,8 +211,6 @@ class TestMigrateAdditionalCoverage:
         self, tmp_path: Path
     ) -> None:
         """Candidate paths resolving to target should be skipped and return already_migrated."""
-        import sys
-
         if sys.platform == "win32":
             pytest.skip("Symlinks not supported reliably on Windows")
 

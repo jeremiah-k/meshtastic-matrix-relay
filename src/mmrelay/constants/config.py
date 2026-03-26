@@ -150,4 +150,5 @@ PLUGIN_SECTION_TYPES: Final[dict[str, str]] = {
 }
 
 # Versions where deprecation warnings were introduced
+# Each version marks when a feature became deprecated; removal follows in a later release
 DEPRECATION_VERSIONS: Final[tuple[str, ...]] = ("1.3", "1.4")

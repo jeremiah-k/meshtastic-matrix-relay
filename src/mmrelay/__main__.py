@@ -13,16 +13,20 @@ import sys
 if __name__ == "__main__":
     try:
         from mmrelay.cli import main
-        from mmrelay.constants.app import EXIT_CODE_SIGINT
 
         sys.exit(main())
     except ImportError as e:
-        print(f"Error importing MMRelay CLI: {e}", file=sys.stderr)
+        print(f"Error importing MMRelay module: {e}", file=sys.stderr)
         print("Please ensure MMRelay is properly installed.", file=sys.stderr)
         sys.exit(1)
     except KeyboardInterrupt:
         print("Interrupted.", file=sys.stderr)
-        sys.exit(EXIT_CODE_SIGINT)
+        try:
+            from mmrelay.constants.app import EXIT_CODE_SIGINT
+
+            sys.exit(EXIT_CODE_SIGINT)
+        except ImportError:
+            sys.exit(130)
     except SystemExit:
         raise
     except Exception as e:

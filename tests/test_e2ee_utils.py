@@ -89,7 +89,7 @@ def test_credentials_found_in_legacy_location(
             Simulate os.path.exists responses for test credential paths, returning True only for the legacy2 credentials file.
 
             Parameters:
-                path (str): Path to check; the function looks for "credentials.json" and the substrings "primary", "legacy1", "legacy2", or "legacy3" to decide the simulated result.
+                path (str): Path to check; the function looks for the credentials filename and the substrings "primary", "legacy1", "legacy2", or "legacy3" to decide the simulated result.
 
             Returns:
                 bool: True if the path refers to the credentials file in "legacy2", False otherwise.
@@ -224,7 +224,7 @@ def test_credentials_in_legacy_during_deprecation_window(
             path (str): Filesystem path to check.
 
         Returns:
-            bool: True if `path` contains "credentials.json" and "legacy2", False otherwise.
+            bool: True if `path` contains the credentials filename and "legacy2", False otherwise.
         """
         if CREDENTIALS_FILENAME in path:
             # Primary doesn't have it

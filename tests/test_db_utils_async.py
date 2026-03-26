@@ -720,7 +720,6 @@ class TestInitializeDatabaseErrors(unittest.TestCase):
         self, mock_get_manager
     ):
         """Test initialize_database handles OperationalError during index creation gracefully."""
-        from unittest.mock import MagicMock
 
         # Mock manager and cursor
         mock_manager = MagicMock()
@@ -767,7 +766,6 @@ class TestInitializeDatabaseErrors(unittest.TestCase):
         self, mock_logger, mock_get_manager
     ):
         """Test initialize_database logs and re-raises sqlite3.Error."""
-        from unittest.mock import MagicMock
 
         # Mock manager to raise sqlite3.Error
         mock_manager = MagicMock()
@@ -812,7 +810,6 @@ class TestPluginDataErrors(unittest.TestCase):
     @patch("mmrelay.db_utils.logger")
     def test_store_plugin_data_database_error(self, mock_logger, mock_get_manager):
         """Test store_plugin_data handles database errors gracefully."""
-        from unittest.mock import MagicMock
 
         # Mock manager to raise sqlite3.Error
         mock_manager = MagicMock()
@@ -838,7 +835,6 @@ class TestPluginDataErrors(unittest.TestCase):
     @patch("mmrelay.db_utils.logger")
     def test_delete_plugin_data_database_error(self, mock_logger, mock_get_manager):
         """Test delete_plugin_data handles database errors gracefully."""
-        from unittest.mock import MagicMock
 
         # Mock manager to raise sqlite3.Error
         mock_manager = MagicMock()
@@ -867,7 +863,6 @@ class TestPluginDataErrors(unittest.TestCase):
         self, mock_json_loads, mock_logger, mock_get_manager
     ):
         """Test get_plugin_data_for_node handles TypeError gracefully."""
-        from unittest.mock import MagicMock
 
         # Mock manager to return valid result
         mock_manager = MagicMock()
@@ -916,7 +911,6 @@ class TestMessageMapErrors(unittest.TestCase):
     @patch("mmrelay.db_utils.logger")
     def test_store_message_map_database_error(self, mock_logger, mock_get_manager):
         """Test store_message_map handles database errors gracefully."""
-        from unittest.mock import MagicMock
 
         # Mock manager to raise sqlite3.Error
         mock_manager = MagicMock()
@@ -943,7 +937,6 @@ class TestMessageMapErrors(unittest.TestCase):
         self, mock_logger, mock_get_manager
     ):
         """Test get_message_map_by_meshtastic_id handles malformed data gracefully."""
-        from unittest.mock import MagicMock
 
         # Mock manager to return malformed data (not enough elements)
         mock_manager = MagicMock()
@@ -968,7 +961,6 @@ class TestMessageMapErrors(unittest.TestCase):
         self, mock_logger, mock_get_manager
     ):
         """Test get_message_map_by_matrix_event_id handles database errors gracefully."""
-        from unittest.mock import MagicMock
 
         # Mock manager to raise sqlite3.Error
         mock_manager = MagicMock()
@@ -1016,7 +1008,6 @@ class TestLongnameShortnameErrors(unittest.TestCase):
     @patch("mmrelay.db_utils.logger")
     def test_get_longname_database_error(self, mock_logger, mock_get_manager):
         """Test get_longname handles database errors gracefully."""
-        from unittest.mock import MagicMock
 
         mock_manager = MagicMock()
         mock_get_manager.return_value = mock_manager
@@ -1034,7 +1025,6 @@ class TestLongnameShortnameErrors(unittest.TestCase):
     @patch("mmrelay.db_utils.logger")
     def test_save_longname_database_error(self, mock_logger, mock_get_manager):
         """Test save_longname handles database errors gracefully."""
-        from unittest.mock import MagicMock
 
         mock_manager = MagicMock()
         mock_get_manager.return_value = mock_manager
@@ -1051,7 +1041,6 @@ class TestLongnameShortnameErrors(unittest.TestCase):
     @patch("mmrelay.db_utils.logger")
     def test_update_longnames_database_error(self, mock_logger, mock_get_manager):
         """Test update_longnames handles database errors gracefully."""
-        from unittest.mock import MagicMock
 
         mock_manager = MagicMock()
         mock_get_manager.return_value = mock_manager
@@ -1085,7 +1074,6 @@ class TestLongnameShortnameErrors(unittest.TestCase):
     @patch("mmrelay.db_utils.logger")
     def test_get_shortname_database_error(self, mock_logger, mock_get_manager):
         """Test get_shortname handles database errors gracefully."""
-        from unittest.mock import MagicMock
 
         mock_manager = MagicMock()
         mock_get_manager.return_value = mock_manager
@@ -1102,7 +1090,6 @@ class TestLongnameShortnameErrors(unittest.TestCase):
     @patch("mmrelay.db_utils.logger")
     def test_save_shortname_database_error(self, mock_logger, mock_get_manager):
         """Test save_shortname handles database errors gracefully."""
-        from unittest.mock import MagicMock
 
         mock_manager = MagicMock()
         mock_get_manager.return_value = mock_manager
@@ -1119,7 +1106,6 @@ class TestLongnameShortnameErrors(unittest.TestCase):
     @patch("mmrelay.db_utils.logger")
     def test_update_shortnames_database_error(self, mock_logger, mock_get_manager):
         """Test update_shortnames handles database errors gracefully."""
-        from unittest.mock import MagicMock
 
         mock_manager = MagicMock()
         mock_get_manager.return_value = mock_manager

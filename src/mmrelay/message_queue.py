@@ -162,72 +162,51 @@ class MessageQueue:
             with contextlib.suppress(RuntimeError):
                 current_loop = asyncio.get_running_loop()
 
-            if task_loop.is_closed():
-                with self._lock:
-                    self._processor_task = None
-                    self._executor = None
-                    self._stopping = False
-            elif current_loop is task_loop:
-                task_cancel_done = threading.Event()
-
+            def _make_cancel_handler(done_event: threading.Event) -> Callable[[], None]:
                 def _cancel_and_cleanup() -> None:
                     task.cancel()
                     if task.done():
                         with self._lock:
                             self._processor_task = None
                             self._executor = None
-                            self._stopping = False
-                        task_cancel_done.set()
+                        done_event.set()
                         return
 
                     def _on_task_done(_finished_task: asyncio.Task[Any]) -> None:
                         with self._lock:
                             self._processor_task = None
                             self._executor = None
-                            self._stopping = False
-                        task_cancel_done.set()
+                        done_event.set()
 
                     task.add_done_callback(_on_task_done)
 
-                task_loop.call_soon_threadsafe(_cancel_and_cleanup)
+                return _cancel_and_cleanup
+
+            if task_loop.is_closed():
+                with self._lock:
+                    self._processor_task = None
+                    self._executor = None
+            elif current_loop is task_loop:
+                task_cancel_done = threading.Event()
+                cancel_handler = _make_cancel_handler(task_cancel_done)
+                task_loop.call_soon_threadsafe(cancel_handler)
                 task_cancel_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC)
                 if not task_cancel_done.is_set():
                     logger.warning("Task cancellation timed out, forcing state reset")
                     with self._lock:
                         self._processor_task = None
                         self._executor = None
-                        self._stopping = False
             elif task_loop.is_running():
                 task_done = threading.Event()
-
-                def _cancel_and_cleanup() -> None:
-                    task.cancel()
-                    if task.done():
-                        with self._lock:
-                            self._processor_task = None
-                            self._executor = None
-                            self._stopping = False
-                        task_done.set()
-                        return
-
-                    def _on_task_done(_finished_task: asyncio.Task[Any]) -> None:
-                        with self._lock:
-                            self._processor_task = None
-                            self._executor = None
-                            self._stopping = False
-                        task_done.set()
-
-                    task.add_done_callback(_on_task_done)
-
+                cancel_handler = _make_cancel_handler(task_done)
                 with contextlib.suppress(RuntimeError):
-                    task_loop.call_soon_threadsafe(_cancel_and_cleanup)
+                    task_loop.call_soon_threadsafe(cancel_handler)
                 task_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC)
                 if not task_done.is_set():
                     logger.warning("Task wait timed out, forcing state reset")
                     with self._lock:
                         self._processor_task = None
                         self._executor = None
-                        self._stopping = False
             else:
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError, RuntimeError):
@@ -235,7 +214,6 @@ class MessageQueue:
                 with self._lock:
                     self._processor_task = None
                     self._executor = None
-                    self._stopping = False
 
         if exec_ref is not None:
             on_loop_thread = False

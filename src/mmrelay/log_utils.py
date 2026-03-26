@@ -312,7 +312,7 @@ def _configure_logger(
             console_handler.setFormatter(
                 logging.Formatter(
                     fmt="%(asctime)s %(levelname)s:%(name)s:%(message)s",
-                    datefmt="%Y-%m-%d %H:%M:%S %z",
+                    datefmt="%Y-%m-%d %H:%M:%S %z",  # Intentionally includes %z; RichHandler uses RICH_LOG_TIME_FORMAT without timezone
                 )
             )
         logger.addHandler(console_handler)
@@ -375,7 +375,7 @@ def _configure_logger(
         file_handler.setFormatter(
             logging.Formatter(
                 fmt="%(asctime)s %(levelname)s:%(name)s:%(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S %z",
+                datefmt="%Y-%m-%d %H:%M:%S %z",  # Intentionally includes %z; RichHandler uses RICH_LOG_TIME_FORMAT without timezone
             )
         )
         logger.addHandler(file_handler)

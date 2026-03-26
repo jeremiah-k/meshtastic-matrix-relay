@@ -1808,59 +1808,36 @@ def _clone_or_update_repo_validated(
 
     if os.path.isdir(repo_path):
         # Repository exists, update it
-        try:
-            # Handle commits differently from branches and tags
-            if is_commit:
-                return _update_existing_repo_to_commit(repo_path, ref_value, repo_name)
-            else:
-                return _update_existing_repo_to_branch_or_tag(
-                    repo_path,
-                    ref_type,
-                    ref_value,
-                    repo_name,
-                    is_default_branch,
-                    default_branches,
-                )
-        except (
-            subprocess.CalledProcessError,
-            FileNotFoundError,
-            subprocess.TimeoutExpired,
-        ):
-            logger.exception(
-                "Error updating repository %s; please check or update %s manually",
-                repo_name,
+        # Handle commits differently from branches and tags
+        if is_commit:
+            return _update_existing_repo_to_commit(repo_path, ref_value, repo_name)
+        else:
+            return _update_existing_repo_to_branch_or_tag(
                 repo_path,
+                ref_type,
+                ref_value,
+                repo_name,
+                is_default_branch,
+                default_branches,
             )
-            return False
     else:
         # Repository doesn't exist, clone it
-        try:
-            # Handle commits differently from branches and tags
-            if is_commit:
-                return _clone_new_repo_to_commit(
-                    repo_url, repo_path, ref_value, repo_name, plugins_dir
-                )
-            else:
-                return _clone_new_repo_to_branch_or_tag(
-                    repo_url,
-                    repo_path,
-                    ref_type,
-                    ref_value,
-                    repo_name,
-                    plugins_dir,
-                    is_default_branch,
-                )
-        except (
-            subprocess.CalledProcessError,
-            FileNotFoundError,
-            subprocess.TimeoutExpired,
-        ):
-            logger.exception(
-                "Error cloning repository %s; please manually clone into %s",
-                repo_name,
-                repo_path,
+        # Handle commits differently from branches and tags
+        if is_commit:
+            return _clone_new_repo_to_commit(
+                repo_url, repo_path, ref_value, repo_name, plugins_dir
             )
-            return False
+        else:
+            return _clone_new_repo_to_branch_or_tag(
+                repo_url,
+                repo_path,
+                ref_type,
+                ref_value,
+                repo_name,
+                plugins_dir,
+                is_default_branch,
+                default_branches,
+            )
 
 
 def clone_or_update_repo(repo_url: str, ref: dict[str, str], plugins_dir: str) -> bool:

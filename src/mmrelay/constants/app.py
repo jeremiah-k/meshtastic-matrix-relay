@@ -58,9 +58,9 @@ SECURE_DIR_PERMISSIONS: Final[int] = 0o700
 MIN_PYTHON_VERSION: Final[tuple[int, int]] = (3, 10)
 
 # Windows-specific constants
-WINDOWS_VTP_FLAG: Final[int] = 0x0004
-WINDOWS_STD_OUTPUT_HANDLE: Final[int] = -11
-WINDOWS_STD_ERROR_HANDLE: Final[int] = -12
+WINDOWS_VTP_FLAG: Final[int] = 0x0004  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+WINDOWS_STD_OUTPUT_HANDLE: Final[int] = -11  # GetStdHandle parameter
+WINDOWS_STD_ERROR_HANDLE: Final[int] = -12  # GetStdHandle parameter
 WINDOWS_PATH_LENGTH_WARNING: Final[int] = 200
 
 # Windows error codes

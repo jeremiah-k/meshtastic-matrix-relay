@@ -161,7 +161,6 @@ _metadata_future_lock = threading.Lock()
 _metadata_executor_orphaned_workers = 0
 _health_probe_request_deadlines: dict[int, float] = {}
 _health_probe_request_lock = threading.Lock()
-_HEALTH_PROBE_TRACK_GRACE_SECS = HEALTH_PROBE_TRACK_GRACE_SECS
 
 # Shared executor for BLE init/connect to avoid leaking threads across retries.
 # BLE setup is inherently sequential, so a single worker keeps things predictable.
@@ -977,9 +976,7 @@ def _track_health_probe_request_id(
         return None
 
     expires_at = (
-        time.monotonic()
-        + max(float(timeout_secs), 1.0)
-        + _HEALTH_PROBE_TRACK_GRACE_SECS
+        time.monotonic() + max(float(timeout_secs), 1.0) + HEALTH_PROBE_TRACK_GRACE_SECS
     )
     with _health_probe_request_lock:
         _prune_health_probe_tracking()
@@ -2018,13 +2015,13 @@ def _resolve_plugin_timeout(
         if timeout > 0 and math.isfinite(timeout):
             return timeout
         logger.warning(
-            "Invalid meshtastic.plugin_timeout value %r; using %ss fallback.",
+            "Invalid meshtastic.plugin_timeout value %r; using %.1fs fallback.",
             raw_value,
             default,
         )
     except (TypeError, ValueError, OverflowError):
         logger.warning(
-            "Invalid meshtastic.plugin_timeout value %r; using %ss fallback.",
+            "Invalid meshtastic.plugin_timeout value %r; using %.1fs fallback.",
             raw_value,
             default,
         )

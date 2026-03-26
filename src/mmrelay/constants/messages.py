@@ -8,27 +8,30 @@ strings that are displayed to users or logged.
 from typing import Final
 
 # Log configuration defaults
-DEFAULT_LOG_SIZE_MB = 5
-DEFAULT_LOG_BACKUP_COUNT = 1
-LOG_SIZE_BYTES_MULTIPLIER = 1024 * 1024  # Convert MB to bytes
+DEFAULT_LOG_SIZE_MB: Final[int] = 5
+DEFAULT_LOG_BACKUP_COUNT: Final[int] = 1
+LOG_SIZE_BYTES_MULTIPLIER: Final[int] = 1024 * 1024  # Convert MB to bytes
 
 # Numeric portnum constants for comparisons
-PORTNUM_TEXT_MESSAGE_APP = 1  # Numeric portnum for TEXT_MESSAGE_APP
-PORTNUM_DETECTION_SENSOR_APP = 10  # Numeric portnum for DETECTION_SENSOR_APP
-DEFAULT_CHANNEL_VALUE = 0
+PORTNUM_TEXT_MESSAGE_APP: Final[int] = 1  # Numeric portnum for TEXT_MESSAGE_APP
+PORTNUM_DETECTION_SENSOR_APP: Final[int] = (
+    10  # Numeric portnum for DETECTION_SENSOR_APP
+)
+DEFAULT_CHANNEL_VALUE: Final[int] = 0
 
 # Message formatting constants
-MAX_TRUNCATION_LENGTH = 20  # Maximum characters for variable truncation
-TRUNCATION_LOG_LIMIT = 6  # Only log first N truncations to avoid spam
-DEFAULT_MESSAGE_TRUNCATE_BYTES = 227  # Default message truncation size
-MESHNET_NAME_ABBREVIATION_LENGTH = 4  # Characters for short meshnet names
-SHORTNAME_FALLBACK_LENGTH = 3  # Characters for shortname fallback
-MESSAGE_PREVIEW_LENGTH = 40  # Characters for message preview in logs
-DISPLAY_NAME_DEFAULT_LENGTH = 5  # Default display name truncation
+MAX_TRUNCATION_LENGTH: Final[int] = 20  # Maximum characters for variable truncation
+TRUNCATION_LOG_LIMIT: Final[int] = 6  # Only log first N truncations to avoid spam
+DEFAULT_MESSAGE_TRUNCATE_BYTES: Final[int] = 227  # Default message truncation size
+MESHNET_NAME_ABBREVIATION_LENGTH: Final[int] = 4  # Characters for short meshnet names
+SHORTNAME_FALLBACK_LENGTH: Final[int] = 3  # Characters for shortname fallback
+MESSAGE_PREVIEW_LENGTH: Final[int] = 40  # Characters for message preview in logs
+DISPLAY_NAME_DEFAULT_LENGTH: Final[int] = 5  # Default display name truncation
 
 # Time constants
 SECONDS_PER_MINUTE: Final[int] = 60
 SECONDS_PER_HOUR: Final[int] = 3600
+SECONDS_PER_DAY: Final[int] = 86400
 RELATIVE_TIME_DAYS_THRESHOLD: Final[int] = 7
 
 # Node display values
@@ -48,9 +51,7 @@ MSG_GRAPH_UPLOAD_FAILED: Final[str] = "Failed to generate graph: Image upload fa
 
 # E2EE messages
 MSG_E2EE_WINDOWS_UNSUPPORTED: Final[str] = "E2EE is not supported on Windows"
-MSG_E2EE_WINDOWS_UNSUPPORTED_DETAIL: Final[str] = (
-    "   Use Linux or macOS for E2EE support"
-)
+MSG_E2EE_WINDOWS_UNSUPPORTED_DETAIL: Final[str] = "Use Linux or macOS for E2EE support"
 MSG_E2EE_DISABLED: Final[str] = "E2EE is disabled in configuration"
 MSG_E2EE_NO_AUTH: Final[str] = "Matrix authentication not configured"
 

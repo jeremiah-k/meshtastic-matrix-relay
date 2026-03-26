@@ -2539,7 +2539,7 @@ class TestGitOperations(BaseGitTest):
             "commit",
             "deadbeef",
             "repo",
-            "/tmp/plugins",
+            self.temp_plugins_dir,
         )
 
         self.assertFalse(result)

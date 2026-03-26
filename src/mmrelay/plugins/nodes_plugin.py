@@ -14,6 +14,7 @@ from nio import (
 from mmrelay.constants.formats import DATE_FORMAT_LONG, SNR_UNIT_SUFFIX
 from mmrelay.constants.messages import (
     RELATIVE_TIME_DAYS_THRESHOLD,
+    SECONDS_PER_DAY,
     SECONDS_PER_HOUR,
     SECONDS_PER_MINUTE,
     UNKNOWN_NODE_VALUE,
@@ -47,10 +48,7 @@ def get_relative_time(timestamp: float) -> str:
     seconds = delta.seconds
 
     # Convert the time difference into a relative timeframe
-    if (
-        int(delta.total_seconds())
-        > RELATIVE_TIME_DAYS_THRESHOLD * 24 * SECONDS_PER_HOUR
-    ):
+    if delta.total_seconds() >= (RELATIVE_TIME_DAYS_THRESHOLD + 1) * SECONDS_PER_DAY:
         return dt.strftime(
             DATE_FORMAT_LONG
         )  # Return the timestamp in a specific format if it's older than 7 days

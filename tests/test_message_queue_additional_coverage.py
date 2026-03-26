@@ -174,7 +174,7 @@ async def test_process_queue_logs_warning_when_send_result_is_none() -> None:
     ):
         await queue._process_queue()
 
-    assert mock_logger.warning.call_count >= 1
+    assert mock_logger.warning.call_count == 1
     assert any(
         "Message send returned None" in str(call)
         for call in mock_logger.warning.call_args_list

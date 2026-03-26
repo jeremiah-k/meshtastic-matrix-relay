@@ -82,7 +82,7 @@ def _warn_deprecated(_name: str) -> None:
         _name (str): Ignored; included so callers can cache or key warnings (e.g., with lru_cache).
     """
     warnings.warn(
-        f"Use paths.get_home_dir() instead. Support will be removed in v{DEPRECATION_VERSIONS[1]}.",
+        f"Use paths.get_home_dir() instead. Support will be removed in v{DEPRECATION_VERSIONS[1]}.",  # [1] is the removal version
         DeprecationWarning,
         stacklevel=3,
     )

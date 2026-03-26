@@ -235,8 +235,14 @@ _UPSERT_MESSAGE_MAP_SQL = (
     "meshtastic_text=excluded.meshtastic_text, "
     "meshtastic_meshnet=excluded.meshtastic_meshnet"
 )
-_GET_MESSAGE_MAP_BY_MESHTASTIC_ID_SQL = "SELECT matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet FROM message_map WHERE meshtastic_id=?"
-_GET_MESSAGE_MAP_BY_MATRIX_EVENT_ID_SQL = "SELECT meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet FROM message_map WHERE matrix_event_id=?"
+_GET_MESSAGE_MAP_BY_MESHTASTIC_ID_SQL = (
+    "SELECT matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet "
+    "FROM message_map WHERE meshtastic_id=?"
+)
+_GET_MESSAGE_MAP_BY_MATRIX_EVENT_ID_SQL = (
+    "SELECT meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet "
+    "FROM message_map WHERE matrix_event_id=?"
+)
 _ALTER_TABLE_MESSAGE_MAP_ADD_MESH_SQL = (
     "ALTER TABLE message_map ADD COLUMN meshtastic_meshnet TEXT"
 )
@@ -271,10 +277,16 @@ _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITHOUT_MESH_SQL = (
     "SELECT CAST(meshtastic_id AS TEXT), matrix_event_id, matrix_room_id, meshtastic_text, NULL "
     "FROM message_map_legacy"
 )
-_CREATE_INDEX_MESSAGE_MAP_ID_SQL = "CREATE INDEX IF NOT EXISTS idx_message_map_meshtastic_id ON message_map (meshtastic_id)"
+_CREATE_INDEX_MESSAGE_MAP_ID_SQL = (
+    "CREATE INDEX IF NOT EXISTS idx_message_map_meshtastic_id "
+    "ON message_map (meshtastic_id)"
+)
 _DELETE_FROM_MESSAGE_MAP_SQL = "DELETE FROM message_map"
 _SELECT_COUNT_MESSAGE_MAP_SQL = "SELECT COUNT(*) FROM message_map"
-_DELETE_OLDEST_MESSAGE_MAP_SQL = "DELETE FROM message_map WHERE rowid IN (SELECT rowid FROM message_map ORDER BY rowid ASC LIMIT ?)"
+_DELETE_OLDEST_MESSAGE_MAP_SQL = (
+    "DELETE FROM message_map WHERE rowid IN "
+    "(SELECT rowid FROM message_map ORDER BY rowid ASC LIMIT ?)"
+)
 
 if (
     NAMES_TABLE_LONGNAMES,
@@ -738,6 +750,7 @@ def initialize_database() -> None:
                 if _col_mesh in temp_columns
                 else _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITHOUT_MESH_SQL
             ).replace("message_map_legacy", _temp_table)
+            assert "message_map_legacy" not in insert_sql, "SQL replacement failed"
             cursor.execute(insert_sql)
             cursor.execute(f"DROP TABLE IF EXISTS {_temp_table}")
             temp_exists = False
@@ -766,17 +779,17 @@ def initialize_database() -> None:
             cursor.execute(f"ALTER TABLE message_map RENAME TO {_temp_table}")
             cursor.execute(_CREATE_TABLE_MESSAGE_MAP_FROM_SCRATCH_SQL)
             if meshnet_column:
-                cursor.execute(
-                    _INSERT_MESSAGE_MAP_FROM_LEGACY_WITH_MESH_SQL.replace(
-                        "message_map_legacy", _temp_table
-                    )
+                insert_sql = _INSERT_MESSAGE_MAP_FROM_LEGACY_WITH_MESH_SQL.replace(
+                    "message_map_legacy", _temp_table
                 )
+                assert "message_map_legacy" not in insert_sql, "SQL replacement failed"
+                cursor.execute(insert_sql)
             else:
-                cursor.execute(
-                    _INSERT_MESSAGE_MAP_FROM_LEGACY_WITHOUT_MESH_SQL.replace(
-                        "message_map_legacy", _temp_table
-                    )
+                insert_sql = _INSERT_MESSAGE_MAP_FROM_LEGACY_WITHOUT_MESH_SQL.replace(
+                    "message_map_legacy", _temp_table
                 )
+                assert "message_map_legacy" not in insert_sql, "SQL replacement failed"
+                cursor.execute(insert_sql)
             if legacy_exists:
                 cursor.execute(
                     "SELECT name FROM sqlite_master WHERE type='table' AND name=?",

@@ -729,8 +729,12 @@ class TestDatabaseManager(unittest.TestCase):
         """_get_connection should reject new non-admitted access while closing."""
         with self.manager._connections_lock:
             self.manager._closing = True
-        with self.assertRaises(sqlite3.ProgrammingError):
-            self.manager._get_connection()
+        try:
+            with self.assertRaises(sqlite3.ProgrammingError):
+                self.manager._get_connection()
+        finally:
+            with self.manager._connections_lock:
+                self.manager._closing = False
 
     def test_get_connection_recreates_closed_thread_local_connection(self):
         """A closed thread-local connection should be discarded and replaced."""
@@ -745,9 +749,13 @@ class TestDatabaseManager(unittest.TestCase):
         """read() should reject new work when manager is closing."""
         with self.manager._connections_lock:
             self.manager._closing = True
-        with self.assertRaises(sqlite3.ProgrammingError):
-            with self.manager.read():
-                pass
+        try:
+            with self.assertRaises(sqlite3.ProgrammingError):
+                with self.manager.read():
+                    pass
+        finally:
+            with self.manager._connections_lock:
+                self.manager._closing = False
 
     def test_close_cleanup(self):
         """Test close method properly cleans up resources."""
