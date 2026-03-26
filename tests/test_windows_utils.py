@@ -444,7 +444,6 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
 
     def test_test_config_generation_windows_error_status_when_all_checks_fail(self):
         """Three or more check errors should produce overall_status='error'."""
-        _ = self.tmp_path
         with (
             patch("mmrelay.windows_utils.is_windows", return_value=True),
             patch(

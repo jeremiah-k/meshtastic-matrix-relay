@@ -154,7 +154,9 @@ def check_windows_requirements() -> Optional[str]:
 
     # Check Python version for Windows compatibility
     if sys.version_info < MIN_PYTHON_VERSION:
-        warnings.append("Python 3.10+ is required for this application")
+        warnings.append(
+            f"Python {MIN_PYTHON_VERSION[0]}.{MIN_PYTHON_VERSION[1]}+ is required for this application"
+        )
 
     # Check if running in a virtual environment
     if not hasattr(sys, "real_prefix") and not (

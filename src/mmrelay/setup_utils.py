@@ -124,11 +124,13 @@ def service_exists() -> bool:
 
 def log_service_commands() -> None:
     """Log the commands for controlling the systemd user service."""
-    logger.info(f"  systemctl --user start {SERVICE_FILENAME}    # Start the service")
-    logger.info(f"  systemctl --user stop {SERVICE_FILENAME}     # Stop the service")
-    logger.info(f"  systemctl --user restart {SERVICE_FILENAME}  # Restart the service")
+    logger.info("  systemctl --user start %s    # Start the service", SERVICE_FILENAME)
+    logger.info("  systemctl --user stop %s     # Stop the service", SERVICE_FILENAME)
     logger.info(
-        f"  systemctl --user status {SERVICE_FILENAME}   # Check service status"
+        "  systemctl --user restart %s  # Restart the service", SERVICE_FILENAME
+    )
+    logger.info(
+        "  systemctl --user status %s   # Check service status", SERVICE_FILENAME
     )
 
 

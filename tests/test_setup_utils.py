@@ -138,12 +138,22 @@ class TestSetupUtils(unittest.TestCase):
         """Test that log_service_commands logs the correct commands."""
         log_service_commands()
 
-        # Verify all expected commands were logged
+        # Verify all expected commands were logged with %-formatting
         expected_calls = [
-            call("  systemctl --user start mmrelay.service    # Start the service"),
-            call("  systemctl --user stop mmrelay.service     # Stop the service"),
-            call("  systemctl --user restart mmrelay.service  # Restart the service"),
-            call("  systemctl --user status mmrelay.service   # Check service status"),
+            call(
+                "  systemctl --user start %s    # Start the service", "mmrelay.service"
+            ),
+            call(
+                "  systemctl --user stop %s     # Stop the service", "mmrelay.service"
+            ),
+            call(
+                "  systemctl --user restart %s  # Restart the service",
+                "mmrelay.service",
+            ),
+            call(
+                "  systemctl --user status %s   # Check service status",
+                "mmrelay.service",
+            ),
         ]
         mock_logger.info.assert_has_calls(expected_calls)
 

@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import mmrelay.meshtastic_utils as meshtastic_utils
 from mmrelay.constants.queue import MAX_QUEUE_SIZE
 from mmrelay.message_queue import MessageQueue, QueuedMessage
 
@@ -175,8 +176,6 @@ async def test_process_queue_logs_warning_when_send_result_is_none() -> None:
 
 def test_should_send_message_returns_false_when_reconnecting() -> None:
     queue = MessageQueue()
-    import mmrelay.meshtastic_utils as meshtastic_utils
-
     client = MagicMock()
     with (
         patch.object(meshtastic_utils, "reconnecting", True),
@@ -187,8 +186,6 @@ def test_should_send_message_returns_false_when_reconnecting() -> None:
 
 def test_should_send_message_returns_false_when_client_reports_disconnected() -> None:
     queue = MessageQueue()
-    import mmrelay.meshtastic_utils as meshtastic_utils
-
     client = MagicMock()
     client.is_connected = MagicMock(return_value=False)
     with (

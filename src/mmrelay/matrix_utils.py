@@ -927,11 +927,6 @@ def _add_truncated_vars(
         format_vars[f"{prefix}{i}"] = truncated_value
 
 
-_PREFIX_DEFINITION_PATTERN = PREFIX_DEFINITION_REGEX
-# Escape underscores, asterisks, backticks, tildes, backslashes, and brackets inside prefixes
-_MARKDOWN_ESCAPE_PATTERN = MARKDOWN_ESCAPE_REGEX
-
-
 def _escape_leading_prefix_for_markdown(message: str) -> tuple[str, bool]:
     """
     Prevent a leading reference-style Markdown link definition from being interpreted by escaping its bracketed prefix.
@@ -941,13 +936,13 @@ def _escape_leading_prefix_for_markdown(message: str) -> tuple[str, bool]:
     Returns:
         tuple[str, bool]: `(safe_message, escaped)` where `safe_message` is the possibly-escaped message and `escaped` is `True` if an escape was performed, `False` otherwise.
     """
-    match = _PREFIX_DEFINITION_PATTERN.match(message)
+    match = PREFIX_DEFINITION_REGEX.match(message)
     if not match:
         return message, False
 
     prefix_text = match.group(1)
     spacing = match.group(2)
-    escaped_prefix = _MARKDOWN_ESCAPE_PATTERN.sub(r"\\\1", prefix_text)
+    escaped_prefix = MARKDOWN_ESCAPE_REGEX.sub(r"\\\1", prefix_text)
     escaped = f"\\[{escaped_prefix}]:{spacing}"
     return escaped + message[match.end() :], True
 

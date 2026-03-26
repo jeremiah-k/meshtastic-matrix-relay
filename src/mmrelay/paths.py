@@ -514,7 +514,7 @@ def get_plugin_database_path(plugin_name: str) -> Path:
     """
     # NOTE: MMRelay stores plugin data in the main SQLite database today.
     # This helper exists for diagnostics and potential future per-plugin DB files.
-    return get_home_dir() / "database" / f"plugin_data_{plugin_name}.sqlite"
+    return get_database_dir() / f"plugin_data_{plugin_name}.sqlite"
 
 
 def ensure_directories(*, create_missing: bool = True) -> None:

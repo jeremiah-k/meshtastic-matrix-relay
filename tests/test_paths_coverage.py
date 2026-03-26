@@ -36,8 +36,6 @@ def reset_home_override_before_and_after_tests():
     This autouse fixture ensures that tests that modify global state
     via set_home_override() have a clean state and remain independent.
     """
-    from mmrelay.paths import reset_home_override
-
     reset_home_override()
     yield
     reset_home_override()

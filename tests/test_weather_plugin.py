@@ -1221,23 +1221,6 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         )
         self.assertTrue(result)
 
-    @patch("mmrelay.plugins.weather_plugin.requests.get")
-    def test_generate_forecast_attribute_error_fallback(self, mock_get):
-        """Test generate_forecast handles AttributeError with fallback detection."""
-        # Mock requests to raise AttributeError
-        mock_response = MagicMock()
-        mock_response.raise_for_status.side_effect = AttributeError("Some error")
-        # Mock the exception to have requests module
-        mock_response.raise_for_status.__module__ = "requests"
-        mock_get.return_value = mock_response
-
-        plugin = Plugin()
-
-        # Test the method
-        result = plugin.generate_forecast(40.7128, -74.0060)
-        # Should return fetching error when raise_for_status fails with AttributeError
-        self.assertEqual(result, "Error fetching weather data.")
-
 
 if __name__ == "__main__":
     unittest.main()

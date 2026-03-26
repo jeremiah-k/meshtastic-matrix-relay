@@ -2112,7 +2112,7 @@ def start_global_scheduler() -> None:
         while not stop_event.is_set():
             if schedule is not None:
                 schedule.run_pending()
-            # Wait up to 1 second or until stop is requested
+            # Wait until stop is requested or timeout elapses
             stop_event.wait(SCHEDULER_LOOP_WAIT_SECONDS)
         logger.debug("Global scheduler thread stopped")
 

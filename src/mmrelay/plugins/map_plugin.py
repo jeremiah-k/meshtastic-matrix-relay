@@ -112,7 +112,7 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
         Parameters:
             latlng (s2sphere.LatLng): Geographic anchor point for the label.
             text (str): Label text to render.
-            fontSize (int): Font size in pixels used for rendering (default 12).
+            fontSize (int): Font size in pixels used for rendering (default DEFAULT_LABEL_FONT_SIZE).
         """
         staticmaps.Object.__init__(self)
         self._latlng = latlng

@@ -114,7 +114,7 @@ class Plugin(BasePlugin):
         try:
             response = requests.get(url, timeout=WEATHER_API_TIMEOUT_SECONDS)
             response.raise_for_status()
-        except (requests.exceptions.RequestException, AttributeError):
+        except requests.exceptions.RequestException:
             self.logger.exception("Error fetching weather data")
             return "Error fetching weather data."
 
@@ -291,8 +291,6 @@ class Plugin(BasePlugin):
         except (KeyError, IndexError, TypeError, ValueError, AttributeError):
             self.logger.exception("Malformed weather data")
             return "Error parsing weather data."
-        except Exception:
-            raise
 
     def _build_daily_forecast(
         self,

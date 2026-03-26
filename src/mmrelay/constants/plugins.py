@@ -7,7 +7,7 @@ execution by defining trusted sources and dangerous patterns.
 """
 
 import re
-from typing import Final, Tuple
+from typing import Final
 
 # Message length limits
 MAX_FORECAST_LENGTH = 200
@@ -34,7 +34,7 @@ PIPX_ENVIRONMENT_KEYS = ("PIPX_HOME", "PIPX_LOCAL_VENVS", "PIPX_BIN_DIR")
 
 # Trusted git hosting platforms for community plugins
 # These hosts are considered safe for plugin source repositories
-DEFAULT_ALLOWED_COMMUNITY_HOSTS: Tuple[str, ...] = (
+DEFAULT_ALLOWED_COMMUNITY_HOSTS: tuple[str, ...] = (
     "github.com",
     "gitlab.com",
     "codeberg.org",
@@ -43,7 +43,7 @@ DEFAULT_ALLOWED_COMMUNITY_HOSTS: Tuple[str, ...] = (
 
 # Requirement prefixes that may indicate security risks
 # These prefixes allow VCS URLs or direct URLs that could bypass package verification
-RISKY_REQUIREMENT_PREFIXES: Tuple[str, ...] = (
+RISKY_REQUIREMENT_PREFIXES: tuple[str, ...] = (
     "git+",
     "ssh://",
     "git://",
@@ -55,7 +55,7 @@ RISKY_REQUIREMENT_PREFIXES: Tuple[str, ...] = (
 )
 
 # Pip source flags that can be followed by URLs
-PIP_SOURCE_FLAGS: Tuple[str, ...] = (
+PIP_SOURCE_FLAGS: tuple[str, ...] = (
     "-e",
     "--editable",
     "-f",

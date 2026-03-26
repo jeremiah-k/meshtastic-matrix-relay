@@ -24,6 +24,7 @@ CONFIG_KEY_ACCESS_TOKEN: Final[str] = (
     "access_token"  # nosec B105 - This is a config key name, not a hardcoded password
 )
 CONFIG_KEY_BOT_USER_ID: Final[str] = "bot_user_id"
+CONFIG_KEY_USER_ID: Final[str] = "user_id"
 CONFIG_KEY_PREFIX_ENABLED: Final[str] = "prefix_enabled"
 CONFIG_KEY_PREFIX_FORMAT: Final[str] = "prefix_format"
 
@@ -117,7 +118,7 @@ NORMALIZABLE_CONFIG_SECTIONS: Final[tuple[str, ...]] = (
 REQUIRED_CREDENTIALS_KEYS: Final[tuple[str, ...]] = (
     CONFIG_KEY_HOMESERVER,
     CONFIG_KEY_ACCESS_TOKEN,
-    "user_id",  # No constant defined for this key
+    CONFIG_KEY_USER_ID,
 )
 
 # Required config keys

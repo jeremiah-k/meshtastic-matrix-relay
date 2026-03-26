@@ -8,18 +8,22 @@ delays, size limits, and water marks for queue management.
 from typing import Final
 
 # Message timing constants
-DEFAULT_MESSAGE_DELAY = (
+DEFAULT_MESSAGE_DELAY: Final[float] = (
     2.5  # Set above the 2.0s firmware limit to prevent message dropping
 )
-MINIMUM_MESSAGE_DELAY = 2.1  # Minimum delay enforced to stay above firmware limit
+MINIMUM_MESSAGE_DELAY: Final[float] = (
+    2.1  # Minimum delay enforced to stay above firmware limit
+)
 
 # Queue size management
-MAX_QUEUE_SIZE = 500
-QUEUE_HIGH_WATER_MARK = int(MAX_QUEUE_SIZE * 0.75)  # 75% of MAX_QUEUE_SIZE
-QUEUE_MEDIUM_WATER_MARK = int(MAX_QUEUE_SIZE * 0.50)  # 50% of MAX_QUEUE_SIZE
+MAX_QUEUE_SIZE: Final[int] = 500
+QUEUE_HIGH_WATER_MARK: Final[int] = int(MAX_QUEUE_SIZE * 0.75)  # 75% of MAX_QUEUE_SIZE
+QUEUE_MEDIUM_WATER_MARK: Final[int] = int(
+    MAX_QUEUE_SIZE * 0.50
+)  # 50% of MAX_QUEUE_SIZE
 
 # Queue logging thresholds
-QUEUE_LOG_THRESHOLD = 2  # Only log queue status when size >= this value
+QUEUE_LOG_THRESHOLD: Final[int] = 2  # Only log queue status when size >= this value
 
 # Queue timing constants
 TASK_SHUTDOWN_TIMEOUT_SEC: Final[float] = 1.0

@@ -9,6 +9,7 @@ Tests the debug plugin functionality including:
 - Priority and configuration
 """
 
+import asyncio
 import os
 import sys
 import unittest
@@ -86,8 +87,6 @@ class TestDebugPlugin(unittest.TestCase):
             # Should return False (never intercepts messages)
             self.assertFalse(result)
 
-        import asyncio
-
         asyncio.run(run_test())
 
     def test_handle_meshtastic_message_returns_false(self):
@@ -104,8 +103,6 @@ class TestDebugPlugin(unittest.TestCase):
                 packet, "formatted_message", "TestNode", "TestMesh"
             )
             self.assertFalse(result)
-
-        import asyncio
 
         asyncio.run(run_test())
 
@@ -126,8 +123,6 @@ class TestDebugPlugin(unittest.TestCase):
             """
             result = await self.plugin.handle_room_message(room, event, full_message)
             self.assertFalse(result)
-
-        import asyncio
 
         asyncio.run(run_test())
 
@@ -152,8 +147,6 @@ class TestDebugPlugin(unittest.TestCase):
 
             # Should return False
             self.assertFalse(result)
-
-        import asyncio
 
         asyncio.run(run_test())
 
@@ -194,8 +187,6 @@ class TestDebugPlugin(unittest.TestCase):
             # Should return False
             self.assertFalse(result)
 
-        import asyncio
-
         asyncio.run(run_test())
 
     def test_plugin_never_intercepts_messages(self):
@@ -226,8 +217,6 @@ class TestDebugPlugin(unittest.TestCase):
                 room, event, "!important_command"
             )
             self.assertFalse(matrix_result)
-
-        import asyncio
 
         asyncio.run(run_test())
 
