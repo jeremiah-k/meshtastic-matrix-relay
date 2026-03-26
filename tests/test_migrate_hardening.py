@@ -6,9 +6,11 @@ from unittest.mock import patch
 
 import pytest
 
+from mmrelay.constants.migration import (
+    MIGRATION_BACKUP_DIRNAME,
+    MIGRATION_STAGING_DIRNAME,
+)
 from mmrelay.migrate import (
-    BACKUP_DIRNAME,
-    STAGING_DIRNAME,
     migrate_config,
     migrate_credentials,
     migrate_database,
@@ -87,7 +89,7 @@ def test_force_always_creates_backup(tmp_path: Path):
     result = migrate_credentials([legacy_root], new_home, force=True)
     assert result["success"] is True
 
-    backup_dir = matrix_dir / BACKUP_DIRNAME
+    backup_dir = matrix_dir / MIGRATION_BACKUP_DIRNAME
     assert backup_dir.exists()
     backups = list(backup_dir.glob("credentials.json.bak.*"))
     assert len(backups) == 1
@@ -115,7 +117,7 @@ def test_staging_pattern_credentials(tmp_path: Path):
     assert not (new_home / "matrix" / "credentials.json").exists()
 
     # Staging should still be there
-    staging_file = new_home / STAGING_DIRNAME / "credentials"
+    staging_file = new_home / MIGRATION_STAGING_DIRNAME / "credentials"
     assert staging_file.exists()
     assert staging_file.read_text() == '{"token": "secret"}'
 

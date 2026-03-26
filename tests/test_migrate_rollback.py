@@ -6,8 +6,10 @@ These tests verify the critical safety functionality that restores files from
 
 import shutil
 from pathlib import Path
+from typing import Any
 
-from mmrelay.migrate import BACKUP_DIRNAME, rollback_migration
+from mmrelay.constants.migration import MIGRATION_BACKUP_DIRNAME
+from mmrelay.migrate import rollback_migration
 
 
 class TestRollbackMigration:
@@ -19,7 +21,7 @@ class TestRollbackMigration:
         """Test rollback with empty completed_steps list."""
         new_home = clean_migration_home
         completed_steps: list[str] = []
-        migrations: list[dict[str, any]] = []
+        migrations: list[dict[str, Any]] = []
 
         # Call rollback_migration with no completed steps
         result = rollback_migration(completed_steps, migrations, new_home)
@@ -45,7 +47,7 @@ class TestRollbackMigration:
         # Create destination and backup directories
         matrix_dir = new_home / "matrix"
         matrix_dir.mkdir(parents=True)
-        backup_dir = matrix_dir / BACKUP_DIRNAME
+        backup_dir = matrix_dir / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir(parents=True)
 
         # Simulate migration - move file and create backup
@@ -109,9 +111,9 @@ class TestRollbackMigration:
         database_dir.mkdir(parents=True)
 
         # Create backup directories
-        config_backup_dir = matrix_dir / BACKUP_DIRNAME
+        config_backup_dir = matrix_dir / MIGRATION_BACKUP_DIRNAME
         config_backup_dir.mkdir(parents=True)
-        db_backup_dir = database_dir / BACKUP_DIRNAME
+        db_backup_dir = database_dir / MIGRATION_BACKUP_DIRNAME
         db_backup_dir.mkdir(parents=True)
 
         # Simulate migration - move files and create backups
@@ -180,7 +182,7 @@ class TestRollbackMigration:
         # Create destination and backup directories
         matrix_dir = new_home / "matrix"
         matrix_dir.mkdir(parents=True)
-        backup_dir = matrix_dir / BACKUP_DIRNAME
+        backup_dir = matrix_dir / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir(parents=True)
 
         # Simulate migration
