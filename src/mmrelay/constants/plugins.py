@@ -34,7 +34,7 @@ PIPX_ENVIRONMENT_KEYS = ("PIPX_HOME", "PIPX_LOCAL_VENVS", "PIPX_BIN_DIR")
 
 # Trusted git hosting platforms for community plugins
 # These hosts are considered safe for plugin source repositories
-DEFAULT_ALLOWED_COMMUNITY_HOSTS: tuple[str, ...] = (
+DEFAULT_ALLOWED_COMMUNITY_HOSTS: Final[tuple[str, ...]] = (
     "github.com",
     "gitlab.com",
     "codeberg.org",
@@ -43,7 +43,7 @@ DEFAULT_ALLOWED_COMMUNITY_HOSTS: tuple[str, ...] = (
 
 # Requirement prefixes that may indicate security risks
 # These prefixes allow VCS URLs or direct URLs that could bypass package verification
-RISKY_REQUIREMENT_PREFIXES: tuple[str, ...] = (
+RISKY_REQUIREMENT_PREFIXES: Final[tuple[str, ...]] = (
     "git+",
     "ssh://",
     "git://",
@@ -55,7 +55,7 @@ RISKY_REQUIREMENT_PREFIXES: tuple[str, ...] = (
 )
 
 # Pip source flags that can be followed by URLs
-PIP_SOURCE_FLAGS: tuple[str, ...] = (
+PIP_SOURCE_FLAGS: Final[tuple[str, ...]] = (
     "-e",
     "--editable",
     "-f",
@@ -94,6 +94,11 @@ SENSITIVE_URL_PARAMS: Final[frozenset[str]] = frozenset(
         "private_token",
         "oauth_token",
         "x-access-token",
+        "secret",
+        "api_key",
+        "apikey",
+        "client_secret",
+        "bearer",
     }
 )
 

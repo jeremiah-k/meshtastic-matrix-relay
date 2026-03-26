@@ -108,7 +108,8 @@ def test_get_config_paths_dedupes_when_explicit_matches_home() -> None:
     ):
         candidates = get_config_paths(explicit="/same/config.yaml")
 
-    assert candidates == [Path("/same/config.yaml").absolute()]
+    assert len(candidates) == 1
+    assert candidates[0] == Path("/same/config.yaml")
 
 
 def test_plugin_data_dir_prefers_discovered_community_plugin() -> None:
@@ -315,7 +316,7 @@ def test_ensure_directories_warns_when_missing_and_create_disabled() -> None:
             for call in mock_logger.warning.call_args_list
             if "Directory missing" in str(call)
         ]
-        assert len(warning_calls) >= 5
+        assert len(warning_calls) == 9, f"Expected 9 warnings, got {len(warning_calls)}"
 
 
 def test_get_plugin_code_dir_covers_type_and_discovery_branches() -> None:
@@ -340,7 +341,8 @@ def test_get_plugin_code_dir_covers_type_and_discovery_branches() -> None:
             discovered = get_plugin_code_dir("demo")
             assert discovered == community_root / "demo"
             core_path = get_plugin_code_dir("mesh_relay", plugin_type="core")
-            assert "plugins" in str(core_path)
+            assert core_path.name == "mesh_relay"
+            assert "plugins" in str(core_path.parent)
 
 
 def test_get_diagnostics_maps_resolved_fields() -> None:

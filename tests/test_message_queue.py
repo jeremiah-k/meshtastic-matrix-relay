@@ -395,7 +395,10 @@ class TestMessageQueue(unittest.TestCase):
             async def _fake_sleep(_seconds: float) -> None:
                 queue._running = False
 
-            with patch("mmrelay.message_queue.asyncio.sleep", side_effect=_fake_sleep):
+            with (
+                patch("mmrelay.message_queue.time.monotonic", return_value=10.0),
+                patch("mmrelay.message_queue.asyncio.sleep", side_effect=_fake_sleep),
+            ):
                 await queue._process_queue()
 
             queue._requeue_message.assert_called_once_with(msg)

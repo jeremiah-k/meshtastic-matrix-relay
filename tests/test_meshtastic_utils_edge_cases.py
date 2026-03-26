@@ -64,6 +64,32 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             self.calls.append(timeout)
             raise ConcurrentTimeoutError("Plugin timeout")
 
+    class _DummyFuture:
+        """Helper class to simulate a future that records timeout values and raises an exception."""
+
+        def __init__(self, exc):
+            """
+            Initialize the object with an exception and an empty call history.
+
+            Parameters:
+                exc (BaseException): The exception instance to store for later inspection or re-raising.
+            """
+            self.exc = exc
+            self.calls = []
+
+        def result(self, timeout=None):
+            """
+            Record the provided timeout value and raise the stored exception.
+
+            Parameters:
+                timeout (float | None): Timeout passed in; appended to self.calls for later inspection.
+
+            Raises:
+                Any: Re-raises the exception stored in self.exc.
+            """
+            self.calls.append(timeout)
+            raise self.exc
+
     def setUp(self):
         """
         Reset mmrelay.meshtastic_utils global state so each test runs in isolation.
@@ -332,32 +358,8 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         interface = MagicMock()
         interface.nodes = {}
 
-        class DummyFuture:
-            def __init__(self, exc):
-                """
-                Initialize the object with an exception and an empty call history.
-
-                Parameters:
-                    exc (BaseException): The exception instance to store for later inspection or re-raising.
-                """
-                self.exc = exc
-                self.calls = []
-
-            def result(self, timeout=None):
-                """
-                Record the provided timeout value and raise the stored exception.
-
-                Parameters:
-                    timeout (float | None): Timeout passed in; appended to self.calls for later inspection.
-
-                Raises:
-                    Any: Re-raises the exception stored in self.exc.
-                """
-                self.calls.append(timeout)
-                raise self.exc
-
         timeout_exc = ConcurrentTimeoutError("Plugin timeout")
-        future = DummyFuture(timeout_exc)
+        future = self._DummyFuture(timeout_exc)
 
         plugin = MagicMock()
         plugin.plugin_name = "timeout_plugin"
@@ -409,32 +411,8 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         interface = MagicMock()
         interface.nodes = {}
 
-        class DummyFuture:
-            def __init__(self, exc):
-                """
-                Initialize the object with an exception and an empty call history.
-
-                Parameters:
-                    exc (BaseException): The exception instance to store for later inspection or re-raising.
-                """
-                self.exc = exc
-                self.calls = []
-
-            def result(self, timeout=None):
-                """
-                Record the provided timeout value and raise the stored exception.
-
-                Parameters:
-                    timeout (float | None): Timeout passed in; appended to self.calls for later inspection.
-
-                Raises:
-                    Any: Re-raises the exception stored in self.exc.
-                """
-                self.calls.append(timeout)
-                raise self.exc
-
         timeout_exc = ConcurrentTimeoutError("Plugin timeout")
-        future = DummyFuture(timeout_exc)
+        future = self._DummyFuture(timeout_exc)
 
         plugin = MagicMock()
         plugin.plugin_name = "timeout_plugin"

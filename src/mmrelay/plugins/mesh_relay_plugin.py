@@ -260,7 +260,7 @@ class Plugin(BasePlugin):
             self.logger.debug(f"Skipping message from unmapped room {room.room_id}")
             return False
 
-        packet_json = event.source["content"].get(MATRIX_PACKET_KEY)
+        packet_json = event.source.get("content", {}).get(MATRIX_PACKET_KEY)
         if not packet_json:
             self.logger.debug("Missing embedded packet")
             return False

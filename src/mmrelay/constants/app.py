@@ -54,11 +54,13 @@ LEGACY_DATA_SUBDIR: Final[str] = "data"
 SECURE_FILE_PERMISSIONS: Final[int] = 0o600
 SECURE_DIR_PERMISSIONS: Final[int] = 0o700
 
+# Version requirements
+MIN_PYTHON_VERSION: Final[tuple[int, int]] = (3, 10)
+
 # Windows-specific constants
 WINDOWS_VTP_FLAG: Final[int] = 0x0004
 WINDOWS_STD_OUTPUT_HANDLE: Final[int] = -11
 WINDOWS_STD_ERROR_HANDLE: Final[int] = -12
-MIN_PYTHON_VERSION: Final[tuple[int, int]] = (3, 10)
 WINDOWS_PATH_LENGTH_WARNING: Final[int] = 200
 
 # Windows error codes

@@ -222,11 +222,13 @@ class TestMigrateAdditionalCoverage:
 
         symlink_root = tmp_path / "symlink_root"
         symlink_root.mkdir()
-        (symlink_root / "meshtastic.sqlite").symlink_to(target_db)
-
         partial_root = tmp_path / "partial_root"
         partial_root.mkdir()
-        (partial_root / "data").symlink_to(new_db_dir, target_is_directory=True)
+        try:
+            (symlink_root / "meshtastic.sqlite").symlink_to(target_db)
+            (partial_root / "data").symlink_to(new_db_dir, target_is_directory=True)
+        except OSError as exc:
+            pytest.skip(f"Symlinks unavailable in this environment: {exc}")
 
         result = migrate_database(
             [symlink_root, partial_root, new_home],

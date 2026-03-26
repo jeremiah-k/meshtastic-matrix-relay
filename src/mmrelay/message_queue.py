@@ -14,7 +14,7 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
 from mmrelay.constants.network import MINIMUM_MESSAGE_DELAY, RECOMMENDED_MINIMUM_DELAY
@@ -191,6 +191,12 @@ class MessageQueue:
 
                 task_loop.call_soon_threadsafe(_cancel_and_cleanup)
                 task_cancel_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC)
+                if not task_cancel_done.is_set():
+                    logger.warning("Task cancellation timed out, forcing state reset")
+                    with self._lock:
+                        self._processor_task = None
+                        self._executor = None
+                        self._stopping = False
             elif task_loop.is_running():
                 task_done = threading.Event()
 
@@ -216,6 +222,12 @@ class MessageQueue:
                 with contextlib.suppress(RuntimeError):
                     task_loop.call_soon_threadsafe(_cancel_and_cleanup)
                 task_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC)
+                if not task_done.is_set():
+                    logger.warning("Task wait timed out, forcing state reset")
+                    with self._lock:
+                        self._processor_task = None
+                        self._executor = None
+                        self._stopping = False
             else:
                 task.cancel()
                 with contextlib.suppress(asyncio.CancelledError, RuntimeError):

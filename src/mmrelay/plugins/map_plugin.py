@@ -163,6 +163,7 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
         try:
             font = ImageFont.truetype(MAP_LABEL_FONT_FILE, self._font_size)
         except OSError:
+            logger.debug("Failed to load font %s, using default", MAP_LABEL_FONT_FILE)
             try:
                 font = ImageFont.load_default(size=self._font_size)
             except TypeError:

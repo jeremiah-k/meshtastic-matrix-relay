@@ -249,6 +249,7 @@ def get_config_paths(*, explicit: str | None = None) -> list[Path]:
     if explicit:
         explicit_path = Path(explicit).expanduser().absolute()
         candidates.append(explicit_path)
+        return candidates
 
     # 2. MMRELAY_HOME/config.yaml
     home = get_home_dir()

@@ -67,7 +67,7 @@ class Plugin(BasePlugin):
         end_time = datetime.now()
         start_time = end_time - timedelta(hours=hours)
 
-        # Create a list of hourly intervals for the last 12 hours
+        # Create a list of hourly intervals for the specified time period
         hourly_intervals = []
         current_time = start_time
         while current_time <= end_time:

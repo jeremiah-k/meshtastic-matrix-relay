@@ -10,6 +10,7 @@ Tests the message drop and pickup functionality including:
 - Error handling for invalid positions
 """
 
+import asyncio
 import os
 import sys
 import unittest
@@ -103,8 +104,6 @@ class TestDropPlugin(unittest.TestCase):
             )
             self.assertTrue(result)
 
-        import asyncio
-
         asyncio.run(run_test())
 
     @patch("mmrelay.plugins.drop_plugin.connect_meshtastic")
@@ -144,8 +143,6 @@ class TestDropPlugin(unittest.TestCase):
             self.assertEqual(stored_data["originator"], "!12345678")
             self.assertEqual(stored_data["location"], (40.7128, -74.0060))
 
-        import asyncio
-
         asyncio.run(run_test())
 
     @patch("mmrelay.plugins.drop_plugin.connect_meshtastic")
@@ -176,8 +173,6 @@ class TestDropPlugin(unittest.TestCase):
                 "Position of dropping node is not known. Skipping ..."
             )
 
-        import asyncio
-
         asyncio.run(run_test())
 
     @patch("mmrelay.plugins.drop_plugin.connect_meshtastic")
@@ -206,8 +201,6 @@ class TestDropPlugin(unittest.TestCase):
             )
             self.assertFalse(result)
 
-        import asyncio
-
         asyncio.run(run_test())
 
     @patch("mmrelay.plugins.drop_plugin.connect_meshtastic")
@@ -233,8 +226,6 @@ class TestDropPlugin(unittest.TestCase):
                 packet, "formatted_message", "longname", "meshnet_name"
             )
             self.assertFalse(result)
-
-        import asyncio
 
         asyncio.run(run_test())
 
@@ -282,8 +273,6 @@ class TestDropPlugin(unittest.TestCase):
 
             # Should clear the messages (empty list)
             self.plugin.set_node_data.assert_called_once_with("!NODE_MSGS!", [])
-
-        import asyncio
 
         asyncio.run(run_test())
 
@@ -333,8 +322,6 @@ class TestDropPlugin(unittest.TestCase):
             self.plugin.set_node_data.assert_called_once_with(
                 "!NODE_MSGS!", stored_messages
             )
-
-        import asyncio
 
         asyncio.run(run_test())
 
@@ -386,8 +373,6 @@ class TestDropPlugin(unittest.TestCase):
                 "!NODE_MSGS!", stored_messages
             )
 
-        import asyncio
-
         asyncio.run(run_test())
 
     @patch("mmrelay.plugins.drop_plugin.haversine")
@@ -437,8 +422,6 @@ class TestDropPlugin(unittest.TestCase):
                 "!NODE_MSGS!", stored_messages
             )
 
-        import asyncio
-
         asyncio.run(run_test())
 
     @patch("mmrelay.plugins.drop_plugin.connect_meshtastic")
@@ -469,8 +452,6 @@ class TestDropPlugin(unittest.TestCase):
             # Should return False for non-drop messages (not processed)
             self.assertFalse(result)
 
-        import asyncio
-
         asyncio.run(run_test())
 
     def test_handle_room_message_with_matching_command(self):
@@ -492,8 +473,6 @@ class TestDropPlugin(unittest.TestCase):
             result = await self.plugin.handle_room_message(room, event, "full_message")
             self.assertTrue(result)
             self.plugin.matches.assert_called_once_with(event)
-
-        import asyncio
 
         asyncio.run(run_test())
 
@@ -519,8 +498,6 @@ class TestDropPlugin(unittest.TestCase):
             result = await self.plugin.handle_room_message(room, event, "full_message")
             self.assertFalse(result)  # Returns False when no match
             mock_matches.assert_called_once_with(event)
-
-        import asyncio
 
         asyncio.run(run_test())
 

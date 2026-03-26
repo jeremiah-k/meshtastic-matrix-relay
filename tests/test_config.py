@@ -194,12 +194,12 @@ class TestConfig(unittest.TestCase):
                 self.assertEqual(
                     plugin_data_dir, os.path.expanduser("~/.mmrelay/plugins")
                 )
-            plugin_specific_dir = get_plugin_data_dir("my_plugin")
-            # New unified layout: core plugin data under home/plugins/core/<name>/data
-            self.assertEqual(
-                plugin_specific_dir,
-                os.path.expanduser("~/.mmrelay/plugins/core/my_plugin/data"),
-            )
+                plugin_specific_dir = get_plugin_data_dir("my_plugin")
+                # New unified layout: core plugin data under home/plugins/core/<name>/data
+                self.assertEqual(
+                    plugin_specific_dir,
+                    os.path.expanduser("~/.mmrelay/plugins/core/my_plugin/data"),
+                )
 
 
 class TestConfigEdgeCases(unittest.TestCase):

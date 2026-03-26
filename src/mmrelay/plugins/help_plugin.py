@@ -11,6 +11,7 @@ from nio import (
 
 from mmrelay.constants.messages import (
     MSG_AVAILABLE_COMMANDS_PREFIX,
+    MSG_COMMAND_HELP,
     MSG_NO_SUCH_COMMAND,
 )
 from mmrelay.plugin_loader import load_plugins
@@ -116,7 +117,9 @@ class Plugin(BasePlugin):
 
             for plugin in plugins:
                 if command in plugin.get_matrix_commands():
-                    reply = f"`!{command}`: {plugin.description}"
+                    reply = MSG_COMMAND_HELP.format(
+                        command=command, description=plugin.description
+                    )
         else:
             commands = []
             for plugin in plugins:

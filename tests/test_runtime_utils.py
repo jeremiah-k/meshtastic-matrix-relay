@@ -5,10 +5,10 @@ from __future__ import annotations
 
 import os
 import sys
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from typing import IO, Any, Callable
 from unittest.mock import mock_open, patch
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import mmrelay.runtime_utils as runtime_utils
 
@@ -67,20 +67,28 @@ def test_is_running_as_service_false_when_parent_is_not_systemd() -> None:
         assert runtime_utils.is_running_as_service() is False
 
 
-def test_is_running_as_service_false_on_proc_parse_or_file_errors() -> None:
-    """Parsing/file errors should safely return False."""
-    with patch.dict(os.environ, {}, clear=True):
-        with patch(
+def test_is_running_as_service_false_on_ppid_parse_error() -> None:
+    """PPid parse error should safely return False."""
+    with (
+        patch.dict(os.environ, {}, clear=True),
+        patch(
             "builtins.open",
             side_effect=_open_side_effect_for_proc(
                 status_text="Name:\tpython\nPPid:\tnot-a-number\n",
                 comm_text="ignored\n",
             ),
-        ):
-            assert runtime_utils.is_running_as_service() is False
+        ),
+    ):
+        assert runtime_utils.is_running_as_service() is False
 
-        with patch("builtins.open", side_effect=FileNotFoundError("missing /proc")):
-            assert runtime_utils.is_running_as_service() is False
+
+def test_is_running_as_service_false_on_file_not_found() -> None:
+    """File not found error should safely return False."""
+    with (
+        patch.dict(os.environ, {}, clear=True),
+        patch("builtins.open", side_effect=FileNotFoundError("missing /proc")),
+    ):
+        assert runtime_utils.is_running_as_service() is False
 
 
 def test_is_running_as_service_false_when_status_has_no_ppid_line() -> None:

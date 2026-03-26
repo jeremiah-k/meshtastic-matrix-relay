@@ -2571,6 +2571,10 @@ class TestGitOperations(BaseGitTest):
         with open(plugin_file, "w", encoding="utf-8") as handle:
             handle.write("import missingdep_pipx\n\nclass Plugin:\n    pass\n")
 
+        orig_pipx_home = os.environ.get("PIPX_HOME")
+        orig_pipx_local_venvs = os.environ.get("PIPX_LOCAL_VENVS")
+        orig_missingdep = sys.modules.get("missingdep_pipx")
+
         for var in ("PIPX_HOME", "PIPX_LOCAL_VENVS"):
             os.environ.pop(var, None)
         os.environ["PIPX_HOME"] = "/tmp/pipx-home"
@@ -2590,8 +2594,18 @@ class TestGitOperations(BaseGitTest):
             ):
                 plugins = load_plugins_from_directory(self.temp_plugins_dir)
         finally:
-            os.environ.pop("PIPX_HOME", None)
-            sys.modules.pop("missingdep_pipx", None)
+            if orig_pipx_home is not None:
+                os.environ["PIPX_HOME"] = orig_pipx_home
+            else:
+                os.environ.pop("PIPX_HOME", None)
+            if orig_pipx_local_venvs is not None:
+                os.environ["PIPX_LOCAL_VENVS"] = orig_pipx_local_venvs
+            else:
+                os.environ.pop("PIPX_LOCAL_VENVS", None)
+            if orig_missingdep is not None:
+                sys.modules["missingdep_pipx"] = orig_missingdep
+            else:
+                sys.modules.pop("missingdep_pipx", None)
 
         self.assertEqual(len(plugins), 1)
         mock_run.assert_any_call(
@@ -2604,6 +2618,11 @@ class TestGitOperations(BaseGitTest):
         plugin_file = os.path.join(self.temp_plugins_dir, "pip_plugin.py")
         with open(plugin_file, "w", encoding="utf-8") as handle:
             handle.write("import missingdep_pip\n\nclass Plugin:\n    pass\n")
+
+        orig_pipx_home = os.environ.get("PIPX_HOME")
+        orig_pipx_local_venvs = os.environ.get("PIPX_LOCAL_VENVS")
+        orig_virtual_env = os.environ.get("VIRTUAL_ENV")
+        orig_missingdep = sys.modules.get("missingdep_pip")
 
         for var in ("PIPX_HOME", "PIPX_LOCAL_VENVS", "VIRTUAL_ENV"):
             os.environ.pop(var, None)
@@ -2622,7 +2641,22 @@ class TestGitOperations(BaseGitTest):
             ):
                 plugins = load_plugins_from_directory(self.temp_plugins_dir)
         finally:
-            sys.modules.pop("missingdep_pip", None)
+            if orig_pipx_home is not None:
+                os.environ["PIPX_HOME"] = orig_pipx_home
+            else:
+                os.environ.pop("PIPX_HOME", None)
+            if orig_pipx_local_venvs is not None:
+                os.environ["PIPX_LOCAL_VENVS"] = orig_pipx_local_venvs
+            else:
+                os.environ.pop("PIPX_LOCAL_VENVS", None)
+            if orig_virtual_env is not None:
+                os.environ["VIRTUAL_ENV"] = orig_virtual_env
+            else:
+                os.environ.pop("VIRTUAL_ENV", None)
+            if orig_missingdep is not None:
+                sys.modules["missingdep_pip"] = orig_missingdep
+            else:
+                sys.modules.pop("missingdep_pip", None)
 
         self.assertEqual(len(plugins), 1)
         pip_calls = [c for c in mock_run.call_args_list if "pip" in c.args[0]]
@@ -2638,14 +2672,32 @@ class TestGitOperations(BaseGitTest):
         with open(plugin_file, "w", encoding="utf-8") as handle:
             handle.write("import missingdep_fail\n\nclass Plugin:\n    pass\n")
 
+        orig_pipx_home = os.environ.get("PIPX_HOME")
+        orig_pipx_local_venvs = os.environ.get("PIPX_LOCAL_VENVS")
+        orig_virtual_env = os.environ.get("VIRTUAL_ENV")
+
         for var in ("PIPX_HOME", "PIPX_LOCAL_VENVS", "VIRTUAL_ENV"):
             os.environ.pop(var, None)
 
-        with patch(
-            "mmrelay.plugin_loader._run",
-            side_effect=subprocess.CalledProcessError(1, "pip"),
-        ):
-            plugins = load_plugins_from_directory(self.temp_plugins_dir)
+        try:
+            with patch(
+                "mmrelay.plugin_loader._run",
+                side_effect=subprocess.CalledProcessError(1, "pip"),
+            ):
+                plugins = load_plugins_from_directory(self.temp_plugins_dir)
+        finally:
+            if orig_pipx_home is not None:
+                os.environ["PIPX_HOME"] = orig_pipx_home
+            else:
+                os.environ.pop("PIPX_HOME", None)
+            if orig_pipx_local_venvs is not None:
+                os.environ["PIPX_LOCAL_VENVS"] = orig_pipx_local_venvs
+            else:
+                os.environ.pop("PIPX_LOCAL_VENVS", None)
+            if orig_virtual_env is not None:
+                os.environ["VIRTUAL_ENV"] = orig_virtual_env
+            else:
+                os.environ.pop("VIRTUAL_ENV", None)
 
         self.assertEqual(plugins, [])
         self.assertTrue(

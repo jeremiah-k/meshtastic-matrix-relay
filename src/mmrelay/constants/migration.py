@@ -7,6 +7,18 @@ directory names, and file patterns.
 
 from typing import Final
 
+__all__ = [
+    "MIGRATION_MAX_RETRIES",
+    "MIGRATION_INITIAL_RETRY_DELAY",
+    "MIGRATION_MAX_RETRY_DELAY",
+    "MIGRATION_STAGING_DIRNAME",
+    "MIGRATION_BACKUP_DIRNAME",
+    "MIGRATION_LOCK_FILENAME",
+    "TEMP_DEVICE_NAME_LOGOUT",
+    "MIGRATION_MIN_FREE_SPACE_BYTES",
+    "DEFAULT_SERVICE_ARGS_SUFFIX",
+]
+
 # Migration retry settings
 MIGRATION_MAX_RETRIES: Final[int] = 5
 MIGRATION_INITIAL_RETRY_DELAY: Final[float] = 0.1

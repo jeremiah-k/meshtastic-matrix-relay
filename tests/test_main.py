@@ -3158,8 +3158,11 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
                 mock_queue.ensure_processor_started = MagicMock()
                 mock_get_queue.return_value = mock_queue
 
-                with self.assertRaisesRegex(RuntimeError, "health monitor failed"):
-                    asyncio.run(main(config))
+                try:
+                    with self.assertRaisesRegex(RuntimeError, "health monitor failed"):
+                        asyncio.run(main(config))
+                finally:
+                    _reset_all_mmrelay_globals()
 
                 mock_queue.ensure_processor_started.assert_called_once()
                 mock_shutdown_plugins.assert_called_once()
@@ -3210,11 +3213,14 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
                 mock_queue.ensure_processor_started = MagicMock()
                 mock_get_queue.return_value = mock_queue
 
-                with self.assertRaisesRegex(
-                    RuntimeError,
-                    "Connection health task exited unexpectedly without an exception",
-                ):
-                    asyncio.run(main(config))
+                try:
+                    with self.assertRaisesRegex(
+                        RuntimeError,
+                        "Connection health task exited unexpectedly without an exception",
+                    ):
+                        asyncio.run(main(config))
+                finally:
+                    _reset_all_mmrelay_globals()
 
                 mock_queue.ensure_processor_started.assert_called_once()
                 mock_shutdown_plugins.assert_called_once()

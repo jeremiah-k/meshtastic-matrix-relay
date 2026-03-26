@@ -82,8 +82,6 @@ class TestExecStartImprovements(unittest.TestCase):
         self.assertEqual(result, '"/path with spaces/python"')
 
         # Test that the fix is applied in service logic
-        from mmrelay.setup_utils import get_resolved_exec_cmd
-
         with patch("shutil.which", return_value=None):
             with patch("sys.executable", path_with_spaces):
                 result = get_resolved_exec_cmd()

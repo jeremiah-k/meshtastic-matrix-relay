@@ -153,7 +153,7 @@ def _write_ready_file() -> None:
             pass
 
         # Atomically rename temp file to target
-        temp_path.rename(ready_path)
+        temp_path.replace(ready_path)
         logger.debug("Wrote readiness file: %s", _ready_file_path)
     except OSError:
         logger.debug(

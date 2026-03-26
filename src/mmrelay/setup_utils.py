@@ -14,10 +14,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    pass
+from typing import Any
 
 from mmrelay.constants.app import (
     SERVICE_RESTART_SECONDS,
@@ -866,7 +863,7 @@ def start_service() -> bool:
         logger.exception("Error starting service")
         return False
     except OSError:
-        logger.exception("Error starting mmrelay service")
+        logger.exception("Error starting service")
         return False
 
 

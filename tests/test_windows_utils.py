@@ -413,7 +413,7 @@ class TestTestConfigGenerationWindows:
             ),
             patch("importlib.resources.files") as mock_files,
             patch("mmrelay.config.get_config_paths", return_value=[new_config]),
-            patch("os.path.exists", return_value=False),
+            patch("os.path.exists", side_effect=lambda p: p == sample_config),
             patch("os.makedirs", side_effect=OSError("cannot create")),
         ):
             mock_joinpath = MagicMock()

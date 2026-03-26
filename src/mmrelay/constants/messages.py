@@ -40,6 +40,7 @@ PING_MATRIX_RESPONSE: Final[str] = "pong!"
 
 # Help plugin messages
 MSG_NO_SUCH_COMMAND: Final[str] = "No such command: {command}"
+MSG_COMMAND_HELP: Final[str] = "`!{command}`: {description}"
 MSG_AVAILABLE_COMMANDS_PREFIX: Final[str] = "Available commands: "
 
 # Graph/telemetry messages

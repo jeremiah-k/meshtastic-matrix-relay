@@ -587,6 +587,9 @@ class TestE2EEErrorMessages(unittest.TestCase):
 
         self.assertEqual(len(instructions), 2)
         self.assertIn("not supported on Windows", instructions[0])
+        self.assertTrue(
+            len(instructions[1]) > 0, "Second instruction should not be empty"
+        )
 
     def test_get_e2ee_warning_messages(self):
         """Test that get_e2ee_warning_messages returns expected warning messages."""

@@ -209,7 +209,7 @@ class Plugin(BasePlugin):
         full_message: str,
     ) -> bool:
         """
-        Reply "pong!" in the Matrix room when the event matches this plugin's trigger.
+        Reply with the configured ping response in the Matrix room when the event matches this plugin's trigger.
 
         Parameters:
             room (MatrixRoom): The room containing the event; used to determine the target room_id for the reply.
