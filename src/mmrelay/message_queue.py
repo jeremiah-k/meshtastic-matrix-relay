@@ -144,84 +144,80 @@ class MessageQueue:
 
         Cancels the background processor task and, when possible, waits briefly for it to finish on its owning event loop; shuts down the dedicated ThreadPoolExecutor (using a background thread if called from an asyncio event loop) and clears internal state so the queue can be restarted. Thread-safe; this call may wait briefly for shutdown to complete but avoids blocking the current asyncio event loop.
         """
+        task = None
+        exec_ref = None
         with self._lock:
             if not self._running:
                 return
 
             self._running = False
+            task = self._processor_task
+            exec_ref = self._executor
+            self._processor_task = None
+            self._executor = None
 
-            if self._processor_task:
-                # Wait for the task to complete on its owning loop
-                task = self._processor_task
-                task_loop = task.get_loop()
-                current_loop = None
-                with contextlib.suppress(RuntimeError):
-                    current_loop = asyncio.get_running_loop()
+        if task is not None:
+            task_loop = task.get_loop()
+            current_loop = None
+            with contextlib.suppress(RuntimeError):
+                current_loop = asyncio.get_running_loop()
 
-                if task_loop.is_closed():
-                    # Owning loop is closed; nothing we can do to await it
-                    pass
-                elif current_loop is task_loop:
-                    # Same thread: safe to cancel directly, skip blocking await
+            if task_loop.is_closed():
+                pass
+            elif current_loop is task_loop:
+                task.cancel()
+            elif task_loop.is_running():
+                task_done = threading.Event()
+
+                def _cancel_on_loop() -> None:
                     task.cancel()
-                elif task_loop.is_running():
-                    # Cross-thread: use call_soon_threadsafe for cancel
-                    task_done = threading.Event()
+                    if task.done():
+                        task_done.set()
+                        return
 
-                    def _cancel_on_loop() -> None:
-                        task.cancel()
-                        if task.done():
-                            task_done.set()
-                            return
+                    def _mark_done(_finished_task: asyncio.Task[Any]) -> None:
+                        task_done.set()
 
-                        def _mark_done(_finished_task: asyncio.Task[Any]) -> None:
-                            task_done.set()
+                    task.add_done_callback(_mark_done)
 
-                        task.add_done_callback(_mark_done)
-
-                    with contextlib.suppress(RuntimeError):
-                        task_loop.call_soon_threadsafe(_cancel_on_loop)
-                    task_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC)
-                else:
-                    # Non-running loop: safe to cancel directly, then run_until_complete
-                    task.cancel()
-                    with contextlib.suppress(
-                        asyncio.CancelledError, RuntimeError, Exception
-                    ):
-                        task_loop.run_until_complete(task)
-
-                self._processor_task = None
-
-            # Shut down our dedicated executor without blocking the event loop
-            if self._executor:
-                on_loop_thread = False
                 with contextlib.suppress(RuntimeError):
-                    loop_chk = asyncio.get_running_loop()
-                    on_loop_thread = loop_chk.is_running()
+                    task_loop.call_soon_threadsafe(_cancel_on_loop)
+                task_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC)
+            else:
+                task.cancel()
+                with contextlib.suppress(
+                    asyncio.CancelledError, RuntimeError, Exception
+                ):
+                    task_loop.run_until_complete(task)
 
-                def _shutdown(exec_ref: ThreadPoolExecutor) -> None:
-                    """
-                    Shut down an executor, waiting for running tasks to finish; falls back for executors that don't support `cancel_futures`.
+        if exec_ref is not None:
+            on_loop_thread = False
+            with contextlib.suppress(RuntimeError):
+                loop_chk = asyncio.get_running_loop()
+                on_loop_thread = loop_chk.is_running()
 
-                    Attempts to call executor.shutdown(wait=True, cancel_futures=True) and, if that raises a TypeError (older Python versions or executors without the `cancel_futures` parameter), retries with executor.shutdown(wait=True). This call blocks until shutdown completes.
-                    """
-                    try:
-                        exec_ref.shutdown(wait=True, cancel_futures=True)
-                    except TypeError:
-                        exec_ref.shutdown(wait=True)
+            def _shutdown(exec_ref: ThreadPoolExecutor) -> None:
+                """
+                Shut down an executor, waiting for running tasks to finish; falls back for executors that don't support `cancel_futures`.
 
-                if on_loop_thread:
-                    threading.Thread(
-                        target=_shutdown,
-                        args=(self._executor,),
-                        name="MessageQueueExecutorShutdown",
-                        daemon=True,
-                    ).start()
-                else:
-                    _shutdown(self._executor)
-                self._executor = None
+                Attempts to call executor.shutdown(wait=True, cancel_futures=True) and, if that raises a TypeError (older Python versions or executors without the `cancel_futures` parameter), retries with executor.shutdown(wait=True). This call blocks until shutdown completes.
+                """
+                try:
+                    exec_ref.shutdown(wait=True, cancel_futures=True)
+                except TypeError:
+                    exec_ref.shutdown(wait=True)
 
-            logger.info("Message queue stopped")
+            if on_loop_thread:
+                threading.Thread(
+                    target=_shutdown,
+                    args=(exec_ref,),
+                    name="MessageQueueExecutorShutdown",
+                    daemon=True,
+                ).start()
+            else:
+                _shutdown(exec_ref)
+
+        logger.info("Message queue stopped")
 
     def enqueue(
         self,

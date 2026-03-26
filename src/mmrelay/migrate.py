@@ -507,16 +507,13 @@ def _find_legacy_data(legacy_root: Path) -> list[dict[str, str]]:
         legacy_root / "data" / "meshtastic.sqlite",
         legacy_root / "database" / "meshtastic.sqlite",
     ]
-    db_sidecar_suffixes = tuple(
-        s for s in SQLITE_SIDECAR_SUFFIXES if s in {".sqlite-wal", ".sqlite-shm"}
-    )
     for candidate in db_candidates:
         if candidate.exists():
             add_finding("database", candidate)
-        for suffix in db_sidecar_suffixes:
-            sidecar = candidate.with_suffix(suffix)
-            if sidecar.exists():
-                add_finding("database", sidecar)
+        sidecars: list[Path] = []
+        _collect_db_sidecars(candidate, sidecars)
+        for sidecar in sidecars:
+            add_finding("database", sidecar)
 
     logs_dir = legacy_root / "logs"
     if _dir_has_entries(logs_dir):

@@ -44,6 +44,34 @@ class _InvalidNamesTableError(ValueError):
         super().__init__(f"Invalid table name: {table}")
 
 
+_VALID_TABLE_NAMES: frozenset[str] = frozenset(
+    {
+        MESSAGE_MAP_TABLE,
+        PLUGIN_DATA_TABLE,
+        NAMES_TABLE_LONGNAMES,
+        NAMES_TABLE_SHORTNAMES,
+        f"{MESSAGE_MAP_TABLE}_legacy",
+    }
+)
+
+_VALID_COLUMN_NAMES: frozenset[str] = frozenset(
+    set(MESSAGE_MAP_COLUMNS)
+    | set(PLUGIN_DATA_COLUMNS)
+    | {NAMES_FIELD_LONGNAME, NAMES_FIELD_SHORTNAME, "meshtastic_id"}
+)
+
+
+def _validate_identifier(name: str, allowlist: frozenset[str]) -> str:
+    """
+    Validate that a SQL identifier matches a known-safe allowlist.
+
+    Raises ValueError if the identifier is not in the allowlist.
+    """
+    if name not in allowlist:
+        raise ValueError(f"Invalid SQL identifier: {name}")
+    return name
+
+
 # Global config variable that will be set from main.py
 config = None
 
@@ -579,7 +607,10 @@ def initialize_database() -> None:
             f"CREATE TABLE IF NOT EXISTS {MESSAGE_MAP_TABLE} ({MESSAGE_MAP_COLUMNS[0]} TEXT, {MESSAGE_MAP_COLUMNS[1]} TEXT PRIMARY KEY, {MESSAGE_MAP_COLUMNS[2]} TEXT, {MESSAGE_MAP_COLUMNS[3]} TEXT, {MESSAGE_MAP_COLUMNS[4]} TEXT)"
         )
         _legacy_table = f"{MESSAGE_MAP_TABLE}_legacy"
+        _validate_identifier(_legacy_table, _VALID_TABLE_NAMES)
         _col_id, _col_evt, _col_room, _col_text, _col_mesh = MESSAGE_MAP_COLUMNS
+        for _c in MESSAGE_MAP_COLUMNS:
+            _validate_identifier(_c, _VALID_COLUMN_NAMES)
 
         # Attempt schema adjustments for upgrades
         try:
@@ -596,7 +627,8 @@ def initialize_database() -> None:
         meshtastic_column = column_map.get(_col_id)
         meshnet_column = column_map.get(_col_mesh)
         cursor.execute(
-            f"SELECT name FROM sqlite_master WHERE type='table' AND name='{_legacy_table}'"  # nosec B608
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            (_legacy_table,),
         )
         legacy_exists = cursor.fetchone() is not None
 
@@ -608,13 +640,13 @@ def initialize_database() -> None:
             legacy_columns = {column[1]: column for column in cursor.fetchall()}
             if _col_mesh in legacy_columns:
                 cursor.execute(
-                    f"INSERT OR IGNORE INTO {MESSAGE_MAP_TABLE} ({_col_id}, {_col_evt}, {_col_room}, {_col_text}, {_col_mesh}) "  # nosec B608
+                    f"INSERT OR IGNORE INTO {MESSAGE_MAP_TABLE} ({_col_id}, {_col_evt}, {_col_room}, {_col_text}, {_col_mesh}) "
                     f"SELECT CAST({_col_id} AS TEXT), {_col_evt}, {_col_room}, {_col_text}, {_col_mesh} "
                     f"FROM {_legacy_table}"
                 )
             else:
                 cursor.execute(
-                    f"INSERT OR IGNORE INTO {MESSAGE_MAP_TABLE} ({_col_id}, {_col_evt}, {_col_room}, {_col_text}, {_col_mesh}) "  # nosec B608
+                    f"INSERT OR IGNORE INTO {MESSAGE_MAP_TABLE} ({_col_id}, {_col_evt}, {_col_room}, {_col_text}, {_col_mesh}) "
                     f"SELECT CAST({_col_id} AS TEXT), {_col_evt}, {_col_room}, {_col_text}, NULL "
                     f"FROM {_legacy_table}"
                 )
@@ -630,13 +662,13 @@ def initialize_database() -> None:
             )
             if meshnet_column:
                 cursor.execute(
-                    f"INSERT INTO {MESSAGE_MAP_TABLE} ({_col_id}, {_col_evt}, {_col_room}, {_col_text}, {_col_mesh}) "  # nosec B608
+                    f"INSERT INTO {MESSAGE_MAP_TABLE} ({_col_id}, {_col_evt}, {_col_room}, {_col_text}, {_col_mesh}) "
                     f"SELECT CAST({_col_id} AS TEXT), {_col_evt}, {_col_room}, {_col_text}, {_col_mesh} "
                     f"FROM {_legacy_table}"
                 )
             else:
                 cursor.execute(
-                    f"INSERT INTO {MESSAGE_MAP_TABLE} ({_col_id}, {_col_evt}, {_col_room}, {_col_text}, {_col_mesh}) "  # nosec B608
+                    f"INSERT INTO {MESSAGE_MAP_TABLE} ({_col_id}, {_col_evt}, {_col_room}, {_col_text}, {_col_mesh}) "
                     f"SELECT CAST({_col_id} AS TEXT), {_col_evt}, {_col_room}, {_col_text}, NULL "
                     f"FROM {_legacy_table}"
                 )
@@ -689,7 +721,7 @@ def store_plugin_data(plugin_name: str, meshtastic_id: int | str, data: Any) -> 
             cursor (sqlite3.Cursor): Open database cursor used to execute the insert/update statement.
         """
         cursor.execute(
-            f"INSERT INTO {PLUGIN_DATA_TABLE} ({PLUGIN_DATA_COLUMNS[0]}, {PLUGIN_DATA_COLUMNS[1]}, {PLUGIN_DATA_COLUMNS[2]}) VALUES (?, ?, ?) "  # nosec B608
+            f"INSERT INTO {PLUGIN_DATA_TABLE} ({PLUGIN_DATA_COLUMNS[0]}, {PLUGIN_DATA_COLUMNS[1]}, {PLUGIN_DATA_COLUMNS[2]}) VALUES (?, ?, ?) "
             f"ON CONFLICT ({PLUGIN_DATA_COLUMNS[0]}, {PLUGIN_DATA_COLUMNS[1]}) DO UPDATE SET {PLUGIN_DATA_COLUMNS[2]} = excluded.{PLUGIN_DATA_COLUMNS[2]}",
             (plugin_name, id_key, payload),
         )
@@ -723,7 +755,7 @@ def delete_plugin_data(plugin_name: str, meshtastic_id: int | str) -> None:
             cursor (sqlite3.Cursor): Cursor on which the DELETE is executed; must be part of the caller's transaction.
         """
         cursor.execute(
-            f"DELETE FROM {PLUGIN_DATA_TABLE} WHERE {PLUGIN_DATA_COLUMNS[0]}=? AND {PLUGIN_DATA_COLUMNS[1]}=?",  # nosec B608
+            f"DELETE FROM {PLUGIN_DATA_TABLE} WHERE {PLUGIN_DATA_COLUMNS[0]}=? AND {PLUGIN_DATA_COLUMNS[1]}=?",
             (plugin_name, id_key),
         )
 
@@ -761,7 +793,7 @@ def get_plugin_data_for_node(plugin_name: str, meshtastic_id: int | str) -> Any:
             `tuple[Any, ...]` with the `data` column for the matched row, or `None` if no row matches.
         """
         cursor.execute(
-            f"SELECT {PLUGIN_DATA_COLUMNS[2]} FROM {PLUGIN_DATA_TABLE} WHERE {PLUGIN_DATA_COLUMNS[0]}=? AND {PLUGIN_DATA_COLUMNS[1]}=?",  # nosec B608
+            f"SELECT {PLUGIN_DATA_COLUMNS[2]} FROM {PLUGIN_DATA_TABLE} WHERE {PLUGIN_DATA_COLUMNS[0]}=? AND {PLUGIN_DATA_COLUMNS[1]}=?",
             (plugin_name, id_key),
         )
         return cast(tuple[Any, ...] | None, cursor.fetchone())

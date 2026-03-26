@@ -124,11 +124,12 @@ def _write_ready_file() -> None:
             os.makedirs(ready_dir, exist_ok=True, mode=SECURE_DIR_PERMISSIONS)
             # Ensure directory has correct permissions when we own it.
             try:
-                if (
-                    os.path.isdir(ready_dir)
-                    and os.stat(ready_dir).st_uid == os.geteuid()
-                ):
-                    os.chmod(ready_dir, SECURE_DIR_PERMISSIONS)
+                if os.path.isdir(ready_dir):
+                    same_owner = not hasattr(os, "geteuid") or (
+                        os.stat(ready_dir).st_uid == os.geteuid()
+                    )
+                    if same_owner:
+                        os.chmod(ready_dir, SECURE_DIR_PERMISSIONS)
             except OSError:
                 logger.debug(
                     "Failed to set readiness directory permissions: %s",

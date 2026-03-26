@@ -2067,13 +2067,13 @@ def _print_system_health(paths_info: dict[str, Any]) -> None:
             used_pct = (usage.used / usage.total) * 100
             status = (
                 "✅"
-                if free_gb > DISK_SPACE_OK_GB
-                else "⚠️" if free_gb > DISK_SPACE_WARN_GB else "❌"
+                if free_gb >= DISK_SPACE_OK_GB
+                else "⚠️" if free_gb >= DISK_SPACE_WARN_GB else "❌"
             )
             print(
                 f"   {status} {free_gb:.1f} GB free of {total_gb:.1f} GB ({used_pct:.0f}% used)"
             )
-            if free_gb < DISK_SPACE_CRITICAL_DATABASE_GB:
+            if free_gb <= DISK_SPACE_CRITICAL_DATABASE_GB:
                 print("       ⚠️  Low disk space - database/logs may fail")
         else:
             print("   ⚠️  HOME directory not accessible")
