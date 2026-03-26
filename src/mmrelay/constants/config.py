@@ -124,6 +124,7 @@ NORMALIZABLE_CONFIG_SECTIONS: Final[tuple[str, ...]] = (
 REQUIRED_CREDENTIALS_KEYS: Final[tuple[str, ...]] = (
     CONFIG_KEY_HOMESERVER,
     CONFIG_KEY_ACCESS_TOKEN,
+    CONFIG_KEY_USER_ID,
 )
 
 # Required config keys

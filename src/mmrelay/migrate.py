@@ -2263,10 +2263,12 @@ def migrate_gpxtracker(
             try:
                 import yaml
             except ImportError as e:
-                logger.error("PyYAML is required for GPX tracker migration: %s", e)
-                raise RuntimeError(
-                    f"PyYAML is required for GPX tracker migration: {e}"
-                ) from e
+                logger.warning(
+                    "PyYAML is not available; skipping GPX tracker config scan for %s: %s",
+                    legacy_config,
+                    e,
+                )
+                continue
 
             try:
                 with open(legacy_config, "r", encoding="utf-8") as f:

@@ -102,7 +102,15 @@ def _get_logger() -> logging.Logger:
     """
     global _logger
     if _logger is None:
-        _logger = get_logger(__name__)
+        existing_logger = logging.getLogger(__name__)
+        # If handlers are already present (for example unittest.assertLogs),
+        # reuse the existing logger to avoid clobbering active capture handlers.
+        _logger = existing_logger if existing_logger.handlers else get_logger(__name__)
+    elif _logger.name != __name__:
+        # Recover from tests that may have swapped the cached logger object.
+        # Use stdlib lookup here to avoid reconfiguring handlers mid-context
+        # (for example while unittest.assertLogs has an active capture handler).
+        _logger = logging.getLogger(__name__)
     if _logger is None:
         raise RuntimeError("Logger must be initialized")
     return _logger
