@@ -4,7 +4,6 @@ Test cases for Windows utilities functionality.
 This module tests the Windows-specific utilities added for compatibility improvements.
 """
 
-import os
 import sys
 import unittest
 from unittest.mock import MagicMock, patch

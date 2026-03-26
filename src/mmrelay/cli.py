@@ -2291,8 +2291,9 @@ def handle_auth_status(args: argparse.Namespace) -> int:
 
                 required = REQUIRED_CREDENTIALS_KEYS
                 if not all(
-                    isinstance(credentials.get(k), str) and credentials.get(k).strip()
+                    isinstance(v, str) and v.strip()
                     for k in required
+                    if (v := credentials.get(k)) is not None
                 ):
                     print(
                         f"⚠️  Skipping invalid credentials.json at {credentials_path} "

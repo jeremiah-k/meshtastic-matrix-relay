@@ -1836,7 +1836,6 @@ def _clone_or_update_repo_validated(
                 repo_name,
                 plugins_dir,
                 is_default_branch,
-                default_branches,
             )
 
 

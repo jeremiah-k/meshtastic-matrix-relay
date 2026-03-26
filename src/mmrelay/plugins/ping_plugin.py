@@ -1,5 +1,4 @@
 import asyncio
-import re
 from typing import Any
 
 from meshtastic.mesh_interface import BROADCAST_NUM

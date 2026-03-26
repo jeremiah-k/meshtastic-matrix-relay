@@ -750,7 +750,9 @@ def initialize_database() -> None:
                 if _col_mesh in temp_columns
                 else _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITHOUT_MESH_SQL
             ).replace("message_map_legacy", _temp_table)
-            assert "message_map_legacy" not in insert_sql, "SQL replacement failed"
+            assert (
+                "message_map_legacy" not in insert_sql
+            ), "SQL replacement failed"  # nosec B101
             cursor.execute(insert_sql)
             cursor.execute(f"DROP TABLE IF EXISTS {_temp_table}")
             temp_exists = False
@@ -782,13 +784,17 @@ def initialize_database() -> None:
                 insert_sql = _INSERT_MESSAGE_MAP_FROM_LEGACY_WITH_MESH_SQL.replace(
                     "message_map_legacy", _temp_table
                 )
-                assert "message_map_legacy" not in insert_sql, "SQL replacement failed"
+                assert (
+                    "message_map_legacy" not in insert_sql
+                ), "SQL replacement failed"  # nosec B101
                 cursor.execute(insert_sql)
             else:
                 insert_sql = _INSERT_MESSAGE_MAP_FROM_LEGACY_WITHOUT_MESH_SQL.replace(
                     "message_map_legacy", _temp_table
                 )
-                assert "message_map_legacy" not in insert_sql, "SQL replacement failed"
+                assert (
+                    "message_map_legacy" not in insert_sql
+                ), "SQL replacement failed"  # nosec B101
                 cursor.execute(insert_sql)
             if legacy_exists:
                 cursor.execute(

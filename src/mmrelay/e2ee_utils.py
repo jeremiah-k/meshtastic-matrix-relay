@@ -12,8 +12,6 @@ import sys
 from typing import Any, Dict, List, Literal, Optional, TypedDict
 
 from mmrelay.cli_utils import get_command
-
-logger = logging.getLogger("E2EE")
 from mmrelay.constants.app import (
     CREDENTIALS_FILENAME,
     MATRIX_DIRNAME,
@@ -28,6 +26,8 @@ from mmrelay.constants.messages import (
     MSG_E2EE_WINDOWS_UNSUPPORTED_DETAIL,
 )
 from mmrelay.paths import is_deprecation_window_active, resolve_all_paths
+
+logger = logging.getLogger("E2EE")
 
 
 class E2EEStatus(TypedDict):
