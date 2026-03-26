@@ -20,8 +20,8 @@ if TYPE_CHECKING:
     pass
 
 from mmrelay.constants.app import (
-    SERVICE_FILENAME,
     SERVICE_RESTART_SECONDS,
+    SYSTEMD_SERVICE_FILENAME,
     SYSTEMD_USER_DIR,
 )
 from mmrelay.constants.database import PROGRESS_COMPLETE, PROGRESS_TOTAL_STEPS
@@ -109,7 +109,7 @@ def get_user_service_path() -> Path:
         Path: Path to the user unit file, typically '~/.config/systemd/user/mmrelay.service'.
     """
     service_dir = Path.home() / SYSTEMD_USER_DIR
-    return service_dir / SERVICE_FILENAME
+    return service_dir / SYSTEMD_SERVICE_FILENAME
 
 
 def service_exists() -> bool:
@@ -124,13 +124,18 @@ def service_exists() -> bool:
 
 def log_service_commands() -> None:
     """Log the commands for controlling the systemd user service."""
-    logger.info("  systemctl --user start %s    # Start the service", SERVICE_FILENAME)
-    logger.info("  systemctl --user stop %s     # Stop the service", SERVICE_FILENAME)
     logger.info(
-        "  systemctl --user restart %s  # Restart the service", SERVICE_FILENAME
+        "  systemctl --user start %s    # Start the service", SYSTEMD_SERVICE_FILENAME
     )
     logger.info(
-        "  systemctl --user status %s   # Check service status", SERVICE_FILENAME
+        "  systemctl --user stop %s     # Stop the service", SYSTEMD_SERVICE_FILENAME
+    )
+    logger.info(
+        "  systemctl --user restart %s  # Restart the service", SYSTEMD_SERVICE_FILENAME
+    )
+    logger.info(
+        "  systemctl --user status %s   # Check service status",
+        SYSTEMD_SERVICE_FILENAME,
     )
 
 
@@ -361,7 +366,7 @@ def is_service_enabled() -> bool:
     """
     try:
         result = subprocess.run(
-            [SYSTEMCTL, "--user", "is-enabled", SERVICE_FILENAME],
+            [SYSTEMCTL, "--user", "is-enabled", SYSTEMD_SERVICE_FILENAME],
             check=False,  # Don't raise an exception if the service is not enabled
             capture_output=True,
             text=True,
@@ -381,7 +386,7 @@ def is_service_active() -> bool:
     """
     try:
         result = subprocess.run(
-            [SYSTEMCTL, "--user", "is-active", SERVICE_FILENAME],
+            [SYSTEMCTL, "--user", "is-active", SYSTEMD_SERVICE_FILENAME],
             check=False,  # Don't raise an exception if the service is not active
             capture_output=True,
             text=True,
@@ -770,7 +775,7 @@ def install_service() -> bool:
         if enable_service:
             try:
                 subprocess.run(
-                    [SYSTEMCTL, "--user", "enable", SERVICE_FILENAME],
+                    [SYSTEMCTL, "--user", "enable", SYSTEMD_SERVICE_FILENAME],
                     check=True,
                 )
                 logger.info("Service enabled successfully")
@@ -794,7 +799,7 @@ def install_service() -> bool:
         if restart_service:
             try:
                 subprocess.run(
-                    [SYSTEMCTL, "--user", "restart", SERVICE_FILENAME],
+                    [SYSTEMCTL, "--user", "restart", SYSTEMD_SERVICE_FILENAME],
                     check=True,
                 )
                 logger.info("Service restarted successfully")
@@ -853,7 +858,9 @@ def start_service() -> bool:
         True if the service was started successfully, False otherwise.
     """
     try:
-        subprocess.run([SYSTEMCTL, "--user", "start", SERVICE_FILENAME], check=True)
+        subprocess.run(
+            [SYSTEMCTL, "--user", "start", SYSTEMD_SERVICE_FILENAME], check=True
+        )
         return True
     except subprocess.CalledProcessError:
         logger.exception("Error starting service")
@@ -874,7 +881,7 @@ def show_service_status() -> bool:
     """
     try:
         result = subprocess.run(
-            [SYSTEMCTL, "--user", "status", SERVICE_FILENAME],
+            [SYSTEMCTL, "--user", "status", SYSTEMD_SERVICE_FILENAME],
             check=False,
             capture_output=True,
             text=True,

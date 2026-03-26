@@ -27,6 +27,7 @@ from mmrelay.constants.config import (
     CONFIG_KEY_HOMESERVER,
     CONFIG_KEY_NODEDB_REFRESH_INTERVAL,
     CONFIG_SECTION_MATRIX,
+    DEPRECATION_VERSIONS,
     ENV_BOOL_FALSE_VALUES,
     ENV_BOOL_TRUE_VALUES,
     NORMALIZABLE_CONFIG_SECTIONS,
@@ -81,7 +82,7 @@ def _warn_deprecated(_name: str) -> None:
         _name (str): Ignored; included so callers can cache or key warnings (e.g., with lru_cache).
     """
     warnings.warn(
-        "Use paths.get_home_dir() instead. Support will be removed in v1.4.",
+        f"Use paths.get_home_dir() instead. Support will be removed in v{DEPRECATION_VERSIONS[1]}.",
         DeprecationWarning,
         stacklevel=3,
     )
@@ -822,7 +823,7 @@ def load_credentials() -> dict[str, Any] | None:
             _get_config_logger().warning(
                 "Credentials found in legacy location: %s. "
                 "Please run 'mmrelay migrate' to move to new unified structure. "
-                "Support for legacy credentials will be removed in v1.4.",
+                f"Support for legacy credentials will be removed in v{DEPRECATION_VERSIONS[1]}.",
                 credentials_path,
             )
         elif (

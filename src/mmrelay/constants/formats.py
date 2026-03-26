@@ -29,6 +29,7 @@ DATE_FORMAT_LONG: Final[str] = "%b %d, %Y"
 BACKUP_TIMESTAMP_FORMAT: Final[str] = "%Y%m%d_%H%M%S"
 MIGRATION_TIMESTAMP_FORMAT: Final[str] = "%Y%m%d_%H%M%S_%f"
 RICH_LOG_TIME_FORMAT: Final[str] = "%Y-%m-%d %H:%M:%S"
+HOUR_FORMAT: Final[str] = "%H"
 
 # Log format strings
 LOG_FORMAT_CONSOLE: Final[str] = "{message}"
@@ -88,3 +89,28 @@ MAP_LABEL_FONT_SIZE: Final[int] = 50
 DEFAULT_LABEL_FONT_SIZE: Final[int] = 12
 LABEL_MARGIN_PX: Final[int] = 4
 LABEL_ARROW_SIZE_PX: Final[int] = 16
+
+# Map label colors (RGBA tuples)
+MAP_LABEL_FILL_COLOR: Final[tuple[int, int, int, int]] = (255, 255, 255, 255)  # White
+MAP_LABEL_OUTLINE_COLOR: Final[tuple[int, int, int, int]] = (255, 0, 0, 255)  # Red
+MAP_LABEL_TEXT_COLOR: Final[tuple[int, int, int, int]] = (0, 0, 0, 255)  # Black
+
+# Font file for map labels
+MAP_LABEL_FONT_FILE: Final[str] = "DejaVuSans.ttf"
+
+# Temperature conversion constants
+CELSIUS_TO_FAHRENHEIT_MULTIPLIER: Final[float] = 9 / 5
+FAHRENHEIT_OFFSET: Final[float] = 32
+
+# Coordinate bounds
+LATITUDE_MIN: Final[int] = -90
+LATITUDE_MAX: Final[int] = 90
+LONGITUDE_MIN: Final[int] = -180
+LONGITUDE_MAX: Final[int] = 180
+
+# Common symbols
+DEGREE_SYMBOL: Final[str] = "°"
+
+# Telemetry graph constants
+GRAPH_IMAGE_FORMAT: Final[str] = "png"
+GRAPH_XLABEL_ROTATION_DEGREES: Final[int] = 45

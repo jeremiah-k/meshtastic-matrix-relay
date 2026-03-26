@@ -75,6 +75,7 @@ from mmrelay.constants.cli import (
     CLI_COMMANDS,
     DEPRECATED_COMMANDS,
 )
+from mmrelay.constants.config import DEFAULT_CONFIG_FILENAME
 from mmrelay.constants.migration import TEMP_DEVICE_NAME_LOGOUT
 from mmrelay.constants.network import HTTP_SERVER_ERROR_CODES
 from mmrelay.log_utils import get_logger
@@ -232,7 +233,8 @@ def msg_require_auth_login() -> str:
         Instruction string directing the user to run the `auth_login` command to set up `credentials.json` or add a Matrix section to `config.yaml`.
     """
     return require_command(
-        "auth_login", "to set up credentials.json, or add matrix section to config.yaml"
+        "auth_login",
+        f"to set up credentials.json, or add matrix section to {DEFAULT_CONFIG_FILENAME}",
     )
 
 

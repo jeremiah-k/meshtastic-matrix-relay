@@ -37,6 +37,7 @@ PYTHON_OLM_PACKAGE: Final[str] = "python-olm"
 # Configuration file names
 CREDENTIALS_FILENAME: Final[str] = "credentials.json"
 CONFIG_FILENAME: Final[str] = "config.yaml"
+REQUIREMENTS_FILENAME: Final[str] = "requirements.txt"
 STORE_DIRNAME: Final[str] = "store"
 MATRIX_DIRNAME: Final[str] = "matrix"
 
@@ -68,8 +69,8 @@ WINERR_LOCK_VIOLATION: Final[int] = 33
 # Exit codes
 EXIT_CODE_SIGINT: Final[int] = 130
 
-# Service configuration
-SERVICE_FILENAME: Final[str] = "mmrelay.service"
+# Systemd service
+SYSTEMD_SERVICE_FILENAME: Final[str] = "mmrelay.service"
 SYSTEMD_USER_DIR: Final[str] = ".config/systemd/user"
 SERVICE_RESTART_SECONDS: Final[int] = 10
 

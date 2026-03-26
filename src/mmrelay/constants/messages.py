@@ -71,3 +71,6 @@ MSG_MATRIX_SYNC_FAILED: Final[str] = "Matrix sync failed"
 
 # Metadata output limits
 METADATA_OUTPUT_MAX_LENGTH: Final[int] = 4096
+
+# Matrix event types
+MATRIX_EVENT_TYPE_ROOM_MESSAGE: Final[str] = "m.room.message"

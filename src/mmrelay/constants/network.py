@@ -44,6 +44,9 @@ DEFAULT_MESHTASTIC_OPERATION_TIMEOUT: Final[int] = 30  # seconds
 # Initial delay before starting the first connection health check
 INITIAL_HEALTH_CHECK_DELAY: Final[int] = 5  # seconds
 
+# Matrix message limits
+MATRIX_MESSAGE_FETCH_LIMIT: Final[int] = 100
+
 # Matrix client timeouts
 MATRIX_EARLY_SYNC_TIMEOUT: Final[int] = 2000  # milliseconds
 MATRIX_MAIN_SYNC_TIMEOUT: Final[int] = 5000  # milliseconds

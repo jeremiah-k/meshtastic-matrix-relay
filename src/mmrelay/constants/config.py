@@ -7,6 +7,9 @@ used throughout the configuration system.
 
 from typing import Final
 
+# Configuration file names
+DEFAULT_CONFIG_FILENAME: Final[str] = "config.yaml"
+
 # Configuration section names
 CONFIG_SECTION_MATRIX: Final[str] = "matrix"
 CONFIG_SECTION_MATRIX_ROOMS: Final[str] = "matrix_rooms"
@@ -144,3 +147,5 @@ PLUGIN_SECTION_TYPES: Final[dict[str, str]] = {
     CONFIG_SECTION_COMMUNITY_PLUGINS: "community",
     CONFIG_SECTION_CUSTOM_PLUGINS: "custom",
 }
+
+DEPRECATION_VERSIONS: Final[tuple[str, ...]] = ("1.3", "1.4")

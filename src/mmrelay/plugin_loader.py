@@ -21,6 +21,7 @@ import mmrelay.paths as paths_module
 from mmrelay.config import (
     get_app_path,
 )
+from mmrelay.constants.app import REQUIREMENTS_FILENAME
 from mmrelay.constants.plugins import (
     COMMIT_HASH_PATTERN,
     DEFAULT_ALLOWED_COMMUNITY_HOSTS,
@@ -772,7 +773,7 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
         repo_name: Human-readable repository name used in log messages and warnings.
     """
 
-    requirements_path = os.path.join(repo_path, "requirements.txt")
+    requirements_path = os.path.join(repo_path, REQUIREMENTS_FILENAME)
     if not os.path.isfile(requirements_path):
         return
 

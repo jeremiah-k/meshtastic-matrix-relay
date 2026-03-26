@@ -15,7 +15,13 @@ from nio import (
 )
 from PIL import Image
 
-from mmrelay.constants.formats import TELEMETRY_APP_PORTNUM, TELEMETRY_GRAPH_FILENAME
+from mmrelay.constants.formats import (
+    GRAPH_IMAGE_FORMAT,
+    GRAPH_XLABEL_ROTATION_DEGREES,
+    HOUR_FORMAT,
+    TELEMETRY_APP_PORTNUM,
+    TELEMETRY_GRAPH_FILENAME,
+)
 from mmrelay.constants.messages import MSG_GRAPH_UPLOAD_FAILED
 from mmrelay.constants.plugins import TELEMETRY_DEFAULT_HOURS, TELEMETRY_MAX_DATA_ROWS
 from mmrelay.plugins.base_plugin import BasePlugin
@@ -238,7 +244,7 @@ class Plugin(BasePlugin):
         average_values = list(final_averages.values())
 
         # Convert the hourly intervals to strings
-        hourly_strings = [hour.strftime("%H") for hour in hourly_intervals]
+        hourly_strings = [hour.strftime(HOUR_FORMAT) for hour in hourly_intervals]
 
         # Create the plot
         fig, ax = plt.subplots()
@@ -254,11 +260,11 @@ class Plugin(BasePlugin):
         ax.set_ylabel(f"{telemetry_option}")
 
         # Rotate the x-axis labels for readability
-        plt.xticks(rotation=45)
+        plt.xticks(rotation=GRAPH_XLABEL_ROTATION_DEGREES)
 
         # Save the plot as a PIL image
         buf = io.BytesIO()
-        fig.savefig(buf, format="png", bbox_inches="tight")
+        fig.savefig(buf, format=GRAPH_IMAGE_FORMAT, bbox_inches="tight")
         plt.close(fig)
         buf.seek(0)
         img = Image.open(buf)

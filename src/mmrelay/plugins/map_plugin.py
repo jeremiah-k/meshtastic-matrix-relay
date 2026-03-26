@@ -25,7 +25,11 @@ from mmrelay.constants.formats import (
     LABEL_ARROW_SIZE_PX,
     LABEL_MARGIN_PX,
     MAP_IMAGE_FILENAME,
+    MAP_LABEL_FILL_COLOR,
+    MAP_LABEL_FONT_FILE,
     MAP_LABEL_FONT_SIZE,
+    MAP_LABEL_OUTLINE_COLOR,
+    MAP_LABEL_TEXT_COLOR,
     MAP_ZOOM_MAX,
     MAP_ZOOM_MIN,
 )
@@ -157,7 +161,7 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
         x = x + renderer.offset_x()
 
         try:
-            font = ImageFont.truetype("DejaVuSans.ttf", self._font_size)
+            font = ImageFont.truetype(MAP_LABEL_FONT_FILE, self._font_size)
         except OSError:
             font = ImageFont.load_default(size=self._font_size)
 
@@ -176,12 +180,12 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
             (x - self._arrow / 2, y - self._arrow),
         ]
 
-        renderer.draw().polygon(path, fill=(255, 255, 255, 255))
-        renderer.draw().line(path, fill=(255, 0, 0, 255))
+        renderer.draw().polygon(path, fill=MAP_LABEL_FILL_COLOR)
+        renderer.draw().line(path, fill=MAP_LABEL_OUTLINE_COLOR)
         renderer.draw().text(
             (x - tw / 2, y - self._arrow - h / 2 - th / 2),
             self._text,
-            fill=(0, 0, 0, 255),
+            fill=MAP_LABEL_TEXT_COLOR,
             font=font,
         )
 

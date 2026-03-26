@@ -14,7 +14,17 @@ from nio import (
     RoomMessageText,
 )
 
-from mmrelay.constants.formats import KM_TO_MILES_FACTOR, TEXT_MESSAGE_APP
+from mmrelay.constants.formats import (
+    CELSIUS_TO_FAHRENHEIT_MULTIPLIER,
+    DEGREE_SYMBOL,
+    FAHRENHEIT_OFFSET,
+    KM_TO_MILES_FACTOR,
+    LATITUDE_MAX,
+    LATITUDE_MIN,
+    LONGITUDE_MAX,
+    LONGITUDE_MIN,
+    TEXT_MESSAGE_APP,
+)
 from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
 from mmrelay.constants.plugins import (
     DAILY_FORECAST_DAYS,
@@ -218,12 +228,15 @@ class Plugin(BasePlugin):
 
             if units == "imperial":
                 if current_temp is not None:
-                    current_temp = current_temp * 9 / 5 + 32
+                    current_temp = (
+                        current_temp * CELSIUS_TO_FAHRENHEIT_MULTIPLIER
+                        + FAHRENHEIT_OFFSET
+                    )
                 imperial_forecasts = {}
                 for key, values in forecast_hours.items():
                     t, p, w, dflag, *rest = values
                     if t is not None:
-                        t = t * 9 / 5 + 32
+                        t = t * CELSIUS_TO_FAHRENHEIT_MULTIPLIER + FAHRENHEIT_OFFSET
                     imperial_forecasts[key] = (t, p, w, dflag, *rest)
                 forecast_hours = imperial_forecasts
 
@@ -269,7 +282,7 @@ class Plugin(BasePlugin):
                 if wind_speed is not None:
                     wind_part = f"Wind {round(wind_speed, 1)}{wind_unit}"
                     if wind_dir is not None:
-                        wind_part += f" {round(wind_dir)}°"
+                        wind_part += f" {round(wind_dir)}{DEGREE_SYMBOL}"
                     parts.append(wind_part)
                 if precip_now is not None:
                     parts.append(f"Precip {precip_now}%")
@@ -313,8 +326,22 @@ class Plugin(BasePlugin):
         daily_min = data.get("daily", {}).get("temperature_2m_min") or []
         daily_times = data.get("daily", {}).get("time") or []
         if units == "imperial":
-            daily_max = [t * 9 / 5 + 32 if t is not None else None for t in daily_max]
-            daily_min = [t * 9 / 5 + 32 if t is not None else None for t in daily_min]
+            daily_max = [
+                (
+                    t * CELSIUS_TO_FAHRENHEIT_MULTIPLIER + FAHRENHEIT_OFFSET
+                    if t is not None
+                    else None
+                )
+                for t in daily_max
+            ]
+            daily_min = [
+                (
+                    t * CELSIUS_TO_FAHRENHEIT_MULTIPLIER + FAHRENHEIT_OFFSET
+                    if t is not None
+                    else None
+                )
+                for t in daily_min
+            ]
         days = min(
             len(daily_codes),
             len(daily_max),
@@ -749,7 +776,10 @@ class Plugin(BasePlugin):
             lon = float(parts[1])
         except (TypeError, ValueError):
             return None
-        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        if not (
+            LATITUDE_MIN <= lat <= LATITUDE_MAX
+            and LONGITUDE_MIN <= lon <= LONGITUDE_MAX
+        ):
             return None
         return lat, lon
 

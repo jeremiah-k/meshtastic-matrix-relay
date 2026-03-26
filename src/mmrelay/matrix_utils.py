@@ -105,6 +105,7 @@ from mmrelay.constants.formats import (
 from mmrelay.constants.messages import (
     DEFAULT_MESSAGE_TRUNCATE_BYTES,
     DISPLAY_NAME_DEFAULT_LENGTH,
+    MATRIX_EVENT_TYPE_ROOM_MESSAGE,
     MAX_TRUNCATION_LENGTH,
     MESHNET_NAME_ABBREVIATION_LENGTH,
     MESSAGE_PREVIEW_LENGTH,
@@ -117,6 +118,7 @@ from mmrelay.constants.messages import (
 from mmrelay.constants.network import (
     MATRIX_EARLY_SYNC_TIMEOUT,
     MATRIX_LOGIN_TIMEOUT,
+    MATRIX_MESSAGE_FETCH_LIMIT,
     MATRIX_ROOM_SEND_TIMEOUT,
     MATRIX_SYNC_OPERATION_TIMEOUT,
     MATRIX_TO_DEVICE_TIMEOUT,
@@ -3125,7 +3127,7 @@ async def _send_matrix_message_with_retry(
             response = await asyncio.wait_for(
                 matrix_client.room_send(
                     room_id=room_id,
-                    message_type="m.room.message",
+                    message_type=MATRIX_EVENT_TYPE_ROOM_MESSAGE,
                     content=content,
                     ignore_unverified_devices=True,
                 ),
@@ -4654,7 +4656,7 @@ async def send_room_image(
     if content_uri:
         await client.room_send(
             room_id=room_id,
-            message_type="m.room.message",
+            message_type=MATRIX_EVENT_TYPE_ROOM_MESSAGE,
             content={
                 "msgtype": "m.image",
                 "url": content_uri,
