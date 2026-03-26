@@ -422,10 +422,8 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
     def test_test_config_generation_windows_outer_oserror_sets_overall_error(self):
         """Unexpected outer OSError should mark overall_status=error with details.
 
-        Note: This test mocks builtins.sum because the outer OSError handler only
-        catches errors outside inner try/except blocks. The sum() call in the status
-        aggregation is the only code in that region. Mocking importlib.resources.files
-        won't work because its OSError is caught by an inner handler.
+        This validates the outer OSError handler by forcing the status aggregation
+        helper to raise after inner check handlers have completed.
         """
         sample_config = str(self.tmp_path / "sample_config.yaml")
         config_path = str(self.tmp_path / "config.yaml")
@@ -438,7 +436,10 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
             patch("os.path.exists", return_value=True),
             patch("importlib.resources.files") as mock_files,
             patch("mmrelay.config.get_config_paths", return_value=[config_path]),
-            patch("builtins.sum", side_effect=OSError("sum failure")),
+            patch(
+                "mmrelay.windows_utils._count_error_results",
+                side_effect=OSError("sum failure"),
+            ),
         ):
             mock_joinpath = MagicMock()
             mock_joinpath.read_text.return_value = "sample: config"

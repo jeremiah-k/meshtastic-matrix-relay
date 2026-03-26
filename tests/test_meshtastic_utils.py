@@ -2938,12 +2938,10 @@ class TestGetDeviceMetadata(unittest.TestCase):
         probe = Mock()
         mock_executor = MagicMock()
 
-        with (
-            patch(
-                "mmrelay.meshtastic_utils._get_metadata_executor",
-                return_value=mock_executor,
-            ),
-        ):
+        with patch(
+            "mmrelay.meshtastic_utils._get_metadata_executor",
+            return_value=mock_executor,
+        ) as mock_get_executor:
             original_degraded = mu._metadata_executor_degraded
             original_future = mu._metadata_future
             original_started_at = mu._metadata_future_started_at
@@ -2958,6 +2956,7 @@ class TestGetDeviceMetadata(unittest.TestCase):
                 mu._metadata_future = original_future
                 mu._metadata_future_started_at = original_started_at
 
+        mock_get_executor.assert_not_called()
         mock_executor.submit.assert_not_called()
         mock_logger.error.assert_called()
 
@@ -2976,18 +2975,29 @@ class TestGetDeviceMetadata(unittest.TestCase):
             def __exit__(self, *_args: Any) -> bool:
                 return False
 
+        class _DegradedFlag:
+            def __init__(self, lock: _TrackingLock) -> None:
+                self._lock = lock
+                self.checked_while_locked = False
+
+            def __bool__(self) -> bool:
+                self.checked_while_locked = self._lock.entered
+                return True
+
         tracking_lock = _TrackingLock()
+        degraded_flag = _DegradedFlag(tracking_lock)
         original_lock = mu._metadata_future_lock
         original_degraded = mu._metadata_executor_degraded
         try:
             mu._metadata_future_lock = tracking_lock  # type: ignore[assignment]
-            mu._metadata_executor_degraded = True
+            mu._metadata_executor_degraded = degraded_flag  # type: ignore[assignment]
             mu._reset_metadata_executor_for_stale_probe()
         finally:
             mu._metadata_future_lock = original_lock
             mu._metadata_executor_degraded = original_degraded
 
         self.assertTrue(tracking_lock.entered)
+        self.assertTrue(degraded_flag.checked_while_locked)
 
     def test_get_device_metadata_raise_on_error_reraises_non_io_value_error(self):
         """Non-I/O ValueError failures from getMetadata() should propagate."""

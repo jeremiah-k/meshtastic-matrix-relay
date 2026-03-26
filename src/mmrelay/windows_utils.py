@@ -274,11 +274,7 @@ def test_config_generation_windows(args: Any = None) -> dict[str, Any]:
             results["directory_creation"] = {"status": "error", "details": str(e)}
 
         # Determine overall status
-        error_count = sum(
-            1
-            for r in results.values()
-            if isinstance(r, dict) and r.get("status") == "error"
-        )
+        error_count = _count_error_results(results)
         if error_count == 0:
             results["overall_status"] = "ok"
         elif error_count < 3:  # If at least one fallback works
@@ -291,6 +287,23 @@ def test_config_generation_windows(args: Any = None) -> dict[str, Any]:
         results["error"] = str(e)
 
     return results
+
+
+def _count_error_results(results: dict[str, Any]) -> int:
+    """
+    Count diagnostic checks in `results` that reported status="error".
+
+    Parameters:
+        results: Diagnostic result mapping from test_config_generation_windows().
+
+    Returns:
+        int: Number of nested diagnostic result dictionaries marked as errors.
+    """
+    return sum(
+        1
+        for result in results.values()
+        if isinstance(result, dict) and result.get("status") == "error"
+    )
 
 
 def get_windows_install_guidance() -> str:

@@ -3133,8 +3133,8 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
             patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
             patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
             patch("mmrelay.main.get_message_queue") as mock_get_queue,
-            patch("mmrelay.main.shutdown_plugins"),
-            patch("mmrelay.main.stop_message_queue"),
+            patch("mmrelay.main.shutdown_plugins") as mock_shutdown_plugins,
+            patch("mmrelay.main.stop_message_queue") as mock_stop_message_queue,
             patch(
                 "mmrelay.main.meshtastic_utils.check_connection",
                 new=_check_connection_raises,
@@ -3151,6 +3151,11 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
 
                 with self.assertRaisesRegex(RuntimeError, "health monitor failed"):
                     asyncio.run(main(config))
+
+                mock_queue.ensure_processor_started.assert_called_once()
+                mock_shutdown_plugins.assert_called_once()
+                mock_stop_message_queue.assert_called_once()
+                mock_matrix_client.close.assert_awaited_once()
 
     def test_check_connection_unexpected_return_is_raised_after_cleanup(self):
         """Unexpected clean health-task exits should raise a fatal RuntimeError."""
@@ -3173,8 +3178,8 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
             patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
             patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
             patch("mmrelay.main.get_message_queue") as mock_get_queue,
-            patch("mmrelay.main.shutdown_plugins"),
-            patch("mmrelay.main.stop_message_queue"),
+            patch("mmrelay.main.shutdown_plugins") as mock_shutdown_plugins,
+            patch("mmrelay.main.stop_message_queue") as mock_stop_message_queue,
             patch(
                 "mmrelay.main._DEFAULT_CHECK_CONNECTION_CALLABLE",
                 new=_check_connection_returns,
@@ -3198,6 +3203,11 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
                     "Connection health task exited unexpectedly without an exception",
                 ):
                     asyncio.run(main(config))
+
+                mock_queue.ensure_processor_started.assert_called_once()
+                mock_shutdown_plugins.assert_called_once()
+                mock_stop_message_queue.assert_called_once()
+                mock_matrix_client.close.assert_awaited_once()
 
     def test_exception_during_shutdown_wait_logs_error(self):
         """Exception during shutdown wait should log error and continue.
@@ -3430,8 +3440,9 @@ class TestRunBlockingShutdownStep(unittest.TestCase):
             patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
             patch("mmrelay.main.get_message_queue") as mock_get_queue,
             patch("mmrelay.main.shutdown_plugins") as mock_shutdown,
-            patch("mmrelay.main.stop_message_queue"),
+            patch("mmrelay.main.stop_message_queue") as mock_stop_message_queue,
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+            patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
             patch("mmrelay.main.logger") as mock_logger,
         ):
@@ -3447,6 +3458,11 @@ class TestRunBlockingShutdownStep(unittest.TestCase):
                 mock_shutdown.side_effect = ValueError("Shutdown error")
 
                 asyncio.run(main(config))
+
+                mock_queue.ensure_processor_started.assert_called_once()
+                mock_shutdown.assert_called_once()
+                mock_stop_message_queue.assert_called_once()
+                mock_matrix_client.close.assert_awaited_once()
 
             self.assertTrue(
                 any(
@@ -3475,8 +3491,9 @@ class TestRunBlockingShutdownStep(unittest.TestCase):
             patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
             patch("mmrelay.main.get_message_queue") as mock_get_queue,
             patch("mmrelay.main.shutdown_plugins") as mock_shutdown,
-            patch("mmrelay.main.stop_message_queue"),
+            patch("mmrelay.main.stop_message_queue") as mock_stop_message_queue,
             patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+            patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
             patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
             patch("mmrelay.main.logger") as mock_logger,
         ):
@@ -3491,6 +3508,11 @@ class TestRunBlockingShutdownStep(unittest.TestCase):
                 mock_shutdown.side_effect = KeyboardInterrupt()
 
                 asyncio.run(main(config))
+
+                mock_queue.ensure_processor_started.assert_called_once()
+                mock_shutdown.assert_called_once()
+                mock_stop_message_queue.assert_called_once()
+                mock_matrix_client.close.assert_awaited_once()
 
         self.assertTrue(
             any(

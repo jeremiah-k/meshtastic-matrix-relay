@@ -562,8 +562,10 @@ class TestDatabaseManager(unittest.TestCase):
         worker_future = MagicMock()
         worker_future.done.return_value = False
 
-        async def _raise_cancelled() -> None:
-            raise asyncio.CancelledError()
+        def _cancelled_future() -> asyncio.Future[None]:
+            future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+            future.set_exception(asyncio.CancelledError())
+            return future
 
         with (
             patch.object(
@@ -571,7 +573,7 @@ class TestDatabaseManager(unittest.TestCase):
             ),
             patch(
                 "mmrelay.db_runtime.asyncio.wrap_future",
-                side_effect=lambda _future: _raise_cancelled(),
+                side_effect=lambda _future: _cancelled_future(),
             ),
         ):
 
@@ -589,18 +591,24 @@ class TestDatabaseManager(unittest.TestCase):
         worker_future.cancel = MagicMock()
         wrap_call_count = 0
 
-        async def _raise_cancelled() -> None:
-            raise asyncio.CancelledError()
+        def _cancelled_future() -> asyncio.Future[None]:
+            future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+            future.set_exception(asyncio.CancelledError())
+            return future
 
-        async def _raise_worker_error() -> None:
-            raise RuntimeError("worker failed after caller cancellation")
+        def _worker_error_future() -> asyncio.Future[None]:
+            future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+            future.set_exception(
+                RuntimeError("worker failed after caller cancellation")
+            )
+            return future
 
         def _wrap_future_side_effect(_future):
             nonlocal wrap_call_count
             wrap_call_count += 1
             if wrap_call_count == 1:
-                return _raise_cancelled()
-            return _raise_worker_error()
+                return _cancelled_future()
+            return _worker_error_future()
 
         with (
             patch.object(
@@ -632,13 +640,15 @@ class TestDatabaseManager(unittest.TestCase):
         worker_future.cancel = MagicMock()
         wrap_call_count = 0
 
-        async def _raise_cancelled() -> None:
-            raise asyncio.CancelledError()
+        def _cancelled_future() -> asyncio.Future[None]:
+            future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+            future.set_exception(asyncio.CancelledError())
+            return future
 
         def _wrap_future_side_effect(_future):
             nonlocal wrap_call_count
             wrap_call_count += 1
-            return _raise_cancelled()
+            return _cancelled_future()
 
         with (
             patch.object(
@@ -669,8 +679,10 @@ class TestDatabaseManager(unittest.TestCase):
         worker_future = MagicMock()
         worker_future.done.return_value = True
 
-        async def _raise_cancelled() -> None:
-            raise asyncio.CancelledError()
+        def _cancelled_future() -> asyncio.Future[None]:
+            future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+            future.set_exception(asyncio.CancelledError())
+            return future
 
         with (
             patch.object(
@@ -678,7 +690,7 @@ class TestDatabaseManager(unittest.TestCase):
             ),
             patch(
                 "mmrelay.db_runtime.asyncio.wrap_future",
-                side_effect=lambda _future: _raise_cancelled(),
+                side_effect=lambda _future: _cancelled_future(),
             ),
         ):
 
