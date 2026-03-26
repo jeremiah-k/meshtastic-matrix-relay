@@ -3443,6 +3443,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         self, mock_bleak, mock_sleep, mock_get_running_loop
     ):
         """Test _disconnect_ble_by_address treats unknown is_connected as False."""
+        from mmrelay.constants.network import BLE_DISCONNECT_SETTLE_SECS
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
 
         async def _noop(*_args, **_kwargs):
@@ -3464,7 +3465,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
 
-        mock_sleep.assert_any_call(0.5)
+        mock_sleep.assert_any_call(BLE_DISCONNECT_SETTLE_SECS)
         mock_client.disconnect.assert_called()
 
     @patch("mmrelay.meshtastic_utils.asyncio.get_running_loop")
@@ -3474,6 +3475,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         self, mock_bleak, mock_sleep, mock_get_running_loop
     ):
         """Test _disconnect_ble_by_address sleeps after a successful disconnect."""
+        from mmrelay.constants.network import BLE_DISCONNECT_SETTLE_SECS
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
 
         async def _noop(*_args, **_kwargs):
@@ -3495,7 +3497,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         _disconnect_ble_by_address("AA:BB:CC:DD:EE:FF")
 
-        mock_sleep.assert_any_call(2.0)
+        mock_sleep.assert_any_call(BLE_DISCONNECT_SETTLE_SECS)
 
     @patch("mmrelay.meshtastic_utils.asyncio.get_running_loop")
     @patch("mmrelay.meshtastic_utils.asyncio.wait_for")
