@@ -214,7 +214,7 @@ class Plugin(BasePlugin):
         """
         content = event.source.get("content", {})
 
-        if content.get(MATRIX_SUPPRESS_KEY) is True:
+        if content.get(MATRIX_SUPPRESS_KEY) is True and content.get(MATRIX_PACKET_KEY):
             return True
 
         body = content.get("body", "")

@@ -184,7 +184,16 @@ class BasePlugin(ABC):
         global config
 
         if config is not None:
-            for level in PLUGIN_CONFIG_SECTIONS:
+            candidate_sections = (
+                ("plugins",)
+                if self.is_core_plugin
+                else tuple(
+                    section
+                    for section in PLUGIN_CONFIG_SECTIONS
+                    if section != "plugins"
+                )
+            )
+            for level in candidate_sections:
                 section_config = config.get(level, {})
                 if (
                     isinstance(section_config, dict)

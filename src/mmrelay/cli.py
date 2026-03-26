@@ -2359,11 +2359,7 @@ def handle_auth_logout(args: argparse.Namespace) -> int:
         # Handle password input
         password = getattr(args, "password", None)
 
-        if (
-            password is None
-            or password
-            == ""  # nosec B105 (user-entered secret; prompting securely via getpass)
-        ):
+        if not password:
             # No --password flag or --password with no value, prompt securely
             import getpass
 

@@ -174,8 +174,18 @@ class TestMigrateAdditionalCoverage:
             ),
         ]
 
-        with mock.patch("mmrelay.migrate.subprocess.run", side_effect=responses):
+        with mock.patch(
+            "mmrelay.migrate.subprocess.run", side_effect=responses
+        ) as mock_run:
             assert _is_mmrelay_running() is True
+
+        called_commands = [call[0][0] for call in mock_run.call_args_list]
+        assert any(
+            "pgrep" in str(cmd) for cmd in called_commands
+        ), f"pgrep not called: {called_commands}"
+        assert any(
+            "ps" in str(cmd) for cmd in called_commands
+        ), f"ps fallback not called: {called_commands}"
 
     def test_migrate_config_success_cleans_staging_file(self, tmp_path: Path) -> None:
         """Successful config migration should unlink any leftover staging file."""
@@ -187,11 +197,13 @@ class TestMigrateAdditionalCoverage:
         new_home.mkdir()
         staging_path = _get_staging_path(new_home, "config")
 
-        with mock.patch("mmrelay.migrate._finalize_move", return_value=None):
-            result = migrate_config([legacy_root], new_home, dry_run=False, force=False)
+        result = migrate_config([legacy_root], new_home, dry_run=False, force=False)
 
         assert result["success"] is True
         assert staging_path.exists() is False
+        assert (
+            new_home / "config.yaml"
+        ).exists(), "config.yaml was not moved to target"
 
     def test_migrate_database_skips_paths_resolving_to_target_and_reports_already_migrated(
         self, tmp_path: Path

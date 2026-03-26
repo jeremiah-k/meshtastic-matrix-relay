@@ -42,7 +42,7 @@ class Plugin(BasePlugin):
             str: A multi-line human-readable summary. Typical content:
                 - Nodes: total number of nodes
                 - Battery: average% / median% (avg / median) or "Battery: N/A"
-                - Nodes with Low Battery (<= 10): count (0 if no battery data)
+                - Nodes with Low Battery (<= LOW_BATTERY_THRESHOLD_PERCENT%): count (0 if no battery data)
                 - Air Util: average / median (avg / median) or "Air Util: N/A"
                 - SNR: average / median (avg / median) or "SNR: N/A"
             Special return values:

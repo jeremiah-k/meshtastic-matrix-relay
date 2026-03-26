@@ -805,6 +805,7 @@ class TestDatabaseManager(unittest.TestCase):
         with manager._connections_lock:
             manager._active_sync_count = 1
         close_done = threading.Event()
+        close_started = threading.Event()
         allow_release = threading.Event()
 
         def release_activity() -> None:
@@ -817,6 +818,7 @@ class TestDatabaseManager(unittest.TestCase):
                 manager._active_sync_condition.notify_all()
 
         def close_manager() -> None:
+            close_started.set()
             manager.close()
             close_done.set()
 
@@ -824,6 +826,7 @@ class TestDatabaseManager(unittest.TestCase):
         closer = threading.Thread(target=close_manager, daemon=True)
         releaser.start()
         closer.start()
+        self.assertTrue(close_started.wait(timeout=1.0), "closer thread never started")
         self.assertFalse(
             close_done.wait(timeout=0.05),
             "close() returned before active sync work drained",

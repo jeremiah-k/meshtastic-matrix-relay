@@ -337,6 +337,7 @@ with self.assertLogs("mmrelay.cli", level="WARNING"):
 - Consider adding explicit patterns for asserting log messages on failures in async paths
   Example:
   ```python
+  # some_async_wrapper calls async code via asyncio.run()
   # Ensure logger name matches the component under test (e.g., "MessageQueue")
   with self.assertLogs("mmrelay", level="ERROR") as cm:
       result = some_async_wrapper(self.mock_args)

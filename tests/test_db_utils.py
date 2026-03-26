@@ -223,22 +223,24 @@ class TestDbUtils(unittest.TestCase):
         import mmrelay.constants.database as db_consts
         import mmrelay.db_utils as db_utils_mod
 
-        with patch.object(db_consts, "MESSAGE_MAP_TABLE", "changed_message_map"):
-            with self.assertRaises(RuntimeError):
-                importlib.reload(db_utils_mod)
-
-        importlib.reload(db_utils_mod)
+        try:
+            with patch.object(db_consts, "MESSAGE_MAP_TABLE", "changed_message_map"):
+                with self.assertRaises(RuntimeError):
+                    importlib.reload(db_utils_mod)
+        finally:
+            importlib.reload(db_utils_mod)
 
     def test_db_utils_import_guard_for_names_constants(self):
         """Changing names-table constants should fail static SQL import guard."""
         import mmrelay.constants.database as db_consts
         import mmrelay.db_utils as db_utils_mod
 
-        with patch.object(db_consts, "NAMES_TABLE_LONGNAMES", "bad_names_table"):
-            with self.assertRaises(RuntimeError):
-                importlib.reload(db_utils_mod)
-
-        importlib.reload(db_utils_mod)
+        try:
+            with patch.object(db_consts, "NAMES_TABLE_LONGNAMES", "bad_names_table"):
+                with self.assertRaises(RuntimeError):
+                    importlib.reload(db_utils_mod)
+        finally:
+            importlib.reload(db_utils_mod)
 
     def test_initialize_database(self):
         """

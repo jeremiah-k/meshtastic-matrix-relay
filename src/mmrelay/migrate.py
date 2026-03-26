@@ -45,6 +45,7 @@ Plugin Data Migration (Three-Tier System):
 """
 
 import atexit
+import errno
 import json
 import os
 import shutil
@@ -128,7 +129,7 @@ def _is_windows_file_in_use_error(exc: OSError) -> bool:
         return True
 
     # Fallback: check errno for common locking errors
-    if exc.errno in (13,):  # EACCES
+    if exc.errno == errno.EACCES:
         return True
 
     return False

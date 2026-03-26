@@ -118,7 +118,6 @@ from mmrelay.constants.messages import (
 from mmrelay.constants.network import (
     MATRIX_EARLY_SYNC_TIMEOUT,
     MATRIX_LOGIN_TIMEOUT,
-    MATRIX_MESSAGE_FETCH_LIMIT,
     MATRIX_ROOM_SEND_TIMEOUT,
     MATRIX_SYNC_OPERATION_TIMEOUT,
     MATRIX_TO_DEVICE_TIMEOUT,

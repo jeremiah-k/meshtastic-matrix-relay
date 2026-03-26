@@ -158,7 +158,9 @@ def test_get_legacy_env_vars_and_deprecation_window(monkeypatch) -> None:
             for call in mock_logger.warning.call_args_list
             if "Deprecated" in str(call)
         ]
-        assert len(warning_calls) == 1
+        assert (
+            len(warning_calls) == 1
+        ), f"Expected exactly 1 deprecation warning, got {len(warning_calls)}: {warning_calls}"
     finally:
         paths_module._reset_deprecation_warning_flag()
 

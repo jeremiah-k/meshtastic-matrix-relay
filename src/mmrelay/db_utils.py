@@ -718,6 +718,30 @@ def initialize_database() -> None:
         column_map = {column[1]: column for column in columns}
         meshtastic_column = column_map.get(_col_id)
         meshnet_column = column_map.get(_col_mesh)
+        _temp_table = "message_map_old_temp"
+        _validate_identifier(_temp_table, _VALID_TABLE_NAMES)
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            (_temp_table,),
+        )
+        temp_exists = cursor.fetchone() is not None
+
+        if (
+            temp_exists
+            and meshtastic_column
+            and str(meshtastic_column[2]).upper() == "TEXT"
+        ):
+            cursor.execute(f"PRAGMA table_info({_temp_table})")
+            temp_columns = {column[1]: column for column in cursor.fetchall()}
+            insert_sql = (
+                _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITH_MESH_SQL
+                if _col_mesh in temp_columns
+                else _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITHOUT_MESH_SQL
+            ).replace("message_map_legacy", _temp_table)
+            cursor.execute(insert_sql)
+            cursor.execute(f"DROP TABLE IF EXISTS {_temp_table}")
+            temp_exists = False
+
         cursor.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
             (_legacy_table,),
@@ -739,8 +763,6 @@ def initialize_database() -> None:
             legacy_exists = False
 
         if meshtastic_column and str(meshtastic_column[2]).upper() != "TEXT":
-            _temp_table = "message_map_old_temp"
-            _validate_identifier(_temp_table, _VALID_TABLE_NAMES)
             cursor.execute(f"ALTER TABLE message_map RENAME TO {_temp_table}")
             cursor.execute(_CREATE_TABLE_MESSAGE_MAP_FROM_SCRATCH_SQL)
             if meshnet_column:

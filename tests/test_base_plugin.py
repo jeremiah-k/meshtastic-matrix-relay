@@ -35,6 +35,7 @@ class MockPlugin(BasePlugin):
     """Mock plugin implementation for testing BasePlugin functionality."""
 
     plugin_name = "test_plugin"
+    is_core_plugin = True
 
     async def handle_meshtastic_message(
         self, packet, formatted_message, longname, meshnet_name

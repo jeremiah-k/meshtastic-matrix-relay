@@ -251,7 +251,7 @@ class TestCheckWindowsRequirements(unittest.TestCase):
             self.assertIsNone(check_windows_requirements())
 
 
-class TestTestConfigGenerationWindows(unittest.TestCase):
+class TestTestConfigGenerationWindows:
     """Test cases for test_config_generation_windows function."""
 
     @pytest.fixture(autouse=True)
@@ -263,8 +263,8 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
         """Test test_config_generation_windows returns error on non-Windows."""
         result = windows_test_config_generation(None)
 
-        self.assertIn("error", result)
-        self.assertEqual(result["error"], "This function is only for Windows systems")
+        assert "error" in result
+        assert result["error"] == "This function is only for Windows systems"
 
     @patch("sys.platform", "win32")
     @patch("mmrelay.tools.get_sample_config_path")
@@ -289,9 +289,9 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
                     result = windows_test_config_generation(None)
 
         # Verify
-        self.assertEqual(result["overall_status"], "ok")
-        self.assertEqual(result["sample_config_path"]["status"], "ok")
-        self.assertEqual(result["importlib_resources"]["status"], "ok")
+        assert result["overall_status"] == "ok"
+        assert result["sample_config_path"]["status"] == "ok"
+        assert result["importlib_resources"]["status"] == "ok"
 
     @patch("sys.platform", "win32")
     @patch("mmrelay.tools.get_sample_config_path", side_effect=OSError("Test error"))
@@ -301,8 +301,8 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
         """Test test_config_generation_windows handles exceptions."""
         result = windows_test_config_generation(None)
 
-        self.assertEqual(result["overall_status"], "partial")
-        self.assertEqual(result["sample_config_path"]["status"], "error")
+        assert result["overall_status"] == "partial"
+        assert result["sample_config_path"]["status"] == "error"
 
     def test_test_config_generation_windows_sample_path_missing(self):
         """Missing sample config path should mark sample test as error."""
@@ -323,8 +323,8 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
             mock_files.return_value.joinpath.return_value = mock_joinpath
             result = windows_test_config_generation(None)
 
-        self.assertEqual(result["sample_config_path"]["status"], "error")
-        self.assertEqual(result["overall_status"], "partial")
+        assert result["sample_config_path"]["status"] == "error"
+        assert result["overall_status"] == "partial"
 
     def test_test_config_generation_windows_importlib_resources_error(self):
         """importlib.resources errors should be captured in diagnostics."""
@@ -344,8 +344,8 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
         ):
             result = windows_test_config_generation(None)
 
-        self.assertEqual(result["importlib_resources"]["status"], "error")
-        self.assertEqual(result["overall_status"], "partial")
+        assert result["importlib_resources"]["status"] == "error"
+        assert result["overall_status"] == "partial"
 
     def test_test_config_generation_windows_config_paths_error(self):
         """Config path resolution failures should be recorded as errors."""
@@ -365,8 +365,8 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
             mock_files.return_value.joinpath.return_value = mock_joinpath
             result = windows_test_config_generation(None)
 
-        self.assertEqual(result["config_paths"]["status"], "error")
-        self.assertEqual(result["directory_creation"]["status"], "error")
+        assert result["config_paths"]["status"] == "error"
+        assert result["directory_creation"]["status"] == "error"
 
     def test_test_config_generation_windows_creates_missing_dirs(self):
         """Directory creation diagnostic should report created directories."""
@@ -398,8 +398,8 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
                 result = windows_test_config_generation(None)
 
         mock_makedirs.assert_called_once_with(new_dir, exist_ok=True)
-        self.assertEqual(result["directory_creation"]["status"], "ok")
-        self.assertIn(new_dir, result["directory_creation"]["details"])
+        assert result["directory_creation"]["status"] == "ok"
+        assert new_dir in result["directory_creation"]["details"]
 
     def test_test_config_generation_windows_directory_creation_oserror(self):
         """Directory creation OSError should be captured as diagnostic error."""
@@ -421,7 +421,7 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
             mock_files.return_value.joinpath.return_value = mock_joinpath
             result = windows_test_config_generation(None)
 
-        self.assertEqual(result["directory_creation"]["status"], "error")
+        assert result["directory_creation"]["status"] == "error"
 
     def test_test_config_generation_windows_outer_oserror_sets_overall_error(self):
         """Unexpected outer OSError should mark overall_status=error with details.
@@ -450,8 +450,8 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
             mock_files.return_value.joinpath.return_value = mock_joinpath
             result = windows_test_config_generation(None)
 
-        self.assertEqual(result["overall_status"], "error")
-        self.assertIn("sum failure", result.get("error", ""))
+        assert result["overall_status"] == "error"
+        assert "sum failure" in result.get("error", "")
 
     def test_test_config_generation_windows_error_status_when_all_checks_fail(self):
         """Three or more check errors should produce overall_status='error'."""
@@ -469,7 +469,7 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
         ):
             result = windows_test_config_generation(None)
 
-        self.assertEqual(result["overall_status"], "error")
+        assert result["overall_status"] == "error"
 
 
 class TestGetWindowsInstallGuidance(unittest.TestCase):
