@@ -262,7 +262,9 @@ class BasePlugin(ABC):
             # Cache global plugin-level settings (for options like require_bot_mention)
             # Check the expected section even if no per-plugin stanza exists
             section_to_check = resolved_section or expected_section
-            section_config = config.get(section_to_check, {})
+            section_config = (
+                config.get(section_to_check, {}) if section_to_check else {}
+            )
             if (
                 isinstance(section_config, dict)
                 and CONFIG_KEY_REQUIRE_BOT_MENTION in section_config

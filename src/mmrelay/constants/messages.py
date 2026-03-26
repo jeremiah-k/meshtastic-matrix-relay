@@ -7,16 +7,6 @@ strings that are displayed to users or logged.
 
 from typing import Final
 
-from mmrelay.constants.domain import (
-    MATRIX_EVENT_TYPE_ROOM_MESSAGE,
-    METADATA_OUTPUT_MAX_LENGTH,
-    RELATIVE_TIME_DAYS_THRESHOLD,
-    SECONDS_PER_DAY,
-    SECONDS_PER_HOUR,
-    SECONDS_PER_MINUTE,
-    UNKNOWN_NODE_VALUE,
-)
-
 # Log configuration defaults
 DEFAULT_LOG_SIZE_MB: Final[int] = 5
 DEFAULT_LOG_BACKUP_COUNT: Final[int] = 1
