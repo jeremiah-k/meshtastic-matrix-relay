@@ -54,7 +54,7 @@ PREFIX_DEFINITION_REGEX: Final[re.Pattern[str]] = re.compile(r"^\[(.+?)\]:(\s*)"
 MARKDOWN_ESCAPE_REGEX: Final[re.Pattern[str]] = re.compile(r"([*_`~\\\[\]])")
 
 # Serial port patterns
-WINDOWS_SERIAL_PORT_PATTERN: Final[re.Pattern[str]] = re.compile(r"^COM\d+$")
+WINDOWS_SERIAL_PORT_PATTERN: Final[re.Pattern[str]] = re.compile(r"^COM[1-9]\d*$")
 UNIX_SERIAL_PORT_PATTERN: Final[re.Pattern[str]] = re.compile(r"^/dev/(tty|cu).+$")
 
 # Network patterns

@@ -1,34 +1,28 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from mmrelay.tools import get_sample_config_path, get_service_template_path
 
 
-def test_get_sample_config_path_uses_package_resource_files() -> None:
+@pytest.mark.parametrize(
+    "func,expected_filename",
+    [
+        (get_sample_config_path, "sample_config.yaml"),
+        (get_service_template_path, "mmrelay.service"),
+    ],
+)
+def test_path_functions_use_package_resource_files(func, expected_filename) -> None:
     package_root = Path("/fake/tools")
     traversable = MagicMock()
-    traversable.joinpath.return_value = package_root / "sample_config.yaml"
+    traversable.joinpath.return_value = package_root / expected_filename
 
     with patch(
         "mmrelay.tools.importlib.resources.files", return_value=traversable
     ) as mock_files:
-        result = get_sample_config_path()
+        result = func()
 
-    assert result == str(package_root / "sample_config.yaml")
+    assert result == str(package_root / expected_filename)
     mock_files.assert_called_once_with("mmrelay.tools")
-    traversable.joinpath.assert_called_once_with("sample_config.yaml")
-
-
-def test_get_service_template_path_uses_package_resource_files() -> None:
-    package_root = Path("/fake/tools")
-    traversable = MagicMock()
-    traversable.joinpath.return_value = package_root / "mmrelay.service"
-
-    with patch(
-        "mmrelay.tools.importlib.resources.files", return_value=traversable
-    ) as mock_files:
-        result = get_service_template_path()
-
-    assert result == str(package_root / "mmrelay.service")
-    mock_files.assert_called_once_with("mmrelay.tools")
-    traversable.joinpath.assert_called_once_with("mmrelay.service")
+    traversable.joinpath.assert_called_once_with(expected_filename)

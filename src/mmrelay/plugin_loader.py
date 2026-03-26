@@ -910,7 +910,11 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
             _refresh_dependency_paths()
         else:
             logger.info("No dependency installation run for plugin %s", repo_name)
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    except (
+        subprocess.CalledProcessError,
+        FileNotFoundError,
+        subprocess.TimeoutExpired,
+    ):
         logger.exception(
             "Error installing requirements for plugin %s (requirements: %s)",
             repo_name,
@@ -1134,7 +1138,7 @@ def _fetch_commit_with_fallback(repo_path: str, ref_value: str, repo_name: str) 
             ["git", "-C", repo_path, "fetch", "--depth=1", "origin", ref_value],
             timeout=120,
         )
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         logger.warning(
             "Could not fetch commit %s for %s from remote; trying general fetch",
             ref_value,
@@ -1146,7 +1150,7 @@ def _fetch_commit_with_fallback(repo_path: str, ref_value: str, repo_name: str) 
                 ["git", "-C", repo_path, "fetch", "origin"],
                 timeout=120,
             )
-        except subprocess.CalledProcessError as e:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
             logger.warning("Fallback fetch also failed for %s: %s", repo_name, e)
             return False
     return True
@@ -1187,7 +1191,7 @@ def _update_existing_repo_to_commit(
                     "Repository %s is already at commit %s", repo_name, ref_value
                 )
                 return True
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             # This can happen if ref_value is not a local commit.
             # We can proceed to the more robust checking and fetching logic below.
             pass
@@ -1195,14 +1199,14 @@ def _update_existing_repo_to_commit(
         # Try a direct checkout first (commit may already be available locally)
         try:
             _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             logger.info("Commit %s not found locally, attempting to fetch", ref_value)
             if not _fetch_commit_with_fallback(repo_path, ref_value, repo_name):
                 return False
             _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
         logger.info("Updated repository %s to commit %s", repo_name, ref_value)
         return True
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         logger.exception(
             "Failed to checkout commit %s for %s",
             ref_value,
@@ -1255,14 +1259,14 @@ def _clone_new_repo_to_commit(
                     "Repository %s is already at commit %s", repo_name, ref_value
                 )
                 return True
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             pass
 
         # Then checkout the specific commit
         try:
             # Try direct checkout first (commit might be available from clone)
             _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             # If direct checkout fails, try to fetch the specific commit
             logger.info(f"Commit {ref_value} not available, attempting to fetch")
             if not _fetch_commit_with_fallback(repo_path, ref_value, repo_name):
@@ -1271,7 +1275,11 @@ def _clone_new_repo_to_commit(
             _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
         logger.info(f"Checked out repository {repo_name} to commit {ref_value}")
         return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    except (
+        subprocess.CalledProcessError,
+        FileNotFoundError,
+        subprocess.TimeoutExpired,
+    ):
         logger.exception(
             f"Error cloning repository {repo_name}; please manually clone into {repo_path}"
         )
@@ -1297,7 +1305,7 @@ def _try_checkout_and_pull_ref(
         _run_git(["git", "-C", repo_path, "pull", "origin", ref_value], timeout=120)
         logger.info("Updated repository %s to %s %s", repo_name, ref_type, ref_value)
         return True
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         logger.warning(
             "Failed to update %s %s for %s",
             ref_type,
@@ -1329,10 +1337,10 @@ def _try_fetch_and_checkout_tag(repo_path: str, ref_value: str, repo_name: str) 
                 ["git", "-C", repo_path, "fetch", "origin", f"refs/tags/{ref_value}"],
                 timeout=120,
             )
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             try:
                 _run_git(["git", "-C", repo_path, "fetch", "--tags"], timeout=120)
-            except subprocess.CalledProcessError:
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
                 # If that fails, try fetching with an explicit refspec to force updating the local tag
                 _run_git(
                     [
@@ -1352,7 +1360,7 @@ def _try_fetch_and_checkout_tag(repo_path: str, ref_value: str, repo_name: str) 
             "Successfully fetched and checked out tag %s for %s", ref_value, repo_name
         )
         return True
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return False
     except FileNotFoundError:
         logger.exception(
@@ -1381,7 +1389,7 @@ def _try_checkout_as_branch(repo_path: str, ref_value: str, repo_name: str) -> b
         _run_git(["git", "-C", repo_path, "pull", "origin", ref_value], timeout=120)
         logger.info(f"Updated repository {repo_name} to branch {ref_value}")
         return True
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return False
     except FileNotFoundError:
         logger.exception("Error updating repository %s; git not found.", repo_name)
@@ -1413,7 +1421,7 @@ def _fallback_to_default_branches(
                 f"Using {default_branch} instead of {ref_value} for {repo_name}"
             )
             return True
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             continue
 
     logger.warning(
@@ -1446,7 +1454,11 @@ def _update_existing_repo_to_branch_or_tag(
     """
     try:
         _run_git(["git", "-C", repo_path, "fetch", "origin"], timeout=120)
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+    except (
+        subprocess.CalledProcessError,
+        FileNotFoundError,
+        subprocess.TimeoutExpired,
+    ) as e:
         logger.warning(f"Error fetching from remote: {e}")
         if isinstance(e, FileNotFoundError):
             logger.exception("Error updating repository %s; git not found.", repo_name)
@@ -1479,7 +1491,11 @@ def _update_existing_repo_to_branch_or_tag(
         if current_commit == tag_commit:
             logger.info(f"Repository {repo_name} is already at tag {ref_value}")
             return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    except (
+        subprocess.CalledProcessError,
+        FileNotFoundError,
+        subprocess.TimeoutExpired,
+    ):
         pass  # Tag doesn't exist locally or git not found
 
     if _try_fetch_and_checkout_tag(repo_path, ref_value, repo_name):
@@ -1724,7 +1740,7 @@ def _clone_new_repo_to_branch_or_tag(
                         tag_commit = _cp.stdout.strip()
                         if current == tag_commit:
                             return True
-                    except subprocess.CalledProcessError:
+                    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
                         pass  # Continue to fetch and checkout
                     success = _try_fetch_and_checkout_tag(
                         repo_path, ref_value, repo_name
@@ -1734,7 +1750,7 @@ def _clone_new_repo_to_branch_or_tag(
 
             if success:
                 return True
-        except subprocess.CalledProcessError:
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             logger.warning(
                 f"Could not clone with {ref_type} {branch_name}, trying next option."
             )
@@ -1797,7 +1813,11 @@ def _clone_or_update_repo_validated(
                     is_default_branch,
                     default_branches,
                 )
-        except (subprocess.CalledProcessError, FileNotFoundError):
+        except (
+            subprocess.CalledProcessError,
+            FileNotFoundError,
+            subprocess.TimeoutExpired,
+        ):
             logger.exception(
                 "Error updating repository %s; please check or update %s manually",
                 repo_name,
@@ -1822,7 +1842,11 @@ def _clone_or_update_repo_validated(
                     plugins_dir,
                     is_default_branch,
                 )
-        except (subprocess.CalledProcessError, FileNotFoundError):
+        except (
+            subprocess.CalledProcessError,
+            FileNotFoundError,
+            subprocess.TimeoutExpired,
+        ):
             logger.exception(
                 "Error cloning repository %s; please manually clone into %s",
                 repo_name,
@@ -2037,7 +2061,11 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
                                     plugin_path,
                                 )
 
-                        except (subprocess.CalledProcessError, FileNotFoundError):
+                        except (
+                            subprocess.CalledProcessError,
+                            FileNotFoundError,
+                            subprocess.TimeoutExpired,
+                        ):
                             logger.exception(
                                 f"Failed to automatically install {missing_pkg}. "
                                 f"Please install manually:\n"

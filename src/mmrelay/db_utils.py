@@ -215,6 +215,27 @@ _CREATE_TABLE_MESSAGE_MAP_SQL = (
     "(meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, "
     "matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
 )
+_UPSERT_PLUGIN_DATA_SQL = (
+    "INSERT INTO plugin_data (plugin_name, meshtastic_id, data) VALUES (?, ?, ?) "
+    "ON CONFLICT (plugin_name, meshtastic_id) DO UPDATE SET data = excluded.data"
+)
+_DELETE_PLUGIN_DATA_SQL = (
+    "DELETE FROM plugin_data WHERE plugin_name=? AND meshtastic_id=?"
+)
+_GET_PLUGIN_DATA_SQL = (
+    "SELECT data FROM plugin_data WHERE plugin_name=? AND meshtastic_id=?"
+)
+_UPSERT_MESSAGE_MAP_SQL = (
+    "INSERT INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
+    "VALUES (?, ?, ?, ?, ?) "
+    "ON CONFLICT(matrix_event_id) DO UPDATE SET "
+    "meshtastic_id=excluded.meshtastic_id, "
+    "matrix_room_id=excluded.matrix_room_id, "
+    "meshtastic_text=excluded.meshtastic_text, "
+    "meshtastic_meshnet=excluded.meshtastic_meshnet"
+)
+_GET_MESSAGE_MAP_BY_MESHTASTIC_ID_SQL = "SELECT matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet FROM message_map WHERE meshtastic_id=?"
+_GET_MESSAGE_MAP_BY_MATRIX_EVENT_ID_SQL = "SELECT meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet FROM message_map WHERE matrix_event_id=?"
 _ALTER_TABLE_MESSAGE_MAP_ADD_MESH_SQL = (
     "ALTER TABLE message_map ADD COLUMN meshtastic_meshnet TEXT"
 )
@@ -770,11 +791,7 @@ def store_plugin_data(plugin_name: str, meshtastic_id: int | str, data: Any) -> 
         Parameters:
             cursor (sqlite3.Cursor): Open database cursor used to execute the insert/update statement.
         """
-        cursor.execute(
-            f"INSERT INTO {PLUGIN_DATA_TABLE} ({PLUGIN_DATA_COLUMNS[0]}, {PLUGIN_DATA_COLUMNS[1]}, {PLUGIN_DATA_COLUMNS[2]}) VALUES (?, ?, ?) "
-            f"ON CONFLICT ({PLUGIN_DATA_COLUMNS[0]}, {PLUGIN_DATA_COLUMNS[1]}) DO UPDATE SET {PLUGIN_DATA_COLUMNS[2]} = excluded.{PLUGIN_DATA_COLUMNS[2]}",
-            (plugin_name, id_key, payload),
-        )
+        cursor.execute(_UPSERT_PLUGIN_DATA_SQL, (plugin_name, id_key, payload))
 
     try:
         manager.run_sync(_store, write=True)
@@ -804,10 +821,7 @@ def delete_plugin_data(plugin_name: str, meshtastic_id: int | str) -> None:
         Parameters:
             cursor (sqlite3.Cursor): Cursor on which the DELETE is executed; must be part of the caller's transaction.
         """
-        cursor.execute(
-            f"DELETE FROM {PLUGIN_DATA_TABLE} WHERE {PLUGIN_DATA_COLUMNS[0]}=? AND {PLUGIN_DATA_COLUMNS[1]}=?",
-            (plugin_name, id_key),
-        )
+        cursor.execute(_DELETE_PLUGIN_DATA_SQL, (plugin_name, id_key))
 
     try:
         manager.run_sync(_delete, write=True)
@@ -842,10 +856,7 @@ def get_plugin_data_for_node(plugin_name: str, meshtastic_id: int | str) -> Any:
         Returns:
             `tuple[Any, ...]` with the `data` column for the matched row, or `None` if no row matches.
         """
-        cursor.execute(
-            f"SELECT {PLUGIN_DATA_COLUMNS[2]} FROM {PLUGIN_DATA_TABLE} WHERE {PLUGIN_DATA_COLUMNS[0]}=? AND {PLUGIN_DATA_COLUMNS[1]}=?",
-            (plugin_name, id_key),
-        )
+        cursor.execute(_GET_PLUGIN_DATA_SQL, (plugin_name, id_key))
         return cast(tuple[Any, ...] | None, cursor.fetchone())
 
     try:
@@ -2041,14 +2052,8 @@ def _store_message_map_core(
         meshtastic_text (str): Text content of the Meshtastic message.
         meshtastic_meshnet (str | None): Optional meshnet flag or value associated with the Meshtastic message.
     """
-    _col_id, _col_evt, _col_room, _col_text, _col_mesh = MESSAGE_MAP_COLUMNS
     cursor.execute(
-        f"INSERT INTO {MESSAGE_MAP_TABLE} ({_col_id}, {_col_evt}, {_col_room}, {_col_text}, {_col_mesh}) VALUES (?, ?, ?, ?, ?) "
-        f"ON CONFLICT({_col_evt}) DO UPDATE SET "
-        f"{_col_id}=excluded.{_col_id}, "
-        f"{_col_room}=excluded.{_col_room}, "
-        f"{_col_text}=excluded.{_col_text}, "
-        f"{_col_mesh}=excluded.{_col_mesh}",
+        _UPSERT_MESSAGE_MAP_SQL,
         (
             meshtastic_id,
             matrix_event_id,
@@ -2124,10 +2129,7 @@ def get_message_map_by_meshtastic_id(
         Returns:
             `(matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet)` tuple if a row exists, `None` otherwise.
         """
-        cursor.execute(
-            f"SELECT matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet FROM {MESSAGE_MAP_TABLE} WHERE meshtastic_id=?",
-            (id_key,),
-        )
+        cursor.execute(_GET_MESSAGE_MAP_BY_MESHTASTIC_ID_SQL, (id_key,))
         return cast(tuple[Any, ...] | None, cursor.fetchone())
 
     try:
@@ -2177,10 +2179,7 @@ def get_message_map_by_matrix_event_id(
         Returns:
             tuple[Any, ...] | None: Tuple (meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) if a matching row is found, `None` otherwise.
         """
-        cursor.execute(
-            f"SELECT meshtastic_id, matrix_room_id, meshtastic_text, meshtastic_meshnet FROM {MESSAGE_MAP_TABLE} WHERE matrix_event_id=?",
-            (matrix_event_id,),
-        )
+        cursor.execute(_GET_MESSAGE_MAP_BY_MATRIX_EVENT_ID_SQL, (matrix_event_id,))
         return cast(tuple[Any, ...] | None, cursor.fetchone())
 
     try:

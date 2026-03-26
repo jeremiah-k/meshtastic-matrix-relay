@@ -123,7 +123,7 @@ LOW_BATTERY_THRESHOLD_PERCENT: Final[int] = 10
 
 # Regex patterns
 PING_COMMAND_REGEX: Final[re.Pattern[str]] = re.compile(
-    r"(?<!\w)([!?]*)(ping)([!?]*)(?!\w)"
+    r"(?<!\w)([!?]*)(ping)([!?]*)(?!\w)", re.IGNORECASE
 )
 DROP_COMMAND_REGEX: Final[re.Pattern[str]] = re.compile(r"!drop\s+(.+)$")
 PROCESSED_PACKET_REGEX: Final[re.Pattern[str]] = re.compile(

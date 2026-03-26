@@ -2664,9 +2664,9 @@ def _disconnect_ble_by_address(address: str) -> None:
                         disconnect_result = client.disconnect()
                         if inspect.isawaitable(disconnect_result):
                             await asyncio.wait_for(
-                                disconnect_result, timeout=BLE_DISCONNECT_SETTLE_SECS
+                                disconnect_result, timeout=BLE_DISCONNECT_TIMEOUT_SECS
                             )
-                        await asyncio.sleep(BLE_RETRY_DELAY_SECS)
+                        await asyncio.sleep(BLE_DISCONNECT_SETTLE_SECS)
                 except asyncio.TimeoutError:
                     logger.debug(f"Final disconnect for {address} timed out (cleanup)")
                 except BLEAK_EXCEPTIONS as e:

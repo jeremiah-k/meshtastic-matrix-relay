@@ -361,7 +361,7 @@ def _is_mmrelay_running() -> bool:
 def _get_db_base_path(path: Path) -> Path:
     """Strip SQLite sidecar suffixes to get the main database file path."""
     name = path.name
-    for suffix in ("-wal", "-shm", "-journal"):
+    for suffix in SQLITE_SIDECAR_SUFFIXES:
         if name.endswith(suffix):
             return path.with_name(name.removesuffix(suffix))
     return path
@@ -1532,9 +1532,10 @@ def migrate_database(
         }
     if most_recent not in selected_group:
         selected_group.insert(0, most_recent)
-    for suffix in ("-wal", "-shm"):
-        sidecar = most_recent.with_name(f"{most_recent.name}{suffix}")
-        if sidecar.exists() and sidecar not in selected_group:
+    extra_sidecars: list[Path] = []
+    _collect_db_sidecars(most_recent, extra_sidecars)
+    for sidecar in extra_sidecars:
+        if sidecar not in selected_group:
             selected_group.append(sidecar)
 
     # Proceed with migration

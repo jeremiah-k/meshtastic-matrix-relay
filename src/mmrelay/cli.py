@@ -1367,7 +1367,8 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
 
                     meshtastic_channel = room["meshtastic_channel"]
                     if (
-                        not isinstance(meshtastic_channel, int)
+                        isinstance(meshtastic_channel, bool)
+                        or not isinstance(meshtastic_channel, int)
                         or not MESHTASTIC_CHANNEL_MIN
                         <= meshtastic_channel
                         <= MESHTASTIC_CHANNEL_MAX

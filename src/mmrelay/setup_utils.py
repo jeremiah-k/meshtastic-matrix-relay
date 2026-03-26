@@ -92,7 +92,7 @@ def get_resolved_exec_start(
     Parameters:
         args_suffix (str): Command-line arguments appended to the resolved mmrelay command.
             May include systemd specifiers such as `%h` for the user home directory.
-            Defaults to " --config %h/.mmrelay/config.yaml --logfile %h/.mmrelay/logs/mmrelay.log".
+            Defaults to DEFAULT_SERVICE_ARGS_SUFFIX (e.g., " --home %h/.mmrelay").
 
     Returns:
         str: A single-line string beginning with `ExecStart=` containing the resolved executable

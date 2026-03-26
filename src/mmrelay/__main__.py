@@ -10,11 +10,10 @@ Usage:
 
 import sys
 
-from mmrelay.constants.app import EXIT_CODE_SIGINT
-
 if __name__ == "__main__":
     try:
         from mmrelay.cli import main
+        from mmrelay.constants.app import EXIT_CODE_SIGINT
 
         sys.exit(main())
     except ImportError as e:

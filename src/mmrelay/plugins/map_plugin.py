@@ -148,7 +148,7 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
         """
         Render a balloon marker with an arrow and centered text at the object's geographic location using a Pillow renderer.
 
-        Draws a white-filled balloon with a red outline and black centered text; the renderer converts the label's latitude/longitude to pixel coordinates and provides the drawing context.
+        Draws a white-filled balloon with a red outline and black centered text; the renderer converts the label's latitude/longitude to pixel coordinates and provides the drawing context, offsets used to position and paint the label.
 
         Parameters:
             renderer (staticmaps.PillowRenderer): Renderer that provides coordinate transformation, drawing surface, and offsets used to position and paint the label.
@@ -156,8 +156,12 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
         x, y = renderer.transformer().ll2pixel(self.latlng())
         x = x + renderer.offset_x()
 
-        # Updated to use textbbox instead of textsize
-        bbox = renderer.draw().textbbox((0, 0), self._text)
+        try:
+            font = ImageFont.truetype("DejaVuSans.ttf", self._font_size)
+        except OSError:
+            font = ImageFont.load_default()
+
+        bbox = renderer.draw().textbbox((0, 0), self._text, font=font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
         w = max(self._arrow, tw + 2 * self._margin)
         h = th + 2 * self._margin
@@ -178,6 +182,7 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
             (x - tw / 2, y - self._arrow - h / 2 - th / 2),
             self._text,
             fill=(0, 0, 0, 255),
+            font=font,
         )
 
     def render_cairo(self, renderer: staticmaps.CairoRenderer) -> None:

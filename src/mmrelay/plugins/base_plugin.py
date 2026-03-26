@@ -23,6 +23,7 @@ from mmrelay.constants.config import (
     CONFIG_KEY_REQUIRE_BOT_MENTION,
     DEFAULT_REQUIRE_BOT_MENTION,
     PLUGIN_CONFIG_SECTIONS,
+    PLUGIN_SECTION_TYPES,
 )
 from mmrelay.constants.database import (
     DEFAULT_MAX_DATA_ROWS_PER_NODE_BASE,
@@ -181,24 +182,16 @@ class BasePlugin(ABC):
         self._global_require_bot_mention: bool | None = None
         self.plugin_type: str | None = "core" if self.is_core_plugin else None
         global config
-        plugin_levels = list(PLUGIN_CONFIG_SECTIONS)
-        plugin_type_by_section = {
-            "plugins": "core",
-            "community-plugins": "community",
-            "custom-plugins": "custom",
-        }
 
         if config is not None:
-            for level in plugin_levels:
+            for level in PLUGIN_CONFIG_SECTIONS:
                 section_config = config.get(level, {})
                 if (
                     isinstance(section_config, dict)
                     and self.plugin_name in section_config
                 ):
                     self.config = section_config[self.plugin_name]
-                    self.plugin_type = plugin_type_by_section.get(
-                        level, self.plugin_type
-                    )
+                    self.plugin_type = PLUGIN_SECTION_TYPES.get(level, self.plugin_type)
                     break
 
             # Cache global plugin-level settings (for options like require_bot_mention)

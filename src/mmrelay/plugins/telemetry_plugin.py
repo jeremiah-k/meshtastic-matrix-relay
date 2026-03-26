@@ -43,7 +43,7 @@ class Plugin(BasePlugin):
         Returns:
             str: The text "Graph of avg Mesh telemetry value for last 12 hours".
         """
-        return "Graph of avg Mesh telemetry value for last 12 hours"
+        return f"Graph of avg Mesh telemetry value for last {TELEMETRY_DEFAULT_HOURS} hours"
 
     def _generate_timeperiods(
         self, hours: int = TELEMETRY_DEFAULT_HOURS
@@ -52,7 +52,7 @@ class Plugin(BasePlugin):
         Generate hourly datetime anchors spanning the past `hours` hours up to the current time.
 
         Parameters:
-            hours (int): Number of hours to look back from now (default 12).
+            hours (int): Number of hours to look back from now (default TELEMETRY_DEFAULT_HOURS).
 
         Returns:
             list[datetime]: Hourly datetime objects from (now - hours) up to and including now.

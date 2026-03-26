@@ -53,14 +53,12 @@ class Plugin(BasePlugin):
         Normalize a command string to a supported forecast mode.
 
         Returns:
-            str: 'weather', 'hourly', or 'daily'. Unrecognized or empty inputs yield 'weather'.
+            str: A valid mode from WEATHER_COMMANDS. Unrecognized or empty inputs yield 'weather'.
         """
         cmd = (mode or "weather").lower()
-        if cmd == "hourly":
-            return "hourly"
-        if cmd == "daily":
-            return "daily"
-        return "weather"
+        if cmd in WEATHER_COMMANDS:
+            return cmd
+        return WEATHER_COMMANDS[0]
 
     def generate_forecast(
         self, latitude: float, longitude: float, mode: str = "weather"

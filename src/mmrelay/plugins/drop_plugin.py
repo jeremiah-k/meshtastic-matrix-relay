@@ -74,11 +74,9 @@ class Plugin(BasePlugin):
                 "Meshtastic client unavailable; skipping drop message handling"
             )
             text = packet.get("decoded", {}).get("text", "")
-            is_drop_command = (
-                packet.get("decoded", {}).get("portnum") == TEXT_MESSAGE_APP
-                and f"!{self.plugin_name}" in text
-                and DROP_COMMAND_REGEX.search(text)
-            )
+            is_drop_command = packet.get("decoded", {}).get(
+                "portnum"
+            ) == TEXT_MESSAGE_APP and DROP_COMMAND_REGEX.search(text)
             return bool(is_drop_command)
         nodeInfo = meshtastic_client.getMyNodeInfo()
 
@@ -134,8 +132,6 @@ class Plugin(BasePlugin):
             and packet["decoded"]["portnum"] == TEXT_MESSAGE_APP
         ):
             text = packet["decoded"].get("text") or ""
-            if f"!{self.plugin_name}" not in text:
-                return False
 
             match = DROP_COMMAND_REGEX.search(text)
             if not match:

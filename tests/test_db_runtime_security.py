@@ -17,6 +17,8 @@ import threading
 import unittest
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from mmrelay.db_runtime import (
     DatabaseManager,
     _get_sqlite_runtime_version_info,
@@ -546,162 +548,6 @@ class TestDatabaseManager(unittest.TestCase):
             loop.close()
         self.assertEqual(result, "async_result")
 
-    def test_run_async_rejects_submission_when_closing(self):
-        """run_async should fail fast when new submissions are disabled."""
-        with self.manager._executor_lock:
-            self.manager._accepting_submissions = False
-
-        async def run_test() -> None:
-            with self.assertRaises(sqlite3.ProgrammingError):
-                await self.manager.run_async(lambda _cursor: None, write=False)
-
-        asyncio.run(run_test())
-
-    def test_run_async_cancelled_read_cancels_worker_future(self):
-        """Caller cancellation on read work should cancel unfinished worker future."""
-        worker_future = MagicMock()
-        worker_future.done.return_value = False
-
-        def _cancelled_future() -> asyncio.Future[None]:
-            future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
-            future.set_exception(asyncio.CancelledError())
-            return future
-
-        with (
-            patch.object(
-                self.manager._async_executor, "submit", return_value=worker_future
-            ),
-            patch(
-                "mmrelay.db_runtime.asyncio.wrap_future",
-                side_effect=lambda _future: _cancelled_future(),
-            ),
-        ):
-
-            async def run_test() -> None:
-                with self.assertRaises(asyncio.CancelledError):
-                    await self.manager.run_async(lambda _cursor: None, write=False)
-
-            asyncio.run(run_test())
-
-        worker_future.cancel.assert_called_once()
-
-    def test_run_async_cancelled_write_logs_worker_error(self):
-        """Caller cancellation on write waits for worker and logs late worker errors."""
-        worker_future = MagicMock()
-        worker_future.cancel = MagicMock()
-        wrap_call_count = 0
-
-        def _cancelled_future() -> asyncio.Future[None]:
-            future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
-            future.set_exception(asyncio.CancelledError())
-            return future
-
-        def _worker_error_future() -> asyncio.Future[None]:
-            future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
-            future.set_exception(
-                RuntimeError("worker failed after caller cancellation")
-            )
-            return future
-
-        def _wrap_future_side_effect(_future):
-            nonlocal wrap_call_count
-            wrap_call_count += 1
-            if wrap_call_count == 1:
-                return _cancelled_future()
-            return _worker_error_future()
-
-        with (
-            patch.object(
-                self.manager._async_executor, "submit", return_value=worker_future
-            ),
-            patch(
-                "mmrelay.db_runtime.asyncio.wrap_future",
-                side_effect=_wrap_future_side_effect,
-            ),
-            patch(
-                "mmrelay.db_runtime.asyncio.shield",
-                side_effect=lambda awaitable: awaitable,
-            ),
-            patch("mmrelay.db_runtime.logger") as mock_logger,
-        ):
-
-            async def run_test() -> None:
-                with self.assertRaises(asyncio.CancelledError):
-                    await self.manager.run_async(lambda _cursor: None, write=True)
-
-            asyncio.run(run_test())
-
-        worker_future.cancel.assert_not_called()
-        mock_logger.warning.assert_called_once()
-
-    def test_run_async_cancelled_write_swallows_followup_cancellation(self):
-        """Write cancellation should swallow follow-up CancelledError from worker wait."""
-        worker_future = MagicMock()
-        worker_future.cancel = MagicMock()
-        wrap_call_count = 0
-
-        def _cancelled_future() -> asyncio.Future[None]:
-            future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
-            future.set_exception(asyncio.CancelledError())
-            return future
-
-        def _wrap_future_side_effect(_future):
-            nonlocal wrap_call_count
-            wrap_call_count += 1
-            return _cancelled_future()
-
-        with (
-            patch.object(
-                self.manager._async_executor, "submit", return_value=worker_future
-            ),
-            patch(
-                "mmrelay.db_runtime.asyncio.wrap_future",
-                side_effect=_wrap_future_side_effect,
-            ),
-            patch(
-                "mmrelay.db_runtime.asyncio.shield",
-                side_effect=lambda awaitable: awaitable,
-            ),
-            patch("mmrelay.db_runtime.logger") as mock_logger,
-        ):
-
-            async def run_test() -> None:
-                with self.assertRaises(asyncio.CancelledError):
-                    await self.manager.run_async(lambda _cursor: None, write=True)
-
-            asyncio.run(run_test())
-
-        worker_future.cancel.assert_not_called()
-        mock_logger.warning.assert_not_called()
-
-    def test_run_async_cancelled_read_does_not_cancel_finished_future(self):
-        """Read cancellation should not cancel an already completed worker future."""
-        worker_future = MagicMock()
-        worker_future.done.return_value = True
-
-        def _cancelled_future() -> asyncio.Future[None]:
-            future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
-            future.set_exception(asyncio.CancelledError())
-            return future
-
-        with (
-            patch.object(
-                self.manager._async_executor, "submit", return_value=worker_future
-            ),
-            patch(
-                "mmrelay.db_runtime.asyncio.wrap_future",
-                side_effect=lambda _future: _cancelled_future(),
-            ),
-        ):
-
-            async def run_test() -> None:
-                with self.assertRaises(asyncio.CancelledError):
-                    await self.manager.run_async(lambda _cursor: None, write=False)
-
-            asyncio.run(run_test())
-
-        worker_future.cancel.assert_not_called()
-
     def test_run_async_queued_work_completes_during_close(self):
         """Queued run_async work accepted before close() should still complete."""
 
@@ -1130,6 +976,195 @@ class TestDatabaseManager(unittest.TestCase):
             # Query the foreign keys setting
             result = cursor.execute("PRAGMA foreign_keys").fetchone()
             self.assertEqual(result[0], 1)
+
+
+@pytest.mark.asyncio
+async def test_run_async_rejects_submission_when_closing() -> None:
+    """run_async should fail fast when new submissions are disabled."""
+    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+    temp_db.close()
+    db_path = temp_db.name
+    manager = DatabaseManager(db_path)
+    try:
+        with manager._executor_lock:
+            manager._accepting_submissions = False
+
+        with pytest.raises(sqlite3.ProgrammingError):
+            await manager.run_async(lambda _cursor: None, write=False)
+    finally:
+        manager.close()
+        import os
+
+        os.unlink(db_path)
+
+
+@pytest.mark.asyncio
+async def test_run_async_cancelled_read_cancels_worker_future() -> None:
+    """Caller cancellation on read work should cancel unfinished worker future."""
+    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+    temp_db.close()
+    db_path = temp_db.name
+    manager = DatabaseManager(db_path)
+    try:
+        worker_future = MagicMock()
+        worker_future.done.return_value = False
+
+        def _cancelled_future() -> asyncio.Future[None]:
+            future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+            future.set_exception(asyncio.CancelledError())
+            return future
+
+        with (
+            patch.object(manager._async_executor, "submit", return_value=worker_future),
+            patch(
+                "mmrelay.db_runtime.asyncio.wrap_future",
+                side_effect=lambda _future: _cancelled_future(),
+            ),
+        ):
+            with pytest.raises(asyncio.CancelledError):
+                await manager.run_async(lambda _cursor: None, write=False)
+
+        worker_future.cancel.assert_called_once()
+    finally:
+        manager.close()
+        import os
+
+        os.unlink(db_path)
+
+
+@pytest.mark.asyncio
+async def test_run_async_cancelled_write_logs_worker_error() -> None:
+    """Caller cancellation on write waits for worker and logs late worker errors."""
+    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+    temp_db.close()
+    db_path = temp_db.name
+    manager = DatabaseManager(db_path)
+    try:
+        worker_future = MagicMock()
+        worker_future.cancel = MagicMock()
+        wrap_call_count = 0
+
+        def _cancelled_future() -> asyncio.Future[None]:
+            future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+            future.set_exception(asyncio.CancelledError())
+            return future
+
+        def _worker_error_future() -> asyncio.Future[None]:
+            future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+            future.set_exception(
+                RuntimeError("worker failed after caller cancellation")
+            )
+            return future
+
+        def _wrap_future_side_effect(_future):
+            nonlocal wrap_call_count
+            wrap_call_count += 1
+            if wrap_call_count == 1:
+                return _cancelled_future()
+            return _worker_error_future()
+
+        with (
+            patch.object(manager._async_executor, "submit", return_value=worker_future),
+            patch(
+                "mmrelay.db_runtime.asyncio.wrap_future",
+                side_effect=_wrap_future_side_effect,
+            ),
+            patch(
+                "mmrelay.db_runtime.asyncio.shield",
+                side_effect=lambda awaitable: awaitable,
+            ),
+            patch("mmrelay.db_runtime.logger") as mock_logger,
+        ):
+            with pytest.raises(asyncio.CancelledError):
+                await manager.run_async(lambda _cursor: None, write=True)
+
+        worker_future.cancel.assert_not_called()
+        mock_logger.warning.assert_called_once()
+    finally:
+        manager.close()
+        import os
+
+        os.unlink(db_path)
+
+
+@pytest.mark.asyncio
+async def test_run_async_cancelled_write_swallows_followup_cancellation() -> None:
+    """Write cancellation should swallow follow-up CancelledError from worker wait."""
+    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+    temp_db.close()
+    db_path = temp_db.name
+    manager = DatabaseManager(db_path)
+    try:
+        worker_future = MagicMock()
+        worker_future.cancel = MagicMock()
+        wrap_call_count = 0
+
+        def _cancelled_future() -> asyncio.Future[None]:
+            future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+            future.set_exception(asyncio.CancelledError())
+            return future
+
+        def _wrap_future_side_effect(_future):
+            nonlocal wrap_call_count
+            wrap_call_count += 1
+            return _cancelled_future()
+
+        with (
+            patch.object(manager._async_executor, "submit", return_value=worker_future),
+            patch(
+                "mmrelay.db_runtime.asyncio.wrap_future",
+                side_effect=_wrap_future_side_effect,
+            ),
+            patch(
+                "mmrelay.db_runtime.asyncio.shield",
+                side_effect=lambda awaitable: awaitable,
+            ),
+            patch("mmrelay.db_runtime.logger") as mock_logger,
+        ):
+            with pytest.raises(asyncio.CancelledError):
+                await manager.run_async(lambda _cursor: None, write=True)
+
+        worker_future.cancel.assert_not_called()
+        mock_logger.warning.assert_not_called()
+    finally:
+        manager.close()
+        import os
+
+        os.unlink(db_path)
+
+
+@pytest.mark.asyncio
+async def test_run_async_cancelled_read_does_not_cancel_finished_future() -> None:
+    """Read cancellation should not cancel an already completed worker future."""
+    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+    temp_db.close()
+    db_path = temp_db.name
+    manager = DatabaseManager(db_path)
+    try:
+        worker_future = MagicMock()
+        worker_future.done.return_value = True
+
+        def _cancelled_future() -> asyncio.Future[None]:
+            future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+            future.set_exception(asyncio.CancelledError())
+            return future
+
+        with (
+            patch.object(manager._async_executor, "submit", return_value=worker_future),
+            patch(
+                "mmrelay.db_runtime.asyncio.wrap_future",
+                side_effect=lambda _future: _cancelled_future(),
+            ),
+        ):
+            with pytest.raises(asyncio.CancelledError):
+                await manager.run_async(lambda _cursor: None, write=False)
+
+        worker_future.cancel.assert_not_called()
+    finally:
+        manager.close()
+        import os
+
+        os.unlink(db_path)
 
 
 class TestDatabaseManagerEdgeCases(unittest.TestCase):

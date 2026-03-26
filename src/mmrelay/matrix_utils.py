@@ -249,7 +249,7 @@ class MatrixSyncFailedDetailsError(ConnectionError):
         Notes:
             The exception message is formatted as "Matrix sync failed: {error_type} - {error_details}" and both values are stored on the instance as `error_type` and `error_details`.
         """
-        super().__init__(f"Matrix sync failed: {error_type} - {error_details}")
+        super().__init__(f"{MSG_MATRIX_SYNC_FAILED}: {error_type} - {error_details}")
         self.error_type = error_type
         self.error_details = error_details
 
