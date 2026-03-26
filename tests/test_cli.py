@@ -2164,10 +2164,15 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         # Verify results
         self.assertFalse(result)
 
+    @patch("mmrelay.cli._get_logger")
     @patch("os.path.exists")
     @patch("builtins.open", new_callable=mock_open)
-    def test_validate_credentials_json_missing_user_id(self, mock_file, mock_exists):
+    def test_validate_credentials_json_missing_user_id(
+        self, mock_file, mock_exists, mock_get_logger
+    ):
         """Test validation when credentials.json is missing user_id field."""
+        import logging
+
         # Setup mocks
         config_path = "/home/user/.mmrelay/config.yaml"
         mock_exists.return_value = True
@@ -2181,10 +2186,18 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         }
         mock_file.return_value.read.return_value = json.dumps(credentials_data)
 
+        # Create a mock logger that we can inspect
+        mock_logger = logging.getLogger("mmrelay.cli.test")
+        mock_logger.handlers.clear()
+        mock_logger.setLevel(logging.DEBUG)
+        mock_logger.propagate = True
+        mock_get_logger.return_value = mock_logger
+
         # Import and call function
         from mmrelay.cli import _validate_credentials_json
 
-        with self.assertLogs("mmrelay.cli", level="WARNING"):
+        # Capture logs
+        with self.assertLogs("mmrelay.cli.test", level="WARNING"):
             result = _validate_credentials_json(config_path)
 
         # Verify results
@@ -2216,10 +2229,15 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         # Verify results
         self.assertTrue(result)
 
+    @patch("mmrelay.cli._get_logger")
     @patch("os.path.exists")
     @patch("builtins.open", new_callable=mock_open)
-    def test_validate_credentials_json_empty_field_values(self, mock_file, mock_exists):
+    def test_validate_credentials_json_empty_field_values(
+        self, mock_file, mock_exists, mock_get_logger
+    ):
         """Test validation when credentials.json has empty field values."""
+        import logging
+
         # Setup mocks
         config_path = "/home/user/.mmrelay/config.yaml"
         mock_exists.return_value = True
@@ -2233,10 +2251,18 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         }
         mock_file.return_value.read.return_value = json.dumps(credentials_data)
 
+        # Create a mock logger that we can inspect
+        mock_logger = logging.getLogger("mmrelay.cli.test")
+        mock_logger.handlers.clear()
+        mock_logger.setLevel(logging.DEBUG)
+        mock_logger.propagate = True
+        mock_get_logger.return_value = mock_logger
+
         # Import and call function
         from mmrelay.cli import _validate_credentials_json
 
-        with self.assertLogs("mmrelay.cli", level="WARNING"):
+        # Capture logs
+        with self.assertLogs("mmrelay.cli.test", level="WARNING"):
             result = _validate_credentials_json(config_path)
 
         # Verify results

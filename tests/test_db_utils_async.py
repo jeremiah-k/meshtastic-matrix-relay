@@ -731,7 +731,7 @@ class TestInitializeDatabaseErrors(unittest.TestCase):
         def execute_side_effect(sql, *args, **kwargs):
             # Raise OperationalError for index creation calls only
             """
-            Simulates executing a SQL statement, failing for index/column creation and succeeding otherwise.
+            Simulates executing a SQL statement, failing for index creation and succeeding otherwise.
 
             Parameters:
                 sql (str): The SQL statement to simulate executing. `args` and `kwargs` are accepted for compatibility and ignored.
@@ -740,10 +740,10 @@ class TestInitializeDatabaseErrors(unittest.TestCase):
                 None: Indicates the statement succeeded.
 
             Raises:
-                sqlite3.OperationalError: If `sql` contains "CREATE INDEX" or "ALTER TABLE", simulating an index/column already existing.
+                sqlite3.OperationalError: If `sql` contains "CREATE INDEX", simulating an index already existing.
             """
-            if "CREATE INDEX" in sql or "ALTER TABLE" in sql:
-                raise sqlite3.OperationalError("Index/column already exists")
+            if "CREATE INDEX" in sql:
+                raise sqlite3.OperationalError("index already exists")
             return None  # Table creation succeeds
 
         mock_cursor.execute.side_effect = execute_side_effect

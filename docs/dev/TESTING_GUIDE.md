@@ -267,7 +267,54 @@ filterwarnings =
     # ignore:.*some benign 3rd-party warning.*:DeprecationWarning:third_party_pkg
 ```
 
-### 2. Descriptive Test Names
+### 2. Testing Code That Uses Custom Loggers
+
+The project uses a custom logger configuration (`log_utils.get_logger`) that sets `propagate=False` and manages its own handlers. This makes `unittest.TestCase.assertLogs()` unreliable because it relies on log propagation.
+
+**Problem**: `assertLogs()` clears and replaces handlers, but `_configure_logger` reconfigures them on access, causing captured logs to be lost.
+
+**✅ CORRECT PATTERN** - Mock `_get_logger` to return a controllable logger:
+
+```python
+@patch("mmrelay.cli._get_logger")
+@patch("os.path.exists")
+def test_validation_logs_warning(self, mock_exists, mock_get_logger):
+    """Test that validation logs appropriate warnings."""
+    import logging
+
+    # Create a test logger that assertLogs can capture
+    mock_logger = logging.getLogger("mmrelay.test")
+    mock_logger.handlers.clear()
+    mock_logger.setLevel(logging.DEBUG)
+    mock_logger.propagate = True
+    mock_get_logger.return_value = mock_logger
+
+    from mmrelay.cli import function_under_test
+
+    with self.assertLogs("mmrelay.test", level="WARNING"):
+        result = function_under_test(config_path)
+
+    self.assertFalse(result)
+```
+
+**❌ INCORRECT PATTERN** - Setting `propagate=True` on the configured logger:
+
+```python
+# ❌ This won't work - _configure_logger clears handlers and sets propagate=False
+logger = logging.getLogger("mmrelay.cli")
+logger.propagate = True  # Gets reset when _get_logger is called
+
+with self.assertLogs("mmrelay.cli", level="WARNING"):
+    result = function_under_test(config_path)  # Logs are lost
+```
+
+**Future Consideration**: This pattern is a workaround for the current logger architecture. A future refactoring could:
+
+- Make logger propagation configurable for testing
+- Use dependency injection for loggers instead of module-level caching
+- Provide a test fixture that automatically mocks `_get_logger`
+
+### 3. Descriptive Test Names
 
 - Use descriptive test method names that explain the scenario
 - Include expected behavior in the name
