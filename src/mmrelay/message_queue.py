@@ -184,6 +184,7 @@ class MessageQueue:
                                 self._processor_task = None
                             if self._stopping or self._executor is orig_executor:
                                 self._executor = None
+                            self._stopping = False
                         done_event.set()
 
                     orig_task.add_done_callback(_on_task_done)
@@ -194,6 +195,7 @@ class MessageQueue:
                 with self._lock:
                     self._processor_task = None
                     self._executor = None
+                    self._stopping = False
             elif current_loop is task_loop:
                 # Avoid blocking the owning event loop thread; schedule cancellation
                 # inline and let the task done-callback perform cleanup.

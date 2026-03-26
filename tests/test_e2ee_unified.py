@@ -382,7 +382,7 @@ class TestUnifiedE2EEStatus(unittest.TestCase):
 class TestRoomListFormatting(unittest.TestCase):
     """Test room list formatting with E2EE status"""
 
-    def setUp(self):
+    def setUp(self) -> None:
         """
         Skip the test when optional E2EE-related imports are not available.
 
@@ -463,7 +463,7 @@ class TestRoomListFormatting(unittest.TestCase):
 class TestEncryptionWarnings(unittest.TestCase):
     """Test encryption warning generation"""
 
-    def setUp(self):
+    def setUp(self) -> None:
         """
         Skip the test when optional E2EE-related imports are not available.
 
@@ -524,7 +524,7 @@ class TestEncryptionWarnings(unittest.TestCase):
 class TestE2EEErrorMessages(unittest.TestCase):
     """Test E2EE error message generation"""
 
-    def setUp(self):
+    def setUp(self) -> None:
         """
         Skip the test when optional E2EE-related imports are not available.
 
@@ -626,7 +626,7 @@ class TestE2EEErrorMessages(unittest.TestCase):
 class TestActualEncryptionVerification(unittest.TestCase):
     """Test actual encryption verification using log capture"""
 
-    def setUp(self):
+    def setUp(self) -> None:
         """
         Skip the test when optional E2EE-related imports are not available.
 

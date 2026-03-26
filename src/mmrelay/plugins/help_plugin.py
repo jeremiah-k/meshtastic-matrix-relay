@@ -120,6 +120,7 @@ class Plugin(BasePlugin):
                     reply = MSG_COMMAND_HELP.format(
                         command=command, description=plugin.description
                     )
+                    break
         else:
             commands = []
             for plugin in plugins:

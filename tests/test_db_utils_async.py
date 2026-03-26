@@ -716,9 +716,7 @@ class TestInitializeDatabaseErrors(unittest.TestCase):
             pass
 
     @patch("mmrelay.db_utils._get_db_manager")
-    def test_initialize_database_operational_error_on_index_creation(
-        self, mock_get_manager
-    ):
+    def test_initialize_database_issues_index_creation_sql(self, mock_get_manager):
         """Test initialize_database issues index creation SQL during setup."""
 
         # Mock manager and cursor
@@ -959,7 +957,6 @@ class TestMessageMapErrors(unittest.TestCase):
     @patch("mmrelay.db_utils.logger")
     def test_wipe_message_map_database_error(self, mock_logger, mock_get_manager):
         """Test wipe_message_map handles database errors gracefully."""
-        from unittest.mock import MagicMock
 
         # Mock manager to raise sqlite3.Error
         mock_manager = MagicMock()
@@ -1216,8 +1213,6 @@ class TestIntegrationWithRealDatabase(unittest.TestCase):
 
     def test_initialize_database_creates_new_db(self):
         """Test initialize_database creates new database when none exists."""
-        import os
-        import tempfile
 
         # Create a temporary database path that doesn't exist
         with tempfile.TemporaryDirectory() as temp_dir:

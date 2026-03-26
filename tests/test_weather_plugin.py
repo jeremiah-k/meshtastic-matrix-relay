@@ -311,6 +311,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
     def test_normalize_mode_falls_back_to_weather(self):
         """Unknown forecast mode should normalize to the default weather command."""
         self.assertEqual(self.plugin._normalize_mode("hourly"), "hourly")
+        self.assertEqual(self.plugin._normalize_mode("daily"), "daily")
         self.assertEqual(self.plugin._normalize_mode("unsupported-mode"), "weather")
         self.assertEqual(self.plugin._normalize_mode(""), "weather")
 
@@ -772,6 +773,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIsNone(self.plugin._parse_location_override("40.7"))
         self.assertIsNone(self.plugin._parse_location_override("95,10"))
+        self.assertIsNone(
+            self.plugin._parse_location_override("40,-200")
+        )  # longitude out of bounds
         self.assertIsNone(self.plugin._parse_location_override("abc,def"))
 
     @patch("mmrelay.plugins.weather_plugin.requests.get")

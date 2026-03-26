@@ -223,7 +223,8 @@ class TestMigrateAdditionalCoverage:
         new_db_dir = new_home / "database"
         new_db_dir.mkdir(parents=True)
         target_db = new_db_dir / "meshtastic.sqlite"
-        sqlite3.connect(target_db).close()
+        with sqlite3.connect(target_db):
+            pass
 
         symlink_root = tmp_path / "symlink_root"
         symlink_root.mkdir()
@@ -252,12 +253,14 @@ class TestMigrateAdditionalCoverage:
         legacy_root_old = tmp_path / "legacy_old"
         legacy_root_old.mkdir()
         old_db = legacy_root_old / "meshtastic.sqlite"
-        sqlite3.connect(old_db).close()
+        with sqlite3.connect(old_db):
+            pass
 
         legacy_root_new = tmp_path / "legacy_new"
         legacy_root_new.mkdir()
         most_recent = legacy_root_new / "meshtastic.sqlite"
-        sqlite3.connect(most_recent).close()
+        with sqlite3.connect(most_recent):
+            pass
         extra_sidecar = legacy_root_new / "meshtastic.sqlite-wal"
         extra_sidecar.write_text("", encoding="utf-8")
 

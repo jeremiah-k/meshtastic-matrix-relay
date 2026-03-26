@@ -441,19 +441,17 @@ def _cleanup_local_session_data() -> bool:
 # CLI-specific functions (can use print statements for user interaction)
 
 
-def _handle_matrix_error(
-    exception: Any, context: str, log_level: str = "error"
-) -> bool:
+def _handle_matrix_error(error: Any, context: str, log_level: str = "error") -> bool:
     """
-    Classify a Matrix-related exception, log and print an appropriate user-facing message, and mark it handled.
+    Classify a Matrix-related error, log and print an appropriate user-facing message, and mark it handled.
 
     Parameters:
-        exception (Exception): The exception to classify and report.
+        error (Any): The error/response object to classify and report.
         context (str): Short description of the operation (e.g., "Password verification"); used to tailor message phrasing and detect verification flows.
         log_level (str): Logging level to use; either "error" or "warning".
 
     Returns:
-        bool: `True` indicating the exception was handled and reported.
+        bool: `True` indicating the error was handled and reported.
     """
     logger = _get_logger()
     log_func = logger.error if log_level == "error" else logger.warning
@@ -465,9 +463,9 @@ def _handle_matrix_error(
     error_detail = None
 
     # Handle specific Matrix-nio exceptions
-    if isinstance(exception, (NioLoginError, NioLogoutError, LoginError, LogoutError)):
-        errcode = getattr(exception, "errcode", None)
-        status_code = getattr(exception, "status_code", None)
+    if isinstance(error, (NioLoginError, NioLogoutError, LoginError, LogoutError)):
+        errcode = getattr(error, "errcode", None)
+        status_code = getattr(error, "status_code", None)
         parsed_status_code: int | None = None
         if status_code is not None:
             try:
@@ -484,7 +482,7 @@ def _handle_matrix_error(
             error_detail = str(status_code)
     # Handle network/transport exceptions
     elif isinstance(
-        exception,
+        error,
         (
             NioLocalTransportError,
             NioRemoteTransportError,
@@ -495,7 +493,7 @@ def _handle_matrix_error(
         error_category = "network"
     else:
         # Fallback to string matching for unknown exceptions
-        error_msg = str(exception).lower()
+        error_msg = str(error).lower()
         if "forbidden" in error_msg or "401" in error_msg:
             error_category = "credentials"
         elif (
@@ -510,7 +508,7 @@ def _handle_matrix_error(
             error_category = "server"
         else:
             error_category = "other"
-            error_detail = type(exception).__name__
+            error_detail = type(error).__name__
 
     # Generate appropriate messages based on category and context
     if error_category == "credentials":

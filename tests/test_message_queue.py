@@ -314,7 +314,15 @@ class TestMessageQueue(unittest.TestCase):
         """wait=True enqueue should abort when queue stops during backoff sleep."""
         self.queue._running = True
         self.queue._stopping = False
-        self.queue._queue.extend([None] * MAX_QUEUE_SIZE)
+        dummy_msg = QueuedMessage(
+            timestamp=0.0,
+            send_function=mock_send_function,
+            args=(),
+            kwargs={},
+            description="placeholder",
+            mapping_info=None,
+        )
+        self.queue._queue.extend([dummy_msg] * MAX_QUEUE_SIZE)
 
         with (
             patch.object(self.queue, "ensure_processor_started"),

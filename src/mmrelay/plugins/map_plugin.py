@@ -34,6 +34,13 @@ from mmrelay.constants.formats import (
     MAP_ZOOM_MIN,
 )
 
+from mmrelay.constants.plugins import (
+    S2_PRECISION_BITS_TO_METERS_CONSTANT,
+    MAX_MAP_IMAGE_SIZE,
+)
+from mmrelay.log_utils import get_logger
+from mmrelay.plugins.base_plugin import BasePlugin
+
 # Cairo colors (normalized RGB 0-1) derived from RGBA constants
 CAIRO_LABEL_FILL_COLOR = (
     MAP_LABEL_FILL_COLOR[0] / 255,
@@ -55,12 +62,6 @@ CAIRO_LABEL_TEXT_COLOR = (
 SVG_LABEL_FILL_COLOR = f"#{MAP_LABEL_FILL_COLOR[0]:02x}{MAP_LABEL_FILL_COLOR[1]:02x}{MAP_LABEL_FILL_COLOR[2]:02x}"
 SVG_LABEL_OUTLINE_COLOR = f"#{MAP_LABEL_OUTLINE_COLOR[0]:02x}{MAP_LABEL_OUTLINE_COLOR[1]:02x}{MAP_LABEL_OUTLINE_COLOR[2]:02x}"
 SVG_LABEL_TEXT_COLOR = f"#{MAP_LABEL_TEXT_COLOR[0]:02x}{MAP_LABEL_TEXT_COLOR[1]:02x}{MAP_LABEL_TEXT_COLOR[2]:02x}"
-from mmrelay.constants.plugins import (
-    S2_PRECISION_BITS_TO_METERS_CONSTANT,
-    MAX_MAP_IMAGE_SIZE,
-)
-from mmrelay.log_utils import get_logger
-from mmrelay.plugins.base_plugin import BasePlugin
 
 
 def precision_bits_to_meters(bits: int) -> float | None:

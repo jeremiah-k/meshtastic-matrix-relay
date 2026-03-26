@@ -128,7 +128,7 @@ class TestConfigChecker(unittest.TestCase):
         """
         Verify get_config_paths() returns a list of candidate configuration file paths.
 
-        Asserts that the result is a list and that each returned path ends with "config.yaml".
+        Asserts that the result is a list and that each returned path uses the expected CONFIG_FILENAME.
         """
         # Test the actual function behavior
         paths = get_config_paths()

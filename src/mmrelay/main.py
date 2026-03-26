@@ -42,8 +42,8 @@ from mmrelay.constants.config import (
     CONFIG_SECTION_DATABASE,
     CONFIG_SECTION_DATABASE_LEGACY,
     CONFIG_SECTION_MESHTASTIC,
-    REQUIRED_CONFIG_KEYS_WITH_CREDENTIALS,
-    REQUIRED_CONFIG_KEYS_WITHOUT_CREDENTIALS,
+    REQUIRED_CONFIG_SECTIONS_WITH_CREDENTIALS,
+    REQUIRED_CONFIG_SECTIONS_WITHOUT_CREDENTIALS,
 )
 from mmrelay.constants.network import (
     MATRIX_CLIENT_CLOSE_TIMEOUT_SECS,
@@ -1070,10 +1070,10 @@ def run_main(args: Any) -> int:
 
     if credentials:
         # With credentials.json, only meshtastic and matrix_rooms are required
-        required_keys = list(REQUIRED_CONFIG_KEYS_WITH_CREDENTIALS)
+        required_keys = list(REQUIRED_CONFIG_SECTIONS_WITH_CREDENTIALS)
     else:
         # Without credentials.json, all sections are required
-        required_keys = list(REQUIRED_CONFIG_KEYS_WITHOUT_CREDENTIALS)
+        required_keys = list(REQUIRED_CONFIG_SECTIONS_WITHOUT_CREDENTIALS)
 
     # Check each key individually for better debugging
     for key in required_keys:

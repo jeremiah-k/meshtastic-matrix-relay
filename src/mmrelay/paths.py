@@ -255,7 +255,7 @@ def get_config_paths(*, explicit: str | None = None) -> list[Path]:
         candidates.append(explicit_path)
         return candidates
 
-    # 2. MMRELAY_HOME/config.yaml
+    # 2. MMRELAY_HOME/<CONFIG_FILENAME>
     home = get_home_dir()
     config_path = home / CONFIG_FILENAME
     if config_path not in candidates:

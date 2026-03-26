@@ -287,12 +287,12 @@ class Plugin(BasePlugin):
                 self.logger.error("Packet missing required fields for relay")
                 return False
 
-            meshPacket = mesh_pb2.MeshPacket()
-            meshPacket.channel = channel
-            meshPacket.decoded.payload = base64.b64decode(payload_b64)
-            meshPacket.decoded.portnum = portnum
-            meshPacket.decoded.want_response = False
-            meshPacket.id = MESH_PACKET_DEFAULT_ID
+            mesh_packet = mesh_pb2.MeshPacket()
+            mesh_packet.channel = channel
+            mesh_packet.decoded.payload = base64.b64decode(payload_b64)
+            mesh_packet.decoded.portnum = portnum
+            mesh_packet.decoded.want_response = False
+            mesh_packet.id = MESH_PACKET_DEFAULT_ID
         except (TypeError, ValueError, binascii.Error):
             self.logger.exception("Error reconstructing packet")
             return False
@@ -302,7 +302,7 @@ class Plugin(BasePlugin):
         # _sendPacket is required for relaying raw MeshPacket payloads.
         # Note: this is a private API; monitor upstream Meshtastic changes.
         try:
-            meshtastic_client._sendPacket(meshPacket=meshPacket, destinationId=to_id)
+            meshtastic_client._sendPacket(meshPacket=mesh_packet, destinationId=to_id)
         except AttributeError:
             self.logger.exception(
                 "_sendPacket method not available; Meshtastic API may have changed"
