@@ -234,6 +234,7 @@ def get_config_paths(*, explicit: str | None = None) -> list[Path]:
       2. MMRELAY_HOME/<config file> (skipped when an explicit path is provided).
       3. ./<config file> in the current working directory (skipped if identical to home).
       4. Legacy ~/.{APP_NAME}/<config file> — included only if the directory exists and is not equal to the resolved home.
+      5. Platform-specific user data directory (e.g., Windows AppData) — included only if it exists and differs from the resolved home.
 
     Parameters:
         explicit (str | None): Optional explicit config file path from the CLI; when provided it is added first.

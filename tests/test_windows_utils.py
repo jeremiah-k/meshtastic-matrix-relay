@@ -217,7 +217,6 @@ class TestCheckWindowsRequirements(unittest.TestCase):
         result = check_windows_requirements()
 
         self.assertIsNotNone(result)
-        assert result is not None
         self.assertIn("path is very long", result)
 
     @patch("sys.platform", "win32")
@@ -230,7 +229,6 @@ class TestCheckWindowsRequirements(unittest.TestCase):
         result = check_windows_requirements()
 
         self.assertIsNotNone(result)
-        assert result is not None
         self.assertIn("Consider using a virtual environment", result)
 
     def test_check_windows_requirements_returns_none_when_clean(self):

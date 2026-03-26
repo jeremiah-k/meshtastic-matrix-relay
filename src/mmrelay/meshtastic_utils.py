@@ -2607,8 +2607,11 @@ def _disconnect_ble_by_address(address: str) -> None:
                                 )
                             await asyncio.sleep(BLE_DISCONNECT_SETTLE_SECS)
                             logger.debug(
-                                f"Successfully disconnected stale connection to {address} on attempt {attempt + 1}, "
-                                f"waiting 2s for BlueZ to settle"
+                                "Successfully disconnected stale connection to %s on attempt %s, "
+                                "waiting %.1fs for BlueZ to settle",
+                                address,
+                                attempt + 1,
+                                BLE_DISCONNECT_SETTLE_SECS,
                             )
                             break
                         except asyncio.TimeoutError:

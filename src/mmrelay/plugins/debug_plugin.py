@@ -53,7 +53,7 @@ class Plugin(BasePlugin):
         _ = formatted_message, longname, meshnet_name
         packet = self.strip_raw(packet)
 
-        self.logger.debug(f"Packet received: {packet}")
+        self.logger.debug("Packet received: %s", packet)
         return False
 
     async def handle_room_message(

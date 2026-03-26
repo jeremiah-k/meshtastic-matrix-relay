@@ -9,6 +9,8 @@ from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Final, TypeAlias
 
+from mmrelay.constants.app import DATABASE_DIRNAME, DATABASE_FILENAME
+
 PragmaValue: TypeAlias = str | bool | int | float
 
 # Message retention defaults
@@ -60,8 +62,9 @@ DEBUG_ID_SAMPLE_LIMIT: Final[int] = 20
 
 # SQLite paths and filenames
 SQLITE_IN_MEMORY_PATH: Final[str] = ":memory:"
-DEFAULT_DB_FILENAME: Final[str] = "meshtastic.sqlite"
-LEGACY_DATABASE_SUBDIR: Final[str] = "database"
+# Aliases for backward compatibility (canonical source: app.py)
+DEFAULT_DB_FILENAME: Final[str] = DATABASE_FILENAME
+LEGACY_DATABASE_SUBDIR: Final[str] = DATABASE_DIRNAME
 
 # Table and column names
 PLUGIN_DATA_TABLE: Final[str] = "plugin_data"

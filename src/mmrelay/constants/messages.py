@@ -30,8 +30,8 @@ DISPLAY_NAME_DEFAULT_LENGTH: Final[int] = 5  # Default display name truncation
 
 # Time constants
 SECONDS_PER_MINUTE: Final[int] = 60
-SECONDS_PER_HOUR: Final[int] = 3600
-SECONDS_PER_DAY: Final[int] = 86400
+SECONDS_PER_HOUR: Final[int] = 60 * SECONDS_PER_MINUTE
+SECONDS_PER_DAY: Final[int] = 24 * SECONDS_PER_HOUR
 RELATIVE_TIME_DAYS_THRESHOLD: Final[int] = 7
 
 # Node display values

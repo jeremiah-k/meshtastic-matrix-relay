@@ -213,8 +213,9 @@ class BasePlugin(ABC):
                     break
 
             # Cache global plugin-level settings (for options like require_bot_mention)
-            for section_name in PLUGIN_CONFIG_SECTIONS:
-                section_config = config.get(section_name, {})
+            # Only check the section this plugin was resolved to, to avoid tier bleed
+            if self.plugin_type:
+                section_config = config.get(self.plugin_type, {})
                 if (
                     isinstance(section_config, dict)
                     and CONFIG_KEY_REQUIRE_BOT_MENTION in section_config
@@ -222,7 +223,6 @@ class BasePlugin(ABC):
                     self._global_require_bot_mention = bool(
                         section_config[CONFIG_KEY_REQUIRE_BOT_MENTION]
                     )
-                    break
 
             # Get the list of mapped channels
             # Handle both list format and dict format for matrix_rooms

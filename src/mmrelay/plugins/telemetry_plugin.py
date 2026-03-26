@@ -86,7 +86,7 @@ class Plugin(BasePlugin):
         """
         Record device telemetry from an incoming Meshtastic telemetry packet for the sending node.
 
-        When `packet` contains `decoded.portnum == TELEMETRY_APP_PORTNUM` and `decoded.telemetry.deviceMetrics`, extracts the telemetry timestamp and the `batteryLevel`, `voltage`, and `airUtilTx` fields (each `None` if missing) and appends a telemetry record for the sender identified by `packet["fromId"]`. Other packet contents are not modified.
+        When `packet` contains a normalized `decoded.portnum` matching `TELEMETRY_APP_PORTNUM` (numeric values and enum-name strings are both accepted) and `decoded.telemetry.deviceMetrics`, extracts the telemetry timestamp and the `batteryLevel`, `voltage`, and `airUtilTx` fields (each `None` if missing) and appends a telemetry record for the sender identified by `packet["fromId"]`. Other packet contents are not modified.
 
         Parameters:
             packet (dict): Meshtastic packet expected to include `decoded` with `portnum` and `telemetry.deviceMetrics`.
@@ -196,12 +196,8 @@ class Plugin(BasePlugin):
                 node_data_rows (list[dict[str, Any]]): Records containing a "time" POSIX timestamp (seconds) and a telemetry value under the key named by the enclosing `telemetry_option`; values are appended to the outer `hourly_averages` dictionary for the matching hourly interval.
             """
             for record in node_data_rows:
-                record_time = datetime.fromtimestamp(
-                    record["time"]
-                )  # Replace with your timestamp field name
-                telemetry_value = record[
-                    telemetry_option
-                ]  # Replace with your battery level field name
+                record_time = datetime.fromtimestamp(record["time"])
+                telemetry_value = record[telemetry_option]
                 for i in range(len(hourly_intervals) - 1):
                     if hourly_intervals[i] <= record_time < hourly_intervals[i + 1]:
                         if telemetry_value is not None:

@@ -174,7 +174,7 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
         """
         Render a balloon marker with an arrow and centered text at the object's geographic location using a Pillow renderer.
 
-        Draws a white-filled balloon with a red outline and black centered text; the renderer converts the label's latitude/longitude to pixel coordinates and provides the drawing context, offsets used to position and paint the label.
+        Draws a balloon with colors from MAP_LABEL_FILL_COLOR, MAP_LABEL_OUTLINE_COLOR, and MAP_LABEL_TEXT_COLOR constants; the renderer converts the label's latitude/longitude to pixel coordinates and provides the drawing context, offsets used to position and paint the label.
 
         Parameters:
             renderer (staticmaps.PillowRenderer): Renderer that provides coordinate transformation, drawing surface, and offsets used to position and paint the label.
@@ -633,6 +633,6 @@ class Plugin(BasePlugin):
                     "body": "Failed to generate map: Image upload failed.",
                 },
             )
-            return False
+            return True
 
         return True

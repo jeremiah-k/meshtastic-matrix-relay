@@ -6,7 +6,6 @@ formatting across all components of the meshtastic-matrix-relay application.
 """
 
 import importlib
-import logging
 import os
 import sys
 from typing import Any, Dict, List, Literal, Optional, TypedDict
@@ -25,9 +24,10 @@ from mmrelay.constants.messages import (
     MSG_E2EE_WINDOWS_UNSUPPORTED,
     MSG_E2EE_WINDOWS_UNSUPPORTED_DETAIL,
 )
+from mmrelay.log_utils import get_logger
 from mmrelay.paths import is_deprecation_window_active, resolve_all_paths
 
-logger = logging.getLogger("E2EE")
+logger = get_logger("E2EE")
 
 
 class E2EEStatus(TypedDict):

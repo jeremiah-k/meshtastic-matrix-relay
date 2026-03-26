@@ -27,10 +27,14 @@ COMMIT_HASH_PATTERN: Final[re.Pattern[str]] = re.compile(r"[0-9a-fA-F]{7,40}")
 REF_NAME_PATTERN: Final[re.Pattern[str]] = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")
 
 # Default branch names to try when ref is not specified
-DEFAULT_BRANCHES: Final[list[str]] = ["main", "master"]
+DEFAULT_BRANCHES: Final[tuple[str, ...]] = ("main", "master")
 
 # Environment keys that indicate pipx is being used (for security/testability)
-PIPX_ENVIRONMENT_KEYS = ("PIPX_HOME", "PIPX_LOCAL_VENVS", "PIPX_BIN_DIR")
+PIPX_ENVIRONMENT_KEYS: Final[tuple[str, ...]] = (
+    "PIPX_HOME",
+    "PIPX_LOCAL_VENVS",
+    "PIPX_BIN_DIR",
+)
 
 # Trusted git hosting platforms for community plugins
 # These hosts are considered safe for plugin source repositories

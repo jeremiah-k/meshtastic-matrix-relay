@@ -28,8 +28,8 @@ def e2ee_test_config():
     Yields:
         tuple: (temp_dir, config_path, credentials_path, base_config)
             - temp_dir (str): Path to the temporary directory created for the test.
-            - config_path (str): Path within temp_dir for the config file (config.yaml).
-            - credentials_path (str): Path within temp_dir for the credentials file (credentials.json).
+            - config_path (str): Path within temp_dir for the config file.
+            - credentials_path (str): Path within temp_dir for the credentials file.
             - base_config (dict): Minimal configuration dict with E2EE enabled, a meshtastic meshnet_name,
               and one example matrix room mapping.
 

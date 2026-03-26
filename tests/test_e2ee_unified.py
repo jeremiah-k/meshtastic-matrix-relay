@@ -61,7 +61,7 @@ class MockRoom:
 class TestUnifiedE2EEStatus(unittest.TestCase):
     """Test the unified E2EE status detection system"""
 
-    def setUp(self):
+    def setUp(self) -> None:
         """
         Prepare the test environment: skip tests if E2EE utilities are unavailable, create a temporary directory with config and credentials paths, and initialize a baseline config used by tests.
 

@@ -1704,7 +1704,7 @@ def _clone_new_repo_to_branch_or_tag(
         try:
             if os.path.isdir(repo_path):
                 shutil.rmtree(repo_path, ignore_errors=True)
-            _run_git(command, cwd=plugins_dir, timeout=120)
+            _run_git(command, cwd=plugins_dir, timeout=120, retry_attempts=1)
             logger.info(
                 "Cloned repository %s from %s at %s %s",
                 repo_name,

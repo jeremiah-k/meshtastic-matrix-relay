@@ -838,14 +838,14 @@ class TestMapPlugin(unittest.TestCase):
     @patch("mmrelay.plugins.map_plugin.get_map")
     @patch("mmrelay.plugins.map_plugin._connect_meshtastic_async")
     @patch("mmrelay.matrix_utils.connect_matrix")
-    def test_handle_room_message_image_upload_error_returns_false(
+    def test_handle_room_message_image_upload_error(
         self,
         mock_connect_matrix,
         mock_connect_meshtastic_async,
         mock_get_map,
         mock_send_image,
     ):
-        """Image upload errors should send a notice and return False."""
+        """Image upload errors should send a notice and return True."""
 
         async def run_test():
             mock_room = MagicMock()
@@ -877,7 +877,7 @@ class TestMapPlugin(unittest.TestCase):
                     mock_room, mock_event, "user: !map"
                 )
 
-            self.assertFalse(result)
+            self.assertTrue(result)
             mock_matrix_client.room_send.assert_awaited_once()
 
         asyncio.run(run_test())

@@ -81,7 +81,7 @@ class TestDebugPlugin(unittest.TestCase):
 
             # Should log the cleaned packet
             self.plugin.logger.debug.assert_called_once_with(
-                f"Packet received: {cleaned_packet}"
+                "Packet received: %s", cleaned_packet
             )
 
             # Should return False (never intercepts messages)
