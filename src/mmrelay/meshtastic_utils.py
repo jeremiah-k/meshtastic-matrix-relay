@@ -1757,6 +1757,12 @@ def _is_ble_discovery_error(error: Exception) -> bool:
         return True
     if "Timed out waiting for connection completion" in message:
         return True
+    if isinstance(error, KeyError):
+        normalized_keys = {
+            str(item).strip().strip("'").strip('"') for item in error.args
+        }
+        if "path" in normalized_keys:
+            return True
 
     def _is_type_or_tuple(candidate: object) -> bool:
         if isinstance(candidate, type):
@@ -3317,7 +3323,7 @@ def connect_meshtastic(
                                 logger.debug(
                                     "BLEInterface auto_reconnect parameter not available; using compatibility mode"
                                 )
-                            if ble_scan_after_failure and not supports_auto_reconnect:
+                            if ble_scan_after_failure:
                                 scan_timeout_secs = _coerce_positive_float(
                                     _ble_scan_timeout_secs,
                                     BLE_SCAN_TIMEOUT_SECS,
@@ -3461,8 +3467,16 @@ def connect_meshtastic(
                             except TimeoutError:
                                 raise
                             except Exception:
-                                # BLEInterface constructor failed - this is a critical error
-                                logger.exception("BLE interface creation failed")
+                                # Late BLE worker failures can surface during shutdown
+                                # after cancellation. Treat those as expected noise.
+                                if shutting_down:
+                                    logger.debug(
+                                        "BLE interface creation ended during shutdown for %s",
+                                        ble_address,
+                                        exc_info=True,
+                                    )
+                                else:
+                                    logger.exception("BLE interface creation failed")
                                 raise
                         else:
                             logger.debug(
@@ -3781,7 +3795,6 @@ def connect_meshtastic(
             if (
                 connection_type == CONNECTION_TYPE_BLE
                 and ble_address
-                and not supports_auto_reconnect
                 and _is_ble_discovery_error(e)
             ):
                 ble_scan_after_failure = True

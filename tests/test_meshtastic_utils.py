@@ -1712,6 +1712,7 @@ class TestBleHelperFunctions(unittest.TestCase):
                 Exception("Timed out waiting for connection completion")
             )
         )
+        self.assertTrue(_is_ble_discovery_error(KeyError("path")))
 
     def test_is_ble_discovery_error_type_matches(self):
         """Cover BLEError and MeshInterfaceError type checks."""
@@ -3968,6 +3969,66 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
                 if "Connection attempt" in str(call) and "timed out" in str(call)
             ]
             self.assertEqual(len(warning_calls), MAX_TIMEOUT_RETRIES_INFINITE)
+
+    @patch("mmrelay.meshtastic_utils.logger")
+    def test_connect_meshtastic_ble_creation_error_during_shutdown_logs_debug(
+        self, mock_logger
+    ):
+        """Late BLE worker errors during shutdown should avoid exception-level logs."""
+        from mmrelay.meshtastic_utils import connect_meshtastic
+
+        config = {
+            "meshtastic": {
+                "connection_type": "ble",
+                "ble_address": "AA:BB:CC:DD:EE:FF",
+                "retries": 1,
+            },
+            "matrix_rooms": [],
+        }
+
+        import mmrelay.meshtastic_utils as mu
+
+        def _future_result(*_args, **_kwargs):
+            mu.shutting_down = True
+            raise KeyError("path")
+
+        mock_future = Mock()
+        mock_future.result = Mock(side_effect=_future_result)
+        mock_future.cancel = Mock(return_value=False)
+
+        mock_executor = Mock()
+        mock_executor._shutdown = False
+        mock_executor.submit.return_value = mock_future
+
+        original_shutting_down = mu.shutting_down
+        try:
+            with (
+                patch("mmrelay.meshtastic_utils._ble_executor", mock_executor),
+                patch("bleak.BleakClient") as mock_bleak_client,
+            ):
+                mock_client_instance = Mock()
+                mock_client_instance.is_connected = False
+                mock_bleak_client.return_value = mock_client_instance
+                _reset_ble_inflight_state(mu)
+                mu._metadata_future = None
+                result = connect_meshtastic(passed_config=config)
+        finally:
+            mu.shutting_down = original_shutting_down
+            _reset_ble_inflight_state(mu)
+
+        self.assertIsNone(result)
+        self.assertTrue(
+            any(
+                "BLE interface creation ended during shutdown" in str(call)
+                for call in mock_logger.debug.call_args_list
+            )
+        )
+        self.assertFalse(
+            any(
+                "BLE interface creation failed" in str(call)
+                for call in mock_logger.exception.call_args_list
+            )
+        )
 
     @patch("mmrelay.meshtastic_utils._disconnect_ble_interface")
     def test_connect_meshtastic_closes_existing_ble_interface(

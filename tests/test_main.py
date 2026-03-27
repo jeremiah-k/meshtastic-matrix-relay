@@ -2235,6 +2235,72 @@ class TestMainAsyncFunction(unittest.TestCase):
         self.assertTrue(mu.shutting_down)
         self.assertTrue(captured_handlers)
 
+    def test_main_shutdown_signal_logging_is_idempotent(self):
+        """Repeated shutdown signals should emit the shutdown notice once."""
+        config = {
+            "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
+            "matrix": {"homeserver": "https://matrix.org"},
+            "meshtastic": {"connection_type": "serial"},
+        }
+
+        mock_matrix_client = AsyncMock()
+        mock_matrix_client.add_event_callback = MagicMock()
+        mock_matrix_client.close = AsyncMock()
+
+        real_get_running_loop = asyncio.get_running_loop
+
+        def _patched_get_running_loop():
+            loop = real_get_running_loop()
+            if not isinstance(loop, InlineExecutorLoop):
+                loop = InlineExecutorLoop(loop)
+            if not hasattr(loop, "_signal_handler_patched"):
+
+                def _fake_add_signal_handler(_sig, handler):
+                    handler()
+                    handler()
+
+                loop.add_signal_handler = _fake_add_signal_handler  # type: ignore[attr-defined]
+                loop._signal_handler_patched = True  # type: ignore[attr-defined]
+            return loop
+
+        with (
+            patch(
+                "mmrelay.main.asyncio.get_running_loop",
+                side_effect=_patched_get_running_loop,
+            ),
+            patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
+            patch("mmrelay.main.initialize_database"),
+            patch("mmrelay.main.load_plugins"),
+            patch("mmrelay.main.start_message_queue"),
+            patch(
+                "mmrelay.main.connect_matrix",
+                side_effect=_make_async_return(mock_matrix_client),
+            ),
+            patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
+            patch("mmrelay.main.join_matrix_room", side_effect=_async_noop),
+            patch("mmrelay.main.get_message_queue") as mock_get_queue,
+            patch(
+                "mmrelay.main.meshtastic_utils.check_connection",
+                side_effect=_async_noop,
+            ),
+            patch("mmrelay.main.shutdown_plugins"),
+            patch("mmrelay.main.stop_message_queue"),
+            patch("mmrelay.main.matrix_logger") as mock_matrix_logger,
+            patch("mmrelay.main.sys.platform", "linux"),
+        ):
+            mock_queue = MagicMock()
+            mock_queue.ensure_processor_started = MagicMock()
+            mock_get_queue.return_value = mock_queue
+
+            asyncio.run(main(config))
+
+        shutdown_logs = [
+            call
+            for call in mock_matrix_logger.info.call_args_list
+            if call.args and call.args[0] == "Shutdown signal received. Closing down..."
+        ]
+        self.assertEqual(len(shutdown_logs), 1)
+
     def test_main_registers_sighup_handler(self):
         """Verify SIGHUP handler registration on non-Windows platforms."""
         config = {

@@ -392,6 +392,8 @@ async def main(config: dict[str, Any]) -> None:
 
         Logs that a shutdown was requested, sets the global shutdown flag, and signals the local shutdown event so tasks waiting on it can begin cleanup.
         """
+        if shutdown_event.is_set():
+            return
         matrix_logger.info("Shutdown signal received. Closing down...")
         _set_shutdown_flag()
 
