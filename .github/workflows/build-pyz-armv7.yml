@@ -27,7 +27,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cache_key_suffix="$(printf '%s' "${BUILDER_IMAGE}" | sha256sum | awk '{print $1}')"
+          cache_key_suffix="$(printf '%s' "${BUILDER_IMAGE}" | sha256sum | awk '{print $1}')-$(date -u +%Y-W%W)"
           cache_dir="${RUNNER_TEMP}/builder-image-cache"
           cache_path="${cache_dir}/${cache_key_suffix}.tar"
           echo "cache_key=${RUNNER_OS}-builder-image-${cache_key_suffix}" >> "${GITHUB_OUTPUT}"
@@ -118,7 +118,7 @@ jobs:
 
       - name: Save ARMv7 builder image tar
         id: builder-image-tar
-        if: ${{ always() && steps.builder-image-cache.outputs.cache-hit != 'true' }}
+        if: ${{ (success() || failure()) && steps.builder-image-cache.outputs.cache-hit != 'true' }}
         shell: bash
         run: |
           set -euo pipefail

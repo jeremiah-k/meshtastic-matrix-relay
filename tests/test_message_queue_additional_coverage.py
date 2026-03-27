@@ -1,5 +1,6 @@
 import asyncio
 import time
+import typing
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -151,7 +152,9 @@ async def test_process_queue_logs_warning_when_send_result_is_none() -> None:
         def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
             self._loop = loop
 
-        def run_in_executor(self, _executor, _func):
+        def run_in_executor(
+            self, _executor: typing.Any, _func: typing.Callable[[], typing.Any]
+        ) -> asyncio.Future[typing.Any]:
             fut = self._loop.create_future()
             fut.set_result(None)
             return fut

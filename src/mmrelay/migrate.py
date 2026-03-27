@@ -77,7 +77,7 @@ from mmrelay.constants.formats import (
     MIGRATION_TIMESTAMP_FORMAT,
 )
 from mmrelay.constants.migration import (
-    BYTES_PER_MB,
+    BYTES_PER_MIB,
     MIGRATION_BACKUP_DIRNAME,
     MIGRATION_FREE_SPACE_WARNING_FACTOR,
     MIGRATION_INITIAL_RETRY_DELAY,
@@ -2693,10 +2693,10 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
     if not dry_run:
         has_space, free_bytes = _check_disk_space(new_home)
         if not has_space:
-            free_mb = free_bytes / BYTES_PER_MB
+            free_mb = free_bytes / BYTES_PER_MIB
             required_mb = (
                 MIGRATION_MIN_FREE_SPACE_BYTES * MIGRATION_FREE_SPACE_WARNING_FACTOR
-            ) / BYTES_PER_MB
+            ) / BYTES_PER_MIB
             report["success"] = False
             report["error"] = "Insufficient disk space"
             report["message"] = (
@@ -2707,7 +2707,7 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
             return report
         logger.debug(
             "Disk space check passed: %d MB available",
-            free_bytes // BYTES_PER_MB,
+            free_bytes // BYTES_PER_MIB,
         )
 
     # Get new home directory

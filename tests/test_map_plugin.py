@@ -882,6 +882,9 @@ class TestMapPlugin(unittest.TestCase):
 
             self.assertTrue(result)
             mock_matrix_client.room_send.assert_awaited_once()
+            call_kwargs = mock_matrix_client.room_send.call_args.kwargs
+            self.assertEqual(call_kwargs["room_id"], mock_room.room_id)
+            self.assertIn("failed", call_kwargs["content"]["body"].lower())
 
         asyncio.run(run_test())
 

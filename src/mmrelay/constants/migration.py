@@ -10,7 +10,7 @@ from typing import Final
 from mmrelay.constants.auth import TEMP_DEVICE_NAME_LOGOUT
 
 __all__ = [
-    "BYTES_PER_MB",
+    "BYTES_PER_MIB",
     "DEFAULT_SERVICE_ARGS_SUFFIX",
     "MIGRATION_BACKUP_DIRNAME",
     "MIGRATION_FREE_SPACE_WARNING_FACTOR",
@@ -37,10 +37,8 @@ MIGRATION_LOCK_FILENAME: Final[str] = ".migration.lock"
 MIGRATION_MIN_FREE_SPACE_BYTES: Final[int] = 500 * 1024 * 1024  # 500 MB
 MIGRATION_FREE_SPACE_WARNING_FACTOR: Final[float] = 1.5
 
-# Byte conversion
-BYTES_PER_MB: Final[int] = 1024 * 1024
+# Byte conversion (using binary units)
+BYTES_PER_MIB: Final[int] = 1024 * 1024
 
 # Service args template
-DEFAULT_SERVICE_ARGS_SUFFIX: Final[str] = (
-    " --home %h/.mmrelay"  # Leading space included for safe concatenation with base command
-)
+DEFAULT_SERVICE_ARGS_SUFFIX: Final[str] = "--home %h/.mmrelay"

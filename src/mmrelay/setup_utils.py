@@ -89,13 +89,13 @@ def get_resolved_exec_start(
     Parameters:
         args_suffix (str): Command-line arguments appended to the resolved mmrelay command.
             May include systemd specifiers such as `%h` for the user home directory.
-            Defaults to DEFAULT_SERVICE_ARGS_SUFFIX (e.g., " --home %h/.mmrelay").
+            Defaults to DEFAULT_SERVICE_ARGS_SUFFIX (e.g., "--home %h/.mmrelay").
 
     Returns:
         str: A single-line string beginning with `ExecStart=` containing the resolved executable
              invocation followed by the provided argument suffix.
     """
-    return f"ExecStart={get_resolved_exec_cmd()}{args_suffix}"
+    return f"ExecStart={get_resolved_exec_cmd()} {args_suffix}"
 
 
 def get_user_service_path() -> Path:

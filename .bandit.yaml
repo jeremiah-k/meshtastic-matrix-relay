@@ -3,6 +3,7 @@ assert_used:
   skips:
     - "*_test.py"
     - "*test_*.py"
+    - "test_*.py"
 
 # B105/B106 flag any string containing "password"/"token"/"secret" as a hardcoded secret.
 # All 229 findings are test fixture values (e.g. 'test_token', 'test_password', 'secret123').

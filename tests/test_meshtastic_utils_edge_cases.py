@@ -41,7 +41,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
     class _DummyFuture:
         """Helper class to simulate a future that records timeout values and raises an exception."""
 
-        def __init__(self, exc):
+        def __init__(self, exc: BaseException) -> None:
             """
             Initialize the object with an exception and an empty call history.
 
@@ -49,9 +49,9 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
                 exc (BaseException): The exception instance to store for later inspection or re-raising.
             """
             self.exc = exc
-            self.calls = []
+            self.calls: list[float | None] = []
 
-        def result(self, timeout=None):
+        def result(self, timeout: float | None = None) -> None:
             """
             Record the provided timeout value and raise the stored exception.
 

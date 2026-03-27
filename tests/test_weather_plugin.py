@@ -34,6 +34,8 @@ from tests.constants import (
     TEST_NODE_NUM,
 )
 
+TEST_MESHTASTIC_ID = "TEST_MESHTASTIC_ID"
+
 
 def _normalize_emoji(s: str) -> str:
     """
@@ -873,7 +875,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         mock_client = MagicMock()
         mock_client.myInfo.my_node_num = TEST_NODE_NUM
         mock_client.nodes = {
-            "TEST_MESHTASTIC_ID": {
+            TEST_MESHTASTIC_ID: {
                 "position": {"latitude": TEST_LAT_NYC, "longitude": TEST_LON_NYC}
             }
         }
@@ -885,7 +887,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         packet = {
             "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
             "channel": 0,
-            "fromId": "TEST_MESHTASTIC_ID",
+            "fromId": TEST_MESHTASTIC_ID,
             "to": TEST_NODE_NUM,  # Direct message to relay
         }
 
@@ -898,7 +900,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         # Should send direct message response
         self.plugin.send_message.assert_called_once()
         call_args = self.plugin.send_message.call_args
-        self.assertEqual(call_args.kwargs["destination_id"], "TEST_MESHTASTIC_ID")
+        self.assertEqual(call_args.kwargs["destination_id"], TEST_MESHTASTIC_ID)
         self.assertIn(
             _normalize_emoji("Now: 🌤️ Mainly clear"),
             _normalize_emoji(call_args.kwargs["text"]),
@@ -920,7 +922,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         mock_client = MagicMock()
         mock_client.myInfo.my_node_num = TEST_NODE_NUM
         mock_client.nodes = {
-            "TEST_MESHTASTIC_ID": {
+            TEST_MESHTASTIC_ID: {
                 # No position data
             }
         }
@@ -932,7 +934,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         packet = {
             "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
             "channel": 0,
-            "fromId": "TEST_MESHTASTIC_ID",
+            "fromId": TEST_MESHTASTIC_ID,
             "to": BROADCAST_NUM,  # BROADCAST_NUM
         }
 
@@ -960,7 +962,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         """
         mock_client = MagicMock()
         mock_client.myInfo.my_node_num = TEST_NODE_NUM
-        mock_client.nodes = {"TEST_MESHTASTIC_ID": {}}
+        mock_client.nodes = {TEST_MESHTASTIC_ID: {}}
         mock_connect.return_value = mock_client
 
         self.plugin.generate_forecast = MagicMock(return_value="OK")
@@ -971,7 +973,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
                 "text": "!weather 37.77,-122.42",
             },
             "channel": 0,
-            "fromId": "TEST_MESHTASTIC_ID",
+            "fromId": TEST_MESHTASTIC_ID,
             "to": BROADCAST_NUM,  # BROADCAST_NUM
         }
 
@@ -992,7 +994,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         """
         mock_client = MagicMock()
         mock_client.myInfo.my_node_num = TEST_NODE_NUM
-        mock_client.nodes = {"TEST_MESHTASTIC_ID": {}}
+        mock_client.nodes = {TEST_MESHTASTIC_ID: {}}
         mock_connect.return_value = mock_client
 
         self.plugin._geocode_location = MagicMock(return_value=(10.0, 20.0))
@@ -1001,7 +1003,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         packet = {
             "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather Boston"},
             "channel": 0,
-            "fromId": "TEST_MESHTASTIC_ID",
+            "fromId": TEST_MESHTASTIC_ID,
             "to": BROADCAST_NUM,  # BROADCAST_NUM
         }
 
@@ -1068,7 +1070,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         mock_client = MagicMock()
         mock_client.myInfo.my_node_num = TEST_NODE_NUM
         mock_client.nodes = {
-            "TEST_MESHTASTIC_ID": {
+            TEST_MESHTASTIC_ID: {
                 "position": {"latitude": TEST_LAT_NYC, "longitude": TEST_LON_NYC}
             }
         }
@@ -1080,7 +1082,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         packet = {
             "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
             "channel": 0,
-            "fromId": "TEST_MESHTASTIC_ID",
+            "fromId": TEST_MESHTASTIC_ID,
             "to": BROADCAST_NUM,  # BROADCAST_NUM
         }
 
@@ -1141,7 +1143,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
 
         packet = {
             "decoded": {"portnum": PORTNUM_TEXT_MESSAGE_APP, "text": "!weather"},
-            "fromId": "TEST_MESHTASTIC_ID",
+            "fromId": TEST_MESHTASTIC_ID,
             # No channel field - should default to 0
         }
 

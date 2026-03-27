@@ -40,6 +40,7 @@ DATE_FORMAT_LONG: Final[str] = "%b %d, %Y"
 BACKUP_TIMESTAMP_FORMAT: Final[str] = "%Y%m%d_%H%M%S"
 MIGRATION_TIMESTAMP_FORMAT: Final[str] = "%Y%m%d_%H%M%S_%f"
 RICH_LOG_TIME_FORMAT: Final[str] = "%Y-%m-%d %H:%M:%S"
+# Note: Matches DATETIME_FORMAT_STANDARD intentionally for rich console output
 HOUR_FORMAT: Final[str] = "%H"
 
 # Log format strings
