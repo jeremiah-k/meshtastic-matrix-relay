@@ -50,6 +50,7 @@ from mmrelay.constants.config import (
     CONFIG_KEY_BOT_USER_ID,
     CONFIG_KEY_DEVICE_ID,
     CONFIG_KEY_HOMESERVER,
+    CONFIG_KEY_PASSWORD,
     CONFIG_SECTION_MATRIX,
     CONFIG_SECTION_MESHTASTIC,
     REQUIRED_CREDENTIALS_KEYS,
@@ -655,7 +656,7 @@ def _has_valid_password_auth(matrix_section: Mapping[str, Any] | None) -> bool:
     if not isinstance(matrix_section, Mapping):
         return False
 
-    pwd = matrix_section.get("password")
+    pwd = matrix_section.get(CONFIG_KEY_PASSWORD)
     homeserver = matrix_section.get(CONFIG_KEY_HOMESERVER)
     bot_user_id = matrix_section.get(CONFIG_KEY_BOT_USER_ID)
 
@@ -1257,7 +1258,7 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                             CONFIG_KEY_BOT_USER_ID,
                         ]
                         token = matrix_section.get(CONFIG_KEY_ACCESS_TOKEN)
-                        pwd = matrix_section.get("password")
+                        pwd = matrix_section.get(CONFIG_KEY_PASSWORD)
                         has_token = _is_valid_non_empty_string(token)
                         # Allow explicitly empty password strings; require the value to be a string
                         # (reject unquoted numeric types)

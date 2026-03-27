@@ -1832,7 +1832,7 @@ async def _perform_matrix_login(
                     client.user_id = user_id
                     auth_info.user_id = user_id
                     if auth_info.credentials is not None:
-                        auth_info.credentials["user_id"] = user_id
+                        auth_info.credentials[CONFIG_KEY_USER_ID] = user_id
                         credentials_updated = True
 
                 discovered_device_id = getattr(whoami_response, "device_id", None)
