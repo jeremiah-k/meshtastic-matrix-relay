@@ -8,8 +8,6 @@ import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from mmrelay.constants.app import WINDOWS_VTP_FLAG
 from mmrelay.windows_utils import (
     check_windows_requirements,
