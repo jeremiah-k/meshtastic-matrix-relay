@@ -346,7 +346,9 @@ def test_get_plugin_code_dir_covers_type_and_discovery_branches() -> None:
             discovered = get_plugin_code_dir("demo")
             assert discovered == community_root / "demo"
             core_path = get_plugin_code_dir("mesh_relay", plugin_type="core")
-            assert core_path == root / "core" / "mesh_relay"
+            # Core plugins are resolved from the bundled package, not MMRELAY_HOME
+            assert core_path.name == "mesh_relay"
+            assert "plugins" in str(core_path)
 
 
 def test_get_diagnostics_maps_resolved_fields() -> None:
