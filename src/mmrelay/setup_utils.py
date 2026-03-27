@@ -50,15 +50,16 @@ def _get_service_template_candidates() -> list[str]:
     Get the list of candidate paths for the service template file.
 
     Returns paths in priority order:
-    1. Package directory
-    2. Package tools subdirectory
-    3. sys.prefix share paths
-    4. User local share paths
-    5. Development paths
+    1. MMRELAY_SERVICE_OVERRIDE environment variable (if set)
+    2. Package directory
+    3. Package tools subdirectory
+    4. sys.prefix share paths
+    5. User local share paths
+    6. Development paths
     """
     package_dir = os.path.dirname(__file__)
 
-    return [
+    candidates = [
         os.path.join(package_dir, SYSTEMD_SERVICE_FILENAME),
         os.path.join(package_dir, "tools", SYSTEMD_SERVICE_FILENAME),
         os.path.join(sys.prefix, "share", "mmrelay", SYSTEMD_SERVICE_FILENAME),
@@ -89,8 +90,13 @@ def _get_service_template_candidates() -> list[str]:
             "tools",
             SYSTEMD_SERVICE_FILENAME,
         ),
-        os.path.join(os.getcwd(), "tools", SYSTEMD_SERVICE_FILENAME),
     ]
+
+    override_path = os.environ.get("MMRELAY_SERVICE_OVERRIDE")
+    if override_path:
+        candidates.insert(0, override_path)
+
+    return candidates
 
 
 def get_resolved_exec_cmd() -> str:

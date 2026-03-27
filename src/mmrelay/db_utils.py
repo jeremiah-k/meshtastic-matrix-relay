@@ -800,6 +800,26 @@ def initialize_database() -> None:
         if meshtastic_column and str(meshtastic_column[2]).upper() != "TEXT":
             if temp_exists:
                 stale_temp_table = "message_map_stale_temp"
+                cursor.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                    (stale_temp_table,),
+                )
+                if cursor.fetchone():
+                    suffix = 1
+                    while True:
+                        candidate = f"{stale_temp_table}_{suffix}"
+                        cursor.execute(
+                            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                            (candidate,),
+                        )
+                        if not cursor.fetchone():
+                            stale_temp_table = candidate
+                            break
+                        suffix += 1
+                    logger.warning(
+                        "Preserved stale temp table already exists; using %s for merge",
+                        stale_temp_table,
+                    )
                 logger.warning(
                     "Preserving stale temporary table %s with incompatible schema for merge during message_map rebuild",
                     _temp_table,
@@ -857,9 +877,22 @@ def initialize_database() -> None:
                 cursor.execute(_DROP_TABLE_MESSAGE_MAP_TEMP_SQL)
             if stale_temp_exists:
                 try:
-                    cursor.execute(
-                        "INSERT OR IGNORE INTO message_map SELECT * FROM message_map_stale_temp"
-                    )
+                    cursor.execute(f"PRAGMA table_info({stale_temp_table})")
+                    stale_columns = {col[1] for col in cursor.fetchall()}
+                    if _col_mesh in stale_columns:
+                        cursor.execute(
+                            f"INSERT OR IGNORE INTO message_map "
+                            f"(meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
+                            f"SELECT meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet "
+                            f"FROM {stale_temp_table}"
+                        )
+                    else:
+                        cursor.execute(
+                            f"INSERT OR IGNORE INTO message_map "
+                            f"(meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
+                            f"SELECT meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, NULL "
+                            f"FROM {stale_temp_table}"
+                        )
                     logger.info(
                         "Merged rows from preserved stale temporary table into rebuilt message_map"
                     )
@@ -868,7 +901,7 @@ def initialize_database() -> None:
                         "Failed to merge preserved stale temporary table data: %s", e
                     )
                 finally:
-                    cursor.execute("DROP TABLE IF EXISTS message_map_stale_temp")
+                    cursor.execute(f"DROP TABLE IF EXISTS {stale_temp_table}")
             cursor.execute(_DROP_TABLE_MESSAGE_MAP_LEGACY_SQL)
 
         cursor.execute(_CREATE_INDEX_MESSAGE_MAP_ID_SQL)

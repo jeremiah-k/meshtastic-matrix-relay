@@ -3119,6 +3119,26 @@ def rollback_migration(
                     backed_up_restore_paths = {
                         Path(f["restore_path"]) for f in backed_up_files
                     }
+                    # Check if we only restored database sidecars, not the main DB
+                    # In that case, keep migrated DB files to avoid data loss
+                    sidecar_suffixes = ("-wal", "-shm", "-journal")
+                    if step_name == "database":
+                        backed_up_db_names = {
+                            path.name
+                            for path in backed_up_restore_paths
+                            if path.suffix in sidecar_suffixes
+                            or path.name == DATABASE_FILENAME
+                        }
+                        # If only sidecars were backed up (no main DB), skip deletion
+                        if backed_up_db_names and not any(
+                            path.name == DATABASE_FILENAME
+                            for path in backed_up_restore_paths
+                        ):
+                            logger.warning(
+                                "Rollback restored only database sidecars; keeping migrated "
+                                "database files to avoid data loss."
+                            )
+                            continue
                     for migrated_path_str in migrated_files:
                         migrated_path = Path(migrated_path_str)
                         if (

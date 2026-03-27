@@ -73,7 +73,7 @@ class Plugin(BasePlugin):
             self.logger.warning(
                 "Meshtastic client unavailable; skipping drop message handling"
             )
-            return False
+            return True
         node_info = meshtastic_client.getMyNodeInfo()
 
         # Attempt message drop to packet originator if not relay

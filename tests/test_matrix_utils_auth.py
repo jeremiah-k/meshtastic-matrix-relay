@@ -1425,7 +1425,7 @@ async def test_login_matrix_bot_existing_credentials_and_e2ee_check_exceptions(
         patch("mmrelay.config.load_config", return_value={}),
         patch("mmrelay.config.is_e2ee_enabled", side_effect=ValueError("bad-e2ee")),
         patch(
-            "mmrelay.paths.get_credentials_path",
+            "mmrelay.matrix_utils.get_credentials_path",
             return_value=Path(credentials_path),
         ),
         patch(

@@ -2468,6 +2468,7 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
     active_community_plugins = _active_plugin_names(
         CONFIG_SECTION_COMMUNITY_PLUGINS, community_plugins_config
     )
+    ready_community_plugins = []
 
     if active_community_plugins:
         # Ensure all community plugin directories exist
@@ -2626,13 +2627,14 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                 logger.warning(f"Failed to clone/update plugin {plugin_name}, skipping")
                 continue
             _install_requirements_for_repo(repo_path, repo_name)
+            ready_community_plugins.append(plugin_name)
         else:
             logger.error("Repository URL not specified for a community plugin")
             logger.error("Please specify the repository URL in config.yaml")
             continue
 
-    # Only load community plugins that are explicitly enabled
-    for plugin_name in active_community_plugins:
+    # Only load community plugins that were successfully synced
+    for plugin_name in ready_community_plugins:
         plugin_info = community_plugins_config[plugin_name]
         repo_url = plugin_info.get("repository")
         if repo_url:
@@ -2746,10 +2748,12 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
 
         if is_active:
             default_priority = getattr(plugin, "priority", DEFAULT_PLUGIN_PRIORITY)
-            if not isinstance(default_priority, int):
+            if not isinstance(default_priority, int) or isinstance(
+                default_priority, bool
+            ):
                 default_priority = DEFAULT_PLUGIN_PRIORITY
             raw_priority = plugin_config.get("priority", default_priority)
-            if isinstance(raw_priority, int):
+            if isinstance(raw_priority, int) and not isinstance(raw_priority, bool):
                 plugin.priority = raw_priority
             else:
                 logger.warning(

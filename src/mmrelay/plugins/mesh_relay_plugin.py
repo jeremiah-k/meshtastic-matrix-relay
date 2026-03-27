@@ -310,6 +310,9 @@ class Plugin(BasePlugin):
 
         try:
             decoded = packet.get("decoded", {})
+            if not isinstance(decoded, dict):
+                self.logger.error("Embedded packet decoded field must be a JSON object")
+                return False
             payload_b64 = decoded.get("payload")
             portnum = decoded.get("portnum")
             to_id = packet.get("toId")

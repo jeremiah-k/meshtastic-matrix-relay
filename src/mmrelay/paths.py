@@ -18,7 +18,7 @@ The three-tier plugin data system:
 
 import os
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 import platformdirs
@@ -470,17 +470,31 @@ def _normalize_plugin_type(plugin_type: str | None) -> str | None:
 
 def _validate_plugin_name(plugin_name: str) -> str:
     """Validate plugin name to prevent path traversal and absolute-path attacks."""
-    separators = {"/", "\\"}
-    if os.path.altsep:
-        separators.add(os.path.altsep)
-    if (
-        not plugin_name
-        or plugin_name in {".", ".."}
-        or Path(plugin_name).is_absolute()
-        or any(sep in plugin_name for sep in separators)
-    ):
+    if not plugin_name:
         raise ValueError(f"Invalid plugin name: {plugin_name!r}")
+    for pure in (PurePosixPath(plugin_name), PureWindowsPath(plugin_name)):
+        if (
+            pure.is_absolute()
+            or pure.drive
+            or pure.root
+            or len(pure.parts) != 1
+            or pure.parts[0] in {".", ".."}
+        ):
+            raise ValueError(f"Invalid plugin name: {plugin_name!r}")
     return plugin_name
+
+
+def _validate_plugin_subdir(subdir: str) -> str:
+    """Validate plugin subdir to prevent path traversal."""
+    for pure in (PurePosixPath(subdir), PureWindowsPath(subdir)):
+        if (
+            pure.is_absolute()
+            or pure.drive
+            or pure.root
+            or any(part in {"", ".", ".."} for part in pure.parts)
+        ):
+            raise ValueError(f"Invalid plugin subdir: {subdir!r}")
+    return subdir
 
 
 def get_plugin_code_dir(plugin_name: str, plugin_type: str | None = None) -> Path:
@@ -545,7 +559,7 @@ def get_plugin_data_dir(
             base_dir = get_core_plugins_dir() / plugin_name
 
     data_dir = base_dir / PLUGIN_DATA_DIRNAME
-    return data_dir / subdir if subdir else data_dir
+    return data_dir / _validate_plugin_subdir(subdir) if subdir else data_dir
 
 
 def get_plugin_database_path(plugin_name: str) -> Path:

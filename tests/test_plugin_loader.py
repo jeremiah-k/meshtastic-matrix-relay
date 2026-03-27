@@ -503,10 +503,6 @@ class Plugin:
         mock_logger.error.assert_any_call(
             "Please specify the repository URL in config.yaml"
         )
-        mock_logger.error.assert_any_call(
-            "Repository URL not specified for community plugin: %s",
-            "no_repo",
-        )
 
     def test_load_plugins_community_invalid_repo_url(self):
         """Invalid repository URLs should be rejected in community loading."""
@@ -519,8 +515,12 @@ class Plugin:
 
         with (
             patch("mmrelay.plugin_loader.get_custom_plugin_dirs", return_value=[]),
-            patch("mmrelay.plugin_loader.get_community_plugin_dirs", return_value=[]),
+            patch(
+                "mmrelay.plugin_loader.get_community_plugin_dirs",
+                return_value=[self.community_dir],
+            ),
             patch("mmrelay.plugin_loader._get_repo_name_from_url", return_value=None),
+            patch("mmrelay.plugin_loader.clone_or_update_repo", return_value=True),
             patch("mmrelay.plugin_loader.start_global_scheduler"),
             patch("mmrelay.plugin_loader.logger") as mock_logger,
         ):
@@ -529,7 +529,8 @@ class Plugin:
             load_plugins(config)
 
         mock_logger.error.assert_any_call(
-            "Invalid repository URL for community plugin: %s",
+            "Invalid repository URL for community plugin %s: %s",
+            "bad_repo",
             pl._redact_url("bad-url"),
         )
 

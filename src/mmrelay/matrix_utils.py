@@ -1382,13 +1382,17 @@ def _missing_credentials_keys(credentials: dict[str, Any]) -> list[str]:
     Returns:
         list[str]: List of required keys that are not present or are empty in `credentials`.
     """
-    required_keys = tuple(REQUIRED_CREDENTIALS_KEYS)
-    return [
-        key
-        for key in required_keys
-        if not isinstance(credentials.get(key), str)
-        or not credentials.get(key, "").strip()
-    ]
+    missing_keys: list[str] = []
+    for key in REQUIRED_CREDENTIALS_KEYS:
+        value = credentials.get(key)
+        if key == CONFIG_KEY_USER_ID:
+            value = _first_nonblank_str(
+                credentials.get(CONFIG_KEY_USER_ID),
+                credentials.get(CONFIG_KEY_BOT_USER_ID),
+            )
+        if not isinstance(value, str) or not value.strip():
+            missing_keys.append(key)
+    return missing_keys
 
 
 async def _resolve_and_load_credentials(
@@ -1440,8 +1444,11 @@ async def _resolve_and_load_credentials(
             credentials_path = candidate_path
             matrix_homeserver = credentials[CONFIG_KEY_HOMESERVER]
             matrix_access_token = credentials[CONFIG_KEY_ACCESS_TOKEN]
-            raw_user_id = credentials.get(CONFIG_KEY_USER_ID)
-            bot_user_id = raw_user_id.strip() if isinstance(raw_user_id, str) else ""
+            raw_user_id = _first_nonblank_str(
+                credentials.get(CONFIG_KEY_USER_ID),
+                credentials.get(CONFIG_KEY_BOT_USER_ID),
+            )
+            bot_user_id = raw_user_id or ""
             e2ee_device_id = _get_valid_device_id(credentials.get(CONFIG_KEY_DEVICE_ID))
 
             logger.debug(f"Using Matrix credentials (device: {e2ee_device_id})")
@@ -2635,10 +2642,15 @@ async def login_matrix_bot(
                     _load_direct, existing_credentials_path
                 )
                 if existing_creds:
-                    user_id_match = (
-                        existing_creds.get(CONFIG_KEY_USER_ID) == username
-                        or existing_creds.get(CONFIG_KEY_BOT_USER_ID) == username
+                    existing_user_id = _first_nonblank_str(
+                        existing_creds.get(CONFIG_KEY_USER_ID),
+                        existing_creds.get(CONFIG_KEY_BOT_USER_ID),
                     )
+                    if existing_user_id:
+                        existing_user_id = _normalize_bot_user_id(
+                            original_domain or homeserver, existing_user_id
+                        )
+                    user_id_match = existing_user_id == username
                     if user_id_match:
                         existing_device_id = _get_valid_device_id(
                             existing_creds.get(CONFIG_KEY_DEVICE_ID)

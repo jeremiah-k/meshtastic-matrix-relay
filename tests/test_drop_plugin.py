@@ -32,7 +32,7 @@ from mmrelay.plugins.drop_plugin import Plugin
 async def test_handle_meshtastic_message_returns_false_for_drop_command_without_client(
     _mock_connect,
 ):
-    """When client is unavailable, command should not be marked handled."""
+    """When client is unavailable, command should still be marked handled to prevent relay."""
     plugin = Plugin()
     plugin.config = {"radius_km": 5}
     plugin.logger = MagicMock()
@@ -51,7 +51,7 @@ async def test_handle_meshtastic_message_returns_false_for_drop_command_without_
     result = await plugin.handle_meshtastic_message(
         packet, "formatted", "longname", "meshnet"
     )
-    assert result is False
+    assert result is True
     plugin.set_node_data.assert_not_called()
     plugin.store_node_data.assert_not_called()
 

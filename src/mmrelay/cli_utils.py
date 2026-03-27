@@ -59,19 +59,32 @@ try:
 except ImportError:
     # Handle case where matrix-nio is not installed
     AsyncClient = None
-    LoginError = Exception
-    LogoutError = Exception
-    LocalTransportError = Exception
-    RemoteTransportError = Exception
-    LocalProtocolError = Exception
-    RemoteProtocolError = Exception
+
+    class LoginError(Exception):
+        pass
+
+    class LogoutError(Exception):
+        pass
+
+    class LocalTransportError(Exception):
+        pass
+
+    class RemoteTransportError(Exception):
+        pass
+
+    class LocalProtocolError(Exception):
+        pass
+
+    class RemoteProtocolError(Exception):
+        pass
+
     # Create aliases for backward compatibility
-    NioLoginError = Exception
-    NioLogoutError = Exception
-    NioLocalTransportError = Exception
-    NioRemoteTransportError = Exception
-    NioLocalProtocolError = Exception
-    NioRemoteProtocolError = Exception
+    NioLoginError = LoginError
+    NioLogoutError = LogoutError
+    NioLocalTransportError = LocalTransportError
+    NioRemoteTransportError = RemoteTransportError
+    NioLocalProtocolError = LocalProtocolError
+    NioRemoteProtocolError = RemoteProtocolError
 
 # Import mmrelay modules - avoid circular imports by importing inside functions
 

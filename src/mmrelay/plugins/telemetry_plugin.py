@@ -116,9 +116,14 @@ class Plugin(BasePlugin):
             if data:
                 telemetry_data = data if isinstance(data, list) else [data]
 
+            telemetry_time = telemetry.get("time")
             telemetry_data.append(
                 {
-                    "time": telemetry.get("time", packet.get("rxTime")),
+                    "time": (
+                        telemetry_time
+                        if telemetry_time is not None
+                        else packet.get("rxTime")
+                    ),
                     "batteryLevel": device_metrics.get("batteryLevel"),
                     "voltage": device_metrics.get("voltage"),
                     "airUtilTx": device_metrics.get("airUtilTx"),
