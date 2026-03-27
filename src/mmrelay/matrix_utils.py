@@ -84,8 +84,10 @@ from mmrelay.config import (
 from mmrelay.constants.app import WINDOWS_PLATFORM
 from mmrelay.constants.config import (
     CONFIG_KEY_ACCESS_TOKEN,
+    CONFIG_KEY_BOT_USER_ID,
     CONFIG_KEY_DEVICE_ID,
     CONFIG_KEY_HOMESERVER,
+    CONFIG_KEY_PASSWORD,
     CONFIG_KEY_USER_ID,
     CONFIG_SECTION_MATRIX,
     DEFAULT_BROADCAST_ENABLED,
@@ -584,9 +586,11 @@ def _can_auto_create_credentials(matrix_config: Dict[str, Any] | None) -> bool:
     """
     if not isinstance(matrix_config, dict):
         return False
-    homeserver = matrix_config.get("homeserver")
-    user = matrix_config.get("bot_user_id") or matrix_config.get("user_id")
-    password = matrix_config.get("password")
+    homeserver = matrix_config.get(CONFIG_KEY_HOMESERVER)
+    user = matrix_config.get(CONFIG_KEY_BOT_USER_ID) or matrix_config.get(
+        CONFIG_KEY_USER_ID
+    )
+    password = matrix_config.get(CONFIG_KEY_PASSWORD)
     return all(isinstance(v, str) and v.strip() for v in (homeserver, user, password))
 
 
@@ -1367,7 +1371,9 @@ def _missing_credentials_keys(credentials: dict[str, Any]) -> list[str]:
     """
     # user_id is required by Matrix startup/auth flows even if other CLI
     # validation paths relax it for specific commands.
-    required_keys = tuple(dict.fromkeys((*REQUIRED_CREDENTIALS_KEYS, "user_id")))
+    required_keys = tuple(
+        dict.fromkeys((*REQUIRED_CREDENTIALS_KEYS, CONFIG_KEY_USER_ID))
+    )
     return [
         key
         for key in required_keys
@@ -1453,11 +1459,13 @@ async def _resolve_and_load_credentials(
             "No credentials.json found, but config.yaml has password field. Attempting automatic login..."
         )
 
-        homeserver = matrix_section["homeserver"]
-        username = matrix_section.get("bot_user_id") or matrix_section.get("user_id")
+        homeserver = matrix_section[CONFIG_KEY_HOMESERVER]
+        username = matrix_section.get(CONFIG_KEY_BOT_USER_ID) or matrix_section.get(
+            CONFIG_KEY_USER_ID
+        )
         if username:
             username = _normalize_bot_user_id(homeserver, username)
-        password = matrix_section["password"]
+        password = matrix_section[CONFIG_KEY_PASSWORD]
 
         try:
             success = await login_matrix_bot(
@@ -1536,16 +1544,24 @@ async def _resolve_and_load_credentials(
         logger.error(msg_require_auth_login())
         return None
 
-    matrix_access_token = matrix_section.get("access_token")
+    matrix_access_token = matrix_section.get(CONFIG_KEY_ACCESS_TOKEN)
     if not isinstance(matrix_access_token, str) or not matrix_access_token.strip():
-        auth_keys = ("access_token", "password", "homeserver", "bot_user_id", "user_id")
+        auth_keys = (
+            CONFIG_KEY_ACCESS_TOKEN,
+            CONFIG_KEY_PASSWORD,
+            CONFIG_KEY_HOMESERVER,
+            CONFIG_KEY_BOT_USER_ID,
+            CONFIG_KEY_USER_ID,
+        )
         present_auth_keys: list[str] = []
         for key in auth_keys:
             value = matrix_section.get(key)
             if isinstance(value, str) and value.strip():
                 present_auth_keys.append(key)
         if present_auth_keys:
-            logger.error("Matrix section is missing required field: access_token")
+            logger.error(
+                f"Matrix section is missing required field: {CONFIG_KEY_ACCESS_TOKEN}"
+            )
         else:
             logger.error(
                 "Matrix section contains non-auth settings only (for example E2EE options), "
@@ -1554,12 +1570,16 @@ async def _resolve_and_load_credentials(
         logger.error(msg_require_auth_login())
         return None
 
-    matrix_homeserver = matrix_section.get("homeserver")
+    matrix_homeserver = matrix_section.get(CONFIG_KEY_HOMESERVER)
     if not isinstance(matrix_homeserver, str) or not matrix_homeserver.strip():
-        logger.error("Matrix section is missing required field: homeserver")
+        logger.error(
+            f"Matrix section is missing required field: {CONFIG_KEY_HOMESERVER}"
+        )
         return None
 
-    raw_user_id = matrix_section.get("bot_user_id") or matrix_section.get("user_id")
+    raw_user_id = matrix_section.get(CONFIG_KEY_BOT_USER_ID) or matrix_section.get(
+        CONFIG_KEY_USER_ID
+    )
     if isinstance(raw_user_id, str) and raw_user_id.strip():
         bot_user_id = _normalize_bot_user_id(matrix_homeserver, raw_user_id)
         if bot_user_id is None:

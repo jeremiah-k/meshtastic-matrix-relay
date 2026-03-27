@@ -2041,7 +2041,7 @@ class TestGitOperations(BaseGitTest):
         # Check that _run was called with the right parameters, including env
         call_args = mock_run.call_args
         self.assertEqual(call_args[0][0], ["git", "status"])
-        self.assertEqual(call_args[1]["timeout"], 120)
+        self.assertEqual(call_args[1]["timeout"], TEST_GIT_TIMEOUT)
         self.assertEqual(call_args[1]["retry_attempts"], pl.GIT_RETRY_ATTEMPTS)
         self.assertEqual(call_args[1]["retry_delay"], pl.GIT_RETRY_DELAY_SECONDS)
         self.assertIn("env", call_args[1])
