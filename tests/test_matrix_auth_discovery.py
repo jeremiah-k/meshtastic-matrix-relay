@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID
 from mmrelay.matrix_utils import MatrixAuthInfo, _perform_matrix_login
 
 
@@ -64,7 +65,7 @@ async def test_whoami_discovers_missing_device_id(mock_client, tmp_path):
             assert discovered_device_id == "DISCOVERED_DEVICE"
             mock_client.whoami.assert_awaited_once()
             # Credentials should be updated with device_id
-            assert auth_info.credentials["device_id"] == "DISCOVERED_DEVICE"
+            assert auth_info.credentials[CONFIG_KEY_DEVICE_ID] == "DISCOVERED_DEVICE"
             mock_save.assert_called_once_with(
                 auth_info.credentials, credentials_path=auth_info.credentials_path
             )

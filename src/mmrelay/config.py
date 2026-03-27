@@ -28,6 +28,8 @@ from mmrelay.constants.config import (
     CONFIG_KEY_HOMESERVER,
     CONFIG_KEY_NODEDB_REFRESH_INTERVAL,
     CONFIG_KEY_PASSWORD,
+    CONFIG_SECTION_COMMUNITY_PLUGINS,
+    CONFIG_SECTION_CUSTOM_PLUGINS,
     CONFIG_SECTION_MATRIX,
     DEPRECATION_VERSIONS,
     ENV_BOOL_FALSE_VALUES,
@@ -35,6 +37,11 @@ from mmrelay.constants.config import (
     JSON_INDENT_STANDARD,
     NORMALIZABLE_CONFIG_SECTIONS,
     REQUIRED_CREDENTIALS_KEYS,
+)
+from mmrelay.constants.plugins import (
+    PLUGIN_TYPE_COMMUNITY,
+    PLUGIN_TYPE_CORE,
+    PLUGIN_TYPE_CUSTOM,
 )
 
 # Import new path resolution system
@@ -349,14 +356,14 @@ def get_plugin_data_dir(
     # If a plugin name is provided, create and return a plugin-specific directory
     if plugin_name:
         if plugin_type is None and isinstance(relay_config, dict):
-            community_plugins = relay_config.get("community-plugins") or {}
-            custom_plugins = relay_config.get("custom-plugins") or {}
+            community_plugins = relay_config.get(CONFIG_SECTION_COMMUNITY_PLUGINS) or {}
+            custom_plugins = relay_config.get(CONFIG_SECTION_CUSTOM_PLUGINS) or {}
             if isinstance(community_plugins, dict) and plugin_name in community_plugins:
-                plugin_type = "community"
+                plugin_type = PLUGIN_TYPE_COMMUNITY
             elif isinstance(custom_plugins, dict) and plugin_name in custom_plugins:
-                plugin_type = "custom"
+                plugin_type = PLUGIN_TYPE_CUSTOM
             else:
-                plugin_type = "core"
+                plugin_type = PLUGIN_TYPE_CORE
 
         plugin_data_dir = get_unified_plugin_data_dir(
             plugin_name, subdir=subdir, plugin_type=plugin_type

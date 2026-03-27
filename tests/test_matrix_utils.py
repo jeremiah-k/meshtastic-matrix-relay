@@ -13,6 +13,7 @@ import pytest
 from nio import SyncError, ToDeviceError, ToDeviceResponse
 
 import mmrelay.matrix_utils as matrix_utils_module
+from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID
 from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
 from mmrelay.matrix_utils import (
     ImageUploadError,
@@ -1522,7 +1523,7 @@ async def test_connect_matrix_alias_resolution_exception(
             "homeserver": "https://matrix.org",
             "access_token": "test_token",
             "user_id": "@test:matrix.org",
-            "device_id": "test_device_id",
+            CONFIG_KEY_DEVICE_ID: "test_device_id",
         }
 
         # Mock the AsyncClient instance
@@ -3279,7 +3280,7 @@ async def test_connect_matrix_missing_device_id_uses_direct_assignment(
         "homeserver": "https://matrix.example.org",
         "user_id": "@bot:example.org",
         "access_token": "test_token",
-        "device_id": discovered_device_id,
+        CONFIG_KEY_DEVICE_ID: discovered_device_id,
     }
     assert call_args[1]["credentials_path"].endswith("credentials.json")
 
@@ -4090,7 +4091,7 @@ async def test_connect_matrix_ignores_config_access_token_when_credentials_prese
                 "homeserver": "https://matrix.example.org",
                 "user_id": "@bot:example.org",
                 "access_token": "creds_token",
-                "device_id": "DEV",
+                CONFIG_KEY_DEVICE_ID: "DEV",
             },
         ),
         patch(
@@ -5217,7 +5218,7 @@ async def test_connect_matrix_legacy_config(
         # Verify AsyncClient was created without E2EE
         mock_async_client.assert_called_once()
         call_args = mock_async_client.call_args
-        assert call_args[1].get("device_id") is None
+        assert call_args[1].get(CONFIG_KEY_DEVICE_ID) is None
         assert call_args[1].get("store_path") is None
 
         # Verify sync was called

@@ -21,6 +21,11 @@ import mmrelay.paths as paths_module
 from mmrelay.config import (
     get_app_path,
 )
+from mmrelay.constants.config import (
+    CONFIG_SECTION_COMMUNITY_PLUGINS,
+    CONFIG_SECTION_CUSTOM_PLUGINS,
+    CONFIG_SECTION_PLUGINS,
+)
 from mmrelay.constants.plugins import (
     COMMIT_HASH_PATTERN,
     DEFAULT_ALLOWED_COMMUNITY_HOSTS,
@@ -2350,7 +2355,7 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
     plugins = core_plugins.copy()
 
     # Process and load custom plugins
-    custom_plugins_config = config.get("custom-plugins", {})
+    custom_plugins_config = config.get(CONFIG_SECTION_CUSTOM_PLUGINS, {})
     custom_plugin_dirs = get_custom_plugin_dirs()
 
     active_custom_plugins = [
@@ -2407,7 +2412,7 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
             )
 
     # Process and download community plugins
-    community_plugins_config = config.get("community-plugins", {})
+    community_plugins_config = config.get(CONFIG_SECTION_COMMUNITY_PLUGINS, {})
     community_plugin_dirs = get_community_plugin_dirs()
 
     if not community_plugin_dirs:
@@ -2605,12 +2610,14 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
         # Determine if the plugin is active based on the configuration
         if plugin in core_plugins:
             # Core plugins: default to inactive unless specified otherwise
-            plugin_config = config.get("plugins", {}).get(plugin_name, {})
+            plugin_config = config.get(CONFIG_SECTION_PLUGINS, {}).get(plugin_name, {})
             is_active = plugin_config.get("active", False)
         else:
             # Custom and community plugins: default to inactive unless specified
-            if plugin_name in config.get("custom-plugins", {}):
-                plugin_config = config.get("custom-plugins", {}).get(plugin_name, {})
+            if plugin_name in config.get(CONFIG_SECTION_CUSTOM_PLUGINS, {}):
+                plugin_config = config.get(CONFIG_SECTION_CUSTOM_PLUGINS, {}).get(
+                    plugin_name, {}
+                )
             elif plugin_name in community_plugins_config:
                 plugin_config = community_plugins_config.get(plugin_name, {})
             else:

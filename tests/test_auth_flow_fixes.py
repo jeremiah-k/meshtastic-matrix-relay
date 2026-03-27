@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import mock_open, patch
 
 from mmrelay.config import check_e2ee_enabled_silently, is_e2ee_enabled
+from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID
 
 
 class TestAuthFlowFixes(unittest.TestCase):
@@ -81,7 +82,7 @@ class TestAuthFlowFixes(unittest.TestCase):
                                 "homeserver": "https://matrix.example.com",
                                 "access_token": "test_token",
                                 "user_id": "@test:example.com",
-                                "device_id": "TEST_DEVICE",
+                                CONFIG_KEY_DEVICE_ID: "TEST_DEVICE",
                             }
 
                             save_credentials(test_credentials)

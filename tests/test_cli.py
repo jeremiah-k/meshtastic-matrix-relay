@@ -27,6 +27,7 @@ import unittest
 import unittest.mock
 from unittest.mock import MagicMock, mock_open, patch
 
+from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID
 from tests.constants import TEST_CONFIG_PATH, TEST_HOME_CONFIG_PATH, TEST_SERIAL_PORT
 
 # Add src to path for imports
@@ -643,7 +644,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
             "homeserver": "https://matrix.org",
             "access_token": "test_token",
             "user_id": "@test:matrix.org",
-            "device_id": "test_device",
+            CONFIG_KEY_DEVICE_ID: "test_device",
         }
 
         with patch("builtins.open", mock_open(read_data=json.dumps(valid_credentials))):
@@ -694,7 +695,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
             "homeserver": "https://matrix.org",
             "access_token": "test_token",
             "user_id": "@test:matrix.org",
-            "device_id": "test_device",
+            CONFIG_KEY_DEVICE_ID: "test_device",
         }
 
         with (
@@ -1795,7 +1796,7 @@ class TestAuthStatus(unittest.TestCase):
             "homeserver": "https://matrix.org",
             "access_token": "syt_dGVzdA_test_token_here",
             "user_id": "@bot:matrix.org",
-            "device_id": "DEVICEABC123",
+            CONFIG_KEY_DEVICE_ID: "DEVICEABC123",
         }
         mock_file.return_value.read.return_value = json.dumps(credentials_data)
 
@@ -1959,7 +1960,7 @@ class TestAuthStatus(unittest.TestCase):
             "homeserver": "https://matrix.example.com",
             "access_token": "syt_dGVzdA_test_token_here",
             "user_id": "@relay:example.com",
-            "device_id": "DEVICE456",
+            CONFIG_KEY_DEVICE_ID: "DEVICE456",
         }
 
         with patch("builtins.open", mock_open(read_data=json.dumps(credentials_data))):
@@ -2116,7 +2117,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         credentials_data = {
             "access_token": "syt_test_token_123",
             "user_id": "@bot:matrix.org",
-            "device_id": "DEVICEABC123",
+            CONFIG_KEY_DEVICE_ID: "DEVICEABC123",
             # Missing homeserver
         }
         mock_file.return_value.read.return_value = json.dumps(credentials_data)
@@ -2144,7 +2145,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         credentials_data = {
             "homeserver": "https://matrix.org",
             "user_id": "@bot:matrix.org",
-            "device_id": "DEVICEABC123",
+            CONFIG_KEY_DEVICE_ID: "DEVICEABC123",
             # Missing access_token
         }
         mock_file.return_value.read.return_value = json.dumps(credentials_data)
@@ -2170,7 +2171,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         credentials_data = {
             "homeserver": "https://matrix.org",
             "access_token": "syt_test_token_123",
-            "device_id": "DEVICEABC123",
+            CONFIG_KEY_DEVICE_ID: "DEVICEABC123",
             # Missing user_id
         }
         mock_file.return_value.read.return_value = json.dumps(credentials_data)
@@ -2203,7 +2204,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
             "homeserver": "https://matrix.org",
             "access_token": "syt_test_token_123",
             "user_id": "@bot:matrix.org",
-            # Missing device_id
+            # Missing CONFIG_KEY_DEVICE_ID
         }
         mock_file.return_value.read.return_value = json.dumps(credentials_data)
 
@@ -2229,7 +2230,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
             "homeserver": "",  # Empty value
             "access_token": "syt_test_token_123",
             "user_id": "@bot:matrix.org",
-            "device_id": "DEVICEABC123",
+            CONFIG_KEY_DEVICE_ID: "DEVICEABC123",
         }
         mock_file.return_value.read.return_value = json.dumps(credentials_data)
 

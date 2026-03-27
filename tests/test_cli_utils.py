@@ -31,6 +31,7 @@ from mmrelay.cli_utils import (
     suggest_command,
     validate_command,
 )
+from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID
 
 
 class TestCommandRegistry:
@@ -511,7 +512,7 @@ class TestLogoutMatrixBot:
         mock_credentials = {
             "homeserver": "https://matrix.org",
             "access_token": "test_token",
-            "device_id": "test_device",
+            CONFIG_KEY_DEVICE_ID: "test_device",
         }
 
         mock_whoami_response = MagicMock()
@@ -547,7 +548,7 @@ class TestLogoutMatrixBot:
         mock_credentials = {
             "homeserver": "https://matrix.org",
             "access_token": "test_token",
-            "device_id": "test_device",
+            CONFIG_KEY_DEVICE_ID: "test_device",
         }
 
         mock_temp_client = AsyncMock()
@@ -582,7 +583,7 @@ class TestLogoutMatrixBot:
         mock_credentials = {
             "homeserver": "https://matrix.org",
             "access_token": "test_token",
-            "device_id": "test_device",
+            CONFIG_KEY_DEVICE_ID: "test_device",
         }
 
         mock_temp_client = AsyncMock()
@@ -639,7 +640,7 @@ class TestLogoutMatrixBot:
             "homeserver": "https://matrix.org",
             "user_id": "@test:matrix.org",
             "access_token": "test_token",
-            "device_id": "test_device",
+            CONFIG_KEY_DEVICE_ID: "test_device",
         }
 
         mock_temp_client = AsyncMock()
@@ -679,7 +680,7 @@ class TestLogoutMatrixBot:
             "homeserver": "https://matrix.org",
             "user_id": "@test:matrix.org",
             "access_token": "test_token",
-            "device_id": "test_device",
+            CONFIG_KEY_DEVICE_ID: "test_device",
         }
 
         mock_temp_client = AsyncMock()
@@ -722,7 +723,7 @@ class TestLogoutMatrixBot:
             "homeserver": "https://matrix.org",
             "user_id": "@test:matrix.org",
             "access_token": "test_token",
-            "device_id": "test_device",
+            CONFIG_KEY_DEVICE_ID: "test_device",
         }
 
         mock_temp_client = AsyncMock()
@@ -765,7 +766,7 @@ class TestLogoutMatrixBot:
             "homeserver": "https://matrix.org",
             "user_id": "@test:matrix.org",
             "access_token": "test_token",
-            "device_id": "test_device",
+            CONFIG_KEY_DEVICE_ID: "test_device",
         }
 
         mock_temp_client = AsyncMock()
@@ -807,7 +808,7 @@ class TestLogoutMatrixBot:
             "homeserver": "https://matrix.org",
             "user_id": "@test:matrix.org",
             "access_token": "test_token",
-            "device_id": "test_device",
+            CONFIG_KEY_DEVICE_ID: "test_device",
         }
 
         mock_temp_client = AsyncMock()
@@ -854,7 +855,7 @@ class TestLogoutMatrixBot:
             "homeserver": "https://matrix.org",
             "user_id": "@test:matrix.org",
             "access_token": "test_token",
-            "device_id": "test_device",
+            CONFIG_KEY_DEVICE_ID: "test_device",
         }
 
         mock_temp_client = AsyncMock()
@@ -902,7 +903,7 @@ class TestLogoutMatrixBot:
             "homeserver": "https://matrix.org",
             "user_id": "@test:matrix.org",
             "access_token": "test_token",
-            "device_id": "test_device",
+            CONFIG_KEY_DEVICE_ID: "test_device",
         }
 
         mock_temp_client = AsyncMock()
@@ -948,7 +949,7 @@ class TestLogoutMatrixBot:
             "homeserver": "https://matrix.org",
             "user_id": "@test:matrix.org",
             "access_token": "test_token",
-            "device_id": "test_device",
+            CONFIG_KEY_DEVICE_ID: "test_device",
         }
 
         with (

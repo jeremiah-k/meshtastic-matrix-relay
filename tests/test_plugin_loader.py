@@ -3942,7 +3942,7 @@ class TestDependencyInstallation(BaseGitTest):
                 "repo",
             ],
             cwd=self.temp_plugins_dir,
-            timeout=120,
+            timeout=TEST_GIT_TIMEOUT,
             retry_attempts=pl.GIT_RETRY_ATTEMPTS,
         )
         mock_logger.info.assert_called_with(

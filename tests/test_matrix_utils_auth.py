@@ -8,6 +8,7 @@ import pytest
 
 from mmrelay.cli_utils import _cleanup_local_session_data, logout_matrix_bot
 from mmrelay.config import get_e2ee_store_dir, load_credentials, save_credentials
+from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID
 from mmrelay.matrix_utils import (
     NioLocalTransportError,
     _can_auto_create_credentials,
@@ -154,7 +155,7 @@ async def test_connect_matrix_alias_resolution_success(
             "homeserver": "https://matrix.org",
             "access_token": "test_token",
             "user_id": "@test:matrix.org",
-            "device_id": "test_device_id",
+            CONFIG_KEY_DEVICE_ID: "test_device_id",
         }
 
         mock_client_instance = MagicMock()
@@ -252,7 +253,7 @@ async def test_connect_matrix_alias_resolution_failure(
             "homeserver": "https://matrix.org",
             "access_token": "test_token",
             "user_id": "@test:matrix.org",
-            "device_id": "test_device_id",
+            CONFIG_KEY_DEVICE_ID: "test_device_id",
         }
 
         mock_client_instance = MagicMock()
@@ -361,7 +362,7 @@ async def test_connect_matrix_with_e2ee_credentials(
         "homeserver": "https://matrix.example.org",
         "user_id": "@bot:example.org",
         "access_token": "test_token",
-        "device_id": "TEST_DEVICE",
+        CONFIG_KEY_DEVICE_ID: "TEST_DEVICE",
     }
     mock_listdir.return_value = ["test.db"]
     mock_ssl_context.return_value = MagicMock()
@@ -926,7 +927,7 @@ async def test_logout_matrix_bot_password_verification_success():
         "homeserver": "https://matrix.org",
         "user_id": "@test:matrix.org",
         "access_token": "test_token",
-        "device_id": "test_device",
+        CONFIG_KEY_DEVICE_ID: "test_device",
     }
 
     with (
@@ -968,7 +969,7 @@ async def test_logout_matrix_bot_password_verification_failure():
         "homeserver": "https://matrix.org",
         "user_id": "@test:matrix.org",
         "access_token": "test_token",
-        "device_id": "test_device",
+        CONFIG_KEY_DEVICE_ID: "test_device",
     }
 
     with (
@@ -998,7 +999,7 @@ async def test_logout_matrix_bot_server_logout_failure():
         "homeserver": "https://matrix.org",
         "user_id": "@test:matrix.org",
         "access_token": "test_token",
-        "device_id": "test_device",
+        CONFIG_KEY_DEVICE_ID: "test_device",
     }
 
     with (
@@ -1056,7 +1057,7 @@ def test_load_credentials_success(
         "homeserver": "https://matrix.example.org",
         "user_id": "@bot:example.org",
         "access_token": "test_token",
-        "device_id": "TEST_DEVICE",
+        CONFIG_KEY_DEVICE_ID: "TEST_DEVICE",
     }
 
     credentials = load_credentials()
@@ -1065,7 +1066,7 @@ def test_load_credentials_success(
     assert credentials["homeserver"] == "https://matrix.example.org"
     assert credentials["user_id"] == "@bot:example.org"
     assert credentials["access_token"] == "test_token"
-    assert credentials["device_id"] == "TEST_DEVICE"
+    assert credentials[CONFIG_KEY_DEVICE_ID] == "TEST_DEVICE"
 
 
 @patch("mmrelay.config.get_credentials_path")
@@ -1107,7 +1108,7 @@ def test_save_credentials(
         "homeserver": "https://matrix.example.org",
         "user_id": "@bot:example.org",
         "access_token": "test_token",
-        "device_id": "TEST_DEVICE",
+        CONFIG_KEY_DEVICE_ID: "TEST_DEVICE",
     }
 
     try:
@@ -1242,7 +1243,7 @@ async def test_logout_matrix_bot_missing_user_id_fetch_success():
     mock_credentials = {
         "homeserver": "https://matrix.org",
         "access_token": "test_token",
-        "device_id": "test_device",
+        CONFIG_KEY_DEVICE_ID: "test_device",
     }
 
     with (
@@ -1302,7 +1303,7 @@ async def test_logout_matrix_bot_timeout():
         "homeserver": "https://matrix.org",
         "user_id": "@test:matrix.org",
         "access_token": "test_token",
-        "device_id": "test_device",
+        CONFIG_KEY_DEVICE_ID: "test_device",
     }
 
     with (

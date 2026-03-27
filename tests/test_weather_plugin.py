@@ -26,13 +26,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from meshtastic.mesh_interface import BROADCAST_NUM
 
 from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
+from mmrelay.constants.plugins import WEATHER_UNITS_IMPERIAL, WEATHER_UNITS_METRIC
 from mmrelay.plugins.weather_plugin import Plugin
 from tests.constants import (
     TEST_LAT_NYC,
-    TEST_LAT_SF,
     TEST_LON_NYC,
-    TEST_LON_SF,
-    TEST_MESHTASTIC_ID,
     TEST_NODE_NUM,
 )
 
@@ -87,7 +85,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         """
         self.plugin = Plugin()
         self.plugin.logger = MagicMock()
-        self.plugin.config = {"units": "metric"}
+        self.plugin.config = {"units": WEATHER_UNITS_METRIC}
 
         # Mock the is_channel_enabled method
         self.plugin.is_channel_enabled = MagicMock(return_value=True)
@@ -367,7 +365,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         mock_response = _make_ok_response(self.sample_weather_data)
         mock_get.return_value = mock_response
 
-        self.plugin.config = {"units": "metric"}
+        self.plugin.config = {"units": WEATHER_UNITS_METRIC}
 
         forecast = self.plugin.generate_forecast(TEST_LAT_NYC, TEST_LON_NYC)
 
@@ -398,9 +396,9 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
             ):
                 self.assertIn(field, hourly)
         else:
-            self.assertIn("latitude=40.7128", url)
+            self.assertIn(f"latitude={TEST_LAT_NYC}", url)
             # May be formatted without trailing zero
-            self.assertIn("longitude=-74.006", url)
+            self.assertIn(f"longitude={TEST_LON_NYC}", url)
             self.assertIn("forecast_days=3", url)
             self.assertIn("timezone=auto", url)
             for field in (
@@ -434,7 +432,7 @@ class TestWeatherPlugin(unittest.IsolatedAsyncioTestCase):
         """
         mock_get.return_value = _make_ok_response(self.sample_weather_data)
 
-        self.plugin.config = {"units": "imperial"}
+        self.plugin.config = {"units": WEATHER_UNITS_IMPERIAL}
 
         forecast = self.plugin.generate_forecast(TEST_LAT_NYC, TEST_LON_NYC)
 
