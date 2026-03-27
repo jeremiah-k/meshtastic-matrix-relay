@@ -69,7 +69,7 @@ CONFIG_KEY_WIPE_ON_RESTART: Final[str] = "wipe_on_restart"
 # Additional credential/config keys
 CONFIG_KEY_DEVICE_ID: Final[str] = "device_id"
 CONFIG_KEY_PASSWORD: Final[str] = (
-    "password"  # nosec B105 - This is a config key name, not a hardcoded password
+    "password"  # noqa: S105 - This is a config key name, not a hardcoded password
 )
 MATRIX_LOGIN_FIELD: Final[str] = CONFIG_KEY_PASSWORD
 

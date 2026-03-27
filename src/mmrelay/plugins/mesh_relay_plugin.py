@@ -228,7 +228,9 @@ class Plugin(BasePlugin):
             match = PROCESSED_PACKET_REGEX.match(body)
             if match:
                 if not content.get(MATRIX_PACKET_KEY):
-                    legacy_packet = content.get("packet")
+                    legacy_packet = content.get("packet") or content.get(
+                        "meshtastic_packet"
+                    )
                     if isinstance(legacy_packet, dict):
                         content[MATRIX_PACKET_KEY] = json.dumps(legacy_packet)
                     elif isinstance(legacy_packet, str) and legacy_packet.strip():

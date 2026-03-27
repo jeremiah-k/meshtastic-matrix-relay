@@ -119,7 +119,7 @@ check_os_flaky_tests() {
 		fi
 	fi
 
-	if [[ -z ${FLAKY_TESTS_PLATFORM} ]]; then
+	if [[ -z ${FLAKY_TESTS_PLATFORM-} ]]; then
 		echo -e "${FAIL_MARK} Trunk Flaky Tests CLI is only supported on Linux (x86_64, arm64) and MacOS (x86_64, arm64)." \
 			"See https://docs.trunk.io for more info."
 		exit 1
@@ -264,6 +264,8 @@ EOF
 	}
 else
 	download_cmd() {
+		local url="${1-}"
+		local output_to="${2-}"
 		echo -e "${FAIL_MARK} Cannot download '${url}'; please install curl or wget."
 		exit 1
 	}

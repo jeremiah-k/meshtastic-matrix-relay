@@ -154,7 +154,7 @@ class TestMigrateAdditionalCoverage:
         """When /proc cmdline is unavailable, ps output should be used for verification."""
         monkeypatch.setattr(sys, "platform", "linux")
         monkeypatch.setattr(
-            "mmrelay.migrate.shutil.which", lambda _cmd: "/usr/bin/pgrep"
+            "mmrelay.migrate.shutil.which", lambda cmd: f"/usr/bin/{cmd}"
         )
         monkeypatch.setattr("mmrelay.migrate.os.getpid", lambda: 100)
         original_exists = Path.exists

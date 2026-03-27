@@ -2631,9 +2631,10 @@ class TestGitOperations(BaseGitTest):
 
         orig_pipx_home = os.environ.get("PIPX_HOME")
         orig_pipx_local_venvs = os.environ.get("PIPX_LOCAL_VENVS")
+        orig_virtual_env = os.environ.get("VIRTUAL_ENV")
         orig_missingdep = sys.modules.get("missingdep_pipx")
 
-        for var in ("PIPX_HOME", "PIPX_LOCAL_VENVS"):
+        for var in ("PIPX_HOME", "PIPX_LOCAL_VENVS", "VIRTUAL_ENV"):
             os.environ.pop(var, None)
         os.environ["PIPX_HOME"] = os.path.join(self.temp_plugins_dir, "pipx-home")
 
@@ -2660,6 +2661,10 @@ class TestGitOperations(BaseGitTest):
                 os.environ["PIPX_LOCAL_VENVS"] = orig_pipx_local_venvs
             else:
                 os.environ.pop("PIPX_LOCAL_VENVS", None)
+            if orig_virtual_env is not None:
+                os.environ["VIRTUAL_ENV"] = orig_virtual_env
+            else:
+                os.environ.pop("VIRTUAL_ENV", None)
             if orig_missingdep is not None:
                 sys.modules["missingdep_pipx"] = orig_missingdep
             else:
