@@ -271,6 +271,8 @@ filterwarnings =
 
 The project uses a custom logger configuration (`log_utils.get_logger`) that manages its own handlers. This creates a conflict with `unittest.TestCase.assertLogs()`.
 
+> **Note**: `mmrelay.cli._get_logger` is a wrapper around `log_utils.get_logger` that adds CLI-specific configuration. The import of the function under test must happen _inside_ the test function, after mock setup, to ensure the function uses the mocked logger rather than caching a reference to the real one at module load time.
+
 **Problem**: `assertLogs()` works by attaching a `_CapturingHandler` to the target logger (handler-based capture, not propagation-based). The conflict is that `_configure_logger` replaces the logger's handlers when called, which removes the capturing handler that `assertLogs()` attached, causing logs to be lost.
 
 **✅ CORRECT PATTERN** - Mock `_get_logger` to return a controllable logger:
@@ -291,6 +293,7 @@ def test_validation_logs_warning(self, mock_exists, mock_get_logger):
     mock_logger.propagate = True
     mock_get_logger.return_value = mock_logger
 
+    # Import after mock setup to ensure function uses the mocked logger
     from mmrelay.cli import function_under_test
 
     with self.assertLogs("mmrelay.test", level="WARNING"):

@@ -474,6 +474,7 @@ class Plugin(BasePlugin):
         Returns:
             str: A brief human-readable description prefixed with an emoji (e.g., "☀️ Clear sky"), or "❓ Unknown" if the code is not recognized.
         """
+        # Format: "DAY:text|NIGHT:text", "BOTH:text", or plain text
         text = WEATHER_CODE_TEXT_MAPPING.get(weather_code)
         if text is None:
             return "❓ Unknown"

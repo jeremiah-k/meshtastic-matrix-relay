@@ -114,7 +114,6 @@ class Plugin(BasePlugin):
             )
         else:
             battery_line = "Battery: N/A"
-            low_battery = 0  # No low battery nodes if no battery data
 
         return f"""Nodes: {radios}
  {battery_line}

@@ -81,7 +81,7 @@ helm_in_container() {
 			fi
 			pull_attempt=$((pull_attempt + 1))
 			if [[ $pull_attempt -lt $pull_retries ]]; then
-				echo -e "${YELLOW}Container pull failed, retrying in ${pull_delay}s (attempt ${pull_attempt}/${pull_retries})...${NC}"
+				echo -e "${YELLOW}Container pull attempt $((pull_attempt)) failed, retrying in ${pull_delay}s (attempt $((pull_attempt + 1))/${pull_retries})...${NC}"
 				sleep "${pull_delay}"
 				pull_delay=$((pull_delay * 2))
 			else

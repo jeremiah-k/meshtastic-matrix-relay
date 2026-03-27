@@ -802,7 +802,7 @@ def initialize_database() -> None:
                     "Dropping stale temporary table %s with incompatible schema before message_map rebuild",
                     _temp_table,
                 )
-                cursor.execute(f"DROP TABLE IF EXISTS {_temp_table}")
+                cursor.execute(_DROP_TABLE_MESSAGE_MAP_TEMP_SQL)
                 temp_exists = False
             cursor.execute(f"ALTER TABLE message_map RENAME TO {_temp_table}")
             cursor.execute(_CREATE_TABLE_MESSAGE_MAP_FROM_SCRATCH_SQL)

@@ -18,6 +18,9 @@ from mmrelay.constants.app import (
     WINDOWS_VTP_FLAG,
 )
 from mmrelay.constants.formats import DEFAULT_TEXT_ENCODING
+from mmrelay.log_utils import get_logger
+
+logger = get_logger(__name__)
 
 
 def is_windows() -> bool:
@@ -64,6 +67,9 @@ def setup_windows_console() -> None:
     except (OSError, AttributeError):
         # If console setup fails, continue without it
         # This is expected on non-Windows systems or older Windows versions
+        logger.debug(
+            "Windows console setup failed (expected on non-Windows or older Windows)"
+        )
         return
 
 
@@ -141,9 +147,9 @@ def check_windows_requirements() -> Optional[str]:
     Report Windows environment compatibility issues as a multi-line warning string.
 
     When running on Windows, performs these checks and accumulates user-facing warnings:
-    - Python version is older than 3.10.
+    - Python version is older than MIN_PYTHON_VERSION.
     - Process does not appear to be running inside a virtual environment (venv/pipx).
-    - Current working directory path length exceeds 200 characters.
+    - Current working directory path length exceeds WINDOWS_PATH_LENGTH_WARNING characters.
 
     Returns:
         Optional[str]: Multi-line warning message prefixed with "Windows compatibility warnings:" and bullet points for each detected issue; `None` if no issues are detected or when not running on Windows.

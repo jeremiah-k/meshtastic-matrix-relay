@@ -20,18 +20,18 @@ class RGBAColor(NamedTuple):
 
 
 # Default message prefix formats
-DEFAULT_MESHTASTIC_PREFIX = "{display5}[M]: "
-DEFAULT_MATRIX_PREFIX = "[{long}/{mesh}]: "
+DEFAULT_MESHTASTIC_PREFIX: Final[str] = "{display5}[M]: "
+DEFAULT_MATRIX_PREFIX: Final[str] = "[{long}/{mesh}]: "
 
 # Port number constants for message types
-TEXT_MESSAGE_APP = "TEXT_MESSAGE_APP"
-DETECTION_SENSOR_APP = "DETECTION_SENSOR_APP"
+TEXT_MESSAGE_APP: Final[str] = "TEXT_MESSAGE_APP"
+DETECTION_SENSOR_APP: Final[str] = "DETECTION_SENSOR_APP"
 
 # Emoji flag value
-EMOJI_FLAG_VALUE = 1
+EMOJI_FLAG_VALUE: Final[int] = 1
 
 # Default channel
-DEFAULT_CHANNEL = 0
+DEFAULT_CHANNEL: Final[int] = 0
 
 # Date/time format strings
 DATETIME_FORMAT_STANDARD: Final[str] = "%Y-%m-%d %H:%M:%S"

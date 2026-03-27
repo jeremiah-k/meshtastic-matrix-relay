@@ -52,6 +52,7 @@ jobs:
           fi
 
       - name: Log in to Docker Hub
+        if: ${{ success() && steps.helm-image-cache.outputs.cache-hit != 'true' }}
         continue-on-error: true
         uses: docker/login-action@v3
         with:
@@ -119,7 +120,7 @@ jobs:
 
       - name: Save Helm image tar
         id: helm-image-tar
-        if: ${{ always() && steps.helm-image-cache.outputs.cache-hit != 'true' }}
+        if: ${{ success() && steps.helm-image-cache.outputs.cache-hit != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -143,7 +144,7 @@ jobs:
           echo "Helm image not present locally; skipping cache archive."
 
       - name: Persist cached Helm image
-        if: ${{ always() && steps.helm-image-cache.outputs.cache-hit != 'true' && steps.helm-image-tar.outputs.saved == 'true' }}
+        if: ${{ success() && steps.helm-image-cache.outputs.cache-hit != 'true' && steps.helm-image-tar.outputs.saved == 'true' }}
         uses: actions/cache/save@v4
         with:
           path: ${{ steps.helm-image-cache-meta.outputs.cache_path }}

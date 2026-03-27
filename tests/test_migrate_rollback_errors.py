@@ -49,17 +49,11 @@ class TestRollbackMigrationErrorHandling:
             }
         ]
 
-        # Create real error condition - make backup file inaccessible
-        backup_file.chmod(0o000)  # Remove all permissions
-
         # Force a restore failure path deterministically
         with patch(
             "mmrelay.migrate.shutil.copy2", side_effect=shutil.Error("copy failed")
         ):
             result = rollback_migration(completed_steps, migrations, new_home)
-
-        # Restore permissions for cleanup
-        backup_file.chmod(0o644)
 
         # Verify error handling
         assert result["success"] is False
@@ -287,10 +281,10 @@ class TestRollbackMigrationErrorHandling:
         backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()
 
-        # Create backup as a file while destination is a directory path.
-        # rollback_migration will attempt copy2(file -> directory path) and fail.
+        # Create backup directory (matching destination type - the mock forces the failure)
         backup_path = backup_dir / "store.bak.20240101_120000"
-        backup_path.write_text("not-a-store-directory")
+        backup_path.mkdir()
+        (backup_path / "backup_file").write_text("backup content")
 
         # Create destination directory
         dest_dir = new_home / "matrix" / "store"
@@ -313,7 +307,7 @@ class TestRollbackMigrationErrorHandling:
 
         # Execute rollback with forced restore copy failure
         with patch(
-            "mmrelay.migrate.shutil.copy2", side_effect=shutil.Error("copy failed")
+            "mmrelay.migrate.shutil.copytree", side_effect=shutil.Error("copy failed")
         ):
             result = rollback_migration(completed_steps, migrations, new_home)
 

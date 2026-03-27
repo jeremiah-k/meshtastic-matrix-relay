@@ -741,7 +741,9 @@ class TestInitializeDatabaseErrors(unittest.TestCase):
         )
         normalized_expected = normalize_sql(expected_index_sql)
         executed_sqls = [
-            normalize_sql(call.args[0]) for call in mock_cursor.execute.call_args_list
+            normalize_sql(call.args[0])
+            for call in mock_cursor.execute.call_args_list
+            if call.args
         ]
         self.assertIn(
             normalized_expected,

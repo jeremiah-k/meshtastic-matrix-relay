@@ -87,8 +87,9 @@ def _emit_legacy_credentials_warning(credentials_path: str) -> None:
     _get_config_logger().warning(
         "Credentials found in legacy location: %s. "
         "Please run 'mmrelay migrate' to move to new unified structure. "
-        f"Support for legacy credentials will be removed in v{DEPRECATION_VERSIONS[1]}.",
+        "Support for legacy credentials will be removed in v%s.",
         credentials_path,
+        DEPRECATION_VERSIONS[1],
     )
 
 
@@ -831,7 +832,7 @@ def load_credentials() -> dict[str, Any] | None:
             credentials[CONFIG_KEY_DEVICE_ID] = None
             logger.warning(
                 "credentials.json is missing or has an invalid 'device_id': %s. "
-                "This is recommended for v1.3+.",
+                "Having a valid 'device_id' is recommended for v1.3+.",
                 credentials_path,
             )
         if missing_required:

@@ -113,8 +113,8 @@ E2EE_KEY_REQUEST_MAX_DELAY: Final[float] = (
 )
 
 # Boolean parsing values
-ENV_BOOL_TRUE_VALUES: Final[tuple[str, ...]] = ("true", "1", "yes", "on")
-ENV_BOOL_FALSE_VALUES: Final[tuple[str, ...]] = ("false", "0", "no", "off")
+ENV_BOOL_TRUE_VALUES: Final[frozenset[str]] = frozenset({"true", "1", "yes", "on"})
+ENV_BOOL_FALSE_VALUES: Final[frozenset[str]] = frozenset({"false", "0", "no", "off"})
 
 # Normalizable configuration sections (case-insensitive)
 NORMALIZABLE_CONFIG_SECTIONS: Final[tuple[str, ...]] = (

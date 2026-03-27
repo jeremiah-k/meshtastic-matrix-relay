@@ -66,7 +66,9 @@ class TestGetHomeDir:
         result = get_home_dir()
         assert os.path.normpath(str(result)) == os.path.normpath("/new_home")
 
-    def test_get_home_dir_windows_installer_path_preferred(self, monkeypatch):
+    def test_get_home_dir_windows_installer_path_preferred(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
         """Windows installer path with MMRelay artifacts should be preferred."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             local_app_data = Path(tmp_dir)
@@ -85,7 +87,9 @@ class TestGetHomeDir:
 
             assert result == installer_path
 
-    def test_get_home_dir_windows_platformdirs_fallback(self, monkeypatch):
+    def test_get_home_dir_windows_platformdirs_fallback(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
         """Windows should fall back to platformdirs when installer path is unavailable."""
         monkeypatch.delenv("MMRELAY_HOME", raising=False)
         monkeypatch.delenv("MMRELAY_BASE_DIR", raising=False)
@@ -141,7 +145,9 @@ def test_e2ee_not_supported_error_message() -> None:
     assert str(E2EENotSupportedError()) == "E2EE not supported on Windows"
 
 
-def test_get_legacy_env_vars_and_deprecation_window(monkeypatch) -> None:
+def test_get_legacy_env_vars_and_deprecation_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Legacy env vars should activate deprecation window once and be discoverable."""
     import mmrelay.paths as paths_module
 
@@ -170,7 +176,9 @@ def test_get_legacy_env_vars_and_deprecation_window(monkeypatch) -> None:
         paths_module._reset_deprecation_warning_flag()
 
 
-def test_get_legacy_dirs_includes_windows_installer_path(monkeypatch) -> None:
+def test_get_legacy_dirs_includes_windows_installer_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Windows installer directory should be reported as a legacy source."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         local_app_data = Path(tmp_dir) / "la"
@@ -192,7 +200,9 @@ def test_get_legacy_dirs_includes_windows_installer_path(monkeypatch) -> None:
         assert installer_path in legacy_dirs
 
 
-def test_get_legacy_dirs_includes_env_and_docker_sources(monkeypatch) -> None:
+def test_get_legacy_dirs_includes_env_and_docker_sources(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Legacy env paths and Docker legacy paths with artifacts should be detected."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_root = Path(tmp_dir)
@@ -217,7 +227,9 @@ def test_get_legacy_dirs_includes_env_and_docker_sources(monkeypatch) -> None:
     assert docker_dir in legacy_dirs
 
 
-def test_resolve_all_paths_tracks_env_vars_and_home_source(monkeypatch) -> None:
+def test_resolve_all_paths_tracks_env_vars_and_home_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """resolve_all_paths should expose detected env vars and select expected home source."""
     import mmrelay.paths as paths_module
 

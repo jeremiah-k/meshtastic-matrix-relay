@@ -340,11 +340,8 @@ def _is_mmrelay_running() -> bool:
                                     if exe_result.returncode == 0:
                                         cmd = exe_result.stdout.strip()
                                         # Verify it's actually mmrelay-related
-                                        if (
-                                            "mmrelay" in cmd.split()[0]
-                                            if cmd.split()
-                                            else ""
-                                        ):
+                                        parts = cmd.split()
+                                        if parts and "mmrelay" in parts[0]:
                                             return True
                                         # Also match python -m mmrelay pattern
                                         if "python" in cmd and "mmrelay" in cmd:
@@ -1644,7 +1641,7 @@ def migrate_database(
                         lambda d=dest: d.unlink(),
                         f"unlink {dest}",
                     )
-        except Exception as exc:
+        except (OSError, IOError, PermissionError) as exc:
             logger.warning(
                 "Failed to remove some destination-sidecar files during database migration; continuing: %s",
                 exc,

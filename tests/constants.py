@@ -61,7 +61,7 @@ TEST_SHORT_DELAY: Final[float] = 0.1
 TEST_HALF_SECOND: Final[float] = 0.5
 TEST_NETWORK_TIMEOUT: Final[float] = 5.0
 TEST_PLUGIN_TIMEOUT: Final[float] = 5.0
-TEST_GIT_TIMEOUT: Final[int] = 120
+TEST_GIT_TIMEOUT: Final[float] = 120.0
 TEST_LONG_TIMEOUT: Final[float] = 10.0
 
 # Test SQL snippets for database testing

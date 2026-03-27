@@ -172,7 +172,6 @@ class MessageQueue:
         def _mark_stop_failed(reason: str) -> None:
             with self._lock:
                 self._stop_failed = True
-                self._stopping = True
             logger.error(
                 "Message queue stop timed out (%s). Queue remains in failed-stop state until reset_failed_stop_state() is called.",
                 reason,

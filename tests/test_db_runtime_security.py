@@ -873,7 +873,7 @@ class TestDatabaseManager(unittest.TestCase):
             releaser.join(timeout=1.0)
             closer.join(timeout=1.0)
 
-        self.assertFalse(release_error, release_error[0] if release_error else "")
+        self.assertEqual(release_error, [], f"Unexpected errors: {release_error}")
         self.assertFalse(releaser.is_alive())
         self.assertFalse(closer.is_alive(), "closer thread did not exit")
         if close_error.done():

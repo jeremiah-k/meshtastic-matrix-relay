@@ -582,7 +582,7 @@ def _handle_matrix_error(error: Any, context: str, log_level: str = "error") -> 
     else:  # error_category == "other"
         if is_verification:
             log_func(f"{context} failed: {error_detail or 'Unknown error'}")
-            _get_logger().debug(f"Full error details: {error}")
+            logger.debug(f"Full error details: {error}")
             print(f"{emoji} {context} failed: {error_detail or 'Unknown error'}")
         else:
             log_func(

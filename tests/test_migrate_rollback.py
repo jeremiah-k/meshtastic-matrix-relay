@@ -107,8 +107,6 @@ class TestRollbackMigration:
         # Create destination directories
         matrix_dir = new_home / "matrix"
         matrix_dir.mkdir(parents=True)
-        database_dir = new_home / "database"
-        database_dir.mkdir(parents=True)
 
         # Create backup directories
         config_backup_dir = matrix_dir / MIGRATION_BACKUP_DIRNAME

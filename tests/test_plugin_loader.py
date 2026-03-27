@@ -1052,8 +1052,6 @@ class Plugin:
         mock_isdir.return_value = False  # Repo doesn't exist
         ref = {"type": "commit", "value": "a1b2c3d4"}
 
-        import subprocess  # nosec B404  # test: testing subprocess behavior
-
         def mock_git_func(*args, **_kwargs):
             if "rev-parse" in args[0]:
                 if "HEAD" in args[0]:

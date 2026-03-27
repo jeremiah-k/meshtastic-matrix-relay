@@ -193,6 +193,12 @@ class TestRollbackDatabaseMigration:
     ) -> None:
         """Recorded backup member paths should restore DB files when step new_path is a directory."""
         new_home = tmp_path / "home"
+        new_home.mkdir()
+
+        # Create parent directories for gpxtracker
+        gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
+        gpx_plugin_dir.mkdir(parents=True)
+
         db_dir = new_home / "database"
         backup_dir = db_dir / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir(parents=True, exist_ok=True)
@@ -242,6 +248,12 @@ class TestRollbackDatabaseMigration:
     ) -> None:
         """Rollback should remove migrated DB members that had no recorded backup."""
         new_home = tmp_path / "home"
+        new_home.mkdir()
+
+        # Create parent directories for gpxtracker
+        gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
+        gpx_plugin_dir.mkdir(parents=True)
+
         db_dir = new_home / "database"
         backup_dir = db_dir / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir(parents=True, exist_ok=True)

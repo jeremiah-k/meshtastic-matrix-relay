@@ -95,7 +95,11 @@ def get_resolved_exec_start(
         str: A single-line string beginning with `ExecStart=` containing the resolved executable
              invocation followed by the provided argument suffix.
     """
-    return f"ExecStart={get_resolved_exec_cmd()} {args_suffix.lstrip()}"
+    stripped_suffix = args_suffix.lstrip()
+    cmd = get_resolved_exec_cmd()
+    if stripped_suffix:
+        return f"ExecStart={cmd} {stripped_suffix}"
+    return f"ExecStart={cmd}"
 
 
 def get_user_service_path() -> Path:
