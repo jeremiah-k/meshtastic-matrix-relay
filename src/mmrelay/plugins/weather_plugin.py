@@ -2,7 +2,7 @@ import asyncio
 import math
 import re
 from datetime import datetime
-from typing import Any, Final
+from typing import Any
 
 import requests
 from meshtastic.mesh_interface import BROADCAST_NUM
@@ -31,7 +31,6 @@ from mmrelay.constants.plugins import (
     GEOCODING_RESULT_COUNT,
     HOURLY_CONFIG,
     HOURLY_FORECAST_DAYS,
-    HOURLY_FORECAST_SLOTS,
     MAX_FORECAST_LENGTH,
     OPEN_METEO_CURRENT_WEATHER_FLAG,
     OPEN_METEO_DAILY_FIELDS,
@@ -44,7 +43,6 @@ from mmrelay.constants.plugins import (
     WEATHER_COMMANDS,
     WEATHER_MODE_CURRENT,
     WEATHER_MODE_DAILY,
-    WEATHER_MODE_HOURLY,
     WEATHER_SLOT_NOW,
     WEATHER_UNITS_IMPERIAL,
     WEATHER_UNITS_METRIC,

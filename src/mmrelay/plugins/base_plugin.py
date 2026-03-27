@@ -231,7 +231,10 @@ class BasePlugin(ABC):
                 except (OSError, ImportError, TypeError):
                     pass
 
-                if expected_section in candidate_sections:
+                if (
+                    expected_section is not None
+                    and expected_section in candidate_sections
+                ):
                     candidate_sections = (expected_section,) + tuple(
                         section
                         for section in candidate_sections

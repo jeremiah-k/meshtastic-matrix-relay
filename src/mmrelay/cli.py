@@ -42,8 +42,6 @@ from mmrelay.constants.app import (
     WINDOWS_PLATFORM,
 )
 from mmrelay.constants.cli import (
-    EXIT_CODE_ERROR,
-    EXIT_CODE_SUCCESS,
     FORBIDDEN_HOME_DIRECTORIES_UNIX,
     WINDOWS_FORBIDDEN_HOME_ENV_KEYS,
 )
@@ -71,7 +69,6 @@ from mmrelay.constants.network import (
     CONNECTION_TYPE_NETWORK,
     CONNECTION_TYPE_SERIAL,
     CONNECTION_TYPE_TCP,
-    HTTP_STATUS_UNAUTHORIZED,
     MAX_HOSTNAME_LABEL_LENGTH,
     MAX_HOSTNAME_LENGTH,
     MESHTASTIC_CHANNEL_MAX,
