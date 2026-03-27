@@ -20,6 +20,12 @@ jobs:
   meshtasticd-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
+    # Docker Hub login for higher rate limits (200 vs 100 pulls/6 hours)
+    # Create a free Docker Hub account and add these secrets:
+    #   DOCKERHUB_USERNAME: your Docker Hub username
+    #   DOCKERHUB_TOKEN: Docker Hub access token (from Account Settings > Security)
+    # If secrets are not configured, pulls will still work but may hit rate limits.
     env:
       # Pinned, validated image digests for deterministic CI behavior.
       MESHTASTICD_IMAGE: meshtastic/meshtasticd@sha256:1b8d88cd63991bfecb8b8ff1801b9ee806447299b849eff19d03bc6ae0edcd65 # 2.7.15
@@ -33,6 +39,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+
+      - name: Log in to Docker Hub
+        if: ${{ secrets.DOCKERHUB_USERNAME != '' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v6

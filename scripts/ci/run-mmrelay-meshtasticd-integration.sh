@@ -75,6 +75,30 @@ if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
 	exit 1
 fi
 
+# docker_pull_with_retry pulls a Docker image with exponential backoff retry
+# to handle transient Docker Hub rate limiting errors.
+# Usage: docker_pull_with_retry <image> [max_retries]
+docker_pull_with_retry() {
+	local image="${1}"
+	local max_retries="${2:-3}"
+	local retry=0
+	local delay=5
+
+	while [[ $retry -lt $max_retries ]]; do
+		if docker pull "${image}"; then
+			return 0
+		fi
+		retry=$((retry + 1))
+		if [[ $retry -lt $max_retries ]]; then
+			echo "Docker pull failed, retrying in ${delay}s (attempt ${retry}/${max_retries})..." >&2
+			sleep "${delay}"
+			delay=$((delay * 2))
+		fi
+	done
+	echo "Failed to pull ${image} after ${max_retries} attempts" >&2
+	return 1
+}
+
 # Names-table SQL identifiers loaded from app constants.
 names_table_output=$(
 	"${PYTHON_BIN}" - <<'PY'
@@ -1882,11 +1906,11 @@ docker rm -f \
 	"${SYNAPSE_CONTAINER}" >/dev/null 2>&1 || true
 
 echo "Pulling meshtasticd image: ${MESHTASTICD_IMAGE}"
-if ! docker pull "${MESHTASTICD_IMAGE}"; then
+if ! docker_pull_with_retry "${MESHTASTICD_IMAGE}"; then
 	if [[ ${MESHTASTICD_IMAGE} == "meshtastic/meshtasticd:latest" || ${MESHTASTICD_IMAGE} == "meshtastic/meshtasticd" ]]; then
 		echo "Failed to pull ${MESHTASTICD_IMAGE}; retrying with meshtastic/meshtasticd:beta" >&2
 		MESHTASTICD_IMAGE="meshtastic/meshtasticd:beta"
-		docker pull "${MESHTASTICD_IMAGE}"
+		docker_pull_with_retry "${MESHTASTICD_IMAGE}"
 	else
 		echo "Failed to pull ${MESHTASTICD_IMAGE}" >&2
 		exit 1
@@ -1919,7 +1943,7 @@ wait_for_meshtasticd_ready "${MESHTASTICD_ENDPOINT_B}" "${MESHTASTICD_CONTAINER_
 
 echo ""
 echo "Pulling Synapse image: ${SYNAPSE_IMAGE}"
-docker pull "${SYNAPSE_IMAGE}"
+docker_pull_with_retry "${SYNAPSE_IMAGE}"
 
 echo ""
 echo "Generating Synapse config..."
