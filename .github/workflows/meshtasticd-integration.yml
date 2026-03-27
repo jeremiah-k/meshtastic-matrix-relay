@@ -56,6 +56,20 @@ jobs:
           echo "cache_key=${RUNNER_OS}-meshtasticd-image-${digest}" >> "${GITHUB_OUTPUT}"
           echo "cache_path=${cache_path}" >> "${GITHUB_OUTPUT}"
 
+      - name: Derive Synapse image cache metadata
+        id: synapse-cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          digest="${SYNAPSE_IMAGE##*@sha256:}"
+          if [[ "${digest}" == "${SYNAPSE_IMAGE}" ]]; then
+            digest="$(printf '%s' "${SYNAPSE_IMAGE}" | sha256sum | awk '{print $1}')"
+          fi
+          cache_dir="${RUNNER_TEMP}/synapse-image-cache"
+          cache_path="${cache_dir}/${digest}.tar"
+          echo "cache_key=${RUNNER_OS}-synapse-image-${digest}" >> "${GITHUB_OUTPUT}"
+          echo "cache_path=${cache_path}" >> "${GITHUB_OUTPUT}"
+
       - name: Restore cached meshtasticd image
         id: meshtasticd-image-cache
         uses: actions/cache/restore@v4
@@ -63,10 +77,22 @@ jobs:
           path: ${{ steps.meshtasticd-cache.outputs.cache_path }}
           key: ${{ steps.meshtasticd-cache.outputs.cache_key }}
 
+      - name: Restore cached Synapse image
+        id: synapse-image-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.synapse-cache.outputs.cache_path }}
+          key: ${{ steps.synapse-cache.outputs.cache_key }}
+
       - name: Load cached meshtasticd image
         if: ${{ steps.meshtasticd-image-cache.outputs.cache-hit == 'true' }}
         run: |
           docker load -i "${{ steps.meshtasticd-cache.outputs.cache_path }}"
+
+      - name: Load cached Synapse image
+        if: ${{ steps.synapse-image-cache.outputs.cache-hit == 'true' }}
+        run: |
+          docker load -i "${{ steps.synapse-cache.outputs.cache_path }}"
 
       - name: Log in to Docker Hub
         if: ${{ env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != '' }}
@@ -113,12 +139,35 @@ jobs:
             echo "meshtasticd image not present locally; skipping cache archive."
           fi
 
+      - name: Save Synapse image tar
+        id: synapse-image-tar
+        if: ${{ always() && steps.synapse-image-cache.outputs.cache-hit != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache_path="${{ steps.synapse-cache.outputs.cache_path }}"
+          mkdir -p "$(dirname "${cache_path}")"
+          if docker image inspect "${SYNAPSE_IMAGE}" >/dev/null 2>&1; then
+            docker save "${SYNAPSE_IMAGE}" -o "${cache_path}"
+            echo "saved=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "saved=false" >> "${GITHUB_OUTPUT}"
+            echo "synapse image not present locally; skipping cache archive."
+          fi
+
       - name: Persist cached meshtasticd image
         if: ${{ always() && steps.meshtasticd-image-cache.outputs.cache-hit != 'true' && steps.meshtasticd-image-tar.outputs.saved == 'true' }}
         uses: actions/cache/save@v4
         with:
           path: ${{ steps.meshtasticd-cache.outputs.cache_path }}
           key: ${{ steps.meshtasticd-cache.outputs.cache_key }}
+
+      - name: Persist cached Synapse image
+        if: ${{ always() && steps.synapse-image-cache.outputs.cache-hit != 'true' && steps.synapse-image-tar.outputs.saved == 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.synapse-cache.outputs.cache_path }}
+          key: ${{ steps.synapse-cache.outputs.cache_key }}
 
       - name: Display integration summary
         if: always()

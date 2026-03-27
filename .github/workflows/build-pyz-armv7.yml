@@ -10,6 +10,8 @@ permissions:
 jobs:
   build-armv7-pyz:
     runs-on: ubuntu-latest
+    env:
+      BUILDER_IMAGE: ghcr.io/jeremiah-k/mmrelay-builder-armv7:latest
 
     steps:
       - name: Checkout code
@@ -19,6 +21,29 @@ jobs:
         uses: docker/setup-qemu-action@v4
         with:
           platforms: all
+
+      - name: Derive ARMv7 builder image cache metadata
+        id: builder-image-cache-meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache_key_suffix="$(printf '%s' "${BUILDER_IMAGE}" | sha256sum | awk '{print $1}')"
+          cache_dir="${RUNNER_TEMP}/builder-image-cache"
+          cache_path="${cache_dir}/${cache_key_suffix}.tar"
+          echo "cache_key=${RUNNER_OS}-builder-image-${cache_key_suffix}" >> "${GITHUB_OUTPUT}"
+          echo "cache_path=${cache_path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Restore cached ARMv7 builder image
+        id: builder-image-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.builder-image-cache-meta.outputs.cache_path }}
+          key: ${{ steps.builder-image-cache-meta.outputs.cache_key }}
+
+      - name: Load cached ARMv7 builder image
+        if: ${{ steps.builder-image-cache.outputs.cache-hit == 'true' }}
+        run: |
+          docker load -i "${{ steps.builder-image-cache-meta.outputs.cache_path }}"
 
       - name: Extract version and git SHA
         id: get_version
@@ -39,7 +64,7 @@ jobs:
       - name: Build inside ARMv7 Docker (using pre-built builder)
         uses: addnab/docker-run-action@v3
         with:
-          image: ghcr.io/jeremiah-k/mmrelay-builder-armv7:latest
+          image: ${{ env.BUILDER_IMAGE }}
           options: --platform linux/arm/v7 -v ${{ github.workspace }}:/github/workspace -w /github/workspace
           run: |
             echo "=== Using pre-built ARMv7 environment ==="
@@ -90,6 +115,29 @@ jobs:
               exit 1
             fi
             echo "✅ PYZ test passed"
+
+      - name: Save ARMv7 builder image tar
+        id: builder-image-tar
+        if: ${{ always() && steps.builder-image-cache.outputs.cache-hit != 'true' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache_path="${{ steps.builder-image-cache-meta.outputs.cache_path }}"
+          mkdir -p "$(dirname "${cache_path}")"
+          if docker image inspect "${BUILDER_IMAGE}" >/dev/null 2>&1; then
+            docker save "${BUILDER_IMAGE}" -o "${cache_path}"
+            echo "saved=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "saved=false" >> "${GITHUB_OUTPUT}"
+            echo "builder image not present locally; skipping cache archive."
+          fi
+
+      - name: Persist cached ARMv7 builder image
+        if: ${{ always() && steps.builder-image-cache.outputs.cache-hit != 'true' && steps.builder-image-tar.outputs.saved == 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ steps.builder-image-cache-meta.outputs.cache_path }}
+          key: ${{ steps.builder-image-cache-meta.outputs.cache_key }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
