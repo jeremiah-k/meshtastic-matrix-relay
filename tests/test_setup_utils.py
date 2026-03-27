@@ -767,7 +767,8 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         mock_is_service_active.side_effect = mock_service_active_side_effect
 
         # Call the function - should complete early when service becomes active
-        wait_for_service_start()
+        with patch("time.sleep", return_value=None):
+            wait_for_service_start()
 
         # Verify is_service_active was called multiple times
         self.assertGreaterEqual(mock_is_service_active.call_count, 5)

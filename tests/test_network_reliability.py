@@ -7,7 +7,8 @@ queuing during network interruptions.
 """
 
 import asyncio
-import time
+import http.client
+import socket
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -23,6 +24,20 @@ from mmrelay.constants.network import (
 from mmrelay.constants.queue import MAX_QUEUE_SIZE
 
 
+@pytest.fixture(autouse=True)
+def block_external_network_calls(monkeypatch):
+    """
+    Fail fast if a test attempts a real outbound network request.
+    """
+
+    def _blocked(*_args, **_kwargs):
+        raise AssertionError("External network calls are not allowed in this test")
+
+    monkeypatch.setattr(socket, "create_connection", _blocked)
+    monkeypatch.setattr(http.client.HTTPConnection, "request", _blocked)
+    monkeypatch.setattr(http.client.HTTPSConnection, "request", _blocked)
+
+
 class TestConnectionRetryLogic:
     """Test connection retry and backoff behavior."""
 
@@ -34,7 +49,12 @@ class TestConnectionRetryLogic:
 
         This test simulates two consecutive connection failures followed by a successful attempt, ensuring that the retry mechanism waits for the appropriate backoff duration between retries and attempts the correct number of connections.
         """
-        with patch("mmrelay.meshtastic_utils.time.sleep"), patch(
+        backoff_delays = []
+
+        async def _record_sleep(duration):
+            backoff_delays.append(duration)
+
+        with patch("asyncio.sleep", side_effect=_record_sleep), patch(
             "mmrelay.meshtastic_utils.connect_meshtastic"
         ) as mock_connect:
             # Simulate connection failures followed by success
@@ -44,32 +64,20 @@ class TestConnectionRetryLogic:
                 MagicMock(),  # Success on third attempt
             ]
 
-            start_time = time.monotonic()
-
-            # This would be your actual retry logic - adjust import as needed
-            try:
-                from mmrelay.meshtastic_utils import establish_connection_with_retry
-
-                await establish_connection_with_retry()
-            except ImportError:
-                # If the function doesn't exist yet, simulate the test
-                for attempt in range(3):
-                    try:
-                        mock_connect()
-                        break
-                    except ConnectionError:
-                        if attempt < 2:  # Don't sleep on last attempt
-                            await asyncio.sleep(DEFAULT_BACKOFF_TIME)
-
-            end_time = time.monotonic()
+            # Simulate retry logic with two backoff waits.
+            for attempt in range(3):
+                try:
+                    mock_connect()
+                    break
+                except ConnectionError:
+                    if attempt < 2:  # Don't sleep on last attempt
+                        await asyncio.sleep(DEFAULT_BACKOFF_TIME)
 
             # Should have attempted connection 3 times
             assert mock_connect.call_count == 3
 
-            # Should have waited for backoff (allowing some timing variance)
-            elapsed = end_time - start_time
-            expected_min_time = DEFAULT_BACKOFF_TIME * 2  # Two backoff periods
-            assert elapsed >= expected_min_time * 0.8  # Allow 20% variance
+            # Should have requested two backoff periods.
+            assert backoff_delays == [DEFAULT_BACKOFF_TIME, DEFAULT_BACKOFF_TIME]
 
     @pytest.mark.asyncio
     async def test_exponential_backoff_progression(self):
@@ -407,22 +415,30 @@ class TestNetworkErrorRecovery:
     @pytest.mark.asyncio
     async def test_message_delay_enforcement(self):
         """
-        Verify that the minimum delay between consecutive message sends is enforced, allowing for a small timing variance.
+        Verify that the minimum delay between consecutive sends is requested.
         """
-        send_times = []
+        send_count = 0
+        requested_delays = []
 
         async def mock_send_message():
             """
-            Simulates sending a message by recording the current timestamp in the send_times list.
+            Simulates sending a message by incrementing a counter.
             """
-            send_times.append(time.time())
+            nonlocal send_count
+            send_count += 1
 
-        # Simulate rapid message sending
-        for _ in range(3):
-            await mock_send_message()
-            await asyncio.sleep(MINIMUM_MESSAGE_DELAY)
+        async def _record_sleep(duration):
+            requested_delays.append(duration)
 
-        # Verify minimum delay between messages
-        for i in range(1, len(send_times)):
-            time_diff = send_times[i] - send_times[i - 1]
-            assert time_diff >= MINIMUM_MESSAGE_DELAY * 0.9  # Allow 10% variance
+        with patch("asyncio.sleep", side_effect=_record_sleep):
+            # Simulate rapid message sending with enforced spacing
+            for _ in range(3):
+                await mock_send_message()
+                await asyncio.sleep(MINIMUM_MESSAGE_DELAY)
+
+        assert send_count == 3
+        assert requested_delays == [
+            MINIMUM_MESSAGE_DELAY,
+            MINIMUM_MESSAGE_DELAY,
+            MINIMUM_MESSAGE_DELAY,
+        ]
