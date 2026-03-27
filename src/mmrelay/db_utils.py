@@ -208,6 +208,7 @@ _DELETE_PLUGIN_DATA_SQL = (
 _GET_PLUGIN_DATA_SQL = (
     "SELECT data FROM plugin_data WHERE plugin_name=? AND meshtastic_id=?"
 )
+_GET_ALL_PLUGIN_DATA_SQL = "SELECT data FROM plugin_data WHERE plugin_name=?"
 _UPSERT_MESSAGE_MAP_SQL = (
     "INSERT INTO message_map (meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
     "VALUES (?, ?, ?, ?, ?) "
@@ -843,7 +844,7 @@ def initialize_database() -> None:
                     logger.info(
                         "Merged rows from temporary table into rebuilt message_map"
                     )
-                except Exception as e:
+                except sqlite3.Error as e:
                     logger.warning("Failed to merge temporary table data: %s", e)
                 finally:
                     cursor.execute(_DROP_TABLE_MESSAGE_MAP_TEMP_SQL)
@@ -1005,9 +1006,7 @@ def get_plugin_data(plugin_name: str) -> list[tuple[Any, ...]]:
         Returns:
             list[tuple[Any, ...]]: List of rows; each row is a single-item tuple containing the stored `data` value.
         """
-        cursor.execute(
-            "SELECT data FROM plugin_data WHERE plugin_name=?", (plugin_name,)
-        )
+        cursor.execute(_GET_ALL_PLUGIN_DATA_SQL, (plugin_name,))
         return cursor.fetchall()
 
     try:

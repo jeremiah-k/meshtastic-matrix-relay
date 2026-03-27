@@ -122,9 +122,9 @@ class Plugin(BasePlugin):
                     )
                     break
         else:
-            commands = []
-            for plugin in plugins:
-                commands.extend(plugin.get_matrix_commands())
+            commands = [
+                cmd for plugin in plugins for cmd in plugin.get_matrix_commands()
+            ]
             reply = MSG_AVAILABLE_COMMANDS_PREFIX + ", ".join(commands)
 
         await self.send_matrix_message(room.room_id, reply)

@@ -299,6 +299,7 @@ class MessageQueue:
                     daemon=True,
                 ).start()
             else:
+                # Blocking wait is acceptable for synchronous callers
                 _watch_executor_shutdown()
 
         _finalize_stop_state()
@@ -501,6 +502,7 @@ class MessageQueue:
                 - running (bool): `True` if the queue processor is active, `False` otherwise.
                 - queue_size (int): Number of messages currently queued.
                 - message_delay (float): Configured minimum delay in seconds between sends.
+                - stop_failed (bool): `True` if a previous stop timed out and requires manual reset, `False` otherwise.
                 - processor_task_active (bool): `True` if the internal processor task exists and is not finished, `False` otherwise.
                 - last_send_time (float or None): Wall-clock time (seconds since the epoch) of the last successful send, or `None` if no send has occurred.
                 - time_since_last_send (float or None): Seconds elapsed since the last send, or `None` if no send has occurred.

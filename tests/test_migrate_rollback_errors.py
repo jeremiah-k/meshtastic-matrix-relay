@@ -9,7 +9,10 @@ import shutil
 from pathlib import Path
 from unittest.mock import patch
 
-from mmrelay.constants.migration import MIGRATION_BACKUP_DIRNAME
+from mmrelay.constants.migration import (
+    MIGRATION_BACKUP_DIRNAME,
+    MIGRATION_STAGING_DIRNAME,
+)
 from mmrelay.migrate import rollback_migration
 
 
@@ -220,7 +223,7 @@ class TestRollbackMigrationErrorHandling:
         new_home.mkdir()
 
         # Create staging directory that will fail to clean up
-        staging_dir = new_home / ".migration_staging"
+        staging_dir = new_home / MIGRATION_STAGING_DIRNAME
         staging_dir.mkdir()
         (staging_dir / "some_file").write_text("staging content")
 

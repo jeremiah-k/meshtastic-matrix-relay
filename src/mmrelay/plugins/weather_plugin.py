@@ -161,7 +161,9 @@ class Plugin(BasePlugin):
                 current_hour = current_time.hour
             except ValueError as ex:
                 self.logger.warning(
-                    f"Unexpected current_weather.time '{current_time_str}': {ex}. Defaulting to hour=0."
+                    "Unexpected current_weather.time '%s': %s. Defaulting to hour=0.",
+                    current_time_str,
+                    ex,
                 )
 
             # Calculate indices for +2h and +5h forecasts
@@ -478,9 +480,9 @@ class Plugin(BasePlugin):
         if text.startswith("DAY:"):
             if is_day:
                 return text[4:].split("|")[0]
-            else:
-                parts = text.split("|NIGHT:")
-                return parts[1] if len(parts) > 1 else parts[0][4:]
+            # Night: extract text after "|NIGHT:" or fall back to day text
+            parts = text.split("|NIGHT:")
+            return parts[1] if len(parts) > 1 else parts[0][4:]
         elif text.startswith("BOTH:"):
             return text[5:]
         return text
@@ -555,7 +557,10 @@ class Plugin(BasePlugin):
 
         # Log that the plugin is processing the message
         self.logger.info(
-            f"Processing message from {longname} on channel {channel} with plugin '{self.plugin_name}'"
+            "Processing message from %s on channel %s with plugin '%s'",
+            longname,
+            channel,
+            self.plugin_name,
         )
 
         fromId = packet.get("fromId")

@@ -1382,7 +1382,7 @@ def _missing_credentials_keys(credentials: dict[str, Any]) -> list[str]:
     Returns:
         list[str]: List of required keys that are not present or are empty in `credentials`.
     """
-    required_keys = tuple(dict.fromkeys(REQUIRED_CREDENTIALS_KEYS))
+    required_keys = tuple(REQUIRED_CREDENTIALS_KEYS)
     return [
         key
         for key in required_keys

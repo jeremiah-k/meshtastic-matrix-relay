@@ -5093,7 +5093,7 @@ async def test_connect_matrix_e2ee_store_missing_db_files_warns(
 
 
 @pytest.mark.asyncio
-async def test_connect_matrix_e2ee_key_sharing_delay(monkeypatch):
+async def test_connect_matrix_e2ee_key_sharing_delay(monkeypatch, tmp_path):
     """E2EE-enabled connections should wait for key sharing delay."""
     mock_client = MagicMock()
     mock_client.rooms = {}
@@ -5170,7 +5170,7 @@ async def test_connect_matrix_e2ee_key_sharing_delay(monkeypatch):
                 "bot_user_id": "@bot:example.org",
                 "encryption": {
                     "enabled": True,
-                    "store_path": tempfile.mkdtemp(prefix="mmrelay-store-"),
+                    "store_path": str(tmp_path / "mmrelay-store"),
                 },
             },
             "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
@@ -5238,7 +5238,7 @@ async def test_connect_matrix_legacy_config(
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.cli_utils._create_ssl_context", return_value=None)
 async def test_login_matrix_bot_e2ee_store_path_created(
-    _mock_ssl_context, mock_async_client, _mock_save_credentials
+    _mock_ssl_context, mock_async_client, _mock_save_credentials, tmp_path
 ):
     """E2EE-enabled logins should create a store path."""
     mock_discovery_client = AsyncMock()
@@ -5255,7 +5255,7 @@ async def test_login_matrix_bot_e2ee_store_path_created(
     mock_main_client.whoami.return_value = MagicMock(user_id="@user:matrix.org")
     mock_main_client.close = AsyncMock()
 
-    store_path = tempfile.mkdtemp(prefix="mmrelay-store-")
+    store_path = str(tmp_path / "mmrelay-store")
 
     with (
         patch("mmrelay.config.load_config", return_value={"matrix": {}}),

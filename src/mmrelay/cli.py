@@ -109,12 +109,10 @@ def _get_logger() -> logging.Logger:
     """
     global _logger
     named_logger = logging.getLogger(__name__)
-    if _logger is None or _logger.name != __name__:
-        # If temporary handlers are active (for example unittest.assertLogs),
-        # preserve them by reusing the stdlib logger object.
-        _logger = named_logger if named_logger.handlers else get_logger(__name__)
-    elif not _logger.handlers:
-        # Recover from stale cached loggers after temporary handler scopes end.
+    needs_refresh = _logger is None or _logger.name != __name__ or not _logger.handlers
+    if needs_refresh:
+        # Preserve temporary handlers (e.g., unittest.assertLogs) by reusing
+        # the stdlib logger when it has handlers; otherwise create via get_logger.
         _logger = named_logger if named_logger.handlers else get_logger(__name__)
     if _logger is None:
         raise RuntimeError("Logger must be initialized")

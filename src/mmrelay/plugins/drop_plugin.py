@@ -74,10 +74,10 @@ class Plugin(BasePlugin):
                 "Meshtastic client unavailable; skipping drop message handling"
             )
             return False
-        nodeInfo = meshtastic_client.getMyNodeInfo()
+        node_info = meshtastic_client.getMyNodeInfo()
 
         # Attempt message drop to packet originator if not relay
-        if "fromId" in packet and packet["fromId"] != nodeInfo["user"]["id"]:
+        if "fromId" in packet and packet["fromId"] != node_info["user"]["id"]:
             from_id: str = packet["fromId"]
             position = self.get_position(meshtastic_client, from_id)
             if position and "latitude" in position and "longitude" in position:

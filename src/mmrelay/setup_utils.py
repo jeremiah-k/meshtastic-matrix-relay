@@ -329,7 +329,9 @@ def get_template_service_content() -> str:
         )
         return service_template
     except (FileNotFoundError, ImportError, OSError, UnicodeDecodeError):
-        logger.exception("Error accessing mmrelay.service via importlib.resources")
+        logger.exception(
+            "Error accessing %s via importlib.resources", SYSTEMD_SERVICE_FILENAME
+        )
 
         # Fall back to the file path method
         fallback_template_path = get_template_service_path()

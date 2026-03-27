@@ -115,7 +115,7 @@ class TestAuthFlowFixes(unittest.TestCase):
 
         with patch("sys.platform", "win32"):
             config_dir = "C:\\Users\\Test\\AppData\\Local\\mmrelay"
-            credentials_path = os.path.join(config_dir, "credentials.json")
+            credentials_path = ntpath.join(config_dir, "credentials.json")
 
             with patch("mmrelay.config.get_home_dir", return_value=Path(config_dir)):
                 # Mock os.path.exists to return False for credentials.json but True for the directory

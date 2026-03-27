@@ -48,6 +48,9 @@ jobs:
             podman load -i "${{ steps.helm-image-cache-meta.outputs.cache_path }}"
           elif command -v docker >/dev/null 2>&1; then
             docker load -i "${{ steps.helm-image-cache-meta.outputs.cache_path }}"
+          else
+            echo "ERROR: No container runtime (podman or docker) found"
+            exit 1
           fi
 
       - name: Log in to Docker Hub

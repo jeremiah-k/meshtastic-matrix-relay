@@ -228,8 +228,10 @@ class BasePlugin(ABC):
                     elif any(_is_under(path) for path in get_community_plugin_dirs()):
                         expected_section = CONFIG_SECTION_COMMUNITY_PLUGINS
                         self.plugin_type = PLUGIN_TYPE_COMMUNITY
-                except (OSError, ImportError, TypeError):
-                    pass
+                except (OSError, ImportError, TypeError) as e:
+                    self.logger.debug(
+                        "Could not infer plugin tier from filesystem: %s", e
+                    )
 
                 if (
                     expected_section is not None
@@ -257,8 +259,8 @@ class BasePlugin(ABC):
                         configured_section, self.plugin_type
                     )
 
-            for level in candidate_sections:
-                section_config = config.get(level, {})
+            for section in candidate_sections:
+                section_config = config.get(section, {})
                 if (
                     isinstance(section_config, dict)
                     and self.plugin_name in section_config
@@ -273,9 +275,11 @@ class BasePlugin(ABC):
                         )
                         plugin_config = {}
                     self.config = plugin_config
-                    resolved_section = level
-                    expected_section = level
-                    self.plugin_type = PLUGIN_SECTION_TYPES.get(level, self.plugin_type)
+                    resolved_section = section
+                    expected_section = section
+                    self.plugin_type = PLUGIN_SECTION_TYPES.get(
+                        section, self.plugin_type
+                    )
                     break
 
             # Cache global plugin-level settings (for options like require_bot_mention)

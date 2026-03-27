@@ -473,7 +473,7 @@ def _handle_matrix_error(error: Any, context: str, log_level: str = "error") -> 
     error_detail = None
 
     # Handle specific Matrix-nio exceptions
-    if isinstance(error, (NioLoginError, NioLogoutError, LoginError, LogoutError)):
+    if isinstance(error, (LoginError, LogoutError)):
         errcode = getattr(error, "errcode", None)
         status_code = getattr(error, "status_code", None)
         status_text = (
@@ -490,7 +490,6 @@ def _handle_matrix_error(error: Any, context: str, log_level: str = "error") -> 
         if (
             errcode == MATRIX_ERRCODE_FORBIDDEN
             or parsed_status_code in (HTTP_STATUS_UNAUTHORIZED, 403)
-            or "403" in status_text
             or "forbidden" in status_text
             or "forbidden" in message_text
         ):

@@ -189,6 +189,10 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
             try:
                 font = ImageFont.load_default(size=self._font_size)
             except TypeError:
+                logger.warning(
+                    "Pillow version does not support sized default font; "
+                    "text may appear smaller than expected"
+                )
                 font = ImageFont.load_default()
 
         bbox = renderer.draw().textbbox((0, 0), self._text, font=font)

@@ -837,8 +837,6 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
                     len(flagged_requirements),
                     repo_name,
                 )
-        else:
-            pass
 
         installed_packages = False
 

@@ -449,10 +449,10 @@ class TestHandleMatrixError:
         mock_logger.error.assert_called()
 
     @patch("mmrelay.cli_utils._get_logger")
-    def test_handle_matrix_error_login_other_status_code_sets_detail(
+    def test_handle_matrix_error_logout_other_status_code_sets_detail(
         self, mock_get_logger
     ):
-        """Non-auth, non-5xx login errors should flow through the 'other' category."""
+        """Non-auth, non-5xx logout errors should flow through the 'other' category."""
         from mmrelay.cli_utils import NioLogoutError, _handle_matrix_error
 
         mock_logger = MagicMock()

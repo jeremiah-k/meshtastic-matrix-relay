@@ -420,10 +420,7 @@ class DatabaseManager:
                     "DatabaseManager is closing, cannot submit new work"
                 )
             worker_future = self._async_executor.submit(executor_func)
-        loop = asyncio.get_running_loop()
-        wrapped_future: asyncio.Future[Any] = asyncio.wrap_future(
-            worker_future, loop=loop
-        )
+        wrapped_future: asyncio.Future[Any] = asyncio.wrap_future(worker_future)
         try:
             return await wrapped_future
         except asyncio.CancelledError:

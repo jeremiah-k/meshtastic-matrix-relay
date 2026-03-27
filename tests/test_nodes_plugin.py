@@ -26,6 +26,8 @@ from mmrelay.plugins.nodes_plugin import Plugin, get_relative_time
 class TestGetRelativeTime(unittest.TestCase):
     """Test cases for the get_relative_time utility function."""
 
+    FIXED_NOW = datetime(2026, 3, 26, 12, 0, 0)
+
     def test_get_relative_time_just_now(self):
         """
         Test that `get_relative_time` returns "Just now" for timestamps within a few seconds of the current time.
@@ -123,12 +125,11 @@ class TestGetRelativeTime(unittest.TestCase):
         """
         Test that `get_relative_time` returns "7 days ago" for a timestamp exactly seven days in the past.
         """
-        fixed_now = datetime(2026, 3, 26, 12, 0, 0)
-        seven_days_ago = fixed_now - timedelta(days=7)
+        seven_days_ago = self.FIXED_NOW - timedelta(days=7)
         timestamp = seven_days_ago.timestamp()
 
         with patch("mmrelay.plugins.nodes_plugin.datetime") as mock_datetime:
-            mock_datetime.now.return_value = fixed_now
+            mock_datetime.now.return_value = self.FIXED_NOW
             mock_datetime.fromtimestamp.side_effect = datetime.fromtimestamp
             result = get_relative_time(timestamp)
 
@@ -136,12 +137,11 @@ class TestGetRelativeTime(unittest.TestCase):
 
     def test_get_relative_time_exactly_eight_days(self):
         """Test that get_relative_time returns a formatted date string for a timestamp exactly eight days ago."""
-        fixed_now = datetime(2026, 3, 26, 12, 0, 0)
-        eight_days_ago = fixed_now - timedelta(days=8)
+        eight_days_ago = self.FIXED_NOW - timedelta(days=8)
         timestamp = eight_days_ago.timestamp()
 
         with patch("mmrelay.plugins.nodes_plugin.datetime") as mock_datetime:
-            mock_datetime.now.return_value = fixed_now
+            mock_datetime.now.return_value = self.FIXED_NOW
             mock_datetime.fromtimestamp.side_effect = datetime.fromtimestamp
             result = get_relative_time(timestamp)
 

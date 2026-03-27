@@ -83,6 +83,15 @@ def _expand_path(path: str) -> str:
     return os.path.abspath(os.path.expanduser(path))
 
 
+def _emit_legacy_credentials_warning(credentials_path: str) -> None:
+    _get_config_logger().warning(
+        "Credentials found in legacy location: %s. "
+        "Please run 'mmrelay migrate' to move to new unified structure. "
+        f"Support for legacy credentials will be removed in v{DEPRECATION_VERSIONS[1]}.",
+        credentials_path,
+    )
+
+
 @functools.lru_cache(maxsize=None)
 def _warn_deprecated(_name: str) -> None:
     """
@@ -843,22 +852,12 @@ def load_credentials() -> dict[str, Any] | None:
             )
         )
         if is_legacy:
-            _get_config_logger().warning(
-                "Credentials found in legacy location: %s. "
-                "Please run 'mmrelay migrate' to move to new unified structure. "
-                f"Support for legacy credentials will be removed in v{DEPRECATION_VERSIONS[1]}.",
-                credentials_path,
-            )
+            _emit_legacy_credentials_warning(credentials_path)
         elif (
             os.path.abspath(credentials_path) == legacy_home_credentials
             and os.path.abspath(credentials_path) != primary_credentials_path
         ):
-            _get_config_logger().warning(
-                "Credentials found in legacy location: %s. "
-                "Please run 'mmrelay migrate' to move to new unified structure. "
-                f"Support for legacy credentials will be removed in v{DEPRECATION_VERSIONS[1]}.",
-                credentials_path,
-            )
+            _emit_legacy_credentials_warning(credentials_path)
         logger.debug("Successfully loaded credentials from %s", credentials_path)
         return credentials
 
