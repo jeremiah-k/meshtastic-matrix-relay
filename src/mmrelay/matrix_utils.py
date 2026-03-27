@@ -2634,17 +2634,19 @@ async def login_matrix_bot(
                 existing_creds = await asyncio.to_thread(
                     _load_direct, existing_credentials_path
                 )
-                if (
-                    existing_creds
-                    and existing_creds.get(CONFIG_KEY_USER_ID) == username
-                ):
-                    existing_device_id = _get_valid_device_id(
-                        existing_creds.get(CONFIG_KEY_DEVICE_ID)
+                if existing_creds:
+                    user_id_match = (
+                        existing_creds.get(CONFIG_KEY_USER_ID) == username
+                        or existing_creds.get(CONFIG_KEY_BOT_USER_ID) == username
                     )
-                    if existing_device_id:
-                        logger.info(
-                            "Reusing existing device_id: %s", existing_device_id
+                    if user_id_match:
+                        existing_device_id = _get_valid_device_id(
+                            existing_creds.get(CONFIG_KEY_DEVICE_ID)
                         )
+                        if existing_device_id:
+                            logger.info(
+                                "Reusing existing device_id: %s", existing_device_id
+                            )
         except (OSError, JSONDecodeError, KeyError, TypeError) as e:
             logger.debug(f"Could not load existing credentials: {e}")
 

@@ -468,6 +468,21 @@ def _normalize_plugin_type(plugin_type: str | None) -> str | None:
     raise UnknownPluginTypeError(plugin_type)
 
 
+def _validate_plugin_name(plugin_name: str) -> str:
+    """Validate plugin name to prevent path traversal and absolute-path attacks."""
+    separators = {"/", "\\"}
+    if os.path.altsep:
+        separators.add(os.path.altsep)
+    if (
+        not plugin_name
+        or plugin_name in {".", ".."}
+        or Path(plugin_name).is_absolute()
+        or any(sep in plugin_name for sep in separators)
+    ):
+        raise ValueError(f"Invalid plugin name: {plugin_name!r}")
+    return plugin_name
+
+
 def get_plugin_code_dir(plugin_name: str, plugin_type: str | None = None) -> Path:
     """
     Locate the filesystem path for a plugin's code directory.
@@ -479,6 +494,7 @@ def get_plugin_code_dir(plugin_name: str, plugin_type: str | None = None) -> Pat
     Returns:
         Path: Filesystem path to the plugin's code directory.
     """
+    plugin_name = _validate_plugin_name(plugin_name)
     normalized_type = _normalize_plugin_type(plugin_type)
     if normalized_type == PLUGIN_TYPE_CUSTOM:
         return get_custom_plugins_dir() / plugin_name
@@ -511,6 +527,7 @@ def get_plugin_data_dir(
     Returns:
         Path: Path to the plugin's data directory, or to the specified subdirectory within it.
     """
+    plugin_name = _validate_plugin_name(plugin_name)
     normalized_type = _normalize_plugin_type(plugin_type)
     if normalized_type == PLUGIN_TYPE_CUSTOM:
         base_dir = get_custom_plugins_dir() / plugin_name
@@ -541,17 +558,7 @@ def get_plugin_database_path(plugin_name: str) -> Path:
     Returns:
         Path: Path to the plugin database file at <home>/database/plugin_data_{plugin_name}.sqlite.
     """
-    # NOTE: MMRelay stores plugin data in the main SQLite database today.
-    # This helper exists for diagnostics and potential future per-plugin DB files.
-    separators = {"/", "\\"}
-    if os.path.altsep:
-        separators.add(os.path.altsep)
-    if (
-        not plugin_name
-        or plugin_name in {".", ".."}
-        or any(sep in plugin_name for sep in separators)
-    ):
-        raise ValueError(f"Invalid plugin name: {plugin_name!r}")
+    plugin_name = _validate_plugin_name(plugin_name)
     filename = PLUGIN_DB_FILENAME_TEMPLATE.format(plugin_name=plugin_name)
     return get_database_dir() / filename
 

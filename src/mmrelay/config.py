@@ -843,6 +843,9 @@ def load_credentials() -> dict[str, Any] | None:
             )
             continue
 
+        # Legacy credentials detection: check (1) is_primary = matches primary_credentials_path,
+        # (2) legacy dirs = creds_dir is in legacy_dirs list, (3) legacy subdirs = creds_dir
+        # matches a MATRIX_DIRNAME subdirectory under any legacy_dir.
         creds_dir = os.path.abspath(os.path.dirname(credentials_path))
         is_primary = os.path.abspath(credentials_path) == primary_credentials_path
         is_legacy = not is_primary and (

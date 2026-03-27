@@ -145,6 +145,12 @@ class Plugin(BasePlugin):
         try:
             data = response.json()
 
+            # Daily fast-path - check before parsing current/hourly data
+            if mode_key == WEATHER_MODE_DAILY:
+                return self._build_daily_forecast(
+                    data, units, temperature_unit, daily_days
+                )
+
             # Extract relevant weather data
             current_temp = data["current_weather"]["temperature"]
             current_weather_code = data["current_weather"]["weathercode"]
@@ -271,12 +277,6 @@ class Plugin(BasePlugin):
                 )
                 for key, (t, p, w, dflag, *rest) in forecast_hours.items()
             }
-
-            # Generate one-line weather forecast
-            if mode_key == WEATHER_MODE_DAILY:
-                return self._build_daily_forecast(
-                    data, units, temperature_unit, daily_days
-                )
 
             if mode_key == WEATHER_MODE_CURRENT:
                 now_slot = forecast_hours.get(WEATHER_SLOT_NOW)

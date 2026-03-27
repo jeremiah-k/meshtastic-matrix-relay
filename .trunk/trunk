@@ -462,7 +462,16 @@ check_flaky_tests_cli_version() {
 	wait "${timeout_pid}" 2>/dev/null || true
 
 	local flaky_tests_latest_version=$(sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' "${flaky_tests_latest_file}")
+	if [[ -z "${flaky_tests_latest_version}" ]]; then
+		echo "ERROR: Failed to parse latest flaky tests version from GitHub API response" >&2
+		exit 1
+	fi
+
 	local flaky_tests_installed_version=$("${TOOL_DIR}"/trunk-analytics-cli --version | lawk '{print $NF}')
+	if [[ -z "${flaky_tests_installed_version}" ]]; then
+		echo "ERROR: Failed to get installed flaky tests version" >&2
+		exit 1
+	fi
 
 	if [[ ${flaky_tests_installed_version} != "${flaky_tests_latest_version}" ]]; then
 		echo -e "\033[1;33mWARNING\033[0m: You are not using the latest version of Trunk Flaky Tests CLI (current=${flaky_tests_installed_version}, latest=${flaky_tests_latest_version})."

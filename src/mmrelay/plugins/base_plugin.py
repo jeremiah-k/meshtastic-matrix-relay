@@ -199,11 +199,7 @@ class BasePlugin(ABC):
             candidate_sections = (
                 (CONFIG_SECTION_PLUGINS,)
                 if self.is_core_plugin
-                else tuple(
-                    section
-                    for section in PLUGIN_CONFIG_SECTIONS
-                    if section != CONFIG_SECTION_PLUGINS
-                )
+                else tuple(PLUGIN_CONFIG_SECTIONS)
             )
             if not self.is_core_plugin:
                 # Infer non-core tier from plugin source path first so config

@@ -238,7 +238,7 @@ class TestMigrateAdditionalCoverage:
             pytest.skip(f"Symlinks unavailable in this environment: {exc}")
 
         result = migrate_database(
-            [symlink_root, partial_root, new_home],
+            [symlink_root, partial_root],
             new_home,
             dry_run=False,
             force=True,
@@ -274,7 +274,7 @@ class TestMigrateAdditionalCoverage:
         new_home.mkdir()
 
         result = migrate_database(
-            [legacy_root_old, legacy_root_new],
+            [legacy_root_new, legacy_root_old],
             new_home,
             dry_run=False,
             force=True,

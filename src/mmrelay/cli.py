@@ -80,6 +80,9 @@ from mmrelay.log_utils import get_logger
 from mmrelay.paths import ensure_directories
 from mmrelay.tools import get_sample_config_path
 
+# Sentinel object for --password flag without value (prompts for password)
+_PASSWORD_PROMPT_SENTINEL = object()
+
 # Lazy-initialized logger to avoid circular imports and filesystem access during import
 _logger: logging.Logger | None = None
 
@@ -424,9 +427,8 @@ def parse_arguments() -> argparse.Namespace:
     logout_parser.add_argument(
         "--password",
         nargs="?",
-        const="__PROMPT__",
+        const=_PASSWORD_PROMPT_SENTINEL,
         help="Password for verification. If no value provided, will prompt securely.",
-        type=str,
     )
     logout_parser.add_argument(
         "-y",
@@ -2362,7 +2364,7 @@ def handle_auth_logout(args: argparse.Namespace) -> int:
         # Handle password input
         password = getattr(args, "password", None)
 
-        if password is None or password == "__PROMPT__":
+        if password is None or password is _PASSWORD_PROMPT_SENTINEL:
             # No --password flag (None) or bare --password (__PROMPT__), prompt securely
             import getpass
 

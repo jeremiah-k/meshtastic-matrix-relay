@@ -5,7 +5,8 @@ Contains the registry of CLI commands and deprecation mappings for error message
 help text, and documentation. This provides a single source of truth for CLI command syntax.
 """
 
-from typing import Final
+from types import MappingProxyType
+from typing import Final, Mapping
 
 # Forbidden system directories for home path validation (Unix)
 FORBIDDEN_HOME_DIRECTORIES_UNIX: Final[frozenset[str]] = frozenset(
@@ -38,25 +39,29 @@ EXIT_CODE_SIGINT: Final[int] = 130
 WINDOWS_PATH_NOT_APPLICABLE_LABEL: Final[str] = "N/A (Windows)"
 
 # Command registry - single source of truth for CLI command syntax
-CLI_COMMANDS: Final[dict[str, str]] = {
-    # Config commands
-    "generate_config": "mmrelay config generate",
-    "check_config": "mmrelay config check",
-    # Auth commands
-    "auth_login": "mmrelay auth login",
-    "auth_status": "mmrelay auth status",
-    # Service commands
-    "service_install": "mmrelay service install",
-    # Main commands
-    "start_relay": "mmrelay",
-    "show_version": "mmrelay --version",
-    "show_help": "mmrelay --help",
-}
+CLI_COMMANDS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        # Config commands
+        "generate_config": "mmrelay config generate",
+        "check_config": "mmrelay config check",
+        # Auth commands
+        "auth_login": "mmrelay auth login",
+        "auth_status": "mmrelay auth status",
+        # Service commands
+        "service_install": "mmrelay service install",
+        # Main commands
+        "start_relay": "mmrelay",
+        "show_version": "mmrelay --version",
+        "show_help": "mmrelay --help",
+    }
+)
 
 # Deprecation mappings - maps old flags to new command keys
-DEPRECATED_COMMANDS: Final[dict[str, str]] = {
-    "--generate-config": "generate_config",
-    "--check-config": "check_config",
-    "--install-service": "service_install",
-    "--auth": "auth_login",
-}
+DEPRECATED_COMMANDS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "--generate-config": "generate_config",
+        "--check-config": "check_config",
+        "--install-service": "service_install",
+        "--auth": "auth_login",
+    }
+)

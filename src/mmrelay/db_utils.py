@@ -757,6 +757,7 @@ def initialize_database() -> None:
             (_temp_table,),
         )
         temp_exists = cursor.fetchone() is not None
+        stale_temp_exists = False
 
         if (
             temp_exists
@@ -798,12 +799,16 @@ def initialize_database() -> None:
 
         if meshtastic_column and str(meshtastic_column[2]).upper() != "TEXT":
             if temp_exists:
+                stale_temp_table = "message_map_stale_temp"
                 logger.warning(
-                    "Dropping stale temporary table %s with incompatible schema before message_map rebuild",
+                    "Preserving stale temporary table %s with incompatible schema for merge during message_map rebuild",
                     _temp_table,
                 )
-                cursor.execute(_DROP_TABLE_MESSAGE_MAP_TEMP_SQL)
+                cursor.execute(
+                    f"ALTER TABLE {_temp_table} RENAME TO {stale_temp_table}"
+                )
                 temp_exists = False
+                stale_temp_exists = True
             cursor.execute(f"ALTER TABLE message_map RENAME TO {_temp_table}")
             cursor.execute(_CREATE_TABLE_MESSAGE_MAP_FROM_SCRATCH_SQL)
             if meshnet_column:
@@ -850,6 +855,20 @@ def initialize_database() -> None:
                     cursor.execute(_DROP_TABLE_MESSAGE_MAP_TEMP_SQL)
             else:
                 cursor.execute(_DROP_TABLE_MESSAGE_MAP_TEMP_SQL)
+            if stale_temp_exists:
+                try:
+                    cursor.execute(
+                        "INSERT OR IGNORE INTO message_map SELECT * FROM message_map_stale_temp"
+                    )
+                    logger.info(
+                        "Merged rows from preserved stale temporary table into rebuilt message_map"
+                    )
+                except sqlite3.Error as e:
+                    logger.warning(
+                        "Failed to merge preserved stale temporary table data: %s", e
+                    )
+                finally:
+                    cursor.execute("DROP TABLE IF EXISTS message_map_stale_temp")
             cursor.execute(_DROP_TABLE_MESSAGE_MAP_LEGACY_SQL)
 
         cursor.execute(_CREATE_INDEX_MESSAGE_MAP_ID_SQL)

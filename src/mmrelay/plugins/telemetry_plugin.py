@@ -99,23 +99,26 @@ class Plugin(BasePlugin):
             bool: `False` always; telemetry is recorded but the message is not consumed by this handler.
         """
         _ = formatted_message, longname, meshnet_name
+        decoded = packet.get("decoded")
+        if not isinstance(decoded, dict):
+            return False
+        telemetry = decoded.get("telemetry")
+        device_metrics = (
+            telemetry.get("deviceMetrics") if isinstance(telemetry, dict) else None
+        )
         if (
-            "decoded" in packet
-            and _get_portnum_name(packet["decoded"].get("portnum"))
-            == TELEMETRY_APP_PORTNUM
-            and "telemetry" in packet["decoded"]
-            and "deviceMetrics" in packet["decoded"]["telemetry"]
+            _get_portnum_name(decoded.get("portnum")) == TELEMETRY_APP_PORTNUM
+            and isinstance(telemetry, dict)
+            and isinstance(device_metrics, dict)
         ):
             telemetry_data = []
             data = self.get_node_data(meshtastic_id=packet["fromId"])
             if data:
                 telemetry_data = data if isinstance(data, list) else [data]
-            packet_data = packet["decoded"]["telemetry"]
-            device_metrics = packet_data["deviceMetrics"]
 
             telemetry_data.append(
                 {
-                    "time": packet_data["time"],
+                    "time": telemetry.get("time", packet.get("rxTime")),
                     "batteryLevel": device_metrics.get("batteryLevel"),
                     "voltage": device_metrics.get("voltage"),
                     "airUtilTx": device_metrics.get("airUtilTx"),
@@ -124,7 +127,6 @@ class Plugin(BasePlugin):
             self.set_node_data(meshtastic_id=packet["fromId"], node_data=telemetry_data)
             return False
 
-        # Return False for non-telemetry packets
         return False
 
     def get_matrix_commands(self) -> list[str]:

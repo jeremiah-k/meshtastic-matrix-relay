@@ -1355,35 +1355,26 @@ async def test_login_matrix_bot_uses_loaded_config_for_save_path(
     mock_main_client.close = AsyncMock()
 
     tmpdir = tempfile.gettempdir()
-    explicit_creds = os.path.join(tmpdir, "explicit-creds.json")
-    existing_creds = os.path.join(tmpdir, "existing-creds.json")
-    saved_creds = os.path.join(tmpdir, "saved-creds.json")
-    loaded_config = {"matrix": {"credentials_path": explicit_creds}}
+    credentials_path = os.path.join(tmpdir, "test-creds.json")
+    loaded_config = {"matrix": {"credentials_path": credentials_path}}
     resolved_configs = []
 
-    def _capture_resolve_config(config_data):
+    def _capture_explicit_path(config):
         """
-        Capture a configuration object for test-side inspection and return a credential file path that differs on first vs subsequent calls.
+        Capture the config passed to get_explicit_credentials_path and return the test path.
 
-        Appends the provided config_data to the module-level resolved_configs list. On the first invocation returns the existing-creds path; on all later invocations returns the saved-creds path.
-
-        Parameters:
-            config_data (Any): Configuration object to record for later inspection.
-
-        Returns:
-            str: existing-creds path for the first call, saved-creds path for subsequent calls.
+        This verifies that _resolve_credentials_save_path passes the correct config to
+        get_explicit_credentials_path, which is the real behavior being tested.
         """
-        resolved_configs.append(config_data)
-        if len(resolved_configs) == 1:
-            return existing_creds
-        return saved_creds
+        resolved_configs.append(config)
+        return credentials_path
 
     with (
         patch("mmrelay.config.load_config", return_value=loaded_config),
         patch("mmrelay.config.is_e2ee_enabled", return_value=False),
         patch(
-            "mmrelay.matrix_utils._resolve_credentials_save_path",
-            side_effect=_capture_resolve_config,
+            "mmrelay.matrix_utils.get_explicit_credentials_path",
+            side_effect=_capture_explicit_path,
         ),
         patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
     ):
@@ -1397,7 +1388,9 @@ async def test_login_matrix_bot_uses_loaded_config_for_save_path(
 
     assert result is True
     assert resolved_configs == [loaded_config, loaded_config]
-    assert mock_save_credentials.call_args.kwargs["credentials_path"] == saved_creds
+    assert (
+        mock_save_credentials.call_args.kwargs["credentials_path"] == credentials_path
+    )
 
 
 @pytest.mark.asyncio
@@ -1426,12 +1419,14 @@ async def test_login_matrix_bot_existing_credentials_and_e2ee_check_exceptions(
     mock_main_client.whoami.return_value = MagicMock(user_id="@user:matrix.org")
     mock_main_client.close = AsyncMock()
 
+    credentials_path = os.path.join(tempfile.gettempdir(), "creds.json")
+
     with (
         patch("mmrelay.config.load_config", return_value={}),
         patch("mmrelay.config.is_e2ee_enabled", side_effect=ValueError("bad-e2ee")),
         patch(
-            "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value=os.path.join(tempfile.gettempdir(), "creds.json"),
+            "mmrelay.paths.get_credentials_path",
+            return_value=Path(credentials_path),
         ),
         patch(
             "mmrelay.matrix_utils.os.path.exists", side_effect=OSError("exists-fail")

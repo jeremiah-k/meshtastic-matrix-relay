@@ -223,7 +223,9 @@ def _looks_like_matrix_credentials(path: Path) -> bool:
             return False
 
     # Keep fallback strict to avoid false positives from unrelated files.
-    user_id = payload.get("user_id", "")
+    user_id = payload.get("user_id")
+    if not isinstance(user_id, str) or not user_id.strip():
+        return False
     if not user_id.startswith("@") or ":" not in user_id:
         return False
 
@@ -1626,26 +1628,20 @@ def migrate_database(
 
         # 1b. Remove destination-only sidecars so stale WAL/SHM/JOURNAL state does not survive.
         # Only do this after migration succeeds so we don't delete files we can't restore.
-        try:
-            for dest in destination_group:
-                if not dest.exists() or dest.name in source_names:
-                    continue
-                logger.info("Removing destination-only database sidecar: %s", dest)
-                if dest.is_dir():
-                    _retry_on_file_in_use(
-                        lambda d=dest: shutil.rmtree(str(d), ignore_errors=False),
-                        f"rmtree {dest}",
-                    )
-                else:
-                    _retry_on_file_in_use(
-                        lambda d=dest: d.unlink(),
-                        f"unlink {dest}",
-                    )
-        except (OSError, IOError, PermissionError) as exc:
-            logger.warning(
-                "Failed to remove some destination-sidecar files during database migration; continuing: %s",
-                exc,
-            )
+        for dest in destination_group:
+            if not dest.exists() or dest.name in source_names:
+                continue
+            logger.info("Removing destination-only database sidecar: %s", dest)
+            if dest.is_dir():
+                _retry_on_file_in_use(
+                    lambda d=dest: shutil.rmtree(str(d), ignore_errors=False),
+                    f"rmtree {dest}",
+                )
+            else:
+                _retry_on_file_in_use(
+                    lambda d=dest: d.unlink(),
+                    f"unlink {dest}",
+                )
 
         migration_succeeded = True
         migrated_files = sorted(

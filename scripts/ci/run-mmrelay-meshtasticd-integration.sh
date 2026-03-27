@@ -105,10 +105,15 @@ docker_pull_with_retry() {
 ensure_docker_image_available() {
 	local image="${1}"
 	local max_retries="${2:-3}"
-	if docker image inspect "${image}" >/dev/null 2>&1; then
-		echo "Using cached Docker image: ${image}"
-		return 0
+
+	# Only use cache for immutable digest references; always refresh tag-based refs
+	if [[ ${image} == *@sha256:* ]]; then
+		if docker image inspect "${image}" >/dev/null 2>&1; then
+			echo "Using cached Docker image: ${image}"
+			return 0
+		fi
 	fi
+
 	echo "Pulling Docker image: ${image}"
 	docker_pull_with_retry "${image}" "${max_retries}"
 }

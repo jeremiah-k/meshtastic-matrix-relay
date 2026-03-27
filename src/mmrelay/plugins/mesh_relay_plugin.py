@@ -220,6 +220,11 @@ class Plugin(BasePlugin):
         """
         content = event.source.get("content", {})
 
+        # Normalize dict packet payloads to JSON string before any early returns
+        packet = content.get(MATRIX_PACKET_KEY)
+        if isinstance(packet, dict):
+            content[MATRIX_PACKET_KEY] = json.dumps(packet)
+
         if content.get(MATRIX_SUPPRESS_KEY) is True and content.get(MATRIX_PACKET_KEY):
             return True
 

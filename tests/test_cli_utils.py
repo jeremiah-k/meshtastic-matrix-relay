@@ -39,7 +39,9 @@ class TestCommandRegistry:
 
     def test_cli_commands_structure(self):
         """Test that CLI_COMMANDS has expected structure and commands."""
-        assert isinstance(CLI_COMMANDS, dict)
+        from collections.abc import Mapping
+
+        assert isinstance(CLI_COMMANDS, Mapping)
         assert len(CLI_COMMANDS) > 0
 
         # Test key commands exist
@@ -61,7 +63,9 @@ class TestCommandRegistry:
 
     def test_deprecated_commands_structure(self):
         """Test that DEPRECATED_COMMANDS maps old flags to new command keys."""
-        assert isinstance(DEPRECATED_COMMANDS, dict)
+        from collections.abc import Mapping
+
+        assert isinstance(DEPRECATED_COMMANDS, Mapping)
 
         # Test expected deprecated mappings
         expected_mappings = {

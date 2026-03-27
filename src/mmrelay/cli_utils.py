@@ -27,7 +27,11 @@ import logging
 import os
 import ssl
 from types import ModuleType
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from nio.responses import LoginError as NioLoginErrorType
+    from nio.responses import LogoutError as NioLogoutErrorType
 
 try:
     import certifi
@@ -455,12 +459,16 @@ def _cleanup_local_session_data() -> bool:
 # CLI-specific functions (can use print statements for user interaction)
 
 
-def _handle_matrix_error(error: Any, context: str, log_level: str = "error") -> bool:
+def _handle_matrix_error(
+    error: "Exception | NioLoginErrorType | NioLogoutErrorType",
+    context: str,
+    log_level: str = "error",
+) -> bool:
     """
     Classify a Matrix-related error, log and print an appropriate user-facing message, and mark it handled.
 
     Parameters:
-        error (Any): The error/response object to classify and report.
+        error (Exception | LoginError | LogoutError): The Matrix error or response object to classify and report.
         context (str): Short description of the operation (e.g., "Password verification"); used to tailor message phrasing and detect verification flows.
         log_level (str): Logging level to use; either "error" or "warning".
 

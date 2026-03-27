@@ -16,6 +16,8 @@ import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from tests.constants import TEST_LAT_NYC, TEST_LON_NYC
 
 # Add src to path for imports
@@ -23,6 +25,35 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.constants.formats import TEXT_MESSAGE_APP
 from mmrelay.plugins.drop_plugin import Plugin
+
+
+@pytest.mark.asyncio
+@patch("mmrelay.plugins.drop_plugin.connect_meshtastic", return_value=None)
+async def test_handle_meshtastic_message_returns_false_for_drop_command_without_client(
+    _mock_connect,
+):
+    """When client is unavailable, command should not be marked handled."""
+    plugin = Plugin()
+    plugin.config = {"radius_km": 5}
+    plugin.logger = MagicMock()
+    plugin.store_node_data = MagicMock()
+    plugin.get_node_data = MagicMock(return_value=[])
+    plugin.set_node_data = MagicMock()
+
+    packet = {
+        "fromId": "!12345678",
+        "decoded": {
+            "portnum": TEXT_MESSAGE_APP,
+            "text": "!drop cached message",
+        },
+    }
+
+    result = await plugin.handle_meshtastic_message(
+        packet, "formatted", "longname", "meshnet"
+    )
+    assert result is False
+    plugin.set_node_data.assert_not_called()
+    plugin.store_node_data.assert_not_called()
 
 
 class TestDropPlugin(unittest.TestCase):
@@ -86,29 +117,6 @@ class TestDropPlugin(unittest.TestCase):
         position = self.plugin.get_position(self.mock_meshtastic_client, "!99999999")
 
         self.assertIsNone(position)
-
-    @patch("mmrelay.plugins.drop_plugin.connect_meshtastic", return_value=None)
-    def test_handle_meshtastic_message_returns_false_for_drop_command_without_client(
-        self, _mock_connect
-    ):
-        """When client is unavailable, command should not be marked handled."""
-        packet = {
-            "fromId": "!12345678",
-            "decoded": {
-                "portnum": TEXT_MESSAGE_APP,
-                "text": "!drop cached message",
-            },
-        }
-
-        async def run_test():
-            result = await self.plugin.handle_meshtastic_message(
-                packet, "formatted", "longname", "meshnet"
-            )
-            self.assertFalse(result)
-            self.plugin.set_node_data.assert_not_called()
-            self.plugin.store_node_data.assert_not_called()
-
-        asyncio.run(run_test())
 
     @patch("mmrelay.plugins.drop_plugin.connect_meshtastic")
     def test_handle_meshtastic_message_drop_valid(self, mock_connect):

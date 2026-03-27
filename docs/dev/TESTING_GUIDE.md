@@ -283,20 +283,22 @@ The project uses a custom logger configuration (`log_utils.get_logger`) that man
 def test_validation_logs_warning(self, mock_exists, mock_get_logger):
     """Test that validation logs appropriate warnings."""
     import logging
+    import uuid
 
-    # Create a test logger that assertLogs can capture
-    mock_logger = logging.getLogger("mmrelay.test")
+    # Create a uniquely named test logger to avoid handler leakage across tests
+    logger_name = f"mmrelay.test.{self._testMethodName}.{uuid.uuid4().hex[:8]}"
+    mock_logger = logging.getLogger(logger_name)
     mock_logger.handlers.clear()
     mock_logger.setLevel(logging.DEBUG)
     # propagate=True only needed if function_under_test creates child loggers
-    # (e.g., "mmrelay.test.submodule") that should propagate to "mmrelay.test"
+    # (e.g., "mmrelay.test.<id>.submodule") that should propagate to parent
     mock_logger.propagate = True
     mock_get_logger.return_value = mock_logger
 
     # Import after mock setup to ensure function uses the mocked logger
     from mmrelay.cli import function_under_test
 
-    with self.assertLogs("mmrelay.test", level="WARNING"):
+    with self.assertLogs(logger_name, level="WARNING"):
         result = function_under_test(config_path)
 
     self.assertFalse(result)

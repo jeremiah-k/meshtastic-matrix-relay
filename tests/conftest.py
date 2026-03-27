@@ -1232,7 +1232,7 @@ def mock_event():
     values.
 
     Returns:
-        MagicMock: Mock event with `sender` set to "@user:matrix.org",
+        MagicMock: Mock event with `sender` set to TEST_USER_ID,
         `body` set to "Hello, world!", `source` set to {"content": {"body": "Hello, world!"}},
         and `server_timestamp` set to 1234567890.
     """

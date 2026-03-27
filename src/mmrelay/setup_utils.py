@@ -45,6 +45,54 @@ def _quote_if_needed(path: str) -> str:
     return f'"{path}"' if " " in path else path
 
 
+def _get_service_template_candidates() -> list[str]:
+    """
+    Get the list of candidate paths for the service template file.
+
+    Returns paths in priority order:
+    1. Package directory
+    2. Package tools subdirectory
+    3. sys.prefix share paths
+    4. User local share paths
+    5. Development paths
+    """
+    package_dir = os.path.dirname(__file__)
+
+    return [
+        os.path.join(package_dir, SYSTEMD_SERVICE_FILENAME),
+        os.path.join(package_dir, "tools", SYSTEMD_SERVICE_FILENAME),
+        os.path.join(sys.prefix, "share", "mmrelay", SYSTEMD_SERVICE_FILENAME),
+        os.path.join(sys.prefix, "share", "mmrelay", "tools", SYSTEMD_SERVICE_FILENAME),
+        os.path.join(
+            os.path.expanduser("~"),
+            ".local",
+            "share",
+            "mmrelay",
+            SYSTEMD_SERVICE_FILENAME,
+        ),
+        os.path.join(
+            os.path.expanduser("~"),
+            ".local",
+            "share",
+            "mmrelay",
+            "tools",
+            SYSTEMD_SERVICE_FILENAME,
+        ),
+        os.path.join(os.path.dirname(package_dir), "tools", SYSTEMD_SERVICE_FILENAME),
+        os.path.join(
+            os.path.dirname(os.path.dirname(package_dir)),
+            "tools",
+            SYSTEMD_SERVICE_FILENAME,
+        ),
+        os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            "tools",
+            SYSTEMD_SERVICE_FILENAME,
+        ),
+        os.path.join(os.getcwd(), "tools", SYSTEMD_SERVICE_FILENAME),
+    ]
+
+
 def get_resolved_exec_cmd() -> str:
     """
     Determine the command to invoke MMRelay for inclusion in a systemd ExecStart line.
@@ -109,7 +157,11 @@ def get_user_service_path() -> Path:
     Returns:
         Path: Path to the user unit file, typically '~/.config/systemd/user/mmrelay.service'.
     """
-    service_dir = Path.home() / SYSTEMD_USER_DIR
+    xdg_config_home = os.environ.get("XDG_CONFIG_HOME")
+    if xdg_config_home:
+        service_dir = Path(xdg_config_home) / "systemd" / "user"
+    else:
+        service_dir = Path.home() / SYSTEMD_USER_DIR
     return service_dir / SYSTEMD_SERVICE_FILENAME
 
 
@@ -240,66 +292,18 @@ def get_template_service_path() -> str | None:
     Returns:
         str | None: Path to the found mmrelay.service template, or None if not found.
     """
-    # Try to find the service template file
-    package_dir = os.path.dirname(__file__)
+    template_paths = _get_service_template_candidates()
 
-    # Try to find the service template file in various locations
-    template_paths = [
-        # Check in the package directory (where it should be after installation)
-        os.path.join(package_dir, SYSTEMD_SERVICE_FILENAME),
-        # Check in a tools subdirectory of the package
-        os.path.join(package_dir, "tools", SYSTEMD_SERVICE_FILENAME),
-        # Check in the data files location (where it should be after installation)
-        os.path.join(sys.prefix, "share", "mmrelay", SYSTEMD_SERVICE_FILENAME),
-        os.path.join(sys.prefix, "share", "mmrelay", "tools", SYSTEMD_SERVICE_FILENAME),
-        # Check in the user site-packages location
-        os.path.join(
-            os.path.expanduser("~"),
-            ".local",
-            "share",
-            "mmrelay",
-            SYSTEMD_SERVICE_FILENAME,
-        ),
-        os.path.join(
-            os.path.expanduser("~"),
-            ".local",
-            "share",
-            "mmrelay",
-            "tools",
-            SYSTEMD_SERVICE_FILENAME,
-        ),
-        # Check one level up from the package directory
-        os.path.join(os.path.dirname(package_dir), "tools", SYSTEMD_SERVICE_FILENAME),
-        # Check two levels up from the package directory (for development)
-        os.path.join(
-            os.path.dirname(os.path.dirname(package_dir)),
-            "tools",
-            SYSTEMD_SERVICE_FILENAME,
-        ),
-        # Check in the repository root (for development)
-        os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "tools",
-            SYSTEMD_SERVICE_FILENAME,
-        ),
-        # Check in the current directory (fallback)
-        os.path.join(os.getcwd(), "tools", SYSTEMD_SERVICE_FILENAME),
-    ]
-
-    # Try each path until we find one that exists
     for path in template_paths:
         if os.path.exists(path):
             return path
 
-    # If we get here, we couldn't find the template
-    # Warning output to help diagnose issues
     logger.warning(
         "Could not find %s in any of these locations:", SYSTEMD_SERVICE_FILENAME
     )
     for path in template_paths:
         logger.warning("  - %s", path)
 
-    # If we get here, we couldn't find the template
     return None
 
 
