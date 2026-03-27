@@ -1152,14 +1152,9 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         path = get_template_service_path()
 
         self.assertIsNone(path)
-        self.assertTrue(
-            any(
-                call_args.args
-                and call_args.args[0] == "Could not find %s in any of these locations:"
-                and len(call_args.args) > 1
-                and call_args.args[1] == SYSTEMD_SERVICE_FILENAME
-                for call_args in mock_logger.warning.call_args_list
-            )
+        mock_logger.warning.assert_any_call(
+            "Could not find %s in any of these locations:",
+            SYSTEMD_SERVICE_FILENAME,
         )
 
     @patch("mmrelay.setup_utils.read_service_file", return_value=None)

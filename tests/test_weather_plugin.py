@@ -31,10 +31,9 @@ from mmrelay.plugins.weather_plugin import Plugin
 from tests.constants import (
     TEST_LAT_NYC,
     TEST_LON_NYC,
+    TEST_MESHTASTIC_ID,
     TEST_NODE_NUM,
 )
-
-TEST_MESHTASTIC_ID = "TEST_MESHTASTIC_ID"
 
 
 def _normalize_emoji(s: str) -> str:

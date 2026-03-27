@@ -1,7 +1,6 @@
 """Tests specifically targeting patch coverage improvements."""
 
 import unittest
-from typing import Any
 from unittest.mock import MagicMock, mock_open, patch
 
 from mmrelay.setup_utils import (
@@ -146,12 +145,10 @@ class TestPatchCoverageImprovements(unittest.TestCase):
         self.assertFalse(is_e2ee_enabled({}))
 
         # Test with False config (line 349) - edge case handling
-        false_config: Any = False
-        self.assertFalse(is_e2ee_enabled(false_config))
+        self.assertFalse(is_e2ee_enabled(False))
 
         # Test with empty string config (line 349) - edge case handling
-        empty_string_config: Any = ""
-        self.assertFalse(is_e2ee_enabled(empty_string_config))
+        self.assertFalse(is_e2ee_enabled(""))
 
         # Test with encryption enabled (legacy)
         config_encryption = {"matrix": {"encryption": {"enabled": True}}}

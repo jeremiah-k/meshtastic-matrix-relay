@@ -131,7 +131,8 @@ jobs:
               echo "saved=true" >> "${GITHUB_OUTPUT}"
               exit 0
             fi
-          elif command -v docker >/dev/null 2>&1; then
+          fi
+          if command -v docker >/dev/null 2>&1; then
             if docker image inspect "${HELM_IMAGE}" >/dev/null 2>&1; then
               docker save "${HELM_IMAGE}" -o "${cache_path}"
               echo "saved=true" >> "${GITHUB_OUTPUT}"

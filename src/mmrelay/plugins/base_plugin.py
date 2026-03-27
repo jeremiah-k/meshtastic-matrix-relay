@@ -247,9 +247,8 @@ class BasePlugin(ABC):
                     (
                         section
                         for section in candidate_sections
-                        if isinstance(config.get(section, {}), dict)
-                        and self.plugin_name
-                        in cast(dict[str, Any], config.get(section, {}))
+                        if isinstance((sec_cfg := config.get(section, {})), dict)
+                        and self.plugin_name in sec_cfg
                     ),
                     None,
                 )

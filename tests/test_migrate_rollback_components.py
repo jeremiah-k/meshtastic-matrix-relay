@@ -232,6 +232,8 @@ class TestRollbackDatabaseMigration:
         result = rollback_migration(completed_steps, migrations, new_home)
 
         assert result["success"] is True
+        assert len(result["rolled_back_steps"]) == 2
+        assert result["rolled_back_steps"][0]["step"] == "database"
         assert db_dest.read_text() == "SQLite format 3 (backup)"
         assert wal_dest.read_text() == "WAL backup"
 

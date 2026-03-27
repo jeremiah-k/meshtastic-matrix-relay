@@ -276,12 +276,8 @@ class TestHealthPlugin(unittest.TestCase):
             """
             result = await self.plugin.handle_room_message(room, event, "full_message")
             self.assertFalse(result)
-            matches_mock = self.plugin.matches
-            send_mock = self.plugin.send_matrix_message
-            self.assertIsInstance(matches_mock, MagicMock)
-            self.assertIsInstance(send_mock, AsyncMock)
-            matches_mock.assert_called_once_with(event)
-            send_mock.assert_not_called()
+            self.plugin.matches.assert_called_once_with(event)
+            self.plugin.send_matrix_message.assert_not_called()
 
         asyncio.run(run_test())
 
@@ -311,15 +307,11 @@ class TestHealthPlugin(unittest.TestCase):
             result = await self.plugin.handle_room_message(room, event, "full_message")
 
             self.assertTrue(result)
-            matches_mock = self.plugin.matches
-            send_mock = self.plugin.send_matrix_message
-            self.assertIsInstance(matches_mock, MagicMock)
-            self.assertIsInstance(send_mock, AsyncMock)
-            matches_mock.assert_called_once_with(event)
-            send_mock.assert_called_once()
+            self.plugin.matches.assert_called_once_with(event)
+            self.plugin.send_matrix_message.assert_called_once()
 
             # Check the call arguments
-            call_args = send_mock.call_args
+            call_args = self.plugin.send_matrix_message.call_args
             self.assertEqual(call_args[0][0], "!test:matrix.org")  # room_id
             self.assertIn("Nodes: 5", call_args[0][1])  # message content
             self.assertEqual(call_args.kwargs["formatted"], False)

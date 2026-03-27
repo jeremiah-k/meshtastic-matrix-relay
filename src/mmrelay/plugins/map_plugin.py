@@ -277,12 +277,10 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
         ctx.stroke()
 
         ctx.set_source_rgba(*CAIRO_LABEL_TEXT_COLOR)
-        ctx.set_line_width(MAP_LABEL_OUTLINE_WIDTH)
         ctx.move_to(
             x - tw / 2 - x_bearing, y - self._arrow - h / 2 - y_bearing - th / 2
         )
         ctx.show_text(self._text)
-        ctx.stroke()
 
     def render_svg(self, renderer: staticmaps.SvgRenderer) -> None:
         """

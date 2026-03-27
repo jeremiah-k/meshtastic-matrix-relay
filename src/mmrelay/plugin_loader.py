@@ -78,6 +78,10 @@ config = None
 
 logger = get_logger(name="Plugins")
 
+_SENSITIVE_URL_PARAMS_LOWER: Final[frozenset[str]] = frozenset(
+    param.lower() for param in SENSITIVE_URL_PARAMS
+)
+
 sorted_active_plugins: list[Any] = []
 plugins_loaded = False
 _last_logged_plugin_roots: tuple[str | None, tuple[str, ...]] | None = None
@@ -499,8 +503,9 @@ def _redact_url(url: str) -> str:
 
         # Always redact sensitive query parameters
         q = parse_qsl(s.query, keep_blank_values=True)
-        sensitive_params = {param.lower() for param in SENSITIVE_URL_PARAMS}
-        redacted = [(k, "***" if k.lower() in sensitive_params else v) for k, v in q]
+        redacted = [
+            (k, "***" if k.lower() in _SENSITIVE_URL_PARAMS_LOWER else v) for k, v in q
+        ]
         query = urlencode(redacted)
         return urlunsplit((s.scheme, netloc, s.path, query, s.fragment))
     except (ValueError, TypeError, AttributeError) as exc:

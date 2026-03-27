@@ -112,10 +112,10 @@ class TestMigrationAutomaticRollback:
         # Verify no rollback report in main report
         assert "rollback" not in result
 
-    def test_perform_migration_no_rollback_when_no_steps_completed(
+    def test_perform_migration_no_rollback_when_all_steps_are_noop(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Verify rollback only triggers if steps were completed."""
+        """Verify rollback is not triggered when migration succeeds with no-op actions."""
         legacy_root = tmp_path / "legacy"
         legacy_root.mkdir()
         # Don't create any files so first step (credentials) fails immediately
@@ -156,7 +156,7 @@ class TestMigrationAutomaticRollback:
         # Verify no-op migration still records all migration steps, including service
         assert len(result["completed_steps"]) == 8
 
-        # Verify rollback was NOT called when no steps completed
+        # Verify rollback was NOT called when migration succeeded (all no-ops)
         mock_rollback.assert_not_called()
 
         # Verify no rollback report in main report

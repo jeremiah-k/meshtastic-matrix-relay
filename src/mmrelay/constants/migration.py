@@ -33,12 +33,12 @@ MIGRATION_STAGING_DIRNAME: Final[str] = ".migration_staging"
 MIGRATION_BACKUP_DIRNAME: Final[str] = ".migration_backups"
 MIGRATION_LOCK_FILENAME: Final[str] = ".migration.lock"
 
-# Migration space requirements
-MIGRATION_MIN_FREE_SPACE_BYTES: Final[int] = 500 * 1024 * 1024  # 500 MB
-MIGRATION_FREE_SPACE_WARNING_FACTOR: Final[float] = 1.5
-
 # Byte conversion (using binary units)
 BYTES_PER_MIB: Final[int] = 1024 * 1024
+
+# Migration space requirements
+MIGRATION_MIN_FREE_SPACE_BYTES: Final[int] = 500 * BYTES_PER_MIB  # 500 MiB
+MIGRATION_FREE_SPACE_WARNING_FACTOR: Final[float] = 1.5
 
 # Service args template
 DEFAULT_SERVICE_ARGS_SUFFIX: Final[str] = "--home %h/.mmrelay"

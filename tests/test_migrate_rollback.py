@@ -113,8 +113,6 @@ class TestRollbackMigration:
         # Create backup directories
         config_backup_dir = matrix_dir / MIGRATION_BACKUP_DIRNAME
         config_backup_dir.mkdir(parents=True)
-        db_backup_dir = database_dir / MIGRATION_BACKUP_DIRNAME
-        db_backup_dir.mkdir(parents=True)
 
         # Simulate migration - move files and create backups
         dest_config = matrix_dir / "config.yaml"

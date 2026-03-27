@@ -48,7 +48,7 @@ LOGS_DIRNAME: Final[str] = "logs"
 LOG_FILENAME: Final[str] = "mmrelay.log"
 PLUGINS_DIRNAME: Final[str] = "plugins"
 PLUGIN_DATA_DIRNAME: Final[str] = "data"
-LEGACY_DATA_SUBDIR: Final[str] = PLUGIN_DATA_DIRNAME
+LEGACY_DATA_SUBDIR: Final[str] = PLUGIN_DATA_DIRNAME  # Alias for backward compatibility
 
 # File permissions (octal)
 SECURE_FILE_PERMISSIONS: Final[int] = 0o600
@@ -64,9 +64,9 @@ WINDOWS_STD_ERROR_HANDLE: Final[int] = -12  # GetStdHandle parameter
 WINDOWS_PATH_LENGTH_WARNING: Final[int] = 200
 
 # Windows error codes
-WINERR_ACCESS_DENIED: Final[int] = 5
-WINERR_SHARING_VIOLATION: Final[int] = 32
-WINERR_LOCK_VIOLATION: Final[int] = 33
+WINERR_ACCESS_DENIED: Final[int] = 5  # ERROR_ACCESS_DENIED
+WINERR_SHARING_VIOLATION: Final[int] = 32  # ERROR_SHARING_VIOLATION
+WINERR_LOCK_VIOLATION: Final[int] = 33  # ERROR_LOCK_VIOLATION
 
 # Exit codes
 EXIT_CODE_SIGINT: Final[int] = 130

@@ -2707,7 +2707,7 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
             report["error"] = "Insufficient disk space"
             report["message"] = (
                 f"Insufficient disk space for migration. "
-                f"Available: {free_mb:.0f} MB, Required: {required_mb:.0f} MB (with safety margin). "
+                f"Available: {free_mb:.0f} MiB, Required: {required_mb:.0f} MiB (with safety margin). "
                 f"Free up disk space and try again."
             )
             return report

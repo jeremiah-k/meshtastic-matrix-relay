@@ -139,6 +139,7 @@ PROCESS_CHECK_SHORT_TIMEOUT_SECS: Final[float] = 2.0
 # HTTP status codes
 HTTP_SERVER_ERROR_CODES: Final[tuple[int, ...]] = tuple(range(500, 600))
 HTTP_STATUS_UNAUTHORIZED: Final[int] = 401
+HTTP_STATUS_FORBIDDEN: Final[int] = 403
 
 # Hostname validation limits
 MAX_HOSTNAME_LENGTH: Final[int] = 253

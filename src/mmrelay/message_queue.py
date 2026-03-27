@@ -179,6 +179,7 @@ class MessageQueue:
             )
 
         def _finalize_stop_state() -> None:
+            # Safe to call multiple times from different code paths; early return below ensures idempotency.
             if not (
                 task_cleanup_complete.is_set() and executor_cleanup_complete.is_set()
             ):
@@ -267,8 +268,14 @@ class MessageQueue:
                     ).start()
             else:
                 task.cancel()
-                with contextlib.suppress(asyncio.CancelledError, RuntimeError):
+                try:
                     task_loop.run_until_complete(task)
+                except (asyncio.CancelledError, RuntimeError):
+                    pass
+                except Exception:
+                    logger.debug(
+                        "Unexpected exception during task cleanup", exc_info=True
+                    )
                 task_cleanup_complete.set()
                 _finalize_stop_state()
 

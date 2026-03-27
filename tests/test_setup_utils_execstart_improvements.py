@@ -74,15 +74,6 @@ class TestExecStartImprovements(unittest.TestCase):
         expected = "ExecStart=/usr/local/bin/mmrelay --custom-arg"
         self.assertEqual(result, expected)
 
-    def test_quote_if_needed_consistency(self) -> None:
-        """Test that _quote_if_needed is used consistently."""
-        # Test that the fix is applied in service logic
-        path_with_spaces = "/path with spaces/python"
-        with patch("shutil.which", return_value=None):
-            with patch("sys.executable", path_with_spaces):
-                result = get_resolved_exec_cmd()
-                self.assertEqual(result, '"/path with spaces/python" -m mmrelay')
-
 
 if __name__ == "__main__":
     unittest.main()

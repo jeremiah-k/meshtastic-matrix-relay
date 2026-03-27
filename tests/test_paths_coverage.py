@@ -105,8 +105,8 @@ def test_get_config_paths_dedupes_when_explicit_matches_home() -> None:
     """Explicit config equal to home config should not be duplicated."""
     with (
         patch("mmrelay.paths.get_home_dir", return_value=Path("/same")),
-        patch("mmrelay.paths.Path.cwd", return_value=Path("/same")),
-        patch("mmrelay.paths.Path.home", return_value=Path("/same")),
+        patch.object(Path, "cwd", return_value=Path("/same")),
+        patch.object(Path, "home", return_value=Path("/same")),
         patch.object(Path, "exists", autospec=True, side_effect=lambda self: False),
     ):
         candidates = get_config_paths(explicit=f"/same/{DEFAULT_CONFIG_FILENAME}")

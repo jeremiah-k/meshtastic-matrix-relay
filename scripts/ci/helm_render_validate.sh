@@ -74,9 +74,9 @@ helm_in_container() {
 		local pull_retries=3
 		local pull_delay=5
 		local pull_attempt=0
-		local pull_error
+		local pull_output
 		while [[ $pull_attempt -lt $pull_retries ]]; do
-			if pull_error=$(${CONTAINER_CMD} pull "${HELM_IMAGE}" 2>&1); then
+			if pull_output=$(${CONTAINER_CMD} pull "${HELM_IMAGE}" 2>&1); then
 				break
 			fi
 			pull_attempt=$((pull_attempt + 1))
@@ -87,7 +87,7 @@ helm_in_container() {
 			else
 				echo -e "${RED}Failed to pull ${HELM_IMAGE} after ${pull_retries} attempts${NC}"
 				echo "Error output:"
-				echo "${pull_error}"
+				echo "${pull_output}"
 				return 1
 			fi
 		done

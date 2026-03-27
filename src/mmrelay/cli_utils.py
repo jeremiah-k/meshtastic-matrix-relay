@@ -87,7 +87,11 @@ from mmrelay.constants.config import (
     CONFIG_KEY_USER_ID,
     DEFAULT_CONFIG_FILENAME,
 )
-from mmrelay.constants.network import HTTP_SERVER_ERROR_CODES, HTTP_STATUS_UNAUTHORIZED
+from mmrelay.constants.network import (
+    HTTP_SERVER_ERROR_CODES,
+    HTTP_STATUS_FORBIDDEN,
+    HTTP_STATUS_UNAUTHORIZED,
+)
 from mmrelay.log_utils import get_logger
 
 logger: logging.Logger | None = None
@@ -489,7 +493,7 @@ def _handle_matrix_error(error: Any, context: str, log_level: str = "error") -> 
 
         if (
             errcode == MATRIX_ERRCODE_FORBIDDEN
-            or parsed_status_code in (HTTP_STATUS_UNAUTHORIZED, 403)
+            or parsed_status_code in (HTTP_STATUS_UNAUTHORIZED, HTTP_STATUS_FORBIDDEN)
             or "forbidden" in status_text
             or "forbidden" in message_text
         ):

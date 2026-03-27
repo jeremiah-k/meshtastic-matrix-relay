@@ -286,7 +286,8 @@ def test_validation_logs_warning(self, mock_exists, mock_get_logger):
     mock_logger = logging.getLogger("mmrelay.test")
     mock_logger.handlers.clear()
     mock_logger.setLevel(logging.DEBUG)
-    # propagate=True is optional - only needed if child loggers should reach this logger
+    # propagate=True only needed if function_under_test creates child loggers
+    # (e.g., "mmrelay.test.submodule") that should propagate to "mmrelay.test"
     mock_logger.propagate = True
     mock_get_logger.return_value = mock_logger
 

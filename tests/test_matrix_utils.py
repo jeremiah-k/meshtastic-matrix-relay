@@ -2,10 +2,8 @@ import asyncio
 import importlib
 import os
 import re
-import shutil
 import ssl
 import sys
-import tempfile
 import types
 import unittest
 from types import SimpleNamespace
@@ -4516,7 +4514,7 @@ async def test_connect_matrix_e2ee_store_path_uses_e2ee_section(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_connect_matrix_e2ee_store_path_default(monkeypatch):
+async def test_connect_matrix_e2ee_store_path_default(monkeypatch, tmp_path):
     """Default store path should be used when no store_path is configured."""
     mock_client = MagicMock()
     mock_client.rooms = {}
@@ -4557,7 +4555,7 @@ async def test_connect_matrix_e2ee_store_path_default(monkeypatch):
         raising=False,
     )
 
-    default_path = tempfile.mkdtemp(prefix="mmrelay-store-")
+    default_path = str(tmp_path / "mmrelay-store")
     monkeypatch.setattr(
         "mmrelay.matrix_utils.get_e2ee_store_dir",
         lambda: default_path,
@@ -4574,32 +4572,29 @@ async def test_connect_matrix_e2ee_store_path_default(monkeypatch):
         fake_async_client,
         raising=False,
     )
-    try:
-        with (
-            patch("mmrelay.matrix_utils.os.makedirs"),
-            patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
-            patch(
-                "mmrelay.e2ee_utils.get_e2ee_status",
-                return_value={"overall_status": "ok"},
-            ),
-            patch("mmrelay.e2ee_utils.get_room_encryption_warnings", return_value=[]),
-        ):
-            config = {
-                "matrix": {
-                    "homeserver": "https://example.org",
-                    "access_token": "token",
-                    "bot_user_id": "@bot:example.org",
-                    "encryption": {"enabled": True},
-                },
-                "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
-            }
+    with (
+        patch("mmrelay.matrix_utils.os.makedirs"),
+        patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+        patch(
+            "mmrelay.e2ee_utils.get_e2ee_status",
+            return_value={"overall_status": "ok"},
+        ),
+        patch("mmrelay.e2ee_utils.get_room_encryption_warnings", return_value=[]),
+    ):
+        config = {
+            "matrix": {
+                "homeserver": "https://example.org",
+                "access_token": "token",
+                "bot_user_id": "@bot:example.org",
+                "encryption": {"enabled": True},
+            },
+            "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
+        }
 
-            await connect_matrix(config)
+        await connect_matrix(config)
 
-        assert client_calls
-        assert client_calls[0]["store_path"] == default_path
-    finally:
-        shutil.rmtree(default_path, ignore_errors=True)
+    assert client_calls
+    assert client_calls[0]["store_path"] == default_path
 
 
 @pytest.mark.asyncio

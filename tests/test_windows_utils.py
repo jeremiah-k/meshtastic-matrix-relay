@@ -386,8 +386,6 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
                 def _exists_side_effect(path: str) -> bool:
                     if path == sample_config:
                         return True
-                    if path == new_dir:
-                        return False
                     return False
 
                 with patch("os.path.exists", side_effect=_exists_side_effect):

@@ -5,6 +5,10 @@ Contains configuration values for the message queue system including
 delays, size limits, and water marks for queue management.
 """
 
+from typing import Final
+
+from mmrelay.constants.network import MINIMUM_MESSAGE_DELAY
+
 __all__ = [
     "CONNECTION_ERROR_KEYWORDS",
     "CONNECTION_RETRY_SLEEP_SEC",
@@ -20,10 +24,6 @@ __all__ = [
     "QUEUE_WAIT_RETRY_SLEEP_SEC",
     "TASK_SHUTDOWN_TIMEOUT_SEC",
 ]
-
-from typing import Final
-
-from mmrelay.constants.network import MINIMUM_MESSAGE_DELAY
 
 # Message timing constants
 DEFAULT_MESSAGE_DELAY: Final[float] = (

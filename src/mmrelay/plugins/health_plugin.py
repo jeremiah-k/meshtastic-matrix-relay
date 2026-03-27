@@ -12,7 +12,10 @@ from nio import (
 )
 
 from mmrelay.constants.plugins import LOW_BATTERY_THRESHOLD_PERCENT
+from mmrelay.log_utils import get_logger
 from mmrelay.plugins.base_plugin import BasePlugin
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from meshtastic.mesh_interface import MeshInterface
@@ -54,6 +57,7 @@ class Plugin(BasePlugin):
 
         meshtastic_client: MeshInterface | None = connect_meshtastic()
         if meshtastic_client is None:
+            logger.warning("Failed to connect to Meshtastic device for health check")
             return "Unable to connect to Meshtastic device."
         battery_levels = []
         air_util_tx = []

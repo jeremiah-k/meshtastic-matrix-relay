@@ -97,7 +97,7 @@ def test_is_running_as_service_false_when_status_has_no_ppid_line() -> None:
         patch.dict(os.environ, {}, clear=True),
         patch(
             "builtins.open",
-            return_value=mock_open(read_data="Name:\tpython\n").return_value,
+            mock_open(read_data="Name:\tpython\n"),
         ),
     ):
         assert runtime_utils.is_running_as_service() is False

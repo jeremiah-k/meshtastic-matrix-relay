@@ -74,7 +74,7 @@ TEST_SQL_COUNT_TEST: Final[str] = "SELECT COUNT(*) FROM test"
 TEST_SQL_CREATE_TABLE_SIMPLE: Final[str] = "CREATE TABLE test_table (id INTEGER)"
 
 # Test Meshtastic IDs
-TEST_MESHTASTIC_ID: Final[str] = "!12345678"
+TEST_MESHTASTIC_ID: Final[str] = "!a1b2c3d4"
 TEST_MESHTASTIC_ID_1: Final[str] = "!11111111"
 TEST_MESHTASTIC_ID_2: Final[str] = "!22222222"
 TEST_MESHTASTIC_ID_3: Final[str] = "!33333333"

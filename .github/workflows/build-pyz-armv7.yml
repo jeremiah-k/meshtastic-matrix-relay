@@ -118,7 +118,7 @@ jobs:
 
       - name: Save ARMv7 builder image tar
         id: builder-image-tar
-        if: ${{ (success() || failure()) && steps.builder-image-cache.outputs.cache-hit != 'true' }}
+        if: ${{ success() && steps.builder-image-cache.outputs.cache-hit != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
