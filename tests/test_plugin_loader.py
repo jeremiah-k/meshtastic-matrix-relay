@@ -2739,6 +2739,12 @@ class TestGitOperations(BaseGitTest):
                 for c in mock_logger.exception.call_args_list
             )
         )
+        self.assertTrue(
+            any(
+                "pip install missingdep_fail" in str(c.args[0])
+                for c in mock_logger.exception.call_args_list
+            )
+        )
 
 
 class TestCommandRunner(unittest.TestCase):

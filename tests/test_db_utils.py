@@ -219,13 +219,15 @@ class TestDbUtils(unittest.TestCase):
             _validate_identifier("DROP TABLE", frozenset({"message_map"}))
 
     def test_db_utils_import_guard_for_message_constants(self):
-        """Changing message-map constants should fail module import guard."""
+        """Changing message-map constants should fail static SQL import guard."""
         import mmrelay.constants.database as db_consts
         import mmrelay.db_utils as db_utils_mod
 
         try:
             with patch.object(db_consts, "MESSAGE_MAP_TABLE", "changed_message_map"):
-                with self.assertRaises(RuntimeError):
+                with self.assertRaisesRegex(
+                    RuntimeError, "Message-map constants changed"
+                ):
                     importlib.reload(db_utils_mod)
         finally:
             importlib.reload(db_utils_mod)
@@ -237,7 +239,9 @@ class TestDbUtils(unittest.TestCase):
 
         try:
             with patch.object(db_consts, "NAMES_TABLE_LONGNAMES", "bad_names_table"):
-                with self.assertRaises(RuntimeError):
+                with self.assertRaisesRegex(
+                    RuntimeError, "Names-table constants changed"
+                ):
                     importlib.reload(db_utils_mod)
         finally:
             importlib.reload(db_utils_mod)
@@ -592,8 +596,14 @@ class TestDbUtils(unittest.TestCase):
         self.assertEqual(get_shortname("!1"), "OLD")
 
     def test_sync_name_tables_if_changed_shortname_conflict_keeps_longname(self):
-        """Short-name conflicts should still apply unambiguous long-name updates."""
+        """
+        Short-name conflicts should still apply long-name updates.
+
+        Because duplicate conflicts mark the snapshot non-authoritative, existing
+        short-name rows are preserved to avoid unsafe deletions.
+        """
         initialize_database()
+        save_shortname("!1", "STALE")
         nodes = {
             "node_first": {
                 "user": {"id": "!1", "longName": "Alpha", "shortName": "ONE"}
@@ -607,11 +617,17 @@ class TestDbUtils(unittest.TestCase):
 
         self.assertEqual(state, (("!1", "Alpha", None),))
         self.assertEqual(get_longname("!1"), "Alpha")
-        self.assertIsNone(get_shortname("!1"))
+        self.assertEqual(get_shortname("!1"), "STALE")
 
     def test_sync_name_tables_if_changed_longname_conflict_keeps_shortname(self):
-        """Long-name conflicts should still apply unambiguous short-name updates."""
+        """
+        Long-name conflicts should still apply short-name updates.
+
+        Because duplicate conflicts mark the snapshot non-authoritative, existing
+        long-name rows are preserved to avoid unsafe deletions.
+        """
         initialize_database()
+        save_longname("!1", "Stale Long")
         nodes = {
             "node_first": {"user": {"id": "!1", "longName": "Alpha", "shortName": "A"}},
             "node_second": {"user": {"id": "!1", "longName": "Beta", "shortName": "A"}},
@@ -620,7 +636,7 @@ class TestDbUtils(unittest.TestCase):
         state = sync_name_tables_if_changed(nodes, previous_state=None)
 
         self.assertEqual(state, (("!1", None, "A"),))
-        self.assertIsNone(get_longname("!1"))
+        self.assertEqual(get_longname("!1"), "Stale Long")
         self.assertEqual(get_shortname("!1"), "A")
 
     def test_sync_name_tables_if_changed_skips_redundant_updates(self):

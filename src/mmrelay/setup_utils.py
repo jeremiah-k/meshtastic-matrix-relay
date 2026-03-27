@@ -242,15 +242,19 @@ def get_template_service_path() -> str | None:
     # Try to find the service template file in various locations
     template_paths = [
         # Check in the package directory (where it should be after installation)
-        os.path.join(package_dir, "mmrelay.service"),
+        os.path.join(package_dir, SYSTEMD_SERVICE_FILENAME),
         # Check in a tools subdirectory of the package
-        os.path.join(package_dir, "tools", "mmrelay.service"),
+        os.path.join(package_dir, "tools", SYSTEMD_SERVICE_FILENAME),
         # Check in the data files location (where it should be after installation)
-        os.path.join(sys.prefix, "share", "mmrelay", "mmrelay.service"),
-        os.path.join(sys.prefix, "share", "mmrelay", "tools", "mmrelay.service"),
+        os.path.join(sys.prefix, "share", "mmrelay", SYSTEMD_SERVICE_FILENAME),
+        os.path.join(sys.prefix, "share", "mmrelay", "tools", SYSTEMD_SERVICE_FILENAME),
         # Check in the user site-packages location
         os.path.join(
-            os.path.expanduser("~"), ".local", "share", "mmrelay", "mmrelay.service"
+            os.path.expanduser("~"),
+            ".local",
+            "share",
+            "mmrelay",
+            SYSTEMD_SERVICE_FILENAME,
         ),
         os.path.join(
             os.path.expanduser("~"),
@@ -258,22 +262,24 @@ def get_template_service_path() -> str | None:
             "share",
             "mmrelay",
             "tools",
-            "mmrelay.service",
+            SYSTEMD_SERVICE_FILENAME,
         ),
         # Check one level up from the package directory
-        os.path.join(os.path.dirname(package_dir), "tools", "mmrelay.service"),
+        os.path.join(os.path.dirname(package_dir), "tools", SYSTEMD_SERVICE_FILENAME),
         # Check two levels up from the package directory (for development)
         os.path.join(
-            os.path.dirname(os.path.dirname(package_dir)), "tools", "mmrelay.service"
+            os.path.dirname(os.path.dirname(package_dir)),
+            "tools",
+            SYSTEMD_SERVICE_FILENAME,
         ),
         # Check in the repository root (for development)
         os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
             "tools",
-            "mmrelay.service",
+            SYSTEMD_SERVICE_FILENAME,
         ),
         # Check in the current directory (fallback)
-        os.path.join(os.getcwd(), "tools", "mmrelay.service"),
+        os.path.join(os.getcwd(), "tools", SYSTEMD_SERVICE_FILENAME),
     ]
 
     # Try each path until we find one that exists

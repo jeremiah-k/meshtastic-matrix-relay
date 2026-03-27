@@ -86,10 +86,10 @@ class TestDropPlugin(unittest.TestCase):
         self.assertIsNone(position)
 
     @patch("mmrelay.plugins.drop_plugin.connect_meshtastic", return_value=None)
-    def test_handle_meshtastic_message_returns_true_for_drop_command_without_client(
+    def test_handle_meshtastic_message_returns_false_for_drop_command_without_client(
         self, _mock_connect
     ):
-        """When client is unavailable, drop command detection should still return True."""
+        """When client is unavailable, command should not be marked handled."""
         packet = {
             "fromId": "!12345678",
             "decoded": {
@@ -102,7 +102,9 @@ class TestDropPlugin(unittest.TestCase):
             result = await self.plugin.handle_meshtastic_message(
                 packet, "formatted", "longname", "meshnet"
             )
-            self.assertTrue(result)
+            self.assertFalse(result)
+            self.plugin.set_node_data.assert_not_called()
+            self.plugin.store_node_data.assert_not_called()
 
         asyncio.run(run_test())
 

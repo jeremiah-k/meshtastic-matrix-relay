@@ -6,19 +6,19 @@ delays, size limits, and water marks for queue management.
 """
 
 __all__ = [
-    "DEFAULT_MESSAGE_DELAY",
-    "MINIMUM_MESSAGE_DELAY",
-    "MAX_QUEUE_SIZE",
-    "QUEUE_HIGH_WATER_MARK",
-    "QUEUE_MEDIUM_WATER_MARK",
-    "QUEUE_LOG_THRESHOLD",
-    "TASK_SHUTDOWN_TIMEOUT_SEC",
-    "QUEUE_FULL_LOG_INTERVAL_SEC",
-    "QUEUE_WAIT_RETRY_SLEEP_SEC",
-    "QUEUE_POLL_INTERVAL_SEC",
-    "CONNECTION_RETRY_SLEEP_SEC",
-    "QUEUE_EXECUTOR_MAX_WORKERS",
     "CONNECTION_ERROR_KEYWORDS",
+    "CONNECTION_RETRY_SLEEP_SEC",
+    "DEFAULT_MESSAGE_DELAY",
+    "MAX_QUEUE_SIZE",
+    "MINIMUM_MESSAGE_DELAY",
+    "QUEUE_EXECUTOR_MAX_WORKERS",
+    "QUEUE_FULL_LOG_INTERVAL_SEC",
+    "QUEUE_HIGH_WATER_MARK",
+    "QUEUE_LOG_THRESHOLD",
+    "QUEUE_MEDIUM_WATER_MARK",
+    "QUEUE_POLL_INTERVAL_SEC",
+    "QUEUE_WAIT_RETRY_SLEEP_SEC",
+    "TASK_SHUTDOWN_TIMEOUT_SEC",
 ]
 
 from typing import Final
@@ -27,8 +27,8 @@ from mmrelay.constants.network import MINIMUM_MESSAGE_DELAY
 
 # Message timing constants
 DEFAULT_MESSAGE_DELAY: Final[float] = (
-    2.5  # Set above the 2.0s firmware limit to prevent message dropping
-)
+    MINIMUM_MESSAGE_DELAY + 0.5
+)  # Keep 0.5s above firmware minimum to reduce dropped sends.
 
 # Queue size management
 MAX_QUEUE_SIZE: Final[int] = 500

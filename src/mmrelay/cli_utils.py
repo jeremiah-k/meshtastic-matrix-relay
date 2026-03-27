@@ -75,10 +75,10 @@ from mmrelay.constants.cli import (
     CLI_COMMANDS,
     DEPRECATED_COMMANDS,
     MATRIX_ERRCODE_FORBIDDEN,
+    TEMP_DEVICE_NAME_LOGOUT,
     WINDOWS_PATH_NOT_APPLICABLE_LABEL,
 )
 from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID, DEFAULT_CONFIG_FILENAME
-from mmrelay.constants.migration import TEMP_DEVICE_NAME_LOGOUT
 from mmrelay.constants.network import HTTP_SERVER_ERROR_CODES, HTTP_STATUS_UNAUTHORIZED
 from mmrelay.log_utils import get_logger
 
@@ -468,6 +468,10 @@ def _handle_matrix_error(error: Any, context: str, log_level: str = "error") -> 
     if isinstance(error, (NioLoginError, NioLogoutError, LoginError, LogoutError)):
         errcode = getattr(error, "errcode", None)
         status_code = getattr(error, "status_code", None)
+        status_text = (
+            str(status_code).strip().lower() if status_code is not None else ""
+        )
+        message_text = str(getattr(error, "message", "")).strip().lower()
         parsed_status_code: int | None = None
         if status_code is not None:
             try:
@@ -477,7 +481,10 @@ def _handle_matrix_error(error: Any, context: str, log_level: str = "error") -> 
 
         if (
             errcode == MATRIX_ERRCODE_FORBIDDEN
-            or parsed_status_code == HTTP_STATUS_UNAUTHORIZED
+            or parsed_status_code in (HTTP_STATUS_UNAUTHORIZED, 403)
+            or "403" in status_text
+            or "forbidden" in status_text
+            or "forbidden" in message_text
         ):
             error_category = "credentials"
         elif parsed_status_code in HTTP_SERVER_ERROR_CODES:
@@ -499,7 +506,7 @@ def _handle_matrix_error(error: Any, context: str, log_level: str = "error") -> 
     else:
         # Fallback to string matching for unknown exceptions
         error_msg = str(error).lower()
-        if "forbidden" in error_msg or "401" in error_msg:
+        if "forbidden" in error_msg or "401" in error_msg or "403" in error_msg:
             error_category = "credentials"
         elif (
             "network" in error_msg

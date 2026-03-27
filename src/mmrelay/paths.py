@@ -39,6 +39,7 @@ from mmrelay.constants.app import (
     STORE_DIRNAME,
     WINDOWS_INSTALLER_DIR_NAME,
 )
+from mmrelay.constants.database import PLUGIN_DB_FILENAME_TEMPLATE
 from mmrelay.log_utils import get_logger
 
 
@@ -102,19 +103,36 @@ def _has_mmrelay_artifacts(root: Path) -> bool:
     Returns:
         True if any known MMRelay artifact is present in `root`, False otherwise.
     """
-    candidates = [
+    file_markers = [
         root / CONFIG_FILENAME,
         root / CREDENTIALS_FILENAME,
         root / MATRIX_DIRNAME / CREDENTIALS_FILENAME,
         root / DATABASE_FILENAME,
         root / "data" / DATABASE_FILENAME,  # Legacy v1.2 data directory layout
         root / DATABASE_DIRNAME / DATABASE_FILENAME,
+        root / LOGS_DIRNAME / LOG_FILENAME,
+    ]
+    if any(marker.exists() for marker in file_markers):
+        return True
+
+    # Require evidence of content for directory-only markers to avoid
+    # classifying empty scaffolding as a legacy MMRelay home.
+    directory_markers = [
         root / STORE_DIRNAME,
         root / MATRIX_DIRNAME / STORE_DIRNAME,
         root / LOGS_DIRNAME,
-        root / LOGS_DIRNAME / LOG_FILENAME,
+        root / PLUGINS_DIRNAME,
+        root / MATRIX_DIRNAME / PLUGINS_DIRNAME,
     ]
-    return any(candidate.exists() for candidate in candidates)
+    for marker in directory_markers:
+        if marker.is_dir():
+            try:
+                with os.scandir(marker) as entries:
+                    if any(True for _ in entries):
+                        return True
+            except OSError:
+                continue
+    return False
 
 
 def set_home_override(path: str, *, source: str | None = None) -> None:
@@ -461,14 +479,14 @@ def get_plugin_code_dir(plugin_name: str, plugin_type: str | None = None) -> Pat
     if normalized_type == "community":
         return get_community_plugins_dir() / plugin_name
     if normalized_type == "core":
-        return Path(__file__).resolve().parent / "plugins" / plugin_name
+        return get_core_plugins_dir() / plugin_name
 
     for plugin_root in (get_custom_plugins_dir(), get_community_plugins_dir()):
         candidate = plugin_root / plugin_name
         if candidate.exists():
             return candidate
 
-    return Path(__file__).resolve().parent / "plugins" / plugin_name
+    return get_core_plugins_dir() / plugin_name
 
 
 def get_plugin_data_dir(
@@ -519,7 +537,8 @@ def get_plugin_database_path(plugin_name: str) -> Path:
     """
     # NOTE: MMRelay stores plugin data in the main SQLite database today.
     # This helper exists for diagnostics and potential future per-plugin DB files.
-    return get_database_dir() / f"plugin_data_{plugin_name}.sqlite"
+    filename = PLUGIN_DB_FILENAME_TEMPLATE.format(plugin_name=plugin_name)
+    return get_database_dir() / filename
 
 
 def ensure_directories(*, create_missing: bool = True) -> None:

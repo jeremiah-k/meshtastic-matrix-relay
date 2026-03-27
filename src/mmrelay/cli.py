@@ -110,16 +110,14 @@ def _get_logger() -> logging.Logger:
         RuntimeError: If the logger could not be initialized.
     """
     global _logger
-    if _logger is None:
-        existing_logger = logging.getLogger(__name__)
-        # If handlers are already present (for example unittest.assertLogs),
-        # reuse the existing logger to avoid clobbering active capture handlers.
-        _logger = existing_logger if existing_logger.handlers else get_logger(__name__)
-    elif _logger.name != __name__:
-        # Recover from tests that may have swapped the cached logger object.
-        # Use stdlib lookup here to avoid reconfiguring handlers mid-context
-        # (for example while unittest.assertLogs has an active capture handler).
-        _logger = logging.getLogger(__name__)
+    named_logger = logging.getLogger(__name__)
+    if _logger is None or _logger.name != __name__:
+        # If temporary handlers are active (for example unittest.assertLogs),
+        # preserve them by reusing the stdlib logger object.
+        _logger = named_logger if named_logger.handlers else get_logger(__name__)
+    elif not _logger.handlers:
+        # Recover from stale cached loggers after temporary handler scopes end.
+        _logger = named_logger if named_logger.handlers else get_logger(__name__)
     if _logger is None:
         raise RuntimeError("Logger must be initialized")
     return _logger
@@ -1363,7 +1361,7 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                             f"   Add the 'meshtastic_channel' field ({MESHTASTIC_CHANNEL_MIN}-{MESHTASTIC_CHANNEL_MAX} for primary channels):"
                         )
                         print(f'     - id: "{room["id"]}"')
-                        print("       meshtastic_channel: 0")
+                        print(f"       meshtastic_channel: {MESHTASTIC_CHANNEL_MIN}")
                         return False
 
                     meshtastic_channel = room["meshtastic_channel"]

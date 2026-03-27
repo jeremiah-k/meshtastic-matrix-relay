@@ -49,10 +49,10 @@ try:
         resolve_all_paths,
         set_home_override,
     )
-
-    IMPORTS_AVAILABLE = True
-except ImportError:
-    IMPORTS_AVAILABLE = False
+except ImportError as exc:
+    raise unittest.SkipTest(
+        f"Unable to import mmrelay test dependencies: {exc}"
+    ) from exc
 
 
 class TestPathResolutionEnvVars(unittest.TestCase):
@@ -589,6 +589,22 @@ class TestInternalArtifactDetection(unittest.TestCase):
         """Test _has_mmrelay_artifacts returns False when no artifacts exist."""
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
+            self.assertFalse(_has_mmrelay_artifacts(root))
+
+    def test_has_artifacts_nonempty_plugins_directory(self):
+        """Test plugin-only homes are detected when plugins directory has content."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            plugin_dir = root / PLUGINS_DIRNAME
+            plugin_dir.mkdir(parents=True, exist_ok=True)
+            (plugin_dir / "example.py").write_text("# plugin")
+            self.assertTrue(_has_mmrelay_artifacts(root))
+
+    def test_has_artifacts_empty_logs_directory_not_detected(self):
+        """Test empty logs directories do not trigger false legacy-home detection."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / LOGS_DIRNAME).mkdir(parents=True, exist_ok=True)
             self.assertFalse(_has_mmrelay_artifacts(root))
 
 

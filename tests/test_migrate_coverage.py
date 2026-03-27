@@ -1784,7 +1784,8 @@ class TestMigrateGpxtrackerEdgeCases:
         )
 
         assert result["success"] is True
-        assert "gpxtracker plugin not configured" in result["message"]
+        assert result["action"] == "scan_skipped_pyyaml"
+        assert "PyYAML is unavailable" in result["message"]
 
     def test_migrate_gpxtracker_backup_failure(self, tmp_path: Path) -> None:
         """Test handling of GPX file backup failure."""

@@ -187,6 +187,53 @@ class TestRollbackDatabaseMigration:
         assert db_file.exists()
         assert "backup" in db_file.read_text()
 
+    def test_rollback_database_migration_uses_recorded_backup_members(
+        self, tmp_path: Path
+    ) -> None:
+        """Recorded backup member paths should restore DB files when step new_path is a directory."""
+        new_home = tmp_path / "home"
+        db_dir = new_home / "database"
+        backup_dir = db_dir / ".migration_backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+
+        db_backup = backup_dir / "meshtastic.sqlite.bak.20240101_120000"
+        wal_backup = backup_dir / "meshtastic.sqlite-wal.bak.20240101_120000"
+        db_backup.write_text("SQLite format 3 (backup)")
+        wal_backup.write_text("WAL backup")
+
+        db_dest = db_dir / "meshtastic.sqlite"
+        wal_dest = db_dir / "meshtastic.sqlite-wal"
+        db_dest.write_text("SQLite format 3 (migrated)")
+        wal_dest.write_text("WAL migrated")
+
+        completed_steps = ["database"]
+        migrations = [
+            {
+                "type": "database",
+                "result": {
+                    "new_path": str(db_dir),
+                    "action": "move",
+                    "success": True,
+                    "backed_up_files": [
+                        {
+                            "backup_path": str(db_backup),
+                            "restore_path": str(db_dest),
+                        },
+                        {
+                            "backup_path": str(wal_backup),
+                            "restore_path": str(wal_dest),
+                        },
+                    ],
+                },
+            }
+        ]
+
+        result = rollback_migration(completed_steps, migrations, new_home)
+
+        assert result["success"] is True
+        assert db_dest.read_text() == "SQLite format 3 (backup)"
+        assert wal_dest.read_text() == "WAL backup"
+
 
 class TestRollbackLogsMigration:
     """Test rollback of logs directory migration."""

@@ -61,6 +61,7 @@ from typing import Any, Callable
 from mmrelay.constants.app import (
     CONFIG_FILENAME,
     CREDENTIALS_FILENAME,
+    DATABASE_DIRNAME,
     DATABASE_FILENAME,
     MATRIX_DIRNAME,
     STORE_DIRNAME,
@@ -1536,6 +1537,7 @@ def migrate_database(
     staging_dir = _get_staging_path(new_home, "database")
 
     migration_succeeded = False
+    backed_up_files: list[dict[str, str]] = []
 
     try:
         staging_dir.mkdir(parents=True, exist_ok=True)
@@ -1555,6 +1557,9 @@ def migrate_database(
                     shutil.copytree(str(dest), str(backup_path))
                 else:
                     shutil.copy2(str(dest), str(backup_path))
+                backed_up_files.append(
+                    {"backup_path": str(backup_path), "restore_path": str(dest)}
+                )
 
         # 2. Copy to staging (using copy-verify-delete pattern)
         for db_path in selected_group:
@@ -1617,6 +1622,7 @@ def migrate_database(
             "old_path": str(most_recent),
             "new_path": str(new_db_dir),
             "action": "move",
+            "backed_up_files": backed_up_files,
         }
     except PermissionError as exc:
         logger.exception(
@@ -2254,6 +2260,7 @@ def migrate_gpxtracker(
         MigrationError: When migration fails (wrapped as a step failure with context).
     """
     old_gpx_dir: Path | None = None
+    scan_skipped_due_to_pyyaml = False
 
     roots_to_scan = list(legacy_roots)
     if new_home not in roots_to_scan:
@@ -2270,6 +2277,7 @@ def migrate_gpxtracker(
                     legacy_config,
                     e,
                 )
+                scan_skipped_due_to_pyyaml = True
                 continue
 
             try:
@@ -2315,6 +2323,15 @@ def migrate_gpxtracker(
             pass
 
     if not old_gpx_dir or not old_gpx_dir.exists():
+        if scan_skipped_due_to_pyyaml:
+            logger.info(
+                "gpxtracker scan skipped because PyYAML is unavailable; cannot determine configured gpx_directory"
+            )
+            return {
+                "success": True,
+                "action": "scan_skipped_pyyaml",
+                "message": "gpxtracker scan skipped because PyYAML is unavailable",
+            }
         if _dir_has_entries(new_gpx_data_dir):
             logger.info("GPX tracker data already migrated to %s", new_gpx_data_dir)
             return {
@@ -2945,6 +2962,23 @@ def rollback_migration(
         # The backup is named after the destination that was backed up
         dest_name = dest_path.name
 
+        # Database migration backs up member files under <home>/database/.migration_backups
+        # while the step-level new_path points to the database directory.
+        if (
+            _step_name == "database"
+            and dest_path.name == DATABASE_DIRNAME
+            and dest_path.exists()
+        ):
+            database_backup_dir = dest_path / MIGRATION_BACKUP_DIRNAME
+            if database_backup_dir.exists():
+                db_candidates = [
+                    backup
+                    for backup in database_backup_dir.iterdir()
+                    if backup.name.startswith(DATABASE_FILENAME)
+                ]
+                if db_candidates:
+                    return max(db_candidates, key=lambda p: p.stat().st_mtime)
+
         # Search in order: destination's parent backup dir, then home backup dir
         backup_dirs = [
             dest_path.parent
@@ -3046,6 +3080,52 @@ def rollback_migration(
                 continue
 
             new_path_obj = Path(new_path)
+            recorded_backups = step_result.get("backed_up_files")
+
+            if isinstance(recorded_backups, list) and recorded_backups:
+                used_recorded_backups = False
+                for entry in recorded_backups:
+                    if not isinstance(entry, dict):
+                        continue
+                    backup_path_raw = entry.get("backup_path")
+                    restore_path_raw = entry.get("restore_path")
+                    if not backup_path_raw or not restore_path_raw:
+                        continue
+
+                    used_recorded_backups = True
+                    backup_path_obj = Path(backup_path_raw)
+                    restore_path_obj = Path(restore_path_raw)
+
+                    if not backup_path_obj.exists():
+                        rollback_report["errors"].append(
+                            {
+                                "step": step_name,
+                                "error": f"Recorded backup not found: {backup_path_obj}",
+                            }
+                        )
+                        rollback_report["success"] = False
+                        continue
+
+                    if restore_from_backup(
+                        backup_path_obj, restore_path_obj, step_name
+                    ):
+                        rollback_report["rolled_back_steps"].append(
+                            {
+                                "step": step_name,
+                                "restored_from": str(backup_path_obj),
+                                "restored_to": str(restore_path_obj),
+                            }
+                        )
+                    else:
+                        rollback_report["errors"].append(
+                            {
+                                "step": step_name,
+                                "error": f"Failed to restore from {backup_path_obj}",
+                            }
+                        )
+                        rollback_report["success"] = False
+                if used_recorded_backups:
+                    continue
 
             # Find backup for this step
             backup_path = find_backup_for_step(step_name, new_path_obj)

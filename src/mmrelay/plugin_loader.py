@@ -14,14 +14,13 @@ import threading
 import time
 from contextlib import contextmanager
 from types import ModuleType
-from typing import Any, Iterator, NamedTuple, NoReturn, Sequence
+from typing import Any, Final, Iterator, NamedTuple, NoReturn, Sequence
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 import mmrelay.paths as paths_module
 from mmrelay.config import (
     get_app_path,
 )
-from mmrelay.constants.app import REQUIREMENTS_FILENAME
 from mmrelay.constants.plugins import (
     COMMIT_HASH_PATTERN,
     DEFAULT_ALLOWED_COMMUNITY_HOSTS,
@@ -93,6 +92,7 @@ _global_scheduler_stop_event: threading.Event | None = None
 
 # Plugin dependency directory (may not be set if base dir can't be resolved)
 _PLUGIN_DEPS_DIR: str | None = None
+PLUGIN_REQUIREMENTS_FILENAME: Final[str] = "requirements.txt"
 
 
 def _is_safe_plugin_name(name: str) -> bool:
@@ -491,9 +491,8 @@ def _redact_url(url: str) -> str:
 
         # Always redact sensitive query parameters
         q = parse_qsl(s.query, keep_blank_values=True)
-        redacted = [
-            (k, "***" if k.lower() in SENSITIVE_URL_PARAMS else v) for k, v in q
-        ]
+        sensitive_params = {param.lower() for param in SENSITIVE_URL_PARAMS}
+        redacted = [(k, "***" if k.lower() in sensitive_params else v) for k, v in q]
         query = urlencode(redacted)
         return urlunsplit((s.scheme, netloc, s.path, query, s.fragment))
     except (ValueError, TypeError, AttributeError) as exc:
@@ -788,7 +787,7 @@ def _install_requirements_for_repo(repo_path: str, repo_name: str) -> None:
         repo_name: Human-readable repository name used in log messages and warnings.
     """
 
-    requirements_path = os.path.join(repo_path, REQUIREMENTS_FILENAME)
+    requirements_path = os.path.join(repo_path, PLUGIN_REQUIREMENTS_FILENAME)
     if not os.path.isfile(requirements_path):
         return
 

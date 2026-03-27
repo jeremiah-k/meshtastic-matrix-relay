@@ -7,6 +7,8 @@ directory names, and file patterns.
 
 from typing import Final
 
+from mmrelay.constants.cli import TEMP_DEVICE_NAME_LOGOUT
+
 __all__ = [
     "BYTES_PER_MB",
     "DEFAULT_SERVICE_ARGS_SUFFIX",
@@ -30,7 +32,6 @@ MIGRATION_MAX_RETRY_DELAY: Final[float] = 2.0
 MIGRATION_STAGING_DIRNAME: Final[str] = ".migration_staging"
 MIGRATION_BACKUP_DIRNAME: Final[str] = ".migration_backups"
 MIGRATION_LOCK_FILENAME: Final[str] = ".migration.lock"
-TEMP_DEVICE_NAME_LOGOUT: Final[str] = "mmrelay-logout-verify"
 
 # Migration space requirements
 MIGRATION_MIN_FREE_SPACE_BYTES: Final[int] = 500 * 1024 * 1024  # 500 MB

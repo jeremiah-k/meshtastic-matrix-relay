@@ -378,6 +378,24 @@ class TestHandleMatrixError:
         mock_logger.error.assert_called()
 
     @patch("mmrelay.cli_utils._get_logger")
+    def test_handle_matrix_error_credentials_forbidden_status_code(
+        self, mock_get_logger
+    ):
+        """HTTP 403 login/logout responses should be categorized as credentials errors."""
+        from mmrelay.cli_utils import NioLoginError, _handle_matrix_error
+
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
+
+        error = MagicMock(spec=NioLoginError)
+        error.status_code = 403
+        error.errcode = None
+
+        result = _handle_matrix_error(error, "Password verification")
+        assert result is True
+        mock_logger.error.assert_called()
+
+    @patch("mmrelay.cli_utils._get_logger")
     def test_handle_matrix_error_network(self, mock_get_logger):
         from mmrelay.cli_utils import NioLocalTransportError, _handle_matrix_error
 

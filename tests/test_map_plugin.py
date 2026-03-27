@@ -625,21 +625,24 @@ class TestMapPlugin(unittest.TestCase):
         _mock_send_image,
     ):
         """
-        Verify that handling a room "!map" command substitutes an invalid zoom value with the plugin's default zoom.
+        Verify that handling "!map zoom=<invalid>" uses configured zoom fallback.
 
-        Simulates receiving a room event containing "!map zoom=50", calls handle_room_message, asserts the handler returns True, and checks that get_map was invoked with zoom set to 8 (the default).
+        Simulates receiving "!map zoom=50", asserts the handler returns True,
+        and verifies get_map was invoked with zoom set to configured value 10.
         """
         """
         Run the asynchronous scenario that verifies an invalid zoom parameter is reset.
         
-        Simulates a "!map zoom=50" room event, awaits handle_room_message, asserts a truthy result, and confirms get_map was invoked with zoom equal to 8.
+        Simulates a "!map zoom=50" room event, awaits handle_room_message,
+        and confirms get_map was invoked with zoom equal to configured value 10.
         """
 
         async def run_test():
             """
-            Verify that an invalid zoom parameter in a map command is replaced by the configured default zoom.
+            Verify invalid zoom input falls back to plugin-configured zoom.
 
-            Simulates receiving the message "!map zoom=50" and asserts that Plugin.handle_room_message calls get_map with the plugin's default zoom value (8) instead of the invalid provided value.
+            Simulates receiving "!map zoom=50" and asserts get_map uses
+            plugin config zoom value (10) instead of the invalid provided value.
             """
             mock_room = MagicMock()
             mock_room.room_id = "!test:example.com"
@@ -674,9 +677,9 @@ class TestMapPlugin(unittest.TestCase):
                 )
 
             self.assertTrue(result)
-            # Check that zoom was reset to default (8)
+            # Out-of-range numeric zoom should use configured fallback first.
             call_args = mock_get_map.call_args
-            self.assertEqual(call_args[1]["zoom"], 8)
+            self.assertEqual(call_args[1]["zoom"], 10)
 
         asyncio.run(run_test())
 

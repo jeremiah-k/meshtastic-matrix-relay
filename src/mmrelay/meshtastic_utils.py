@@ -1163,18 +1163,22 @@ def _wait_for_probe_ack(client: Any, timeout_secs: float) -> None:
     if ack_state is None:
         raise _missing_ack_state_error()
 
+    ack_attrs = ("receivedAck", "receivedNak", "receivedImplAck")
+
     deadline = time.monotonic() + timeout_secs
     while time.monotonic() < deadline:
-        if any(
-            bool(getattr(ack_state, attr, False))
-            for attr in ("receivedAck", "receivedNak", "receivedImplAck")
-        ):
+        if any(bool(getattr(ack_state, attr, False)) for attr in ack_attrs):
             _reset_probe_ack_state(ack_state)
             return
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             break
         time.sleep(min(ACK_POLL_INTERVAL_SECS, remaining))
+
+    # Final check catches ACK/NAK updates that may land near the deadline.
+    if any(bool(getattr(ack_state, attr, False)) for attr in ack_attrs):
+        _reset_probe_ack_state(ack_state)
+        return
 
     raise _metadata_probe_ack_timeout_error(timeout_secs)
 
@@ -3007,7 +3011,7 @@ def _get_portnum_name(portnum: Any) -> str:
             return portnum
         return "UNKNOWN (empty string)"
 
-    if isinstance(portnum, int):
+    if isinstance(portnum, int) and not isinstance(portnum, bool):
         try:
             return portnums_pb2.PortNum.Name(portnum)  # type: ignore[no-any-return]
         except ValueError:

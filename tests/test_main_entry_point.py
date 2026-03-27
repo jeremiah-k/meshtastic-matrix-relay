@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from mmrelay.constants.app import EXIT_CODE_SIGINT
 
 
-def _run_main_module():
+def _run_main_module() -> None:
     """
     Execute mmrelay.__main__ as if run with python -m mmrelay.
 
@@ -143,7 +143,7 @@ class TestMainEntryPoint(unittest.TestCase):
 
         Executes src/mmrelay/__main__.py with __name__ set to "__main__" (the test patches mmrelay.cli.main to raise a RuntimeError). Asserts that a single error message of the form "Unexpected error: <message>" is printed to stderr and that sys.exit is called with 1.
         """
-        runpy.run_module("mmrelay.__main__", run_name="__main__")
+        _run_main_module()
 
         mock_print.assert_called_once_with(
             "Unexpected error: Unexpected error", file=sys.stderr

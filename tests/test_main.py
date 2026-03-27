@@ -1100,8 +1100,13 @@ class TestMain(unittest.TestCase):
         original_iface = mu.meshtastic_iface
         original_shutting_down = mu.shutting_down
         original_reconnecting = mu.reconnecting
+        timeout_sentinel = MESHTASTIC_CLOSE_TIMEOUT_SECS + 1
         try:
             with (
+                patch(
+                    "mmrelay.main.MESHTASTIC_CLOSE_TIMEOUT_SECS",
+                    timeout_sentinel,
+                ),
                 patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
                 patch(
                     "mmrelay.main.asyncio.get_running_loop",
@@ -1173,8 +1178,13 @@ class TestMain(unittest.TestCase):
         original_iface = mu.meshtastic_iface
         original_shutting_down = mu.shutting_down
         original_reconnecting = mu.reconnecting
+        timeout_sentinel = MESHTASTIC_CLOSE_TIMEOUT_SECS + 1
         try:
             with (
+                patch(
+                    "mmrelay.main.MESHTASTIC_CLOSE_TIMEOUT_SECS",
+                    timeout_sentinel,
+                ),
                 patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
                 patch(
                     "mmrelay.main.asyncio.get_running_loop",
@@ -1253,8 +1263,13 @@ class TestMain(unittest.TestCase):
         original_iface = mu.meshtastic_iface
         original_shutting_down = mu.shutting_down
         original_reconnecting = mu.reconnecting
+        timeout_sentinel = MESHTASTIC_CLOSE_TIMEOUT_SECS + 1
         try:
             with (
+                patch(
+                    "mmrelay.main.MESHTASTIC_CLOSE_TIMEOUT_SECS",
+                    timeout_sentinel,
+                ),
                 patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
                 patch(
                     "mmrelay.main.asyncio.get_running_loop",
@@ -1272,7 +1287,7 @@ class TestMain(unittest.TestCase):
             close_callable = args[0]
             self.assertTrue(callable(close_callable))
             mock_connect_meshtastic.return_value.close.assert_called_once()
-            self.assertEqual(kwargs.get("timeout"), MESHTASTIC_CLOSE_TIMEOUT_SECS)
+            self.assertEqual(kwargs.get("timeout"), timeout_sentinel)
             self.assertEqual(kwargs.get("label"), "meshtastic-client-close-shutdown")
             self.assertIsNone(kwargs.get("timeout_log_level"))
         finally:
@@ -3167,6 +3182,7 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
                 mock_queue.ensure_processor_started = MagicMock()
                 mock_get_queue.return_value = mock_queue
 
+                _reset_all_mmrelay_globals()
                 try:
                     with self.assertRaisesRegex(RuntimeError, "health monitor failed"):
                         asyncio.run(main(config))
@@ -3222,6 +3238,7 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
                 mock_queue.ensure_processor_started = MagicMock()
                 mock_get_queue.return_value = mock_queue
 
+                _reset_all_mmrelay_globals()
                 try:
                     with self.assertRaisesRegex(
                         RuntimeError,
@@ -3446,6 +3463,12 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
 
 class TestRunBlockingShutdownStep(unittest.TestCase):
     """Tests for _run_blocking_shutdown_step behavior through main()."""
+
+    def setUp(self) -> None:
+        _reset_all_mmrelay_globals()
+
+    def tearDown(self) -> None:
+        _reset_all_mmrelay_globals()
 
     def test_exception_in_shutdown_step_logs_error(self):
         """Exceptions in shutdown step are captured and logged."""

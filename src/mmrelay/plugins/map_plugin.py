@@ -537,13 +537,17 @@ class Plugin(BasePlugin):
         image_size = size_match.groups() if size_match else (None, None)
 
         try:
+            configured_zoom = int(self.config.get("zoom", DEFAULT_MAP_ZOOM))
+        except (TypeError, ValueError):
+            configured_zoom = DEFAULT_MAP_ZOOM
+
+        try:
             zoom = int(zoom)  # type: ignore[arg-type]
         except (TypeError, ValueError):
-            try:
-                zoom = int(self.config.get("zoom", DEFAULT_MAP_ZOOM))
-            except (TypeError, ValueError):
-                zoom = DEFAULT_MAP_ZOOM
+            zoom = configured_zoom
 
+        if not MAP_ZOOM_MIN <= zoom <= MAP_ZOOM_MAX:
+            zoom = configured_zoom
         if not MAP_ZOOM_MIN <= zoom <= MAP_ZOOM_MAX:
             zoom = DEFAULT_MAP_ZOOM
 

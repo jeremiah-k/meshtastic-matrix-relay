@@ -206,6 +206,38 @@ class BasePlugin(ABC):
                 )
             )
             if not self.is_core_plugin:
+                # Infer non-core tier from plugin source path first so config
+                # resolution prefers the plugin's own tier when names overlap.
+                try:
+                    from mmrelay.plugin_loader import (
+                        get_community_plugin_dirs,
+                        get_custom_plugin_dirs,
+                    )
+
+                    class_file = os.path.realpath(inspect.getfile(self.__class__))
+
+                    def _is_under(plugin_root: str) -> bool:
+                        root = os.path.realpath(plugin_root)
+                        return class_file == root or class_file.startswith(
+                            f"{root}{os.sep}"
+                        )
+
+                    if any(_is_under(path) for path in get_custom_plugin_dirs()):
+                        expected_section = CONFIG_SECTION_CUSTOM_PLUGINS
+                        self.plugin_type = PLUGIN_TYPE_CUSTOM
+                    elif any(_is_under(path) for path in get_community_plugin_dirs()):
+                        expected_section = CONFIG_SECTION_COMMUNITY_PLUGINS
+                        self.plugin_type = PLUGIN_TYPE_COMMUNITY
+                except (OSError, ImportError, TypeError):
+                    pass
+
+                if expected_section in candidate_sections:
+                    candidate_sections = (expected_section,) + tuple(
+                        section
+                        for section in candidate_sections
+                        if section != expected_section
+                    )
+
                 configured_section = next(
                     (
                         section
@@ -221,32 +253,6 @@ class BasePlugin(ABC):
                     self.plugin_type = PLUGIN_SECTION_TYPES.get(
                         configured_section, self.plugin_type
                     )
-                else:
-                    # Infer non-core tier from plugin source path when no local stanza exists.
-                    try:
-                        from mmrelay.plugin_loader import (
-                            get_community_plugin_dirs,
-                            get_custom_plugin_dirs,
-                        )
-
-                        class_file = os.path.realpath(inspect.getfile(self.__class__))
-
-                        def _is_under(plugin_root: str) -> bool:
-                            root = os.path.realpath(plugin_root)
-                            return class_file == root or class_file.startswith(
-                                f"{root}{os.sep}"
-                            )
-
-                        if any(_is_under(path) for path in get_custom_plugin_dirs()):
-                            self.plugin_type = PLUGIN_TYPE_CUSTOM
-                            expected_section = CONFIG_SECTION_CUSTOM_PLUGINS
-                        elif any(
-                            _is_under(path) for path in get_community_plugin_dirs()
-                        ):
-                            self.plugin_type = PLUGIN_TYPE_COMMUNITY
-                            expected_section = CONFIG_SECTION_COMMUNITY_PLUGINS
-                    except (OSError, ImportError, TypeError):
-                        pass
 
             for level in candidate_sections:
                 section_config = config.get(level, {})

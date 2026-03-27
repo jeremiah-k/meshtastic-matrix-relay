@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.setup_utils import (
     SYSTEMCTL,
+    SYSTEMD_SERVICE_FILENAME,
     check_lingering_enabled,
     create_service_file,
     enable_lingering,
@@ -143,22 +144,22 @@ class TestSetupUtils(unittest.TestCase):
             call(
                 "  %s --user start %s      # Start the service",
                 SYSTEMCTL,
-                "mmrelay.service",
+                SYSTEMD_SERVICE_FILENAME,
             ),
             call(
                 "  %s --user stop %s       # Stop the service",
                 SYSTEMCTL,
-                "mmrelay.service",
+                SYSTEMD_SERVICE_FILENAME,
             ),
             call(
                 "  %s --user restart %s    # Restart the service",
                 SYSTEMCTL,
-                "mmrelay.service",
+                SYSTEMD_SERVICE_FILENAME,
             ),
             call(
                 "  %s --user status %s     # Check service status",
                 SYSTEMCTL,
-                "mmrelay.service",
+                SYSTEMD_SERVICE_FILENAME,
             ),
         ]
         mock_logger.info.assert_has_calls(expected_calls)

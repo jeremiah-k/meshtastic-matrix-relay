@@ -237,15 +237,18 @@ def test_resolve_all_paths_tracks_env_vars_and_home_source(monkeypatch) -> None:
         paths_module._reset_deprecation_warning_flag()
 
 
-def test_ensure_directories_creates_missing_tree() -> None:
+def test_ensure_directories_creates_missing_tree(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """ensure_directories(create_missing=True) should create required paths."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         home = Path(tmp_dir)
+        monkeypatch.setenv("MMRELAY_HOME", str(home))
+        monkeypatch.delenv("MMRELAY_BASE_DIR", raising=False)
+        monkeypatch.delenv("MMRELAY_DATA_DIR", raising=False)
+        monkeypatch.delenv("MMRELAY_LOG_PATH", raising=False)
 
-        with (
-            patch("sys.platform", "linux"),
-            patch.dict(os.environ, {"MMRELAY_HOME": str(home)}, clear=False),
-        ):
+        with patch("sys.platform", "linux"):
             ensure_directories(create_missing=True)
 
         matrix = home / "matrix"
@@ -290,6 +293,7 @@ def test_ensure_directories_warns_when_missing_and_create_disabled(
         monkeypatch.setenv("MMRELAY_HOME", str(home))
         monkeypatch.delenv("MMRELAY_BASE_DIR", raising=False)
         monkeypatch.delenv("MMRELAY_DATA_DIR", raising=False)
+        monkeypatch.delenv("MMRELAY_LOG_PATH", raising=False)
 
         with (
             patch("sys.platform", "linux"),
@@ -331,6 +335,7 @@ def test_get_plugin_code_dir_covers_type_and_discovery_branches() -> None:
             patch(
                 "mmrelay.paths.get_community_plugins_dir", return_value=community_root
             ),
+            patch("mmrelay.paths.get_core_plugins_dir", return_value=root / "core"),
         ):
             assert get_plugin_code_dir("x", plugin_type="custom") == custom_root / "x"
             assert (
@@ -340,8 +345,7 @@ def test_get_plugin_code_dir_covers_type_and_discovery_branches() -> None:
             discovered = get_plugin_code_dir("demo")
             assert discovered == community_root / "demo"
             core_path = get_plugin_code_dir("mesh_relay", plugin_type="core")
-            assert core_path.name == "mesh_relay"
-            assert core_path.parent.name == "plugins" or "plugins" in core_path.parts
+            assert core_path == root / "core" / "mesh_relay"
 
 
 def test_get_diagnostics_maps_resolved_fields() -> None:

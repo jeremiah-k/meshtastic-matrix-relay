@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import os
 
 from mmrelay.constants.app import PROC_COMM_PATH_TEMPLATE, PROC_SELF_STATUS_PATH
 from mmrelay.constants.formats import DEFAULT_TEXT_ENCODING
 from mmrelay.constants.network import SYSTEMD_INIT_SYSTEM
-from mmrelay.log_utils import get_logger
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def is_running_as_service() -> bool:

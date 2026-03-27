@@ -51,7 +51,6 @@ from mmrelay.meshtastic_utils import (
 from tests.conftest import cleanup_ble_future_state
 from tests.constants import (
     TEST_BLE_MAC,
-    TEST_MESHTASTIC_ID,
     TEST_NODE_NUM,
     TEST_PACKET_FROM_ID,
     TEST_PACKET_ID,
@@ -2987,10 +2986,10 @@ class TestGetDeviceMetadata(unittest.TestCase):
         class _DegradedFlag:
             def __init__(self, lock: _TrackingLock) -> None:
                 self._lock = lock
-                self.checked_while_locked = False
+                self.check_states: list[bool] = []
 
             def __bool__(self) -> bool:
-                self.checked_while_locked = self._lock.entered
+                self.check_states.append(self._lock.entered)
                 return True
 
         tracking_lock = _TrackingLock()
@@ -3005,7 +3004,8 @@ class TestGetDeviceMetadata(unittest.TestCase):
             mu._metadata_future_lock = original_lock
             mu._metadata_executor_degraded = original_degraded
 
-        self.assertTrue(degraded_flag.checked_while_locked)
+        self.assertTrue(degraded_flag.check_states)
+        self.assertTrue(all(degraded_flag.check_states))
 
     def test_get_device_metadata_raise_on_error_reraises_non_io_value_error(self):
         """Non-I/O ValueError failures from getMetadata() should propagate."""
@@ -3102,7 +3102,11 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
 
         result = _resolve_plugin_timeout({"meshtastic": {"plugin_timeout": 0}}, 7.0)
         self.assertEqual(result, 7.0)
-        mock_logger.warning.assert_called_once()
+        mock_logger.warning.assert_called_once_with(
+            "Invalid meshtastic.plugin_timeout value %r; using %.1fs fallback.",
+            0,
+            7.0,
+        )
 
     @patch("mmrelay.meshtastic_utils.ThreadPoolExecutor")
     def test_maybe_reset_ble_executor_handles_cancel_timeout_and_stale_executor_shutdown(
@@ -3129,6 +3133,7 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
 
         replacement_executor = Mock()
         mock_thread_pool.return_value = replacement_executor
+        created_executor = None
 
         try:
             mu._ble_timeout_reset_threshold = 1
@@ -3142,6 +3147,7 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
             mu._ble_executor_degraded_addresses = set()
 
             mu._maybe_reset_ble_executor("AA:BB:CC:DD:EE:FF", timeout_count=1)
+            created_executor = mu._ble_executor
         finally:
             mu._ble_executor = old_executor
             mu._ble_future = old_future
@@ -3155,6 +3161,8 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
 
         stale_future.cancel.assert_called_once()
         stale_executor.shutdown.assert_called_once_with(wait=False, cancel_futures=True)
+        mock_thread_pool.assert_called_once()
+        self.assertIs(created_executor, replacement_executor)
 
     @patch("mmrelay.meshtastic_utils.logger")
     def test_get_device_metadata_no_localnode(self, mock_logger):

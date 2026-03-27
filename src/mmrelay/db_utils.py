@@ -44,51 +44,28 @@ class _InvalidNamesTableError(ValueError):
         super().__init__(f"Invalid table name: {table}")
 
 
+_MESSAGE_MAP_LEGACY_TABLE = f"{MESSAGE_MAP_TABLE}_legacy"
+_MESSAGE_MAP_TEMP_TABLE = f"{MESSAGE_MAP_TABLE}_old_temp"
+
 _VALID_TABLE_NAMES: frozenset[str] = frozenset(
     {
-        "message_map",
-        "message_map_legacy",
-        "message_map_old_temp",
-        "plugin_data",
-        "longnames",
-        "shortnames",
+        MESSAGE_MAP_TABLE,
+        _MESSAGE_MAP_LEGACY_TABLE,
+        _MESSAGE_MAP_TEMP_TABLE,
+        PLUGIN_DATA_TABLE,
+        NAMES_TABLE_LONGNAMES,
+        NAMES_TABLE_SHORTNAMES,
     }
 )
 
 _VALID_COLUMN_NAMES: frozenset[str] = frozenset(
     {
-        "meshtastic_id",
-        "matrix_event_id",
-        "matrix_room_id",
-        "meshtastic_text",
-        "meshtastic_meshnet",
-        "plugin_name",
-        "data",
-        "longname",
-        "shortname",
+        *MESSAGE_MAP_COLUMNS,
+        *PLUGIN_DATA_COLUMNS,
+        NAMES_FIELD_LONGNAME,
+        NAMES_FIELD_SHORTNAME,
     }
 )
-
-if (
-    MESSAGE_MAP_TABLE != "message_map"
-    or PLUGIN_DATA_TABLE != "plugin_data"
-    or NAMES_TABLE_LONGNAMES != "longnames"
-    or NAMES_TABLE_SHORTNAMES != "shortnames"
-    or MESSAGE_MAP_COLUMNS
-    != (
-        "meshtastic_id",
-        "matrix_event_id",
-        "matrix_room_id",
-        "meshtastic_text",
-        "meshtastic_meshnet",
-    )
-    or PLUGIN_DATA_COLUMNS != ("plugin_name", "meshtastic_id", "data")
-    or NAMES_FIELD_LONGNAME != "longname"
-    or NAMES_FIELD_SHORTNAME != "shortname"
-):
-    raise RuntimeError(
-        "Database constants changed; update literal allowlists in db_utils."
-    )
 
 
 def _validate_identifier(name: str, allowlist: frozenset[str]) -> str:
@@ -287,6 +264,11 @@ _DELETE_OLDEST_MESSAGE_MAP_SQL = (
     "DELETE FROM message_map WHERE rowid IN "
     "(SELECT rowid FROM message_map ORDER BY rowid ASC LIMIT ?)"
 )
+
+if MESSAGE_MAP_TABLE != "message_map":
+    raise RuntimeError(
+        "Message-map constants changed; update static SQL literals in db_utils."
+    )
 
 if (
     NAMES_TABLE_LONGNAMES,
@@ -713,24 +695,23 @@ def initialize_database() -> None:
         cursor.execute(_CREATE_TABLE_NAMES_SHORT_SQL)
         cursor.execute(_CREATE_TABLE_PLUGIN_DATA_SQL)
         cursor.execute(_CREATE_TABLE_MESSAGE_MAP_SQL)
-        _legacy_table = f"{MESSAGE_MAP_TABLE}_legacy"
+        _legacy_table = _MESSAGE_MAP_LEGACY_TABLE
         _validate_identifier(_legacy_table, _VALID_TABLE_NAMES)
         _col_id, _col_evt, _col_room, _col_text, _col_mesh = MESSAGE_MAP_COLUMNS
         for _c in MESSAGE_MAP_COLUMNS:
             _validate_identifier(_c, _VALID_COLUMN_NAMES)
 
-        try:
-            cursor.execute(_ALTER_TABLE_MESSAGE_MAP_ADD_MESH_SQL)
-        except sqlite3.OperationalError as exc:
-            if "duplicate column name" not in str(exc).lower():
-                raise
-
         cursor.execute(_PRAGMA_MESSAGE_MAP_INFO_SQL)
         columns = cursor.fetchall()
         column_map = {column[1]: column for column in columns}
+        if _col_mesh not in column_map:
+            cursor.execute(_ALTER_TABLE_MESSAGE_MAP_ADD_MESH_SQL)
+            cursor.execute(_PRAGMA_MESSAGE_MAP_INFO_SQL)
+            columns = cursor.fetchall()
+            column_map = {column[1]: column for column in columns}
         meshtastic_column = column_map.get(_col_id)
         meshnet_column = column_map.get(_col_mesh)
-        _temp_table = "message_map_old_temp"
+        _temp_table = _MESSAGE_MAP_TEMP_TABLE
         _validate_identifier(_temp_table, _VALID_TABLE_NAMES)
         cursor.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name=?",

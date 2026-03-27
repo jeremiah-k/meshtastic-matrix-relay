@@ -16,6 +16,7 @@ import sqlite3
 import tempfile
 import threading
 import unittest
+from concurrent.futures import Future
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -595,14 +596,16 @@ class TestDatabaseManager(unittest.TestCase):
 
             close_started = threading.Event()
             close_done = threading.Event()
-            close_error: list[Exception] = []
+            close_error: Future[None] = Future()
 
             def _close_manager() -> None:
                 close_started.set()
                 try:
                     self.manager.close()
-                except Exception as err:
-                    close_error.append(err)
+                except RuntimeError as err:
+                    close_error.set_exception(err)
+                else:
+                    close_error.set_result(None)
                 finally:
                     close_done.set()
 
@@ -622,25 +625,25 @@ class TestDatabaseManager(unittest.TestCase):
                 second_started.is_set(), "second_write should not have started yet"
             )
 
-            first_release.set()
-
-            await asyncio.sleep(0)
-
-            deadline = asyncio.get_running_loop().time() + operation_timeout
-            while (
-                not second_started.is_set()
-                and asyncio.get_running_loop().time() < deadline
-            ):
-                await asyncio.sleep(0.01)
-            self.assertTrue(
-                second_started.is_set(),
-                "second_write should have started after first_release",
-            )
-
-            second_release.set()
-
-            # Both tasks should have completed by now
             try:
+                first_release.set()
+
+                await asyncio.sleep(0)
+
+                deadline = asyncio.get_running_loop().time() + operation_timeout
+                while (
+                    not second_started.is_set()
+                    and asyncio.get_running_loop().time() < deadline
+                ):
+                    await asyncio.sleep(0.01)
+                self.assertTrue(
+                    second_started.is_set(),
+                    "second_write should have started after first_release",
+                )
+
+                second_release.set()
+
+                # Both tasks should have completed by now
                 result1, result2 = await asyncio.wait_for(
                     asyncio.gather(task1, task2),
                     timeout=operation_timeout,
@@ -652,10 +655,6 @@ class TestDatabaseManager(unittest.TestCase):
                 ):
                     await asyncio.sleep(0.01)
                 self.assertTrue(close_done.is_set(), "close() did not complete")
-                close_thread.join(timeout=operation_timeout)
-                self.assertFalse(close_thread.is_alive(), "close thread did not exit")
-                if close_error:
-                    raise close_error[0]
             except asyncio.TimeoutError as err:
                 # Check if tasks are done after close
                 results = []
@@ -666,6 +665,17 @@ class TestDatabaseManager(unittest.TestCase):
                         task.cancel()
                         results.append(f"task{i + 1}_cancelled")
                 raise AssertionError(f"Tasks did not complete: {results}") from err
+            finally:
+                first_release.set()
+                second_release.set()
+                for task in (task1, task2):
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(task1, task2, return_exceptions=True)
+                close_thread.join(timeout=operation_timeout)
+                self.assertFalse(close_thread.is_alive(), "close thread did not exit")
+                if close_error.done():
+                    close_error.result()
 
             return result1, result2
 
@@ -812,7 +822,7 @@ class TestDatabaseManager(unittest.TestCase):
         close_started = threading.Event()
         allow_release = threading.Event()
         release_error: list[str] = []
-        close_error: list[Exception] = []
+        close_error: Future[None] = Future()
 
         def release_activity() -> None:
             if not allow_release.wait(timeout=1.0):
@@ -826,8 +836,10 @@ class TestDatabaseManager(unittest.TestCase):
             close_started.set()
             try:
                 manager.close()
-            except Exception as err:  # pragma: no cover - defensive
-                close_error.append(err)
+            except RuntimeError as err:  # pragma: no cover - defensive
+                close_error.set_exception(err)
+            else:
+                close_error.set_result(None)
             finally:
                 close_done.set()
 
@@ -852,7 +864,8 @@ class TestDatabaseManager(unittest.TestCase):
         self.assertFalse(release_error, release_error[0] if release_error else "")
         self.assertFalse(releaser.is_alive())
         self.assertFalse(closer.is_alive(), "closer thread did not exit")
-        self.assertFalse(close_error, repr(close_error[0]) if close_error else "")
+        if close_error.done():
+            close_error.result()
         self.assertTrue(close_done.is_set(), "close() did not finish after release")
 
     def test_close_logs_sqlite_errors_when_connection_close_fails(self):

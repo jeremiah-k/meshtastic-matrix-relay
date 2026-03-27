@@ -253,25 +253,37 @@ class MessageQueue:
                 """Shut down executor, cancelling pending futures."""
                 exec_ref.shutdown(wait=True, cancel_futures=True)
 
+            executor_done = threading.Event()
+
+            def _shutdown_and_finalize(exec_obj: ThreadPoolExecutor) -> None:
+                try:
+                    _shutdown(exec_obj)
+                finally:
+                    executor_done.set()
+                    executor_cleanup_complete.set()
+                    _finalize_stop_state()
+
+            threading.Thread(
+                target=_shutdown_and_finalize,
+                args=(exec_ref,),
+                name="MessageQueueExecutorShutdown",
+                daemon=True,
+            ).start()
+
+            def _watch_executor_shutdown() -> None:
+                if not executor_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC):
+                    logger.warning("Executor shutdown timed out, forcing state reset")
+                    executor_cleanup_complete.set()
+                    _finalize_stop_state()
+
             if on_loop_thread:
-
-                def _shutdown_and_finalize(exec_obj: ThreadPoolExecutor) -> None:
-                    try:
-                        _shutdown(exec_obj)
-                    finally:
-                        executor_cleanup_complete.set()
-                        _finalize_stop_state()
-
                 threading.Thread(
-                    target=_shutdown_and_finalize,
-                    args=(exec_ref,),
-                    name="MessageQueueExecutorShutdown",
+                    target=_watch_executor_shutdown,
+                    name="MessageQueueExecutorWatchdog",
                     daemon=True,
                 ).start()
             else:
-                _shutdown(exec_ref)
-                executor_cleanup_complete.set()
-                _finalize_stop_state()
+                _watch_executor_shutdown()
 
         _finalize_stop_state()
 
