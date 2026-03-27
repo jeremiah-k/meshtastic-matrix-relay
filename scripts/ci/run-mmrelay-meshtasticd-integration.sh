@@ -84,12 +84,12 @@ docker_pull_with_retry() {
 	local retry=0
 	local delay=5
 
-	while [[ $retry -lt $max_retries ]]; do
+	while [[ ${retry} -lt ${max_retries} ]]; do
 		if docker pull "${image}"; then
 			return 0
 		fi
 		retry=$((retry + 1))
-		if [[ $retry -lt $max_retries ]]; then
+		if [[ ${retry} -lt ${max_retries} ]]; then
 			echo "Docker pull failed, retrying in ${delay}s (attempt ${retry}/${max_retries})..." >&2
 			sleep "${delay}"
 			delay=$((delay * 2))
@@ -1924,11 +1924,22 @@ docker rm -f \
 	"${MESHTASTICD_CONTAINER_B}" \
 	"${SYNAPSE_CONTAINER}" >/dev/null 2>&1 || true
 
-if ! ensure_docker_image_available "${MESHTASTICD_IMAGE}"; then
+set +e
+ensure_docker_image_available "${MESHTASTICD_IMAGE}"
+meshtasticd_pull_status=$?
+set -e
+if [[ ${meshtasticd_pull_status} -ne 0 ]]; then
 	if [[ ${MESHTASTICD_IMAGE} == "meshtastic/meshtasticd:latest" || ${MESHTASTICD_IMAGE} == "meshtastic/meshtasticd" ]]; then
 		echo "Failed to pull ${MESHTASTICD_IMAGE}; retrying with meshtastic/meshtasticd:beta" >&2
 		MESHTASTICD_IMAGE="meshtastic/meshtasticd:beta"
+		set +e
 		ensure_docker_image_available "${MESHTASTICD_IMAGE}"
+		meshtasticd_pull_status=$?
+		set -e
+		if [[ ${meshtasticd_pull_status} -ne 0 ]]; then
+			echo "Failed to pull ${MESHTASTICD_IMAGE}" >&2
+			exit 1
+		fi
 	else
 		echo "Failed to pull ${MESHTASTICD_IMAGE}" >&2
 		exit 1

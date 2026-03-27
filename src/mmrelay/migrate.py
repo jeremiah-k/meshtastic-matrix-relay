@@ -2297,10 +2297,12 @@ def migrate_gpxtracker(
     old_gpx_dir: Path | None = None
     scan_skipped_due_to_pyyaml = False
     yaml_available = False
+    yaml_module: Any | None = None
 
     try:
-        import yaml
+        import yaml as imported_yaml
 
+        yaml_module = imported_yaml
         yaml_available = True
     except ImportError as e:
         logger.warning(
@@ -2321,7 +2323,7 @@ def migrate_gpxtracker(
 
             try:
                 with open(legacy_config, "r", encoding="utf-8") as f:
-                    config_data = yaml.safe_load(f)
+                    config_data = yaml_module.safe_load(f) if yaml_module else None
                     if isinstance(config_data, dict):
                         plugins_section = config_data.get("community-plugins", {})
                         if isinstance(plugins_section, dict):
@@ -2336,7 +2338,14 @@ def migrate_gpxtracker(
                                             old_gpx_dir,
                                         )
                                         break
-            except (OSError, yaml.YAMLError) as e:
+            except OSError as e:
+                logger.warning("Failed to read legacy config %s: %s", legacy_config, e)
+            except Exception as e:
+                yaml_error = yaml_module is not None and isinstance(
+                    e, getattr(yaml_module, "YAMLError", ())
+                )
+                if not yaml_error:
+                    raise
                 logger.warning("Failed to read legacy config %s: %s", legacy_config, e)
 
     new_gpx_data_dir = new_home / "plugins" / "community" / "gpxtracker" / "data"

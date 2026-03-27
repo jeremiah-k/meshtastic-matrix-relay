@@ -232,7 +232,7 @@ class TestMainEntryPointIntegration(unittest.TestCase):
 
         # Try to run the module with --help to see if it executes without import errors
         try:
-            result = subprocess.run(  # noqa: S603  # test: running program under test via subprocess
+            result = subprocess.run(  # noqa: S603  # nosec B603  # test: running program under test via subprocess
                 [sys.executable, "-m", "mmrelay", "--help"],
                 capture_output=True,
                 text=True,

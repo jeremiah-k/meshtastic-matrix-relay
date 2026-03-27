@@ -27,64 +27,77 @@ import logging
 import os
 import ssl
 from types import ModuleType
-from typing import TYPE_CHECKING, Any, cast
-
-if TYPE_CHECKING:
-    from nio.responses import LoginError as NioLoginErrorType
-    from nio.responses import LogoutError as NioLogoutErrorType
+from typing import Any, cast
 
 try:
     import certifi
 except ImportError:
     certifi: ModuleType | None = None  # type: ignore[no-redef]
 
+
 # Import Matrix-related modules for logout functionality
+class _FallbackLoginError(Exception):
+    pass
+
+
+class _FallbackLogoutError(Exception):
+    pass
+
+
+class _FallbackLocalTransportError(Exception):
+    pass
+
+
+class _FallbackRemoteTransportError(Exception):
+    pass
+
+
+class _FallbackLocalProtocolError(Exception):
+    pass
+
+
+class _FallbackRemoteProtocolError(Exception):
+    pass
+
+
+AsyncClient: Any = None
+LoginError: type[Any] = _FallbackLoginError
+LogoutError: type[Any] = _FallbackLogoutError
+LocalTransportError: type[Any] = _FallbackLocalTransportError
+RemoteTransportError: type[Any] = _FallbackRemoteTransportError
+LocalProtocolError: type[Any] = _FallbackLocalProtocolError
+RemoteProtocolError: type[Any] = _FallbackRemoteProtocolError
+NioLoginError: type[Any] = _FallbackLoginError
+NioLogoutError: type[Any] = _FallbackLogoutError
+NioLocalTransportError: type[Any] = _FallbackLocalTransportError
+NioRemoteTransportError: type[Any] = _FallbackRemoteTransportError
+NioLocalProtocolError: type[Any] = _FallbackLocalProtocolError
+NioRemoteProtocolError: type[Any] = _FallbackRemoteProtocolError
+
 try:
-    from nio import AsyncClient
-    from nio.exceptions import (
-        LocalProtocolError,
-        LocalTransportError,
-        RemoteProtocolError,
-        RemoteTransportError,
-    )
-    from nio.responses import LoginError, LogoutError
-
-    # Create aliases for backward compatibility
-    NioLoginError = LoginError
-    NioLogoutError = LogoutError
-    NioLocalTransportError = LocalTransportError
-    NioRemoteTransportError = RemoteTransportError
-    NioLocalProtocolError = LocalProtocolError
-    NioRemoteProtocolError = RemoteProtocolError
+    from nio import AsyncClient as _AsyncClient
+    from nio.exceptions import LocalProtocolError as _LocalProtocolError
+    from nio.exceptions import LocalTransportError as _LocalTransportError
+    from nio.exceptions import RemoteProtocolError as _RemoteProtocolError
+    from nio.exceptions import RemoteTransportError as _RemoteTransportError
+    from nio.responses import LoginError as _LoginError
+    from nio.responses import LogoutError as _LogoutError
 except ImportError:
-    # Handle case where matrix-nio is not installed
-    AsyncClient = None
-
-    class LoginError(Exception):
-        pass
-
-    class LogoutError(Exception):
-        pass
-
-    class LocalTransportError(Exception):
-        pass
-
-    class RemoteTransportError(Exception):
-        pass
-
-    class LocalProtocolError(Exception):
-        pass
-
-    class RemoteProtocolError(Exception):
-        pass
-
-    # Create aliases for backward compatibility
-    NioLoginError = LoginError
-    NioLogoutError = LogoutError
-    NioLocalTransportError = LocalTransportError
-    NioRemoteTransportError = RemoteTransportError
-    NioLocalProtocolError = LocalProtocolError
-    NioRemoteProtocolError = RemoteProtocolError
+    pass
+else:
+    AsyncClient = _AsyncClient
+    LoginError = _LoginError
+    LogoutError = _LogoutError
+    LocalTransportError = _LocalTransportError
+    RemoteTransportError = _RemoteTransportError
+    LocalProtocolError = _LocalProtocolError
+    RemoteProtocolError = _RemoteProtocolError
+    NioLoginError = _LoginError
+    NioLogoutError = _LogoutError
+    NioLocalTransportError = _LocalTransportError
+    NioRemoteTransportError = _RemoteTransportError
+    NioLocalProtocolError = _LocalProtocolError
+    NioRemoteProtocolError = _RemoteProtocolError
 
 # Import mmrelay modules - avoid circular imports by importing inside functions
 
@@ -473,7 +486,7 @@ def _cleanup_local_session_data() -> bool:
 
 
 def _handle_matrix_error(
-    error: "Exception | NioLoginErrorType | NioLogoutErrorType",
+    error: Any,
     context: str,
     log_level: str = "error",
 ) -> bool:

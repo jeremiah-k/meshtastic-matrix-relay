@@ -8,7 +8,7 @@ execution by defining trusted sources and dangerous patterns.
 
 import re
 from types import MappingProxyType
-from typing import Final
+from typing import Final, TypedDict
 
 # Message length limits
 MAX_FORECAST_LENGTH: Final[int] = 200
@@ -154,23 +154,23 @@ OPEN_METEO_DAILY_FIELDS: Final[tuple[str, ...]] = (
 OPEN_METEO_TIMEZONE_AUTO: Final[str] = "timezone=auto"
 OPEN_METEO_CURRENT_WEATHER_FLAG: Final[str] = "current_weather=true"
 
+
+class HourlyConfigEntry(TypedDict):
+    slots: tuple[str, ...]
+    offsets: tuple[int, ...]
+
+
 # Hourly forecast configuration by mode
-HOURLY_CONFIG: Final[
-    MappingProxyType[str, MappingProxyType[str, MappingProxyType[str, tuple[str, ...]]]]
-] = MappingProxyType(
+HOURLY_CONFIG: Final[MappingProxyType[str, HourlyConfigEntry]] = MappingProxyType(
     {
-        WEATHER_MODE_CURRENT: MappingProxyType(
-            {
-                "slots": (WEATHER_SLOT_NOW,),
-                "offsets": (),
-            }
-        ),
-        WEATHER_MODE_HOURLY: MappingProxyType(
-            {
-                "slots": tuple(label for _, label in HOURLY_FORECAST_SLOTS),
-                "offsets": tuple(offset for offset, _ in HOURLY_FORECAST_SLOTS),
-            }
-        ),
+        WEATHER_MODE_CURRENT: {
+            "slots": (WEATHER_SLOT_NOW,),
+            "offsets": (),
+        },
+        WEATHER_MODE_HOURLY: {
+            "slots": tuple(label for _, label in HOURLY_FORECAST_SLOTS),
+            "offsets": tuple(offset for offset, _ in HOURLY_FORECAST_SLOTS),
+        },
     }
 )
 
