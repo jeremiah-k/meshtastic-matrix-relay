@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import os
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -1352,25 +1354,29 @@ async def test_login_matrix_bot_uses_loaded_config_for_save_path(
     mock_main_client.whoami.return_value = MagicMock(user_id="@user:matrix.org")
     mock_main_client.close = AsyncMock()
 
-    loaded_config = {"matrix": {"credentials_path": "/tmp/explicit-creds.json"}}
+    tmpdir = tempfile.gettempdir()
+    explicit_creds = os.path.join(tmpdir, "explicit-creds.json")
+    existing_creds = os.path.join(tmpdir, "existing-creds.json")
+    saved_creds = os.path.join(tmpdir, "saved-creds.json")
+    loaded_config = {"matrix": {"credentials_path": explicit_creds}}
     resolved_configs = []
 
     def _capture_resolve_config(config_data):
         """
         Capture a configuration object for test-side inspection and return a credential file path that differs on first vs subsequent calls.
 
-        Appends the provided config_data to the module-level resolved_configs list. On the first invocation returns "/tmp/existing-creds.json"; on all later invocations returns "/tmp/saved-creds.json".
+        Appends the provided config_data to the module-level resolved_configs list. On the first invocation returns the existing-creds path; on all later invocations returns the saved-creds path.
 
         Parameters:
             config_data (Any): Configuration object to record for later inspection.
 
         Returns:
-            str: "/tmp/existing-creds.json" for the first call, "/tmp/saved-creds.json" for subsequent calls.
+            str: existing-creds path for the first call, saved-creds path for subsequent calls.
         """
         resolved_configs.append(config_data)
         if len(resolved_configs) == 1:
-            return "/tmp/existing-creds.json"
-        return "/tmp/saved-creds.json"
+            return existing_creds
+        return saved_creds
 
     with (
         patch("mmrelay.config.load_config", return_value=loaded_config),
@@ -1391,10 +1397,7 @@ async def test_login_matrix_bot_uses_loaded_config_for_save_path(
 
     assert result is True
     assert resolved_configs == [loaded_config, loaded_config]
-    assert (
-        mock_save_credentials.call_args.kwargs["credentials_path"]
-        == "/tmp/saved-creds.json"
-    )
+    assert mock_save_credentials.call_args.kwargs["credentials_path"] == saved_creds
 
 
 @pytest.mark.asyncio
@@ -1428,7 +1431,7 @@ async def test_login_matrix_bot_existing_credentials_and_e2ee_check_exceptions(
         patch("mmrelay.config.is_e2ee_enabled", side_effect=ValueError("bad-e2ee")),
         patch(
             "mmrelay.matrix_utils._resolve_credentials_save_path",
-            return_value="/tmp/creds.json",
+            return_value=os.path.join(tempfile.gettempdir(), "creds.json"),
         ),
         patch(
             "mmrelay.matrix_utils.os.path.exists", side_effect=OSError("exists-fail")

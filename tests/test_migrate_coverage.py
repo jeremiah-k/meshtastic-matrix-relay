@@ -11,8 +11,9 @@ Inline comments explain test assertions and expected behavior for clarity.
 import os
 import shutil
 import sqlite3
-import subprocess
+import subprocess  # nosec B404  # test: testing subprocess behavior
 import sys
+import tempfile
 import time
 from pathlib import Path
 from unittest import mock
@@ -142,7 +143,7 @@ class TestMigrateAdditionalCoverage:
     ) -> None:
         """Windows winerror lock codes should be detected as file-in-use errors."""
         exc = OSError("in use")
-        exc.winerror = 32  # WINERR_SHARING_VIOLATION
+        exc.winerror = 32  # type: ignore[attr-defined] # WINERR_SHARING_VIOLATION
         monkeypatch.setattr(sys, "platform", "win32")
 
         assert _is_windows_file_in_use_error(exc) is True
@@ -561,12 +562,14 @@ class TestVerifyMigration:
     ) -> None:
         """Test verification output when no legacy data is present and ok=True."""
         report = {
-            "home": "/tmp/home",
+            "home": os.path.join(tempfile.gettempdir(), "home"),
             "artifacts": [
                 {
                     "key": "credentials",
                     "label": "credentials.json",
-                    "path": "/tmp/home/matrix/credentials.json",
+                    "path": os.path.join(
+                        tempfile.gettempdir(), "home", "matrix", "credentials.json"
+                    ),
                     "exists": True,
                     "inside_home": True,
                     "not_applicable": False,
@@ -1173,7 +1176,7 @@ class TestMigrateDatabaseEdgeCases:
         def failing_unlink(self: Path, *args: object, **kwargs: object) -> None:
             if self == dest_path:
                 raise OSError("unlink failed")
-            original_unlink(self, *args, **kwargs)
+            original_unlink(self, *args, **kwargs)  # type: ignore[arg-type]
 
         monkeypatch.setattr(Path, "unlink", failing_unlink)
 
@@ -1207,7 +1210,7 @@ class TestMigrateDatabaseEdgeCases:
         def failing_unlink(self: Path, *args: object, **kwargs: object) -> None:
             if self == dest_path:
                 raise OSError("unlink failed")
-            original_unlink(self, *args, **kwargs)
+            original_unlink(self, *args, **kwargs)  # type: ignore[arg-type]
 
         monkeypatch.setattr(Path, "unlink", failing_unlink)
 

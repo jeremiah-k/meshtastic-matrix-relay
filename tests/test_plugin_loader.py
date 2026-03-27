@@ -1052,7 +1052,7 @@ class Plugin:
         mock_isdir.return_value = False  # Repo doesn't exist
         ref = {"type": "commit", "value": "a1b2c3d4"}
 
-        import subprocess
+        import subprocess  # nosec B404  # test: testing subprocess behavior
 
         def mock_git_func(*args, **_kwargs):
             if "rev-parse" in args[0]:
@@ -2815,7 +2815,9 @@ class TestCommandRunner(unittest.TestCase):
     def test_run_value_error_shell_true(self):
         """Test _run raises ValueError for shell=True."""
         with self.assertRaises(ValueError) as cm:
-            _run(["git", "status"], shell=True)  # noqa: S604 - intentional for test
+            _run(
+                ["git", "status"], shell=True
+            )  # nosec B604  # test: intentionally testing shell execution
         self.assertIn("shell=True is not allowed in _run", str(cm.exception))
 
     def test_run_value_error_empty_args(self):
@@ -3444,7 +3446,9 @@ class TestDependencyInstallation(BaseGitTest):
 
             # Mock temporary file
             mock_file = mock_temp_file.return_value.__enter__.return_value
-            mock_file.name = "/tmp/test_requirements.txt"
+            mock_file.name = os.path.join(
+                tempfile.gettempdir(), "test_requirements.txt"
+            )
 
             with patch.dict(os.environ, {}, clear=True):
                 _install_requirements_for_repo(self.repo_path, "test-plugin")
@@ -3462,8 +3466,8 @@ class TestDependencyInstallation(BaseGitTest):
             ]
             assert called_cmd[:7] == expected_base
             assert "-r" in called_cmd
-            assert (
-                called_cmd[called_cmd.index("-r") + 1] == "/tmp/test_requirements.txt"
+            assert called_cmd[called_cmd.index("-r") + 1] == os.path.join(
+                tempfile.gettempdir(), "test_requirements.txt"
             )
             mock_run.assert_called_once_with(called_cmd, timeout=600)
 
@@ -3543,7 +3547,9 @@ class TestDependencyInstallation(BaseGitTest):
 
             # Mock temporary file
             mock_file = mock_temp_file.return_value.__enter__.return_value
-            mock_file.name = "/tmp/test_requirements.txt"
+            mock_file.name = os.path.join(
+                tempfile.gettempdir(), "test_requirements.txt"
+            )
 
             with patch.dict(os.environ, {}, clear=True):
                 _install_requirements_for_repo(self.repo_path, "test-plugin")
@@ -3561,8 +3567,8 @@ class TestDependencyInstallation(BaseGitTest):
             ]
             assert called_cmd[:7] == expected_base
             assert "-r" in called_cmd
-            assert (
-                called_cmd[called_cmd.index("-r") + 1] == "/tmp/test_requirements.txt"
+            assert called_cmd[called_cmd.index("-r") + 1] == os.path.join(
+                tempfile.gettempdir(), "test_requirements.txt"
             )
             mock_run.assert_called_once_with(called_cmd, timeout=600)
 
@@ -3831,7 +3837,7 @@ class TestDependencyInstallation(BaseGitTest):
         self, mock_isdir, _mock_makedirs, mock_logger, mock_is_allowed, mock_run_git
     ):
         """Test that 'commit' is accepted as a valid ref type."""
-        import subprocess
+        import subprocess  # nosec B404  # test: testing subprocess behavior
 
         mock_is_allowed.return_value = True
         mock_isdir.return_value = False  # Repo doesn't exist
@@ -4075,7 +4081,7 @@ class TestDependencyInstallation(BaseGitTest):
         self, mock_logger, mock_run_git
     ):
         """Test _clone_new_repo_to_branch_or_tag with tag success."""
-        import subprocess
+        import subprocess  # nosec B404  # test: testing subprocess behavior
 
         mock_run_git.side_effect = lambda *args, **_kwargs: (
             subprocess.CompletedProcess(args[0], 0, stdout="some_commit\n", stderr="")

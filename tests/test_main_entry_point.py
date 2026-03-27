@@ -190,10 +190,11 @@ class TestMainEntryPoint(unittest.TestCase):
         # Import the module to check its docstring
         import mmrelay.__main__
 
-        self.assertIsNotNone(mmrelay.__main__.__doc__)
-        self.assertIn("Alternative entry point", mmrelay.__main__.__doc__)
-        self.assertIn("Windows", mmrelay.__main__.__doc__)
-        self.assertIn("python -m mmrelay", mmrelay.__main__.__doc__)
+        doc = mmrelay.__main__.__doc__
+        assert doc is not None
+        self.assertIn("Alternative entry point", doc)
+        self.assertIn("Windows", doc)
+        self.assertIn("python -m mmrelay", doc)
 
     @patch("mmrelay.cli.main")
     @patch("sys.exit")
@@ -226,12 +227,12 @@ class TestMainEntryPointIntegration(unittest.TestCase):
     def test_main_entry_point_can_be_executed_as_module(self):
         """Test that the main entry point can be executed as a module."""
         # This is more of a structural test to ensure the module is set up correctly
-        import subprocess
+        import subprocess  # nosec B404  # test: testing subprocess entry point behavior
         import sys
 
         # Try to run the module with --help to see if it executes without import errors
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603  # test: running program under test via subprocess
                 [sys.executable, "-m", "mmrelay", "--help"],
                 capture_output=True,
                 text=True,

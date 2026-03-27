@@ -4,6 +4,7 @@ import os
 import re
 import ssl
 import sys
+import tempfile
 import types
 import unittest
 from types import SimpleNamespace
@@ -4555,7 +4556,7 @@ async def test_connect_matrix_e2ee_store_path_default(monkeypatch):
         raising=False,
     )
 
-    default_path = "/tmp/default-store"
+    default_path = tempfile.mkdtemp()
     monkeypatch.setattr(
         "mmrelay.matrix_utils.get_e2ee_store_dir",
         lambda: default_path,
@@ -5162,7 +5163,10 @@ async def test_connect_matrix_e2ee_key_sharing_delay(monkeypatch):
                 "homeserver": "https://example.org",
                 "access_token": "token",
                 "bot_user_id": "@bot:example.org",
-                "encryption": {"enabled": True, "store_path": "/tmp/store"},
+                "encryption": {
+                    "enabled": True,
+                    "store_path": os.path.join(tempfile.gettempdir(), "store"),
+                },
             },
             "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
         }
@@ -5246,10 +5250,12 @@ async def test_login_matrix_bot_e2ee_store_path_created(
     mock_main_client.whoami.return_value = MagicMock(user_id="@user:matrix.org")
     mock_main_client.close = AsyncMock()
 
+    store_path = os.path.join(tempfile.gettempdir(), "store")
+
     with (
         patch("mmrelay.config.load_config", return_value={"matrix": {}}),
         patch("mmrelay.config.is_e2ee_enabled", return_value=True),
-        patch("mmrelay.matrix_utils.get_e2ee_store_dir", return_value="/tmp/store"),
+        patch("mmrelay.matrix_utils.get_e2ee_store_dir", return_value=store_path),
         patch("mmrelay.matrix_utils.os.makedirs") as mock_makedirs,
         patch(
             "mmrelay.matrix_utils._normalize_bot_user_id",
@@ -5265,7 +5271,7 @@ async def test_login_matrix_bot_e2ee_store_path_created(
         )
 
     assert result is True
-    mock_makedirs.assert_called_once_with("/tmp/store", exist_ok=True)
+    mock_makedirs.assert_called_once_with(store_path, exist_ok=True)
 
 
 @patch("mmrelay.matrix_utils.save_credentials")

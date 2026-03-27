@@ -69,7 +69,7 @@ class TestPathsGaps:
                 with patch("mmrelay.paths.Path.home", return_value=Path("/home/user")):
                     with patch(
                         "mmrelay.paths.platformdirs.user_data_dir",
-                        return_value="/tmp/noexist",
+                        return_value=os.path.join(tempfile.gettempdir(), "noexist"),
                     ):
                         legacy = get_legacy_dirs()
                         assert Path("/data") in legacy
@@ -137,7 +137,7 @@ class TestMigrateGaps:
     @patch("mmrelay.migrate.atexit.register")
     def test_register_lock_cleanup(self, mock_atexit, mock_signal):
         """Test registration of lock cleanup handlers."""
-        lock_path = Path("/tmp/migrate.lock")
+        lock_path = Path(tempfile.gettempdir()) / "migrate.lock"
         _register_lock_cleanup(lock_path)
 
         mock_atexit.assert_called_once()
