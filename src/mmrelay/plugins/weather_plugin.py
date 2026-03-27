@@ -117,7 +117,11 @@ class Plugin(BasePlugin):
         )
 
         mode_offsets = HOURLY_CONFIG.get(mode_key, HOURLY_CONFIG[WEATHER_MODE_CURRENT])
-        offsets = mode_offsets["offsets"]
+        offsets = [
+            offset
+            for offset in mode_offsets.get("offsets", ())
+            if isinstance(offset, int)
+        ]
 
         hourly_fields = ",".join(OPEN_METEO_HOURLY_FIELDS)
         daily_fields = ",".join(OPEN_METEO_DAILY_FIELDS)
@@ -299,8 +303,12 @@ class Plugin(BasePlugin):
                     parts.append(f"Precip {precip_now}%")
                 return self._trim_to_max_bytes(" | ".join(parts))
 
-            slots = HOURLY_CONFIG.get(mode_key, HOURLY_CONFIG[WEATHER_MODE_CURRENT])[
-                "slots"
+            slots = [
+                slot
+                for slot in HOURLY_CONFIG.get(
+                    mode_key, HOURLY_CONFIG[WEATHER_MODE_CURRENT]
+                ).get("slots", ())
+                if isinstance(slot, str)
             ]
             return self._build_hourly_forecast(
                 current_temp,

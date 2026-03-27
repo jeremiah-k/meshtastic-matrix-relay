@@ -1594,10 +1594,11 @@ async def _resolve_and_load_credentials(
         matrix_section.get(CONFIG_KEY_USER_ID),
     )
     if isinstance(raw_user_id, str) and raw_user_id.strip():
-        bot_user_id = _normalize_bot_user_id(matrix_homeserver, raw_user_id)
-        if bot_user_id is None:
+        normalized_user_id = _normalize_bot_user_id(matrix_homeserver, raw_user_id)
+        if normalized_user_id is None:
             logger.error("Matrix section has invalid bot_user_id")
             return None
+        bot_user_id = normalized_user_id
     else:
         logger.warning(
             "Matrix section missing bot_user_id; continuing with access_token-only configuration"

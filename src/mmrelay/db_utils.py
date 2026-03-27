@@ -230,7 +230,9 @@ _ALTER_TABLE_MESSAGE_MAP_ADD_MESH_SQL = (
 )
 _PRAGMA_MESSAGE_MAP_INFO_SQL = "PRAGMA table_info(message_map)"
 _PRAGMA_MESSAGE_MAP_LEGACY_INFO_SQL = "PRAGMA table_info(message_map_legacy)"
+_PRAGMA_MESSAGE_MAP_TEMP_INFO_SQL = "PRAGMA table_info(message_map_old_temp)"
 _DROP_TABLE_MESSAGE_MAP_LEGACY_SQL = "DROP TABLE IF EXISTS message_map_legacy"
+_DROP_TABLE_MESSAGE_MAP_TEMP_SQL = "DROP TABLE IF EXISTS message_map_old_temp"
 _RENAME_MESSAGE_MAP_TO_LEGACY_SQL = (
     "ALTER TABLE message_map RENAME TO message_map_legacy"
 )
@@ -259,6 +261,9 @@ _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITHOUT_MESH_SQL = (
     "SELECT CAST(meshtastic_id AS TEXT), matrix_event_id, matrix_room_id, meshtastic_text, NULL "
     "FROM message_map_legacy"
 )
+_INSERT_OR_IGNORE_MESSAGE_MAP_FROM_TEMP_SQL = (
+    "INSERT OR IGNORE INTO message_map SELECT * FROM message_map_old_temp"
+)
 _CREATE_INDEX_MESSAGE_MAP_ID_SQL = (
     "CREATE INDEX IF NOT EXISTS idx_message_map_meshtastic_id "
     "ON message_map (meshtastic_id)"
@@ -273,6 +278,10 @@ _DELETE_OLDEST_MESSAGE_MAP_SQL = (
 if MESSAGE_MAP_TABLE != "message_map":
     raise RuntimeError(
         "Message-map constants changed; update static SQL literals in db_utils."
+    )
+if _MESSAGE_MAP_TEMP_TABLE != "message_map_old_temp":
+    raise RuntimeError(
+        "Message-map temp-table constant changed; update static SQL literals in db_utils."
     )
 
 if (PLUGIN_DATA_TABLE, *PLUGIN_DATA_COLUMNS) != (
@@ -750,7 +759,7 @@ def initialize_database() -> None:
             and meshtastic_column
             and str(meshtastic_column[2]).upper() == "TEXT"
         ):
-            cursor.execute(f"PRAGMA table_info({_temp_table})")
+            cursor.execute(_PRAGMA_MESSAGE_MAP_TEMP_INFO_SQL)
             temp_columns = {column[1]: column for column in cursor.fetchall()}
             insert_sql = (
                 _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITH_MESH_SQL
@@ -760,7 +769,7 @@ def initialize_database() -> None:
             if "message_map_legacy" in insert_sql:
                 raise RuntimeError("SQL replacement failed")
             cursor.execute(insert_sql)
-            cursor.execute(f"DROP TABLE IF EXISTS {_temp_table}")
+            cursor.execute(_DROP_TABLE_MESSAGE_MAP_TEMP_SQL)
             temp_exists = False
 
         cursor.execute(
@@ -827,18 +836,16 @@ def initialize_database() -> None:
                         )
             if temp_exists:
                 try:
-                    cursor.execute(
-                        f"INSERT OR IGNORE INTO message_map SELECT * FROM {_temp_table}"
-                    )
+                    cursor.execute(_INSERT_OR_IGNORE_MESSAGE_MAP_FROM_TEMP_SQL)
                     logger.info(
                         "Merged rows from temporary table into rebuilt message_map"
                     )
                 except Exception as e:
                     logger.warning("Failed to merge temporary table data: %s", e)
                 finally:
-                    cursor.execute(f"DROP TABLE IF EXISTS {_temp_table}")
+                    cursor.execute(_DROP_TABLE_MESSAGE_MAP_TEMP_SQL)
             else:
-                cursor.execute(f"DROP TABLE IF EXISTS {_temp_table}")
+                cursor.execute(_DROP_TABLE_MESSAGE_MAP_TEMP_SQL)
             cursor.execute(_DROP_TABLE_MESSAGE_MAP_LEGACY_SQL)
 
         cursor.execute(_CREATE_INDEX_MESSAGE_MAP_ID_SQL)

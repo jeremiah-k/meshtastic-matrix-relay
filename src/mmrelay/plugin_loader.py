@@ -14,7 +14,7 @@ import threading
 import time
 from contextlib import contextmanager
 from types import ModuleType
-from typing import Any, Final, Iterator, NamedTuple, NoReturn, Sequence
+from typing import Any, Final, Iterator, NamedTuple, NoReturn, Sequence, cast
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 import mmrelay.paths as paths_module
@@ -2324,6 +2324,7 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
             type(config).__name__,
         )
         return []
+    config_dict = cast(dict[str, Any], config)
 
     # Import core plugins
     from mmrelay.plugins.debug_plugin import Plugin as DebugPlugin
@@ -2354,7 +2355,7 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
     plugins = core_plugins.copy()
 
     def _section_dict(section_name: str) -> dict[str, Any]:
-        section = config.get(section_name, {})
+        section = config_dict.get(section_name, {})
         if isinstance(section, dict):
             return section
         logger.warning("Ignoring invalid %s config; expected a mapping.", section_name)
