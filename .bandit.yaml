@@ -8,4 +8,6 @@ assert_used:
 # All 229 findings are test fixture values (e.g. 'test_token', 'test_password', 'secret123').
 # Real secret detection is covered by trufflehog in the Trunk pipeline.
 # These plugins do not support per-filepattern skips like assert_used does.
+# Tradeoff: This global skip disables B105/B106 for production code (src/) as well.
+# Defense-in-depth relies on trufflehog as the primary secret scanner.
 skips: [B105, B106]
