@@ -61,7 +61,6 @@ from typing import Any, Callable
 from mmrelay.constants.app import (
     CONFIG_FILENAME,
     CREDENTIALS_FILENAME,
-    DATABASE_DIRNAME,
     DATABASE_FILENAME,
     MATRIX_DIRNAME,
     STORE_DIRNAME,
@@ -2992,31 +2991,192 @@ def rollback_migration(
         Returns:
             Path | None: Path to the most recent matching backup, or `None` if none exists.
         """
-        # Backup names follow pattern: <name>.bak.<timestamp> or <name>_pre_migration.<timestamp>
-        # The backup is named after the destination that was backed up
         dest_name = dest_path.name
 
-        # Database migration backs up member files under <home>/database/.migration_backups
-        # while the step-level new_path points to the database directory.
-        if (
-            _step_name == "database"
-            and dest_path.name == DATABASE_DIRNAME
-            and dest_path.exists()
-        ):
-            database_backup_dir = dest_path / MIGRATION_BACKUP_DIRNAME
-            if database_backup_dir.exists():
-                db_candidates = [
-                    backup
-                    for backup in database_backup_dir.iterdir()
-                    if backup.name.startswith(DATABASE_FILENAME)
-                ]
-                if db_candidates:
-                    # Don't return file backups for directory-level restore
-                    # Rely on file-level backed_up_files instead
-                    pass
+        backup_dirs = [
+            dest_path.parent / MIGRATION_BACKUP_DIRNAME,
+            new_home / MIGRATION_BACKUP_DIRNAME,
+        ]
 
-    # Note: We intentionally do NOT clean up backups after rollback
-    # They serve as a safety net and can be manually removed later
+        for backup_dir in backup_dirs:
+            if not backup_dir.exists():
+                continue
+
+            candidates = []
+            for backup in backup_dir.iterdir():
+                if backup.name.startswith(dest_name):
+                    candidates.append(backup)
+
+            if candidates:
+                return max(candidates, key=lambda p: p.stat().st_mtime)
+
+        return None
+
+    def restore_from_backup(
+        backup_path: Path, restore_path: Path, step_name: str
+    ) -> bool:
+        """
+        Restore a file or directory from a backup into its original destination.
+
+        Parameters:
+            backup_path (Path): Path to the backup file or directory to restore.
+            restore_path (Path): Destination path where the backup will be restored.
+            step_name (str): Human-readable name for the migration step (used in logs).
+
+        Returns:
+            bool: True if the restore completed successfully, False otherwise.
+        """
+        try:
+            restore_path.parent.mkdir(parents=True, exist_ok=True)
+
+            if restore_path.exists():
+                if restore_path.is_dir():
+                    shutil.rmtree(str(restore_path))
+                else:
+                    restore_path.unlink()
+
+            if backup_path.is_dir():
+                shutil.copytree(str(backup_path), str(restore_path))
+            else:
+                shutil.copy2(str(backup_path), str(restore_path))
+
+            logger.info(
+                "Restored %s from backup %s to %s", step_name, backup_path, restore_path
+            )
+        except (OSError, IOError, shutil.Error):
+            logger.exception("Failed to restore %s from backup", step_name)
+            return False
+        else:
+            return True
+
+    for step_name in reversed(completed_steps):
+        try:
+            step_result = None
+            for migration in migrations:
+                if migration.get("type") == step_name:
+                    step_result = migration.get("result", {})
+                    break
+
+            if not step_result:
+                logger.warning(
+                    "No result found for step '%s', skipping rollback", step_name
+                )
+                continue
+
+            new_path = step_result.get("new_path")
+            action = step_result.get("action")
+
+            if action in (
+                "none",
+                "already_at_target",
+                "already_migrated",
+                "not_found",
+                "skip_force_required",
+            ):
+                logger.debug(
+                    "Step '%s' had no migration action, skipping rollback", step_name
+                )
+                continue
+
+            if not new_path:
+                logger.debug("Step '%s' has no new_path, skipping rollback", step_name)
+                continue
+
+            new_path_obj = Path(new_path)
+            backed_up_files = step_result.get("backed_up_files", [])
+            migrated_files = step_result.get("migrated_files", [])
+
+            if backed_up_files:
+                all_restored = True
+                for file_info in backed_up_files:
+                    backup_path = Path(file_info["backup_path"])
+                    restore_path = Path(file_info["restore_path"])
+                    if restore_from_backup(backup_path, restore_path, step_name):
+                        rollback_report["rolled_back_steps"].append(
+                            {
+                                "step": step_name,
+                                "restored_from": str(backup_path),
+                                "restored_to": str(restore_path),
+                            }
+                        )
+                    else:
+                        rollback_report["errors"].append(
+                            {
+                                "step": step_name,
+                                "error": f"Failed to restore {restore_path} from {backup_path}",
+                            }
+                        )
+                        all_restored = False
+
+                if migrated_files and all_restored:
+                    backed_up_restore_paths = {
+                        Path(f["restore_path"]) for f in backed_up_files
+                    }
+                    for migrated_path_str in migrated_files:
+                        migrated_path = Path(migrated_path_str)
+                        if (
+                            migrated_path not in backed_up_restore_paths
+                            and migrated_path.exists()
+                        ):
+                            try:
+                                if migrated_path.is_dir():
+                                    shutil.rmtree(str(migrated_path))
+                                else:
+                                    migrated_path.unlink()
+                                logger.info(
+                                    "Removed unbacked migrated file: %s", migrated_path
+                                )
+                            except (OSError, IOError):
+                                pass
+            else:
+                found_backup = find_backup_for_step(step_name, new_path_obj)
+
+                if found_backup:
+                    if restore_from_backup(found_backup, new_path_obj, step_name):
+                        rollback_report["rolled_back_steps"].append(
+                            {
+                                "step": step_name,
+                                "restored_from": str(found_backup),
+                                "restored_to": new_path,
+                            }
+                        )
+                    else:
+                        rollback_report["errors"].append(
+                            {
+                                "step": step_name,
+                                "error": f"Failed to restore from {found_backup}",
+                            }
+                        )
+                        rollback_report["success"] = False
+                else:
+                    logger.warning(
+                        "No backup found for %s at %s; skipping removal to preserve data. "
+                        "Manual cleanup may be needed.",
+                        step_name,
+                        new_path,
+                    )
+                    rollback_report["rolled_back_steps"].append(
+                        {
+                            "step": step_name,
+                            "skipped": True,
+                            "reason": "no backup, data preserved",
+                            "path": new_path,
+                        }
+                    )
+
+        except (OSError, IOError, shutil.Error) as e:
+            logger.exception("Failed to rollback step '%s'", step_name)
+            rollback_report["errors"].append({"step": step_name, "error": str(e)})
+            rollback_report["success"] = False
+
+    if rollback_report["success"]:
+        staging_dir = new_home / MIGRATION_STAGING_DIRNAME
+        if staging_dir.exists():
+            try:
+                shutil.rmtree(str(staging_dir), ignore_errors=True)
+                logger.debug("Cleaned up staging directory after rollback")
+            except (OSError, IOError):
+                pass
 
     if rollback_report["success"] and not rollback_report["errors"]:
         logger.info("Rollback completed successfully")
