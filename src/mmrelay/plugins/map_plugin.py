@@ -1,7 +1,7 @@
 import asyncio
 import importlib
 import re
-from typing import Any, TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import s2sphere
 import staticmaps
@@ -14,7 +14,9 @@ from nio import (
     RoomMessageNotice,
     RoomMessageText,
 )
-from PIL import Image as PILImage, ImageFont, ImageDraw as _PILImageDraw
+from PIL import Image as PILImage
+from PIL import ImageDraw as _PILImageDraw
+from PIL import ImageFont
 
 from mmrelay.constants.formats import (
     DEFAULT_LABEL_FONT_SIZE,
@@ -33,10 +35,9 @@ from mmrelay.constants.formats import (
     MAP_ZOOM_MIN,
     RGBA_CHANNEL_MAX,
 )
-
 from mmrelay.constants.plugins import (
-    S2_PRECISION_BITS_TO_METERS_CONSTANT,
     MAX_MAP_IMAGE_SIZE,
+    S2_PRECISION_BITS_TO_METERS_CONSTANT,
 )
 from mmrelay.log_utils import get_logger
 from mmrelay.plugins.base_plugin import BasePlugin
