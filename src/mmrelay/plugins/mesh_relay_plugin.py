@@ -19,6 +19,7 @@ from nio import (
 
 from mmrelay.constants.database import DEFAULT_MAX_DATA_ROWS_PER_NODE_MESH_RELAY
 from mmrelay.constants.formats import (
+    DEFAULT_TEXT_ENCODING,
     FORMAT_PROCESSED_PACKET,
     MATRIX_PACKET_KEY,
     MATRIX_SUPPRESS_KEY,
@@ -80,7 +81,7 @@ class Plugin(BasePlugin):
             if isinstance(result["decoded"]["payload"], bytes):
                 result["decoded"]["payload"] = base64.b64encode(
                     result["decoded"]["payload"]
-                ).decode("utf-8")
+                ).decode(DEFAULT_TEXT_ENCODING)
 
         return result
 

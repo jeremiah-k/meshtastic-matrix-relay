@@ -103,7 +103,9 @@ from mmrelay.constants.domain import MATRIX_EVENT_TYPE_ROOM_MESSAGE
 from mmrelay.constants.formats import (
     DEFAULT_MATRIX_PREFIX,
     DEFAULT_MESHTASTIC_PREFIX,
+    DEFAULT_TEXT_ENCODING,
     DETECTION_SENSOR_APP,
+    ENCODING_ERROR_IGNORE,
     HTML_TAG_REGEX,
     MARKDOWN_ESCAPE_REGEX,
     OBJECT_REPR_REGEX,
@@ -754,7 +756,7 @@ def _get_detailed_matrix_error_message(matrix_response: Any) -> str:
         # Handle bytes/bytearray types by converting to string
         if isinstance(matrix_response, (bytes, bytearray)):
             try:
-                matrix_response = matrix_response.decode("utf-8")
+                matrix_response = matrix_response.decode(DEFAULT_TEXT_ENCODING)
             except UnicodeDecodeError:
                 return "Network connectivity issue or server unreachable (binary data)"
 
@@ -772,7 +774,7 @@ def _get_detailed_matrix_error_message(matrix_response: Any) -> str:
             # Handle if message is bytes/bytearray
             if isinstance(message, (bytes, bytearray)):
                 try:
-                    message = message.decode("utf-8")
+                    message = message.decode(DEFAULT_TEXT_ENCODING)
                 except UnicodeDecodeError:
                     return "Network connectivity issue or server unreachable"
             if isinstance(message, str):
@@ -1315,7 +1317,7 @@ async def _handle_detection_sensor_packet(
 
     success = queue_message(
         meshtastic_interface.sendData,
-        data=text.encode("utf-8"),
+        data=text.encode(DEFAULT_TEXT_ENCODING),
         channelIndex=meshtastic_channel,
         portNum=meshtastic.protobuf.portnums_pb2.PortNum.DETECTION_SENSOR_APP,
         description=f"Detection sensor data from {full_display_name}",
@@ -3559,7 +3561,9 @@ def truncate_message(text: str, max_bytes: int = DEFAULT_MESSAGE_TRUNCATE_BYTES)
     Returns:
         str: A string whose UTF-8 encoding is at most `max_bytes` bytes.
     """
-    truncated_text = text.encode("utf-8")[:max_bytes].decode("utf-8", "ignore")
+    truncated_text = text.encode(DEFAULT_TEXT_ENCODING)[:max_bytes].decode(
+        DEFAULT_TEXT_ENCODING, ENCODING_ERROR_IGNORE
+    )
     return truncated_text
 
 

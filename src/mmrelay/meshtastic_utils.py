@@ -36,8 +36,9 @@ from mmrelay.constants.config import (
 from mmrelay.constants.database import PROTO_NODE_NAME_LONG, PROTO_NODE_NAME_SHORT
 from mmrelay.constants.domain import METADATA_OUTPUT_MAX_LENGTH
 from mmrelay.constants.formats import (
+    DEFAULT_TEXT_ENCODING,
     DETECTION_SENSOR_APP,
-    EMOJI_FLAG_VALUE,
+    ENCODING_ERROR_IGNORE,
     FIRMWARE_VERSION_REGEX,
     TEXT_MESSAGE_APP,
 )
@@ -2178,7 +2179,7 @@ def _normalize_firmware_version(value: Any) -> str | None:
         str | None: Trimmed firmware version string when valid, otherwise None.
     """
     if isinstance(value, bytes):
-        value = value.decode("utf-8", errors="ignore")
+        value = value.decode(DEFAULT_TEXT_ENCODING, errors=ENCODING_ERROR_IGNORE)
     if isinstance(value, str):
         normalized = value.strip()
         if normalized and normalized.lower() != "unknown":
@@ -4743,7 +4744,7 @@ def send_text_reply(
     # Create the Data protobuf message with reply_id set
     data_msg = mesh_pb2.Data()
     data_msg.portnum = portnums_pb2.PortNum.TEXT_MESSAGE_APP
-    data_msg.payload = text.encode("utf-8")
+    data_msg.payload = text.encode(DEFAULT_TEXT_ENCODING)
     data_msg.reply_id = reply_id
 
     # Create the MeshPacket

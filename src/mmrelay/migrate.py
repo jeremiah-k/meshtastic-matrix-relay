@@ -72,6 +72,8 @@ from mmrelay.constants.config import REQUIRED_CREDENTIALS_KEYS
 from mmrelay.constants.database import SQLITE_SIDECAR_SUFFIXES
 from mmrelay.constants.formats import (
     BACKUP_TIMESTAMP_FORMAT,
+    DEFAULT_TEXT_ENCODING,
+    ENCODING_ERROR_IGNORE,
     MIGRATION_TIMESTAMP_FORMAT,
 )
 from mmrelay.constants.migration import (
@@ -318,7 +320,8 @@ def _is_mmrelay_running() -> bool:
                                 try:
                                     with open(proc_cmdline, "rb") as f:
                                         cmdline = f.read().decode(
-                                            "utf-8", errors="ignore"
+                                            DEFAULT_TEXT_ENCODING,
+                                            errors=ENCODING_ERROR_IGNORE,
                                         )
                                         if "mmrelay" in cmdline:
                                             return True

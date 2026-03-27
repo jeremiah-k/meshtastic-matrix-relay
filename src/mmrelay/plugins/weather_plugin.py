@@ -16,7 +16,9 @@ from nio import (
 
 from mmrelay.constants.formats import (
     CELSIUS_TO_FAHRENHEIT_MULTIPLIER,
+    DEFAULT_TEXT_ENCODING,
     DEGREE_SYMBOL,
+    ENCODING_ERROR_IGNORE,
     FAHRENHEIT_OFFSET,
     KM_TO_MILES_FACTOR,
     LATITUDE_MAX,
@@ -450,11 +452,13 @@ class Plugin(BasePlugin):
         Returns:
             str: The original string if its UTF-8 encoding is within the limit, otherwise a truncated string whose UTF-8 encoding is at most MAX_FORECAST_LENGTH bytes (any partial trailing UTF-8 character is removed).
         """
-        encoded = text.encode("utf-8")
+        encoded = text.encode(DEFAULT_TEXT_ENCODING)
         if len(encoded) <= MAX_FORECAST_LENGTH:
             return text
         # Truncate byte string and decode, ignoring partial trailing characters.
-        return encoded[:MAX_FORECAST_LENGTH].decode("utf-8", "ignore")
+        return encoded[:MAX_FORECAST_LENGTH].decode(
+            DEFAULT_TEXT_ENCODING, ENCODING_ERROR_IGNORE
+        )
 
     @staticmethod
     def _weather_code_to_text(weather_code: int, is_day: int) -> str:

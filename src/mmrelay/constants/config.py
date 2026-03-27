@@ -86,8 +86,6 @@ CONFIG_KEY_REQUIRE_BOT_MENTION: Final[str] = "require_bot_mention"
 
 # Default configuration values
 DEFAULT_LOG_LEVEL: Final[str] = "info"
-DEFAULT_WEATHER_UNITS: Final[str] = "metric"
-DEFAULT_WEATHER_UNITS_IMPERIAL: Final[str] = "imperial"
 DEFAULT_PREFIX_ENABLED: Final[bool] = True
 DEFAULT_BROADCAST_ENABLED: Final[bool] = True
 DEFAULT_DETECTION_SENSOR: Final[bool] = True

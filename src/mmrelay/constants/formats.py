@@ -50,6 +50,7 @@ LOG_FORMAT_FILE: Final[str] = (
 
 # Text encoding constants
 DEFAULT_TEXT_ENCODING: Final[str] = "utf-8"
+ENCODING_ERROR_IGNORE: Final[str] = "ignore"
 
 # Unit suffixes
 SNR_UNIT_SUFFIX: Final[str] = " dB"

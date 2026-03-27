@@ -26,6 +26,7 @@ from mmrelay.constants.config import (
     CONFIG_SECTION_CUSTOM_PLUGINS,
     CONFIG_SECTION_PLUGINS,
 )
+from mmrelay.constants.formats import DEFAULT_TEXT_ENCODING
 from mmrelay.constants.plugins import (
     COMMIT_HASH_PATTERN,
     DEFAULT_ALLOWED_COMMUNITY_HOSTS,
@@ -2020,7 +2021,9 @@ def load_plugins_from_directory(directory: str, recursive: bool = False) -> list
                     plugin_path = os.path.join(root, filename)
                     module_name = (
                         "plugin_"
-                        + hashlib.sha256(plugin_path.encode("utf-8")).hexdigest()
+                        + hashlib.sha256(
+                            plugin_path.encode(DEFAULT_TEXT_ENCODING)
+                        ).hexdigest()
                     )
                     spec = importlib.util.spec_from_file_location(
                         module_name, plugin_path
