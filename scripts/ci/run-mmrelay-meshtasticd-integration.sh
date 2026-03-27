@@ -99,6 +99,20 @@ docker_pull_with_retry() {
 	return 1
 }
 
+# ensure_docker_image_available reuses a local image when present and only pulls
+# when necessary.
+# Usage: ensure_docker_image_available <image> [max_retries]
+ensure_docker_image_available() {
+	local image="${1}"
+	local max_retries="${2:-3}"
+	if docker image inspect "${image}" >/dev/null 2>&1; then
+		echo "Using cached Docker image: ${image}"
+		return 0
+	fi
+	echo "Pulling Docker image: ${image}"
+	docker_pull_with_retry "${image}" "${max_retries}"
+}
+
 # Names-table SQL identifiers loaded from app constants.
 names_table_output=$(
 	"${PYTHON_BIN}" - <<'PY'
@@ -1905,12 +1919,11 @@ docker rm -f \
 	"${MESHTASTICD_CONTAINER_B}" \
 	"${SYNAPSE_CONTAINER}" >/dev/null 2>&1 || true
 
-echo "Pulling meshtasticd image: ${MESHTASTICD_IMAGE}"
-if ! docker_pull_with_retry "${MESHTASTICD_IMAGE}"; then
+if ! ensure_docker_image_available "${MESHTASTICD_IMAGE}"; then
 	if [[ ${MESHTASTICD_IMAGE} == "meshtastic/meshtasticd:latest" || ${MESHTASTICD_IMAGE} == "meshtastic/meshtasticd" ]]; then
 		echo "Failed to pull ${MESHTASTICD_IMAGE}; retrying with meshtastic/meshtasticd:beta" >&2
 		MESHTASTICD_IMAGE="meshtastic/meshtasticd:beta"
-		docker_pull_with_retry "${MESHTASTICD_IMAGE}"
+		ensure_docker_image_available "${MESHTASTICD_IMAGE}"
 	else
 		echo "Failed to pull ${MESHTASTICD_IMAGE}" >&2
 		exit 1
@@ -1942,8 +1955,7 @@ wait_for_meshtasticd_ready "${MESHTASTICD_ENDPOINT_A}" "${MESHTASTICD_CONTAINER_
 wait_for_meshtasticd_ready "${MESHTASTICD_ENDPOINT_B}" "${MESHTASTICD_CONTAINER_B}"
 
 echo ""
-echo "Pulling Synapse image: ${SYNAPSE_IMAGE}"
-docker_pull_with_retry "${SYNAPSE_IMAGE}"
+ensure_docker_image_available "${SYNAPSE_IMAGE}"
 
 echo ""
 echo "Generating Synapse config..."
