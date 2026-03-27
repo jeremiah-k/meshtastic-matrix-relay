@@ -4138,6 +4138,85 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             ]
             self.assertEqual(len(warning_calls), MAX_TIMEOUT_RETRIES_INFINITE)
 
+    @patch("mmrelay.meshtastic_utils.time.sleep")
+    def test_connect_meshtastic_skips_scan_recovery_for_auto_reconnect_interfaces(
+        self, _mock_sleep
+    ):
+        """Discovery-error scan recovery should stay in compatibility-mode only."""
+        from mmrelay.meshtastic_utils import connect_meshtastic
+
+        config = {
+            "meshtastic": {
+                "connection_type": "ble",
+                "ble_address": "AA:BB:CC:DD:EE:FF",
+                "retries": 1,
+            },
+            "matrix_rooms": [],
+        }
+
+        class _BleInterfaceWithAutoReconnect:
+            def __init__(
+                self,
+                address=None,
+                noProto=False,
+                debugOut=None,
+                noNodes=False,
+                timeout=300,
+                *,
+                auto_reconnect=False,
+            ):
+                self.address = address
+
+        mock_iface = Mock()
+        mock_iface.auto_reconnect = False
+
+        def _make_interface_future():
+            future = Mock()
+            future.result = Mock(return_value=mock_iface)
+            future.cancel = Mock(return_value=True)
+            return future
+
+        def _make_keyerror_future():
+            future = Mock()
+            future.result = Mock(side_effect=KeyError("path"))
+            future.cancel = Mock(return_value=False)
+            return future
+
+        future_sequence = iter(
+            future
+            for _ in range(2)
+            for future in (_make_interface_future(), _make_keyerror_future())
+        )
+
+        def submit_side_effect(_func, *_args, **_kwargs):
+            return next(future_sequence)
+
+        mock_executor = Mock()
+        mock_executor._shutdown = False
+        mock_executor.submit.side_effect = submit_side_effect
+
+        with (
+            patch(
+                "mmrelay.meshtastic_utils.meshtastic.ble_interface.BLEInterface",
+                _BleInterfaceWithAutoReconnect,
+            ),
+            patch("mmrelay.meshtastic_utils._ble_executor", mock_executor),
+            patch("mmrelay.meshtastic_utils._scan_for_ble_address") as mock_scan,
+            patch("bleak.BleakClient") as mock_bleak_client,
+        ):
+            mock_client_instance = Mock()
+            mock_client_instance.is_connected = False
+            mock_bleak_client.return_value = mock_client_instance
+
+            import mmrelay.meshtastic_utils as mu
+
+            _reset_ble_inflight_state(mu)
+            mu._metadata_future = None
+            result = connect_meshtastic(passed_config=config)
+            self.assertIsNone(result)
+
+            mock_scan.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

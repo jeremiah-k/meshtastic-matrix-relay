@@ -3323,7 +3323,11 @@ def connect_meshtastic(
                                 logger.debug(
                                     "BLEInterface auto_reconnect parameter not available; using compatibility mode"
                                 )
-                            if ble_scan_after_failure:
+                            # Compatibility mode (official library) can benefit from
+                            # pre-scan retries. Forked interfaces that expose
+                            # auto_reconnect already perform richer connect/discovery
+                            # orchestration, so avoid duplicate scan work there.
+                            if ble_scan_after_failure and not supports_auto_reconnect:
                                 scan_timeout_secs = _coerce_positive_float(
                                     _ble_scan_timeout_secs,
                                     BLE_SCAN_TIMEOUT_SECS,
@@ -3795,6 +3799,10 @@ def connect_meshtastic(
             if (
                 connection_type == CONNECTION_TYPE_BLE
                 and ble_address
+                # Keep discovery-triggered scan recovery scoped to compatibility
+                # mode; forked auto_reconnect-capable implementations handle
+                # discovery/connect retries internally.
+                and not supports_auto_reconnect
                 and _is_ble_discovery_error(e)
             ):
                 ble_scan_after_failure = True
