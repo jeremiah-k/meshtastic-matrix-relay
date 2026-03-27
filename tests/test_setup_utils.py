@@ -255,7 +255,8 @@ class TestSetupUtils(unittest.TestCase):
         """
         mock_home.return_value = Path("/home/user")
 
-        service_path = get_user_service_path()
+        with patch.dict("os.environ", {"XDG_CONFIG_HOME": ""}):
+            service_path = get_user_service_path()
 
         expected_path = Path("/home/user/.config/systemd/user/mmrelay.service")
         self.assertEqual(service_path, expected_path)

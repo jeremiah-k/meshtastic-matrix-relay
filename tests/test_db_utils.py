@@ -353,8 +353,8 @@ class TestDbUtils(unittest.TestCase):
             rows = cursor.fetchall()
             self.assertEqual(rows, [("123", "$evt2", None)])
 
-    def test_initialize_database_drops_stale_temp_before_non_text_rebuild(self):
-        """A stale message_map_old_temp should not block non-TEXT schema rebuild."""
+    def test_initialize_database_merges_stale_temp_before_non_text_rebuild(self):
+        """A stale message_map_old_temp is merged into rebuilt message_map."""
         with sqlite3.connect(self.test_db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -382,9 +382,12 @@ class TestDbUtils(unittest.TestCase):
             self.assertEqual(table_info["meshtastic_id"], "TEXT")
 
             cursor.execute(
-                "SELECT meshtastic_id, matrix_event_id, meshtastic_meshnet FROM message_map"
+                "SELECT meshtastic_id, matrix_event_id, meshtastic_meshnet FROM message_map ORDER BY matrix_event_id"
             )
-            self.assertEqual(cursor.fetchall(), [("77", "$evt-stale", None)])
+            self.assertEqual(
+                cursor.fetchall(),
+                [("old", "$evt-old", "mesh-old"), ("77", "$evt-stale", None)],
+            )
 
             cursor.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='message_map_old_temp'"
