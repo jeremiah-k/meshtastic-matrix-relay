@@ -1090,7 +1090,7 @@ class Plugin:
                     "https://github.com/user/repo.git",
                     "repo",
                 ],
-                {"cwd": self.temp_plugins_dir, "timeout": 120},
+                {"cwd": self.temp_plugins_dir, "timeout": TEST_GIT_TIMEOUT},
             ),
             # Check if already at the commit
             (
@@ -1105,7 +1105,7 @@ class Plugin:
             # Direct checkout succeeds (no fetch needed)
             (
                 ["git", "-C", self.temp_repo_path, "checkout", "a1b2c3d4"],
-                {"timeout": 120},
+                {"timeout": TEST_GIT_TIMEOUT},
             ),
         ]
 
@@ -1188,7 +1188,7 @@ class Plugin:
             # Try direct checkout (fails to trigger fetch)
             (
                 ["git", "-C", self.temp_repo_path, "checkout", "deadbeef"],
-                {"timeout": 120},
+                {"timeout": TEST_GIT_TIMEOUT},
             ),
             # Fetch specific commit
             (
@@ -1201,12 +1201,12 @@ class Plugin:
                     "origin",
                     "deadbeef",
                 ],
-                {"timeout": 120},
+                {"timeout": TEST_GIT_TIMEOUT},
             ),
             # Checkout specific commit (succeeds after fetch)
             (
                 ["git", "-C", self.temp_repo_path, "checkout", "deadbeef"],
-                {"timeout": 120},
+                {"timeout": TEST_GIT_TIMEOUT},
             ),
         ]
 

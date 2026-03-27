@@ -78,7 +78,13 @@ from mmrelay.constants.cli import (
     TEMP_DEVICE_NAME_LOGOUT,
     WINDOWS_PATH_NOT_APPLICABLE_LABEL,
 )
-from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID, DEFAULT_CONFIG_FILENAME
+from mmrelay.constants.config import (
+    CONFIG_KEY_ACCESS_TOKEN,
+    CONFIG_KEY_DEVICE_ID,
+    CONFIG_KEY_HOMESERVER,
+    CONFIG_KEY_USER_ID,
+    DEFAULT_CONFIG_FILENAME,
+)
 from mmrelay.constants.network import HTTP_SERVER_ERROR_CODES, HTTP_STATUS_UNAUTHORIZED
 from mmrelay.log_utils import get_logger
 
@@ -614,9 +620,9 @@ async def logout_matrix_bot(password: str) -> bool:
         print("ℹ️  No active session found. Already logged out.")
         return True
 
-    homeserver = credentials.get("homeserver")
-    user_id = credentials.get("user_id")
-    access_token = credentials.get("access_token")
+    homeserver = credentials.get(CONFIG_KEY_HOMESERVER)
+    user_id = credentials.get(CONFIG_KEY_USER_ID)
+    access_token = credentials.get(CONFIG_KEY_ACCESS_TOKEN)
     device_id = credentials.get(CONFIG_KEY_DEVICE_ID)
 
     # If user_id is missing, try to fetch it using the access token
@@ -648,7 +654,7 @@ async def logout_matrix_bot(password: str) -> bool:
                 print(f"✅ Successfully fetched user_id: {user_id}")
 
                 # Update credentials with the fetched user_id
-                credentials["user_id"] = user_id
+                credentials[CONFIG_KEY_USER_ID] = user_id
                 from mmrelay.config import save_credentials
 
                 save_credentials(credentials)

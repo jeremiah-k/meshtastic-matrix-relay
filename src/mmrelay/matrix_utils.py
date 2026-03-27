@@ -83,6 +83,10 @@ from mmrelay.config import (
 )
 from mmrelay.constants.app import WINDOWS_PLATFORM
 from mmrelay.constants.config import (
+    CONFIG_KEY_ACCESS_TOKEN,
+    CONFIG_KEY_DEVICE_ID,
+    CONFIG_KEY_HOMESERVER,
+    CONFIG_KEY_USER_ID,
     CONFIG_SECTION_MATRIX,
     DEFAULT_BROADCAST_ENABLED,
     DEFAULT_DETECTION_SENSOR,
@@ -1419,14 +1423,17 @@ async def _resolve_and_load_credentials(
             credentials = None
         else:
             credentials_path = candidate_path
-            matrix_homeserver = credentials["homeserver"]
-            matrix_access_token = credentials["access_token"]
-            bot_user_id = credentials["user_id"]
-            e2ee_device_id = _get_valid_device_id(credentials.get("device_id"))
+            matrix_homeserver = credentials[CONFIG_KEY_HOMESERVER]
+            matrix_access_token = credentials[CONFIG_KEY_ACCESS_TOKEN]
+            bot_user_id = credentials[CONFIG_KEY_USER_ID]
+            e2ee_device_id = _get_valid_device_id(credentials.get(CONFIG_KEY_DEVICE_ID))
 
             logger.debug(f"Using Matrix credentials (device: {e2ee_device_id})")
 
-            if isinstance(matrix_section, dict) and "access_token" in matrix_section:
+            if (
+                isinstance(matrix_section, dict)
+                and CONFIG_KEY_ACCESS_TOKEN in matrix_section
+            ):
                 logger.info(
                     "NOTE: Ignoring Matrix login details in config.yaml in favor of credentials.json"
                 )
@@ -1481,10 +1488,12 @@ async def _resolve_and_load_credentials(
                 credentials_path = await asyncio.to_thread(
                     _resolve_credentials_save_path, config_data
                 )
-                matrix_homeserver = credentials["homeserver"]
-                matrix_access_token = credentials["access_token"]
-                bot_user_id = credentials["user_id"]
-                e2ee_device_id = _get_valid_device_id(credentials.get("device_id"))
+                matrix_homeserver = credentials[CONFIG_KEY_HOMESERVER]
+                matrix_access_token = credentials[CONFIG_KEY_ACCESS_TOKEN]
+                bot_user_id = credentials[CONFIG_KEY_USER_ID]
+                e2ee_device_id = _get_valid_device_id(
+                    credentials.get(CONFIG_KEY_DEVICE_ID)
+                )
 
                 return MatrixAuthInfo(
                     homeserver=matrix_homeserver,
@@ -1813,7 +1822,7 @@ async def _perform_matrix_login(
                     logger.info(f"Discovered device_id from whoami: {e2ee_device_id}")
 
                     if auth_info.credentials is not None:
-                        auth_info.credentials["device_id"] = e2ee_device_id
+                        auth_info.credentials[CONFIG_KEY_DEVICE_ID] = e2ee_device_id
                         credentials_updated = True
 
                 if credentials_updated and auth_info.credentials is not None:
@@ -2588,10 +2597,10 @@ async def login_matrix_bot(
                 )
                 if (
                     existing_creds
-                    and "device_id" in existing_creds
-                    and existing_creds.get("user_id") == username
+                    and CONFIG_KEY_DEVICE_ID in existing_creds
+                    and existing_creds.get(CONFIG_KEY_USER_ID) == username
                 ):
-                    existing_device_id = existing_creds["device_id"]
+                    existing_device_id = existing_creds[CONFIG_KEY_DEVICE_ID]
                     logger.info(f"Reusing existing device_id: {existing_device_id}")
         except (OSError, JSONDecodeError, KeyError, TypeError) as e:
             logger.debug(f"Could not load existing credentials: {e}")
@@ -2832,10 +2841,12 @@ async def login_matrix_bot(
 
             # Save credentials to credentials.json
             credentials = {
-                "homeserver": homeserver,
-                "user_id": actual_user_id,
-                "access_token": getattr(response, "access_token", None),
-                "device_id": getattr(response, "device_id", existing_device_id),
+                CONFIG_KEY_HOMESERVER: homeserver,
+                CONFIG_KEY_USER_ID: actual_user_id,
+                CONFIG_KEY_ACCESS_TOKEN: getattr(response, "access_token", None),
+                CONFIG_KEY_DEVICE_ID: getattr(
+                    response, "device_id", existing_device_id
+                ),
             }
 
             # save_credentials() now uses unified HOME location

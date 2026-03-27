@@ -40,6 +40,11 @@ from mmrelay.constants.app import (
     WINDOWS_INSTALLER_DIR_NAME,
 )
 from mmrelay.constants.database import PLUGIN_DB_FILENAME_TEMPLATE
+from mmrelay.constants.plugins import (
+    PLUGIN_TYPE_COMMUNITY,
+    PLUGIN_TYPE_CORE,
+    PLUGIN_TYPE_CUSTOM,
+)
 from mmrelay.log_utils import get_logger
 
 
@@ -418,7 +423,7 @@ def get_custom_plugins_dir() -> Path:
     Returns:
         Path: Path to the `plugins/custom` directory inside the application home.
     """
-    return get_plugins_dir() / "custom"
+    return get_plugins_dir() / PLUGIN_TYPE_CUSTOM
 
 
 def get_community_plugins_dir() -> Path:
@@ -428,7 +433,7 @@ def get_community_plugins_dir() -> Path:
     Returns:
         Path: The path to the community plugins directory.
     """
-    return get_plugins_dir() / "community"
+    return get_plugins_dir() / PLUGIN_TYPE_COMMUNITY
 
 
 def get_core_plugins_dir() -> Path:
@@ -438,7 +443,7 @@ def get_core_plugins_dir() -> Path:
     Returns:
         Path: Path to the core plugins directory (MMRELAY_HOME/plugins/core).
     """
-    return get_plugins_dir() / "core"
+    return get_plugins_dir() / PLUGIN_TYPE_CORE
 
 
 def _normalize_plugin_type(plugin_type: str | None) -> str | None:
@@ -457,7 +462,7 @@ def _normalize_plugin_type(plugin_type: str | None) -> str | None:
     if plugin_type is None:
         return None
     normalized = plugin_type.strip().lower()
-    if normalized in {"custom", "community", "core"}:
+    if normalized in {PLUGIN_TYPE_CUSTOM, PLUGIN_TYPE_COMMUNITY, PLUGIN_TYPE_CORE}:
         return normalized
     raise UnknownPluginTypeError(plugin_type)
 
@@ -474,11 +479,11 @@ def get_plugin_code_dir(plugin_name: str, plugin_type: str | None = None) -> Pat
         Path: Filesystem path to the plugin's code directory.
     """
     normalized_type = _normalize_plugin_type(plugin_type)
-    if normalized_type == "custom":
+    if normalized_type == PLUGIN_TYPE_CUSTOM:
         return get_custom_plugins_dir() / plugin_name
-    if normalized_type == "community":
+    if normalized_type == PLUGIN_TYPE_COMMUNITY:
         return get_community_plugins_dir() / plugin_name
-    if normalized_type == "core":
+    if normalized_type == PLUGIN_TYPE_CORE:
         return get_core_plugins_dir() / plugin_name
 
     for plugin_root in (get_custom_plugins_dir(), get_community_plugins_dir()):
@@ -506,11 +511,11 @@ def get_plugin_data_dir(
         Path: Path to the plugin's data directory, or to the specified subdirectory within it.
     """
     normalized_type = _normalize_plugin_type(plugin_type)
-    if normalized_type == "custom":
+    if normalized_type == PLUGIN_TYPE_CUSTOM:
         base_dir = get_custom_plugins_dir() / plugin_name
-    elif normalized_type == "community":
+    elif normalized_type == PLUGIN_TYPE_COMMUNITY:
         base_dir = get_community_plugins_dir() / plugin_name
-    elif normalized_type == "core":
+    elif normalized_type == PLUGIN_TYPE_CORE:
         base_dir = get_core_plugins_dir() / plugin_name
     else:
         for plugin_root in (get_custom_plugins_dir(), get_community_plugins_dir()):

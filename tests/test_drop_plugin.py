@@ -16,6 +16,8 @@ import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
+from tests.constants import TEST_LAT_NYC, TEST_LON_NYC
+
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -44,7 +46,7 @@ class TestDropPlugin(unittest.TestCase):
         self.mock_meshtastic_client.nodes = {
             "node1": {
                 "user": {"id": "!12345678"},
-                "position": {"latitude": 40.7128, "longitude": -74.0060},
+                "position": {"latitude": TEST_LAT_NYC, "longitude": TEST_LON_NYC},
             },
             "node2": {
                 "user": {"id": "!87654321"},
@@ -66,8 +68,8 @@ class TestDropPlugin(unittest.TestCase):
         position = self.plugin.get_position(self.mock_meshtastic_client, "!12345678")
 
         self.assertIsNotNone(position)
-        self.assertEqual(position["latitude"], 40.7128)
-        self.assertEqual(position["longitude"], -74.0060)
+        self.assertEqual(position["latitude"], TEST_LAT_NYC)
+        self.assertEqual(position["longitude"], TEST_LON_NYC)
 
     def test_get_position_with_node_no_position(self):
         """
@@ -143,7 +145,7 @@ class TestDropPlugin(unittest.TestCase):
             stored_data = call_args[0][1]
             self.assertEqual(stored_data["text"], "This is a test message")
             self.assertEqual(stored_data["originator"], "!12345678")
-            self.assertEqual(stored_data["location"], (40.7128, -74.0060))
+            self.assertEqual(stored_data["location"], (TEST_LAT_NYC, TEST_LON_NYC))
 
         asyncio.run(run_test())
 
@@ -247,7 +249,7 @@ class TestDropPlugin(unittest.TestCase):
         # Mock stored messages
         stored_messages = [
             {
-                "location": (40.7128, -74.0060),  # Same as node1 location
+                "location": (TEST_LAT_NYC, TEST_LON_NYC),  # Same as node1 location
                 "text": "Pickup this message",
                 "originator": "!99999999",  # Different from packet sender
             }
@@ -343,7 +345,7 @@ class TestDropPlugin(unittest.TestCase):
         # Mock stored messages from the same originator
         stored_messages = [
             {
-                "location": (40.7128, -74.0060),
+                "location": (TEST_LAT_NYC, TEST_LON_NYC),
                 "text": "Own message",
                 "originator": "!12345678",  # Same as packet sender
             }

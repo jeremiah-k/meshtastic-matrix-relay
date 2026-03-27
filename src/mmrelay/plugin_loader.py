@@ -54,6 +54,8 @@ from mmrelay.constants.plugins import (
     PIP_INSTALL_TIMEOUT_SECONDS,
     PIP_SOURCE_FLAGS,
     PIPX_ENVIRONMENT_KEYS,
+    PLUGIN_TYPE_COMMUNITY,
+    PLUGIN_TYPE_CUSTOM,
     REF_NAME_PATTERN,
     RISKY_REQUIREMENT_PREFIXES,
     SCHEDULER_LOOP_WAIT_SECONDS,
@@ -1000,7 +1002,7 @@ def get_custom_plugin_dirs() -> list[str]:
 
     The directories include the user-specific custom plugins directory and a local directory for backward compatibility.
     """
-    return _get_plugin_dirs("custom")
+    return _get_plugin_dirs(PLUGIN_TYPE_CUSTOM)
 
 
 def get_community_plugin_dirs() -> list[str]:
@@ -1012,7 +1014,7 @@ def get_community_plugin_dirs() -> list[str]:
     Returns:
         list[str]: Filesystem paths to search for community plugins, ordered from highest to lowest priority.
     """
-    return _get_plugin_dirs("community")
+    return _get_plugin_dirs(PLUGIN_TYPE_COMMUNITY)
 
 
 def _run(
