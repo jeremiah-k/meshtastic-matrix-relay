@@ -57,7 +57,7 @@ class TestGetRelativeTime(unittest.TestCase):
 
         result = get_relative_time(timestamp)
 
-        self.assertEqual(result, "1 minutes ago")
+        self.assertEqual(result, "1 minute ago")
 
     def test_get_relative_time_hours_ago(self):
         """
@@ -79,7 +79,7 @@ class TestGetRelativeTime(unittest.TestCase):
 
         result = get_relative_time(timestamp)
 
-        self.assertEqual(result, "1 hours ago")
+        self.assertEqual(result, "1 hour ago")
 
     def test_get_relative_time_days_ago(self):
         """
@@ -101,7 +101,7 @@ class TestGetRelativeTime(unittest.TestCase):
 
         result = get_relative_time(timestamp)
 
-        self.assertEqual(result, "1 days ago")
+        self.assertEqual(result, "1 day ago")
 
     def test_get_relative_time_old_date(self):
         """

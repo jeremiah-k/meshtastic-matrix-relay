@@ -186,6 +186,8 @@ class MessageQueue:
             with self._lock:
                 if task is not None and self._processor_task is task:
                     self._processor_task = None
+                    self._in_flight = False
+                    self._has_current = False
                 if exec_ref is not None and self._executor is exec_ref:
                     self._executor = None
                 if self._stop_failed:

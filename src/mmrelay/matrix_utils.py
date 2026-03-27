@@ -574,6 +574,16 @@ def _display_room_channel_mappings(
                     logger.info(f"    ✅ {room_name}")
 
 
+def _first_nonblank_str(*values: Any) -> str | None:
+    """Return the first non-blank string value after stripping whitespace."""
+    for value in values:
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped:
+                return stripped
+    return None
+
+
 def _can_auto_create_credentials(matrix_config: Dict[str, Any] | None) -> bool:
     """
     Determine whether the Matrix configuration contains the fields required to create credentials automatically.
@@ -587,8 +597,9 @@ def _can_auto_create_credentials(matrix_config: Dict[str, Any] | None) -> bool:
     if not isinstance(matrix_config, dict):
         return False
     homeserver = matrix_config.get(CONFIG_KEY_HOMESERVER)
-    user = matrix_config.get(CONFIG_KEY_BOT_USER_ID) or matrix_config.get(
-        CONFIG_KEY_USER_ID
+    user = _first_nonblank_str(
+        matrix_config.get(CONFIG_KEY_BOT_USER_ID),
+        matrix_config.get(CONFIG_KEY_USER_ID),
     )
     password = matrix_config.get(CONFIG_KEY_PASSWORD)
     return all(isinstance(v, str) and v.strip() for v in (homeserver, user, password))
@@ -1457,8 +1468,9 @@ async def _resolve_and_load_credentials(
         )
 
         homeserver = matrix_section[CONFIG_KEY_HOMESERVER]
-        username = matrix_section.get(CONFIG_KEY_BOT_USER_ID) or matrix_section.get(
-            CONFIG_KEY_USER_ID
+        username = _first_nonblank_str(
+            matrix_section.get(CONFIG_KEY_BOT_USER_ID),
+            matrix_section.get(CONFIG_KEY_USER_ID),
         )
         if username:
             username = _normalize_bot_user_id(homeserver, username)
@@ -1577,8 +1589,9 @@ async def _resolve_and_load_credentials(
         )
         return None
 
-    raw_user_id = matrix_section.get(CONFIG_KEY_BOT_USER_ID) or matrix_section.get(
-        CONFIG_KEY_USER_ID
+    raw_user_id = _first_nonblank_str(
+        matrix_section.get(CONFIG_KEY_BOT_USER_ID),
+        matrix_section.get(CONFIG_KEY_USER_ID),
     )
     if isinstance(raw_user_id, str) and raw_user_id.strip():
         bot_user_id = _normalize_bot_user_id(matrix_homeserver, raw_user_id)

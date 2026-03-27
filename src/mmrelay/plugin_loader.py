@@ -2280,7 +2280,6 @@ def stop_global_scheduler() -> None:
         _global_scheduler_thread.join(timeout=SCHEDULER_SHUTDOWN_TIMEOUT_SECONDS)
         if _global_scheduler_thread.is_alive():
             logger.warning("Global scheduler thread did not stop within timeout")
-            return
 
     # Clear all scheduled jobs
     if schedule is not None:
@@ -2364,6 +2363,13 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
     def _active_plugin_names(section_name: str, section: dict[str, Any]) -> list[str]:
         active_plugins: list[str] = []
         for plugin_name, plugin_info in section.items():
+            if not isinstance(plugin_name, str):
+                logger.warning(
+                    "Ignoring invalid %s plugin key %r; expected a string.",
+                    section_name,
+                    plugin_name,
+                )
+                continue
             if not isinstance(plugin_info, dict):
                 logger.warning(
                     "Ignoring invalid %s plugin entry for '%s'; expected a mapping.",
@@ -2485,6 +2491,33 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
         commit = plugin_info.get("commit")
         tag = plugin_info.get("tag")
         branch = plugin_info.get("branch")
+
+        # Validate that repo_url and ref fields are strings if provided
+        if repo_url is not None and not isinstance(repo_url, str):
+            logger.warning(
+                "Ignoring community plugin '%s': repository must be a string.",
+                plugin_name,
+            )
+            continue
+        invalid_ref_field = next(
+            (
+                field_name
+                for field_name, field_value in (
+                    ("commit", commit),
+                    ("tag", tag),
+                    ("branch", branch),
+                )
+                if field_value is not None and not isinstance(field_value, str)
+            ),
+            None,
+        )
+        if invalid_ref_field is not None:
+            logger.warning(
+                "Ignoring community plugin '%s': %s must be a string.",
+                plugin_name,
+                invalid_ref_field,
+            )
+            continue
 
         # Determine what to use (commit, tag, branch, or default)
         # Priority: commit > tag > branch

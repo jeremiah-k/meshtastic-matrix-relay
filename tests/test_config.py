@@ -57,7 +57,7 @@ class TestConfig(unittest.TestCase):
         Test that get_base_dir() returns the default base directory on Linux systems.
         """
         with patch.dict(os.environ, {}, clear=True):
-            with patch("sys.platform", "linux"):
+            with patch("mmrelay.config.sys.platform", "linux"):
                 with warnings.catch_warnings(record=True) as caught:
                     warnings.simplefilter("always", DeprecationWarning)
                     base_dir = get_base_dir()
@@ -117,7 +117,7 @@ class TestConfig(unittest.TestCase):
         Test that `get_config_paths` returns the default Linux configuration file path when no command-line arguments are provided.
         """
         with (
-            patch("sys.platform", "linux"),
+            patch("mmrelay.config.sys.platform", "linux"),
             patch("sys.argv", ["mmrelay"]),
         ):
             paths = get_config_paths()
@@ -152,7 +152,7 @@ class TestConfig(unittest.TestCase):
         Test that get_data_dir returns default data directory path on Linux platforms.
         """
         with patch.dict(os.environ, {}, clear=True):
-            with patch("sys.platform", "linux"):
+            with patch("mmrelay.config.sys.platform", "linux"):
                 with warnings.catch_warnings(record=True) as caught:
                     warnings.simplefilter("always", DeprecationWarning)
                     data_dir = get_data_dir(create=False)
@@ -165,7 +165,7 @@ class TestConfig(unittest.TestCase):
         """Test get_config_paths respects MMRELAY_HOME environment variable."""
         with (
             patch.dict(os.environ, {"MMRELAY_HOME": "/custom/home"}),
-            patch("sys.platform", "linux"),
+            patch("mmrelay.config.sys.platform", "linux"),
         ):
             paths = get_config_paths()
             self.assertIn(
@@ -178,7 +178,7 @@ class TestConfig(unittest.TestCase):
         Test that get_log_dir() returns the default logs directory on Linux platforms.
         """
         with patch.dict(os.environ, {}, clear=True):
-            with patch("sys.platform", "linux"):
+            with patch("mmrelay.config.sys.platform", "linux"):
                 log_dir = get_log_dir()
                 self.assertEqual(log_dir, os.path.expanduser("~/.mmrelay/logs"))
 
@@ -190,7 +190,7 @@ class TestConfig(unittest.TestCase):
         Ensures the function resolves both the default plugins data directory and a plugin-specific directory for the Linux platform.
         """
         with patch.dict(os.environ, {}, clear=True):
-            with patch("sys.platform", "linux"):
+            with patch("mmrelay.config.sys.platform", "linux"):
                 plugin_data_dir = get_plugin_data_dir()
                 # New unified layout: plugins under home directory
                 self.assertEqual(
@@ -869,7 +869,7 @@ class TestEnvironmentVariableIntegration(unittest.TestCase):
 class TestFilePermissions(unittest.TestCase):
     """Test file permission setting functionality."""
 
-    @patch("sys.platform", "linux")
+    @patch("mmrelay.config.sys.platform", "linux")
     @patch("mmrelay.config.os.chmod")
     def test_set_secure_file_permissions_unix(self, mock_chmod):
         """Test secure file permission setting on Unix systems."""
@@ -877,7 +877,7 @@ class TestFilePermissions(unittest.TestCase):
         set_secure_file_permissions(tmp_path)
         mock_chmod.assert_called_once_with(tmp_path, 0o600)
 
-    @patch("sys.platform", "win32")
+    @patch("mmrelay.config.sys.platform", "win32")
     @patch("mmrelay.config.os.chmod")
     def test_set_secure_file_permissions_windows(self, mock_chmod):
         """Test secure file permission setting on Windows systems."""

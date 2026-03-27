@@ -127,6 +127,7 @@ def _has_mmrelay_artifacts(root: Path) -> bool:
         root / STORE_DIRNAME,
         root / MATRIX_DIRNAME / STORE_DIRNAME,
         root / LOGS_DIRNAME,
+        root / PLUGINS_DIRNAME,
         root / MATRIX_DIRNAME / PLUGINS_DIRNAME,
     ]
     for marker in directory_markers:

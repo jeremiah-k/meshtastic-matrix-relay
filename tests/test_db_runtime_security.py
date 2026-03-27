@@ -602,7 +602,7 @@ class TestDatabaseManager(unittest.TestCase):
                 close_started.set()
                 try:
                     self.manager.close()
-                except Exception as err:
+                except RuntimeError as err:
                     close_error.set_exception(err)
                 else:
                     close_error.set_result(None)
@@ -834,14 +834,14 @@ class TestDatabaseManager(unittest.TestCase):
                 with manager._connections_lock:
                     manager._active_sync_count = 0
                     manager._active_sync_condition.notify_all()
-            except Exception as err:
+            except AssertionError as err:
                 release_error.append(str(err))
 
         def close_manager() -> None:
             close_started.set()
             try:
                 manager.close()
-            except Exception as err:  # pragma: no cover - defensive
+            except RuntimeError as err:  # pragma: no cover - defensive
                 close_error.set_exception(err)
             else:
                 close_error.set_result(None)
@@ -1071,7 +1071,7 @@ async def test_run_async_cancelled_read_cancels_worker_future() -> None:
             patch.object(manager._async_executor, "submit", return_value=worker_future),
             patch(
                 "mmrelay.db_runtime.asyncio.wrap_future",
-                side_effect=lambda _future: _cancelled_future(),
+                side_effect=lambda _future, **_kw: _cancelled_future(),
             ),
         ):
             with pytest.raises(asyncio.CancelledError):
@@ -1093,36 +1093,24 @@ async def test_run_async_cancelled_write_logs_worker_error() -> None:
     try:
         worker_future = MagicMock()
         worker_future.cancel = MagicMock()
-        wrap_call_count = 0
 
         def _cancelled_future() -> asyncio.Future[None]:
             future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
             future.set_exception(asyncio.CancelledError())
             return future
 
-        def _worker_error_future() -> asyncio.Future[None]:
-            future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
-            future.set_exception(
-                RuntimeError("worker failed after caller cancellation")
-            )
-            return future
-
-        def _wrap_future_side_effect(_future):
-            nonlocal wrap_call_count
-            wrap_call_count += 1
-            if wrap_call_count == 1:
-                return _cancelled_future()
-            return _worker_error_future()
+        async def _raise_worker_error():
+            raise RuntimeError("worker failed after caller cancellation")
 
         with (
             patch.object(manager._async_executor, "submit", return_value=worker_future),
             patch(
                 "mmrelay.db_runtime.asyncio.wrap_future",
-                side_effect=_wrap_future_side_effect,
+                side_effect=lambda _future, **_kw: _cancelled_future(),
             ),
             patch(
                 "mmrelay.db_runtime.asyncio.shield",
-                side_effect=lambda awaitable: awaitable,
+                side_effect=lambda _awaitable: _raise_worker_error(),
             ),
             patch("mmrelay.db_runtime.logger") as mock_logger,
         ):
@@ -1153,7 +1141,7 @@ async def test_run_async_cancelled_write_swallows_followup_cancellation() -> Non
             future.set_exception(asyncio.CancelledError())
             return future
 
-        def _wrap_future_side_effect(_future):
+        def _wrap_future_side_effect(_future, **_kw):
             nonlocal wrap_call_count
             wrap_call_count += 1
             return _cancelled_future()
@@ -1200,7 +1188,7 @@ async def test_run_async_cancelled_read_does_not_cancel_finished_future() -> Non
             patch.object(manager._async_executor, "submit", return_value=worker_future),
             patch(
                 "mmrelay.db_runtime.asyncio.wrap_future",
-                side_effect=lambda _future: _cancelled_future(),
+                side_effect=lambda _future, **_kw: _cancelled_future(),
             ),
         ):
             with pytest.raises(asyncio.CancelledError):

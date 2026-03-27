@@ -587,13 +587,13 @@ class TestInternalArtifactDetection(unittest.TestCase):
             self.assertFalse(_has_mmrelay_artifacts(root))
 
     def test_has_artifacts_nonempty_plugins_directory(self):
-        """Top-level shipped plugins directory should not count as persisted artifacts."""
+        """Top-level plugins directory counts as persisted artifacts for legacy-home detection."""
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             plugin_dir = root / PLUGINS_DIRNAME
             plugin_dir.mkdir(parents=True, exist_ok=True)
             (plugin_dir / "example.py").write_text("# plugin")
-            self.assertFalse(_has_mmrelay_artifacts(root))
+            self.assertTrue(_has_mmrelay_artifacts(root))
 
     def test_has_artifacts_empty_logs_directory_not_detected(self):
         """Test empty logs directories do not trigger false legacy-home detection."""

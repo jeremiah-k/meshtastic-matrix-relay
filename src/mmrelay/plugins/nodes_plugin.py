@@ -54,13 +54,13 @@ def get_relative_time(timestamp: float) -> str:
             DATE_FORMAT_LONG
         )  # Return formatted date if older than RELATIVE_TIME_DAYS_THRESHOLD days
     elif days >= 1:
-        return f"{days} days ago"
+        return f"{days} day{'s' if days != 1 else ''} ago"
     elif seconds >= SECONDS_PER_HOUR:
         hours = seconds // SECONDS_PER_HOUR
-        return f"{hours} hours ago"
+        return f"{hours} hour{'s' if hours != 1 else ''} ago"
     elif seconds >= SECONDS_PER_MINUTE:
         minutes = seconds // SECONDS_PER_MINUTE
-        return f"{minutes} minutes ago"
+        return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
     else:
         return "Just now"
 

@@ -2464,6 +2464,33 @@ class TestGitOperations(BaseGitTest):
         )
 
         self.assertTrue(result)
+        # Verify the short-circuit: rev-parse calls were made but no fetch/checkout
+        from unittest.mock import call
+
+        self.assertIn(
+            call(
+                ["git", "-C", self.temp_repo_path, "rev-parse", "HEAD"],
+                capture_output=True,
+            ),
+            mock_run_git.call_args_list,
+        )
+        self.assertIn(
+            call(
+                [
+                    "git",
+                    "-C",
+                    self.temp_repo_path,
+                    "rev-parse",
+                    "v1.0.0^{commit}",
+                ],
+                capture_output=True,
+            ),
+            mock_run_git.call_args_list,
+        )
+        # Verify no checkout was called (short-circuit worked - fetch may still occur)
+        for call_args in mock_run_git.call_args_list:
+            call_list = call_args[0][0] if call_args[0] else []
+            self.assertNotIn("checkout", call_list)
 
     @patch("mmrelay.plugin_loader._run_git")
     def test_update_existing_repo_to_branch_or_tag_uses_tag_fetch_helper(

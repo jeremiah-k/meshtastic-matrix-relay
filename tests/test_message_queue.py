@@ -20,7 +20,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 # Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(REPO_ROOT, "src"))
+sys.path.insert(0, REPO_ROOT)
 
 from mmrelay.constants.queue import MAX_QUEUE_SIZE
 from mmrelay.message_queue import (

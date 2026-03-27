@@ -223,7 +223,7 @@ class Plugin(BasePlugin):
             if match:
                 if not content.get(MATRIX_PACKET_KEY):
                     legacy_packet = content.get("packet")
-                    if isinstance(legacy_packet, (dict, list)):
+                    if isinstance(legacy_packet, dict):
                         content[MATRIX_PACKET_KEY] = json.dumps(legacy_packet)
                     elif isinstance(legacy_packet, str) and legacy_packet.strip():
                         content[MATRIX_PACKET_KEY] = legacy_packet

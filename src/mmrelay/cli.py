@@ -219,13 +219,14 @@ def _apply_dir_overrides(args: argparse.Namespace | None) -> None:
     import mmrelay.paths
 
     expanded_home = os.path.expanduser(home_override)
-    absolute_home = os.path.abspath(expanded_home)
+    absolute_home = os.path.realpath(os.path.abspath(expanded_home))
 
     # Prevent using critical system directories as the home directory
     # Note: Only block truly critical paths - containers may use paths like /app or /data
     # Using lower-case comparison for cross-platform compatibility
     forbidden_paths = {
-        os.path.abspath(path).lower() for path in FORBIDDEN_HOME_DIRECTORIES_UNIX
+        os.path.realpath(os.path.abspath(path)).lower()
+        for path in FORBIDDEN_HOME_DIRECTORIES_UNIX
     }
     # Add Windows-specific system paths dynamically from environment variables
     # This handles cases where Windows is installed on a different drive
@@ -233,7 +234,9 @@ def _apply_dir_overrides(args: argparse.Namespace | None) -> None:
         for env_key in WINDOWS_FORBIDDEN_HOME_ENV_KEYS:
             env_value = os.environ.get(env_key)
             if env_value:
-                forbidden_paths.add(os.path.abspath(env_value).lower())
+                forbidden_paths.add(
+                    os.path.realpath(os.path.abspath(env_value)).lower()
+                )
     if absolute_home.lower() in forbidden_paths:
         print(
             f"Error: Setting MMRELAY_HOME to a critical system directory ('{absolute_home}') is not allowed.",
@@ -2361,7 +2364,7 @@ def handle_auth_logout(args: argparse.Namespace) -> int:
         # Handle password input
         password = getattr(args, "password", None)
 
-        if not password:
+        if password is None:
             # No --password flag or --password with no value, prompt securely
             import getpass
 

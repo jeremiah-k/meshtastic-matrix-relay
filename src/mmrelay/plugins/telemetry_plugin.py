@@ -1,5 +1,6 @@
 import io
 import json
+import math
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -202,13 +203,16 @@ class Plugin(BasePlugin):
                     continue
                 try:
                     record_time = datetime.fromtimestamp(timestamp)
-                except (TypeError, ValueError, OSError):
+                    value = float(telemetry_value)
+                    if not math.isfinite(value):
+                        continue
+                except (TypeError, ValueError, OSError, OverflowError):
                     continue
                 for i in range(len(hourly_intervals) - 1):
                     if hourly_intervals[i] <= record_time < hourly_intervals[i + 1]:
                         if i not in hourly_averages:
                             hourly_averages[i] = []
-                        hourly_averages[i].append(telemetry_value)
+                        hourly_averages[i].append(value)
                         break
 
         if node:

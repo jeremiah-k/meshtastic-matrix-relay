@@ -101,7 +101,14 @@ class Plugin(BasePlugin):
         """
         mode_key = self._normalize_mode(mode)
 
-        units = self.config.get("units", WEATHER_UNITS_METRIC)
+        raw_units = self.config.get("units", WEATHER_UNITS_METRIC)
+        units = (
+            raw_units.strip().lower()
+            if isinstance(raw_units, str)
+            else WEATHER_UNITS_METRIC
+        )
+        if units not in {WEATHER_UNITS_METRIC, WEATHER_UNITS_IMPERIAL}:
+            units = WEATHER_UNITS_METRIC
         temperature_unit = "°C" if units == WEATHER_UNITS_METRIC else "°F"
         daily_days = (
             DAILY_FORECAST_DAYS

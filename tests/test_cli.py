@@ -1275,9 +1275,7 @@ class TestAuthLogout(unittest.TestCase):
     def test_handle_auth_logout_password_prompt_empty(
         self, mock_print, mock_getpass, mock_asyncio_run
     ):
-        """Test logout with password='' (prompt for password)."""
-        # ASYNC MOCK FIX: Mock asyncio.run instead of the async function directly
-        mock_getpass.return_value = "prompted_password"
+        """Test logout with password='' (empty string accepted, no prompt)."""
         mock_asyncio_run.return_value = True
         self.mock_args.password = ""
         self.mock_args.yes = True
@@ -1285,9 +1283,9 @@ class TestAuthLogout(unittest.TestCase):
         # Call function
         result = handle_auth_logout(self.mock_args)
 
-        # Verify results
+        # Verify results - empty string is accepted, no prompt triggered
         self.assertEqual(result, 0)
-        mock_getpass.assert_called_once_with("Enter Matrix password for verification: ")
+        mock_getpass.assert_not_called()
         mock_asyncio_run.assert_called_once()
 
     @patch("asyncio.run")

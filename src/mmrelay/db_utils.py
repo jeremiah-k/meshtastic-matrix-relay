@@ -763,18 +763,6 @@ def initialize_database() -> None:
             cursor.execute(f"DROP TABLE IF EXISTS {_temp_table}")
             temp_exists = False
 
-        if (
-            temp_exists
-            and meshtastic_column
-            and str(meshtastic_column[2]).upper() != "TEXT"
-        ):
-            logger.warning(
-                "Removing stale temporary table %s before message_map schema rebuild",
-                _temp_table,
-            )
-            cursor.execute(f"DROP TABLE IF EXISTS {_temp_table}")
-            temp_exists = False
-
         cursor.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
             (_legacy_table,),
@@ -796,6 +784,13 @@ def initialize_database() -> None:
             legacy_exists = False
 
         if meshtastic_column and str(meshtastic_column[2]).upper() != "TEXT":
+            if temp_exists:
+                logger.warning(
+                    "Dropping stale temporary table %s with incompatible schema before message_map rebuild",
+                    _temp_table,
+                )
+                cursor.execute(f"DROP TABLE IF EXISTS {_temp_table}")
+                temp_exists = False
             cursor.execute(f"ALTER TABLE message_map RENAME TO {_temp_table}")
             cursor.execute(_CREATE_TABLE_MESSAGE_MAP_FROM_SCRATCH_SQL)
             if meshnet_column:
@@ -830,7 +825,20 @@ def initialize_database() -> None:
                         cursor.execute(
                             _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITHOUT_MESH_SQL
                         )
-            cursor.execute(f"DROP TABLE IF EXISTS {_temp_table}")
+            if temp_exists:
+                try:
+                    cursor.execute(
+                        f"INSERT OR IGNORE INTO message_map SELECT * FROM {_temp_table}"
+                    )
+                    logger.info(
+                        "Merged rows from temporary table into rebuilt message_map"
+                    )
+                except Exception as e:
+                    logger.warning("Failed to merge temporary table data: %s", e)
+                finally:
+                    cursor.execute(f"DROP TABLE IF EXISTS {_temp_table}")
+            else:
+                cursor.execute(f"DROP TABLE IF EXISTS {_temp_table}")
             cursor.execute(_DROP_TABLE_MESSAGE_MAP_LEGACY_SQL)
 
         cursor.execute(_CREATE_INDEX_MESSAGE_MAP_ID_SQL)
