@@ -298,6 +298,7 @@ def test_validation_logs_warning(self, mock_exists, mock_get_logger):
     # Import after mock setup to ensure function uses the mocked logger
     from mmrelay.cli import function_under_test
 
+    config_path = "/tmp/mmrelay-config.yaml"
     with self.assertLogs(logger_name, level="WARNING"):
         result = function_under_test(config_path)
 
@@ -311,6 +312,7 @@ def test_validation_logs_warning(self, mock_exists, mock_get_logger):
 logger = logging.getLogger("mmrelay.cli")
 logger.propagate = True  # Gets reset when _get_logger is called
 
+config_path = "/tmp/mmrelay-config.yaml"
 with self.assertLogs("mmrelay.cli", level="WARNING"):
     result = function_under_test(config_path)  # Logs are lost
 ```

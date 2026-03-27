@@ -1951,11 +1951,8 @@ class TestAuthStatus(unittest.TestCase):
         """Test status check with multiple config paths, credentials found in second path."""
         # Setup mocks - multiple config paths
         home_dir = os.path.dirname(TEST_HOME_CONFIG_PATH)
-        etc_dir = os.path.dirname("/etc/mmrelay/config.yaml")
-        mock_get_paths.return_value = [
-            TEST_HOME_CONFIG_PATH,
-            os.path.join(etc_dir, "config.yaml"),
-        ]
+        etc_dir = os.path.dirname(TEST_CONFIG_PATH)
+        mock_get_paths.return_value = [TEST_HOME_CONFIG_PATH, TEST_CONFIG_PATH]
         # First path doesn't have credentials, second path does (in matrix/ subdir)
         mock_exists.side_effect = lambda path: path == os.path.join(
             etc_dir, "matrix", "credentials.json"

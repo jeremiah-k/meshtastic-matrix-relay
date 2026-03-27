@@ -122,7 +122,7 @@ def test_staging_pattern_credentials(tmp_path: Path):
     assert staging_file.read_text() == '{"token": "secret"}'
 
 
-def test_database_migration_success(tmp_path: Path):
+def test_database_migration_success(tmp_path: Path) -> None:
     """Test that database migration completes successfully."""
     legacy_root = tmp_path / "legacy"
     legacy_root.mkdir()

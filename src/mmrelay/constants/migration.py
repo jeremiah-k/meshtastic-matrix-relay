@@ -9,7 +9,7 @@ from typing import Final
 
 from mmrelay.constants.auth import TEMP_DEVICE_NAME_LOGOUT
 
-__all__ = [
+__all__ = (
     "BYTES_PER_MIB",
     "DEFAULT_SERVICE_ARGS_SUFFIX",
     "MIGRATION_BACKUP_DIRNAME",
@@ -21,7 +21,7 @@ __all__ = [
     "MIGRATION_MIN_FREE_SPACE_BYTES",
     "MIGRATION_STAGING_DIRNAME",
     "TEMP_DEVICE_NAME_LOGOUT",
-]
+)
 
 # Migration retry settings
 MIGRATION_MAX_RETRIES: Final[int] = 5

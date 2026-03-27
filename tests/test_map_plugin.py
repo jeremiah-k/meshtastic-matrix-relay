@@ -28,6 +28,7 @@ from mmrelay.matrix_utils import (
     upload_image,
 )
 from mmrelay.plugins.map_plugin import (
+    DEFAULT_MAP_ZOOM,
     Plugin,
     TextLabel,
     get_map,
@@ -722,7 +723,7 @@ class TestMapPlugin(unittest.TestCase):
                 )
 
             self.assertTrue(result)
-            self.assertEqual(mock_get_map.call_args.kwargs["zoom"], 8)
+            self.assertEqual(mock_get_map.call_args.kwargs["zoom"], DEFAULT_MAP_ZOOM)
 
         asyncio.run(run_test())
 

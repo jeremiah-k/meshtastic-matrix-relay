@@ -405,7 +405,6 @@ class TestMessageQueue(unittest.TestCase):
                 mapping_info=None,
             )
             queue._queue.append(msg)
-            queue._requeue_message = MagicMock(return_value=True)
 
             first_check = True
 
@@ -427,7 +426,7 @@ class TestMessageQueue(unittest.TestCase):
             ):
                 await queue._process_queue()
 
-            queue._requeue_message.assert_called_once_with(msg)
+            assert msg in queue._queue
 
         self.loop.run_until_complete(run_test())
 
@@ -448,7 +447,6 @@ class TestMessageQueue(unittest.TestCase):
                 mapping_info=None,
             )
             queue._queue.append(msg)
-            queue._requeue_message = MagicMock(return_value=True)
 
             first_check = True
 
@@ -470,7 +468,7 @@ class TestMessageQueue(unittest.TestCase):
             ):
                 await queue._process_queue()
 
-            queue._requeue_message.assert_called_once_with(msg)
+            assert msg in queue._queue
 
         self.loop.run_until_complete(run_test())
 

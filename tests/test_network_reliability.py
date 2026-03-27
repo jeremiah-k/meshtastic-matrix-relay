@@ -33,9 +33,15 @@ def block_external_network_calls(monkeypatch):
     def _blocked(*_args, **_kwargs):
         raise AssertionError("External network calls are not allowed in this test")
 
+    async def _blocked_async(*_args, **_kwargs):
+        raise AssertionError("External network calls are not allowed in this test")
+
     monkeypatch.setattr(socket, "create_connection", _blocked)
+    monkeypatch.setattr(socket.socket, "connect", _blocked)
+    monkeypatch.setattr(socket.socket, "connect_ex", _blocked)
     monkeypatch.setattr(http.client.HTTPConnection, "request", _blocked)
     monkeypatch.setattr(http.client.HTTPSConnection, "request", _blocked)
+    monkeypatch.setattr(asyncio, "open_connection", _blocked_async)
 
 
 class TestConnectionRetryLogic:
@@ -54,9 +60,10 @@ class TestConnectionRetryLogic:
         async def _record_sleep(duration):
             backoff_delays.append(duration)
 
-        with patch("asyncio.sleep", side_effect=_record_sleep), patch(
-            "mmrelay.meshtastic_utils.connect_meshtastic"
-        ) as mock_connect:
+        with (
+            patch("asyncio.sleep", side_effect=_record_sleep),
+            patch("mmrelay.meshtastic_utils.connect_meshtastic") as mock_connect,
+        ):
             # Simulate connection failures followed by success
             mock_connect.side_effect = [
                 ConnectionError("First attempt"),
@@ -94,9 +101,10 @@ class TestConnectionRetryLogic:
             """
             backoff_times.append(duration)
 
-        with patch("asyncio.sleep", side_effect=mock_sleep), patch(
-            "mmrelay.meshtastic_utils.connect_meshtastic"
-        ) as mock_connect:
+        with (
+            patch("asyncio.sleep", side_effect=mock_sleep),
+            patch("mmrelay.meshtastic_utils.connect_meshtastic") as mock_connect,
+        ):
             # Simulate multiple failures
             mock_connect.side_effect = [ConnectionError()] * 5
 

@@ -25,7 +25,6 @@ from mmrelay.constants.database import PROGRESS_COMPLETE, PROGRESS_TOTAL_STEPS
 from mmrelay.constants.migration import DEFAULT_SERVICE_ARGS_SUFFIX
 from mmrelay.constants.network import SYSTEMCTL_FALLBACK
 from mmrelay.log_utils import get_logger
-from mmrelay.tools import get_service_template_path
 
 # Resolve systemctl path dynamically with fallback
 SYSTEMCTL = shutil.which("systemctl") or SYSTEMCTL_FALLBACK
@@ -284,6 +283,11 @@ def read_service_file() -> str | None:
     return None
 
 
+def get_service_template_path() -> str | None:
+    """Alias for get_template_service_path for backward compatibility with tests."""
+    return get_template_service_path()
+
+
 def get_template_service_path() -> str | None:
     """
     Locate the mmrelay systemd service template on disk.
@@ -323,7 +327,7 @@ def get_template_service_content() -> str:
         str: Complete service file content suitable for writing to the user service unit.
     """
     # Use the helper function to get the service template path
-    template_path = get_service_template_path()
+    template_path = get_template_service_path()
 
     if template_path and os.path.exists(template_path):
         # Read the template from file

@@ -210,7 +210,7 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
             (x - self._arrow / 2, y - self._arrow),
         ]
 
-        closed_path = path + [path[0]]
+        closed_path = (*path, path[0])
         renderer.draw().polygon(path, fill=MAP_LABEL_FILL_COLOR)
         renderer.draw().line(
             closed_path,

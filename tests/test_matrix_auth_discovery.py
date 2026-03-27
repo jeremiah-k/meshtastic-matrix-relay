@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID
+from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID, CONFIG_KEY_USER_ID
 from mmrelay.matrix_utils import MatrixAuthInfo, _perform_matrix_login
 
 
@@ -114,7 +114,9 @@ async def test_user_id_mismatch_handles_gracefully(mock_client, tmp_path):
                     for call in mock_logger.warning.call_args_list
                 )
                 # Credentials should be updated to correct user_id
-                assert auth_info.credentials["user_id"] == "@correct:matrix.org"
+                assert (
+                    auth_info.credentials[CONFIG_KEY_USER_ID] == "@correct:matrix.org"
+                )
                 # client.user_id should be updated
                 assert mock_client.user_id == "@correct:matrix.org"
 

@@ -155,7 +155,9 @@ OPEN_METEO_TIMEZONE_AUTO: Final[str] = "timezone=auto"
 OPEN_METEO_CURRENT_WEATHER_FLAG: Final[str] = "current_weather=true"
 
 # Hourly forecast configuration by mode
-HOURLY_CONFIG: Final = MappingProxyType(
+HOURLY_CONFIG: Final[
+    MappingProxyType[str, MappingProxyType[str, MappingProxyType[str, tuple[str, ...]]]]
+] = MappingProxyType(
     {
         WEATHER_MODE_CURRENT: MappingProxyType(
             {
@@ -215,7 +217,9 @@ def _make_weather_mapping() -> dict[int, str]:
     return raw
 
 
-WEATHER_CODE_TEXT_MAPPING: Final = MappingProxyType(_make_weather_mapping())
+WEATHER_CODE_TEXT_MAPPING: Final[MappingProxyType[int, str]] = MappingProxyType(
+    _make_weather_mapping()
+)
 
 # Telemetry plugin constants
 TELEMETRY_DEFAULT_HOURS: Final[int] = 12
