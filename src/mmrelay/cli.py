@@ -424,7 +424,7 @@ def parse_arguments() -> argparse.Namespace:
     logout_parser.add_argument(
         "--password",
         nargs="?",
-        const="",
+        const="__PROMPT__",
         help="Password for verification. If no value provided, will prompt securely.",
         type=str,
     )
@@ -2362,19 +2362,20 @@ def handle_auth_logout(args: argparse.Namespace) -> int:
         # Handle password input
         password = getattr(args, "password", None)
 
-        if password is None:
-            # No --password flag or --password with no value, prompt securely
+        if password is None or password == "__PROMPT__":
+            # No --password flag (None) or bare --password (__PROMPT__), prompt securely
             import getpass
 
             password = getpass.getpass("Enter Matrix password for verification: ")
-        else:
-            # --password VALUE provided, warn about security
+        elif password:
+            # --password VALUE provided (non-empty), warn about security
             print(
                 "⚠️  Warning: Supplying password as argument exposes it in shell history and process list."
             )
             print(
                 "   For better security, use --password without a value to prompt securely."
             )
+        # else: password is empty string "", accept without warning (user explicitly provided empty)
 
         # Confirm the action unless forced
         if not getattr(args, "yes", False):

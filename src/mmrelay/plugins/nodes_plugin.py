@@ -44,25 +44,30 @@ def get_relative_time(timestamp: float) -> str:
     # Calculate the time difference between the current time and the given timestamp
     delta = now - dt
 
-    # Extract the relevant components from the time difference
-    days = delta.days
-    seconds = delta.seconds
+    # Compute signed total seconds and guard against future timestamps
+    total_seconds = int(delta.total_seconds())
+    if total_seconds <= 0:
+        return "Just now"
 
     # Convert the time difference into a relative timeframe
-    if delta.total_seconds() > RELATIVE_TIME_DAYS_THRESHOLD * SECONDS_PER_DAY:
+    if total_seconds > RELATIVE_TIME_DAYS_THRESHOLD * SECONDS_PER_DAY:
         return dt.strftime(
             DATE_FORMAT_LONG
         )  # Return formatted date if older than RELATIVE_TIME_DAYS_THRESHOLD days
-    elif days >= 1:
+
+    days = total_seconds // SECONDS_PER_DAY
+    if days >= 1:
         return f"{days} day{'s' if days != 1 else ''} ago"
-    elif seconds >= SECONDS_PER_HOUR:
-        hours = seconds // SECONDS_PER_HOUR
+
+    hours = total_seconds // SECONDS_PER_HOUR
+    if hours >= 1:
         return f"{hours} hour{'s' if hours != 1 else ''} ago"
-    elif seconds >= SECONDS_PER_MINUTE:
-        minutes = seconds // SECONDS_PER_MINUTE
+
+    minutes = total_seconds // SECONDS_PER_MINUTE
+    if minutes >= 1:
         return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
-    else:
-        return "Just now"
+
+    return "Just now"
 
 
 class Plugin(BasePlugin):

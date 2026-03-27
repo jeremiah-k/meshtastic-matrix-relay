@@ -231,9 +231,20 @@ class MessageQueue:
             elif current_loop is task_loop:
                 # Avoid blocking the owning event loop thread; schedule cancellation
                 # inline and let the task done-callback perform cleanup.
-                cancel_handler = _make_cancel_handler(threading.Event(), task)
+                task_done = threading.Event()
+                cancel_handler = _make_cancel_handler(task_done, task)
                 with contextlib.suppress(RuntimeError):
                     task_loop.call_soon(cancel_handler)
+
+                def _watchdog_cleanup() -> None:
+                    if not task_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC):
+                        _mark_stop_failed("task cleanup")
+
+                threading.Thread(
+                    target=_watchdog_cleanup,
+                    name="MessageQueueWatchdog",
+                    daemon=True,
+                ).start()
             elif task_loop.is_running():
                 task_done = threading.Event()
                 cancel_handler = _make_cancel_handler(task_done, task)

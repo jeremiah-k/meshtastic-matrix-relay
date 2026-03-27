@@ -3134,8 +3134,25 @@ def rollback_migration(
                                 logger.info(
                                     "Removed unbacked migrated file: %s", migrated_path
                                 )
-                            except (OSError, IOError):
-                                pass
+                                rollback_report["rolled_back_steps"].append(
+                                    {
+                                        "step": step_name,
+                                        "removed": str(migrated_path),
+                                    }
+                                )
+                            except (OSError, IOError) as exc:
+                                logger.error(
+                                    "Failed to remove unbacked migrated file %s: %s",
+                                    migrated_path,
+                                    exc,
+                                )
+                                rollback_report["errors"].append(
+                                    {
+                                        "step": step_name,
+                                        "error": f"Failed to remove unbacked migrated file {migrated_path}: {exc}",
+                                    }
+                                )
+                                rollback_report["success"] = False
             else:
                 found_backup = find_backup_for_step(step_name, new_path_obj)
 

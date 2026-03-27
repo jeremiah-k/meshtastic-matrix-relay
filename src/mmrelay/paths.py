@@ -543,6 +543,11 @@ def get_plugin_database_path(plugin_name: str) -> Path:
     """
     # NOTE: MMRelay stores plugin data in the main SQLite database today.
     # This helper exists for diagnostics and potential future per-plugin DB files.
+    separators = {"/", "\\"}
+    if os.path.altsep:
+        separators.add(os.path.altsep)
+    if not plugin_name or any(sep in plugin_name for sep in separators):
+        raise ValueError(f"Invalid plugin name: {plugin_name!r}")
     filename = PLUGIN_DB_FILENAME_TEMPLATE.format(plugin_name=plugin_name)
     return get_database_dir() / filename
 

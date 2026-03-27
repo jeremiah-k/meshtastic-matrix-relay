@@ -2,14 +2,24 @@
 
 from __future__ import annotations
 
+import logging
 import os
 
 from mmrelay.constants.app import PROC_COMM_PATH_TEMPLATE, PROC_SELF_STATUS_PATH
 from mmrelay.constants.formats import DEFAULT_TEXT_ENCODING
 from mmrelay.constants.network import SYSTEMD_INIT_SYSTEM
-from mmrelay.log_utils import get_logger
 
-logger = get_logger(__name__)
+_logger: logging.Logger | None = None
+
+
+def _get_logger() -> logging.Logger:
+    """Get or create the module logger lazily to avoid import cycles."""
+    global _logger
+    if _logger is None:
+        from mmrelay.log_utils import get_logger
+
+        _logger = get_logger(__name__)
+    return _logger
 
 
 def is_running_as_service() -> bool:
@@ -38,7 +48,7 @@ def is_running_as_service() -> bool:
                     ) as comm_file:
                         return comm_file.read().strip() == SYSTEMD_INIT_SYSTEM
     except (FileNotFoundError, PermissionError, ValueError, IndexError) as e:
-        logger.debug(
+        _get_logger().debug(
             "Service detection failed via proc filesystem",
             exc_info=True,
             extra={"error_type": type(e).__name__},

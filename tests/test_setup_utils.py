@@ -1154,7 +1154,10 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         self.assertIsNone(path)
         self.assertTrue(
             any(
-                "Could not find %s in any of these locations:" in call_args.args[0]
+                call_args.args
+                and call_args.args[0] == "Could not find %s in any of these locations:"
+                and len(call_args.args) > 1
+                and call_args.args[1] == SYSTEMD_SERVICE_FILENAME
                 for call_args in mock_logger.warning.call_args_list
             )
         )

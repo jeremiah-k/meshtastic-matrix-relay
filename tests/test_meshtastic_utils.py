@@ -2058,7 +2058,7 @@ def test_reconnect_attempts_connection(
     asyncio.run(_run())
 
     # Reconnection now passes config to ensure matrix_rooms is re-initialized
-    mock_connect.assert_called_with(mu.config, True)
+    mock_connect.assert_called_once_with(mu.config, True)
 
 
 def test_check_connection_function_exists(reset_meshtastic_globals):

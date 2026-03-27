@@ -1271,7 +1271,7 @@ class TestDbUtils(unittest.TestCase):
 
         _get_db_manager()
 
-        async def _to_thread_inline(func, *args, **kwargs):
+        def _to_thread_inline(func, *args, **kwargs):
             """
             Execute asyncio.to_thread call sites inline for deterministic test behavior.
             """
@@ -1294,8 +1294,9 @@ class TestDbUtils(unittest.TestCase):
         with patch(
             "mmrelay.db_utils.asyncio.to_thread",
             side_effect=_to_thread_inline,
-        ):
+        ) as mock_to_thread:
             asyncio.run(exercise())
+        self.assertEqual(mock_to_thread.call_count, 3)
 
         # Oldest entry should have been pruned
         self.assertIsNone(get_message_map_by_meshtastic_id("mesh1"))

@@ -290,6 +290,10 @@ class Plugin(BasePlugin):
             self.logger.exception("Error processing embedded packet")
             return False
 
+        if not isinstance(packet, dict):
+            self.logger.error("Embedded packet must be a JSON object")
+            return False
+
         from mmrelay.meshtastic_utils import connect_meshtastic
 
         meshtastic_client = await asyncio.to_thread(connect_meshtastic)

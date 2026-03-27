@@ -39,7 +39,7 @@ from tests.constants import (
 def _cancelled_future() -> asyncio.Future[None]:
     """Create a Future already set with CancelledError for testing cancellation."""
     future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
-    future.set_exception(asyncio.CancelledError())
+    future.cancel()
     return future
 
 

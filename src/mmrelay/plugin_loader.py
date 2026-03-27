@@ -2473,6 +2473,13 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
 
     # Only process community plugins explicitly enabled in config.
     for plugin_name, plugin_info in community_plugins_config.items():
+        if not isinstance(plugin_name, str):
+            logger.warning(
+                "Ignoring invalid %s plugin key %r; expected a string.",
+                CONFIG_SECTION_COMMUNITY_PLUGINS,
+                plugin_name,
+            )
+            continue
         if not isinstance(plugin_info, dict):
             logger.warning(
                 "Ignoring invalid %s plugin entry for '%s'; expected a mapping.",

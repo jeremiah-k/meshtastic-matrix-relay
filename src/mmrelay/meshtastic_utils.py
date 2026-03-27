@@ -38,6 +38,7 @@ from mmrelay.constants.domain import METADATA_OUTPUT_MAX_LENGTH
 from mmrelay.constants.formats import (
     DEFAULT_TEXT_ENCODING,
     DETECTION_SENSOR_APP,
+    EMOJI_FLAG_VALUE,
     ENCODING_ERROR_IGNORE,
     FIRMWARE_VERSION_REGEX,
     TEXT_MESSAGE_APP,
