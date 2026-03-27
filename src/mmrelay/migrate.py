@@ -2294,6 +2294,18 @@ def migrate_gpxtracker(
     """
     old_gpx_dir: Path | None = None
     scan_skipped_due_to_pyyaml = False
+    yaml_available = False
+
+    try:
+        import yaml
+
+        yaml_available = True
+    except ImportError as e:
+        logger.warning(
+            "PyYAML is not available; skipping GPX tracker config scan: %s",
+            e,
+        )
+        scan_skipped_due_to_pyyaml = True
 
     roots_to_scan = list(legacy_roots)
     if new_home not in roots_to_scan:
@@ -2302,15 +2314,7 @@ def migrate_gpxtracker(
     for legacy_root in roots_to_scan:
         legacy_config = legacy_root / CONFIG_FILENAME
         if legacy_config.exists():
-            try:
-                import yaml
-            except ImportError as e:
-                logger.warning(
-                    "PyYAML is not available; skipping GPX tracker config scan for %s: %s",
-                    legacy_config,
-                    e,
-                )
-                scan_skipped_due_to_pyyaml = True
+            if not yaml_available:
                 continue
 
             try:
@@ -3107,6 +3111,7 @@ def rollback_migration(
                             }
                         )
                         all_restored = False
+                        rollback_report["success"] = False
 
                 if migrated_files and all_restored:
                     backed_up_restore_paths = {

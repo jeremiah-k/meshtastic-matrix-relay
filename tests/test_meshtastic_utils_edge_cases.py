@@ -38,32 +38,6 @@ from mmrelay.meshtastic_utils import (
 class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
     """Test cases for Meshtastic utilities edge cases and error handling."""
 
-    class _TimeoutFuture:
-        """Helper class to simulate a future that always times out."""
-
-        def __init__(self):
-            """
-            Initialize the instance.
-
-            Creates an empty list `calls` used to record timeout values.
-            """
-            self.calls = []
-
-        def result(self, timeout=None):
-            """
-            Simulate retrieving a future's result that always times out and records the provided timeout.
-
-            Appends the given `timeout` value to `self.calls` and then raises a ConcurrentTimeoutError to simulate a plugin timeout.
-
-            Parameters:
-                timeout (float | None): The timeout value passed when requesting the result; may be None.
-
-            Raises:
-                ConcurrentTimeoutError: Always raised with message "Plugin timeout".
-            """
-            self.calls.append(timeout)
-            raise ConcurrentTimeoutError("Plugin timeout")
-
     class _DummyFuture:
         """Helper class to simulate a future that records timeout values and raises an exception."""
 
@@ -744,7 +718,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             "!12345678": {"user": {"id": "!12345678", "longName": "TestNode"}}
         }
 
-        future = self._TimeoutFuture()
+        future = self._DummyFuture(ConcurrentTimeoutError("Plugin timeout"))
 
         plugin = MagicMock()
         plugin.plugin_name = "test_plugin"
@@ -801,7 +775,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         interface.myInfo = MagicMock()
         interface.myInfo.my_node_num = 12345
 
-        future = self._TimeoutFuture()
+        future = self._DummyFuture(ConcurrentTimeoutError("Plugin timeout"))
 
         plugin = MagicMock()
         plugin.plugin_name = "test_plugin"
@@ -863,7 +837,7 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
             "!12345678": {"user": {"id": "!12345678", "longName": "TestNode"}}
         }
 
-        future = self._TimeoutFuture()
+        future = self._DummyFuture(ConcurrentTimeoutError("Plugin timeout"))
         plugin = MagicMock()
         plugin.plugin_name = "telemetry_plugin"
         plugin.handle_meshtastic_message = AsyncMock(return_value=True)

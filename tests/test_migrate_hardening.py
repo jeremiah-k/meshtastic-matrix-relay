@@ -134,24 +134,6 @@ def test_staging_pattern_database(tmp_path: Path):
 
     new_home = tmp_path / "home"
 
-    # Mock finalize to fail
-    with patch(
-        "mmrelay.migrate.shutil.move", side_effect=OSError("Atomic move failed")
-    ):
-        # We need to be careful with which shutil.move we mock.
-        # In migrate_database, it moves from staged to dest.
-        pass
-
-    # A better way to test staging is to check if it existed
-    # but since it cleans up in finally, we'd need to mock the cleanup or the finalize.
-
-    with patch(
-        "mmrelay.migrate._finalize_move", side_effect=OSError("Finalize failed")
-    ):
-        # migrate_database doesn't use _finalize_move helper directly because it handles multiple files,
-        # but it follows the same logic. Let's look at it.
-        pass
-
     # Actually, I'll just check if the database was migrated successfully
     result = migrate_database([legacy_root], new_home)
     assert result["success"] is True

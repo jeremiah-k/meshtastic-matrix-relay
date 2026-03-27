@@ -134,7 +134,7 @@ def _has_mmrelay_artifacts(root: Path) -> bool:
         if marker.is_dir():
             try:
                 with os.scandir(marker) as entries:
-                    if any(True for _ in entries):
+                    if next(entries, None) is not None:
                         return True
             except OSError:
                 continue

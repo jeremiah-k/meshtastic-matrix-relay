@@ -36,6 +36,13 @@ from tests.constants import (
 )
 
 
+def _cancelled_future() -> asyncio.Future[None]:
+    """Create a Future already set with CancelledError for testing cancellation."""
+    future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+    future.set_exception(asyncio.CancelledError())
+    return future
+
+
 class TestDatabaseManager(unittest.TestCase):
     """Test DatabaseManager functionality including security fixes."""
 
@@ -1062,11 +1069,6 @@ async def test_run_async_cancelled_read_cancels_worker_future() -> None:
         worker_future = MagicMock()
         worker_future.done.return_value = False
 
-        def _cancelled_future() -> asyncio.Future[None]:
-            future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
-            future.set_exception(asyncio.CancelledError())
-            return future
-
         with (
             patch.object(manager._async_executor, "submit", return_value=worker_future),
             patch(
@@ -1093,11 +1095,6 @@ async def test_run_async_cancelled_write_logs_worker_error() -> None:
     try:
         worker_future = MagicMock()
         worker_future.cancel = MagicMock()
-
-        def _cancelled_future() -> asyncio.Future[None]:
-            future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
-            future.set_exception(asyncio.CancelledError())
-            return future
 
         async def _raise_worker_error():
             raise RuntimeError("worker failed after caller cancellation")
@@ -1136,11 +1133,6 @@ async def test_run_async_cancelled_write_swallows_followup_cancellation() -> Non
         worker_future.cancel = MagicMock()
         wrap_call_count = 0
 
-        def _cancelled_future() -> asyncio.Future[None]:
-            future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
-            future.set_exception(asyncio.CancelledError())
-            return future
-
         def _wrap_future_side_effect(_future, **_kw):
             nonlocal wrap_call_count
             wrap_call_count += 1
@@ -1178,11 +1170,6 @@ async def test_run_async_cancelled_read_does_not_cancel_finished_future() -> Non
     try:
         worker_future = MagicMock()
         worker_future.done.return_value = True
-
-        def _cancelled_future() -> asyncio.Future[None]:
-            future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
-            future.set_exception(asyncio.CancelledError())
-            return future
 
         with (
             patch.object(manager._async_executor, "submit", return_value=worker_future),

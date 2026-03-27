@@ -1,8 +1,9 @@
 """
-Message format constants.
+Format constants, regex patterns, and color definitions.
 
-Contains default message prefixes, format templates, and other
-formatting-related constants used for message display and relay.
+Contains default message prefixes, format templates, regex patterns,
+map settings, color definitions, and other formatting-related constants
+used for message display, relay, and data processing.
 """
 
 import re

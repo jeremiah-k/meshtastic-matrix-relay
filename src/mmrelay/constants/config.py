@@ -68,8 +68,10 @@ CONFIG_KEY_WIPE_ON_RESTART: Final[str] = "wipe_on_restart"
 
 # Additional credential/config keys
 CONFIG_KEY_DEVICE_ID: Final[str] = "device_id"
-MATRIX_LOGIN_FIELD: Final[str] = "".join(("pass", "word"))
-CONFIG_KEY_PASSWORD: Final[str] = MATRIX_LOGIN_FIELD
+CONFIG_KEY_PASSWORD: Final[str] = (
+    "password"  # nosec B105 - This is a config key name, not a hardcoded password
+)
+MATRIX_LOGIN_FIELD: Final[str] = CONFIG_KEY_PASSWORD
 
 # JSON formatting
 JSON_INDENT_STANDARD: Final[int] = 2
@@ -162,4 +164,6 @@ PLUGIN_SECTION_TYPES: Final[Mapping[str, str]] = MappingProxyType(
 
 # Versions where deprecation warnings were introduced
 # Each version marks when a feature became deprecated; removal follows in a later release
+# v1.3: Deprecated legacy config paths and --generate-config, --check-config flags
+# v1.4: Deprecated legacy credential storage location and --install-service flag
 DEPRECATION_VERSIONS: Final[tuple[str, ...]] = ("1.3", "1.4")

@@ -206,6 +206,11 @@ class Plugin(BasePlugin):
         against the anchored pattern `^Processed (.+) radio packet$` for backward
         compatibility with older messages.
 
+        Note:
+            This method has a side effect: when matching legacy packet bodies,
+            it mutates `event.source["content"]` by adding MATRIX_PACKET_KEY
+            for consistency with newer message formats.
+
         Parameters:
             event: Matrix event object whose `.source` mapping is expected to contain a `"content"` dict.
 

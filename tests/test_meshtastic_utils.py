@@ -28,6 +28,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.constants.network import (
     BLE_CONNECT_TIMEOUT_SECS,
+    BLE_DISCONNECT_SETTLE_SECS,
     DEFAULT_MESHTASTIC_TIMEOUT,
     DEFAULT_TCP_PORT,
     MAX_TIMEOUT_RETRIES_INFINITE,
@@ -3520,7 +3521,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         self, mock_bleak, mock_sleep, mock_get_running_loop
     ):
         """Test _disconnect_ble_by_address treats unknown is_connected as False."""
-        from mmrelay.constants.network import BLE_DISCONNECT_SETTLE_SECS
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
 
         async def _noop(*_args, **_kwargs):
@@ -3552,7 +3552,6 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         self, mock_bleak, mock_sleep, mock_get_running_loop
     ):
         """Test _disconnect_ble_by_address sleeps after a successful disconnect."""
-        from mmrelay.constants.network import BLE_DISCONNECT_SETTLE_SECS
         from mmrelay.meshtastic_utils import _disconnect_ble_by_address
 
         async def _noop(*_args, **_kwargs):

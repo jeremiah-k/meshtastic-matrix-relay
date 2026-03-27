@@ -1154,8 +1154,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         self.assertIsNone(path)
         self.assertTrue(
             any(
-                "Could not find mmrelay.service in any of these locations:"
-                in call_args.args[0]
+                "Could not find %s in any of these locations:" in call_args.args[0]
                 for call_args in mock_logger.warning.call_args_list
             )
         )

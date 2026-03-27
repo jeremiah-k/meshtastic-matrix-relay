@@ -195,7 +195,7 @@ class Plugin(BasePlugin):
             index_map: dict[str, int] = {
                 f"+{offset}h": min(base_index + offset, max_index) for offset in offsets
             }
-            index_map["now"] = min(base_index, max_index)
+            index_map[WEATHER_SLOT_NOW] = min(base_index, max_index)
 
             def _safe_get(seq: Any, idx: Any) -> Any:
                 """
@@ -578,7 +578,7 @@ class Plugin(BasePlugin):
 
         weather_notice = "Cannot determine location"
         if coords:
-            mode = parsed_command if parsed_command else CANONICAL_WEATHER_MODE
+            mode = parsed_command
             weather_notice = await asyncio.to_thread(
                 self.generate_forecast,
                 latitude=coords[0],

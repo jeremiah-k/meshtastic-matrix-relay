@@ -191,7 +191,7 @@ class TestMainEntryPoint(unittest.TestCase):
         import mmrelay.__main__
 
         doc = mmrelay.__main__.__doc__
-        assert doc is not None
+        self.assertIsNotNone(doc)
         self.assertIn("Alternative entry point", doc)
         self.assertIn("Windows", doc)
         self.assertIn("python -m mmrelay", doc)

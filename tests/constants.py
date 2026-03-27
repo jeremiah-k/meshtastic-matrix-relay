@@ -81,7 +81,7 @@ TEST_MESHTASTIC_ID_3: Final[str] = "!33333333"
 
 # Test packet/node IDs
 TEST_PACKET_ID: Final[int] = 12345
-TEST_NODE_NUM: Final[int] = 12345
+TEST_NODE_NUM: Final[int] = 67890
 TEST_PACKET_FROM_ID: Final[int] = 123456789
 
 # Test BLE MAC address

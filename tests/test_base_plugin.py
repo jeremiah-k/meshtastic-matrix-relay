@@ -61,6 +61,12 @@ class MockPlugin(BasePlugin):
         return False
 
 
+class CoreMockPlugin(MockPlugin):
+    """Mock plugin with is_core_plugin=True for testing core plugin behavior."""
+
+    is_core_plugin = True
+
+
 class TestBasePlugin(unittest.TestCase):
     """Test cases for the BasePlugin class."""
 
@@ -118,10 +124,6 @@ class TestBasePlugin(unittest.TestCase):
 
     def test_plugin_initialization_with_class_name(self):
         """Test plugin initialization using class-level plugin_name."""
-
-        class CoreMockPlugin(MockPlugin):
-            is_core_plugin = True
-
         plugin = CoreMockPlugin()
 
         self.assertEqual(plugin.plugin_name, "test_plugin")
@@ -190,10 +192,6 @@ class TestBasePlugin(unittest.TestCase):
 
         Verifies that the plugin is active, the response delay is set to 3.0 seconds, and the enabled channels are [0, 1] when these values are provided in the configuration.
         """
-
-        class CoreMockPlugin(MockPlugin):
-            is_core_plugin = True
-
         plugin = CoreMockPlugin()
 
         self.assertTrue(plugin.config["active"])
@@ -495,10 +493,6 @@ class TestBasePlugin(unittest.TestCase):
         """
         Test that is_channel_enabled returns True for a channel that is enabled in the plugin configuration.
         """
-
-        class CoreMockPlugin(MockPlugin):
-            is_core_plugin = True
-
         plugin = CoreMockPlugin()
 
         result = plugin.is_channel_enabled(0)
@@ -688,10 +682,6 @@ class TestBasePlugin(unittest.TestCase):
         """
         Tests that the get_plugin_data_dir method returns the correct plugin data directory path using the patched utility function.
         """
-
-        class CoreMockPlugin(MockPlugin):
-            is_core_plugin = True
-
         plugin = CoreMockPlugin()
 
         with patch("mmrelay.plugins.base_plugin.get_plugin_data_dir") as mock_get_dir:
@@ -1297,10 +1287,6 @@ class TestBasePlugin(unittest.TestCase):
     @patch("mmrelay.plugins.base_plugin.get_plugin_data_dir")
     def test_get_plugin_data_dir_with_subdir(self, mock_get_dir):
         """Test get_plugin_data_dir with subdirectory (lines 607-609)."""
-
-        class CoreMockPlugin(MockPlugin):
-            is_core_plugin = True
-
         mock_get_dir.return_value = "/base/plugin/dir/subdir"
 
         plugin = CoreMockPlugin()

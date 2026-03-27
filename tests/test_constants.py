@@ -178,6 +178,7 @@ class TestConstantsImports:
         from mmrelay.constants import formats  # noqa: F401
         from mmrelay.constants import messages  # noqa: F401
         from mmrelay.constants import network  # noqa: F401
+        from mmrelay.constants import plugins  # noqa: F401
         from mmrelay.constants import queue  # noqa: F401
 
     def test_common_constants_available_from_init(self):

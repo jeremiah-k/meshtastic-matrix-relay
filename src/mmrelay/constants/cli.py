@@ -38,7 +38,7 @@ EXIT_CODE_SIGINT: Final[int] = 130
 WINDOWS_PATH_NOT_APPLICABLE_LABEL: Final[str] = "N/A (Windows)"
 
 # Command registry - single source of truth for CLI command syntax
-CLI_COMMANDS = {
+CLI_COMMANDS: Final[dict[str, str]] = {
     # Config commands
     "generate_config": "mmrelay config generate",
     "check_config": "mmrelay config check",
@@ -54,7 +54,7 @@ CLI_COMMANDS = {
 }
 
 # Deprecation mappings - maps old flags to new command keys
-DEPRECATED_COMMANDS = {
+DEPRECATED_COMMANDS: Final[dict[str, str]] = {
     "--generate-config": "generate_config",
     "--check-config": "check_config",
     "--install-service": "service_install",

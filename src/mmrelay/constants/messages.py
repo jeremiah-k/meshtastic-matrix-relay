@@ -14,9 +14,7 @@ LOG_SIZE_BYTES_MULTIPLIER: Final[int] = 1024 * 1024  # Convert MB to bytes
 
 # Numeric portnum constants for comparisons
 PORTNUM_TEXT_MESSAGE_APP: Final[int] = 1  # Numeric portnum for TEXT_MESSAGE_APP
-PORTNUM_DETECTION_SENSOR_APP: Final[int] = (
-    10  # Numeric portnum for DETECTION_SENSOR_APP
-)
+PORTNUM_DETECTION_SENSOR_APP: Final[int] = 10  # DETECTION_SENSOR_APP portnum
 DEFAULT_CHANNEL_VALUE: Final[int] = 0
 
 # Message formatting constants
@@ -48,12 +46,12 @@ MSG_E2EE_NO_AUTH: Final[str] = "Matrix authentication not configured"
 
 # Legacy credentials warning messages
 LEGACY_CREDENTIALS_WARNING_MSG: Final[str] = (
-    "Credentials found in legacy location: {}. "
+    "Credentials found in legacy location: {path}. "
     "Please run 'mmrelay migrate' to move to new unified structure. "
-    "Support for legacy credentials will be removed in v1.4."
+    "Support for legacy credentials will be removed in a future release."
 )
 LEGACY_CREDENTIALS_NO_VERSION_MSG: Final[str] = (
-    "Credentials found in legacy location: {}. "
+    "Credentials found in legacy location: {path}. "
     "Please run 'mmrelay migrate' to move to new unified structure."
 )
 

@@ -264,8 +264,8 @@ class MessageQueue:
         if exec_ref is not None:
             on_loop_thread = False
             with contextlib.suppress(RuntimeError):
-                loop_chk = asyncio.get_running_loop()
-                on_loop_thread = loop_chk.is_running()
+                asyncio.get_running_loop()
+                on_loop_thread = True
 
             def _shutdown(exec_ref: ThreadPoolExecutor) -> None:
                 """Shut down executor, cancelling pending futures."""

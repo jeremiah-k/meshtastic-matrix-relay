@@ -289,7 +289,9 @@ def get_template_service_path() -> str | None:
 
     # If we get here, we couldn't find the template
     # Warning output to help diagnose issues
-    logger.warning("Could not find mmrelay.service in any of these locations:")
+    logger.warning(
+        "Could not find %s in any of these locations:", SYSTEMD_SERVICE_FILENAME
+    )
     for path in template_paths:
         logger.warning("  - %s", path)
 
@@ -872,8 +874,8 @@ def start_service() -> bool:
             [SYSTEMCTL, "--user", "start", SYSTEMD_SERVICE_FILENAME], check=True
         )
         return True
-    except subprocess.CalledProcessError:
-        logger.exception("Error starting service")
+    except subprocess.CalledProcessError as e:
+        logger.exception("Error starting service (exit code %d)", e.returncode)
         return False
     except OSError:
         logger.exception("Error starting service")

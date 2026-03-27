@@ -630,12 +630,6 @@ class TestMapPlugin(unittest.TestCase):
         Simulates receiving "!map zoom=50", asserts the handler returns True,
         and verifies get_map was invoked with zoom set to configured value 10.
         """
-        """
-        Run the asynchronous scenario that verifies an invalid zoom parameter is reset.
-        
-        Simulates a "!map zoom=50" room event, awaits handle_room_message,
-        and confirms get_map was invoked with zoom equal to configured value 10.
-        """
 
         async def run_test():
             """

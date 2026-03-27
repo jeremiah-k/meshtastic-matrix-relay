@@ -155,6 +155,7 @@ def test_get_legacy_env_vars_and_deprecation_window(monkeypatch) -> None:
             legacy_vars = get_legacy_env_vars()
             assert sorted(legacy_vars) == ["MMRELAY_BASE_DIR", "MMRELAY_DATA_DIR"]
             assert is_deprecation_window_active() is True
+            # Verify deprecation flag remains active on repeated calls
             assert is_deprecation_window_active() is True
 
         warning_calls = [
@@ -275,7 +276,7 @@ def test_ensure_directories_creates_missing_tree(
 
 
 def test_ensure_directories_warns_when_missing_and_create_disabled(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """ensure_directories(create_missing=False) should warn for missing paths."""
     with tempfile.TemporaryDirectory() as tmp_dir:

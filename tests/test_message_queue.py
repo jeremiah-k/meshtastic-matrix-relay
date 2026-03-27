@@ -11,6 +11,7 @@ Tests the FIFO message queue functionality including:
 """
 
 import asyncio
+import contextlib
 import time
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -79,7 +80,7 @@ class TestMessageQueue(unittest.TestCase):
         # Store original run_in_executor for restoration
         self.original_run_in_executor = real_loop.run_in_executor
 
-        def sync_run_in_executor(executor, func, *args, **kwargs):
+        def sync_run_in_executor(executor, func, *args):
             """
             Run a callable synchronously but return an awaitable Future that is already completed with its result or exception.
 
@@ -88,14 +89,13 @@ class TestMessageQueue(unittest.TestCase):
             Parameters:
                 func (callable): Function to execute.
                 *args: Positional arguments passed to `func`.
-                **kwargs: Keyword arguments passed to `func`.
 
             Returns:
                 asyncio.Future: A Future created on the test event loop and completed with `func`'s return value or raised exception.
             """
             fut = real_loop.create_future()
             try:
-                res = func(*args, **kwargs)
+                res = func(*args)
                 fut.set_result(res)
             except Exception as e:
                 fut.set_exception(e)
@@ -122,8 +122,6 @@ class TestMessageQueue(unittest.TestCase):
                 if not loop.is_closed():
                     loop.close()
             finally:
-                import contextlib
-
                 with contextlib.suppress(Exception):
                     asyncio.set_event_loop(None)
 

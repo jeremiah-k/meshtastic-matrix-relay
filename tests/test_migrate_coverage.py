@@ -159,7 +159,7 @@ class TestMigrateAdditionalCoverage:
         monkeypatch.setattr("mmrelay.migrate.os.getpid", lambda: 100)
         original_exists = Path.exists
 
-        def selective_exists(self):
+        def selective_exists(self: Path) -> bool:
             if "/proc" in str(self) and "cmdline" in str(self):
                 return False
             return original_exists(self)

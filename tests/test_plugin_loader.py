@@ -2465,8 +2465,6 @@ class TestGitOperations(BaseGitTest):
 
         self.assertTrue(result)
         # Verify the short-circuit: rev-parse calls were made but no fetch/checkout
-        from unittest.mock import call
-
         self.assertIn(
             call(
                 ["git", "-C", self.temp_repo_path, "rev-parse", "HEAD"],

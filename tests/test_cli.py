@@ -2208,7 +2208,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
             "homeserver": "https://matrix.org",
             "access_token": "syt_test_token_123",
             "user_id": "@bot:matrix.org",
-            # Missing CONFIG_KEY_DEVICE_ID
+            # Missing device_id
         }
         mock_file.return_value.read.return_value = json.dumps(credentials_data)
 

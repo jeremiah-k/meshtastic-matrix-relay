@@ -85,7 +85,7 @@ class TestMigrateGpxtracker(unittest.TestCase):
         result = migrate_gpxtracker([], Path("/home"))
 
         self.assertTrue(result.get("success"))
-        self.assertIn("gpxtracker plugin not configured", result.get("message", ""))
+        self.assertIn("PyYAML is unavailable", result.get("message", ""))
 
 
 class TestPerformMigration(unittest.TestCase):

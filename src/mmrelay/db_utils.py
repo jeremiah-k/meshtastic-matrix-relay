@@ -262,7 +262,10 @@ _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITHOUT_MESH_SQL = (
     "FROM message_map_legacy"
 )
 _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_TEMP_SQL = (
-    "INSERT OR IGNORE INTO message_map SELECT * FROM message_map_old_temp"
+    "INSERT OR IGNORE INTO message_map "
+    "(meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
+    "SELECT meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet "
+    "FROM message_map_old_temp"
 )
 _CREATE_INDEX_MESSAGE_MAP_ID_SQL = (
     "CREATE INDEX IF NOT EXISTS idx_message_map_meshtastic_id "

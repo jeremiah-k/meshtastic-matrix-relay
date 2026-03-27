@@ -42,25 +42,17 @@ from mmrelay.constants.plugins import (
 from mmrelay.log_utils import get_logger
 from mmrelay.plugins.base_plugin import BasePlugin
 
+
+def _normalize_rgba(
+    color: tuple[int, int, int, int],
+) -> tuple[float, float, float, float]:
+    return tuple(c / RGBA_CHANNEL_MAX for c in color)  # type: ignore[return-value]
+
+
 # Cairo colors (normalized RGBA 0-1) derived from RGBA constants
-CAIRO_LABEL_FILL_COLOR = (
-    MAP_LABEL_FILL_COLOR[0] / RGBA_CHANNEL_MAX,
-    MAP_LABEL_FILL_COLOR[1] / RGBA_CHANNEL_MAX,
-    MAP_LABEL_FILL_COLOR[2] / RGBA_CHANNEL_MAX,
-    MAP_LABEL_FILL_COLOR[3] / RGBA_CHANNEL_MAX,
-)
-CAIRO_LABEL_OUTLINE_COLOR = (
-    MAP_LABEL_OUTLINE_COLOR[0] / RGBA_CHANNEL_MAX,
-    MAP_LABEL_OUTLINE_COLOR[1] / RGBA_CHANNEL_MAX,
-    MAP_LABEL_OUTLINE_COLOR[2] / RGBA_CHANNEL_MAX,
-    MAP_LABEL_OUTLINE_COLOR[3] / RGBA_CHANNEL_MAX,
-)
-CAIRO_LABEL_TEXT_COLOR = (
-    MAP_LABEL_TEXT_COLOR[0] / RGBA_CHANNEL_MAX,
-    MAP_LABEL_TEXT_COLOR[1] / RGBA_CHANNEL_MAX,
-    MAP_LABEL_TEXT_COLOR[2] / RGBA_CHANNEL_MAX,
-    MAP_LABEL_TEXT_COLOR[3] / RGBA_CHANNEL_MAX,
-)
+CAIRO_LABEL_FILL_COLOR = _normalize_rgba(MAP_LABEL_FILL_COLOR)
+CAIRO_LABEL_OUTLINE_COLOR = _normalize_rgba(MAP_LABEL_OUTLINE_COLOR)
+CAIRO_LABEL_TEXT_COLOR = _normalize_rgba(MAP_LABEL_TEXT_COLOR)
 
 # SVG colors (hex) and opacities derived from RGBA constants
 SVG_LABEL_FILL_COLOR = f"#{MAP_LABEL_FILL_COLOR[0]:02x}{MAP_LABEL_FILL_COLOR[1]:02x}{MAP_LABEL_FILL_COLOR[2]:02x}"
@@ -543,6 +535,8 @@ class Plugin(BasePlugin):
             configured_zoom = int(self.config.get("zoom", DEFAULT_MAP_ZOOM))
         except (TypeError, ValueError):
             configured_zoom = DEFAULT_MAP_ZOOM
+        if not MAP_ZOOM_MIN <= configured_zoom <= MAP_ZOOM_MAX:
+            configured_zoom = DEFAULT_MAP_ZOOM
 
         try:
             zoom = int(zoom)  # type: ignore[arg-type]
@@ -551,9 +545,6 @@ class Plugin(BasePlugin):
 
         if not MAP_ZOOM_MIN <= zoom <= MAP_ZOOM_MAX:
             zoom = configured_zoom
-        # Fallback to DEFAULT_MAP_ZOOM if both CLI and configured values are invalid.
-        if not MAP_ZOOM_MIN <= zoom <= MAP_ZOOM_MAX:
-            zoom = DEFAULT_MAP_ZOOM
 
         try:
             image_size = (int(image_size[0]), int(image_size[1]))  # type: ignore[arg-type]

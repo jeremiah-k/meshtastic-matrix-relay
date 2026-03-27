@@ -30,6 +30,8 @@ class TestGetRelativeTime(unittest.TestCase):
         """
         Test that `get_relative_time` returns "Just now" for timestamps within a few seconds of the current time.
         """
+        # Note: Uses real datetime.now() since the function is designed to handle
+        # timestamps within a few seconds of current time reliably
         now = datetime.now()
         timestamp = now.timestamp()
 
