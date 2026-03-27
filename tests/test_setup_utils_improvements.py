@@ -27,10 +27,13 @@ class TestPatchCoverageImprovements(unittest.TestCase):
         # Should log warning
         self.assertIsNone(result)
         mock_logger.warning.assert_called()
-        # Check that warning contains service file path info
+        # Check that warning contains service file path info (uses constant)
         call_args = mock_logger.warning.call_args_list
         self.assertTrue(
-            any("Could not find mmrelay.service" in str(call) for call in call_args)
+            any(
+                "Could not find" in str(call) and "mmrelay.service" in str(call)
+                for call in call_args
+            )
         )
 
     def test_exception_handling_improvements(self):
@@ -141,11 +144,11 @@ class TestPatchCoverageImprovements(unittest.TestCase):
         # Test with empty config (line 349)
         self.assertFalse(is_e2ee_enabled({}))
 
-        # Test with False config (line 349)
-        self.assertFalse(is_e2ee_enabled(False))
+        # Test with False config (line 349) - edge case handling
+        self.assertFalse(is_e2ee_enabled(False))  # type: ignore[arg-type]
 
-        # Test with empty string config (line 349)
-        self.assertFalse(is_e2ee_enabled(""))
+        # Test with empty string config (line 349) - edge case handling
+        self.assertFalse(is_e2ee_enabled(""))  # type: ignore[arg-type]
 
         # Test with encryption enabled (legacy)
         config_encryption = {"matrix": {"encryption": {"enabled": True}}}

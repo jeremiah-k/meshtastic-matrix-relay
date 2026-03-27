@@ -103,7 +103,7 @@ class TestHealthPlugin(unittest.TestCase):
 
         # Should contain low battery count (<= threshold)
         self.assertIn(
-            f"Nodes with Low Battery (<={LOW_BATTERY_THRESHOLD_PERCENT}%): 1", response
+            f"Nodes with Low Battery (<= {LOW_BATTERY_THRESHOLD_PERCENT}%): 1", response
         )
 
         # Should contain air util statistics
@@ -209,7 +209,7 @@ class TestHealthPlugin(unittest.TestCase):
         result = self.plugin.generate_response()
         self.assertIn("Nodes:", result)
         self.assertIn(
-            f"Nodes with Low Battery (<={LOW_BATTERY_THRESHOLD_PERCENT}%): 2", result
+            f"Nodes with Low Battery (<= {LOW_BATTERY_THRESHOLD_PERCENT}%): 2", result
         )
         self.assertIn("Battery: 6.5% / 6.5%", result)
 
@@ -276,8 +276,8 @@ class TestHealthPlugin(unittest.TestCase):
             """
             result = await self.plugin.handle_room_message(room, event, "full_message")
             self.assertFalse(result)
-            self.plugin.matches.assert_called_once_with(event)
-            self.plugin.send_matrix_message.assert_not_called()
+            self.plugin.matches.assert_called_once_with(event)  # type: ignore[union-attr]
+            self.plugin.send_matrix_message.assert_not_called()  # type: ignore[union-attr]
 
         asyncio.run(run_test())
 
@@ -307,11 +307,11 @@ class TestHealthPlugin(unittest.TestCase):
             result = await self.plugin.handle_room_message(room, event, "full_message")
 
             self.assertTrue(result)
-            self.plugin.matches.assert_called_once_with(event)
-            self.plugin.send_matrix_message.assert_called_once()
+            self.plugin.matches.assert_called_once_with(event)  # type: ignore[union-attr]
+            self.plugin.send_matrix_message.assert_called_once()  # type: ignore[union-attr]
 
             # Check the call arguments
-            call_args = self.plugin.send_matrix_message.call_args
+            call_args = self.plugin.send_matrix_message.call_args  # type: ignore[union-attr]
             self.assertEqual(call_args[0][0], "!test:matrix.org")  # room_id
             self.assertIn("Nodes: 5", call_args[0][1])  # message content
             self.assertEqual(call_args.kwargs["formatted"], False)
