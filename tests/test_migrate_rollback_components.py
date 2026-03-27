@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from mmrelay.constants.migration import MIGRATION_BACKUP_DIRNAME
 from mmrelay.migrate import rollback_migration
 
 
@@ -27,7 +28,7 @@ class TestRollbackCredentialsMigration:
         gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
         gpx_plugin_dir.mkdir(parents=True)
 
-        backup_dir = new_home / "matrix" / ".migration_backups"
+        backup_dir = new_home / "matrix" / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir(parents=True)
         creds_backup = backup_dir / "credentials.json.bak.20240101_120000"
         creds_backup.write_text(
@@ -83,7 +84,7 @@ class TestRollbackConfigMigration:
         gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
         gpx_plugin_dir.mkdir(parents=True)
 
-        backup_dir = new_home / ".migration_backups"
+        backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir(parents=True)
         config_backup = backup_dir / "config.yaml.bak.20240101_120000"
         config_backup.write_text(
@@ -138,7 +139,7 @@ class TestRollbackDatabaseMigration:
         gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
         gpx_plugin_dir.mkdir(parents=True)
 
-        backup_dir = new_home / ".migration_backups"
+        backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()
 
         # Main database backup
@@ -193,7 +194,7 @@ class TestRollbackDatabaseMigration:
         """Recorded backup member paths should restore DB files when step new_path is a directory."""
         new_home = tmp_path / "home"
         db_dir = new_home / "database"
-        backup_dir = db_dir / ".migration_backups"
+        backup_dir = db_dir / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir(parents=True, exist_ok=True)
 
         db_backup = backup_dir / "meshtastic.sqlite.bak.20240101_120000"
@@ -234,6 +235,48 @@ class TestRollbackDatabaseMigration:
         assert db_dest.read_text() == "SQLite format 3 (backup)"
         assert wal_dest.read_text() == "WAL backup"
 
+    def test_rollback_database_migration_removes_unbacked_migrated_members(
+        self, tmp_path: Path
+    ) -> None:
+        """Rollback should remove migrated DB members that had no recorded backup."""
+        new_home = tmp_path / "home"
+        db_dir = new_home / "database"
+        backup_dir = db_dir / MIGRATION_BACKUP_DIRNAME
+        backup_dir.mkdir(parents=True, exist_ok=True)
+
+        db_backup = backup_dir / "meshtastic.sqlite.bak.20240101_120000"
+        db_backup.write_text("SQLite format 3 (backup)")
+
+        db_dest = db_dir / "meshtastic.sqlite"
+        wal_dest = db_dir / "meshtastic.sqlite-wal"
+        db_dest.write_text("SQLite format 3 (migrated)")
+        wal_dest.write_text("WAL migrated")
+
+        completed_steps = ["database"]
+        migrations = [
+            {
+                "type": "database",
+                "result": {
+                    "new_path": str(db_dir),
+                    "action": "move",
+                    "success": True,
+                    "backed_up_files": [
+                        {
+                            "backup_path": str(db_backup),
+                            "restore_path": str(db_dest),
+                        }
+                    ],
+                    "migrated_files": [str(db_dest), str(wal_dest)],
+                },
+            }
+        ]
+
+        result = rollback_migration(completed_steps, migrations, new_home)
+
+        assert result["success"] is True
+        assert db_dest.read_text() == "SQLite format 3 (backup)"
+        assert not wal_dest.exists()
+
 
 class TestRollbackLogsMigration:
     """Test rollback of logs directory migration."""
@@ -249,7 +292,7 @@ class TestRollbackLogsMigration:
         gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
         gpx_plugin_dir.mkdir(parents=True)
 
-        backup_dir = new_home / ".migration_backups"
+        backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()
         logs_backup = backup_dir / "logs.bak.20240101_120000"
         logs_backup.mkdir()
@@ -308,7 +351,7 @@ class TestRollbackStoreMigration:
         gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
         gpx_plugin_dir.mkdir(parents=True)
 
-        backup_dir = new_home / ".migration_backups"
+        backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()
         store_backup = backup_dir / "store.bak.20240101_120000"
         store_backup.mkdir()
@@ -365,7 +408,7 @@ class TestRollbackPluginsMigration:
         gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
         gpx_plugin_dir.mkdir(parents=True)
 
-        backup_dir = new_home / ".migration_backups"
+        backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()
         plugins_backup = backup_dir / "plugins.bak.20240101_120000"
         plugins_backup.mkdir()
@@ -442,8 +485,8 @@ class TestRollbackGpxtrackerMigration:
         (gpx_dest / "track_new.gpx").write_text("<gpx>New track</gpx>")
 
         # Create backup directory and GPX tracker backup.
-        # For this step rollback lookup searches under new_path.parent/.migration_backups
-        backup_dir = gpx_dest.parent / ".migration_backups"
+        # For this step rollback lookup searches under new_path.parent/MIGRATION_BACKUP_DIRNAME
+        backup_dir = gpx_dest.parent / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()
         gpx_backup = backup_dir / "data.bak.20240101_120000"
         gpx_backup.mkdir()
@@ -495,7 +538,7 @@ class TestRollbackMultipleComponents:
         gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
         gpx_plugin_dir.mkdir(parents=True)
 
-        backup_dir = new_home / ".migration_backups"
+        backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()
 
         # Create backups for multiple components

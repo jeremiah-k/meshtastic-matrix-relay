@@ -7,6 +7,7 @@ execution by defining trusted sources and dangerous patterns.
 """
 
 import re
+from types import MappingProxyType
 from typing import Final
 
 # Message length limits
@@ -23,8 +24,8 @@ SPECIAL_NODE_MESSAGES: Final[str] = "!NODE_MSGS!"
 S2_PRECISION_BITS_TO_METERS_CONSTANT: Final[float] = 23905787.925008
 
 # Precompiled regex patterns for validation
-COMMIT_HASH_PATTERN: Final[re.Pattern[str]] = re.compile(r"[0-9a-fA-F]{7,40}")
-REF_NAME_PATTERN: Final[re.Pattern[str]] = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")
+COMMIT_HASH_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[0-9a-fA-F]{7,40}$")
+REF_NAME_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
 
 # Default branch names to try when ref is not specified
 DEFAULT_BRANCHES: Final[tuple[str, ...]] = ("main", "master")
@@ -154,16 +155,22 @@ OPEN_METEO_TIMEZONE_AUTO: Final[str] = "timezone=auto"
 OPEN_METEO_CURRENT_WEATHER_FLAG: Final[str] = "current_weather=true"
 
 # Hourly forecast configuration by mode
-HOURLY_CONFIG: Final[dict[str, dict[str, list]]] = {
-    WEATHER_MODE_CURRENT: {
-        "slots": [WEATHER_SLOT_NOW],
-        "offsets": [],
-    },
-    WEATHER_MODE_HOURLY: {
-        "slots": [label for _, label in HOURLY_FORECAST_SLOTS],
-        "offsets": [offset for offset, _ in HOURLY_FORECAST_SLOTS],
-    },
-}
+HOURLY_CONFIG: Final = MappingProxyType(
+    {
+        WEATHER_MODE_CURRENT: MappingProxyType(
+            {
+                "slots": (WEATHER_SLOT_NOW,),
+                "offsets": (),
+            }
+        ),
+        WEATHER_MODE_HOURLY: MappingProxyType(
+            {
+                "slots": tuple(label for _, label in HOURLY_FORECAST_SLOTS),
+                "offsets": tuple(offset for offset, _ in HOURLY_FORECAST_SLOTS),
+            }
+        ),
+    }
+)
 
 
 # Weather code to text mapping (Open-Meteo codes)
@@ -208,7 +215,7 @@ def _make_weather_mapping() -> dict[int, str]:
     return raw
 
 
-WEATHER_CODE_TEXT_MAPPING: Final[dict[int, str]] = _make_weather_mapping()
+WEATHER_CODE_TEXT_MAPPING: Final = MappingProxyType(_make_weather_mapping())
 
 # Telemetry plugin constants
 TELEMETRY_DEFAULT_HOURS: Final[int] = 12

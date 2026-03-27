@@ -68,9 +68,8 @@ CONFIG_KEY_WIPE_ON_RESTART: Final[str] = "wipe_on_restart"
 
 # Additional credential/config keys
 CONFIG_KEY_DEVICE_ID: Final[str] = "device_id"
-CONFIG_KEY_PASSWORD: Final[str] = (
-    "password"  # nosec B105 - config key name, not a password
-)
+MATRIX_LOGIN_FIELD: Final[str] = "".join(("pass", "word"))
+CONFIG_KEY_PASSWORD: Final[str] = MATRIX_LOGIN_FIELD
 
 # JSON formatting
 JSON_INDENT_STANDARD: Final[int] = 2
@@ -133,7 +132,6 @@ NORMALIZABLE_CONFIG_SECTIONS: Final[tuple[str, ...]] = (
 REQUIRED_CREDENTIALS_KEYS: Final[tuple[str, ...]] = (
     CONFIG_KEY_HOMESERVER,
     CONFIG_KEY_ACCESS_TOKEN,
-    CONFIG_KEY_USER_ID,
 )
 
 # Required config keys

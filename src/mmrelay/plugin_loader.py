@@ -1564,12 +1564,14 @@ def _update_existing_repo_to_branch_or_tag(
             return False
 
     if is_default_branch:
-        if _try_checkout_and_pull_ref(repo_path, ref_value, repo_name, ref_type):
-            return True
-        other_default = "main" if ref_value == "master" else "master"
-        logger.warning(f"Branch {ref_value} not found, trying {other_default}")
-        if _try_checkout_and_pull_ref(repo_path, other_default, repo_name, "branch"):
-            return True
+        default_branch_candidates = [ref_value] + [
+            branch_name for branch_name in default_branches if branch_name != ref_value
+        ]
+        for branch_name in default_branch_candidates:
+            if branch_name != ref_value:
+                logger.warning("Branch %s not found, trying %s", ref_value, branch_name)
+            if _try_checkout_and_pull_ref(repo_path, branch_name, repo_name, "branch"):
+                return True
         logger.warning(
             "Could not checkout any default branch, repository update failed"
         )
@@ -1743,35 +1745,24 @@ def _clone_new_repo_to_branch_or_tag(
     clone_commands = []
 
     if is_default_branch:
-        clone_commands.append(
-            (
-                [
-                    "git",
-                    GIT_CLONE_CMD,
-                    GIT_CLONE_FILTER_BLOB_NONE,
-                    GIT_BRANCH_CMD,
-                    ref_value,
-                    repo_url,
-                    repo_name,
-                ],
-                ref_value,
+        default_branch_candidates = [ref_value] + [
+            branch_name for branch_name in DEFAULT_BRANCHES if branch_name != ref_value
+        ]
+        for branch_name in default_branch_candidates:
+            clone_commands.append(
+                (
+                    [
+                        "git",
+                        GIT_CLONE_CMD,
+                        GIT_CLONE_FILTER_BLOB_NONE,
+                        GIT_BRANCH_CMD,
+                        branch_name,
+                        repo_url,
+                        repo_name,
+                    ],
+                    branch_name,
+                )
             )
-        )
-        other_default = "main" if ref_value == "master" else "master"
-        clone_commands.append(
-            (
-                [
-                    "git",
-                    GIT_CLONE_CMD,
-                    GIT_CLONE_FILTER_BLOB_NONE,
-                    GIT_BRANCH_CMD,
-                    other_default,
-                    repo_url,
-                    repo_name,
-                ],
-                other_default,
-            )
-        )
         clone_commands.append(
             (
                 ["git", GIT_CLONE_CMD, GIT_CLONE_FILTER_BLOB_NONE, repo_url, repo_name],
@@ -2289,6 +2280,7 @@ def stop_global_scheduler() -> None:
         _global_scheduler_thread.join(timeout=SCHEDULER_SHUTDOWN_TIMEOUT_SECONDS)
         if _global_scheduler_thread.is_alive():
             logger.warning("Global scheduler thread did not stop within timeout")
+            return
 
     # Clear all scheduled jobs
     if schedule is not None:
@@ -2327,6 +2319,12 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
     if config is None:
         logger.error("No configuration available. Cannot load plugins.")
         return []
+    if not isinstance(config, dict):
+        logger.error(
+            "Invalid plugin configuration type: expected mapping, got %s",
+            type(config).__name__,
+        )
+        return []
 
     # Import core plugins
     from mmrelay.plugins.debug_plugin import Plugin as DebugPlugin
@@ -2356,15 +2354,36 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
 
     plugins = core_plugins.copy()
 
+    def _section_dict(section_name: str) -> dict[str, Any]:
+        section = config.get(section_name, {})
+        if isinstance(section, dict):
+            return section
+        logger.warning("Ignoring invalid %s config; expected a mapping.", section_name)
+        return {}
+
+    def _active_plugin_names(section_name: str, section: dict[str, Any]) -> list[str]:
+        active_plugins: list[str] = []
+        for plugin_name, plugin_info in section.items():
+            if not isinstance(plugin_info, dict):
+                logger.warning(
+                    "Ignoring invalid %s plugin entry for '%s'; expected a mapping.",
+                    section_name,
+                    plugin_name,
+                )
+                continue
+            if plugin_info.get("active", False):
+                active_plugins.append(plugin_name)
+        return active_plugins
+
+    core_plugins_config = _section_dict(CONFIG_SECTION_PLUGINS)
+
     # Process and load custom plugins
-    custom_plugins_config = config.get(CONFIG_SECTION_CUSTOM_PLUGINS, {})
+    custom_plugins_config = _section_dict(CONFIG_SECTION_CUSTOM_PLUGINS)
     custom_plugin_dirs = get_custom_plugin_dirs()
 
-    active_custom_plugins = [
-        plugin_name
-        for plugin_name, plugin_info in custom_plugins_config.items()
-        if plugin_info.get("active", False)
-    ]
+    active_custom_plugins = _active_plugin_names(
+        CONFIG_SECTION_CUSTOM_PLUGINS, custom_plugins_config
+    )
 
     if active_custom_plugins:
         logger.debug(
@@ -2414,7 +2433,7 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
             )
 
     # Process and download community plugins
-    community_plugins_config = config.get(CONFIG_SECTION_COMMUNITY_PLUGINS, {})
+    community_plugins_config = _section_dict(CONFIG_SECTION_COMMUNITY_PLUGINS)
     community_plugin_dirs = get_community_plugin_dirs()
 
     if not community_plugin_dirs:
@@ -2426,11 +2445,9 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
         community_plugins_dir = community_plugin_dirs[0]
 
     # Create community plugins directory if needed
-    active_community_plugins = [
-        plugin_name
-        for plugin_name, plugin_info in community_plugins_config.items()
-        if plugin_info.get("active", False)
-    ]
+    active_community_plugins = _active_plugin_names(
+        CONFIG_SECTION_COMMUNITY_PLUGINS, community_plugins_config
+    )
 
     if active_community_plugins:
         # Ensure all community plugin directories exist
@@ -2446,102 +2463,107 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
             f"Loading active community plugins: {', '.join(active_community_plugins)}"
         )
 
-    # Only process community plugins if config section exists and is a dictionary
-    if isinstance(community_plugins_config, dict):
-        for plugin_name, plugin_info in community_plugins_config.items():
-            if not plugin_info.get("active", False):
-                logger.debug(
-                    f"Skipping community plugin {plugin_name} - not active in config"
+    # Only process community plugins explicitly enabled in config.
+    for plugin_name, plugin_info in community_plugins_config.items():
+        if not isinstance(plugin_info, dict):
+            logger.warning(
+                "Ignoring invalid %s plugin entry for '%s'; expected a mapping.",
+                CONFIG_SECTION_COMMUNITY_PLUGINS,
+                plugin_name,
+            )
+            continue
+
+        if not plugin_info.get("active", False):
+            logger.debug(
+                f"Skipping community plugin {plugin_name} - not active in config"
+            )
+            continue
+
+        repo_url = plugin_info.get("repository")
+
+        # Support commit, tag, and branch parameters
+        commit = plugin_info.get("commit")
+        tag = plugin_info.get("tag")
+        branch = plugin_info.get("branch")
+
+        # Determine what to use (commit, tag, branch, or default)
+        # Priority: commit > tag > branch
+        if commit:
+            if tag or branch:
+                logger.warning(
+                    f"Commit specified along with tag/branch for plugin {plugin_name}, using commit"
+                )
+            ref = {"type": "commit", "value": commit}
+        elif tag and branch:
+            logger.warning(
+                f"Both tag and branch specified for plugin {plugin_name}, using tag"
+            )
+            ref = {"type": "tag", "value": tag}
+        elif tag:
+            ref = {"type": "tag", "value": tag}
+        elif branch:
+            ref = {"type": "branch", "value": branch}
+        else:
+            # Default to the first configured default branch if neither is specified.
+            ref = {"type": "branch", "value": DEFAULT_BRANCHES[0]}
+
+        if repo_url:
+            if community_plugins_dir is None:
+                logger.warning(
+                    "Skipping community plugin %s: no accessible plugin directory",
+                    plugin_name,
                 )
                 continue
 
-            repo_url = plugin_info.get("repository")
-
-            # Support commit, tag, and branch parameters
-            commit = plugin_info.get("commit")
-            tag = plugin_info.get("tag")
-            branch = plugin_info.get("branch")
-
-            # Determine what to use (commit, tag, branch, or default)
-            # Priority: commit > tag > branch
-            if commit:
-                if tag or branch:
-                    logger.warning(
-                        f"Commit specified along with tag/branch for plugin {plugin_name}, using commit"
-                    )
-                ref = {"type": "commit", "value": commit}
-            elif tag and branch:
-                logger.warning(
-                    f"Both tag and branch specified for plugin {plugin_name}, using tag"
+            # Clone to the user directory by default (derive name using the same logic as the clone path)
+            validation_result = _validate_clone_inputs(repo_url, ref)
+            if not validation_result.is_valid or not validation_result.repo_name:
+                logger.error(
+                    "Invalid repository URL for community plugin %s: %s",
+                    plugin_name,
+                    _redact_url(repo_url),
                 )
-                ref = {"type": "tag", "value": tag}
-            elif tag:
-                ref = {"type": "tag", "value": tag}
-            elif branch:
-                ref = {"type": "branch", "value": branch}
-            else:
-                # Default to main branch if neither is specified
-                ref = {"type": "branch", "value": "main"}
-
-            if repo_url:
-                if community_plugins_dir is None:
-                    logger.warning(
-                        "Skipping community plugin %s: no accessible plugin directory",
-                        plugin_name,
-                    )
-                    continue
-
-                # Clone to the user directory by default (derive name using the same logic as the clone path)
-                validation_result = _validate_clone_inputs(repo_url, ref)
-                if not validation_result.is_valid or not validation_result.repo_name:
-                    logger.error(
-                        "Invalid repository URL for community plugin %s: %s",
-                        plugin_name,
-                        _redact_url(repo_url),
-                    )
-                    continue
-                repo_name = validation_result.repo_name
-                if not _is_safe_plugin_name(repo_name):
-                    logger.error(
-                        "Repository name '%s' rejected: contains invalid characters or path traversal",
-                        repo_name,
-                    )
-                    continue
-                repo_path = os.path.join(community_plugins_dir, repo_name)
-                if not _is_path_contained(community_plugins_dir, repo_path):
-                    logger.error(
-                        "Plugin repo path '%s' is not contained within allowed root '%s'",
-                        repo_path,
-                        community_plugins_dir,
-                    )
-                    continue
-                if (
-                    validation_result.repo_url is None
-                    or validation_result.ref_type is None
-                    or validation_result.ref_value is None
-                ):
-                    logger.error(
-                        "Validation returned no repository URL or ref for community plugin %s",
-                        plugin_name,
-                    )
-                    continue
-
-                # Call public helper so tests and integrations can patch this seam.
-                success = clone_or_update_repo(
-                    validation_result.repo_url,
-                    ref,
+                continue
+            repo_name = validation_result.repo_name
+            if not _is_safe_plugin_name(repo_name):
+                logger.error(
+                    "Repository name '%s' rejected: contains invalid characters or path traversal",
+                    repo_name,
+                )
+                continue
+            repo_path = os.path.join(community_plugins_dir, repo_name)
+            if not _is_path_contained(community_plugins_dir, repo_path):
+                logger.error(
+                    "Plugin repo path '%s' is not contained within allowed root '%s'",
+                    repo_path,
                     community_plugins_dir,
                 )
-                if not success:
-                    logger.warning(
-                        f"Failed to clone/update plugin {plugin_name}, skipping"
-                    )
-                    continue
-                _install_requirements_for_repo(repo_path, repo_name)
-            else:
-                logger.error("Repository URL not specified for a community plugin")
-                logger.error("Please specify the repository URL in config.yaml")
                 continue
+            if (
+                validation_result.repo_url is None
+                or validation_result.ref_type is None
+                or validation_result.ref_value is None
+            ):
+                logger.error(
+                    "Validation returned no repository URL or ref for community plugin %s",
+                    plugin_name,
+                )
+                continue
+
+            # Call public helper so tests and integrations can patch this seam.
+            success = clone_or_update_repo(
+                validation_result.repo_url,
+                ref,
+                community_plugins_dir,
+            )
+            if not success:
+                logger.warning(f"Failed to clone/update plugin {plugin_name}, skipping")
+                continue
+            _install_requirements_for_repo(repo_path, repo_name)
+        else:
+            logger.error("Repository URL not specified for a community plugin")
+            logger.error("Please specify the repository URL in config.yaml")
+            continue
 
     # Only load community plugins that are explicitly enabled
     for plugin_name in active_community_plugins:
@@ -2612,19 +2634,30 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
         # Determine if the plugin is active based on the configuration
         if plugin in core_plugins:
             # Core plugins: default to inactive unless specified otherwise
-            plugin_config = config.get(CONFIG_SECTION_PLUGINS, {}).get(plugin_name, {})
+            plugin_config = core_plugins_config.get(plugin_name, {})
+            if not isinstance(plugin_config, dict):
+                logger.warning(
+                    "Ignoring invalid %s plugin entry for '%s'; expected a mapping.",
+                    CONFIG_SECTION_PLUGINS,
+                    plugin_name,
+                )
+                plugin_config = {}
             is_active = plugin_config.get("active", False)
         else:
             # Custom and community plugins: default to inactive unless specified
-            if plugin_name in config.get(CONFIG_SECTION_CUSTOM_PLUGINS, {}):
-                plugin_config = config.get(CONFIG_SECTION_CUSTOM_PLUGINS, {}).get(
-                    plugin_name, {}
-                )
+            if plugin_name in custom_plugins_config:
+                plugin_config = custom_plugins_config.get(plugin_name, {})
             elif plugin_name in community_plugins_config:
                 plugin_config = community_plugins_config.get(plugin_name, {})
             else:
                 plugin_config = {}
 
+            if not isinstance(plugin_config, dict):
+                logger.warning(
+                    "Ignoring invalid plugin config for '%s'; expected a mapping.",
+                    plugin_name,
+                )
+                plugin_config = {}
             is_active = plugin_config.get("active", False)
 
         if is_active:

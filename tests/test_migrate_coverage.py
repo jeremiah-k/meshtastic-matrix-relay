@@ -721,7 +721,7 @@ class TestBackupFile:
 
         # Should have timestamp in name
         assert backup_path.name.startswith("test.txt.bak.")
-        assert backup_path.parent == src_path.parent / ".migration_backups"
+        assert backup_path.parent == src_path.parent / MIGRATION_BACKUP_DIRNAME
 
     def test_backup_file_custom_suffix(self, tmp_path: Path) -> None:
         """Test backup with custom suffix."""
@@ -1022,6 +1022,46 @@ class TestMigrateDatabaseEdgeCases:
         assert result["success"] is True
         assert (new_home / "database" / "meshtastic.sqlite").exists()
         assert (new_home / "database" / "meshtastic.sqlite-wal").exists()
+
+    def test_migrate_database_removes_destination_only_sidecars(
+        self, tmp_path: Path
+    ) -> None:
+        """Destination-only sidecars should be backed up and removed before final move."""
+        new_home = tmp_path / "new_home"
+        new_home.mkdir()
+        new_db_dir = new_home / "database"
+        new_db_dir.mkdir()
+
+        existing_db = new_db_dir / "meshtastic.sqlite"
+        conn = sqlite3.connect(existing_db)
+        conn.execute("CREATE TABLE test (id INTEGER)")
+        conn.close()
+        stale_wal = new_db_dir / "meshtastic.sqlite-wal"
+        stale_wal.write_text("stale wal", encoding="utf-8")
+
+        legacy_root_dir = tmp_path / "legacy_root_dir"
+        legacy_root_dir.mkdir()
+        legacy_db = legacy_root_dir / "meshtastic.sqlite"
+        conn = sqlite3.connect(legacy_db)
+        conn.execute("CREATE TABLE test (id INTEGER)")
+        conn.close()
+
+        result = migrate_database(
+            [legacy_root_dir], new_home, dry_run=False, force=True
+        )
+
+        assert result["success"] is True
+        assert (new_db_dir / "meshtastic.sqlite").exists()
+        assert not stale_wal.exists()
+        assert str(stale_wal) not in result.get("migrated_files", [])
+
+        restore_paths = {
+            entry.get("restore_path")
+            for entry in result.get("backed_up_files", [])
+            if isinstance(entry, dict)
+        }
+        assert str(new_db_dir / "meshtastic.sqlite") in restore_paths
+        assert str(stale_wal) in restore_paths
 
     def test_migrate_database_selected_group_missing(self, tmp_path: Path) -> None:
         """Test when selected_group is empty."""

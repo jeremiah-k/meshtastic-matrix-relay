@@ -83,6 +83,7 @@ class MessageQueue:
         self._has_current = False
         self._dropped_messages = 0
         self._last_queue_full_log_time: float | None = None
+        self._stop_failed = False
 
     def start(self, message_delay: float = DEFAULT_MESSAGE_DELAY) -> None:
         """
@@ -94,6 +95,11 @@ class MessageQueue:
             message_delay (float): Desired delay between consecutive sends in seconds; may trigger a warning if less than or equal to the firmware minimum.
         """
         with self._lock:
+            if self._stop_failed:
+                logger.error(
+                    "Message queue cannot start: previous stop timed out and requires manual reset."
+                )
+                return
             if self._running or self._stopping:
                 return
 
@@ -163,6 +169,15 @@ class MessageQueue:
         if exec_ref is None:
             executor_cleanup_complete.set()
 
+        def _mark_stop_failed(reason: str) -> None:
+            with self._lock:
+                self._stop_failed = True
+                self._stopping = True
+            logger.error(
+                "Message queue stop timed out (%s). Queue remains in failed-stop state until reset_failed_stop_state() is called.",
+                reason,
+            )
+
         def _finalize_stop_state() -> None:
             if not (
                 task_cleanup_complete.is_set() and executor_cleanup_complete.is_set()
@@ -173,6 +188,11 @@ class MessageQueue:
                     self._processor_task = None
                 if exec_ref is not None and self._executor is exec_ref:
                     self._executor = None
+                if self._stop_failed:
+                    logger.warning(
+                        "Message queue resources finished cleaning up, but failed-stop state remains set."
+                    )
+                    return
                 self._stopping = False
                 logger.info("Message queue stopped")
 
@@ -220,16 +240,12 @@ class MessageQueue:
                 if current_loop is None:
                     task_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC)
                     if not task_done.is_set():
-                        logger.warning("Task wait timed out, forcing state reset")
-                        task_cleanup_complete.set()
-                        _finalize_stop_state()
+                        _mark_stop_failed("task cleanup")
                 else:
 
                     def _watchdog_cleanup() -> None:
                         if not task_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC):
-                            logger.warning("Task wait timed out, forcing state reset")
-                            task_cleanup_complete.set()
-                            _finalize_stop_state()
+                            _mark_stop_failed("task cleanup")
 
                     threading.Thread(
                         target=_watchdog_cleanup,
@@ -272,9 +288,7 @@ class MessageQueue:
 
             def _watch_executor_shutdown() -> None:
                 if not executor_done.wait(timeout=TASK_SHUTDOWN_TIMEOUT_SEC):
-                    logger.warning("Executor shutdown timed out, forcing state reset")
-                    executor_cleanup_complete.set()
-                    _finalize_stop_state()
+                    _mark_stop_failed("executor cleanup")
 
             if on_loop_thread:
                 threading.Thread(
@@ -314,6 +328,11 @@ class MessageQueue:
         self.ensure_processor_started()
 
         with self._lock:
+            if self._stop_failed:
+                logger.error(
+                    "Queue is in failed-stop state; call reset_failed_stop_state() before enqueueing new messages."
+                )
+                return False
             if not self._running or self._stopping:
                 # Refuse to send to prevent blocking the event loop
                 logger.error(
@@ -445,6 +464,32 @@ class MessageQueue:
         """
         return self._running
 
+    def reset_failed_stop_state(self) -> bool:
+        """
+        Clear failed-stop state after manual operator verification that old work has exited.
+
+        Returns:
+            bool: True if the queue can be safely restarted; False when cleanup is still active.
+        """
+        with self._lock:
+            if not self._stop_failed:
+                return True
+            task_active = (
+                self._processor_task is not None and not self._processor_task.done()
+            )
+            executor_active = self._executor is not None
+            if self._running or task_active or executor_active:
+                logger.error(
+                    "Cannot reset failed-stop state while queue resources are still active"
+                )
+                return False
+            if self._processor_task is not None and self._processor_task.done():
+                self._processor_task = None
+            self._stopping = False
+            self._stop_failed = False
+            logger.info("Message queue failed-stop state cleared")
+            return True
+
     def get_status(self) -> dict[str, Any]:
         """
         Get a snapshot of the message queue's runtime status for monitoring and debugging.
@@ -465,6 +510,7 @@ class MessageQueue:
             "running": self._running,
             "queue_size": len(self._queue),
             "message_delay": self._message_delay,
+            "stop_failed": self._stop_failed,
             "processor_task_active": self._processor_task is not None
             and not self._processor_task.done(),
             "last_send_time": self._last_send_time,
@@ -504,7 +550,7 @@ class MessageQueue:
         Has no effect if the processor is already running or the queue is not active.
         """
         with self._lock:
-            if self._running and self._processor_task is None:
+            if self._running and not self._stop_failed and self._processor_task is None:
                 try:
                     loop = asyncio.get_running_loop()
                 except RuntimeError:
@@ -840,6 +886,16 @@ def stop_message_queue() -> None:
     Stops the global message queue processor, preventing further message processing until restarted.
     """
     _message_queue.stop()
+
+
+def reset_message_queue_failed_state() -> bool:
+    """
+    Clear failed-stop state on the global queue after manual recovery.
+
+    Returns:
+        bool: True if reset succeeded, False when resources are still active.
+    """
+    return _message_queue.reset_failed_stop_state()
 
 
 def queue_message(

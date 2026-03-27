@@ -11,6 +11,7 @@ import pytest
 
 import mmrelay.migrate as migrate_module
 import mmrelay.paths as paths_module
+from mmrelay.constants.migration import MIGRATION_BACKUP_DIRNAME
 from mmrelay.migrate import (
     _backup_file,
     _dir_has_entries,
@@ -585,7 +586,7 @@ class TestMigrateCredentials:
 
         assert result["success"] is True
         # Backup should be created in .migration_backups
-        backup_dir = matrix_dir / ".migration_backups"
+        backup_dir = matrix_dir / MIGRATION_BACKUP_DIRNAME
         assert backup_dir.exists()
         backups = list(backup_dir.glob("credentials.json.bak.*"))
         assert len(backups) == 1
@@ -609,7 +610,7 @@ class TestMigrateCredentials:
 
         assert result["success"] is True
         # Backup should be created even in force mode for safety
-        backup_dir = matrix_dir / ".migration_backups"
+        backup_dir = matrix_dir / MIGRATION_BACKUP_DIRNAME
         assert backup_dir.exists()
         backups = list(backup_dir.glob("credentials.json.bak.*"))
         assert len(backups) == 1
@@ -733,7 +734,7 @@ class TestMigrateConfig:
 
         assert result["success"] is True
         # Backup should be created in .migration_backups
-        backup_dir = new_home / ".migration_backups"
+        backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         assert backup_dir.exists()
         backups = list(backup_dir.glob("config.yaml.bak.*"))
         assert len(backups) == 1

@@ -7,7 +7,7 @@ directory names, and file patterns.
 
 from typing import Final
 
-from mmrelay.constants.cli import TEMP_DEVICE_NAME_LOGOUT
+from mmrelay.constants.auth import TEMP_DEVICE_NAME_LOGOUT
 
 __all__ = [
     "BYTES_PER_MB",

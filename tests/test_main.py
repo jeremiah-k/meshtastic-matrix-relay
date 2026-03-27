@@ -3145,8 +3145,8 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
     def test_check_connection_exception_is_raised_after_cleanup(self):
         """Exceptions from the health task should become main() failures."""
         config = {
-            "matrix_rooms": [{"id": "!room:matrix.org"}],
-            "matrix": {"homeserver": "https://matrix.org"},
+            "matrix_rooms": [{"id": TEST_ROOM_ID_1}],
+            "matrix": {"homeserver": TEST_MATRIX_HOMESERVER},
             "meshtastic": {
                 "connection_type": "serial",
                 "health_check": {"enabled": True},
@@ -3197,8 +3197,8 @@ class TestAwaitBackgroundTaskShutdown(unittest.TestCase):
     def test_check_connection_unexpected_return_is_raised_after_cleanup(self):
         """Unexpected clean health-task exits should raise a fatal RuntimeError."""
         config = {
-            "matrix_rooms": [{"id": "!room:matrix.org"}],
-            "matrix": {"homeserver": "https://matrix.org"},
+            "matrix_rooms": [{"id": TEST_ROOM_ID_1}],
+            "matrix": {"homeserver": TEST_MATRIX_HOMESERVER},
             "meshtastic": {
                 "connection_type": "serial",
                 "health_check": {"enabled": True},
@@ -3530,8 +3530,8 @@ class TestRunBlockingShutdownStep(unittest.TestCase):
             with self.subTest(exception_class=exception_class):
                 try:
                     config = {
-                        "matrix_rooms": [{"id": "!room:matrix.org"}],
-                        "matrix": {"homeserver": "https://matrix.org"},
+                        "matrix_rooms": [{"id": TEST_ROOM_ID_1}],
+                        "matrix": {"homeserver": TEST_MATRIX_HOMESERVER},
                         "meshtastic": {"connection_type": "serial"},
                     }
 

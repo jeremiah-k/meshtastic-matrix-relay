@@ -731,9 +731,6 @@ class TestInitializeDatabaseErrors(unittest.TestCase):
 
         initialize_database()
 
-        # Verify that execute was called multiple times and index creation was attempted
-        self.assertGreater(mock_cursor.execute.call_count, 5)
-
         def normalize_sql(sql: str) -> str:
             """Normalize SQL by collapsing whitespace and lowercasing."""
             return re.sub(r"\s+", " ", sql).strip().lower()

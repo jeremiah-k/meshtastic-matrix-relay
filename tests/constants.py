@@ -44,11 +44,17 @@ TEST_EVENT_ID: Final[str] = "$event123"
 
 # Test message delay values for message queue testing
 # These are intentionally different from production to test edge cases
-TEST_MESSAGE_DELAY_LOW = 0.1  # Faster than minimum, for performance testing
-TEST_MESSAGE_DELAY_WARNING_THRESHOLD = 1.0  # Below minimum to trigger warnings
-TEST_MESSAGE_DELAY_NEGATIVE = -1.0  # Invalid value edge case
-TEST_MESSAGE_DELAY_NORMAL = DEFAULT_MESSAGE_DELAY  # Reference production default
-TEST_MESSAGE_DELAY_HIGH = 3.0  # Above default for testing higher delays
+TEST_MESSAGE_DELAY_LOW: Final[float] = (
+    0.1  # Faster than minimum, for performance testing
+)
+TEST_MESSAGE_DELAY_WARNING_THRESHOLD: Final[float] = (
+    1.0  # Below minimum to trigger warnings
+)
+TEST_MESSAGE_DELAY_NEGATIVE: Final[float] = -1.0  # Invalid value edge case
+TEST_MESSAGE_DELAY_NORMAL: Final[float] = (
+    DEFAULT_MESSAGE_DELAY  # Reference production default
+)
+TEST_MESSAGE_DELAY_HIGH: Final[float] = 3.0  # Above default for testing higher delays
 
 # Test timing/delay values
 TEST_SHORT_DELAY: Final[float] = 0.1

@@ -6,11 +6,11 @@ Windows compatibility and fallback functionality when setuptools console
 scripts fail.
 """
 
+import importlib
 import os
 import runpy
 import sys
 import unittest
-import warnings
 from unittest.mock import patch
 
 # Add src to path for imports
@@ -23,13 +23,22 @@ def _run_main_module() -> None:
     """
     Execute mmrelay.__main__ as if run with python -m mmrelay.
 
-    Clears the module from sys.modules to ensure fresh execution and suppresses
-    the RuntimeWarning that occurs when runpy detects a pre-existing import.
+    Clears mmrelay modules from sys.modules to ensure fresh execution.
     """
+    sys.modules.pop("mmrelay.paths", None)
     sys.modules.pop("mmrelay.__main__", None)
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=RuntimeWarning)
+    sys.modules.pop("mmrelay.main", None)
+    sys.modules.pop("mmrelay", None)
+    try:
         runpy.run_module("mmrelay.__main__", run_name="__main__")
+    finally:
+        # Restore a clean package state for autouse fixtures in subsequent tests.
+        for module_name in ("mmrelay.paths", "mmrelay.main"):
+            try:
+                importlib.import_module(module_name)
+            except ImportError:
+                # Some tests intentionally break imports; best-effort restore only.
+                pass
 
 
 class TestMainEntryPoint(unittest.TestCase):

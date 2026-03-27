@@ -9,6 +9,7 @@ import shutil
 from pathlib import Path
 from unittest.mock import patch
 
+from mmrelay.constants.migration import MIGRATION_BACKUP_DIRNAME
 from mmrelay.migrate import rollback_migration
 
 
@@ -22,7 +23,7 @@ class TestRollbackMigrationErrorHandling:
         new_home.mkdir()
 
         # Create backup directory and backup file
-        backup_dir = new_home / ".migration_backups"
+        backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()
         backup_file = backup_dir / "credentials.json.bak.20240101_120000"
         backup_file.write_text('{"test": "backup"}')
@@ -105,7 +106,7 @@ class TestRollbackMigrationErrorHandling:
         new_home.mkdir()
 
         # Create backup directory and backup file
-        backup_dir = new_home / ".migration_backups"
+        backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()
         backup_path = backup_dir / "database.sqlite.bak.20240101_120000"
         backup_path.write_text("sqlite database content")
@@ -152,7 +153,7 @@ class TestRollbackMigrationErrorHandling:
         new_home.mkdir()
 
         # Create backup directories and files
-        backup_dir = new_home / ".migration_backups"
+        backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()
 
         # Successful backup - credentials
@@ -224,7 +225,7 @@ class TestRollbackMigrationErrorHandling:
         (staging_dir / "some_file").write_text("staging content")
 
         # Create backup directory and backup file
-        backup_dir = new_home / ".migration_backups"
+        backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()
         backup_file = backup_dir / "logs.bak.20240101_120000"
         backup_file.mkdir()  # Directory backup
@@ -280,7 +281,7 @@ class TestRollbackMigrationErrorHandling:
         new_home.mkdir()
 
         # Create backup directory and backup file
-        backup_dir = new_home / ".migration_backups"
+        backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()
 
         # Create backup as a file while destination is a directory path.

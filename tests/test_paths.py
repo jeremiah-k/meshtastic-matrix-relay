@@ -21,38 +21,33 @@ from unittest.mock import patch
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-try:
-    from mmrelay.constants.app import (
-        CONFIG_FILENAME,
-        CREDENTIALS_FILENAME,
-        DATABASE_DIRNAME,
-        LOGS_DIRNAME,
-        MATRIX_DIRNAME,
-        PLUGINS_DIRNAME,
-        STORE_DIRNAME,
-    )
-    from mmrelay.constants.database import DEFAULT_DB_FILENAME
-    from mmrelay.paths import (
-        UnknownPluginTypeError,
-        _has_mmrelay_artifacts,
-        _reset_deprecation_warning_flag,
-        ensure_directories,
-        get_config_paths,
-        get_database_path,
-        get_diagnostics,
-        get_home_dir,
-        get_legacy_dirs,
-        get_plugin_code_dir,
-        get_plugin_data_dir,
-        get_plugin_database_path,
-        reset_home_override,
-        resolve_all_paths,
-        set_home_override,
-    )
-except ImportError as exc:
-    raise unittest.SkipTest(
-        f"Unable to import mmrelay test dependencies: {exc}"
-    ) from exc
+from mmrelay.constants.app import (
+    CONFIG_FILENAME,
+    CREDENTIALS_FILENAME,
+    DATABASE_DIRNAME,
+    LOGS_DIRNAME,
+    MATRIX_DIRNAME,
+    PLUGINS_DIRNAME,
+    STORE_DIRNAME,
+)
+from mmrelay.constants.database import DEFAULT_DB_FILENAME
+from mmrelay.paths import (
+    UnknownPluginTypeError,
+    _has_mmrelay_artifacts,
+    _reset_deprecation_warning_flag,
+    ensure_directories,
+    get_config_paths,
+    get_database_path,
+    get_diagnostics,
+    get_home_dir,
+    get_legacy_dirs,
+    get_plugin_code_dir,
+    get_plugin_data_dir,
+    get_plugin_database_path,
+    reset_home_override,
+    resolve_all_paths,
+    set_home_override,
+)
 
 
 class TestPathResolutionEnvVars(unittest.TestCase):
@@ -592,13 +587,13 @@ class TestInternalArtifactDetection(unittest.TestCase):
             self.assertFalse(_has_mmrelay_artifacts(root))
 
     def test_has_artifacts_nonempty_plugins_directory(self):
-        """Test plugin-only homes are detected when plugins directory has content."""
+        """Top-level shipped plugins directory should not count as persisted artifacts."""
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             plugin_dir = root / PLUGINS_DIRNAME
             plugin_dir.mkdir(parents=True, exist_ok=True)
             (plugin_dir / "example.py").write_text("# plugin")
-            self.assertTrue(_has_mmrelay_artifacts(root))
+            self.assertFalse(_has_mmrelay_artifacts(root))
 
     def test_has_artifacts_empty_logs_directory_not_detected(self):
         """Test empty logs directories do not trigger false legacy-home detection."""

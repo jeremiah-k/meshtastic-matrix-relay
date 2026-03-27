@@ -768,7 +768,7 @@ def load_credentials() -> dict[str, Any] | None:
     Searches an explicit credentials path (from environment or configuration) followed by prioritized candidate locations and returns the first readable, valid credentials mapping. Emits a migration/deprecation warning when credentials are discovered in legacy locations. Files that are unreadable, invalid JSON, not an object, or missing required keys are ignored.
 
     Returns:
-        Parsed credentials mapping containing at least the keys 'homeserver', 'access_token', and 'user_id' if a valid credentials.json is found; `None` otherwise.
+        Parsed credentials mapping containing at least the keys 'homeserver' and 'access_token' if a valid credentials.json is found; `user_id` may be absent in legacy credentials and can be recovered later via Matrix whoami.
     """
     try:
         explicit_path = get_explicit_credentials_path(relay_config)
@@ -817,9 +817,12 @@ def load_credentials() -> dict[str, Any] | None:
             if not isinstance(credentials.get(key), str)
             or not credentials.get(key, "").strip()
         ]
-        if not credentials.get(CONFIG_KEY_DEVICE_ID):
+        device_id = credentials.get(CONFIG_KEY_DEVICE_ID)
+        if not isinstance(device_id, str) or not device_id.strip():
+            credentials[CONFIG_KEY_DEVICE_ID] = None
             logger.warning(
-                "credentials.json is missing 'device_id': %s. This is recommended for v1.3+.",
+                "credentials.json is missing or has an invalid 'device_id': %s. "
+                "This is recommended for v1.3+.",
                 credentials_path,
             )
         if missing_required:
@@ -852,7 +855,8 @@ def load_credentials() -> dict[str, Any] | None:
         ):
             _get_config_logger().warning(
                 "Credentials found in legacy location: %s. "
-                "Please run 'mmrelay migrate' to move to new unified structure.",
+                "Please run 'mmrelay migrate' to move to new unified structure. "
+                f"Support for legacy credentials will be removed in v{DEPRECATION_VERSIONS[1]}.",
                 credentials_path,
             )
         logger.debug("Successfully loaded credentials from %s", credentials_path)
@@ -884,7 +888,7 @@ async def async_load_credentials() -> dict[str, Any] | None:
     Searches configured and legacy credentials locations, validates that required keys are present, and returns the parsed credentials mapping when a readable, valid credentials file is found.
 
     Returns:
-        dict[str, Any]: Loaded credentials containing at minimum `homeserver`, `access_token`, and `user_id`. `device_id` may be absent.
+        dict[str, Any]: Loaded credentials containing at minimum `homeserver` and `access_token`; `user_id` and `device_id` may be absent.
         None: If no readable/valid credentials file is found.
     """
     return await asyncio.to_thread(load_credentials)

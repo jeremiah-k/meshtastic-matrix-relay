@@ -5218,7 +5218,7 @@ async def test_connect_matrix_legacy_config(
         # Verify AsyncClient was created without E2EE
         mock_async_client.assert_called_once()
         call_args = mock_async_client.call_args
-        assert call_args[1].get(CONFIG_KEY_DEVICE_ID) is None
+        assert CONFIG_KEY_DEVICE_ID not in call_args[1]
         assert call_args[1].get("store_path") is None
 
         # Verify sync was called

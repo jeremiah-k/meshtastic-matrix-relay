@@ -27,9 +27,6 @@ import unittest
 import unittest.mock
 from unittest.mock import MagicMock, mock_open, patch
 
-from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID
-from tests.constants import TEST_CONFIG_PATH, TEST_HOME_CONFIG_PATH, TEST_SERIAL_PORT
-
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -44,6 +41,8 @@ from mmrelay.cli import (
     parse_arguments,
     print_version,
 )
+from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID
+from tests.constants import TEST_CONFIG_PATH, TEST_HOME_CONFIG_PATH, TEST_SERIAL_PORT
 
 
 class TestCLI(unittest.TestCase):
@@ -1850,7 +1849,11 @@ class TestAuthStatus(unittest.TestCase):
         # Verify results
         self.assertEqual(result, 1)
         mock_get_paths.assert_called_once_with(self.mock_args)
-        mock_exists.assert_any_call("/home/user/.mmrelay/credentials.json")
+        home_dir = os.path.dirname(TEST_HOME_CONFIG_PATH)
+        mock_exists.assert_any_call(os.path.join(home_dir, "credentials.json"))
+        mock_exists.assert_any_call(
+            os.path.join(home_dir, "matrix", "credentials.json")
+        )
 
         # Check printed output
         mock_print.assert_any_call("Matrix Authentication Status")
@@ -1884,7 +1887,11 @@ class TestAuthStatus(unittest.TestCase):
         # Verify results
         self.assertEqual(result, 1)
         mock_get_paths.assert_called_once_with(self.mock_args)
-        mock_exists.assert_any_call("/home/user/.mmrelay/credentials.json")
+        home_dir = os.path.dirname(TEST_HOME_CONFIG_PATH)
+        mock_exists.assert_any_call(os.path.join(home_dir, "credentials.json"))
+        mock_exists.assert_any_call(
+            os.path.join(home_dir, "matrix", "credentials.json")
+        )
 
         # Check error output
         mock_print.assert_any_call("Matrix Authentication Status")
@@ -1945,13 +1952,15 @@ class TestAuthStatus(unittest.TestCase):
     ):
         """Test status check with multiple config paths, credentials found in second path."""
         # Setup mocks - multiple config paths
+        home_dir = os.path.dirname(TEST_HOME_CONFIG_PATH)
+        etc_dir = os.path.dirname("/etc/mmrelay/config.yaml")
         mock_get_paths.return_value = [
             TEST_HOME_CONFIG_PATH,
-            "/etc/mmrelay/config.yaml",
+            os.path.join(etc_dir, "config.yaml"),
         ]
         # First path doesn't have credentials, second path does (in matrix/ subdir)
-        mock_exists.side_effect = (
-            lambda path: path == "/etc/mmrelay/matrix/credentials.json"
+        mock_exists.side_effect = lambda path: path == os.path.join(
+            etc_dir, "matrix", "credentials.json"
         )
         mock_get_command.return_value = "mmrelay auth login"
 
@@ -1974,14 +1983,16 @@ class TestAuthStatus(unittest.TestCase):
         mock_get_paths.assert_called_once_with(self.mock_args)
 
         # Should check configured candidates, including second config path.
-        mock_exists.assert_any_call("/home/user/.mmrelay/credentials.json")
-        mock_exists.assert_any_call("/home/user/.mmrelay/matrix/credentials.json")
-        mock_exists.assert_any_call("/etc/mmrelay/credentials.json")
-        mock_exists.assert_any_call("/etc/mmrelay/matrix/credentials.json")
+        mock_exists.assert_any_call(os.path.join(home_dir, "credentials.json"))
+        mock_exists.assert_any_call(
+            os.path.join(home_dir, "matrix", "credentials.json")
+        )
+        mock_exists.assert_any_call(os.path.join(etc_dir, "credentials.json"))
+        mock_exists.assert_any_call(os.path.join(etc_dir, "matrix", "credentials.json"))
 
         # Check printed output shows second path
         mock_print.assert_any_call(
-            "✅ Found credentials.json at: /etc/mmrelay/matrix/credentials.json"
+            f"✅ Found credentials.json at: {os.path.join(etc_dir, 'matrix', 'credentials.json')}"
         )
         mock_print.assert_any_call("   Homeserver: https://matrix.example.com")
         mock_print.assert_any_call("   User ID: @relay:example.com")
@@ -2161,8 +2172,10 @@ class TestValidateE2EEDependencies(unittest.TestCase):
 
     @patch("os.path.exists")
     @patch("builtins.open", new_callable=mock_open)
-    def test_validate_credentials_json_missing_user_id(self, mock_file, mock_exists):
-        """Test validation when credentials.json is missing user_id field."""
+    def test_validate_credentials_json_missing_user_id_is_accepted(
+        self, mock_file, mock_exists
+    ):
+        """Legacy credentials missing user_id should remain valid for whoami recovery."""
         # Setup mocks
         config_path = TEST_HOME_CONFIG_PATH
         mock_exists.return_value = True
@@ -2177,19 +2190,12 @@ class TestValidateE2EEDependencies(unittest.TestCase):
         mock_file.return_value.read.return_value = json.dumps(credentials_data)
 
         # Import and call function
-        from mmrelay.cli import _get_logger, _validate_credentials_json
+        from mmrelay.cli import _validate_credentials_json
 
-        logger = _get_logger()
-        original_propagate = logger.propagate
-        logger.propagate = True
-        try:
-            with self.assertLogs("mmrelay.cli", level="WARNING"):
-                result = _validate_credentials_json(config_path)
-        finally:
-            logger.propagate = original_propagate
+        result = _validate_credentials_json(config_path)
 
         # Verify results
-        self.assertFalse(result)
+        self.assertTrue(result)
 
     @patch("os.path.exists")
     @patch("builtins.open", new_callable=mock_open)

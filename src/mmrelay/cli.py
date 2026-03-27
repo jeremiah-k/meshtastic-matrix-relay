@@ -224,15 +224,17 @@ def _apply_dir_overrides(args: argparse.Namespace | None) -> None:
     # Prevent using critical system directories as the home directory
     # Note: Only block truly critical paths - containers may use paths like /app or /data
     # Using lower-case comparison for cross-platform compatibility
-    forbidden_paths = set(FORBIDDEN_HOME_DIRECTORIES_UNIX)
+    forbidden_paths = {
+        os.path.abspath(path).lower() for path in FORBIDDEN_HOME_DIRECTORIES_UNIX
+    }
     # Add Windows-specific system paths dynamically from environment variables
     # This handles cases where Windows is installed on a different drive
     if sys.platform == "win32":
         for env_key in WINDOWS_FORBIDDEN_HOME_ENV_KEYS:
             env_value = os.environ.get(env_key)
             if env_value:
-                forbidden_paths.add(env_value.lower())
-    if str(absolute_home).lower() in forbidden_paths:
+                forbidden_paths.add(os.path.abspath(env_value).lower())
+    if absolute_home.lower() in forbidden_paths:
         print(
             f"Error: Setting MMRELAY_HOME to a critical system directory ('{absolute_home}') is not allowed.",
             file=sys.stderr,
@@ -548,7 +550,7 @@ def _validate_credentials_json(
     """
     Validate a Matrix credentials.json located relative to the given configuration.
 
-    Searches for a credentials.json file (honoring an explicit credentials_path in `config` when present) and verifies it contains non-empty string values for "homeserver", "access_token", and "user_id". The "device_id" field is optional; if missing, a warning is logged noting potential session tracking issues. On validation failure this function prints concise, user-facing error messages and guidance to run the authentication login flow.
+    Searches for a credentials.json file (honoring an explicit credentials_path in `config` when present) and verifies it contains non-empty string values for required auth fields ("homeserver" and "access_token"). The "user_id" and "device_id" fields are optional for legacy compatibility; a missing or invalid device_id is logged as a warning because it can impact session tracking. On validation failure this function prints concise, user-facing error messages and guidance to run the authentication login flow.
 
     Parameters:
         config_path (str): Path to the configuration file used to locate credentials.json.
@@ -2315,7 +2317,8 @@ def handle_auth_status(args: argparse.Namespace) -> int:
             else:
                 print(f"✅ Found credentials.json at: {credentials_path}")
                 print(f"   Homeserver: {credentials.get('homeserver')}")
-                print(f"   User ID: {credentials.get('user_id')}")
+                user_id_display = credentials.get("user_id") or "<missing>"
+                print(f"   User ID: {user_id_display}")
                 print(f"   Device ID: {credentials.get(CONFIG_KEY_DEVICE_ID)}")
                 return 0
 

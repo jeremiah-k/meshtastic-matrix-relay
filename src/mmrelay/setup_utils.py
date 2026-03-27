@@ -322,7 +322,7 @@ def get_template_service_content() -> str:
     try:
         service_template = (
             importlib.resources.files("mmrelay.tools")
-            .joinpath("mmrelay.service")
+            .joinpath(SYSTEMD_SERVICE_FILENAME)
             .read_text(encoding="utf-8")
         )
         return service_template

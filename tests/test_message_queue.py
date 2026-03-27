@@ -194,32 +194,44 @@ class TestMessageQueue(unittest.TestCase):
         async def async_test():
             """
             Verify the MessageQueue enforces rate limiting: when two messages are enqueued, the first is sent soon after processing starts and the second is delayed until the configured message_delay has elapsed.
-
-            The test starts the queue with message_delay=2.1, enqueues two messages, then:
-            - after ~1.0s asserts one message was sent,
-            - after another ~1.0s asserts the second is still not sent,
-            - after an additional ~1.5s asserts the second message has been sent.
             """
-            with patch("mmrelay.message_queue.MINIMUM_MESSAGE_DELAY", 0.05):
+            clock = {"now": 0.0}
+            sent_timestamps: list[float] = []
+            real_sleep = asyncio.sleep
+
+            def _monotonic() -> float:
+                return clock["now"]
+
+            def _time() -> float:
+                return clock["now"]
+
+            async def _fake_sleep(delay: float) -> None:
+                clock["now"] += delay
+                await real_sleep(0)
+
+            def _send(text: str) -> dict[str, int]:
+                sent_timestamps.append(clock["now"])
+                return {"id": len(sent_timestamps), "text": text}
+
+            with (
+                patch("mmrelay.message_queue.MINIMUM_MESSAGE_DELAY", 0.0),
+                patch("mmrelay.message_queue.time.monotonic", side_effect=_monotonic),
+                patch("mmrelay.message_queue.time.time", side_effect=_time),
+                patch("mmrelay.message_queue.asyncio.sleep", side_effect=_fake_sleep),
+            ):
                 message_delay = 0.05
                 self.queue.start(message_delay=message_delay)
                 self.queue.ensure_processor_started()
 
                 # Queue two messages
-                self.queue.enqueue(mock_send_function, text="First")
-                self.queue.enqueue(mock_send_function, text="Second")
+                self.queue.enqueue(_send, text="First")
+                self.queue.enqueue(_send, text="Second")
 
-                # Wait for both messages with timeout (poll up to 1 second)
-                for _ in range(20):
-                    if len(self.sent_messages) >= 2:
-                        break
-                    await asyncio.sleep(0.05)
-
-                self.assertEqual(len(self.sent_messages), 2)
+                self.assertTrue(await self.queue.drain(timeout=1.0))
+                self.assertEqual(len(sent_timestamps), 2)
                 # Verify rate limiting: second message delayed by at least message_delay
                 self.assertGreaterEqual(
-                    self.sent_messages[1]["timestamp"]
-                    - self.sent_messages[0]["timestamp"],
+                    sent_timestamps[1] - sent_timestamps[0],
                     message_delay,
                 )
 
@@ -256,6 +268,40 @@ class TestMessageQueue(unittest.TestCase):
         self.assertIsNone(self.queue._executor)
         self.queue.start(message_delay=1.0)
         self.assertIsNotNone(self.queue._executor)
+
+    def test_stop_timeout_blocks_restart_until_manual_reset(self):
+        """Timed-out stop should keep failed-stop state until reset."""
+        self.queue._running = True
+        self.queue._executor = None
+
+        fake_loop = MagicMock()
+        fake_loop.is_closed.return_value = False
+        fake_loop.is_running.return_value = True
+        fake_loop.call_soon_threadsafe.side_effect = (
+            lambda _callback, *_args, **_kwargs: None
+        )
+
+        fake_task = MagicMock()
+        fake_task.get_loop.return_value = fake_loop
+        fake_task.done.return_value = False
+        self.queue._processor_task = fake_task
+
+        with patch("mmrelay.message_queue.TASK_SHUTDOWN_TIMEOUT_SEC", 0.001):
+            self.queue.stop()
+
+        self.assertTrue(self.queue._stop_failed)
+        self.assertTrue(self.queue._stopping)
+        self.assertFalse(self.queue._running)
+
+        self.queue.start(message_delay=1.0)
+        self.assertFalse(self.queue._running)
+
+        self.assertFalse(self.queue.reset_failed_stop_state())
+        self.queue._processor_task = None
+        self.assertTrue(self.queue.reset_failed_stop_state())
+
+        self.queue.start(message_delay=1.0)
+        self.assertTrue(self.queue._running)
 
     @patch("mmrelay.message_queue.asyncio.get_running_loop")
     def test_stop_same_loop_done_task_short_circuits_callback(
@@ -363,8 +409,16 @@ class TestMessageQueue(unittest.TestCase):
             queue._queue.append(msg)
             queue._requeue_message = MagicMock(return_value=True)
 
-            checks = iter([True, False])
-            queue._should_send_message = lambda: next(checks)
+            first_check = True
+
+            def _should_send_message() -> bool:
+                nonlocal first_check
+                if first_check:
+                    first_check = False
+                    return True
+                return False
+
+            queue._should_send_message = _should_send_message
 
             async def _fake_sleep(_seconds: float) -> None:
                 queue._running = False
@@ -398,8 +452,16 @@ class TestMessageQueue(unittest.TestCase):
             queue._queue.append(msg)
             queue._requeue_message = MagicMock(return_value=True)
 
-            checks = iter([True, False])
-            queue._should_send_message = lambda: next(checks)
+            first_check = True
+
+            def _should_send_message() -> bool:
+                nonlocal first_check
+                if first_check:
+                    first_check = False
+                    return True
+                return False
+
+            queue._should_send_message = _should_send_message
 
             async def _fake_sleep(_seconds: float) -> None:
                 queue._running = False

@@ -6,7 +6,17 @@ formatting-related constants used for message display and relay.
 """
 
 import re
-from typing import Final
+from typing import Final, NamedTuple
+
+
+class RGBAColor(NamedTuple):
+    """Immutable RGBA color tuple."""
+
+    r: int
+    g: int
+    b: int
+    a: int
+
 
 # Default message prefix formats
 DEFAULT_MESHTASTIC_PREFIX = "{display5}[M]: "
@@ -105,9 +115,9 @@ MAP_LABEL_FONT_FAMILY: Final[str] = "Sans"
 MAP_LABEL_OUTLINE_WIDTH: Final[int] = 1
 
 # Map label colors (RGBA tuples)
-MAP_LABEL_FILL_COLOR: Final[tuple[int, int, int, int]] = (255, 255, 255, 255)  # White
-MAP_LABEL_OUTLINE_COLOR: Final[tuple[int, int, int, int]] = (255, 0, 0, 255)  # Red
-MAP_LABEL_TEXT_COLOR: Final[tuple[int, int, int, int]] = (0, 0, 0, 255)  # Black
+MAP_LABEL_FILL_COLOR: Final[RGBAColor] = RGBAColor(255, 255, 255, 255)  # White
+MAP_LABEL_OUTLINE_COLOR: Final[RGBAColor] = RGBAColor(255, 0, 0, 255)  # Red
+MAP_LABEL_TEXT_COLOR: Final[RGBAColor] = RGBAColor(0, 0, 0, 255)  # Black
 
 # Font file for map labels
 MAP_LABEL_FONT_FILE: Final[str] = "DejaVuSans.ttf"

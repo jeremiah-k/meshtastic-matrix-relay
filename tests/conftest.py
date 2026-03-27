@@ -1215,7 +1215,7 @@ def mock_room():
     Provide a MagicMock representing a Matrix room for tests.
 
     Returns:
-        MagicMock: A mock room object with `room_id` set to "!room:matrix.org".
+        MagicMock: A mock room object with `room_id` set to TEST_ROOM_ID.
     """
     mock_room = MagicMock()
     mock_room.room_id = TEST_ROOM_ID

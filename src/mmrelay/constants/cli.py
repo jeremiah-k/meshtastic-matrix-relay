@@ -37,10 +37,6 @@ EXIT_CODE_SIGINT: Final[int] = 130
 # Windows path display sentinel
 WINDOWS_PATH_NOT_APPLICABLE_LABEL: Final[str] = "N/A (Windows)"
 
-# Matrix error codes
-MATRIX_ERRCODE_FORBIDDEN: Final[str] = "M_FORBIDDEN"
-TEMP_DEVICE_NAME_LOGOUT: Final[str] = "mmrelay-logout-verify"
-
 # Command registry - single source of truth for CLI command syntax
 CLI_COMMANDS = {
     # Config commands

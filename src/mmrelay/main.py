@@ -148,7 +148,14 @@ def _write_ready_file() -> None:
         temp_path = Path(temp_name)
         try:
             os.close(fd)
-            os.chmod(temp_path, SECURE_FILE_PERMISSIONS)
+            try:
+                os.chmod(temp_path, SECURE_FILE_PERMISSIONS)
+            except OSError:
+                logger.debug(
+                    "Failed to set readiness temp file permissions: %s",
+                    temp_path,
+                    exc_info=True,
+                )
             temp_path.replace(ready_path)
         except OSError:
             temp_path.unlink(missing_ok=True)

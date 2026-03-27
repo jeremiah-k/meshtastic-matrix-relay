@@ -572,14 +572,15 @@ class TestMeshtasticEnvironmentVariables(unittest.TestCase):
         """Test loading TCP Meshtastic configuration."""
         os.environ["MMRELAY_MESHTASTIC_CONNECTION_TYPE"] = "tcp"
         os.environ["MMRELAY_MESHTASTIC_HOST"] = "192.168.1.100"
-        os.environ["MMRELAY_MESHTASTIC_PORT"] = str(DEFAULT_TCP_PORT)
+        custom_port = DEFAULT_TCP_PORT + 1
+        os.environ["MMRELAY_MESHTASTIC_PORT"] = str(custom_port)
 
         config = load_meshtastic_config_from_env()
 
         self.assertIsNotNone(config)
         self.assertEqual(config["connection_type"], "tcp")
         self.assertEqual(config["host"], "192.168.1.100")
-        self.assertEqual(config["port"], DEFAULT_TCP_PORT)
+        self.assertEqual(config["port"], custom_port)
 
     def test_load_meshtastic_serial_config(self):
         """Test loading serial Meshtastic configuration."""
@@ -607,9 +608,11 @@ class TestMeshtasticEnvironmentVariables(unittest.TestCase):
         """Test loading operational Meshtastic settings."""
         os.environ["MMRELAY_MESHTASTIC_BROADCAST_ENABLED"] = "true"
         os.environ["MMRELAY_MESHTASTIC_MESHNET_NAME"] = "Test Mesh"
-        os.environ["MMRELAY_MESHTASTIC_MESSAGE_DELAY"] = str(DEFAULT_MESSAGE_DELAY)
+        custom_message_delay = DEFAULT_MESSAGE_DELAY + 1
+        custom_refresh_interval = DEFAULT_NODEDB_REFRESH_INTERVAL + 1
+        os.environ["MMRELAY_MESHTASTIC_MESSAGE_DELAY"] = str(custom_message_delay)
         os.environ["MMRELAY_MESHTASTIC_NODEDB_REFRESH_INTERVAL"] = str(
-            DEFAULT_NODEDB_REFRESH_INTERVAL
+            custom_refresh_interval
         )
 
         config = load_meshtastic_config_from_env()
@@ -617,10 +620,8 @@ class TestMeshtasticEnvironmentVariables(unittest.TestCase):
         self.assertIsNotNone(config)
         self.assertEqual(config["broadcast_enabled"], True)
         self.assertEqual(config["meshnet_name"], "Test Mesh")
-        self.assertEqual(config["message_delay"], DEFAULT_MESSAGE_DELAY)
-        self.assertEqual(
-            config["nodedb_refresh_interval"], DEFAULT_NODEDB_REFRESH_INTERVAL
-        )
+        self.assertEqual(config["message_delay"], custom_message_delay)
+        self.assertEqual(config["nodedb_refresh_interval"], custom_refresh_interval)
 
     def test_invalid_connection_type(self):
         """Test invalid connection type handling."""

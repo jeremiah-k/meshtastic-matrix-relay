@@ -71,11 +71,13 @@ except ImportError:
 
 # Import mmrelay modules - avoid circular imports by importing inside functions
 
+from mmrelay.constants.auth import (
+    MATRIX_ERRCODE_FORBIDDEN,
+    TEMP_DEVICE_NAME_LOGOUT,
+)
 from mmrelay.constants.cli import (
     CLI_COMMANDS,
     DEPRECATED_COMMANDS,
-    MATRIX_ERRCODE_FORBIDDEN,
-    TEMP_DEVICE_NAME_LOGOUT,
     WINDOWS_PATH_NOT_APPLICABLE_LABEL,
 )
 from mmrelay.constants.config import (

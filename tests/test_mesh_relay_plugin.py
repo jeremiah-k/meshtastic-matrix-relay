@@ -157,16 +157,25 @@ class TestMeshRelayPlugin(unittest.TestCase):
         # Should not modify string payload
         self.assertEqual(result["decoded"]["payload"], "string payload")
 
-    def test_matches_valid_radio_packet_message(self):
+    def test_matches_valid_radio_packet_message_with_legacy_packet_field(self):
         """
-        Test that the matches method returns True for an event containing a valid radio packet message.
+        Test that matches() upgrades legacy packet content to MATRIX_PACKET_KEY.
         """
         event = MagicMock()
-        event.source = {"content": {"body": "Processed TEXT_MESSAGE_APP radio packet"}}
+        event.source = {
+            "content": {
+                "body": "Processed TEXT_MESSAGE_APP radio packet",
+                "packet": '{"decoded":{"portnum":1,"payload":"QQ=="},"toId":"!dest"}',
+            }
+        }
 
         result = self.plugin.matches(event)
 
         self.assertTrue(result)
+        self.assertEqual(
+            event.source["content"][MATRIX_PACKET_KEY],
+            event.source["content"]["packet"],
+        )
 
     def test_matches_invalid_message_format(self):
         """

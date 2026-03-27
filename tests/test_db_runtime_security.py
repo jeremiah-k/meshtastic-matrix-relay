@@ -602,7 +602,7 @@ class TestDatabaseManager(unittest.TestCase):
                 close_started.set()
                 try:
                     self.manager.close()
-                except RuntimeError as err:
+                except Exception as err:
                     close_error.set_exception(err)
                 else:
                     close_error.set_result(None)
@@ -825,18 +825,23 @@ class TestDatabaseManager(unittest.TestCase):
         close_error: Future[None] = Future()
 
         def release_activity() -> None:
-            if not allow_release.wait(timeout=1.0):
-                release_error.append("test never allowed release_activity to continue")
-                return
-            with manager._connections_lock:
-                manager._active_sync_count = 0
-                manager._active_sync_condition.notify_all()
+            try:
+                if not allow_release.wait(timeout=1.0):
+                    release_error.append(
+                        "test never allowed release_activity to continue"
+                    )
+                    return
+                with manager._connections_lock:
+                    manager._active_sync_count = 0
+                    manager._active_sync_condition.notify_all()
+            except Exception as err:
+                release_error.append(str(err))
 
         def close_manager() -> None:
             close_started.set()
             try:
                 manager.close()
-            except RuntimeError as err:  # pragma: no cover - defensive
+            except Exception as err:  # pragma: no cover - defensive
                 close_error.set_exception(err)
             else:
                 close_error.set_result(None)

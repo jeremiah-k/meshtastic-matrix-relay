@@ -1369,11 +1369,7 @@ def _missing_credentials_keys(credentials: dict[str, Any]) -> list[str]:
     Returns:
         list[str]: List of required keys that are not present or are empty in `credentials`.
     """
-    # user_id is required by Matrix startup/auth flows even if other CLI
-    # validation paths relax it for specific commands.
-    required_keys = tuple(
-        dict.fromkeys((*REQUIRED_CREDENTIALS_KEYS, CONFIG_KEY_USER_ID))
-    )
+    required_keys = tuple(dict.fromkeys(REQUIRED_CREDENTIALS_KEYS))
     return [
         key
         for key in required_keys
@@ -1431,7 +1427,8 @@ async def _resolve_and_load_credentials(
             credentials_path = candidate_path
             matrix_homeserver = credentials[CONFIG_KEY_HOMESERVER]
             matrix_access_token = credentials[CONFIG_KEY_ACCESS_TOKEN]
-            bot_user_id = credentials[CONFIG_KEY_USER_ID]
+            raw_user_id = credentials.get(CONFIG_KEY_USER_ID)
+            bot_user_id = raw_user_id.strip() if isinstance(raw_user_id, str) else ""
             e2ee_device_id = _get_valid_device_id(credentials.get(CONFIG_KEY_DEVICE_ID))
 
             logger.debug(f"Using Matrix credentials (device: {e2ee_device_id})")
@@ -1498,7 +1495,10 @@ async def _resolve_and_load_credentials(
                 )
                 matrix_homeserver = credentials[CONFIG_KEY_HOMESERVER]
                 matrix_access_token = credentials[CONFIG_KEY_ACCESS_TOKEN]
-                bot_user_id = credentials[CONFIG_KEY_USER_ID]
+                raw_user_id = credentials.get(CONFIG_KEY_USER_ID)
+                bot_user_id = (
+                    raw_user_id.strip() if isinstance(raw_user_id, str) else ""
+                )
                 e2ee_device_id = _get_valid_device_id(
                     credentials.get(CONFIG_KEY_DEVICE_ID)
                 )
@@ -1772,14 +1772,17 @@ def _initialize_matrix_client(
     if device_id:
         logger.debug(f"Device ID from credentials: {device_id}")
 
-    return AsyncClient(
-        homeserver=homeserver,
-        user=user_id,
-        device_id=device_id,
-        store_path=e2ee_store_path if e2ee_enabled else None,
-        config=client_config,
-        ssl=cast(Any, ssl_context),
-    )
+    client_kwargs: dict[str, Any] = {
+        "homeserver": homeserver,
+        "user": user_id,
+        "store_path": e2ee_store_path if e2ee_enabled else None,
+        "config": client_config,
+        "ssl": cast(Any, ssl_context),
+    }
+    if device_id:
+        client_kwargs["device_id"] = device_id
+
+    return AsyncClient(**client_kwargs)
 
 
 async def _perform_matrix_login(
@@ -2617,11 +2620,15 @@ async def login_matrix_bot(
                 )
                 if (
                     existing_creds
-                    and CONFIG_KEY_DEVICE_ID in existing_creds
                     and existing_creds.get(CONFIG_KEY_USER_ID) == username
                 ):
-                    existing_device_id = existing_creds[CONFIG_KEY_DEVICE_ID]
-                    logger.info(f"Reusing existing device_id: {existing_device_id}")
+                    existing_device_id = _get_valid_device_id(
+                        existing_creds.get(CONFIG_KEY_DEVICE_ID)
+                    )
+                    if existing_device_id:
+                        logger.info(
+                            "Reusing existing device_id: %s", existing_device_id
+                        )
         except (OSError, JSONDecodeError, KeyError, TypeError) as e:
             logger.debug(f"Could not load existing credentials: {e}")
 

@@ -48,9 +48,7 @@ LOGS_DIRNAME: Final[str] = "logs"
 LOG_FILENAME: Final[str] = "mmrelay.log"
 PLUGINS_DIRNAME: Final[str] = "plugins"
 PLUGIN_DATA_DIRNAME: Final[str] = "data"
-LEGACY_DATA_SUBDIR: Final[str] = (
-    "data"  # Same as PLUGIN_DATA_DIRNAME; distinct semantics for legacy detection
-)
+LEGACY_DATA_SUBDIR: Final[str] = PLUGIN_DATA_DIRNAME
 
 # File permissions (octal)
 SECURE_FILE_PERMISSIONS: Final[int] = 0o600

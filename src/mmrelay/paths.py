@@ -31,6 +31,7 @@ from mmrelay.constants.app import (
     DATABASE_DIRNAME,
     DATABASE_FILENAME,
     DOCKER_LEGACY_PATHS,
+    LEGACY_DATA_SUBDIR,
     LOG_FILENAME,
     LOGS_DIRNAME,
     MATRIX_DIRNAME,
@@ -113,7 +114,7 @@ def _has_mmrelay_artifacts(root: Path) -> bool:
         root / CREDENTIALS_FILENAME,
         root / MATRIX_DIRNAME / CREDENTIALS_FILENAME,
         root / DATABASE_FILENAME,
-        root / "data" / DATABASE_FILENAME,  # Legacy v1.2 data directory layout
+        root / LEGACY_DATA_SUBDIR / DATABASE_FILENAME,  # Legacy v1.2 data layout
         root / DATABASE_DIRNAME / DATABASE_FILENAME,
         root / LOGS_DIRNAME / LOG_FILENAME,
     ]
@@ -126,7 +127,6 @@ def _has_mmrelay_artifacts(root: Path) -> bool:
         root / STORE_DIRNAME,
         root / MATRIX_DIRNAME / STORE_DIRNAME,
         root / LOGS_DIRNAME,
-        root / PLUGINS_DIRNAME,
         root / MATRIX_DIRNAME / PLUGINS_DIRNAME,
     ]
     for marker in directory_markers:

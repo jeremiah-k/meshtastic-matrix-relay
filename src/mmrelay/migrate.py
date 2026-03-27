@@ -1542,11 +1542,20 @@ def migrate_database(
     try:
         staging_dir.mkdir(parents=True, exist_ok=True)
 
+        destination_group: list[Path] = [new_db_dir / DATABASE_FILENAME]
+        _collect_db_sidecars(destination_group[0], destination_group)
+        source_names = {path.name for path in selected_group}
+
         # 1. Backup existing database files (ALWAYS)
-        for db_path in selected_group:
-            dest = new_db_dir / db_path.name
-            # Skip if already at target to avoid self-backup/self-copy
-            if db_path.resolve() == dest.resolve():
+        destination_targets = {
+            new_db_dir / db_path.name for db_path in selected_group
+        } | set(destination_group)
+        for dest in sorted(destination_targets, key=lambda path: path.name):
+            # Skip if already at target to avoid self-backup/self-copy.
+            if any(
+                db_path.name == dest.name and db_path.resolve() == dest.resolve()
+                for db_path in selected_group
+            ):
                 continue
             if dest.exists():
                 backup_path = _backup_file(dest)
@@ -1559,6 +1568,22 @@ def migrate_database(
                     shutil.copy2(str(dest), str(backup_path))
                 backed_up_files.append(
                     {"backup_path": str(backup_path), "restore_path": str(dest)}
+                )
+
+        # 1b. Remove destination-only sidecars so stale WAL/SHM/JOURNAL state does not survive.
+        for dest in destination_group:
+            if not dest.exists() or dest.name in source_names:
+                continue
+            logger.info("Removing destination-only database sidecar: %s", dest)
+            if dest.is_dir():
+                _retry_on_file_in_use(
+                    lambda d=dest: shutil.rmtree(str(d), ignore_errors=False),
+                    f"rmtree {dest}",
+                )
+            else:
+                _retry_on_file_in_use(
+                    lambda d=dest: d.unlink(),
+                    f"unlink {dest}",
                 )
 
         # 2. Copy to staging (using copy-verify-delete pattern)
@@ -1617,12 +1642,20 @@ def migrate_database(
                 logger.warning("Failed to delete source file: %s", db_path)
 
         migration_succeeded = True
+        migrated_files = sorted(
+            {
+                str(new_db_dir / db_path.name)
+                for db_path in selected_group
+                if (new_db_dir / db_path.name).exists()
+            }
+        )
         return {
             "success": True,
             "old_path": str(most_recent),
             "new_path": str(new_db_dir),
             "action": "move",
             "backed_up_files": backed_up_files,
+            "migrated_files": migrated_files,
         }
     except PermissionError as exc:
         logger.exception(
@@ -3084,6 +3117,7 @@ def rollback_migration(
 
             if isinstance(recorded_backups, list) and recorded_backups:
                 used_recorded_backups = False
+                restored_paths: set[str] = set()
                 for entry in recorded_backups:
                     if not isinstance(entry, dict):
                         continue
@@ -3095,6 +3129,7 @@ def rollback_migration(
                     used_recorded_backups = True
                     backup_path_obj = Path(backup_path_raw)
                     restore_path_obj = Path(restore_path_raw)
+                    restored_paths.add(str(restore_path_obj))
 
                     if not backup_path_obj.exists():
                         rollback_report["errors"].append(
@@ -3124,6 +3159,35 @@ def rollback_migration(
                             }
                         )
                         rollback_report["success"] = False
+                migrated_files = step_result.get("migrated_files", [])
+                if used_recorded_backups and isinstance(migrated_files, list):
+                    for migrated_file in migrated_files:
+                        if not isinstance(migrated_file, str):
+                            continue
+                        if migrated_file in restored_paths:
+                            continue
+                        migrated_path_obj = Path(migrated_file)
+                        if not migrated_path_obj.exists():
+                            continue
+                        try:
+                            if migrated_path_obj.is_dir():
+                                shutil.rmtree(str(migrated_path_obj))
+                            else:
+                                migrated_path_obj.unlink()
+                            rollback_report["rolled_back_steps"].append(
+                                {
+                                    "step": step_name,
+                                    "removed_path": str(migrated_path_obj),
+                                }
+                            )
+                        except (OSError, IOError, shutil.Error) as removal_error:
+                            rollback_report["errors"].append(
+                                {
+                                    "step": step_name,
+                                    "error": f"Failed to remove migrated member {migrated_path_obj}: {removal_error}",
+                                }
+                            )
+                            rollback_report["success"] = False
                 if used_recorded_backups:
                     continue
 

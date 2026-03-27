@@ -1,16 +1,13 @@
 import asyncio
 import importlib
-import os
 import re
 from typing import Any, TYPE_CHECKING, cast
 
-import PIL.ImageDraw
 import s2sphere
 import staticmaps
 
 # matrix-nio is not marked py.typed; keep import-untyped for strict mypy.
 from nio import (
-    AsyncClient,
     MatrixRoom,
     ReactionEvent,
     RoomMessageEmote,
@@ -216,8 +213,13 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
             (x - self._arrow / 2, y - self._arrow),
         ]
 
+        closed_path = path + [path[0]]
         renderer.draw().polygon(path, fill=MAP_LABEL_FILL_COLOR)
-        renderer.draw().line(path, fill=MAP_LABEL_OUTLINE_COLOR)
+        renderer.draw().line(
+            closed_path,
+            fill=MAP_LABEL_OUTLINE_COLOR,
+            width=MAP_LABEL_OUTLINE_WIDTH,
+        )
         renderer.draw().text(
             (x - tw / 2, y - self._arrow - h / 2 - th / 2),
             self._text,
@@ -548,6 +550,7 @@ class Plugin(BasePlugin):
 
         if not MAP_ZOOM_MIN <= zoom <= MAP_ZOOM_MAX:
             zoom = configured_zoom
+        # Fallback to DEFAULT_MAP_ZOOM if both CLI and configured values are invalid.
         if not MAP_ZOOM_MIN <= zoom <= MAP_ZOOM_MAX:
             zoom = DEFAULT_MAP_ZOOM
 

@@ -196,14 +196,19 @@ class Plugin(BasePlugin):
                 node_data_rows (list[dict[str, Any]]): Records containing a "time" POSIX timestamp (seconds) and a telemetry value under the key named by the enclosing `telemetry_option`; values are appended to the outer `hourly_averages` dictionary for the matching hourly interval.
             """
             for record in node_data_rows:
-                record_time = datetime.fromtimestamp(record["time"])
-                telemetry_value = record[telemetry_option]
+                timestamp = record.get("time")
+                telemetry_value = record.get(telemetry_option)
+                if timestamp is None or telemetry_value is None:
+                    continue
+                try:
+                    record_time = datetime.fromtimestamp(timestamp)
+                except (TypeError, ValueError, OSError):
+                    continue
                 for i in range(len(hourly_intervals) - 1):
                     if hourly_intervals[i] <= record_time < hourly_intervals[i + 1]:
-                        if telemetry_value is not None:
-                            if i not in hourly_averages:
-                                hourly_averages[i] = []
-                            hourly_averages[i].append(telemetry_value)
+                        if i not in hourly_averages:
+                            hourly_averages[i] = []
+                        hourly_averages[i].append(telemetry_value)
                         break
 
         if node:

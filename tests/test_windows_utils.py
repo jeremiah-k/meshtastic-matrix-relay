@@ -429,10 +429,7 @@ class TestTestConfigGenerationWindows:
             patch("os.path.exists", return_value=True),
             patch("importlib.resources.files") as mock_files,
             patch("mmrelay.config.get_config_paths", return_value=[config_path]),
-            patch(
-                "mmrelay.windows_utils._count_error_results",
-                side_effect=OSError("sum failure"),
-            ),
+            patch("builtins.sum", side_effect=OSError("sum failure")),
         ):
             mock_joinpath = MagicMock()
             mock_joinpath.read_text.return_value = "sample: config"

@@ -49,21 +49,26 @@ _MESSAGE_MAP_TEMP_TABLE = f"{MESSAGE_MAP_TABLE}_old_temp"
 
 _VALID_TABLE_NAMES: frozenset[str] = frozenset(
     {
-        MESSAGE_MAP_TABLE,
-        _MESSAGE_MAP_LEGACY_TABLE,
-        _MESSAGE_MAP_TEMP_TABLE,
-        PLUGIN_DATA_TABLE,
-        NAMES_TABLE_LONGNAMES,
-        NAMES_TABLE_SHORTNAMES,
+        "message_map",
+        "message_map_legacy",
+        "message_map_old_temp",
+        "plugin_data",
+        "longnames",
+        "shortnames",
     }
 )
 
 _VALID_COLUMN_NAMES: frozenset[str] = frozenset(
     {
-        *MESSAGE_MAP_COLUMNS,
-        *PLUGIN_DATA_COLUMNS,
-        NAMES_FIELD_LONGNAME,
-        NAMES_FIELD_SHORTNAME,
+        "meshtastic_id",
+        "matrix_event_id",
+        "matrix_room_id",
+        "meshtastic_text",
+        "meshtastic_meshnet",
+        "plugin_name",
+        "data",
+        "longname",
+        "shortname",
     }
 )
 
@@ -268,6 +273,27 @@ _DELETE_OLDEST_MESSAGE_MAP_SQL = (
 if MESSAGE_MAP_TABLE != "message_map":
     raise RuntimeError(
         "Message-map constants changed; update static SQL literals in db_utils."
+    )
+
+if (PLUGIN_DATA_TABLE, *PLUGIN_DATA_COLUMNS) != (
+    "plugin_data",
+    "plugin_name",
+    "meshtastic_id",
+    "data",
+):
+    raise RuntimeError(
+        "Plugin-data constants changed; update static SQL literals in db_utils."
+    )
+
+if tuple(MESSAGE_MAP_COLUMNS) != (
+    "meshtastic_id",
+    "matrix_event_id",
+    "matrix_room_id",
+    "meshtastic_text",
+    "meshtastic_meshnet",
+):
+    raise RuntimeError(
+        "Message-map column constants changed; update static SQL literals in db_utils."
     )
 
 if (

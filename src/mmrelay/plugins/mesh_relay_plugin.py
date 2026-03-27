@@ -220,7 +220,20 @@ class Plugin(BasePlugin):
         body = content.get("body", "")
         if isinstance(body, str):
             match = PROCESSED_PACKET_REGEX.match(body)
-            return bool(match)
+            if match:
+                if not content.get(MATRIX_PACKET_KEY):
+                    legacy_packet = content.get("packet")
+                    if isinstance(legacy_packet, (dict, list)):
+                        content[MATRIX_PACKET_KEY] = json.dumps(legacy_packet)
+                    elif isinstance(legacy_packet, str) and legacy_packet.strip():
+                        content[MATRIX_PACKET_KEY] = legacy_packet
+                    else:
+                        legacy_body_payload = match.group(1).strip()
+                        if legacy_body_payload.startswith(
+                            "{"
+                        ) and legacy_body_payload.endswith("}"):
+                            content[MATRIX_PACKET_KEY] = legacy_body_payload
+                return bool(content.get(MATRIX_PACKET_KEY))
         return False
 
     async def handle_room_message(
