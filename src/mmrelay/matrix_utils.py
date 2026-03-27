@@ -1317,7 +1317,7 @@ async def _handle_detection_sensor_packet(
 
     success = queue_message(
         meshtastic_interface.sendData,
-        data=text.encode(DEFAULT_TEXT_ENCODING),
+        data=text.encode(DEFAULT_TEXT_ENCODING, ENCODING_ERROR_IGNORE),
         channelIndex=meshtastic_channel,
         portNum=meshtastic.protobuf.portnums_pb2.PortNum.DETECTION_SENSOR_APP,
         description=f"Detection sensor data from {full_display_name}",

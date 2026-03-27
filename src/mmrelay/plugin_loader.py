@@ -2379,8 +2379,15 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                     plugin_name,
                 )
                 continue
-            if plugin_info.get("active", False):
+            active = plugin_info.get("active", False)
+            if isinstance(active, bool) and active:
                 active_plugins.append(plugin_name)
+            elif active is not None and not isinstance(active, bool):
+                logger.warning(
+                    "Ignoring non-boolean 'active' value for %s plugin '%s'; expected true/false.",
+                    section_name,
+                    plugin_name,
+                )
         return active_plugins
 
     core_plugins_config = _section_dict(CONFIG_SECTION_PLUGINS)
@@ -2488,7 +2495,19 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
             )
             continue
 
-        if not plugin_info.get("active", False):
+        active = plugin_info.get("active", False)
+        if not isinstance(active, bool):
+            if active is not None:
+                logger.warning(
+                    "Ignoring non-boolean 'active' value for %s plugin '%s'; expected true/false.",
+                    CONFIG_SECTION_COMMUNITY_PLUGINS,
+                    plugin_name,
+                )
+            logger.debug(
+                f"Skipping community plugin {plugin_name} - not active in config"
+            )
+            continue
+        if not active:
             logger.debug(
                 f"Skipping community plugin {plugin_name} - not active in config"
             )
@@ -2684,7 +2703,16 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                     plugin_name,
                 )
                 plugin_config = {}
-            is_active = plugin_config.get("active", False)
+            raw_active = plugin_config.get("active", False)
+            if isinstance(raw_active, bool):
+                is_active = raw_active
+            else:
+                if raw_active is not None:
+                    logger.warning(
+                        "Ignoring non-boolean 'active' value for plugin '%s'; expected true/false.",
+                        plugin_name,
+                    )
+                is_active = False
         else:
             # Custom and community plugins: default to inactive unless specified
             if plugin_name in custom_plugins_config:
@@ -2700,12 +2728,31 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                     plugin_name,
                 )
                 plugin_config = {}
-            is_active = plugin_config.get("active", False)
+            raw_active = plugin_config.get("active", False)
+            if isinstance(raw_active, bool):
+                is_active = raw_active
+            else:
+                if raw_active is not None:
+                    logger.warning(
+                        "Ignoring non-boolean 'active' value for plugin '%s'; expected true/false.",
+                        plugin_name,
+                    )
+                is_active = False
 
         if is_active:
-            plugin.priority = plugin_config.get(
-                "priority", getattr(plugin, "priority", DEFAULT_PLUGIN_PRIORITY)
-            )
+            default_priority = getattr(plugin, "priority", DEFAULT_PLUGIN_PRIORITY)
+            if not isinstance(default_priority, int):
+                default_priority = DEFAULT_PLUGIN_PRIORITY
+            raw_priority = plugin_config.get("priority", default_priority)
+            if isinstance(raw_priority, int):
+                plugin.priority = raw_priority
+            else:
+                logger.warning(
+                    "Ignoring invalid priority for '%s'; expected an integer, got %s.",
+                    plugin_name,
+                    type(raw_priority).__name__,
+                )
+                plugin.priority = default_priority
             try:
                 plugin.start()
             except Exception:

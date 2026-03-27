@@ -323,7 +323,7 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
                 text_anchor="middle",
                 dominant_baseline="central",
                 insert=(x, y - self._arrow - h / 2),
-                font_family="sans-serif",
+                font_family=MAP_LABEL_FONT_FAMILY,
                 font_size=f"{self._font_size}px",
                 fill=SVG_LABEL_TEXT_COLOR,
                 fill_opacity=SVG_LABEL_TEXT_OPACITY,

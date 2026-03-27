@@ -422,11 +422,11 @@ class DatabaseManager:
             worker_future = self._async_executor.submit(executor_func)
         wrapped_future: asyncio.Future[Any] = asyncio.wrap_future(worker_future)
         try:
-            return await wrapped_future
+            return await asyncio.shield(wrapped_future)
         except asyncio.CancelledError:
             if write:
                 try:
-                    await asyncio.shield(asyncio.wrap_future(worker_future))
+                    await wrapped_future
                 except asyncio.CancelledError:
                     pass
                 except BaseException:

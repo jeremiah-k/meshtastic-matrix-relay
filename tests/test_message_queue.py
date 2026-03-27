@@ -14,6 +14,8 @@ import asyncio
 import contextlib
 import time
 import unittest
+from concurrent.futures import Executor
+from typing import Any, Callable
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -80,18 +82,21 @@ class TestMessageQueue(unittest.TestCase):
         # Store original run_in_executor for restoration
         self.original_run_in_executor = real_loop.run_in_executor
 
-        def sync_run_in_executor(executor, func, *args):
+        def sync_run_in_executor(
+            executor: Executor | None, func: Callable[..., Any], *args: Any
+        ) -> asyncio.Future[Any]:
             """
             Run a callable synchronously but return an awaitable Future that is already completed with its result or exception.
 
             This preserves the awaitable contract expected by code that uses run_in_executor while executing the provided function synchronously on the current thread.
 
             Parameters:
-                func (callable): Function to execute.
+                executor: Executor instance (unused but part of the signature).
+                func: Function to execute.
                 *args: Positional arguments passed to `func`.
 
             Returns:
-                asyncio.Future: A Future created on the test event loop and completed with `func`'s return value or raised exception.
+                A Future created on the test event loop and completed with `func`'s return value or raised exception.
             """
             fut = real_loop.create_future()
             try:

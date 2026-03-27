@@ -218,10 +218,10 @@ async def test_handle_message_mapping_skips_prune_when_msgs_to_keep_non_positive
 
     with (
         patch(
-            "mmrelay.db_utils.async_store_message_map", new_callable=AsyncMock
+            "mmrelay.message_queue.async_store_message_map", new_callable=AsyncMock
         ) as mock_store,
         patch(
-            "mmrelay.db_utils.async_prune_message_map", new_callable=AsyncMock
+            "mmrelay.message_queue.async_prune_message_map", new_callable=AsyncMock
         ) as mock_prune,
     ):
         await queue._handle_message_mapping(result, mapping_info)
@@ -243,7 +243,7 @@ async def test_handle_message_mapping_logs_exception_if_store_fails() -> None:
 
     with (
         patch(
-            "mmrelay.db_utils.async_store_message_map",
+            "mmrelay.message_queue.async_store_message_map",
             new_callable=AsyncMock,
             side_effect=RuntimeError("db write failed"),
         ),

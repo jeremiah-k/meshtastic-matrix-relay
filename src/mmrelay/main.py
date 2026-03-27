@@ -475,9 +475,18 @@ async def main(config: dict[str, Any]) -> None:
                 context,
             )
         except BaseException as exc:
-            if isinstance(exc, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
+            if isinstance(exc, asyncio.CancelledError):
                 raise
-            matrix_logger.exception("Failed to close Matrix client during %s", context)
+            if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                matrix_logger.error(
+                    "Interrupted while closing Matrix client during %s; continuing shutdown",
+                    context,
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                )
+            else:
+                matrix_logger.exception(
+                    "Failed to close Matrix client during %s", context
+                )
 
     async def _close_meshtastic_client_best_effort(*, context: str) -> None:
         """
@@ -516,12 +525,19 @@ async def main(config: dict[str, Any]) -> None:
                 context,
             )
         except BaseException as exc:
-            if isinstance(exc, (asyncio.CancelledError, KeyboardInterrupt, SystemExit)):
+            if isinstance(exc, asyncio.CancelledError):
                 raise
-            meshtastic_logger.exception(
-                "Unexpected error during Meshtastic client close during %s",
-                context,
-            )
+            if isinstance(exc, (KeyboardInterrupt, SystemExit)):
+                meshtastic_logger.error(
+                    "Interrupted while closing Meshtastic client during %s; continuing shutdown",
+                    context,
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                )
+            else:
+                meshtastic_logger.exception(
+                    "Unexpected error during Meshtastic client close during %s",
+                    context,
+                )
         finally:
             meshtastic_utils.meshtastic_client = None
             meshtastic_utils.meshtastic_iface = None

@@ -2813,9 +2813,8 @@ class TestCommandRunner(unittest.TestCase):
     def test_run_value_error_shell_true(self):
         """Test _run raises ValueError for shell=True."""
         with self.assertRaises(ValueError) as cm:
-            _run(
-                ["git", "status"], shell=True
-            )  # nosec B604  # test: intentionally testing shell execution
+            shell_flag = True
+            _run(["git", "status"], shell=shell_flag)
         self.assertIn("shell=True is not allowed in _run", str(cm.exception))
 
     def test_run_value_error_empty_args(self):

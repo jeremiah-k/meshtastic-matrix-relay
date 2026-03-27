@@ -133,7 +133,7 @@ jobs:
           fi
 
       - name: Persist cached ARMv7 builder image
-        if: ${{ always() && steps.builder-image-cache.outputs.cache-hit != 'true' && steps.builder-image-tar.outputs.saved == 'true' }}
+        if: ${{ success() && steps.builder-image-cache.outputs.cache-hit != 'true' && steps.builder-image-tar.outputs.saved == 'true' }}
         uses: actions/cache/save@v4
         with:
           path: ${{ steps.builder-image-cache-meta.outputs.cache_path }}

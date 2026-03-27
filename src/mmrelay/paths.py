@@ -485,14 +485,14 @@ def get_plugin_code_dir(plugin_name: str, plugin_type: str | None = None) -> Pat
     if normalized_type == PLUGIN_TYPE_COMMUNITY:
         return get_community_plugins_dir() / plugin_name
     if normalized_type == PLUGIN_TYPE_CORE:
-        return get_core_plugins_dir() / plugin_name
+        return Path(__file__).resolve().parent / PLUGINS_DIRNAME / plugin_name
 
     for plugin_root in (get_custom_plugins_dir(), get_community_plugins_dir()):
         candidate = plugin_root / plugin_name
         if candidate.exists():
             return candidate
 
-    return get_core_plugins_dir() / plugin_name
+    return Path(__file__).resolve().parent / PLUGINS_DIRNAME / plugin_name
 
 
 def get_plugin_data_dir(
