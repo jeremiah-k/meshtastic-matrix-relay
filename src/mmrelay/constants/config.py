@@ -66,6 +66,15 @@ CONFIG_KEY_MSG_MAP: Final[str] = "msg_map"
 CONFIG_KEY_MSGS_TO_KEEP: Final[str] = "msgs_to_keep"
 CONFIG_KEY_WIPE_ON_RESTART: Final[str] = "wipe_on_restart"
 
+# Additional credential/config keys
+CONFIG_KEY_DEVICE_ID: Final[str] = "device_id"
+CONFIG_KEY_PASSWORD: Final[str] = (
+    "password"  # nosec B105 - config key name, not a password
+)
+
+# JSON formatting
+JSON_INDENT_STANDARD: Final[int] = 2
+
 # Plugin configuration keys
 CONFIG_KEY_ACTIVE: Final[str] = "active"
 CONFIG_KEY_CHANNELS: Final[str] = "channels"

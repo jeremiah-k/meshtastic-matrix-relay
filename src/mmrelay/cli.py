@@ -41,15 +41,23 @@ from mmrelay.constants.app import (
     DISK_SPACE_WARN_GB,
     WINDOWS_PLATFORM,
 )
+from mmrelay.constants.cli import (
+    EXIT_CODE_ERROR,
+    EXIT_CODE_SUCCESS,
+    FORBIDDEN_HOME_DIRECTORIES_UNIX,
+    WINDOWS_FORBIDDEN_HOME_ENV_KEYS,
+)
 from mmrelay.constants.config import (
     CONFIG_KEY_ACCESS_TOKEN,
     CONFIG_KEY_BOT_USER_ID,
+    CONFIG_KEY_DEVICE_ID,
     CONFIG_KEY_HOMESERVER,
     CONFIG_SECTION_MATRIX,
     CONFIG_SECTION_MESHTASTIC,
     REQUIRED_CREDENTIALS_KEYS,
 )
 from mmrelay.constants.formats import (
+    HOSTNAME_PATTERN,
     MAC_ADDRESS_PATTERN,
     UNIX_SERIAL_PORT_PATTERN,
     WINDOWS_SERIAL_PORT_PATTERN,
@@ -63,6 +71,7 @@ from mmrelay.constants.network import (
     CONNECTION_TYPE_NETWORK,
     CONNECTION_TYPE_SERIAL,
     CONNECTION_TYPE_TCP,
+    HTTP_STATUS_UNAUTHORIZED,
     MAX_HOSTNAME_LABEL_LENGTH,
     MAX_HOSTNAME_LENGTH,
     MESHTASTIC_CHANNEL_MAX,
@@ -219,30 +228,14 @@ def _apply_dir_overrides(args: argparse.Namespace | None) -> None:
     # Prevent using critical system directories as the home directory
     # Note: Only block truly critical paths - containers may use paths like /app or /data
     # Using lower-case comparison for cross-platform compatibility
-    forbidden_paths = {
-        # Unix system directories
-        "/",
-        "/etc",
-        "/usr",
-        "/bin",
-        "/sbin",
-        "/boot",
-        "/dev",
-        "/proc",
-        "/sys",
-    }
+    forbidden_paths = set(FORBIDDEN_HOME_DIRECTORIES_UNIX)
     # Add Windows-specific system paths dynamically from environment variables
     # This handles cases where Windows is installed on a different drive
     if sys.platform == "win32":
-        system_root = os.environ.get("SystemRoot")
-        if system_root:
-            forbidden_paths.add(system_root.lower())
-        program_files = os.environ.get("ProgramFiles")
-        if program_files:
-            forbidden_paths.add(program_files.lower())
-        program_files_x86 = os.environ.get("ProgramFiles(x86)")
-        if program_files_x86:
-            forbidden_paths.add(program_files_x86.lower())
+        for env_key in WINDOWS_FORBIDDEN_HOME_ENV_KEYS:
+            env_value = os.environ.get(env_key)
+            if env_value:
+                forbidden_paths.add(env_value.lower())
     if str(absolute_home).lower() in forbidden_paths:
         print(
             f"Error: Setting MMRELAY_HOME to a critical system directory ('{absolute_home}') is not allowed.",
@@ -629,11 +622,12 @@ def _validate_credentials_json(
             continue
 
         # Optional device_id for legacy compatibility
-        if not _is_valid_non_empty_string(credentials.get("device_id")):
+        if not _is_valid_non_empty_string(credentials.get(CONFIG_KEY_DEVICE_ID)):
             _get_logger().warning(
-                "Credentials file at %s is missing 'device_id'. "
+                "Credentials file at %s is missing '%s'. "
                 "This may cause issues with session tracking.",
                 credentials_path,
+                CONFIG_KEY_DEVICE_ID,
             )
 
         return True
@@ -1119,8 +1113,7 @@ def _is_valid_host(host: str) -> bool:
 
     # Validate as hostname (alphanumeric with hyphens and dots)
     # RFC 952 and RFC 1123 hostname rules
-    hostname_pattern = r"^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$"
-    if not re.match(hostname_pattern, host):
+    if not HOSTNAME_PATTERN.match(host):
         return False
 
     # Check length limits (hostname max 253 chars, each label max 63)
@@ -2311,11 +2304,11 @@ def handle_auth_status(args: argparse.Namespace) -> int:
                     continue
 
                 if not (
-                    isinstance(credentials.get("device_id"), str)
-                    and credentials["device_id"].strip()
+                    isinstance(credentials.get(CONFIG_KEY_DEVICE_ID), str)
+                    and credentials[CONFIG_KEY_DEVICE_ID].strip()
                 ):
                     print(
-                        f"⚠️  credentials.json at {credentials_path} is missing 'device_id' "
+                        f"⚠️  credentials.json at {credentials_path} is missing '{CONFIG_KEY_DEVICE_ID}' "
                         "(may cause session tracking issues)"
                     )
             except (OSError, json.JSONDecodeError, TypeError, ValueError) as e:
@@ -2327,7 +2320,7 @@ def handle_auth_status(args: argparse.Namespace) -> int:
                 print(f"✅ Found credentials.json at: {credentials_path}")
                 print(f"   Homeserver: {credentials.get('homeserver')}")
                 print(f"   User ID: {credentials.get('user_id')}")
-                print(f"   Device ID: {credentials.get('device_id')}")
+                print(f"   Device ID: {credentials.get(CONFIG_KEY_DEVICE_ID)}")
                 return 0
 
     print("❌ No credentials.json found")

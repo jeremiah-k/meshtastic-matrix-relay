@@ -29,19 +29,29 @@ from mmrelay.constants.messages import PORTNUM_TEXT_MESSAGE_APP
 from mmrelay.constants.plugins import (
     DAILY_FORECAST_DAYS,
     GEOCODING_RESULT_COUNT,
+    HOURLY_CONFIG,
     HOURLY_FORECAST_DAYS,
     HOURLY_FORECAST_SLOTS,
     MAX_FORECAST_LENGTH,
+    OPEN_METEO_CURRENT_WEATHER_FLAG,
+    OPEN_METEO_DAILY_FIELDS,
     OPEN_METEO_FORECAST_API_URL,
     OPEN_METEO_GEOCODING_API_URL,
+    OPEN_METEO_HOURLY_FIELDS,
+    OPEN_METEO_TIMEZONE_AUTO,
     WEATHER_API_TIMEOUT_SECONDS,
+    WEATHER_CODE_TEXT_MAPPING,
     WEATHER_COMMANDS,
+    WEATHER_MODE_CURRENT,
+    WEATHER_MODE_DAILY,
+    WEATHER_MODE_HOURLY,
+    WEATHER_SLOT_NOW,
+    WEATHER_UNITS_IMPERIAL,
+    WEATHER_UNITS_METRIC,
 )
 from mmrelay.plugins.base_plugin import BasePlugin
 
-CANONICAL_WEATHER_MODE: Final[str] = (
-    "weather"  # Explicit canonical default, independent of WEATHER_COMMANDS ordering
-)
+CANONICAL_WEATHER_MODE = WEATHER_MODE_CURRENT
 
 
 class Plugin(BasePlugin):
@@ -93,33 +103,25 @@ class Plugin(BasePlugin):
         """
         mode_key = self._normalize_mode(mode)
 
-        units = self.config.get("units", "metric")  # Default to metric
-        temperature_unit = "°C" if units == "metric" else "°F"
+        units = self.config.get("units", WEATHER_UNITS_METRIC)
+        temperature_unit = "°C" if units == WEATHER_UNITS_METRIC else "°F"
         daily_days = (
-            DAILY_FORECAST_DAYS if mode_key == "daily" else HOURLY_FORECAST_DAYS
+            DAILY_FORECAST_DAYS
+            if mode_key == WEATHER_MODE_DAILY
+            else HOURLY_FORECAST_DAYS
         )
 
-        hourly_config = {
-            "weather": {
-                "slots": ["now"],
-                "offsets": [],
-            },
-            "hourly": {
-                # Keep the hourly forecast compact to fit mesh payload limits
-                "slots": [label for _, label in HOURLY_FORECAST_SLOTS],
-                "offsets": [offset for offset, _ in HOURLY_FORECAST_SLOTS],
-            },
-        }
-        mode_offsets = hourly_config.get(mode_key, hourly_config["weather"])
-        offsets = mode_offsets["offsets"]  # type: ignore[index]
+        mode_offsets = HOURLY_CONFIG.get(mode_key, HOURLY_CONFIG[WEATHER_MODE_CURRENT])
+        offsets = mode_offsets["offsets"]
 
+        hourly_fields = ",".join(OPEN_METEO_HOURLY_FIELDS)
+        daily_fields = ",".join(OPEN_METEO_DAILY_FIELDS)
         url = (
             f"{OPEN_METEO_FORECAST_API_URL}?"
             f"latitude={latitude}&longitude={longitude}&"
-            f"hourly=temperature_2m,precipitation_probability,weathercode,is_day,"
-            f"relativehumidity_2m,windspeed_10m,winddirection_10m&"
-            f"daily=weathercode,temperature_2m_max,temperature_2m_min&"
-            f"forecast_days={daily_days}&timezone=auto&current_weather=true"
+            f"hourly={hourly_fields}&"
+            f"daily={daily_fields}&"
+            f"forecast_days={daily_days}&{OPEN_METEO_TIMEZONE_AUTO}&{OPEN_METEO_CURRENT_WEATHER_FLAG}"
         )
 
         try:
@@ -230,7 +232,7 @@ class Plugin(BasePlugin):
                 label: get_hourly(idx) for label, idx in index_map.items()
             }
 
-            if units == "imperial":
+            if units == WEATHER_UNITS_IMPERIAL:
                 if current_temp is not None:
                     current_temp = (
                         current_temp * CELSIUS_TO_FAHRENHEIT_MULTIPLIER
@@ -258,19 +260,19 @@ class Plugin(BasePlugin):
             }
 
             # Generate one-line weather forecast
-            if mode_key == "daily":
+            if mode_key == WEATHER_MODE_DAILY:
                 return self._build_daily_forecast(
                     data, units, temperature_unit, daily_days
                 )
 
-            if mode_key == "weather":
-                now_slot = forecast_hours.get("now")
+            if mode_key == WEATHER_MODE_CURRENT:
+                now_slot = forecast_hours.get(WEATHER_SLOT_NOW)
                 humidity = now_slot[4] if now_slot else None
                 wind_speed = now_slot[5] if now_slot else None
                 wind_dir = now_slot[6] if now_slot else None
                 precip_now = now_slot[1] if now_slot else None
                 wind_unit = "km/h"
-                if units == "imperial" and wind_speed is not None:
+                if units == WEATHER_UNITS_IMPERIAL and wind_speed is not None:
                     wind_speed = wind_speed * KM_TO_MILES_FACTOR
                     wind_unit = "mph"
                 parts = [
@@ -292,7 +294,9 @@ class Plugin(BasePlugin):
                     parts.append(f"Precip {precip_now}%")
                 return self._trim_to_max_bytes(" | ".join(parts))
 
-            slots = hourly_config.get(mode_key, hourly_config["weather"])["slots"]  # type: ignore[index]
+            slots = HOURLY_CONFIG.get(mode_key, HOURLY_CONFIG[WEATHER_MODE_CURRENT])[
+                "slots"
+            ]
             return self._build_hourly_forecast(
                 current_temp,
                 current_weather_code,
@@ -329,7 +333,7 @@ class Plugin(BasePlugin):
         daily_max = data.get("daily", {}).get("temperature_2m_max") or []
         daily_min = data.get("daily", {}).get("temperature_2m_min") or []
         daily_times = data.get("daily", {}).get("time") or []
-        if units == "imperial":
+        if units == WEATHER_UNITS_IMPERIAL:
             daily_max = [
                 (
                     t * CELSIUS_TO_FAHRENHEIT_MULTIPLIER + FAHRENHEIT_OFFSET
@@ -451,38 +455,18 @@ class Plugin(BasePlugin):
         Returns:
             str: A brief human-readable description prefixed with an emoji (e.g., "☀️ Clear sky"), or "❓ Unknown" if the code is not recognized.
         """
-        weather_mapping = {
-            0: "☀️ Clear sky" if is_day else "🌙 Clear sky",
-            1: "🌤️ Mainly clear" if is_day else "🌙🌤️ Mainly clear",
-            2: "⛅️ Partly cloudy" if is_day else "🌙⛅️ Partly cloudy",
-            3: "☁️ Overcast" if is_day else "🌙☁️ Overcast",
-            45: "🌫️ Fog" if is_day else "🌙🌫️ Fog",
-            48: "🌫️ Depositing rime fog" if is_day else "🌙🌫️ Depositing rime fog",
-            51: "🌧️ Light drizzle",
-            53: "🌧️ Moderate drizzle",
-            55: "🌧️ Dense drizzle",
-            56: "🌧️ Light freezing drizzle",
-            57: "🌧️ Dense freezing drizzle",
-            61: "🌧️ Light rain",
-            63: "🌧️ Moderate rain",
-            65: "🌧️ Heavy rain",
-            66: "🌧️ Light freezing rain",
-            67: "🌧️ Heavy freezing rain",
-            71: "❄️ Light snow fall",
-            73: "❄️ Moderate snow fall",
-            75: "❄️ Heavy snow fall",
-            77: "❄️ Snow grains",
-            80: "🌧️ Light rain showers",
-            81: "🌧️ Moderate rain showers",
-            82: "🌧️ Violent rain showers",
-            85: "❄️ Light snow showers",
-            86: "❄️ Heavy snow showers",
-            95: "⛈️ Thunderstorm",
-            96: "⛈️ Thunderstorm with slight hail",
-            99: "⛈️ Thunderstorm with heavy hail",
-        }
-
-        return weather_mapping.get(weather_code, "❓ Unknown")
+        text = WEATHER_CODE_TEXT_MAPPING.get(weather_code)
+        if text is None:
+            return "❓ Unknown"
+        if text.startswith("DAY:"):
+            if is_day:
+                return text[4:].split("|")[0]
+            else:
+                parts = text.split("|NIGHT:")
+                return parts[1] if len(parts) > 1 else parts[0][4:]
+        elif text.startswith("BOTH:"):
+            return text[5:]
+        return text
 
     async def handle_meshtastic_message(
         self,

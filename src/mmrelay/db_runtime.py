@@ -9,7 +9,6 @@ managers and async helpers for executing read/write operations.
 from __future__ import annotations
 
 import asyncio
-import re
 import sqlite3
 import threading
 from collections.abc import Callable
@@ -20,11 +19,16 @@ from typing import Any, Generator, Optional
 
 from mmrelay.constants.database import (
     DB_EXECUTOR_MAX_WORKERS,
+    DEFAULT_BUSY_TIMEOUT_MS,
     PRAGMA_FOREIGN_KEYS_ON,
     PRAGMA_JOURNAL_MODE_WAL,
     SQLITE_IN_MEMORY_PATH,
     SQLITE_JSON_EACH_PROBE_PAYLOAD,
     SQLITE_JSON_EACH_PROBE_SQL,
+    SQLITE_PRAGMA_BOOL_OFF,
+    SQLITE_PRAGMA_BOOL_ON,
+    SQLITE_PRAGMA_NAME_PATTERN,
+    SQLITE_PRAGMA_SAFE_STRING_VALUE_PATTERN,
 )
 from mmrelay.log_utils import get_logger
 
@@ -140,7 +144,7 @@ class DatabaseManager:
         path: str,
         *,
         enable_wal: bool = True,
-        busy_timeout_ms: int = 5000,
+        busy_timeout_ms: int = DEFAULT_BUSY_TIMEOUT_MS,
         extra_pragmas: Optional[dict[str, Any]] = None,
     ) -> None:
         """
@@ -213,7 +217,7 @@ class DatabaseManager:
                 conn.execute(PRAGMA_FOREIGN_KEYS_ON)
                 for pragma, value in self._extra_pragmas.items():
                     # Validate pragma name to prevent injection.
-                    if not re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]*", pragma):
+                    if not SQLITE_PRAGMA_NAME_PATTERN.fullmatch(pragma):
                         raise ValueError(f"Invalid pragma name provided: {pragma}")
                     # Validate and sanitize value to prevent injection
                     if isinstance(value, str):
@@ -225,8 +229,8 @@ class DatabaseManager:
                         # Security assumption: Configuration sources are trusted, but we validate defensively
                         # to prevent accidental or malicious injection through compromised config files.
                         # This balances security with practical SQLite pragma value requirements.
-                        if not re.fullmatch(
-                            r"[a-zA-Z0-9_\-\s,.\\\\]+", value
+                        if not SQLITE_PRAGMA_SAFE_STRING_VALUE_PATTERN.fullmatch(
+                            value
                         ) or value.endswith("\\"):
                             raise ValueError(
                                 f"Invalid or unsafe pragma value provided: {value}"
@@ -234,7 +238,9 @@ class DatabaseManager:
                         conn.execute(f"PRAGMA {pragma} = '{value}'")
                     elif isinstance(value, bool):
                         # Convert boolean values to ON/OFF for SQLite pragmas
-                        conn.execute(f"PRAGMA {pragma} = {'ON' if value else 'OFF'}")
+                        conn.execute(
+                            f"PRAGMA {pragma} = {SQLITE_PRAGMA_BOOL_ON if value else SQLITE_PRAGMA_BOOL_OFF}"
+                        )
                     elif isinstance(value, (int, float)):
                         # For numeric values, ensure they're actually numeric
                         conn.execute(f"PRAGMA {pragma} = {value}")

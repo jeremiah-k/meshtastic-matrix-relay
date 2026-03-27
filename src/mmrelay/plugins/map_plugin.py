@@ -26,12 +26,15 @@ from mmrelay.constants.formats import (
     LABEL_MARGIN_PX,
     MAP_IMAGE_FILENAME,
     MAP_LABEL_FILL_COLOR,
+    MAP_LABEL_FONT_FAMILY,
     MAP_LABEL_FONT_FILE,
     MAP_LABEL_FONT_SIZE,
     MAP_LABEL_OUTLINE_COLOR,
+    MAP_LABEL_OUTLINE_WIDTH,
     MAP_LABEL_TEXT_COLOR,
     MAP_ZOOM_MAX,
     MAP_ZOOM_MIN,
+    RGBA_CHANNEL_MAX,
 )
 
 from mmrelay.constants.plugins import (
@@ -43,31 +46,31 @@ from mmrelay.plugins.base_plugin import BasePlugin
 
 # Cairo colors (normalized RGBA 0-1) derived from RGBA constants
 CAIRO_LABEL_FILL_COLOR = (
-    MAP_LABEL_FILL_COLOR[0] / 255,
-    MAP_LABEL_FILL_COLOR[1] / 255,
-    MAP_LABEL_FILL_COLOR[2] / 255,
-    MAP_LABEL_FILL_COLOR[3] / 255,
+    MAP_LABEL_FILL_COLOR[0] / RGBA_CHANNEL_MAX,
+    MAP_LABEL_FILL_COLOR[1] / RGBA_CHANNEL_MAX,
+    MAP_LABEL_FILL_COLOR[2] / RGBA_CHANNEL_MAX,
+    MAP_LABEL_FILL_COLOR[3] / RGBA_CHANNEL_MAX,
 )
 CAIRO_LABEL_OUTLINE_COLOR = (
-    MAP_LABEL_OUTLINE_COLOR[0] / 255,
-    MAP_LABEL_OUTLINE_COLOR[1] / 255,
-    MAP_LABEL_OUTLINE_COLOR[2] / 255,
-    MAP_LABEL_OUTLINE_COLOR[3] / 255,
+    MAP_LABEL_OUTLINE_COLOR[0] / RGBA_CHANNEL_MAX,
+    MAP_LABEL_OUTLINE_COLOR[1] / RGBA_CHANNEL_MAX,
+    MAP_LABEL_OUTLINE_COLOR[2] / RGBA_CHANNEL_MAX,
+    MAP_LABEL_OUTLINE_COLOR[3] / RGBA_CHANNEL_MAX,
 )
 CAIRO_LABEL_TEXT_COLOR = (
-    MAP_LABEL_TEXT_COLOR[0] / 255,
-    MAP_LABEL_TEXT_COLOR[1] / 255,
-    MAP_LABEL_TEXT_COLOR[2] / 255,
-    MAP_LABEL_TEXT_COLOR[3] / 255,
+    MAP_LABEL_TEXT_COLOR[0] / RGBA_CHANNEL_MAX,
+    MAP_LABEL_TEXT_COLOR[1] / RGBA_CHANNEL_MAX,
+    MAP_LABEL_TEXT_COLOR[2] / RGBA_CHANNEL_MAX,
+    MAP_LABEL_TEXT_COLOR[3] / RGBA_CHANNEL_MAX,
 )
 
 # SVG colors (hex) and opacities derived from RGBA constants
 SVG_LABEL_FILL_COLOR = f"#{MAP_LABEL_FILL_COLOR[0]:02x}{MAP_LABEL_FILL_COLOR[1]:02x}{MAP_LABEL_FILL_COLOR[2]:02x}"
 SVG_LABEL_OUTLINE_COLOR = f"#{MAP_LABEL_OUTLINE_COLOR[0]:02x}{MAP_LABEL_OUTLINE_COLOR[1]:02x}{MAP_LABEL_OUTLINE_COLOR[2]:02x}"
 SVG_LABEL_TEXT_COLOR = f"#{MAP_LABEL_TEXT_COLOR[0]:02x}{MAP_LABEL_TEXT_COLOR[1]:02x}{MAP_LABEL_TEXT_COLOR[2]:02x}"
-SVG_LABEL_FILL_OPACITY = MAP_LABEL_FILL_COLOR[3] / 255.0
-SVG_LABEL_OUTLINE_OPACITY = MAP_LABEL_OUTLINE_COLOR[3] / 255.0
-SVG_LABEL_TEXT_OPACITY = MAP_LABEL_TEXT_COLOR[3] / 255.0
+SVG_LABEL_FILL_OPACITY = MAP_LABEL_FILL_COLOR[3] / float(RGBA_CHANNEL_MAX)
+SVG_LABEL_OUTLINE_OPACITY = MAP_LABEL_OUTLINE_COLOR[3] / float(RGBA_CHANNEL_MAX)
+SVG_LABEL_TEXT_OPACITY = MAP_LABEL_TEXT_COLOR[3] / float(RGBA_CHANNEL_MAX)
 
 
 def precision_bits_to_meters(bits: int) -> float | None:
@@ -238,7 +241,7 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
 
         ctx = renderer.context()
         ctx.select_font_face(
-            "Sans",
+            MAP_LABEL_FONT_FAMILY,
             getattr(cairo, "FONT_SLANT_NORMAL", 0),
             getattr(cairo, "FONT_WEIGHT_NORMAL", 0),
         )
@@ -267,7 +270,7 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
         ctx.fill()
 
         ctx.set_source_rgba(*CAIRO_LABEL_OUTLINE_COLOR)
-        ctx.set_line_width(1)
+        ctx.set_line_width(MAP_LABEL_OUTLINE_WIDTH)
         ctx.new_path()
         for p in path:
             ctx.line_to(*p)
@@ -275,7 +278,7 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
         ctx.stroke()
 
         ctx.set_source_rgba(*CAIRO_LABEL_TEXT_COLOR)
-        ctx.set_line_width(1)
+        ctx.set_line_width(MAP_LABEL_OUTLINE_WIDTH)
         ctx.move_to(
             x - tw / 2 - x_bearing, y - self._arrow - h / 2 - y_bearing - th / 2
         )
@@ -303,7 +306,7 @@ class TextLabel(staticmaps.Object):  # type: ignore[misc]
             fill_opacity=SVG_LABEL_FILL_OPACITY,
             stroke=SVG_LABEL_OUTLINE_COLOR,
             stroke_opacity=SVG_LABEL_OUTLINE_OPACITY,
-            stroke_width=1,
+            stroke_width=MAP_LABEL_OUTLINE_WIDTH,
         )
         path.push(f"M {x} {y}")
         path.push(f" l {self._arrow / 2} {-self._arrow}")

@@ -21,6 +21,9 @@ from nio import (
 from mmrelay.config import get_plugin_data_dir as resolve_plugin_data_dir
 from mmrelay.constants.config import (
     CONFIG_KEY_REQUIRE_BOT_MENTION,
+    CONFIG_SECTION_COMMUNITY_PLUGINS,
+    CONFIG_SECTION_CUSTOM_PLUGINS,
+    CONFIG_SECTION_PLUGINS,
     DEFAULT_REQUIRE_BOT_MENTION,
     PLUGIN_CONFIG_SECTIONS,
     PLUGIN_SECTION_TYPES,
@@ -29,7 +32,12 @@ from mmrelay.constants.database import (
     DEFAULT_MAX_DATA_ROWS_PER_NODE_BASE,
     DEFAULT_TEXT_TRUNCATION_LENGTH,
 )
-from mmrelay.constants.plugins import DEFAULT_PLUGIN_PRIORITY
+from mmrelay.constants.plugins import (
+    DEFAULT_PLUGIN_PRIORITY,
+    PLUGIN_TYPE_COMMUNITY,
+    PLUGIN_TYPE_CORE,
+    PLUGIN_TYPE_CUSTOM,
+)
 from mmrelay.constants.queue import DEFAULT_MESSAGE_DELAY, MINIMUM_MESSAGE_DELAY
 from mmrelay.db_utils import (
     delete_plugin_data,
@@ -180,19 +188,21 @@ class BasePlugin(ABC):
         self.config: dict[str, Any] = {"active": False}
         self.mapped_channels: list[int | None] = []
         self._global_require_bot_mention: bool | None = None
-        self.plugin_type: str | None = "core" if self.is_core_plugin else None
+        self.plugin_type: str | None = PLUGIN_TYPE_CORE if self.is_core_plugin else None
         global config
 
         if config is not None:
             resolved_section: str | None = None
-            expected_section: str | None = "plugins" if self.is_core_plugin else None
+            expected_section: str | None = (
+                CONFIG_SECTION_PLUGINS if self.is_core_plugin else None
+            )
             candidate_sections = (
-                ("plugins",)
+                (CONFIG_SECTION_PLUGINS,)
                 if self.is_core_plugin
                 else tuple(
                     section
                     for section in PLUGIN_CONFIG_SECTIONS
-                    if section != "plugins"
+                    if section != CONFIG_SECTION_PLUGINS
                 )
             )
             if not self.is_core_plugin:
@@ -228,13 +238,13 @@ class BasePlugin(ABC):
                             )
 
                         if any(_is_under(path) for path in get_custom_plugin_dirs()):
-                            self.plugin_type = "custom"
-                            expected_section = "custom-plugins"
+                            self.plugin_type = PLUGIN_TYPE_CUSTOM
+                            expected_section = CONFIG_SECTION_CUSTOM_PLUGINS
                         elif any(
                             _is_under(path) for path in get_community_plugin_dirs()
                         ):
-                            self.plugin_type = "community"
-                            expected_section = "community-plugins"
+                            self.plugin_type = PLUGIN_TYPE_COMMUNITY
+                            expected_section = CONFIG_SECTION_COMMUNITY_PLUGINS
                     except (OSError, ImportError, TypeError):
                         pass
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 
 from mmrelay.constants.app import PROC_COMM_PATH_TEMPLATE, PROC_SELF_STATUS_PATH
+from mmrelay.constants.formats import DEFAULT_TEXT_ENCODING
 from mmrelay.constants.network import SYSTEMD_INIT_SYSTEM
 from mmrelay.log_utils import get_logger
 
@@ -27,12 +28,13 @@ def is_running_as_service() -> bool:
         return True
 
     try:
-        with open(PROC_SELF_STATUS_PATH, encoding="utf-8") as status_file:
+        with open(PROC_SELF_STATUS_PATH, encoding=DEFAULT_TEXT_ENCODING) as status_file:
             for line in status_file:
                 if line.startswith("PPid:"):
                     ppid = int(line.split()[1])
                     with open(
-                        PROC_COMM_PATH_TEMPLATE.format(ppid=ppid), encoding="utf-8"
+                        PROC_COMM_PATH_TEMPLATE.format(ppid=ppid),
+                        encoding=DEFAULT_TEXT_ENCODING,
                     ) as comm_file:
                         return comm_file.read().strip() == SYSTEMD_INIT_SYSTEM
     except (FileNotFoundError, PermissionError, ValueError, IndexError) as e:

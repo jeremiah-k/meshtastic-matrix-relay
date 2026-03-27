@@ -5,6 +5,7 @@ Contains default values for database configuration, message retention,
 and data management settings.
 """
 
+import re
 from collections.abc import Mapping
 from types import MappingProxyType
 from typing import Final, TypeAlias
@@ -81,6 +82,18 @@ MESSAGE_MAP_COLUMNS: Final[tuple[str, ...]] = (
 # SQLite pragmas
 PRAGMA_JOURNAL_MODE_WAL: Final[str] = "PRAGMA journal_mode=WAL"
 PRAGMA_FOREIGN_KEYS_ON: Final[str] = "PRAGMA foreign_keys=ON"
+
+# PRAGMA validation patterns (security-critical)
+SQLITE_PRAGMA_NAME_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"^[a-zA-Z_][a-zA-Z0-9_]*$"
+)
+SQLITE_PRAGMA_SAFE_STRING_VALUE_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"^[a-zA-Z0-9_\-\s,.\\]+$"
+)
+
+# PRAGMA boolean values
+SQLITE_PRAGMA_BOOL_ON: Final[str] = "ON"
+SQLITE_PRAGMA_BOOL_OFF: Final[str] = "OFF"
 
 # SQLite sidecar file suffixes (appended to database filename)
 SQLITE_SIDECAR_SUFFIXES: Final[tuple[str, ...]] = (

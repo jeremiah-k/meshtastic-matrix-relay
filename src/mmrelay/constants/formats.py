@@ -37,6 +37,9 @@ LOG_FORMAT_FILE: Final[str] = (
     "{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}"
 )
 
+# Text encoding constants
+DEFAULT_TEXT_ENCODING: Final[str] = "utf-8"
+
 # Unit suffixes
 SNR_UNIT_SUFFIX: Final[str] = " dB"
 
@@ -61,6 +64,11 @@ UNIX_SERIAL_PORT_PATTERN: Final[re.Pattern[str]] = re.compile(r"^/dev/(tty|cu).+
 # Network patterns
 MAC_ADDRESS_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$"
+)
+
+# Hostname validation pattern (RFC 1123)
+HOSTNAME_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"^(?=.{1,253}$)(?!-)[A-Za-z0-9-]{1,63}(?<!-)(\.[A-Za-z0-9-]{1,63}(?<!-))*$"
 )
 
 # Matrix-related keys
@@ -88,6 +96,13 @@ MAP_LABEL_FONT_SIZE: Final[int] = 50
 DEFAULT_LABEL_FONT_SIZE: Final[int] = 12
 LABEL_MARGIN_PX: Final[int] = 4
 LABEL_ARROW_SIZE_PX: Final[int] = 16
+
+# RGBA color channel constants
+RGBA_CHANNEL_MAX: Final[int] = 255
+
+# Cairo rendering constants
+MAP_LABEL_FONT_FAMILY: Final[str] = "Sans"
+MAP_LABEL_OUTLINE_WIDTH: Final[int] = 1
 
 # Map label colors (RGBA tuples)
 MAP_LABEL_FILL_COLOR: Final[tuple[int, int, int, int]] = (255, 255, 255, 255)  # White

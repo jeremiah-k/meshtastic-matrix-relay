@@ -65,11 +65,14 @@ from mmrelay.constants.network import (
     CONFIG_KEY_PORT,
     CONFIG_KEY_SERIAL_PORT,
     CONFIG_KEY_TIMEOUT,
+    CONNECTION_RETRY_BACKOFF_BASE,
+    CONNECTION_RETRY_BACKOFF_MAX_SECS,
     CONNECTION_TYPE_BLE,
     CONNECTION_TYPE_NETWORK,
     CONNECTION_TYPE_SERIAL,
     CONNECTION_TYPE_TCP,
     DEFAULT_BACKOFF_TIME,
+    DEFAULT_HEARTBEAT_INTERVAL_SECS,
     DEFAULT_MESHTASTIC_OPERATION_TIMEOUT,
     DEFAULT_MESHTASTIC_TIMEOUT,
     DEFAULT_PLUGIN_TIMEOUT_SECS,
@@ -3753,7 +3756,10 @@ def connect_meshtastic(
                 logger.exception("Connection failed after %s attempts", attempts)
                 return None
 
-            wait_time = min(2**attempts, 60)
+            wait_time = min(
+                CONNECTION_RETRY_BACKOFF_BASE**attempts,
+                CONNECTION_RETRY_BACKOFF_MAX_SECS,
+            )
             logger.warning(
                 "Connection attempt %s timed out (%s). Retrying in %s seconds...",
                 attempts,
@@ -3775,7 +3781,10 @@ def connect_meshtastic(
                 ble_scan_after_failure = True
                 ble_scan_reason = type(e).__name__
             if retry_limit == 0 or attempts <= retry_limit:
-                wait_time = min(2**attempts, 60)
+                wait_time = min(
+                    CONNECTION_RETRY_BACKOFF_BASE**attempts,
+                    CONNECTION_RETRY_BACKOFF_MAX_SECS,
+                )
                 logger.warning(
                     "An unexpected error occurred on attempt %s: %s. Retrying in %s seconds...",
                     attempts,
@@ -4588,7 +4597,9 @@ async def check_connection() -> None:
         logger.info("Connection health checks are disabled in configuration")
         return
 
-    heartbeat_interval = health_config.get("heartbeat_interval", 60)
+    heartbeat_interval = health_config.get(
+        "heartbeat_interval", DEFAULT_HEARTBEAT_INTERVAL_SECS
+    )
     initial_delay = health_config.get("initial_delay", INITIAL_HEALTH_CHECK_DELAY)
     probe_timeout = health_config.get(
         "probe_timeout", DEFAULT_MESHTASTIC_OPERATION_TIMEOUT
@@ -4600,7 +4611,7 @@ async def check_connection() -> None:
 
     heartbeat_interval = _coerce_positive_float(
         heartbeat_interval,
-        60.0,
+        float(DEFAULT_HEARTBEAT_INTERVAL_SECS),
         "meshtastic.health_check.heartbeat_interval",
     )
     initial_delay = _coerce_positive_float(

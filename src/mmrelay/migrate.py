@@ -59,20 +59,25 @@ from pathlib import Path
 from typing import Any, Callable
 
 from mmrelay.constants.app import (
+    CONFIG_FILENAME,
     CREDENTIALS_FILENAME,
+    DATABASE_FILENAME,
     MATRIX_DIRNAME,
     STORE_DIRNAME,
     WINERR_ACCESS_DENIED,
     WINERR_LOCK_VIOLATION,
     WINERR_SHARING_VIOLATION,
 )
+from mmrelay.constants.config import REQUIRED_CREDENTIALS_KEYS
 from mmrelay.constants.database import SQLITE_SIDECAR_SUFFIXES
 from mmrelay.constants.formats import (
     BACKUP_TIMESTAMP_FORMAT,
     MIGRATION_TIMESTAMP_FORMAT,
 )
 from mmrelay.constants.migration import (
+    BYTES_PER_MB,
     MIGRATION_BACKUP_DIRNAME,
+    MIGRATION_FREE_SPACE_WARNING_FACTOR,
     MIGRATION_INITIAL_RETRY_DELAY,
     MIGRATION_LOCK_FILENAME,
     MIGRATION_MAX_RETRIES,
@@ -210,8 +215,7 @@ def _looks_like_matrix_credentials(path: Path) -> bool:
     if not isinstance(payload, dict):
         return False
 
-    required = ("homeserver", "access_token", "user_id")
-    for key in required:
+    for key in REQUIRED_CREDENTIALS_KEYS:
         value = payload.get(key)
         if not isinstance(value, str) or not value.strip():
             return False
@@ -499,14 +503,14 @@ def _find_legacy_data(legacy_root: Path) -> list[dict[str, str]]:
     if credentials.exists():
         add_finding("credentials", credentials)
 
-    config_path = legacy_root / "config.yaml"
+    config_path = legacy_root / CONFIG_FILENAME
     if config_path.exists():
         add_finding("config", config_path)
 
     db_candidates = [
-        legacy_root / "meshtastic.sqlite",
-        legacy_root / "data" / "meshtastic.sqlite",
-        legacy_root / "database" / "meshtastic.sqlite",
+        legacy_root / DATABASE_FILENAME,
+        legacy_root / "data" / DATABASE_FILENAME,
+        legacy_root / "database" / DATABASE_FILENAME,
     ]
     for candidate in db_candidates:
         if candidate.exists():
@@ -594,7 +598,7 @@ def verify_migration() -> dict[str, Any]:
 
     credentials_path = Path(paths_info["credentials_path"])
     database_dir = Path(paths_info["database_dir"])
-    database_path = database_dir / "meshtastic.sqlite"
+    database_path = database_dir / DATABASE_FILENAME
     logs_dir = Path(paths_info["logs_dir"])
     plugins_dir = Path(paths_info["plugins_dir"])
 
@@ -922,8 +926,7 @@ def _check_disk_space(
 
     try:
         usage = shutil.disk_usage(str(check_path))
-        # Add 50% safety margin
-        required_with_margin = int(required_bytes * 1.5)
+        required_with_margin = int(required_bytes * MIGRATION_FREE_SPACE_WARNING_FACTOR)
     except (OSError, IOError):
         # If we can't check disk space, assume it's OK and log warning
         logger.warning("Could not check disk space at %s", check_path)
@@ -1252,13 +1255,13 @@ def migrate_config(
         MigrationError: If migration fails (permission errors or other failures are wrapped in a MigrationError).
     """
     # Warn if config exists in multiple legacy roots
-    _warn_multiple_sources(legacy_roots, "config", "config.yaml")
+    _warn_multiple_sources(legacy_roots, "config", CONFIG_FILENAME)
 
-    new_config = new_home / "config.yaml"
+    new_config = new_home / CONFIG_FILENAME
     old_config: Path | None = None
 
     for legacy_root in legacy_roots:
-        candidate = legacy_root / "config.yaml"
+        candidate = legacy_root / CONFIG_FILENAME
         if candidate.resolve() == new_config.resolve():
             if candidate.exists():
                 logger.info(
@@ -1418,8 +1421,8 @@ def migrate_database(
     candidates = []
 
     for legacy_root in legacy_roots:
-        legacy_db = legacy_root / "meshtastic.sqlite"
-        if legacy_db.resolve() == (new_db_dir / "meshtastic.sqlite").resolve():
+        legacy_db = legacy_root / DATABASE_FILENAME
+        if legacy_db.resolve() == (new_db_dir / DATABASE_FILENAME).resolve():
             if legacy_db.exists() and len(legacy_roots) == 1:
                 logger.info(
                     "Database already at target location, no migration needed: %s",
@@ -1439,8 +1442,8 @@ def migrate_database(
 
         partial_data_dir = legacy_root / "data"
         if partial_data_dir.exists():
-            partial_db = partial_data_dir / "meshtastic.sqlite"
-            if partial_db.resolve() == (new_db_dir / "meshtastic.sqlite").resolve():
+            partial_db = partial_data_dir / DATABASE_FILENAME
+            if partial_db.resolve() == (new_db_dir / DATABASE_FILENAME).resolve():
                 continue
             if partial_db.exists():
                 candidates.append(partial_db)
@@ -1448,8 +1451,8 @@ def migrate_database(
 
         legacy_db_dir = legacy_root / "database"
         if legacy_db_dir.exists():
-            legacy_db = legacy_db_dir / "meshtastic.sqlite"
-            if legacy_db.resolve() == (new_db_dir / "meshtastic.sqlite").resolve():
+            legacy_db = legacy_db_dir / DATABASE_FILENAME
+            if legacy_db.resolve() == (new_db_dir / DATABASE_FILENAME).resolve():
                 if legacy_db.exists() and len(legacy_roots) == 1:
                     logger.info(
                         "Database already at target location, no migration needed: %s",
@@ -1468,7 +1471,7 @@ def migrate_database(
                 _collect_db_sidecars(legacy_db, candidates)
 
     if not candidates:
-        if (new_db_dir / "meshtastic.sqlite").exists():
+        if (new_db_dir / DATABASE_FILENAME).exists():
             logger.info("Database already migrated to %s", new_db_dir)
             return {
                 "success": True,
@@ -1483,8 +1486,7 @@ def migrate_database(
             "message": "No database files found in legacy locations",
         }
 
-    # Skip if target already exists and not forcing
-    if (new_db_dir / "meshtastic.sqlite").exists() and not force:
+    if (new_db_dir / DATABASE_FILENAME).exists() and not force:
         logger.warning(
             "Database already exists at destination, skipping: %s. Use --force to overwrite.",
             new_db_dir,
@@ -2258,7 +2260,7 @@ def migrate_gpxtracker(
         roots_to_scan.append(new_home)
 
     for legacy_root in roots_to_scan:
-        legacy_config = legacy_root / "config.yaml"
+        legacy_config = legacy_root / CONFIG_FILENAME
         if legacy_config.exists():
             try:
                 import yaml
@@ -2634,8 +2636,10 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
     if not dry_run:
         has_space, free_bytes = _check_disk_space(new_home)
         if not has_space:
-            free_mb = free_bytes / (1024 * 1024)
-            required_mb = (MIGRATION_MIN_FREE_SPACE_BYTES * 1.5) / (1024 * 1024)
+            free_mb = free_bytes / BYTES_PER_MB
+            required_mb = (
+                MIGRATION_MIN_FREE_SPACE_BYTES * MIGRATION_FREE_SPACE_WARNING_FACTOR
+            ) / BYTES_PER_MB
             report["success"] = False
             report["error"] = "Insufficient disk space"
             report["message"] = (
@@ -2646,7 +2650,7 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
             return report
         logger.debug(
             "Disk space check passed: %d MB available",
-            free_bytes // (1024 * 1024),
+            free_bytes // BYTES_PER_MB,
         )
 
     # Get new home directory

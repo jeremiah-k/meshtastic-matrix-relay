@@ -24,12 +24,15 @@ from mmrelay.constants.app import (
 from mmrelay.constants.config import (
     CONFIG_KEY_ACCESS_TOKEN,
     CONFIG_KEY_BOT_USER_ID,
+    CONFIG_KEY_DEVICE_ID,
     CONFIG_KEY_HOMESERVER,
     CONFIG_KEY_NODEDB_REFRESH_INTERVAL,
+    CONFIG_KEY_PASSWORD,
     CONFIG_SECTION_MATRIX,
     DEPRECATION_VERSIONS,
     ENV_BOOL_FALSE_VALUES,
     ENV_BOOL_TRUE_VALUES,
+    JSON_INDENT_STANDARD,
     NORMALIZABLE_CONFIG_SECTIONS,
     REQUIRED_CREDENTIALS_KEYS,
 )
@@ -807,7 +810,7 @@ def load_credentials() -> dict[str, Any] | None:
             if not isinstance(credentials.get(key), str)
             or not credentials.get(key, "").strip()
         ]
-        if not credentials.get("device_id"):
+        if not credentials.get(CONFIG_KEY_DEVICE_ID):
             logger.warning(
                 "credentials.json is missing 'device_id': %s. This is recommended for v1.3+.",
                 credentials_path,
@@ -940,7 +943,7 @@ def save_credentials(
     try:
         logger.info("Saving credentials to: %s", target_path)
         with open(target_path, "w", encoding="utf-8") as f:
-            json.dump(credentials, f, indent=2)
+            json.dump(credentials, f, indent=JSON_INDENT_STANDARD)
     except (OSError, PermissionError):
         logger.exception("Error writing credentials.json to %s", target_path)
         raise
@@ -1079,18 +1082,22 @@ _DATABASE_ENV_VAR_MAPPINGS: list[dict[str, Any]] = [
 _MATRIX_ENV_VAR_MAPPINGS: list[dict[str, Any]] = [
     {
         "env_var": "MMRELAY_MATRIX_HOMESERVER",
-        "config_key": "homeserver",
+        "config_key": CONFIG_KEY_HOMESERVER,
         "type": "string",
     },
     {
         "env_var": "MMRELAY_MATRIX_BOT_USER_ID",
-        "config_key": "bot_user_id",
+        "config_key": CONFIG_KEY_BOT_USER_ID,
         "type": "string",
     },
-    {"env_var": "MMRELAY_MATRIX_PASSWORD", "config_key": "password", "type": "string"},
+    {
+        "env_var": "MMRELAY_MATRIX_PASSWORD",
+        "config_key": CONFIG_KEY_PASSWORD,
+        "type": "string",
+    },
     {
         "env_var": "MMRELAY_MATRIX_ACCESS_TOKEN",
-        "config_key": "access_token",
+        "config_key": CONFIG_KEY_ACCESS_TOKEN,
         "type": "string",
     },
 ]

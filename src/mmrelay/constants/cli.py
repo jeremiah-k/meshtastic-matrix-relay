@@ -5,6 +5,41 @@ Contains the registry of CLI commands and deprecation mappings for error message
 help text, and documentation. This provides a single source of truth for CLI command syntax.
 """
 
+from typing import Final
+
+# Forbidden system directories for home path validation (Unix)
+FORBIDDEN_HOME_DIRECTORIES_UNIX: Final[frozenset[str]] = frozenset(
+    {
+        "/",
+        "/etc",
+        "/usr",
+        "/bin",
+        "/sbin",
+        "/boot",
+        "/dev",
+        "/proc",
+        "/sys",
+    }
+)
+
+# Windows forbidden environment keys for home detection
+WINDOWS_FORBIDDEN_HOME_ENV_KEYS: Final[tuple[str, ...]] = (
+    "SystemRoot",
+    "ProgramFiles",
+    "ProgramFiles(x86)",
+)
+
+# Exit codes
+EXIT_CODE_SUCCESS: Final[int] = 0
+EXIT_CODE_ERROR: Final[int] = 1
+EXIT_CODE_SIGINT: Final[int] = 130
+
+# Windows path display sentinel
+WINDOWS_PATH_NOT_APPLICABLE_LABEL: Final[str] = "N/A (Windows)"
+
+# Matrix error codes
+MATRIX_ERRCODE_FORBIDDEN: Final[str] = "M_FORBIDDEN"
+
 # Command registry - single source of truth for CLI command syntax
 CLI_COMMANDS = {
     # Config commands

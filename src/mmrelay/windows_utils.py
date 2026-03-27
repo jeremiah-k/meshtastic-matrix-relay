@@ -17,6 +17,7 @@ from mmrelay.constants.app import (
     WINDOWS_STD_OUTPUT_HANDLE,
     WINDOWS_VTP_FLAG,
 )
+from mmrelay.constants.formats import DEFAULT_TEXT_ENCODING
 
 
 def is_windows() -> bool:
@@ -46,9 +47,9 @@ def setup_windows_console() -> None:
     try:
         # Enable UTF-8 output on Windows
         if hasattr(sys.stdout, "reconfigure"):
-            cast(Any, sys.stdout).reconfigure(encoding="utf-8")
+            cast(Any, sys.stdout).reconfigure(encoding=DEFAULT_TEXT_ENCODING)
         if hasattr(sys.stderr, "reconfigure"):
-            cast(Any, sys.stderr).reconfigure(encoding="utf-8")
+            cast(Any, sys.stderr).reconfigure(encoding=DEFAULT_TEXT_ENCODING)
 
         # Enable ANSI color codes on Windows 10+
         import ctypes

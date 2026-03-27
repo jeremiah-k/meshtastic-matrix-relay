@@ -74,10 +74,12 @@ except ImportError:
 from mmrelay.constants.cli import (
     CLI_COMMANDS,
     DEPRECATED_COMMANDS,
+    MATRIX_ERRCODE_FORBIDDEN,
+    WINDOWS_PATH_NOT_APPLICABLE_LABEL,
 )
-from mmrelay.constants.config import DEFAULT_CONFIG_FILENAME
+from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID, DEFAULT_CONFIG_FILENAME
 from mmrelay.constants.migration import TEMP_DEVICE_NAME_LOGOUT
-from mmrelay.constants.network import HTTP_SERVER_ERROR_CODES
+from mmrelay.constants.network import HTTP_SERVER_ERROR_CODES, HTTP_STATUS_UNAUTHORIZED
 from mmrelay.log_utils import get_logger
 
 logger: logging.Logger | None = None
@@ -378,7 +380,7 @@ def _cleanup_local_session_data() -> bool:
     # Skip on Windows (E2EE not supported); resolve_all_paths handles this safely
     candidate_store_paths: set[str] = set()
     store_dir = paths_info.get("store_dir")
-    if store_dir and store_dir != "N/A (Windows)":
+    if store_dir and store_dir != WINDOWS_PATH_NOT_APPLICABLE_LABEL:
         candidate_store_paths.add(store_dir)
 
     # Add any configured override from config
@@ -473,7 +475,10 @@ def _handle_matrix_error(error: Any, context: str, log_level: str = "error") -> 
             except (TypeError, ValueError):
                 parsed_status_code = None
 
-        if errcode == "M_FORBIDDEN" or parsed_status_code == 401:
+        if (
+            errcode == MATRIX_ERRCODE_FORBIDDEN
+            or parsed_status_code == HTTP_STATUS_UNAUTHORIZED
+        ):
             error_category = "credentials"
         elif parsed_status_code in HTTP_SERVER_ERROR_CODES:
             error_category = "server"
@@ -605,7 +610,7 @@ async def logout_matrix_bot(password: str) -> bool:
     homeserver = credentials.get("homeserver")
     user_id = credentials.get("user_id")
     access_token = credentials.get("access_token")
-    device_id = credentials.get("device_id")
+    device_id = credentials.get(CONFIG_KEY_DEVICE_ID)
 
     # If user_id is missing, try to fetch it using the access token
     if not user_id and access_token and homeserver:

@@ -28,9 +28,24 @@ from mmrelay.constants.plugins import (
     DEFAULT_BRANCHES,
     DEFAULT_PLUGIN_PRIORITY,
     DEFAULT_SUBPROCESS_TIMEOUT_SECONDS,
+    GIT_BRANCH_CMD,
+    GIT_CHECKOUT_CMD,
+    GIT_CLONE_CMD,
+    GIT_CLONE_FILTER_BLOB_NONE,
     GIT_COMMAND_TIMEOUT_SECONDS,
+    GIT_COMMIT_DEREF_SUFFIX,
+    GIT_DEFAULT_BRANCH_SENTINEL,
+    GIT_FETCH_CMD,
+    GIT_FETCH_DEPTH_ONE,
+    GIT_PULL_CMD,
+    GIT_REF_HEAD,
+    GIT_REMOTE_ORIGIN,
     GIT_RETRY_ATTEMPTS,
     GIT_RETRY_DELAY_SECONDS,
+    GIT_REV_PARSE_CMD,
+    GIT_TAGS_FLAG,
+    GIT_TERMINAL_PROMPT_DISABLED,
+    GIT_TERMINAL_PROMPT_ENV,
     PIP_INSTALL_MISSING_DEP_TIMEOUT,
     PIP_INSTALL_TIMEOUT_SECONDS,
     PIP_SOURCE_FLAGS,
@@ -1083,7 +1098,9 @@ def _run_git(
     env = dict(os.environ)
     if "env" in kwargs:
         env.update(kwargs["env"])
-    env["GIT_TERMINAL_PROMPT"] = "0"  # Enforce non-interactive, cannot be overridden
+    env[GIT_TERMINAL_PROMPT_ENV] = (
+        GIT_TERMINAL_PROMPT_DISABLED  # Enforce non-interactive, cannot be overridden
+    )
     kwargs["env"] = env
     return _run(cmd, timeout=timeout, **kwargs)
 
@@ -1135,8 +1152,16 @@ def _fetch_commit_with_fallback(repo_path: str, ref_value: str, repo_name: str) 
     """
     try:
         _run_git(
-            ["git", "-C", repo_path, "fetch", "--depth=1", "origin", ref_value],
-            timeout=120,
+            [
+                "git",
+                "-C",
+                repo_path,
+                GIT_FETCH_CMD,
+                GIT_FETCH_DEPTH_ONE,
+                GIT_REMOTE_ORIGIN,
+                ref_value,
+            ],
+            timeout=GIT_COMMAND_TIMEOUT_SECONDS,
         )
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         logger.warning(
@@ -1147,8 +1172,8 @@ def _fetch_commit_with_fallback(repo_path: str, ref_value: str, repo_name: str) 
         # Fall back to fetching everything
         try:
             _run_git(
-                ["git", "-C", repo_path, "fetch", "origin"],
-                timeout=120,
+                ["git", "-C", repo_path, GIT_FETCH_CMD, GIT_REMOTE_ORIGIN],
+                timeout=GIT_COMMAND_TIMEOUT_SECONDS,
             )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
             logger.warning("Fallback fetch also failed for %s: %s", repo_name, e)
@@ -1178,11 +1203,18 @@ def _update_existing_repo_to_commit(
         try:
             # Resolve both HEAD and the ref_value to full commit hashes for a safe comparison.
             current_full = _run_git(
-                ["git", "-C", repo_path, "rev-parse", "HEAD"], capture_output=True
+                ["git", "-C", repo_path, GIT_REV_PARSE_CMD, GIT_REF_HEAD],
+                capture_output=True,
             ).stdout.strip()
             # Using ^{commit} ensures we're resolving to a commit object.
             target_full = _run_git(
-                ["git", "-C", repo_path, "rev-parse", f"{ref_value}^{{commit}}"],
+                [
+                    "git",
+                    "-C",
+                    repo_path,
+                    GIT_REV_PARSE_CMD,
+                    f"{ref_value}{GIT_COMMIT_DEREF_SUFFIX}",
+                ],
                 capture_output=True,
             ).stdout.strip()
 
@@ -1198,12 +1230,18 @@ def _update_existing_repo_to_commit(
 
         # Try a direct checkout first (commit may already be available locally)
         try:
-            _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
+            _run_git(
+                ["git", "-C", repo_path, GIT_CHECKOUT_CMD, ref_value],
+                timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+            )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             logger.info("Commit %s not found locally, attempting to fetch", ref_value)
             if not _fetch_commit_with_fallback(repo_path, ref_value, repo_name):
                 return False
-            _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
+            _run_git(
+                ["git", "-C", repo_path, GIT_CHECKOUT_CMD, ref_value],
+                timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+            )
         logger.info("Updated repository %s to commit %s", repo_name, ref_value)
         return True
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
@@ -1239,19 +1277,26 @@ def _clone_new_repo_to_commit(
     try:
         # First clone the repository (default branch)
         _run_git(
-            ["git", "clone", "--filter=blob:none", repo_url, repo_name],
+            ["git", GIT_CLONE_CMD, GIT_CLONE_FILTER_BLOB_NONE, repo_url, repo_name],
             cwd=plugins_dir,
-            timeout=120,
+            timeout=GIT_COMMAND_TIMEOUT_SECONDS,
         )
         logger.info(f"Cloned repository {repo_name} from {_redact_url(repo_url)}")
 
         # If we're already at the requested commit, skip extra work
         try:
             current_full = _run_git(
-                ["git", "-C", repo_path, "rev-parse", "HEAD"], capture_output=True
+                ["git", "-C", repo_path, GIT_REV_PARSE_CMD, GIT_REF_HEAD],
+                capture_output=True,
             ).stdout.strip()
             target_full = _run_git(
-                ["git", "-C", repo_path, "rev-parse", f"{ref_value}^{{commit}}"],
+                [
+                    "git",
+                    "-C",
+                    repo_path,
+                    GIT_REV_PARSE_CMD,
+                    f"{ref_value}{GIT_COMMIT_DEREF_SUFFIX}",
+                ],
                 capture_output=True,
             ).stdout.strip()
             if current_full == target_full:
@@ -1265,14 +1310,20 @@ def _clone_new_repo_to_commit(
         # Then checkout the specific commit
         try:
             # Try direct checkout first (commit might be available from clone)
-            _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
+            _run_git(
+                ["git", "-C", repo_path, GIT_CHECKOUT_CMD, ref_value],
+                timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+            )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             # If direct checkout fails, try to fetch the specific commit
             logger.info(f"Commit {ref_value} not available, attempting to fetch")
             if not _fetch_commit_with_fallback(repo_path, ref_value, repo_name):
                 return False
             # Try checkout again after fetch
-            _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
+            _run_git(
+                ["git", "-C", repo_path, GIT_CHECKOUT_CMD, ref_value],
+                timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+            )
         logger.info(f"Checked out repository {repo_name} to commit {ref_value}")
         return True
     except (
@@ -1301,8 +1352,14 @@ def _try_checkout_and_pull_ref(
         True if the checkout and pull succeeded, False otherwise.
     """
     try:
-        _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
-        _run_git(["git", "-C", repo_path, "pull", "origin", ref_value], timeout=120)
+        _run_git(
+            ["git", "-C", repo_path, GIT_CHECKOUT_CMD, ref_value],
+            timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+        )
+        _run_git(
+            ["git", "-C", repo_path, GIT_PULL_CMD, GIT_REMOTE_ORIGIN, ref_value],
+            timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+        )
         logger.info("Updated repository %s to %s %s", repo_name, ref_type, ref_value)
         return True
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
@@ -1334,12 +1391,22 @@ def _try_fetch_and_checkout_tag(repo_path: str, ref_value: str, repo_name: str) 
         # Try to fetch the tag
         try:
             _run_git(
-                ["git", "-C", repo_path, "fetch", "origin", f"refs/tags/{ref_value}"],
-                timeout=120,
+                [
+                    "git",
+                    "-C",
+                    repo_path,
+                    GIT_FETCH_CMD,
+                    GIT_REMOTE_ORIGIN,
+                    f"refs/tags/{ref_value}",
+                ],
+                timeout=GIT_COMMAND_TIMEOUT_SECONDS,
             )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             try:
-                _run_git(["git", "-C", repo_path, "fetch", "--tags"], timeout=120)
+                _run_git(
+                    ["git", "-C", repo_path, GIT_FETCH_CMD, GIT_TAGS_FLAG],
+                    timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+                )
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
                 # If that fails, try fetching with an explicit refspec to force updating the local tag
                 _run_git(
@@ -1347,15 +1414,18 @@ def _try_fetch_and_checkout_tag(repo_path: str, ref_value: str, repo_name: str) 
                         "git",
                         "-C",
                         repo_path,
-                        "fetch",
-                        "origin",
+                        GIT_FETCH_CMD,
+                        GIT_REMOTE_ORIGIN,
                         f"refs/tags/{ref_value}:refs/tags/{ref_value}",
                     ],
-                    timeout=120,
+                    timeout=GIT_COMMAND_TIMEOUT_SECONDS,
                 )
 
         # Checkout the tag
-        _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
+        _run_git(
+            ["git", "-C", repo_path, GIT_CHECKOUT_CMD, ref_value],
+            timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+        )
         logger.info(
             "Successfully fetched and checked out tag %s for %s", ref_value, repo_name
         )
@@ -1384,9 +1454,18 @@ def _try_checkout_as_branch(repo_path: str, ref_value: str, repo_name: str) -> b
         bool: `True` if the repository was successfully fetched, checked out, and pulled to the specified branch; `False` otherwise.
     """
     try:
-        _run_git(["git", "-C", repo_path, "fetch", "origin", ref_value], timeout=120)
-        _run_git(["git", "-C", repo_path, "checkout", ref_value], timeout=120)
-        _run_git(["git", "-C", repo_path, "pull", "origin", ref_value], timeout=120)
+        _run_git(
+            ["git", "-C", repo_path, GIT_FETCH_CMD, GIT_REMOTE_ORIGIN, ref_value],
+            timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+        )
+        _run_git(
+            ["git", "-C", repo_path, GIT_CHECKOUT_CMD, ref_value],
+            timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+        )
+        _run_git(
+            ["git", "-C", repo_path, GIT_PULL_CMD, GIT_REMOTE_ORIGIN, ref_value],
+            timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+        )
         logger.info(f"Updated repository {repo_name} to branch {ref_value}")
         return True
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
@@ -1413,9 +1492,20 @@ def _fallback_to_default_branches(
     """
     for default_branch in default_branches:
         try:
-            _run_git(["git", "-C", repo_path, "checkout", default_branch], timeout=120)
             _run_git(
-                ["git", "-C", repo_path, "pull", "origin", default_branch], timeout=120
+                ["git", "-C", repo_path, GIT_CHECKOUT_CMD, default_branch],
+                timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+            )
+            _run_git(
+                [
+                    "git",
+                    "-C",
+                    repo_path,
+                    GIT_PULL_CMD,
+                    GIT_REMOTE_ORIGIN,
+                    default_branch,
+                ],
+                timeout=GIT_COMMAND_TIMEOUT_SECONDS,
             )
             logger.info(
                 f"Using {default_branch} instead of {ref_value} for {repo_name}"
@@ -1453,7 +1543,10 @@ def _update_existing_repo_to_branch_or_tag(
         bool: `True` if the repository was updated to the requested ref (or an accepted fallback), `False` otherwise.
     """
     try:
-        _run_git(["git", "-C", repo_path, "fetch", "origin"], timeout=120)
+        _run_git(
+            ["git", "-C", repo_path, GIT_FETCH_CMD, GIT_REMOTE_ORIGIN],
+            timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+        )
     except (
         subprocess.CalledProcessError,
         FileNotFoundError,
@@ -1482,10 +1575,17 @@ def _update_existing_repo_to_branch_or_tag(
     # Handle tags
     try:
         current_commit = _run_git(
-            ["git", "-C", repo_path, "rev-parse", "HEAD"], capture_output=True
+            ["git", "-C", repo_path, GIT_REV_PARSE_CMD, GIT_REF_HEAD],
+            capture_output=True,
         ).stdout.strip()
         tag_commit = _run_git(
-            ["git", "-C", repo_path, "rev-parse", f"{ref_value}^{{commit}}"],
+            [
+                "git",
+                "-C",
+                repo_path,
+                GIT_REV_PARSE_CMD,
+                f"{ref_value}{GIT_COMMIT_DEREF_SUFFIX}",
+            ],
             capture_output=True,
         ).stdout.strip()
         if current_commit == tag_commit:
@@ -1641,9 +1741,9 @@ def _clone_new_repo_to_branch_or_tag(
             (
                 [
                     "git",
-                    "clone",
-                    "--filter=blob:none",
-                    "--branch",
+                    GIT_CLONE_CMD,
+                    GIT_CLONE_FILTER_BLOB_NONE,
+                    GIT_BRANCH_CMD,
                     ref_value,
                     repo_url,
                     repo_name,
@@ -1656,9 +1756,9 @@ def _clone_new_repo_to_branch_or_tag(
             (
                 [
                     "git",
-                    "clone",
-                    "--filter=blob:none",
-                    "--branch",
+                    GIT_CLONE_CMD,
+                    GIT_CLONE_FILTER_BLOB_NONE,
+                    GIT_BRANCH_CMD,
                     other_default,
                     repo_url,
                     repo_name,
@@ -1668,8 +1768,8 @@ def _clone_new_repo_to_branch_or_tag(
         )
         clone_commands.append(
             (
-                ["git", "clone", "--filter=blob:none", repo_url, repo_name],
-                "default branch",
+                ["git", GIT_CLONE_CMD, GIT_CLONE_FILTER_BLOB_NONE, repo_url, repo_name],
+                GIT_DEFAULT_BRANCH_SENTINEL,
             )
         )
     elif ref_type == "branch":
@@ -1677,9 +1777,9 @@ def _clone_new_repo_to_branch_or_tag(
             (
                 [
                     "git",
-                    "clone",
-                    "--filter=blob:none",
-                    "--branch",
+                    GIT_CLONE_CMD,
+                    GIT_CLONE_FILTER_BLOB_NONE,
+                    GIT_BRANCH_CMD,
                     ref_value,
                     repo_url,
                     repo_name,
@@ -1689,8 +1789,8 @@ def _clone_new_repo_to_branch_or_tag(
         )
         clone_commands.append(
             (
-                ["git", "clone", "--filter=blob:none", repo_url, repo_name],
-                "default branch",
+                ["git", GIT_CLONE_CMD, GIT_CLONE_FILTER_BLOB_NONE, repo_url, repo_name],
+                GIT_DEFAULT_BRANCH_SENTINEL,
             )
         )
     else:  # tag
@@ -1698,8 +1798,8 @@ def _clone_new_repo_to_branch_or_tag(
         # and then handle tag checkout in post-clone step.
         clone_commands.append(
             (
-                ["git", "clone", "--filter=blob:none", repo_url, repo_name],
-                "default branch",
+                ["git", GIT_CLONE_CMD, GIT_CLONE_FILTER_BLOB_NONE, repo_url, repo_name],
+                GIT_DEFAULT_BRANCH_SENTINEL,
             )
         )
 
@@ -1712,7 +1812,7 @@ def _clone_new_repo_to_branch_or_tag(
             _run_git(
                 command,
                 cwd=plugins_dir,
-                timeout=120,
+                timeout=GIT_COMMAND_TIMEOUT_SECONDS,
                 retry_attempts=clone_retry_attempts,
             )
             logger.info(
@@ -1730,7 +1830,7 @@ def _clone_new_repo_to_branch_or_tag(
                     # If already at the tag's commit, skip extra work
                     try:
                         _cp = _run_git(
-                            ["git", "-C", repo_path, "rev-parse", "HEAD"],
+                            ["git", "-C", repo_path, GIT_REV_PARSE_CMD, GIT_REF_HEAD],
                             capture_output=True,
                         )
                         current = _cp.stdout.strip()
@@ -1739,8 +1839,8 @@ def _clone_new_repo_to_branch_or_tag(
                                 "git",
                                 "-C",
                                 repo_path,
-                                "rev-parse",
-                                f"{ref_value}^{{commit}}",
+                                GIT_REV_PARSE_CMD,
+                                f"{ref_value}{GIT_COMMIT_DEREF_SUFFIX}",
                             ],
                             capture_output=True,
                         )

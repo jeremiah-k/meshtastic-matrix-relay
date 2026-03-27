@@ -108,6 +108,18 @@ SENSITIVE_URL_PARAMS: Final[frozenset[str]] = frozenset(
 
 # Weather plugin constants
 WEATHER_COMMANDS: Final[tuple[str, ...]] = ("weather", "hourly", "daily")
+
+# Weather mode constants
+WEATHER_MODE_CURRENT: Final[str] = "weather"
+WEATHER_MODE_HOURLY: Final[str] = "hourly"
+WEATHER_MODE_DAILY: Final[str] = "daily"
+WEATHER_SLOT_NOW: Final[str] = "now"
+
+# Weather unit constants
+WEATHER_UNITS_METRIC: Final[str] = "metric"
+WEATHER_UNITS_IMPERIAL: Final[str] = "imperial"
+
+# Forecast configuration
 DAILY_FORECAST_DAYS: Final[int] = 5
 HOURLY_FORECAST_DAYS: Final[int] = 3
 HOURLY_FORECAST_SLOTS: Final[tuple[tuple[int, str], ...]] = (
@@ -122,6 +134,81 @@ OPEN_METEO_FORECAST_API_URL: Final[str] = "https://api.open-meteo.com/v1/forecas
 OPEN_METEO_GEOCODING_API_URL: Final[str] = (
     "https://geocoding-api.open-meteo.com/v1/search"
 )
+
+# Open-Meteo API query parameters
+OPEN_METEO_HOURLY_FIELDS: Final[tuple[str, ...]] = (
+    "temperature_2m",
+    "precipitation_probability",
+    "weathercode",
+    "is_day",
+    "relativehumidity_2m",
+    "windspeed_10m",
+    "winddirection_10m",
+)
+OPEN_METEO_DAILY_FIELDS: Final[tuple[str, ...]] = (
+    "weathercode",
+    "temperature_2m_max",
+    "temperature_2m_min",
+)
+OPEN_METEO_TIMEZONE_AUTO: Final[str] = "timezone=auto"
+OPEN_METEO_CURRENT_WEATHER_FLAG: Final[str] = "current_weather=true"
+
+# Hourly forecast configuration by mode
+HOURLY_CONFIG: Final[dict[str, dict[str, list]]] = {
+    WEATHER_MODE_CURRENT: {
+        "slots": [WEATHER_SLOT_NOW],
+        "offsets": [],
+    },
+    WEATHER_MODE_HOURLY: {
+        "slots": [label for _, label in HOURLY_FORECAST_SLOTS],
+        "offsets": [offset for offset, _ in HOURLY_FORECAST_SLOTS],
+    },
+}
+
+
+# Weather code to text mapping (Open-Meteo codes)
+# Keys are weather codes, values are (day_text, night_text) tuples or single text for both
+def _make_weather_mapping() -> dict[int, str]:
+    def day_night(day: str, night: str) -> str:
+        return f"DAY:{day}|NIGHT:{night}"
+
+    def both(text: str) -> str:
+        return f"BOTH:{text}"
+
+    raw: dict[int, str] = {
+        0: day_night("☀️ Clear sky", "🌙 Clear sky"),
+        1: day_night("🌤️ Mainly clear", "🌙🌤️ Mainly clear"),
+        2: day_night("⛅️ Partly cloudy", "🌙⛅️ Partly cloudy"),
+        3: day_night("☁️ Overcast", "🌙☁️ Overcast"),
+        45: day_night("🌫️ Fog", "🌙🌫️ Fog"),
+        48: day_night("🌫️ Depositing rime fog", "🌙🌫️ Depositing rime fog"),
+        51: both("🌧️ Light drizzle"),
+        53: both("🌧️ Moderate drizzle"),
+        55: both("🌧️ Dense drizzle"),
+        56: both("🌧️ Light freezing drizzle"),
+        57: both("🌧️ Dense freezing drizzle"),
+        61: both("🌧️ Light rain"),
+        63: both("🌧️ Moderate rain"),
+        65: both("🌧️ Heavy rain"),
+        66: both("🌧️ Light freezing rain"),
+        67: both("🌧️ Heavy freezing rain"),
+        71: both("❄️ Light snow fall"),
+        73: both("❄️ Moderate snow fall"),
+        75: both("❄️ Heavy snow fall"),
+        77: both("❄️ Snow grains"),
+        80: both("🌧️ Light rain showers"),
+        81: both("🌧️ Moderate rain showers"),
+        82: both("🌧️ Violent rain showers"),
+        85: both("❄️ Light snow showers"),
+        86: both("❄️ Heavy snow showers"),
+        95: both("⛈️ Thunderstorm"),
+        96: both("⛈️ Thunderstorm with slight hail"),
+        99: both("⛈️ Thunderstorm with heavy hail"),
+    }
+    return raw
+
+
+WEATHER_CODE_TEXT_MAPPING: Final[dict[int, str]] = _make_weather_mapping()
 
 # Telemetry plugin constants
 TELEMETRY_DEFAULT_HOURS: Final[int] = 12
@@ -141,3 +228,29 @@ PROCESSED_PACKET_REGEX: Final[re.Pattern[str]] = re.compile(
 
 # Mesh relay constants
 MESH_PACKET_DEFAULT_ID: Final[int] = 0
+
+# Git command tokens
+GIT_REMOTE_ORIGIN: Final[str] = "origin"
+GIT_REF_HEAD: Final[str] = "HEAD"
+GIT_COMMIT_DEREF_SUFFIX: Final[str] = "^{commit}"
+GIT_CLONE_FILTER_BLOB_NONE: Final[str] = "--filter=blob:none"
+GIT_FETCH_DEPTH_ONE: Final[str] = "--depth=1"
+GIT_CHECKOUT_CMD: Final[str] = "checkout"
+GIT_FETCH_CMD: Final[str] = "fetch"
+GIT_PULL_CMD: Final[str] = "pull"
+GIT_CLONE_CMD: Final[str] = "clone"
+GIT_REV_PARSE_CMD: Final[str] = "rev-parse"
+GIT_BRANCH_CMD: Final[str] = "--branch"
+GIT_TAGS_FLAG: Final[str] = "--tags"
+
+# Git environment
+GIT_TERMINAL_PROMPT_ENV: Final[str] = "GIT_TERMINAL_PROMPT"
+GIT_TERMINAL_PROMPT_DISABLED: Final[str] = "0"
+
+# Git default branch sentinel
+GIT_DEFAULT_BRANCH_SENTINEL: Final[str] = "default branch"
+
+# Plugin type constants
+PLUGIN_TYPE_CORE: Final[str] = "core"
+PLUGIN_TYPE_CUSTOM: Final[str] = "custom"
+PLUGIN_TYPE_COMMUNITY: Final[str] = "community"

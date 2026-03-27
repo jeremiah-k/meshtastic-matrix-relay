@@ -44,6 +44,13 @@ DEFAULT_MESHTASTIC_OPERATION_TIMEOUT: Final[int] = 30  # seconds
 # Initial delay before starting the first connection health check
 INITIAL_HEALTH_CHECK_DELAY: Final[int] = 5  # seconds
 
+# Default heartbeat interval for health checks
+DEFAULT_HEARTBEAT_INTERVAL_SECS: Final[int] = 60  # seconds
+
+# Connection retry backoff policy
+CONNECTION_RETRY_BACKOFF_BASE: Final[int] = 2
+CONNECTION_RETRY_BACKOFF_MAX_SECS: Final[int] = 60
+
 # Matrix message limits
 MATRIX_MESSAGE_FETCH_LIMIT: Final[int] = 100
 
@@ -131,6 +138,7 @@ PROCESS_CHECK_SHORT_TIMEOUT_SECS: Final[float] = 2.0
 
 # HTTP status codes
 HTTP_SERVER_ERROR_CODES: Final[tuple[int, ...]] = tuple(range(500, 600))
+HTTP_STATUS_UNAUTHORIZED: Final[int] = 401
 
 # Hostname validation limits
 MAX_HOSTNAME_LENGTH: Final[int] = 253
