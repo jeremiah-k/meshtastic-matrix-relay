@@ -27,6 +27,8 @@ import unittest
 import unittest.mock
 from unittest.mock import MagicMock, mock_open, patch
 
+from tests.constants import TEST_CONFIG_PATH, TEST_HOME_CONFIG_PATH, TEST_SERIAL_PORT
+
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -161,7 +163,7 @@ class TestCLI(unittest.TestCase):
                 "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
                 "meshtastic": {
                     "connection_type": "serial",
-                    "serial_port": "/dev/ttyUSB0",
+                    "serial_port": TEST_SERIAL_PORT,
                 },
             },
         )
@@ -196,7 +198,7 @@ class TestCLI(unittest.TestCase):
                 "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
                 "meshtastic": {
                     "connection_type": "serial",
-                    "serial_port": "/dev/ttyUSB0",
+                    "serial_port": TEST_SERIAL_PORT,
                 },
             },
         )
@@ -332,7 +334,7 @@ class TestGenerateSampleConfig(unittest.TestCase):
         """
         Test that generate_sample_config returns False and prints a message when the config file already exists.
         """
-        mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml"]
+        mock_get_paths.return_value = [TEST_HOME_CONFIG_PATH]
         mock_isfile.return_value = True
 
         with patch("builtins.print") as mock_print:
@@ -362,7 +364,7 @@ class TestGenerateSampleConfig(unittest.TestCase):
         """
         Test that generate_sample_config creates a sample config file when none exists and the sample file is available, ensuring correct file operations and success message output.
         """
-        mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml"]
+        mock_get_paths.return_value = [TEST_HOME_CONFIG_PATH]
         mock_isfile.return_value = False  # No existing config
         mock_get_sample.return_value = "/path/to/sample_config.yaml"
         mock_exists.return_value = True  # Sample config exists
@@ -397,7 +399,7 @@ class TestGenerateSampleConfig(unittest.TestCase):
 
         Simulates the absence of the sample config file at the expected location, mocks importlib.resources to provide sample content, and verifies that the config file is created with the correct content.
         """
-        mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml"]
+        mock_get_paths.return_value = [TEST_HOME_CONFIG_PATH]
         mock_isfile.return_value = False
         mock_get_sample.return_value = "/nonexistent/path"
         mock_exists.return_value = False  # Sample config doesn't exist at helper path
@@ -645,7 +647,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
         }
 
         with patch("builtins.open", mock_open(read_data=json.dumps(valid_credentials))):
-            result = _validate_credentials_json("/path/to/config.yaml")
+            result = _validate_credentials_json(TEST_CONFIG_PATH)
             self.assertTrue(result)
 
     @patch("os.path.exists")
@@ -654,7 +656,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
         from mmrelay.cli import _validate_credentials_json
 
         mock_exists.return_value = False
-        result = _validate_credentials_json("/path/to/config.yaml")
+        result = _validate_credentials_json(TEST_CONFIG_PATH)
         self.assertFalse(result)
 
     @patch("os.path.exists")
@@ -665,7 +667,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
         mock_exists.return_value = True
 
         with patch("builtins.open", mock_open(read_data='{"incomplete": "data"}')):
-            result = _validate_credentials_json("/path/to/config.yaml")
+            result = _validate_credentials_json(TEST_CONFIG_PATH)
             self.assertFalse(result)
 
     @patch("os.path.exists")
@@ -677,7 +679,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
 
         with self.assertLogs("mmrelay.cli", level="WARNING"):
             with patch("builtins.open", mock_open(read_data='["bad"]')):
-                result = _validate_credentials_json("/path/to/config.yaml")
+                result = _validate_credentials_json(TEST_CONFIG_PATH)
         self.assertFalse(result)
 
     @patch("os.path.exists")
@@ -699,7 +701,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
             patch("mmrelay.config.get_base_dir", return_value="/home/user/.mmrelay"),
             patch("builtins.open", mock_open(read_data=json.dumps(valid_credentials))),
         ):
-            result = _validate_credentials_json("/path/to/config.yaml")
+            result = _validate_credentials_json(TEST_CONFIG_PATH)
             self.assertTrue(result)
 
     @patch("os.path.exists")
@@ -714,7 +716,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
             patch("builtins.open", side_effect=FileNotFoundError("File not found")),
             patch("builtins.print"),
         ):
-            result = _validate_credentials_json("/path/to/config.yaml")
+            result = _validate_credentials_json(TEST_CONFIG_PATH)
             self.assertFalse(result)
 
     def test_validate_matrix_authentication_with_credentials(self):
@@ -725,7 +727,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
             patch("mmrelay.cli._validate_credentials_json", return_value=True),
             patch("builtins.print"),
         ):
-            result = _validate_matrix_authentication("/path/to/config.yaml", None)
+            result = _validate_matrix_authentication(TEST_CONFIG_PATH, None)
             self.assertTrue(result)
 
     def test_validate_matrix_authentication_with_config(self):
@@ -742,9 +744,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
             patch("mmrelay.cli._validate_credentials_json", return_value=False),
             patch("builtins.print"),
         ):
-            result = _validate_matrix_authentication(
-                "/path/to/config.yaml", matrix_section
-            )
+            result = _validate_matrix_authentication(TEST_CONFIG_PATH, matrix_section)
             self.assertTrue(result)
 
     def test_validate_matrix_authentication_none(self):
@@ -755,7 +755,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
             patch("mmrelay.cli._validate_credentials_json", return_value=False),
             patch("builtins.print"),
         ):
-            result = _validate_matrix_authentication("/path/to/config.yaml", None)
+            result = _validate_matrix_authentication(TEST_CONFIG_PATH, None)
             self.assertFalse(result)
 
     def test_is_valid_serial_port_linux_valid(self):
@@ -763,7 +763,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
         from mmrelay.cli import _is_valid_serial_port
 
         with patch("platform.system", return_value="Linux"):
-            self.assertTrue(_is_valid_serial_port("/dev/ttyUSB0"))
+            self.assertTrue(_is_valid_serial_port(TEST_SERIAL_PORT))
             self.assertTrue(_is_valid_serial_port("/dev/ttyACM0"))
             self.assertTrue(_is_valid_serial_port("/dev/cu.usbserial-1234"))
             self.assertTrue(_is_valid_serial_port("/dev/ttyS0"))
@@ -797,7 +797,7 @@ class TestCLIValidationFunctions(unittest.TestCase):
             self.assertFalse(_is_valid_serial_port("COMA"))
             self.assertFalse(_is_valid_serial_port("COM1A"))
             self.assertFalse(_is_valid_serial_port("COM 1"))
-            self.assertFalse(_is_valid_serial_port("/dev/ttyUSB0"))
+            self.assertFalse(_is_valid_serial_port(TEST_SERIAL_PORT))
 
     def test_is_valid_serial_port_edge_cases(self):
         """Test _is_valid_serial_port with edge cases."""
@@ -991,7 +991,7 @@ class TestE2EEConfigurationFunctions(unittest.TestCase):
         config = {"matrix": {"homeserver": "https://matrix.org"}}
 
         with patch("mmrelay.cli._validate_matrix_authentication", return_value=True):
-            result = _validate_e2ee_config(config, None, "/path/to/config.yaml")
+            result = _validate_e2ee_config(config, None, TEST_CONFIG_PATH)
             self.assertTrue(result)
 
     def test_validate_e2ee_config_e2ee_disabled(self):
@@ -1005,9 +1005,7 @@ class TestE2EEConfigurationFunctions(unittest.TestCase):
             patch("mmrelay.cli._validate_matrix_authentication", return_value=True),
             patch("mmrelay.cli.print"),
         ):
-            result = _validate_e2ee_config(
-                config, matrix_section, "/path/to/config.yaml"
-            )
+            result = _validate_e2ee_config(config, matrix_section, TEST_CONFIG_PATH)
             self.assertTrue(result)
 
     def test_validate_e2ee_config_e2ee_enabled_valid(self):
@@ -1031,9 +1029,7 @@ class TestE2EEConfigurationFunctions(unittest.TestCase):
             patch("os.path.exists", return_value=True),
             patch("builtins.print"),
         ):
-            result = _validate_e2ee_config(
-                config, matrix_section, "/path/to/config.yaml"
-            )
+            result = _validate_e2ee_config(config, matrix_section, TEST_CONFIG_PATH)
             self.assertTrue(result)
 
     def test_validate_e2ee_config_e2ee_enabled_invalid_deps(self):
@@ -1049,9 +1045,7 @@ class TestE2EEConfigurationFunctions(unittest.TestCase):
             patch("mmrelay.cli._validate_matrix_authentication", return_value=True),
             patch("mmrelay.cli._validate_e2ee_dependencies", return_value=False),
         ):
-            result = _validate_e2ee_config(
-                config, matrix_section, "/path/to/config.yaml"
-            )
+            result = _validate_e2ee_config(config, matrix_section, TEST_CONFIG_PATH)
             self.assertFalse(result)
 
 
@@ -1071,7 +1065,7 @@ class TestE2EEAnalysisFunctions(unittest.TestCase):
             "sys.modules",
             {"olm": MagicMock(), "nio.crypto": MagicMock(), "nio.store": MagicMock()},
         ):
-            result = _analyze_e2ee_setup(config, "/path/to/config.yaml")
+            result = _analyze_e2ee_setup(config, TEST_CONFIG_PATH)
 
             self.assertTrue(result["config_enabled"])
             self.assertTrue(result["dependencies_available"])
@@ -1086,7 +1080,7 @@ class TestE2EEAnalysisFunctions(unittest.TestCase):
 
         config = {"matrix": {"e2ee": {"enabled": True}}}
 
-        result = _analyze_e2ee_setup(config, "/path/to/config.yaml")
+        result = _analyze_e2ee_setup(config, TEST_CONFIG_PATH)
 
         self.assertFalse(result["platform_supported"])
         self.assertEqual(result["overall_status"], "not_supported")
@@ -1105,7 +1099,7 @@ class TestE2EEAnalysisFunctions(unittest.TestCase):
             "sys.modules",
             {"olm": MagicMock(), "nio.crypto": MagicMock(), "nio.store": MagicMock()},
         ):
-            result = _analyze_e2ee_setup(config, "/path/to/config.yaml")
+            result = _analyze_e2ee_setup(config, TEST_CONFIG_PATH)
 
             self.assertFalse(result["config_enabled"])
             self.assertEqual(result["overall_status"], "disabled")
@@ -1792,7 +1786,7 @@ class TestAuthStatus(unittest.TestCase):
     ):
         """Test successful status check when credentials.json exists and is valid."""
         # Setup mocks
-        mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml"]
+        mock_get_paths.return_value = [TEST_HOME_CONFIG_PATH]
         mock_exists.return_value = True
         mock_get_command.return_value = "mmrelay auth login"
 
@@ -1843,7 +1837,7 @@ class TestAuthStatus(unittest.TestCase):
     ):
         """Test status check when credentials.json does not exist."""
         # Setup mocks
-        mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml"]
+        mock_get_paths.return_value = [TEST_HOME_CONFIG_PATH]
         mock_exists.return_value = False
         mock_get_command.return_value = "mmrelay auth login"
 
@@ -1873,7 +1867,7 @@ class TestAuthStatus(unittest.TestCase):
     ):
         """Test status check when credentials.json exists but contains invalid JSON."""
         # Setup mocks
-        mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml"]
+        mock_get_paths.return_value = [TEST_HOME_CONFIG_PATH]
         mock_exists.return_value = True
         mock_get_command.return_value = "mmrelay auth login"
 
@@ -1906,7 +1900,7 @@ class TestAuthStatus(unittest.TestCase):
     ):
         """Test status check when credentials.json exists but is missing some fields."""
         # Setup mocks
-        mock_get_paths.return_value = ["/home/user/.mmrelay/config.yaml"]
+        mock_get_paths.return_value = [TEST_HOME_CONFIG_PATH]
         mock_exists.return_value = True
         mock_get_command.return_value = "mmrelay auth login"
 
@@ -1951,7 +1945,7 @@ class TestAuthStatus(unittest.TestCase):
         """Test status check with multiple config paths, credentials found in second path."""
         # Setup mocks - multiple config paths
         mock_get_paths.return_value = [
-            "/home/user/.mmrelay/config.yaml",
+            TEST_HOME_CONFIG_PATH,
             "/etc/mmrelay/config.yaml",
         ]
         # First path doesn't have credentials, second path does (in matrix/ subdir)
@@ -2115,7 +2109,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
     def test_validate_credentials_json_missing_homeserver(self, mock_file, mock_exists):
         """Test validation when credentials.json is missing homeserver field."""
         # Setup mocks
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         mock_exists.return_value = True
 
         # Mock credentials with missing homeserver
@@ -2143,7 +2137,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
     ):
         """Test validation when credentials.json is missing access_token field."""
         # Setup mocks
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         mock_exists.return_value = True
 
         # Mock credentials with missing access_token
@@ -2169,7 +2163,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
     def test_validate_credentials_json_missing_user_id(self, mock_file, mock_exists):
         """Test validation when credentials.json is missing user_id field."""
         # Setup mocks
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         mock_exists.return_value = True
 
         # Mock credentials with missing user_id
@@ -2201,7 +2195,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
     def test_validate_credentials_json_missing_device_id(self, mock_file, mock_exists):
         """Test validation when credentials.json is missing device_id field."""
         # Setup mocks
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         mock_exists.return_value = True
 
         # Mock credentials with missing device_id
@@ -2227,7 +2221,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
     def test_validate_credentials_json_empty_field_values(self, mock_file, mock_exists):
         """Test validation when credentials.json has empty field values."""
         # Setup mocks
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         mock_exists.return_value = True
 
         # Mock credentials with empty homeserver field
@@ -2252,7 +2246,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
     def test_validate_credentials_json_file_read_error(self, mock_exists):
         """Test validation when credentials.json cannot be read due to permissions or other IO error."""
         # Setup mocks
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         mock_exists.return_value = True
 
         # Mock file read error
@@ -2271,7 +2265,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
     def test_validate_credentials_json_invalid_json(self, mock_file, mock_exists):
         """Test validation when credentials.json contains invalid JSON."""
         # Setup mocks
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         mock_exists.return_value = True
         # Mock file with invalid JSON
         mock_file.return_value.read.return_value = "{invalid json}"
@@ -2292,7 +2286,7 @@ class TestValidateE2EEDependencies(unittest.TestCase):
     ):
         """Test validation when credentials.json is missing multiple fields (should report first missing)."""
         # Setup mocks
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         mock_exists.return_value = True
 
         # Mock credentials with multiple missing fields
@@ -2352,7 +2346,7 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
     ):
         """Test authentication validation with valid credentials.json."""
         # Setup mocks
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         matrix_section = {"access_token": "token123"}
         mock_validate_creds.return_value = True
 
@@ -2379,7 +2373,7 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
     ):
         """Test authentication validation falling back to access_token."""
         # Setup mocks
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         matrix_section = {"access_token": "token123"}
         mock_validate_creds.return_value = False  # No valid credentials.json
         mock_msg_e2ee.return_value = "E2EE not available with access_token"
@@ -2405,7 +2399,7 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
     ):
         """Test authentication validation with no authentication configured."""
         # Setup mocks
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         matrix_section = {}  # No access_token
         mock_validate_creds.return_value = False  # No valid credentials.json
         mock_msg_setup.return_value = (
@@ -2432,7 +2426,7 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
     ):
         """Test authentication validation with None matrix_section."""
         # Setup mocks
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         matrix_section = None  # No matrix section
         mock_validate_creds.return_value = False  # No valid credentials.json
 
@@ -2454,7 +2448,7 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
     ):
         """Test authentication validation with empty access_token (now correctly rejected)."""
         # Setup mocks
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         matrix_section = {"access_token": ""}  # Empty access_token (should be rejected)
         mock_validate_creds.return_value = False  # No valid credentials.json
         mock_msg_e2ee.return_value = "E2EE not available with access_token"
@@ -2475,7 +2469,7 @@ class TestValidateMatrixAuthentication(unittest.TestCase):
         self, mock_validate_creds
     ):
         """Test that base_config is forwarded to _validate_credentials_json."""
-        config_path = "/home/user/.mmrelay/config.yaml"
+        config_path = TEST_HOME_CONFIG_PATH
         matrix_section = {"access_token": "token123"}
         base_config = {"matrix": {"homeserver": "https://matrix.org"}}
         mock_validate_creds.return_value = True
@@ -3049,7 +3043,7 @@ class TestValidateE2eeConfig(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.config_path = "/home/user/.mmrelay/config.yaml"
+        self.config_path = TEST_HOME_CONFIG_PATH
         self.base_config = {"matrix": {"homeserver": "https://matrix.org"}}
 
     @patch("mmrelay.cli._validate_matrix_authentication")
@@ -3280,7 +3274,7 @@ class TestAnalyzeE2eeSetup(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.config_path = "/home/user/.mmrelay/config.yaml"
+        self.config_path = TEST_HOME_CONFIG_PATH
         self.base_config = {
             "matrix": {"homeserver": "https://matrix.org", "e2ee": {"enabled": True}}
         }

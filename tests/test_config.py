@@ -7,6 +7,8 @@ import warnings
 from typing import Any, Optional, Tuple
 from unittest.mock import MagicMock, mock_open, patch
 
+from tests.constants import TEST_SERIAL_PORT
+
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -228,7 +230,10 @@ class TestConfigEdgeCases(unittest.TestCase):
                 "username": "@bot:matrix.org",
                 "password": "secret",
             },
-            "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"},
+            "meshtastic": {
+                "connection_type": "serial",
+                "serial_port": TEST_SERIAL_PORT,
+            },
         }
 
         mock_yaml_load.return_value = old_config
@@ -579,13 +584,13 @@ class TestMeshtasticEnvironmentVariables(unittest.TestCase):
     def test_load_meshtastic_serial_config(self):
         """Test loading serial Meshtastic configuration."""
         os.environ["MMRELAY_MESHTASTIC_CONNECTION_TYPE"] = "serial"
-        os.environ["MMRELAY_MESHTASTIC_SERIAL_PORT"] = "/dev/ttyUSB0"
+        os.environ["MMRELAY_MESHTASTIC_SERIAL_PORT"] = TEST_SERIAL_PORT
 
         config = load_meshtastic_config_from_env()
 
         self.assertIsNotNone(config)
         self.assertEqual(config["connection_type"], "serial")
-        self.assertEqual(config["serial_port"], "/dev/ttyUSB0")
+        self.assertEqual(config["serial_port"], TEST_SERIAL_PORT)
 
     def test_load_meshtastic_ble_config(self):
         """Test loading BLE Meshtastic configuration."""
@@ -807,7 +812,7 @@ class TestEnvironmentVariableIntegration(unittest.TestCase):
         base_config = {
             "meshtastic": {
                 "connection_type": "serial",
-                "serial_port": "/dev/ttyUSB0",
+                "serial_port": TEST_SERIAL_PORT,
                 "meshnet_name": "Original Name",
             },
             "logging": {"level": "warning"},
@@ -823,7 +828,7 @@ class TestEnvironmentVariableIntegration(unittest.TestCase):
         self.assertEqual(config["meshtastic"]["connection_type"], "tcp")
         self.assertEqual(config["meshtastic"]["host"], "192.168.1.100")
         # Existing values not overridden should remain
-        self.assertEqual(config["meshtastic"]["serial_port"], "/dev/ttyUSB0")
+        self.assertEqual(config["meshtastic"]["serial_port"], TEST_SERIAL_PORT)
         self.assertEqual(config["meshtastic"]["meshnet_name"], "Original Name")
         # Logging level should be overridden
         self.assertEqual(config["logging"]["level"], "debug")
@@ -838,7 +843,7 @@ class TestEnvironmentVariableIntegration(unittest.TestCase):
         # Mock file existence and YAML loading
         mock_isfile.return_value = True
         mock_yaml_load.return_value = {
-            "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"}
+            "meshtastic": {"connection_type": "serial", "serial_port": TEST_SERIAL_PORT}
         }
 
         # Set environment variables
@@ -851,7 +856,7 @@ class TestEnvironmentVariableIntegration(unittest.TestCase):
         self.assertEqual(config["meshtastic"]["connection_type"], "tcp")  # From env var
         self.assertEqual(config["meshtastic"]["host"], "192.168.1.100")  # From env var
         self.assertEqual(
-            config["meshtastic"]["serial_port"], "/dev/ttyUSB0"
+            config["meshtastic"]["serial_port"], TEST_SERIAL_PORT
         )  # From file
 
     def test_no_env_vars_returns_empty_dict(self):

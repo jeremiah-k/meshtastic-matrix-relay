@@ -27,6 +27,12 @@ from mmrelay.db_runtime import (
     _probe_sqlite_json_each_support,
     _validate_sqlite_json_each_support,
 )
+from tests.constants import (
+    TEST_SQL_COUNT_TEST,
+    TEST_SQL_CREATE_TABLE,
+    TEST_SQL_INSERT_VALUE,
+    TEST_SQL_SELECT_ONE,
+)
 
 
 class TestDatabaseManager(unittest.TestCase):
@@ -107,7 +113,7 @@ class TestDatabaseManager(unittest.TestCase):
             manager = DatabaseManager(self.db_path)
             try:
                 with manager.read() as cursor:
-                    cursor.execute("SELECT 1")
+                    cursor.execute(TEST_SQL_SELECT_ONE)
                 self.assertFalse(manager.supports_json_each())
             finally:
                 manager.close()
@@ -138,7 +144,7 @@ class TestDatabaseManager(unittest.TestCase):
             manager = DatabaseManager(self.db_path)
             try:
                 with manager.read() as cursor:
-                    cursor.execute("SELECT 1")
+                    cursor.execute(TEST_SQL_SELECT_ONE)
                 self.assertTrue(manager.supports_json_each())
             finally:
                 manager.close()
@@ -180,7 +186,7 @@ class TestDatabaseManager(unittest.TestCase):
                 try:
                     # Test connection creation to trigger pragma validation
                     with manager.read() as cursor:
-                        cursor.execute("SELECT 1")
+                        cursor.execute(TEST_SQL_SELECT_ONE)
                 finally:
                     manager.close()
 
@@ -206,7 +212,7 @@ class TestDatabaseManager(unittest.TestCase):
                     )
                     # Try to create connection to trigger validation
                     with manager.read() as cursor:
-                        cursor.execute("SELECT 1")
+                        cursor.execute(TEST_SQL_SELECT_ONE)
                 self.assertIn("Invalid pragma name", str(cm.exception))
 
     def test_pragma_validation_string_values(self):
@@ -233,7 +239,7 @@ class TestDatabaseManager(unittest.TestCase):
                 )
                 try:
                     with manager.read() as cursor:
-                        cursor.execute("SELECT 1")
+                        cursor.execute(TEST_SQL_SELECT_ONE)
                 finally:
                     manager.close()
 
@@ -259,7 +265,7 @@ class TestDatabaseManager(unittest.TestCase):
                     )
                     # Try to create connection to trigger validation
                     with manager.read() as cursor:
-                        cursor.execute("SELECT 1")
+                        cursor.execute(TEST_SQL_SELECT_ONE)
                 self.assertIn("Invalid or unsafe pragma value", str(cm.exception))
 
     def test_pragma_validation_numeric_values(self):
@@ -273,7 +279,7 @@ class TestDatabaseManager(unittest.TestCase):
                 )
                 try:
                     with manager.read() as cursor:
-                        cursor.execute("SELECT 1")
+                        cursor.execute(TEST_SQL_SELECT_ONE)
                 finally:
                     manager.close()
 
@@ -288,7 +294,7 @@ class TestDatabaseManager(unittest.TestCase):
                 )
                 try:
                     with manager.read() as cursor:
-                        cursor.execute("SELECT 1")
+                        cursor.execute(TEST_SQL_SELECT_ONE)
                 finally:
                     manager.close()
 
@@ -310,20 +316,20 @@ class TestDatabaseManager(unittest.TestCase):
                     )
                     # Try to create connection to trigger validation
                     with manager.read() as cursor:
-                        cursor.execute("SELECT 1")
+                        cursor.execute(TEST_SQL_SELECT_ONE)
                 self.assertIn("Invalid pragma value type", str(cm.exception))
 
     def test_read_context_manager(self):
         """Test read context manager behavior."""
         with self.manager.read() as cursor:
-            result = cursor.execute("SELECT 1").fetchone()
+            result = cursor.execute(TEST_SQL_SELECT_ONE).fetchone()
             self.assertEqual(result[0], 1)
 
     def test_write_context_manager_success(self):
         """Test write context manager on successful operation."""
         with self.manager.write() as cursor:
-            cursor.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
-            cursor.execute("INSERT INTO test (value) VALUES (?)", ("test_value",))
+            cursor.execute(TEST_SQL_CREATE_TABLE)
+            cursor.execute(TEST_SQL_INSERT_VALUE, ("test_value",))
 
         # Verify data was committed
         with self.manager.read() as cursor:
@@ -334,8 +340,8 @@ class TestDatabaseManager(unittest.TestCase):
         """Test write context manager rolls back on error."""
         # Create initial table
         with self.manager.write() as cursor:
-            cursor.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
-            cursor.execute("INSERT INTO test (value) VALUES (?)", ("initial",))
+            cursor.execute(TEST_SQL_CREATE_TABLE)
+            cursor.execute(TEST_SQL_INSERT_VALUE, ("initial",))
 
         # Attempt operation that will fail
         with self.assertRaises(sqlite3.IntegrityError):
@@ -349,7 +355,7 @@ class TestDatabaseManager(unittest.TestCase):
 
         # Verify initial data is still there (rollback worked)
         with self.manager.read() as cursor:
-            result = cursor.execute("SELECT COUNT(*) FROM test").fetchone()
+            result = cursor.execute(TEST_SQL_COUNT_TEST).fetchone()
             self.assertEqual(result[0], 1)
             result = cursor.execute("SELECT value FROM test").fetchone()
             self.assertEqual(result[0], "initial")
@@ -358,21 +364,19 @@ class TestDatabaseManager(unittest.TestCase):
         """Test write context manager rolls back on non-SQLite exceptions."""
         # Create initial table
         with self.manager.write() as cursor:
-            cursor.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
-            cursor.execute("INSERT INTO test (value) VALUES (?)", ("initial",))
+            cursor.execute(TEST_SQL_CREATE_TABLE)
+            cursor.execute(TEST_SQL_INSERT_VALUE, ("initial",))
 
         # Attempt operation that will fail with ValueError
         with self.assertRaises(ValueError):
             with self.manager.write() as cursor:
-                cursor.execute(
-                    "INSERT INTO test (value) VALUES (?)", ("should_be_rolled_back",)
-                )
+                cursor.execute(TEST_SQL_INSERT_VALUE, ("should_be_rolled_back",))
                 # Raise a non-SQLite exception
                 raise ValueError("Test exception")
 
         # Verify initial data is still there (rollback worked)
         with self.manager.read() as cursor:
-            result = cursor.execute("SELECT COUNT(*) FROM test").fetchone()
+            result = cursor.execute(TEST_SQL_COUNT_TEST).fetchone()
             self.assertEqual(result[0], 1)
             result = cursor.execute("SELECT value FROM test").fetchone()
             self.assertEqual(result[0], "initial")
@@ -381,8 +385,8 @@ class TestDatabaseManager(unittest.TestCase):
         """Test write context manager rolls back on custom exceptions."""
         # Create initial table
         with self.manager.write() as cursor:
-            cursor.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
-            cursor.execute("INSERT INTO test (value) VALUES (?)", ("initial",))
+            cursor.execute(TEST_SQL_CREATE_TABLE)
+            cursor.execute(TEST_SQL_INSERT_VALUE, ("initial",))
 
         # Define a custom exception
         class CustomTestError(Exception):
@@ -391,15 +395,13 @@ class TestDatabaseManager(unittest.TestCase):
         # Attempt operation that will fail with custom exception
         with self.assertRaises(CustomTestError):
             with self.manager.write() as cursor:
-                cursor.execute(
-                    "INSERT INTO test (value) VALUES (?)", ("should_be_rolled_back",)
-                )
+                cursor.execute(TEST_SQL_INSERT_VALUE, ("should_be_rolled_back",))
                 # Raise a custom exception
                 raise CustomTestError("Custom test exception")
 
         # Verify initial data is still there (rollback worked)
         with self.manager.read() as cursor:
-            result = cursor.execute("SELECT COUNT(*) FROM test").fetchone()
+            result = cursor.execute(TEST_SQL_COUNT_TEST).fetchone()
             self.assertEqual(result[0], 1)
             result = cursor.execute("SELECT value FROM test").fetchone()
             self.assertEqual(result[0], "initial")
@@ -408,21 +410,19 @@ class TestDatabaseManager(unittest.TestCase):
         """Test write context manager rolls back on RuntimeError."""
         # Create initial table
         with self.manager.write() as cursor:
-            cursor.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
-            cursor.execute("INSERT INTO test (value) VALUES (?)", ("initial",))
+            cursor.execute(TEST_SQL_CREATE_TABLE)
+            cursor.execute(TEST_SQL_INSERT_VALUE, ("initial",))
 
         # Attempt operation that will fail with RuntimeError
         with self.assertRaises(RuntimeError):
             with self.manager.write() as cursor:
-                cursor.execute(
-                    "INSERT INTO test (value) VALUES (?)", ("should_be_rolled_back",)
-                )
+                cursor.execute(TEST_SQL_INSERT_VALUE, ("should_be_rolled_back",))
                 # Raise a RuntimeError
                 raise RuntimeError("Runtime error test")
 
         # Verify initial data is still there (rollback worked)
         with self.manager.read() as cursor:
-            result = cursor.execute("SELECT COUNT(*) FROM test").fetchone()
+            result = cursor.execute(TEST_SQL_COUNT_TEST).fetchone()
             self.assertEqual(result[0], 1)
             result = cursor.execute("SELECT value FROM test").fetchone()
             self.assertEqual(result[0], "initial")
@@ -430,18 +430,16 @@ class TestDatabaseManager(unittest.TestCase):
     def test_write_context_manager_rollback_on_keyboard_interrupt(self):
         """Write context manager should roll back on KeyboardInterrupt."""
         with self.manager.write() as cursor:
-            cursor.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
-            cursor.execute("INSERT INTO test (value) VALUES (?)", ("initial",))
+            cursor.execute(TEST_SQL_CREATE_TABLE)
+            cursor.execute(TEST_SQL_INSERT_VALUE, ("initial",))
 
         with self.assertRaises(KeyboardInterrupt):
             with self.manager.write() as cursor:
-                cursor.execute(
-                    "INSERT INTO test (value) VALUES (?)", ("should_be_rolled_back",)
-                )
+                cursor.execute(TEST_SQL_INSERT_VALUE, ("should_be_rolled_back",))
                 raise KeyboardInterrupt()
 
         with self.manager.read() as cursor:
-            result = cursor.execute("SELECT COUNT(*) FROM test").fetchone()
+            result = cursor.execute(TEST_SQL_COUNT_TEST).fetchone()
             self.assertEqual(result[0], 1)
             result = cursor.execute("SELECT value FROM test").fetchone()
             self.assertEqual(result[0], "initial")
@@ -450,28 +448,26 @@ class TestDatabaseManager(unittest.TestCase):
         """Test that partial transactions are properly rolled back on non-SQLite exceptions."""
         # Create initial table with some data
         with self.manager.write() as cursor:
-            cursor.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
-            cursor.execute("INSERT INTO test (value) VALUES (?)", ("initial",))
+            cursor.execute(TEST_SQL_CREATE_TABLE)
+            cursor.execute(TEST_SQL_INSERT_VALUE, ("initial",))
 
         # Get initial count
         with self.manager.read() as cursor:
-            initial_count = cursor.execute("SELECT COUNT(*) FROM test").fetchone()[0]
+            initial_count = cursor.execute(TEST_SQL_COUNT_TEST).fetchone()[0]
 
         # Attempt operation with multiple statements that fails partway through
         with self.assertRaises(ValueError):
             with self.manager.write() as cursor:
                 # First insert should succeed
-                cursor.execute("INSERT INTO test (value) VALUES (?)", ("first_insert",))
+                cursor.execute(TEST_SQL_INSERT_VALUE, ("first_insert",))
                 # Second insert should also succeed
-                cursor.execute(
-                    "INSERT INTO test (value) VALUES (?)", ("second_insert",)
-                )
+                cursor.execute(TEST_SQL_INSERT_VALUE, ("second_insert",))
                 # Raise exception before commit
                 raise ValueError("Exception after partial work")
 
         # Verify no new data was committed (rollback worked)
         with self.manager.read() as cursor:
-            final_count = cursor.execute("SELECT COUNT(*) FROM test").fetchone()[0]
+            final_count = cursor.execute(TEST_SQL_COUNT_TEST).fetchone()[0]
             self.assertEqual(final_count, initial_count)
             # Verify only initial data exists
             result = cursor.execute("SELECT value FROM test").fetchone()
@@ -508,8 +504,8 @@ class TestDatabaseManager(unittest.TestCase):
             Returns:
                 int: The `lastrowid` of the inserted row.
             """
-            cursor.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
-            cursor.execute("INSERT INTO test (value) VALUES (?)", ("sync_test",))
+            cursor.execute(TEST_SQL_CREATE_TABLE)
+            cursor.execute(TEST_SQL_INSERT_VALUE, ("sync_test",))
             return cursor.lastrowid
 
         row_id = self.manager.run_sync(write_func, write=True)
@@ -984,7 +980,7 @@ class TestDatabaseManager(unittest.TestCase):
             )
             # Try to create connection to trigger validation
             with manager.read() as cursor:
-                cursor.execute("SELECT 1")
+                cursor.execute(TEST_SQL_SELECT_ONE)
 
         # Verify no connections were leaked (this is more of a sanity check)
         # since the manager creation failed, there shouldn't be any connections to track
@@ -1227,7 +1223,7 @@ class TestDatabaseManagerEdgeCases(unittest.TestCase):
         manager = DatabaseManager(self.db_path, extra_pragmas={})
         try:
             with manager.read() as cursor:
-                cursor.execute("SELECT 1")
+                cursor.execute(TEST_SQL_SELECT_ONE)
         finally:
             manager.close()
 
@@ -1236,7 +1232,7 @@ class TestDatabaseManagerEdgeCases(unittest.TestCase):
         manager = DatabaseManager(self.db_path, extra_pragmas=None)
         try:
             with manager.read() as cursor:
-                cursor.execute("SELECT 1")
+                cursor.execute(TEST_SQL_SELECT_ONE)
         finally:
             manager.close()
 
@@ -1245,7 +1241,7 @@ class TestDatabaseManagerEdgeCases(unittest.TestCase):
         manager = DatabaseManager(self.db_path, busy_timeout_ms=0)
         try:
             with manager.read() as cursor:
-                cursor.execute("SELECT 1")
+                cursor.execute(TEST_SQL_SELECT_ONE)
         finally:
             manager.close()
 
@@ -1254,7 +1250,7 @@ class TestDatabaseManagerEdgeCases(unittest.TestCase):
         manager = DatabaseManager(self.db_path, busy_timeout_ms=-1000)
         try:
             with manager.read() as cursor:
-                cursor.execute("SELECT 1")
+                cursor.execute(TEST_SQL_SELECT_ONE)
         finally:
             manager.close()
 
@@ -1297,7 +1293,7 @@ class TestDatabaseManagerEdgeCases(unittest.TestCase):
         try:
             # Create test data
             with manager.write() as cursor:
-                cursor.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
+                cursor.execute(TEST_SQL_CREATE_TABLE)
                 cursor.execute("INSERT INTO test (id, value) VALUES (1, 'test')")
 
             results = []

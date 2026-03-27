@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.constants.formats import MATRIX_PACKET_KEY, MATRIX_SUPPRESS_KEY
 from mmrelay.plugins.mesh_relay_plugin import Plugin
+from tests.constants import TEST_ROOM_ID_1
 
 
 class TestMeshRelayPlugin(unittest.TestCase):
@@ -265,9 +266,7 @@ class TestMeshRelayPlugin(unittest.TestCase):
         mock_connect.return_value = mock_matrix_client
 
         # Mock config with no matching channel
-        mock_config.get.return_value = [
-            {"meshtastic_channel": 1, "id": "!room1:matrix.org"}
-        ]
+        mock_config.get.return_value = [{"meshtastic_channel": 1, "id": TEST_ROOM_ID_1}]
 
         packet = {
             "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "test"},
@@ -311,9 +310,7 @@ class TestMeshRelayPlugin(unittest.TestCase):
         mock_connect.return_value = mock_matrix_client
 
         # Mock config with matching channel
-        mock_config.get.return_value = [
-            {"meshtastic_channel": 0, "id": "!room1:matrix.org"}
-        ]
+        mock_config.get.return_value = [{"meshtastic_channel": 0, "id": TEST_ROOM_ID_1}]
 
         packet = {
             "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "test"},
@@ -337,7 +334,7 @@ class TestMeshRelayPlugin(unittest.TestCase):
             mock_matrix_client.room_send.assert_called_once()
             call_args = mock_matrix_client.room_send.call_args
 
-            self.assertEqual(call_args.kwargs["room_id"], "!room1:matrix.org")
+            self.assertEqual(call_args.kwargs["room_id"], TEST_ROOM_ID_1)
             self.assertEqual(call_args.kwargs["message_type"], "m.room.message")
 
             content = call_args.kwargs["content"]
@@ -366,9 +363,7 @@ class TestMeshRelayPlugin(unittest.TestCase):
         mock_connect.return_value = mock_matrix_client
 
         # Mock config with channel 0 mapped (default channel)
-        mock_config.get.return_value = [
-            {"meshtastic_channel": 0, "id": "!room1:matrix.org"}
-        ]
+        mock_config.get.return_value = [{"meshtastic_channel": 0, "id": TEST_ROOM_ID_1}]
 
         packet = {
             "decoded": {"portnum": "TEXT_MESSAGE_APP", "text": "test"}
@@ -636,14 +631,14 @@ class TestMeshRelayPlugin(unittest.TestCase):
     def test_iter_room_configs_dict_entries(self, mock_config):
         """_iter_room_configs should filter dict values and ignore non-dict entries."""
         mock_config.get.return_value = {
-            "room1": {"id": "!room1:matrix.org", "meshtastic_channel": 0},
+            "room1": {"id": TEST_ROOM_ID_1, "meshtastic_channel": 0},
             "room2": "ignore-me",
         }
 
         rooms = self.plugin._iter_room_configs()
 
         self.assertEqual(len(rooms), 1)
-        self.assertEqual(rooms[0]["id"], "!room1:matrix.org")
+        self.assertEqual(rooms[0]["id"], TEST_ROOM_ID_1)
 
     @patch("mmrelay.matrix_utils.connect_matrix", new_callable=AsyncMock)
     def test_handle_meshtastic_message_no_matrix_client(self, mock_connect_matrix):

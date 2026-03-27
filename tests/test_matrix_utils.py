@@ -46,6 +46,11 @@ from mmrelay.matrix_utils import (
     upload_image,
     validate_prefix_format,
 )
+from tests.constants import (
+    TEST_BOT_USER_ID,
+    TEST_ROOM_ID,
+    TEST_USER_ID,
+)
 from tests.helpers import InlineExecutorLoop
 
 # Matrix room message handling tests - converted from unittest.TestCase to standalone pytest functions
@@ -289,8 +294,8 @@ async def test_on_room_message_reply_enabled(
             "message_interactions": {"replies": True},
             "meshnet_name": "test_mesh",
         },
-        "matrix_rooms": [{"id": "!room:matrix.org", "meshtastic_channel": 0}],
-        "matrix": {"bot_user_id": "@bot:matrix.org"},
+        "matrix_rooms": [{"id": TEST_ROOM_ID, "meshtastic_channel": 0}],
+        "matrix": {"bot_user_id": TEST_BOT_USER_ID},
     }
     mock_handle_matrix_reply.return_value = True
     mock_event.source = {
@@ -463,7 +468,7 @@ async def test_on_room_message_reaction_enabled(mock_room, test_config):
             "mmrelay.matrix_utils.get_message_map_by_matrix_event_id",
             return_value=(
                 "meshtastic_id",
-                "!room:matrix.org",
+                TEST_ROOM_ID,
                 "original_text",
                 "test_mesh",
             ),
@@ -529,7 +534,7 @@ async def test_on_room_message_reaction_disabled(
                 }
             }
         },
-        sender="@user:matrix.org",
+        sender=TEST_USER_ID,
         server_timestamp=1234567890,
     )
 
@@ -909,7 +914,7 @@ async def test_on_room_message_reaction_missing_mapping_logs_debug(
 
     mock_event = MockReactionEvent(
         source={"content": {"m.relates_to": {"event_id": "missing", "key": "x"}}},
-        sender="@user:matrix.org",
+        sender=TEST_USER_ID,
         server_timestamp=1,
     )
 
@@ -919,7 +924,7 @@ async def test_on_room_message_reaction_missing_mapping_logs_debug(
             "message_interactions": {"reactions": True, "replies": False},
         },
         "matrix_rooms": [{"id": mock_room.room_id, "meshtastic_channel": 0}],
-        "matrix": {"bot_user_id": "@bot:matrix.org"},
+        "matrix": {"bot_user_id": TEST_BOT_USER_ID},
     }
 
     monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
@@ -965,7 +970,7 @@ async def test_on_room_message_local_reaction_queue_failure_logs(
 
     mock_event = MockReactionEvent(
         source={"content": {"m.relates_to": {"event_id": "orig", "key": "x"}}},
-        sender="@user:matrix.org",
+        sender=TEST_USER_ID,
         server_timestamp=1,
     )
 
@@ -976,7 +981,7 @@ async def test_on_room_message_local_reaction_queue_failure_logs(
             "message_interactions": {"reactions": True, "replies": False},
         },
         "matrix_rooms": [{"id": mock_room.room_id, "meshtastic_channel": 0}],
-        "matrix": {"bot_user_id": "@bot:matrix.org"},
+        "matrix": {"bot_user_id": TEST_BOT_USER_ID},
     }
 
     monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)
@@ -1031,7 +1036,7 @@ async def test_on_room_message_reply_handled_short_circuits(
             "message_interactions": {"reactions": False, "replies": True},
         },
         "matrix_rooms": [{"id": mock_room.room_id, "meshtastic_channel": 0}],
-        "matrix": {"bot_user_id": "@bot:matrix.org"},
+        "matrix": {"bot_user_id": TEST_BOT_USER_ID},
     }
 
     monkeypatch.setattr("mmrelay.matrix_utils.bot_start_time", 0, raising=False)

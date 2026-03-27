@@ -49,6 +49,13 @@ from mmrelay.meshtastic_utils import (
     serial_port_exists,
 )
 from tests.conftest import cleanup_ble_future_state
+from tests.constants import (
+    TEST_BLE_MAC,
+    TEST_MESHTASTIC_ID,
+    TEST_NODE_NUM,
+    TEST_PACKET_FROM_ID,
+    TEST_PACKET_ID,
+)
 
 TEST_PACKET_RX_TIME = 1234567890
 
@@ -143,14 +150,14 @@ class TestMeshtasticUtils(unittest.TestCase):
 
         # Mock packet data
         self.mock_packet = {
-            "from": 123456789,
+            "from": TEST_PACKET_FROM_ID,
             "to": 987654321,
             "decoded": {
                 "text": "Hello from mesh",
                 "portnum": "TEXT_MESSAGE_APP",  # Use string constant
             },
             "channel": 0,
-            "id": 12345,
+            "id": TEST_PACKET_ID,
             "rxTime": TEST_PACKET_RX_TIME,
         }
 
@@ -271,7 +278,7 @@ class TestMeshtasticUtils(unittest.TestCase):
 
             mock_interface = MagicMock()
             mock_interface.myInfo = MagicMock()
-            mock_interface.myInfo.my_node_num = 12345
+            mock_interface.myInfo.my_node_num = TEST_NODE_NUM
 
             # Call the function
             on_meshtastic_message(packet_no_channel, mock_interface)
@@ -341,9 +348,9 @@ class TestMeshtasticUtils(unittest.TestCase):
             # Verify debug log was called with packet type information
             log_output = "\n".join(cm.output)
             self.assertIn("REMOTE_HARDWARE_APP", log_output)
-            self.assertIn("from=123456789", log_output)
+            self.assertIn(f"from={TEST_PACKET_FROM_ID}", log_output)
             self.assertIn("channel=0", log_output)
-            self.assertIn("id=12345", log_output)
+            self.assertIn(f"id={TEST_PACKET_ID}", log_output)
 
     def test_on_meshtastic_message_missing_myinfo(self):
         """
@@ -377,7 +384,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         packet = self.mock_packet.copy()
         packet["to"] = BROADCAST_NUM + 1
         mock_interface = MagicMock()
-        mock_interface.myInfo.my_node_num = 12345
+        mock_interface.myInfo.my_node_num = TEST_NODE_NUM
 
         with (
             patch("mmrelay.meshtastic_utils.config", self.mock_config),
@@ -694,14 +701,12 @@ class TestMeshtasticUtils(unittest.TestCase):
         # Set up nested structure for BLE address validation
         mock_client.client = MagicMock()
         mock_client.client.bleak_client = MagicMock()
-        mock_client.client.bleak_client.address = "AA:BB:CC:DD:EE:FF"
+        mock_client.client.bleak_client.address = TEST_BLE_MAC
 
         # Configure BLE mock to return our mock client
         mock_ble.return_value = mock_client
 
-        config = {
-            "meshtastic": {"connection_type": "ble", "ble_address": "AA:BB:CC:DD:EE:FF"}
-        }
+        config = {"meshtastic": {"connection_type": "ble", "ble_address": TEST_BLE_MAC}}
 
         # Reset global state
         import mmrelay.meshtastic_utils
@@ -714,7 +719,7 @@ class TestMeshtasticUtils(unittest.TestCase):
 
         self.assertEqual(result, mock_client)
         mock_ble.assert_called_once_with(
-            address="AA:BB:CC:DD:EE:FF",
+            address=TEST_BLE_MAC,
             noProto=False,
             debugOut=None,
             noNodes=False,
@@ -830,7 +835,7 @@ class TestMeshtasticUtils(unittest.TestCase):
 
             mock_interface = MagicMock()
             mock_interface.myInfo = MagicMock()
-            mock_interface.myInfo.my_node_num = 12345
+            mock_interface.myInfo.my_node_num = TEST_NODE_NUM
             packet = self.mock_packet.copy()
             packet["to"] = BROADCAST_NUM
 
@@ -1533,9 +1538,7 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
         """
         mock_ble.side_effect = Exception("BLE connection failed")
 
-        config = {
-            "meshtastic": {"connection_type": "ble", "ble_address": "AA:BB:CC:DD:EE:FF"}
-        }
+        config = {"meshtastic": {"connection_type": "ble", "ble_address": TEST_BLE_MAC}}
 
         import mmrelay.meshtastic_utils as mu
 
@@ -1760,10 +1763,10 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         Verify that a Meshtastic packet lacking the 'decoded' field does not initiate message relay processing.
         """
         packet = {
-            "from": 123456789,
+            "from": TEST_PACKET_FROM_ID,
             "to": 987654321,
             "channel": 0,
-            "id": 12345,
+            "id": TEST_PACKET_ID,
             "rxTime": TEST_PACKET_RX_TIME,
             # No 'decoded' field
         }
@@ -1811,20 +1814,20 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             # Verify debug log was called with packet type information (portnum None)
             log_output = "\n".join(cm.output)
             self.assertIn("UNKNOWN (None)", log_output)
-            self.assertIn("from=123456789", log_output)
+            self.assertIn(f"from={TEST_PACKET_FROM_ID}", log_output)
             self.assertIn("channel=0", log_output)
-            self.assertIn("id=12345", log_output)
+            self.assertIn(f"id={TEST_PACKET_ID}", log_output)
 
     def test_on_meshtastic_message_empty_text(self):
         """
         Test that Meshtastic packets with empty text messages do not trigger relaying to Matrix rooms.
         """
         packet = {
-            "from": 123456789,
+            "from": TEST_PACKET_FROM_ID,
             "to": 987654321,
             "decoded": {"text": "", "portnum": "TEXT_MESSAGE_APP"},  # Empty text
             "channel": 0,
-            "id": 12345,
+            "id": TEST_PACKET_ID,
             "rxTime": TEST_PACKET_RX_TIME,
         }
 
@@ -1869,9 +1872,9 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
             # Verify debug log was called with packet type information
             log_output = "\n".join(cm.output)
             self.assertIn("TEXT_MESSAGE_APP", log_output)
-            self.assertIn("from=123456789", log_output)
+            self.assertIn(f"from={TEST_PACKET_FROM_ID}", log_output)
             self.assertIn("channel=0", log_output)
-            self.assertIn("id=12345", log_output)
+            self.assertIn(f"id={TEST_PACKET_ID}", log_output)
 
     def test_on_meshtastic_message_health_probe_response_logged_separately(self):
         """
@@ -1879,15 +1882,15 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         processed as regular ADMIN_APP traffic.
         """
         packet = {
-            "from": 123456789,
-            "to": 123456789,
+            "from": TEST_PACKET_FROM_ID,
+            "to": TEST_PACKET_FROM_ID,
             "decoded": {"portnum": "ADMIN_APP", "requestId": 4242},
             "channel": 0,
             "id": 22222,
             "rxTime": TEST_PACKET_RX_TIME,
         }
         mock_interface = MagicMock()
-        mock_interface.myInfo.my_node_num = 123456789
+        mock_interface.myInfo.my_node_num = TEST_PACKET_FROM_ID
 
         with (
             patch.dict(

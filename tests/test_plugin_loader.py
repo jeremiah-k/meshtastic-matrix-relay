@@ -47,6 +47,7 @@ from mmrelay.plugin_loader import (
     start_global_scheduler,
     stop_global_scheduler,
 )
+from tests.constants import TEST_GIT_TIMEOUT
 
 
 class MockPlugin:
@@ -2390,7 +2391,7 @@ class TestGitOperations(BaseGitTest):
                     "origin",
                     "refs/tags/v1.0.0:refs/tags/v1.0.0",
                 ],
-                timeout=120,
+                timeout=TEST_GIT_TIMEOUT,
             ),
             mock_run_git.call_args_list,
         )
@@ -2501,14 +2502,14 @@ class TestGitOperations(BaseGitTest):
                     "origin",
                     "refs/tags/v1.0.1",
                 ],
-                timeout=120,
+                timeout=TEST_GIT_TIMEOUT,
             ),
             mock_run_git.call_args_list,
         )
         self.assertIn(
             call(
                 ["git", "-C", self.temp_repo_path, "checkout", "v1.0.1"],
-                timeout=120,
+                timeout=TEST_GIT_TIMEOUT,
             ),
             mock_run_git.call_args_list,
         )
@@ -2552,7 +2553,7 @@ class TestGitOperations(BaseGitTest):
                     "origin",
                     "refs/tags/v2.0.0",
                 ],
-                timeout=120,
+                timeout=TEST_GIT_TIMEOUT,
             ),
             mock_run_git.call_args_list,
         )
@@ -4076,7 +4077,7 @@ class TestDependencyInstallation(BaseGitTest):
                     "repo",
                 ],
                 cwd=self.temp_plugins_dir,
-                timeout=120,
+                timeout=TEST_GIT_TIMEOUT,
                 retry_attempts=pl.GIT_RETRY_ATTEMPTS,
             ),
             # Check if already at the tag's commit
@@ -4103,11 +4104,11 @@ class TestDependencyInstallation(BaseGitTest):
                     "origin",
                     "refs/tags/v1.0.0",
                 ],
-                timeout=120,
+                timeout=TEST_GIT_TIMEOUT,
             ),
             call(
                 ["git", "-C", f"{self.temp_plugins_dir}/repo", "checkout", "v1.0.0"],
-                timeout=120,
+                timeout=TEST_GIT_TIMEOUT,
             ),
         ]
         mock_run_git.assert_has_calls(expected_calls)

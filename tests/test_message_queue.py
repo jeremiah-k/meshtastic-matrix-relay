@@ -29,6 +29,7 @@ from mmrelay.message_queue import (
     queue_message,
     start_message_queue,
 )
+from tests.constants import TEST_SHORT_DELAY
 
 
 class MockSendFunction:
@@ -155,7 +156,7 @@ class TestMessageQueue(unittest.TestCase):
 
             This test enqueues multiple messages, waits for them to be processed, and asserts that they are sent in the order they were enqueued.
             """
-            self.queue.start(message_delay=0.1)
+            self.queue.start(message_delay=TEST_SHORT_DELAY)
 
             # Ensure processor starts
             self.queue.ensure_processor_started()
@@ -496,7 +497,7 @@ class TestMessageQueue(unittest.TestCase):
             original_should_send = self.queue._should_send_message
             self.queue._should_send_message = lambda: False
 
-            self.queue.start(message_delay=0.1)
+            self.queue.start(message_delay=TEST_SHORT_DELAY)
             self.queue.ensure_processor_started()
 
             # Queue a message
@@ -530,7 +531,7 @@ class TestMessageQueue(unittest.TestCase):
             def failing_send_function(text, **kwargs):
                 raise Exception("Send failed")
 
-            self.queue.start(message_delay=0.1)
+            self.queue.start(message_delay=TEST_SHORT_DELAY)
             self.queue.ensure_processor_started()
 
             # Queue a message that will fail
@@ -652,7 +653,7 @@ class TestMessageQueueMethods(unittest.TestCase):
         queue = MessageQueue()
 
         # Start the queue with custom delay
-        queue.start(message_delay=0.1)
+        queue.start(message_delay=TEST_SHORT_DELAY)
 
         # Test ensure_processor_started method
         queue.ensure_processor_started()
@@ -668,7 +669,7 @@ class TestMessageQueueMethods(unittest.TestCase):
         queue = MessageQueue()
 
         # Start the queue
-        queue.start(message_delay=0.1)
+        queue.start(message_delay=TEST_SHORT_DELAY)
         self.assertTrue(queue._running)
 
         # Stop the queue
@@ -693,7 +694,7 @@ class TestDequeBasedRequeue(unittest.TestCase):
     def test_requeue_prepends_to_front(self):
         """Test _requeue_message prepends message to front of queue."""
         queue = MessageQueue()
-        queue.start(message_delay=0.1)
+        queue.start(message_delay=TEST_SHORT_DELAY)
 
         mock_send = MockSendFunction()
 
@@ -748,7 +749,7 @@ class TestDequeBasedRequeue(unittest.TestCase):
     def test_requeue_returns_false_when_queue_full(self):
         """Test _requeue_message returns False when queue is at max capacity."""
         queue = MessageQueue()
-        queue.start(message_delay=0.1)
+        queue.start(message_delay=TEST_SHORT_DELAY)
 
         mock_send = MockSendFunction()
 
@@ -785,7 +786,7 @@ class TestDequeBasedRequeue(unittest.TestCase):
     def test_requeue_preserves_fifo_after_prepend(self):
         """Test that after requeue, FIFO order is maintained from the prepended item."""
         queue = MessageQueue()
-        queue.start(message_delay=0.1)
+        queue.start(message_delay=TEST_SHORT_DELAY)
 
         mock_send = MockSendFunction()
 
@@ -837,7 +838,7 @@ class TestDequeBasedRequeue(unittest.TestCase):
         """Test that appendleft succeeds when queue is not full."""
 
         queue = MessageQueue()
-        queue.start(message_delay=0.1)
+        queue.start(message_delay=TEST_SHORT_DELAY)
 
         mock_send = MockSendFunction()
 

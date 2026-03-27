@@ -59,6 +59,12 @@ from mmrelay.constants.app import DEFAULT_READY_HEARTBEAT_SECONDS
 from mmrelay.constants.config import DEFAULT_NODEDB_REFRESH_INTERVAL
 from mmrelay.constants.network import MESHTASTIC_CLOSE_TIMEOUT_SECS
 from mmrelay.main import main, print_banner, run_main
+from tests.constants import (
+    TEST_BOT_USER_ID,
+    TEST_MATRIX_HOMESERVER,
+    TEST_ROOM_ID_1,
+    TEST_ROOM_ID_2,
+)
 from tests.helpers import (
     InlineExecutorLoop,
     inline_to_thread,
@@ -469,13 +475,13 @@ class TestMain(unittest.TestCase):
         """Set up mock configuration for tests."""
         self.mock_config = {
             "matrix": {
-                "homeserver": "https://matrix.org",
+                "homeserver": TEST_MATRIX_HOMESERVER,
                 "access_token": "test_token",
-                "bot_user_id": "@bot:matrix.org",
+                "bot_user_id": TEST_BOT_USER_ID,
             },
             "matrix_rooms": [
-                {"id": "!room1:matrix.org", "meshtastic_channel": 0},
-                {"id": "!room2:matrix.org", "meshtastic_channel": 1},
+                {"id": TEST_ROOM_ID_1, "meshtastic_channel": 0},
+                {"id": TEST_ROOM_ID_2, "meshtastic_channel": 1},
             ],
             "meshtastic": {
                 "connection_type": "serial",

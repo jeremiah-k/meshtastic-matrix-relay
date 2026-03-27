@@ -33,6 +33,7 @@ from mmrelay.plugins.map_plugin import (
     get_map,
     textsize,
 )
+from tests.constants import TEST_LAT_SF, TEST_LON_SF
 
 
 class TestTextLabel(unittest.TestCase):
@@ -42,7 +43,7 @@ class TestTextLabel(unittest.TestCase):
         """
         Initialize a TextLabel instance with a San Francisco coordinate and label for use in tests.
         """
-        self.latlng = s2sphere.LatLng.from_degrees(37.7749, -122.4194)  # San Francisco
+        self.latlng = s2sphere.LatLng.from_degrees(TEST_LAT_SF, TEST_LON_SF)
         self.text_label = TextLabel(self.latlng, "Test Label", font_size=12)
 
     def test_init(self):
@@ -171,7 +172,12 @@ class TestGetMap(unittest.TestCase):
         Initialize test locations for use in map-related test cases.
         """
         self.test_locations = [
-            {"lat": 37.7749, "lon": -122.4194, "label": "SF", "precisionBits": 14},
+            {
+                "lat": TEST_LAT_SF,
+                "lon": TEST_LON_SF,
+                "label": "SF",
+                "precisionBits": 14,
+            },
             {"lat": 37.7849, "lon": -122.4094, "label": "Oakland"},
         ]
 
@@ -435,7 +441,7 @@ class TestMapPlugin(unittest.TestCase):
             mock_meshtastic_client = MagicMock()
             mock_meshtastic_client.nodes = {
                 "node1": {
-                    "position": {"latitude": 37.7749, "longitude": -122.4194},
+                    "position": {"latitude": TEST_LAT_SF, "longitude": TEST_LON_SF},
                     "user": {"shortName": "SF"},
                 }
             }
@@ -497,8 +503,8 @@ class TestMapPlugin(unittest.TestCase):
                 "!nodeid": {
                     "user": {"shortName": "Test"},
                     "position": {
-                        "latitude": 37.7749,
-                        "longitude": -122.4194,
+                        "latitude": TEST_LAT_SF,
+                        "longitude": TEST_LON_SF,
                         "precisionBits": 12,
                     },
                 }
@@ -560,8 +566,8 @@ class TestMapPlugin(unittest.TestCase):
                 "!nodeid": {
                     "user": {"shortName": "Test"},
                     "position": {
-                        "latitude": 37.7749,
-                        "longitude": -122.4194,
+                        "latitude": TEST_LAT_SF,
+                        "longitude": TEST_LON_SF,
                         "precisionBits": 12,
                     },
                 }
@@ -651,8 +657,8 @@ class TestMapPlugin(unittest.TestCase):
                 "!nodeid": {
                     "user": {"shortName": "Test"},
                     "position": {
-                        "latitude": 37.7749,
-                        "longitude": -122.4194,
+                        "latitude": TEST_LAT_SF,
+                        "longitude": TEST_LON_SF,
                         "precisionBits": 12,
                     },
                 }
@@ -704,8 +710,8 @@ class TestMapPlugin(unittest.TestCase):
                 "!nodeid": {
                     "user": {"shortName": "Test"},
                     "position": {
-                        "latitude": 37.7749,
-                        "longitude": -122.4194,
+                        "latitude": TEST_LAT_SF,
+                        "longitude": TEST_LON_SF,
                         "precisionBits": 12,
                     },
                 }
@@ -762,8 +768,8 @@ class TestMapPlugin(unittest.TestCase):
                 "!nodeid": {
                     "user": {"shortName": "Test"},
                     "position": {
-                        "latitude": 37.7749,
-                        "longitude": -122.4194,
+                        "latitude": TEST_LAT_SF,
+                        "longitude": TEST_LON_SF,
                         "precisionBits": 12,
                     },
                 }
@@ -862,8 +868,8 @@ class TestMapPlugin(unittest.TestCase):
                 "!nodeid": {
                     "user": {"shortName": "Test"},
                     "position": {
-                        "latitude": 37.7749,
-                        "longitude": -122.4194,
+                        "latitude": TEST_LAT_SF,
+                        "longitude": TEST_LON_SF,
                         "precisionBits": 12,
                     },
                 }
