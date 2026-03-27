@@ -1001,6 +1001,7 @@ class TestCredentials(unittest.TestCase):
                 "homeserver": "https://matrix.example.org",
                 "user_id": "test",
                 "access_token": "token",
+                "device_id": None,
             },
         )
 

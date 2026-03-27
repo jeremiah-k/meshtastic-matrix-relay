@@ -3771,7 +3771,7 @@ class TestDependencyInstallation(BaseGitTest):
         # Setup running thread
         mock_event = MagicMock()
         mock_thread = MagicMock()
-        mock_thread.is_alive.return_value = True
+        mock_thread.is_alive.side_effect = [True, False]
         pl._global_scheduler_thread = mock_thread
         pl._global_scheduler_stop_event = mock_event
 

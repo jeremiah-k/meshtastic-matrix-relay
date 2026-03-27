@@ -136,7 +136,18 @@ class TestMigrationAutomaticRollback:
         )
 
         # Mock rollback_migration - it should NOT be called
-        with patch("mmrelay.migrate.rollback_migration") as mock_rollback:
+        with (
+            patch("mmrelay.migrate.rollback_migration") as mock_rollback,
+            patch(
+                "mmrelay.migrate.migrate_service",
+                return_value={
+                    "success": True,
+                    "new_path": str(new_home),
+                    "action": "skip_no_service_changes",
+                    "message": "No service update needed for this test scenario",
+                },
+            ),
+        ):
             result = perform_migration(force=True)
 
         # Verify migration succeeds with no-op actions when nothing exists

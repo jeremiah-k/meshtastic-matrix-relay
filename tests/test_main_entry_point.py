@@ -6,7 +6,6 @@ Windows compatibility and fallback functionality when setuptools console
 scripts fail.
 """
 
-import importlib
 import os
 import runpy
 import sys
@@ -25,6 +24,14 @@ def _run_main_module() -> None:
 
     Clears mmrelay modules from sys.modules to ensure fresh execution.
     """
+    saved_modules = {
+        name: module
+        for name, module in sys.modules.items()
+        if name == "mmrelay" or name.startswith("mmrelay.")
+    }
+
+    # Clear only the modules that trigger stale-import runtime warnings when
+    # executing the entry point via runpy.
     sys.modules.pop("mmrelay.paths", None)
     sys.modules.pop("mmrelay.__main__", None)
     sys.modules.pop("mmrelay.main", None)
@@ -32,13 +39,12 @@ def _run_main_module() -> None:
     try:
         runpy.run_module("mmrelay.__main__", run_name="__main__")
     finally:
-        # Restore a clean package state for autouse fixtures in subsequent tests.
-        for module_name in ("mmrelay.paths", "mmrelay.main"):
-            try:
-                importlib.import_module(module_name)
-            except ImportError:
-                # Some tests intentionally break imports; best-effort restore only.
-                pass
+        # Restore original module graph to avoid leaking fresh package/module
+        # objects into later tests that already captured function globals.
+        for module_name in list(sys.modules):
+            if module_name == "mmrelay" or module_name.startswith("mmrelay."):
+                sys.modules.pop(module_name, None)
+        sys.modules.update(saved_modules)
 
 
 class TestMainEntryPoint(unittest.TestCase):
