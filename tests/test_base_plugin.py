@@ -284,6 +284,36 @@ class TestBasePlugin(unittest.TestCase):
 
         self.assertFalse(plugin.get_require_bot_mention())
 
+    def test_non_core_plugin_with_legacy_plugin_stanza_keeps_inferred_global_precedence(
+        self,
+    ):
+        """Inferred non-core tier globals should outrank legacy plugins fallback."""
+        mixed_precedence = {
+            "plugins": {
+                "require_bot_mention": True,
+                "test_plugin": {"active": True},
+            },
+            "custom-plugins": {"require_bot_mention": False},
+        }
+        class_file = "/tmp/custom_plugins/test_plugin.py"  # nosec B108
+
+        with (
+            patch("mmrelay.plugins.base_plugin.config", mixed_precedence),
+            patch(
+                "mmrelay.plugins.base_plugin.inspect.getfile", return_value=class_file
+            ),
+            patch(
+                "mmrelay.plugin_loader.get_custom_plugin_dirs",
+                return_value=["/tmp/custom_plugins"],  # nosec B108
+            ),
+            patch("mmrelay.plugin_loader.get_community_plugin_dirs", return_value=[]),
+        ):
+            plugin = MockPlugin()
+
+        self.assertEqual(plugin.plugin_type, "custom")
+        self.assertTrue(plugin.config["active"])
+        self.assertFalse(plugin.get_require_bot_mention())
+
     def test_start_stop_schedule_thread(self):
         """Plugins should register and clear scheduled jobs via start/stop."""
         with (

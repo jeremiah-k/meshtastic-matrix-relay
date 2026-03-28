@@ -51,40 +51,53 @@ class TestConnectionRetryLogic:
     @pytest.mark.usefixtures("comprehensive_cleanup")
     async def test_connection_retry_backoff_timing(self):
         """
-        Verify that connection retry logic applies backoff delays between failed attempts and succeeds after the expected number of retries.
-
-        This test simulates two consecutive connection failures followed by a successful attempt, ensuring that the retry mechanism waits for the appropriate backoff duration between retries and attempts the correct number of connections.
+        Verify reconnect() requests exponential backoff delays between failed attempts.
         """
+        import mmrelay.meshtastic_utils as mu
+
         backoff_delays = []
+        original_backoff = mu.DEFAULT_BACKOFF_TIME
+        original_config = mu.config
+        original_shutting_down = mu.shutting_down
 
-        def _record_sleep(duration):
+        async def _record_sleep(duration):
             backoff_delays.append(duration)
+            return None
 
-        with (
-            patch("asyncio.sleep", side_effect=_record_sleep),
-            patch("mmrelay.meshtastic_utils.connect_meshtastic") as mock_connect,
-        ):
-            # Simulate connection failures followed by success
-            mock_connect.side_effect = [
-                ConnectionError("First attempt"),
-                ConnectionError("Second attempt"),
-                MagicMock(),  # Success on third attempt
-            ]
+        class _InlineLoop:
+            async def run_in_executor(self, _executor, fn, *args):
+                return fn(*args)
 
-            # Simulate retry logic with two backoff waits.
-            for attempt in range(3):
-                try:
-                    mock_connect()
-                    break
-                except ConnectionError:
-                    if attempt < 2:  # Don't sleep on last attempt
-                        await asyncio.sleep(DEFAULT_BACKOFF_TIME)
+        try:
+            mu.DEFAULT_BACKOFF_TIME = 1
+            mu.config = {"meshtastic": {"connection_type": "tcp", "host": "127.0.0.1"}}
+            mu.shutting_down = False
 
-            # Should have attempted connection 3 times
+            with (
+                patch(
+                    "mmrelay.meshtastic_utils.is_running_as_service",
+                    return_value=True,
+                ),
+                patch("asyncio.get_running_loop", return_value=_InlineLoop()),
+                patch("asyncio.sleep", side_effect=_record_sleep),
+                patch("mmrelay.meshtastic_utils.connect_meshtastic") as mock_connect,
+            ):
+                # Fail twice, then succeed.
+                mock_connect.side_effect = [
+                    ConnectionError("First attempt"),
+                    ConnectionError("Second attempt"),
+                    MagicMock(),
+                ]
+
+                await mu.reconnect()
+
             assert mock_connect.call_count == 3
-
-            # Should have requested two backoff periods.
-            assert backoff_delays == [DEFAULT_BACKOFF_TIME, DEFAULT_BACKOFF_TIME]
+            # reconnect() sleeps before each attempt, with exponential backoff.
+            assert backoff_delays == [1, 2, 4]
+        finally:
+            mu.DEFAULT_BACKOFF_TIME = original_backoff
+            mu.config = original_config
+            mu.shutting_down = original_shutting_down
 
     @pytest.mark.asyncio
     async def test_exponential_backoff_progression(self):
@@ -423,31 +436,38 @@ class TestNetworkErrorRecovery:
     @pytest.mark.asyncio
     async def test_message_delay_enforcement(self):
         """
-        Verify that the minimum delay between consecutive sends is requested.
+        Verify MessageQueue requests inter-send delay using production queue logic.
         """
-        send_count = 0
         requested_delays = []
-
-        async def mock_send_message():
-            """
-            Simulates sending a message by incrementing a counter.
-            """
-            nonlocal send_count
-            send_count += 1
+        real_sleep = asyncio.sleep
 
         async def _record_sleep(duration):
             requested_delays.append(duration)
-            return None
+            # Keep cooperative scheduling without introducing real delays.
+            await real_sleep(0)
 
-        with patch("asyncio.sleep", side_effect=_record_sleep):
-            # Simulate rapid message sending with enforced spacing
-            for _ in range(3):
-                await mock_send_message()
-                await asyncio.sleep(MINIMUM_MESSAGE_DELAY)
+        from mmrelay.message_queue import MessageQueue
 
-        assert send_count == 3
-        assert requested_delays == [
-            MINIMUM_MESSAGE_DELAY,
-            MINIMUM_MESSAGE_DELAY,
-            MINIMUM_MESSAGE_DELAY,
-        ]
+        queue = MessageQueue()
+        send_fn = MagicMock(return_value=MagicMock(id=123))
+        connected_client = MagicMock()
+        connected_client.is_connected = True
+
+        with (
+            patch("mmrelay.message_queue.asyncio.sleep", side_effect=_record_sleep),
+            patch("mmrelay.meshtastic_utils.reconnecting", False),
+            patch("mmrelay.meshtastic_utils.meshtastic_client", connected_client),
+        ):
+            queue.start(message_delay=MINIMUM_MESSAGE_DELAY)
+            try:
+                assert queue.enqueue(send_fn, "first", description="first message")
+                assert queue.enqueue(send_fn, "second", description="second message")
+                drained = await queue.drain(timeout=2.0)
+            finally:
+                queue.stop()
+
+        assert drained is True
+        assert send_fn.call_count == 2
+        assert any(
+            delay >= MINIMUM_MESSAGE_DELAY - 0.01 for delay in requested_delays
+        ), requested_delays

@@ -10,7 +10,6 @@ import logging
 import math
 import os
 import platform
-import re
 import shutil
 import sys
 from collections.abc import Mapping
@@ -1085,11 +1084,11 @@ def _is_valid_serial_port(port: str) -> bool:
     if is_windows:
         # Windows: COM1, COM3, COM10, etc.
         # COM followed by one or more digits (COM1, COM10, COM100, COM1000, etc.)
-        return re.match(WINDOWS_SERIAL_PORT_PATTERN, port) is not None
+        return WINDOWS_SERIAL_PORT_PATTERN.match(port) is not None
     else:
         # Linux/macOS: /dev/ttyUSB0, /dev/ttyACM0, /dev/cu.usbserial*, etc.
         # Must start with /dev/tty or /dev/cu followed by at least one character
-        return re.match(UNIX_SERIAL_PORT_PATTERN, port) is not None
+        return UNIX_SERIAL_PORT_PATTERN.match(port) is not None
 
 
 def _is_valid_host(host: str) -> bool:
@@ -1146,7 +1145,7 @@ def _is_valid_ble_address(address: str) -> bool:
         return False
 
     # Check for standard MAC address: AA:BB:CC:DD:EE:FF (6 groups of 2 hex chars)
-    if re.match(MAC_ADDRESS_PATTERN, trimmed_address):
+    if MAC_ADDRESS_PATTERN.match(trimmed_address):
         return True
 
     # Device name: non-empty string without colons (to avoid confusion with MAC)

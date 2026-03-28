@@ -249,13 +249,19 @@ class BasePlugin(ABC):
                     None,
                 )
                 if configured_section is not None:
-                    expected_section = configured_section
-                    mapped_type = PLUGIN_SECTION_TYPES.get(configured_section)
-                    if mapped_type is not None and (
-                        mapped_type != PLUGIN_TYPE_CORE
-                        or self.plugin_type in (None, PLUGIN_TYPE_CORE)
+                    # Preserve inferred non-core section as primary precedence even if
+                    # plugin-local config is found under legacy core "plugins".
+                    if (
+                        expected_section is None
+                        or configured_section != CONFIG_SECTION_PLUGINS
                     ):
-                        self.plugin_type = mapped_type
+                        expected_section = configured_section
+                        mapped_type = PLUGIN_SECTION_TYPES.get(configured_section)
+                        if mapped_type is not None and (
+                            mapped_type != PLUGIN_TYPE_CORE
+                            or self.plugin_type in (None, PLUGIN_TYPE_CORE)
+                        ):
+                            self.plugin_type = mapped_type
 
             for section in candidate_sections:
                 section_config = config.get(section, {})
@@ -274,20 +280,21 @@ class BasePlugin(ABC):
                         plugin_config = {}
                     self.config = plugin_config
                     resolved_section = section
-                    expected_section = section
-                    mapped_type = PLUGIN_SECTION_TYPES.get(section)
-                    if mapped_type is not None and (
-                        mapped_type != PLUGIN_TYPE_CORE
-                        or self.plugin_type in (None, PLUGIN_TYPE_CORE)
-                    ):
-                        self.plugin_type = mapped_type
+                    if expected_section is None or section != CONFIG_SECTION_PLUGINS:
+                        expected_section = section
+                        mapped_type = PLUGIN_SECTION_TYPES.get(section)
+                        if mapped_type is not None and (
+                            mapped_type != PLUGIN_TYPE_CORE
+                            or self.plugin_type in (None, PLUGIN_TYPE_CORE)
+                        ):
+                            self.plugin_type = mapped_type
                     break
 
             # Cache global plugin-level settings (for options like require_bot_mention).
             # Precedence for globals:
             # 1) plugin's resolved/expected section
             # 2) legacy fallback from core "plugins" section for compatibility
-            section_to_check = resolved_section or expected_section
+            section_to_check = expected_section or resolved_section
             global_sections: list[str] = []
             if section_to_check:
                 global_sections.append(section_to_check)

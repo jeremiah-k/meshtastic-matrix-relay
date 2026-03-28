@@ -1087,23 +1087,28 @@ def _run(
 def _run_git(
     cmd: list[str],
     timeout: float = GIT_COMMAND_TIMEOUT_SECONDS,
-    retry_attempts: int = GIT_RETRY_ATTEMPTS,
-    retry_delay: float = GIT_RETRY_DELAY_SECONDS,
+    retry_attempts: int | None = None,
+    retry_delay: float | None = None,
     **kwargs: Any,
 ) -> subprocess.CompletedProcess[str]:
     """
-    Execute a git command with conservative retry defaults and a non-interactive environment.
+    Execute a git command with a non-interactive environment.
 
     Parameters:
         cmd (list[str]): Command and arguments to run (e.g., ['git', 'clone', '...']).
         timeout (float): Maximum seconds to wait for each attempt.
-        **kwargs: Additional subprocess options (for example `env`, `retry_attempts`, `retry_delay`) that modify execution.
+        retry_attempts (int | None): Optional retry count. When omitted, `_run()`
+            default behavior is used (single attempt).
+        retry_delay (float | None): Optional delay between retries in seconds.
+        **kwargs: Additional subprocess options (for example `env`) that modify execution.
 
     Returns:
         subprocess.CompletedProcess[str]: Completed process containing `returncode`, `stdout`, and `stderr`.
     """
-    kwargs.setdefault("retry_attempts", retry_attempts)
-    kwargs.setdefault("retry_delay", retry_delay)
+    if retry_attempts is not None:
+        kwargs.setdefault("retry_attempts", retry_attempts)
+    if retry_delay is not None:
+        kwargs.setdefault("retry_delay", retry_delay)
     # Ensure non-interactive git by default
     env = dict(os.environ)
     if "env" in kwargs:
@@ -1172,6 +1177,8 @@ def _fetch_commit_with_fallback(repo_path: str, ref_value: str, repo_name: str) 
                 ref_value,
             ],
             timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+            retry_attempts=GIT_RETRY_ATTEMPTS,
+            retry_delay=GIT_RETRY_DELAY_SECONDS,
         )
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         logger.warning(
@@ -1184,6 +1191,8 @@ def _fetch_commit_with_fallback(repo_path: str, ref_value: str, repo_name: str) 
             _run_git(
                 ["git", "-C", repo_path, GIT_FETCH_CMD, GIT_REMOTE_ORIGIN],
                 timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+                retry_attempts=GIT_RETRY_ATTEMPTS,
+                retry_delay=GIT_RETRY_DELAY_SECONDS,
             )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
             logger.warning("Fallback fetch also failed for %s: %s", repo_name, e)
@@ -1414,12 +1423,16 @@ def _try_fetch_and_checkout_tag(repo_path: str, ref_value: str, repo_name: str) 
                     f"refs/tags/{ref_value}",
                 ],
                 timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+                retry_attempts=GIT_RETRY_ATTEMPTS,
+                retry_delay=GIT_RETRY_DELAY_SECONDS,
             )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             try:
                 _run_git(
                     ["git", "-C", repo_path, GIT_FETCH_CMD, GIT_TAGS_FLAG],
                     timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+                    retry_attempts=GIT_RETRY_ATTEMPTS,
+                    retry_delay=GIT_RETRY_DELAY_SECONDS,
                 )
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
                 # If that fails, try fetching with an explicit refspec to force updating the local tag
@@ -1433,6 +1446,8 @@ def _try_fetch_and_checkout_tag(repo_path: str, ref_value: str, repo_name: str) 
                         f"refs/tags/{ref_value}:refs/tags/{ref_value}",
                     ],
                     timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+                    retry_attempts=GIT_RETRY_ATTEMPTS,
+                    retry_delay=GIT_RETRY_DELAY_SECONDS,
                 )
 
         # Checkout the tag
@@ -1471,6 +1486,8 @@ def _try_checkout_as_branch(repo_path: str, ref_value: str, repo_name: str) -> b
         _run_git(
             ["git", "-C", repo_path, GIT_FETCH_CMD, GIT_REMOTE_ORIGIN, ref_value],
             timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+            retry_attempts=GIT_RETRY_ATTEMPTS,
+            retry_delay=GIT_RETRY_DELAY_SECONDS,
         )
         _run_git(
             ["git", "-C", repo_path, GIT_CHECKOUT_CMD, ref_value],
@@ -1560,6 +1577,8 @@ def _update_existing_repo_to_branch_or_tag(
         _run_git(
             ["git", "-C", repo_path, GIT_FETCH_CMD, GIT_REMOTE_ORIGIN],
             timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+            retry_attempts=GIT_RETRY_ATTEMPTS,
+            retry_delay=GIT_RETRY_DELAY_SECONDS,
         )
     except (
         subprocess.CalledProcessError,
@@ -1809,11 +1828,14 @@ def _clone_new_repo_to_branch_or_tag(
         )
 
     last_exc: subprocess.CalledProcessError | subprocess.TimeoutExpired | None = None
-    for index, (command, branch_name) in enumerate(clone_commands):
+    for command, branch_name in clone_commands:
         try:
             if os.path.isdir(repo_path):
                 shutil.rmtree(repo_path, ignore_errors=True)
-            clone_retry_attempts = GIT_RETRY_ATTEMPTS if index == 0 else 1
+            # _run_git retries cannot clean a partially created destination between attempts.
+            # Use a single clone attempt per strategy to avoid retries failing with
+            # "destination path already exists".
+            clone_retry_attempts = 1
             _run_git(
                 command,
                 cwd=plugins_dir,

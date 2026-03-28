@@ -445,6 +445,61 @@ class TestDbUtils(unittest.TestCase):
             )
             self.assertIsNone(cursor.fetchone())
 
+    def test_initialize_database_preserves_mesh_from_stale_temp_when_temp_lacks_mesh(
+        self,
+    ):
+        """Stale-temp meshnet values should not be dropped when temp schema is older."""
+        with sqlite3.connect(self.test_db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "CREATE TABLE message_map (meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT)"
+            )
+            cursor.execute(
+                "INSERT INTO message_map VALUES (?, ?, ?, ?)",
+                ("main", "$evt-main", "!room", "main-payload"),
+            )
+            # Older temp table schema without meshtastic_meshnet.
+            cursor.execute(
+                "CREATE TABLE message_map_old_temp (meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT)"
+            )
+            cursor.execute(
+                "INSERT INTO message_map_old_temp VALUES (?, ?, ?, ?)",
+                ("temp", "$evt-temp", "!room", "temp-payload"),
+            )
+            # Stale temp contains meshnet data that must be preserved.
+            cursor.execute(
+                "CREATE TABLE message_map_stale_temp (meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT, meshtastic_meshnet TEXT)"
+            )
+            cursor.execute(
+                "INSERT INTO message_map_stale_temp VALUES (?, ?, ?, ?, ?)",
+                ("stale", "$evt-stale", "!room", "stale-payload", "mesh-stale"),
+            )
+            conn.commit()
+
+        initialize_database()
+
+        with sqlite3.connect(self.test_db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT meshtastic_id, matrix_event_id, meshtastic_meshnet FROM message_map ORDER BY matrix_event_id"
+            )
+            self.assertEqual(
+                cursor.fetchall(),
+                [
+                    ("main", "$evt-main", None),
+                    ("stale", "$evt-stale", "mesh-stale"),
+                    ("temp", "$evt-temp", None),
+                ],
+            )
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='message_map_old_temp'"
+            )
+            self.assertIsNone(cursor.fetchone())
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='message_map_stale_temp'"
+            )
+            self.assertIsNone(cursor.fetchone())
+
     def test_longname_operations(self):
         """
         Tests saving and retrieving longnames by Meshtastic ID, including handling of non-existent entries.

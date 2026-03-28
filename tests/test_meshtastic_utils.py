@@ -2039,10 +2039,13 @@ def test_reconnect_attempts_connection(
 
     mock_connect.side_effect = _connect_side_effect
 
+    import copy
+
     import mmrelay.meshtastic_utils as mu
 
     original_config = mu.config
     test_config = {"meshtastic": {"connection_type": "tcp", "host": "127.0.0.1"}}
+    expected_config = copy.deepcopy(test_config)
     mu.config = test_config
     original_backoff = mu.DEFAULT_BACKOFF_TIME
     mu.DEFAULT_BACKOFF_TIME = 0
@@ -2063,7 +2066,7 @@ def test_reconnect_attempts_connection(
     asyncio.run(_run())
 
     # Reconnection now passes config to ensure matrix_rooms is re-initialized
-    mock_connect.assert_called_once_with(test_config, True)
+    mock_connect.assert_called_once_with(expected_config, True)
 
 
 def test_check_connection_function_exists(reset_meshtastic_globals):

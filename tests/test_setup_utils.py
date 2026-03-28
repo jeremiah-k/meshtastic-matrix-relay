@@ -261,6 +261,30 @@ class TestSetupUtils(unittest.TestCase):
         expected_path = Path("/home/user/.config/systemd/user/mmrelay.service")
         self.assertEqual(service_path, expected_path)
 
+    @patch("mmrelay.setup_utils.Path.home")
+    def test_get_user_service_path_with_absolute_xdg_config_home(self, mock_home):
+        """Absolute XDG_CONFIG_HOME should be used for service path resolution."""
+        mock_home.return_value = Path("/home/user")
+
+        with patch.dict("os.environ", {"XDG_CONFIG_HOME": "/tmp/xdg-config"}):
+            service_path = get_user_service_path()
+
+        expected_path = Path("/tmp/xdg-config/systemd/user/mmrelay.service")
+        self.assertEqual(service_path, expected_path)
+
+    @patch("mmrelay.setup_utils.Path.home")
+    def test_get_user_service_path_with_relative_xdg_config_home_falls_back(
+        self, mock_home
+    ):
+        """Relative XDG_CONFIG_HOME should be ignored to avoid CWD-relative writes."""
+        mock_home.return_value = Path("/home/user")
+
+        with patch.dict("os.environ", {"XDG_CONFIG_HOME": "relative/config"}):
+            service_path = get_user_service_path()
+
+        expected_path = Path("/home/user/.config/systemd/user/mmrelay.service")
+        self.assertEqual(service_path, expected_path)
+
     @patch("mmrelay.setup_utils.get_user_service_path")
     def test_service_exists_true(self, mock_get_path):
         """Test service_exists when service file exists."""
@@ -912,6 +936,34 @@ Description=MMRelay Service
 [Service]
 Environment=PATH=%h/.local/bin
 ExecStart=/usr/bin/env MMRELAY_HOME=%h/.mmrelay mmrelay
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+"""
+
+        with patch(
+            "mmrelay.setup_utils.get_template_service_path", return_value="/tmp/t"
+        ):
+            result, reason = service_needs_update()
+
+        self.assertFalse(result)
+        self.assertIn("up to date", reason)
+
+    @patch("os.path.exists")
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("os.path.getmtime")
+    def test_service_needs_update_env_launcher_with_inline_path_supported(
+        self, mock_getmtime, mock_read_service, mock_exists
+    ):
+        """Inline PATH assignment in ExecStart env launchers should satisfy PATH checks."""
+        mock_exists.return_value = True
+        mock_getmtime.side_effect = [1, 1]
+        mock_read_service.return_value = """[Unit]
+Description=MMRelay Service
+
+[Service]
+ExecStart=/usr/bin/env PATH=%h/.local/bin MMRELAY_HOME=%h/.mmrelay mmrelay
 Restart=on-failure
 
 [Install]

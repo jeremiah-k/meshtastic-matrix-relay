@@ -165,7 +165,16 @@ def get_user_service_path() -> Path:
     """
     xdg_config_home = os.environ.get("XDG_CONFIG_HOME")
     if xdg_config_home:
-        service_dir = Path(xdg_config_home) / "systemd" / "user"
+        xdg_path = Path(xdg_config_home).expanduser()
+        if xdg_path.is_absolute():
+            service_dir = xdg_path / "systemd" / "user"
+        else:
+            logger.warning(
+                "Ignoring non-absolute XDG_CONFIG_HOME=%s; falling back to %s",
+                xdg_config_home,
+                SYSTEMD_USER_DIR,
+            )
+            service_dir = Path.home() / SYSTEMD_USER_DIR
     else:
         service_dir = Path.home() / SYSTEMD_USER_DIR
     return service_dir / SYSTEMD_SERVICE_FILENAME
@@ -586,10 +595,14 @@ def service_needs_update() -> tuple[bool, str]:
     cmd_basename = os.path.basename(cmd_token)
 
     env_target_token: str | None = None
+    env_path_assignment: str | None = None
     if cmd_basename == "env":
         for token in exec_tokens[1:]:
             # Skip env assignments/options and capture the first command token.
             if token.startswith("-"):
+                continue
+            if token.startswith("PATH="):
+                env_path_assignment = token[len("PATH=") :]
                 continue
             if "=" in token:
                 continue
@@ -627,7 +640,11 @@ def service_needs_update() -> tuple[bool, str]:
             "%h/.local/pipx/venvs/mmrelay/bin" in line or "%h/.local/bin" in line
             for line in environment_lines
         )
-        if not path_in_environment:
+        path_in_exec_env = env_path_assignment is not None and (
+            "%h/.local/pipx/venvs/mmrelay/bin" in env_path_assignment
+            or "%h/.local/bin" in env_path_assignment
+        )
+        if not (path_in_environment or path_in_exec_env):
             return True, "Service PATH does not include common user-bin locations"
 
     # Check if the service file has been modified recently

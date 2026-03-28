@@ -51,9 +51,11 @@ jobs:
           fi
           cache_dir="${RUNNER_TEMP}/meshtasticd-image-cache"
           cache_path="${cache_dir}/${digest}.tar"
-          echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
-          echo "cache_key=${RUNNER_OS}-meshtasticd-image-${digest}" >> "${GITHUB_OUTPUT}"
-          echo "cache_path=${cache_path}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "digest=${digest}"
+            echo "cache_key=${RUNNER_OS}-meshtasticd-image-${digest}"
+            echo "cache_path=${cache_path}"
+          } >> "${GITHUB_OUTPUT}"
 
       - name: Derive Synapse image cache metadata
         id: synapse-cache
@@ -66,9 +68,11 @@ jobs:
           fi
           cache_dir="${RUNNER_TEMP}/synapse-image-cache"
           cache_path="${cache_dir}/${digest}.tar"
-          echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
-          echo "cache_key=${RUNNER_OS}-synapse-image-${digest}" >> "${GITHUB_OUTPUT}"
-          echo "cache_path=${cache_path}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "digest=${digest}"
+            echo "cache_key=${RUNNER_OS}-synapse-image-${digest}"
+            echo "cache_path=${cache_path}"
+          } >> "${GITHUB_OUTPUT}"
 
       - name: Restore cached meshtasticd image
         id: meshtasticd-image-cache

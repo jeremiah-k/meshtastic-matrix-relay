@@ -2206,7 +2206,7 @@ def test_rollback_database_sidecar_only_restore_keeps_main_db(tmp_path: Path) ->
     migrated_shm = db_dir / "meshtastic.sqlite-shm"
     migrated_shm.write_text("migrated-shm", encoding="utf-8")
 
-    backup_dir = tmp_path / MIGRATION_BACKUP_DIRNAME
+    backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
     backup_dir.mkdir()
     backup_wal = backup_dir / "meshtastic.sqlite-wal.backup"
     backup_wal.write_text("backup-wal", encoding="utf-8")

@@ -1204,7 +1204,11 @@ class Plugin:
                     "origin",
                     "deadbeef",
                 ],
-                {"timeout": TEST_GIT_TIMEOUT},
+                {
+                    "timeout": TEST_GIT_TIMEOUT,
+                    "retry_attempts": pl.GIT_RETRY_ATTEMPTS,
+                    "retry_delay": pl.GIT_RETRY_DELAY_SECONDS,
+                },
             ),
             # Checkout specific commit (succeeds after fetch)
             (
@@ -2036,7 +2040,7 @@ class TestGitOperations(BaseGitTest):
 
     @patch("mmrelay.plugin_loader._run")
     def test_run_git_with_defaults(self, mock_run):
-        """Test _run_git uses default retry settings."""
+        """Test _run_git does not force retries unless explicitly requested."""
         from mmrelay.plugin_loader import _run_git
 
         _run_git(["git", "status"])
@@ -2045,8 +2049,8 @@ class TestGitOperations(BaseGitTest):
         call_args = mock_run.call_args
         self.assertEqual(call_args[0][0], ["git", "status"])
         self.assertEqual(call_args[1]["timeout"], pl.GIT_COMMAND_TIMEOUT_SECONDS)
-        self.assertEqual(call_args[1]["retry_attempts"], pl.GIT_RETRY_ATTEMPTS)
-        self.assertEqual(call_args[1]["retry_delay"], pl.GIT_RETRY_DELAY_SECONDS)
+        self.assertNotIn("retry_attempts", call_args[1])
+        self.assertNotIn("retry_delay", call_args[1])
         self.assertIn("env", call_args[1])
         self.assertEqual(call_args[1]["env"]["GIT_TERMINAL_PROMPT"], "0")
 
@@ -2395,6 +2399,8 @@ class TestGitOperations(BaseGitTest):
                     "refs/tags/v1.0.0:refs/tags/v1.0.0",
                 ],
                 timeout=TEST_GIT_TIMEOUT,
+                retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
             ),
             mock_run_git.call_args_list,
         )
@@ -2531,6 +2537,8 @@ class TestGitOperations(BaseGitTest):
                     "refs/tags/v1.0.1",
                 ],
                 timeout=TEST_GIT_TIMEOUT,
+                retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
             ),
             mock_run_git.call_args_list,
         )
@@ -3979,7 +3987,7 @@ class TestDependencyInstallation(BaseGitTest):
             ],
             cwd=self.temp_plugins_dir,
             timeout=TEST_GIT_TIMEOUT,
-            retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+            retry_attempts=1,
         )
         mock_logger.info.assert_called_with(
             "Cloned repository %s from %s at %s %s",
@@ -4118,7 +4126,7 @@ class TestDependencyInstallation(BaseGitTest):
                 ],
                 cwd=self.temp_plugins_dir,
                 timeout=TEST_GIT_TIMEOUT,
-                retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                retry_attempts=1,
             ),
             # Check if already at the tag's commit
             call(
@@ -4145,6 +4153,8 @@ class TestDependencyInstallation(BaseGitTest):
                     "refs/tags/v1.0.0",
                 ],
                 timeout=TEST_GIT_TIMEOUT,
+                retry_attempts=pl.GIT_RETRY_ATTEMPTS,
+                retry_delay=pl.GIT_RETRY_DELAY_SECONDS,
             ),
             call(
                 ["git", "-C", f"{self.temp_plugins_dir}/repo", "checkout", "v1.0.0"],

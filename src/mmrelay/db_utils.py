@@ -812,6 +812,7 @@ def initialize_database() -> None:
             temp_columns = {column[1] for column in cursor.fetchall()}
             cursor.execute(_PRAGMA_MESSAGE_MAP_STALE_TEMP_INFO_SQL)
             stale_columns = {column[1] for column in cursor.fetchall()}
+            merge_target = _temp_table
             if _col_mesh in temp_columns:
                 stale_mesh_expr = _col_mesh if _col_mesh in stale_columns else "NULL"
                 cursor.execute(
@@ -821,18 +822,26 @@ def initialize_database() -> None:
                     f"FROM {_MESSAGE_MAP_STALE_TEMP_TABLE}"
                 )
             else:
-                cursor.execute(
-                    f"INSERT OR IGNORE INTO {_temp_table} "  # nosec B608
-                    f"({_col_id}, {_col_evt}, {_col_room}, {_col_text}) "
-                    f"SELECT {_col_id}, {_col_evt}, {_col_room}, {_col_text} "
-                    f"FROM {_MESSAGE_MAP_STALE_TEMP_TABLE}"
-                )
+                if _col_mesh in stale_columns:
+                    # Preserve meshnet values by merging directly into message_map when
+                    # the destination temp schema does not yet contain meshtastic_meshnet.
+                    cursor.execute(
+                        _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_STALE_TEMP_WITH_MESH_SQL
+                    )
+                    merge_target = MESSAGE_MAP_TABLE
+                else:
+                    cursor.execute(
+                        f"INSERT OR IGNORE INTO {_temp_table} "  # nosec B608
+                        f"({_col_id}, {_col_evt}, {_col_room}, {_col_text}) "
+                        f"SELECT {_col_id}, {_col_evt}, {_col_room}, {_col_text} "
+                        f"FROM {_MESSAGE_MAP_STALE_TEMP_TABLE}"
+                    )
             cursor.execute(_DROP_TABLE_MESSAGE_MAP_STALE_TEMP_SQL)
             stale_table_exists = False
             logger.info(
                 "Merged rows from stale temporary table %s into %s",
                 _MESSAGE_MAP_STALE_TEMP_TABLE,
-                _temp_table,
+                merge_target,
             )
 
         if (
@@ -2475,7 +2484,7 @@ async def async_store_message_map(
         meshtastic_text (str): Text content of the Meshtastic message.
         meshtastic_meshnet (str | None): Optional meshnet identifier associated with the message.
     """
-    manager = await asyncio.to_thread(_get_db_manager)
+    manager = _get_db_manager()
     # Normalize IDs to a consistent string form to match other DB helpers.
     id_key = str(meshtastic_id)
 
@@ -2488,7 +2497,8 @@ async def async_store_message_map(
             meshtastic_text,
             meshtastic_meshnet,
         )
-        await manager.run_async(
+        await asyncio.to_thread(
+            manager.run_sync,
             lambda cursor: _store_message_map_core(
                 cursor,
                 id_key,
@@ -2510,10 +2520,11 @@ async def async_prune_message_map(msgs_to_keep: int) -> None:
     Parameters:
         msgs_to_keep (int): Number of most recent rows to retain; older rows will be deleted.
     """
-    manager = await asyncio.to_thread(_get_db_manager)
+    manager = _get_db_manager()
 
     try:
-        pruned = await manager.run_async(
+        pruned = await asyncio.to_thread(
+            manager.run_sync,
             lambda cursor: _prune_message_map_core(cursor, msgs_to_keep),
             write=True,
         )

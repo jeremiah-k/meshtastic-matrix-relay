@@ -429,7 +429,7 @@ class Plugin(BasePlugin):
         !map size=W,H: Set image dimensions (max 1000x1000)
 
     Configuration:
-        zoom (int): Default zoom level (default: 8)
+        zoom (int): Default zoom level (default: 12)
         image_width/image_height (int): Default image size (default: 1000x1000)
         anonymize (bool): Deprecated; coordinates are not altered by this plugin.
         radius (int): Deprecated; retained for backward compatibility.
