@@ -30,12 +30,17 @@ jobs:
             resolved_digest=""
             if command -v docker >/dev/null 2>&1; then
               # Resolve the manifest digest when available so cache keys track image content.
-              resolved_digest="$(
+              resolved_digest_raw="$(
                 docker buildx imagetools inspect "${HELM_IMAGE}" --format '{{.Manifest.Digest}}' 2>/dev/null || true
               )"
-              if [[ "${resolved_digest}" == "<no value>" ]]; then
-                resolved_digest=""
-              fi
+              # Some docker/buildx versions may ignore --format and emit a multi-line report.
+              # Extract only a strict sha256 digest token so GITHUB_OUTPUT remains valid.
+              resolved_digest="$(
+                printf '%s\n' "${resolved_digest_raw}" \
+                  | tr -d '\r' \
+                  | grep -Eo 'sha256:[a-f0-9]{64}' \
+                  | head -n1 || true
+              )"
             fi
             resolved_digest="${resolved_digest#sha256:}"
             if [[ -n "${resolved_digest}" ]]; then
