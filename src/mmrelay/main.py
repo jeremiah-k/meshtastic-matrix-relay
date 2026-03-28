@@ -455,7 +455,12 @@ async def main(config: dict[str, Any]) -> None:
 
         if result is not None:
             if isinstance(result, (KeyboardInterrupt, SystemExit)):
-                raise result
+                logger.error(
+                    "Error while stopping %s (interrupted); continuing shutdown",
+                    step_name,
+                    exc_info=(type(result), result, result.__traceback__),
+                )
+                return
             logger.error(
                 "Error while stopping %s",
                 step_name,
