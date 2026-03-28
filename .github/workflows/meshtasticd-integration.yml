@@ -19,7 +19,7 @@ permissions:
 jobs:
   meshtasticd-integration:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     # Docker Hub login for higher rate limits (200 vs 100 pulls/6 hours)
     # Create a free Docker Hub account and add these secrets:

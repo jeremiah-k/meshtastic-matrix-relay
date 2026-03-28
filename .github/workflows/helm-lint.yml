@@ -147,7 +147,7 @@ jobs:
 
       - name: Save Helm image tar
         id: helm-image-tar
-        if: ${{ success() && steps.helm-image-cache.outputs.cache-hit != 'true' }}
+        if: ${{ always() && steps.helm-image-cache.outputs.cache-hit != 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -171,7 +171,7 @@ jobs:
           echo "Helm image not present locally; skipping cache archive."
 
       - name: Persist cached Helm image
-        if: ${{ success() && steps.helm-image-cache.outputs.cache-hit != 'true' && steps.helm-image-tar.outputs.saved == 'true' }}
+        if: ${{ always() && steps.helm-image-cache.outputs.cache-hit != 'true' && steps.helm-image-tar.outputs.saved == 'true' }}
         uses: actions/cache/save@v4
         with:
           path: ${{ steps.helm-image-cache-meta.outputs.cache_path }}

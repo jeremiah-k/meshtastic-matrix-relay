@@ -1385,11 +1385,6 @@ def _missing_credentials_keys(credentials: dict[str, Any]) -> list[str]:
     missing_keys: list[str] = []
     for key in REQUIRED_CREDENTIALS_KEYS:
         value = credentials.get(key)
-        if key == CONFIG_KEY_USER_ID:
-            value = _first_nonblank_str(
-                credentials.get(CONFIG_KEY_USER_ID),
-                credentials.get(CONFIG_KEY_BOT_USER_ID),
-            )
         if not isinstance(value, str) or not value.strip():
             missing_keys.append(key)
     return missing_keys

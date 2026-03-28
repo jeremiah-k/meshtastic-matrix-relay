@@ -978,6 +978,33 @@ WantedBy=default.target
         self.assertFalse(result)
         self.assertIn("up to date", reason)
 
+    @patch("os.path.exists")
+    @patch("mmrelay.setup_utils.read_service_file")
+    def test_service_needs_update_home_dir_not_matched_as_home_flag(
+        self, mock_read_service, mock_exists
+    ) -> None:
+        """Verify --home-dir is not matched as --home flag (token-level detection)."""
+        mock_exists.return_value = True
+        mock_read_service.return_value = """[Unit]
+Description=MMRelay Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/mmrelay --home-dir /some/path
+Environment=PATH=/usr/bin
+
+[Install]
+WantedBy=multi-user.target
+"""
+
+        with patch(
+            "mmrelay.setup_utils.get_template_service_path", return_value="/tmp/t"
+        ):
+            needs_update, message = service_needs_update()
+            self.assertTrue(needs_update)
+            self.assertIn("missing home configuration", message)
+
     @patch.dict(os.environ, {}, clear=True)
     @patch("getpass.getuser")
     @patch("shutil.which")

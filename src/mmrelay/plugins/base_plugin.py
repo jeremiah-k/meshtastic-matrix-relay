@@ -233,10 +233,9 @@ class BasePlugin(ABC):
                     expected_section is not None
                     and expected_section in candidate_sections
                 ):
-                    candidate_sections = (expected_section,) + tuple(
-                        section
-                        for section in candidate_sections
-                        if section != expected_section
+                    candidate_sections = (
+                        expected_section,
+                        *(s for s in candidate_sections if s != expected_section),
                     )
 
                 configured_section = next(

@@ -219,7 +219,12 @@ class TestDbUtils(unittest.TestCase):
             _validate_identifier("DROP TABLE", frozenset({"message_map"}))
 
     def test_db_utils_import_guard_for_message_constants(self):
-        """Changing message-map constants should fail static SQL import guard."""
+        """Changing message-map constants should fail static SQL import guard.
+
+        Note: Uses importlib.reload which can cause cross-test interference if other
+        test modules have cached imports from mmrelay.db_utils. These tests should run
+        in process isolation (e.g., pytest -x or xdist per-file mode) for reliability.
+        """
         import mmrelay.constants.database as db_consts
         import mmrelay.db_utils as db_utils_mod
 
@@ -233,7 +238,12 @@ class TestDbUtils(unittest.TestCase):
             importlib.reload(db_utils_mod)
 
     def test_db_utils_import_guard_for_names_constants(self):
-        """Changing names-table constants should fail static SQL import guard."""
+        """Changing names-table constants should fail static SQL import guard.
+
+        Note: Uses importlib.reload which can cause cross-test interference if other
+        test modules have cached imports from mmrelay.db_utils. These tests should run
+        in process isolation (e.g., pytest -x or xdist per-file mode) for reliability.
+        """
         import mmrelay.constants.database as db_consts
         import mmrelay.db_utils as db_utils_mod
 

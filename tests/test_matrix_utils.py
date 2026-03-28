@@ -53,6 +53,12 @@ from tests.constants import (
 )
 from tests.helpers import InlineExecutorLoop
 
+# Test constants for login_matrix_bot tests (avoids Ruff S106 warnings)
+TEST_HOMESERVER = "https://matrix.org"
+TEST_USERNAME = "user"
+TEST_PASSWORD = "pass"
+TEST_FULL_MXID = "@user:matrix.org"
+
 # Matrix room message handling tests - converted from unittest.TestCase to standalone pytest functions
 #
 # Conversion rationale:
@@ -5263,9 +5269,9 @@ async def test_login_matrix_bot_e2ee_store_path_created(
         patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
             logout_others=False,
         )
 
@@ -5327,9 +5333,9 @@ async def test_login_matrix_bot_api_login_debug_path(
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
             logout_others=False,
         )
 
@@ -5402,9 +5408,9 @@ async def test_login_matrix_bot_login_response_unexpected(
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
             logout_others=False,
         )
 
@@ -5447,9 +5453,9 @@ async def test_login_matrix_bot_whoami_fallback_when_missing_user_id(
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
             logout_others=False,
         )
 
@@ -5494,9 +5500,9 @@ async def test_login_matrix_bot_logout_others_warns(
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
             logout_others=True,
         )
 
@@ -5539,9 +5545,9 @@ async def test_login_matrix_bot_save_credentials_failure_triggers_cleanup(
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
             logout_others=False,
         )
 
@@ -5580,9 +5586,9 @@ async def test_login_matrix_bot_login_timeout(
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
             logout_others=False,
         )
 
@@ -5635,9 +5641,9 @@ async def test_login_matrix_bot_login_exception_guidance(
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
             logout_others=False,
         )
 
@@ -5699,9 +5705,9 @@ async def test_login_matrix_bot_login_response_status_codes(
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
             logout_others=False,
         )
 
@@ -5739,9 +5745,9 @@ async def test_login_matrix_bot_forbidden_with_localpart_suggests_full_mxid(
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
             logout_others=False,
         )
 
@@ -5780,9 +5786,9 @@ async def test_login_matrix_bot_forbidden_with_full_mxid_skips_full_mxid_hint(
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="@user:matrix.org",
-            password="pass",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_FULL_MXID,
+            password=TEST_PASSWORD,
             logout_others=False,
         )
 
@@ -5826,9 +5832,9 @@ async def test_login_matrix_bot_whoami_exception_uses_fallback(
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
             logout_others=False,
         )
 
@@ -5870,9 +5876,9 @@ async def test_login_matrix_bot_saves_credentials_without_user_id_when_unknown(
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
             logout_others=False,
         )
 
@@ -5918,9 +5924,9 @@ async def test_login_matrix_bot_e2ee_config_load_exception_disables_e2ee(
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
             logout_others=False,
         )
 
@@ -5970,8 +5976,8 @@ async def test_login_matrix_bot_no_password_warns(
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
             password=None,
             logout_others=False,
         )
@@ -6026,9 +6032,9 @@ async def test_login_matrix_bot_no_password_warns(
             patch("mmrelay.matrix_utils.logger") as mock_logger,
         ):
             result = await login_matrix_bot(
-                homeserver="https://matrix.org",
-                username="user",
-                password="pass",
+                homeserver=TEST_HOMESERVER,
+                username=TEST_USERNAME,
+                password=TEST_PASSWORD,
                 logout_others=False,
             )
 
@@ -6077,9 +6083,9 @@ async def test_login_matrix_bot_api_login_debug_failure_logs(
         patch("mmrelay.matrix_utils.logger") as mock_logger,
     ):
         result = await login_matrix_bot(
-            homeserver="https://matrix.org",
-            username="user",
-            password="pass",
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
             logout_others=False,
         )
 

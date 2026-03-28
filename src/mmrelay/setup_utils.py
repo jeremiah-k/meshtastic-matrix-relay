@@ -303,8 +303,8 @@ def get_template_service_path() -> str | None:
     Locate the mmrelay systemd service template on disk.
 
     Searches a deterministic list of candidate locations (package directory, package/tools,
-    sys.prefix share paths, user local share (~/.local/share), parent-directory development
-    paths, and ./tools) and returns the first existing path.
+    sys.prefix share paths, user local share (~/.local/share), and parent-directory development
+    paths) and returns the first existing path.
 
     If no template is found, the function logs a warning listing all
     attempted locations and returns None.
@@ -565,6 +565,14 @@ def service_needs_update() -> tuple[bool, str]:
         if line.strip().startswith("Environment=")
     ]
 
+    # Tokenize ExecStart first for accurate flag detection
+    try:
+        exec_tokens = shlex.split(exec_start_value)
+    except ValueError:
+        return True, "Service file has invalid ExecStart command"
+    if not exec_tokens:
+        return True, "Service file has empty ExecStart command"
+
     # Check if the service file is using legacy flags (--config, --logfile) instead of --home
     # This ensures migration to v1.3 unified path model
     if "--config" in exec_start_line or "--logfile" in exec_start_line:
@@ -574,7 +582,10 @@ def service_needs_update() -> tuple[bool, str]:
         )
 
     # Accept either --home in ExecStart or MMRELAY_HOME in Environment for compatibility.
-    has_home_flag = "--home" in exec_start_line
+    # Use token-level matching to avoid false positives on flags like --home-dir
+    has_home_flag = any(
+        token == "--home" or token.startswith("--home=") for token in exec_tokens
+    )
     has_home_env = any("MMRELAY_HOME=" in line for line in environment_lines) or (
         "MMRELAY_HOME=" in exec_start_line
     )
@@ -583,13 +594,6 @@ def service_needs_update() -> tuple[bool, str]:
             True,
             "Service file is missing home configuration (--home or MMRELAY_HOME)",
         )
-
-    try:
-        exec_tokens = shlex.split(exec_start_value)
-    except ValueError:
-        return True, "Service file has invalid ExecStart command"
-    if not exec_tokens:
-        return True, "Service file has empty ExecStart command"
 
     cmd_token = exec_tokens[0]
     cmd_basename = os.path.basename(cmd_token)

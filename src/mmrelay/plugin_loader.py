@@ -2748,6 +2748,7 @@ def load_plugins(passed_config: Any = None) -> list[Any]:
                 is_active = False
         else:
             # Custom and community plugins: default to inactive unless specified
+            # Custom plugins take precedence over community plugins.
             if plugin_name in custom_plugins_config:
                 plugin_config = custom_plugins_config.get(plugin_name, {})
             elif plugin_name in community_plugins_config:
