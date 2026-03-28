@@ -679,9 +679,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         self, mock_get_template, mock_get_executable, mock_read_service
     ):
         """
-        Test that service_needs_update returns True when the executable path in the service file differs from the current executable.
-
-        Verifies that the function detects when the service file's ExecStart path does not match the current executable and provides an appropriate reason.
+        Test that service_needs_update flags legacy semantics even with explicit executables.
         """
         mock_read_service.return_value = "ExecStart=/old/path/mmrelay"
         mock_get_executable.return_value = "/new/path/mmrelay"
@@ -690,7 +688,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         needs_update, reason = service_needs_update()
 
         self.assertTrue(needs_update)
-        self.assertIn("does not use an acceptable executable", reason)
+        self.assertIn("missing --home flag", reason)
 
     @patch("mmrelay.setup_utils.read_service_file")
     @patch("mmrelay.setup_utils.get_template_service_path")
@@ -833,9 +831,11 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         self, mock_read_service, mock_exists
     ):
         """
-        Verifies that service_needs_update flags an update when the service file's PATH environment is missing common user-bin locations.
+        Verifies that service_needs_update flags an update when PATH lookup is used without a hardened PATH environment.
 
-        Sets up a service file whose ExecStart uses the current Python interpreter (via `-m mmrelay`), mocks a template path and a located mmrelay executable, and asserts that service_needs_update returns `True` with a reason mentioning that the service PATH does not include common user-bin locations.
+        Sets up a service file whose ExecStart uses `mmrelay` via PATH, includes `--home`,
+        and omits PATH environment entries. service_needs_update should return `True`
+        with a reason mentioning missing common user-bin locations.
         """
         # Mock existing service file without proper PATH environment
         mock_exists.return_value = True
@@ -843,12 +843,12 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
     Description=MMRelay Service
     
     [Service]
-    ExecStart={} -m mmrelay
+    ExecStart=mmrelay --home %h/.mmrelay
     Restart=on-failure
     
     [Install]
     WantedBy=default.target
-    """.format(sys.executable)
+    """
 
         # Mock template path and acceptable executables
         with (
@@ -867,6 +867,34 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
             self.assertIn(
                 "Service PATH does not include common user-bin locations", reason
             )
+
+    @patch("os.path.exists")
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("os.path.getmtime")
+    def test_service_needs_update_absolute_launcher_does_not_require_path(
+        self, mock_getmtime, mock_read_service, mock_exists
+    ):
+        """Absolute custom launchers with --home should not be flagged for PATH entries."""
+        mock_exists.return_value = True
+        mock_getmtime.side_effect = [1, 1]
+        mock_read_service.return_value = """[Unit]
+Description=MMRelay Service
+
+[Service]
+ExecStart=/opt/mmrelay/bin/mmrelay-wrapper --home %h/.mmrelay
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+"""
+
+        with patch(
+            "mmrelay.setup_utils.get_template_service_path", return_value="/tmp/t"
+        ):
+            result, reason = service_needs_update()
+
+        self.assertFalse(result)
+        self.assertIn("up to date", reason)
 
     @patch.dict(os.environ, {}, clear=True)
     @patch("getpass.getuser")

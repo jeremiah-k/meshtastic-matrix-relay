@@ -264,7 +264,8 @@ class TestMessageQueue(unittest.TestCase):
     def test_start_creates_executor_without_event_loop(self, _mock_get_running_loop):
         """start() should still initialize a dedicated executor without an active loop."""
         self.assertIsNone(self.queue._executor)
-        self.queue.start(message_delay=1.0)
+        result = self.queue.start(message_delay=1.0)
+        self.assertTrue(result)
         self.assertIsNotNone(self.queue._executor)
 
     def test_stop_timeout_blocks_restart_until_cleanup_completes(self):
@@ -291,12 +292,14 @@ class TestMessageQueue(unittest.TestCase):
         self.assertTrue(self.queue._stopping)
         self.assertFalse(self.queue._running)
 
-        self.queue.start(message_delay=1.0)
+        start_result = self.queue.start(message_delay=1.0)
+        self.assertFalse(start_result)
         self.assertFalse(self.queue._running)
 
         self.assertFalse(self.queue.reset_failed_stop_state())
         self.queue._processor_task = None
-        self.queue.start(message_delay=1.0)
+        restart_result = self.queue.start(message_delay=1.0)
+        self.assertTrue(restart_result)
         self.assertTrue(self.queue._running)
         self.assertFalse(self.queue._stop_failed)
         self.assertFalse(self.queue._stopping)
@@ -634,10 +637,12 @@ class TestGlobalFunctions(unittest.TestCase):
         self.assertEqual(len(mock_send_function.calls), 0)
 
     def test_start_message_queue_calls_start(self):
-        """start_message_queue should delegate to the global queue."""
+        """start_message_queue should delegate to the global queue and return status."""
         with patch("mmrelay.message_queue._message_queue.start") as mock_start:
-            start_message_queue(1.5)
+            mock_start.return_value = True
+            result = start_message_queue(1.5)
         mock_start.assert_called_once_with(1.5)
+        self.assertTrue(result)
 
 
 @pytest.mark.asyncio

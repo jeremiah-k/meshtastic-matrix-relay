@@ -106,6 +106,38 @@ class TestGetHomeDir:
 
             assert result == installer_path
 
+    def test_get_home_dir_windows_prefers_existing_platform_data_over_marker_only_installer(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Existing platform data should win over a marker-only installer directory."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            local_app_data = root / "LocalAppData"
+            installer_path = local_app_data / "Programs" / WINDOWS_INSTALLER_DIR_NAME
+            installer_path.mkdir(parents=True, exist_ok=True)
+            (installer_path / "mmrelay.bat").write_text("@echo off\n", encoding="utf-8")
+
+            platform_home = root / "PlatformData" / "mmrelay"
+            platform_home.mkdir(parents=True, exist_ok=True)
+            (platform_home / DEFAULT_CONFIG_FILENAME).write_text(
+                "test: true\n", encoding="utf-8"
+            )
+
+            monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+            monkeypatch.delenv("MMRELAY_HOME", raising=False)
+            monkeypatch.delenv("MMRELAY_BASE_DIR", raising=False)
+            monkeypatch.delenv("MMRELAY_DATA_DIR", raising=False)
+            with (
+                patch("sys.platform", "win32"),
+                patch(
+                    "mmrelay.paths.platformdirs.user_data_dir",
+                    return_value=str(platform_home),
+                ),
+            ):
+                result = get_home_dir()
+
+            assert result == platform_home
+
     def test_get_home_dir_windows_platformdirs_fallback(
         self, monkeypatch: pytest.MonkeyPatch
     ):

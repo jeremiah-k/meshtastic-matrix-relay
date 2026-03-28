@@ -253,22 +253,32 @@ def get_home_dir() -> Path:
     if sys.platform != "win32":
         return Path.home() / f".{APP_NAME}"
     else:  # Windows
-        # Check if Windows installer path exists with MMRelay data
-        # This takes precedence over platformdirs for Inno Setup users
+        platform_home = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
+        platform_has_artifacts = platform_home.exists() and _has_mmrelay_artifacts(
+            platform_home
+        )
+
         local_app_data = os.environ.get("LOCALAPPDATA")
         if local_app_data:
             installer_path = (
                 Path(local_app_data) / "Programs" / WINDOWS_INSTALLER_DIR_NAME
             )
-            # Prefer installer home for both established and first-run installs.
-            if installer_path.exists() and (
-                _has_mmrelay_artifacts(installer_path)
-                or _has_windows_installer_markers(installer_path)
-            ):
-                return installer_path
+            if installer_path.exists():
+                installer_has_artifacts = _has_mmrelay_artifacts(installer_path)
+                installer_has_markers = _has_windows_installer_markers(installer_path)
+                if installer_has_artifacts:
+                    return installer_path
+                if installer_has_markers:
+                    if platform_has_artifacts:
+                        logger.info(
+                            "Using existing MMRelay data home at %s instead of marker-only installer directory %s",
+                            platform_home,
+                            installer_path,
+                        )
+                        return platform_home
+                    return installer_path
 
-        # Fall back to platformdirs default
-        return Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
+        return platform_home
 
 
 def get_config_paths(*, explicit: str | None = None) -> list[Path]:

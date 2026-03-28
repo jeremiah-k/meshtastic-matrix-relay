@@ -566,8 +566,15 @@ async def main(config: dict[str, Any]) -> None:
             CONFIG_KEY_MESSAGE_DELAY,
             DEFAULT_MESSAGE_DELAY,
         )
+        queue_started = start_message_queue(message_delay=message_delay)
+        if queue_started is False:
+            queue_status = get_message_queue().get_status()
+            raise RuntimeError(
+                "Failed to start message queue: "
+                f"stop_failed={queue_status.get('stop_failed')} "
+                f"running={queue_status.get('running')}"
+            )
         message_queue_cleanup_needed = True
-        start_message_queue(message_delay=message_delay)
 
         # Connect to Meshtastic
         meshtastic_utils.meshtastic_client = await asyncio.to_thread(

@@ -109,7 +109,7 @@ class MessageQueue:
         )
         return True
 
-    def start(self, message_delay: float = DEFAULT_MESSAGE_DELAY) -> None:
+    def start(self, message_delay: float = DEFAULT_MESSAGE_DELAY) -> bool:
         """
         Activate the message queue and configure the inter-message send delay.
 
@@ -117,6 +117,9 @@ class MessageQueue:
 
         Parameters:
             message_delay (float): Desired delay between consecutive sends in seconds; may trigger a warning if less than or equal to the firmware minimum.
+
+        Returns:
+            bool: True when the queue is running or successfully started, False when startup is blocked (for example, while failed-stop cleanup is still in progress).
         """
         with self._lock:
             self._clear_failed_stop_state_if_recovered_locked()
@@ -124,9 +127,11 @@ class MessageQueue:
                 logger.error(
                     "Message queue cannot start: previous stop timed out and cleanup has not completed yet."
                 )
-                return
-            if self._running or self._stopping:
-                return
+                return False
+            if self._running:
+                return True
+            if self._stopping:
+                return False
 
             # Set the message delay as requested
             self._message_delay = message_delay
@@ -169,6 +174,7 @@ class MessageQueue:
                 logger.debug(
                     "No event loop available, queue processor will start later"
                 )
+            return True
 
     def stop(self) -> None:
         """
@@ -911,14 +917,17 @@ def get_message_queue() -> MessageQueue:
     return _message_queue
 
 
-def start_message_queue(message_delay: float = DEFAULT_MESSAGE_DELAY) -> None:
+def start_message_queue(message_delay: float = DEFAULT_MESSAGE_DELAY) -> bool:
     """
     Start the global message queue processor.
 
     Parameters:
         message_delay (float): Minimum seconds to wait between consecutive message sends.
+
+    Returns:
+        bool: True when the queue is running or successfully started, False when startup is blocked.
     """
-    _message_queue.start(message_delay)
+    return _message_queue.start(message_delay)
 
 
 def stop_message_queue() -> None:

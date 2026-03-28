@@ -10,6 +10,7 @@ import importlib.resources
 # Import version from package
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -513,9 +514,10 @@ def service_needs_update() -> tuple[bool, str]:
 
     Performs these checks in order and reports the first failing condition:
     - No existing user service file is present.
-    - The service's ExecStart line does not contain an acceptable invocation (mmrelay on PATH, "/usr/bin/env mmrelay", or the current Python interpreter using `-m mmrelay`).
-    - Environment PATH entries in the unit do not include common user-bin locations ("%h/.local/pipx/venvs/mmrelay/bin" or "%h/.local/bin").
     - The service file uses legacy flags (--config, --logfile) instead of the v1.3 --home flag.
+    - The service file is missing the v1.3 --home flag.
+    - The service's ExecStart line does not contain a recognizable launcher, unless it uses an explicit custom absolute/specifier path.
+    - Environment PATH entries in the unit do not include common user-bin locations ("%h/.local/pipx/venvs/mmrelay/bin" or "%h/.local/bin") when the service relies on PATH lookup for `mmrelay`.
     - A template service file exists on disk and has a modification time newer than the installed service file.
 
     Returns:
@@ -531,16 +533,7 @@ def service_needs_update() -> tuple[bool, str]:
     # Get the template service path
     template_path = get_template_service_path()
 
-    # Get the acceptable executable paths
-    mmrelay_path = shutil.which("mmrelay")
-    acceptable_execs = [
-        f"{_quote_if_needed(sys.executable)} -m mmrelay",
-        "/usr/bin/env mmrelay",
-    ]
-    if mmrelay_path:
-        acceptable_execs.append(_quote_if_needed(mmrelay_path))
-
-    # Check if the ExecStart line in the existing service file contains an acceptable executable form
+    # Check if the ExecStart line exists
     exec_start_line = next(
         (
             line
@@ -553,26 +546,9 @@ def service_needs_update() -> tuple[bool, str]:
     if not exec_start_line:
         return True, "Service file is missing ExecStart line"
 
-    if not any(exec_str in exec_start_line for exec_str in acceptable_execs):
-        return (
-            True,
-            "Service file does not use an acceptable executable "
-            f"({' or '.join(acceptable_execs)}).",
-        )
-
-    # Check if the PATH environment includes common user-bin locations
-    # Look specifically in Environment lines, not the entire file
-    environment_lines = [
-        line
-        for line in existing_service.splitlines()
-        if line.strip().startswith("Environment=")
-    ]
-    path_in_environment = any(
-        "%h/.local/pipx/venvs/mmrelay/bin" in line or "%h/.local/bin" in line
-        for line in environment_lines
-    )
-    if not path_in_environment:
-        return True, "Service PATH does not include common user-bin locations"
+    exec_start_value = exec_start_line.split("=", 1)[1].strip()
+    if not exec_start_value:
+        return True, "Service file has empty ExecStart command"
 
     # Check if the service file is using legacy flags (--config, --logfile) instead of --home
     # This ensures migration to v1.3 unified path model
@@ -586,6 +562,49 @@ def service_needs_update() -> tuple[bool, str]:
     # A valid v1.3 service file should have --home
     if "--home" not in exec_start_line:
         return True, "Service file is missing --home flag (v1.3 unified path model)"
+
+    try:
+        exec_tokens = shlex.split(exec_start_value)
+    except ValueError:
+        return True, "Service file has invalid ExecStart command"
+    if not exec_tokens:
+        return True, "Service file has empty ExecStart command"
+
+    cmd_token = exec_tokens[0]
+    cmd_basename = os.path.basename(cmd_token)
+    uses_python_module = any(
+        token == "-m"
+        and index + 1 < len(exec_tokens)
+        and exec_tokens[index + 1] == "mmrelay"
+        for index, token in enumerate(exec_tokens)
+    )
+    uses_env_mmrelay = (
+        cmd_basename == "env" and len(exec_tokens) > 1 and exec_tokens[1] == "mmrelay"
+    )
+    launches_mmrelay_binary = cmd_basename == "mmrelay"
+    launches_mmrelay = uses_python_module or uses_env_mmrelay or launches_mmrelay_binary
+
+    # Allow explicit custom launchers (absolute paths or systemd specifier paths).
+    is_explicit_custom_launcher = os.path.isabs(cmd_token) or cmd_token.startswith("%")
+    if not launches_mmrelay and not is_explicit_custom_launcher:
+        return True, "Service file does not use a recognizable mmrelay launcher"
+
+    # Only require PATH hardening when ExecStart depends on PATH lookup.
+    uses_path_lookup = uses_env_mmrelay or (
+        launches_mmrelay_binary and not is_explicit_custom_launcher
+    )
+    if uses_path_lookup:
+        environment_lines = [
+            line
+            for line in existing_service.splitlines()
+            if line.strip().startswith("Environment=")
+        ]
+        path_in_environment = any(
+            "%h/.local/pipx/venvs/mmrelay/bin" in line or "%h/.local/bin" in line
+            for line in environment_lines
+        )
+        if not path_in_environment:
+            return True, "Service PATH does not include common user-bin locations"
 
     # Check if the service file has been modified recently
     service_path = get_user_service_path()
