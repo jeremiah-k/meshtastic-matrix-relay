@@ -235,6 +235,55 @@ class TestBasePlugin(unittest.TestCase):
         self.assertEqual(plugin.plugin_type, "custom")
         self.assertTrue(plugin.config["active"])
 
+    def test_non_core_plugin_uses_legacy_plugins_global_require_mention_fallback(self):
+        """Non-core plugins should honor legacy plugins.require_bot_mention fallback."""
+        legacy_global = {
+            "plugins": {"require_bot_mention": True},
+            "custom-plugins": {"test_plugin": {"active": True}},
+        }
+        class_file = "/tmp/custom_plugins/test_plugin.py"  # nosec B108
+
+        with (
+            patch("mmrelay.plugins.base_plugin.config", legacy_global),
+            patch(
+                "mmrelay.plugins.base_plugin.inspect.getfile", return_value=class_file
+            ),
+            patch(
+                "mmrelay.plugin_loader.get_custom_plugin_dirs",
+                return_value=["/tmp/custom_plugins"],  # nosec B108
+            ),
+            patch("mmrelay.plugin_loader.get_community_plugin_dirs", return_value=[]),
+        ):
+            plugin = MockPlugin()
+
+        self.assertTrue(plugin.get_require_bot_mention())
+
+    def test_non_core_plugin_prefers_own_section_global_require_mention(self):
+        """Non-core plugins should prioritize section-local global over legacy fallback."""
+        section_precedence = {
+            "plugins": {"require_bot_mention": True},
+            "custom-plugins": {
+                "require_bot_mention": False,
+                "test_plugin": {"active": True},
+            },
+        }
+        class_file = "/tmp/custom_plugins/test_plugin.py"  # nosec B108
+
+        with (
+            patch("mmrelay.plugins.base_plugin.config", section_precedence),
+            patch(
+                "mmrelay.plugins.base_plugin.inspect.getfile", return_value=class_file
+            ),
+            patch(
+                "mmrelay.plugin_loader.get_custom_plugin_dirs",
+                return_value=["/tmp/custom_plugins"],  # nosec B108
+            ),
+            patch("mmrelay.plugin_loader.get_community_plugin_dirs", return_value=[]),
+        ):
+            plugin = MockPlugin()
+
+        self.assertFalse(plugin.get_require_bot_mention())
+
     def test_start_stop_schedule_thread(self):
         """Plugins should register and clear scheduled jobs via start/stop."""
         with (

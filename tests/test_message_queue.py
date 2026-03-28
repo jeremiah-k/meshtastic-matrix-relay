@@ -267,8 +267,8 @@ class TestMessageQueue(unittest.TestCase):
         self.queue.start(message_delay=1.0)
         self.assertIsNotNone(self.queue._executor)
 
-    def test_stop_timeout_blocks_restart_until_manual_reset(self):
-        """Timed-out stop should keep failed-stop state until reset."""
+    def test_stop_timeout_blocks_restart_until_cleanup_completes(self):
+        """Timed-out stop should auto-recover once queue resources are fully cleaned up."""
         self.queue._running = True
         self.queue._executor = None
 
@@ -296,10 +296,10 @@ class TestMessageQueue(unittest.TestCase):
 
         self.assertFalse(self.queue.reset_failed_stop_state())
         self.queue._processor_task = None
-        self.assertTrue(self.queue.reset_failed_stop_state())
-
         self.queue.start(message_delay=1.0)
         self.assertTrue(self.queue._running)
+        self.assertFalse(self.queue._stop_failed)
+        self.assertFalse(self.queue._stopping)
 
     @patch("mmrelay.message_queue.asyncio.get_running_loop")
     def test_stop_same_loop_done_task_short_circuits_callback(

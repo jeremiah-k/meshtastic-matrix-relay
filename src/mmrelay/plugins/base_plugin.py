@@ -282,19 +282,27 @@ class BasePlugin(ABC):
                         self.plugin_type = mapped_type
                     break
 
-            # Cache global plugin-level settings (for options like require_bot_mention)
-            # Check the expected section even if no per-plugin stanza exists
+            # Cache global plugin-level settings (for options like require_bot_mention).
+            # Precedence for globals:
+            # 1) plugin's resolved/expected section
+            # 2) legacy fallback from core "plugins" section for compatibility
             section_to_check = resolved_section or expected_section
-            section_config = (
-                config.get(section_to_check, {}) if section_to_check else {}
-            )
-            if (
-                isinstance(section_config, dict)
-                and CONFIG_KEY_REQUIRE_BOT_MENTION in section_config
-            ):
-                self._global_require_bot_mention = bool(
-                    section_config[CONFIG_KEY_REQUIRE_BOT_MENTION]
-                )
+            global_sections: list[str] = []
+            if section_to_check:
+                global_sections.append(section_to_check)
+            if CONFIG_SECTION_PLUGINS not in global_sections:
+                global_sections.append(CONFIG_SECTION_PLUGINS)
+
+            for section_name in global_sections:
+                section_config = config.get(section_name, {})
+                if (
+                    isinstance(section_config, dict)
+                    and CONFIG_KEY_REQUIRE_BOT_MENTION in section_config
+                ):
+                    self._global_require_bot_mention = bool(
+                        section_config[CONFIG_KEY_REQUIRE_BOT_MENTION]
+                    )
+                    break
 
             # Get the list of mapped channels
             # Handle both list format and dict format for matrix_rooms

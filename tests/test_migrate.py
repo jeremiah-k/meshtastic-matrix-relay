@@ -524,6 +524,33 @@ class TestMigrateCredentials:
         assert (new_home / "matrix" / "credentials.json").exists()
         assert not home_creds.exists()
 
+    def test_fallback_home_root_credentials_migrates_without_user_id(
+        self, tmp_path: Path
+    ) -> None:
+        """
+        Test ~/credentials.json fallback migration accepts runtime-valid credentials
+        when user_id is absent.
+        """
+        legacy_root = tmp_path / "legacy"
+        legacy_root.mkdir()
+        new_home = tmp_path / "home"
+        new_home.mkdir()
+
+        fake_home = tmp_path / "fake_home"
+        fake_home.mkdir()
+        home_creds = fake_home / "credentials.json"
+        home_creds.write_text(
+            '{"homeserver":"https://matrix.tchncs.de","access_token":"syt_token"}'
+        )
+
+        with patch("mmrelay.migrate.Path.home", return_value=fake_home):
+            result = migrate_credentials([legacy_root], new_home)
+
+        assert result["success"] is True
+        assert result["action"] == "move"
+        assert (new_home / "matrix" / "credentials.json").exists()
+        assert not home_creds.exists()
+
     def test_fallback_home_root_credentials_ignored_when_invalid(
         self, tmp_path: Path
     ) -> None:

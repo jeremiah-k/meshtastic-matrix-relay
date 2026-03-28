@@ -198,15 +198,15 @@ def _looks_like_matrix_credentials(path: Path) -> bool:
     """
     Detects whether a file is a Matrix credentials JSON document.
 
-    Performs strict validation to avoid false positives when scanning legacy locations:
-    the file must be a JSON object containing the string keys "homeserver", "access_token",
-    and "user_id". The "user_id" must start with "@" and contain a ":".
+    Validates the same required credential contract used by runtime authentication:
+    the file must be a JSON object containing non-empty string values for
+    "homeserver" and "access_token". The "user_id" field is optional.
 
     Parameters:
         path (Path): Candidate credentials file path.
 
     Returns:
-        true if the file contains valid Matrix credential keys with the expected formats, false otherwise.
+        true if the file contains required Matrix credential keys, false otherwise.
     """
     try:
         with path.open("r", encoding="utf-8") as handle:
@@ -221,13 +221,6 @@ def _looks_like_matrix_credentials(path: Path) -> bool:
         value = payload.get(key)
         if not isinstance(value, str) or not value.strip():
             return False
-
-    # Keep fallback strict to avoid false positives from unrelated files.
-    user_id = payload.get("user_id")
-    if not isinstance(user_id, str) or not user_id.strip():
-        return False
-    if not user_id.startswith("@") or ":" not in user_id:
-        return False
 
     return True
 
