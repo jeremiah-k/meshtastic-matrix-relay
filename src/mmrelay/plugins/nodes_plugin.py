@@ -19,7 +19,10 @@ from mmrelay.constants.domain import (
     UNKNOWN_NODE_VALUE,
 )
 from mmrelay.constants.formats import DATE_FORMAT_LONG, SNR_UNIT_SUFFIX
+from mmrelay.log_utils import get_logger
 from mmrelay.plugins.base_plugin import BasePlugin
+
+logger = get_logger(__name__)
 
 
 def get_relative_time(timestamp: float) -> str:
@@ -140,6 +143,9 @@ $shortname $longname / $devicemodel / $battery $voltage / $snr / $hops / $lastse
                     if parsed_last_heard > 0:
                         last_heard = get_relative_time(parsed_last_heard)
                 except (TypeError, ValueError, OverflowError, OSError):
+                    logger.debug(
+                        "Failed to parse lastHeard timestamp: %s", last_heard_timestamp
+                    )
                     last_heard = "?"
 
             voltage = "?V"

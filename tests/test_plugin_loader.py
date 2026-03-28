@@ -3842,8 +3842,6 @@ class TestDependencyInstallation(BaseGitTest):
         self, mock_isdir, _mock_makedirs, mock_logger, mock_is_allowed, mock_run_git
     ):
         """Test that 'commit' is accepted as a valid ref type."""
-        import subprocess  # nosec B404  # test: testing subprocess behavior
-
         mock_is_allowed.return_value = True
         mock_isdir.return_value = False  # Repo doesn't exist
         mock_run_git.side_effect = subprocess.CalledProcessError(
@@ -4086,8 +4084,6 @@ class TestDependencyInstallation(BaseGitTest):
         self, mock_logger, mock_run_git
     ):
         """Test _clone_new_repo_to_branch_or_tag with tag success."""
-        import subprocess  # nosec B404  # test: testing subprocess behavior
-
         mock_run_git.side_effect = lambda *args, **_kwargs: (
             subprocess.CompletedProcess(args[0], 0, stdout="some_commit\n", stderr="")
             if "rev-parse" in args[0] and "HEAD" in args[0]

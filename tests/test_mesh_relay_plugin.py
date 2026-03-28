@@ -295,7 +295,7 @@ class TestMeshRelayPlugin(unittest.TestCase):
 
             # Should log debug message
             self.plugin.logger.debug.assert_called_with(
-                "Skipping message from unmapped channel 0"
+                "Skipping message from unmapped channel %s", 0
             )
 
             # Should not send any Matrix messages
@@ -441,7 +441,7 @@ class TestMeshRelayPlugin(unittest.TestCase):
 
             # Should log debug message
             self.plugin.logger.debug.assert_called_with(
-                "Skipping message from unmapped room !test:matrix.org"
+                "Skipping message from unmapped room %s", "!test:matrix.org"
             )
 
         import asyncio
@@ -475,7 +475,7 @@ class TestMeshRelayPlugin(unittest.TestCase):
 
             # Should log debug message
             self.plugin.logger.debug.assert_called_with(
-                "Skipping message from unmapped room !test:matrix.org"
+                "Skipping message from unmapped room %s", "!test:matrix.org"
             )
 
         import asyncio

@@ -524,21 +524,10 @@ class MessageQueue:
                 return True
             if self._clear_failed_stop_state_if_recovered_locked():
                 return True
-            task_active = (
-                self._processor_task is not None and not self._processor_task.done()
+            logger.error(
+                "Cannot reset failed-stop state while queue resources are still active"
             )
-            executor_active = self._executor is not None
-            if self._running or task_active or executor_active:
-                logger.error(
-                    "Cannot reset failed-stop state while queue resources are still active"
-                )
-                return False
-            if self._processor_task is not None and self._processor_task.done():
-                self._processor_task = None
-            self._stopping = False
-            self._stop_failed = False
-            logger.info("Message queue failed-stop state cleared")
-            return True
+            return False
 
     def get_status(self) -> dict[str, Any]:
         """

@@ -140,6 +140,7 @@ class TestConstantsValidity:
     def test_git_retry_defaults_are_constant_backed(self):
         """Git retry defaults should be centralized and set to the expected value."""
         assert isinstance(plugins.GIT_RETRY_ATTEMPTS, int)
+        assert plugins.GIT_RETRY_ATTEMPTS > 0
         assert plugins.GIT_RETRY_ATTEMPTS == 3
 
     def test_message_constants_valid(self):

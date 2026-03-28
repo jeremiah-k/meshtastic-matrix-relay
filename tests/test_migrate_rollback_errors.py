@@ -9,6 +9,10 @@ import shutil
 from pathlib import Path
 from unittest.mock import patch
 
+# Save original functions before any patching (for selective mock side effects)
+_REAL_COPY2 = shutil.copy2
+_REAL_RMTREE = shutil.rmtree
+
 from mmrelay.constants.migration import (
     MIGRATION_BACKUP_DIRNAME,
     MIGRATION_STAGING_DIRNAME,
@@ -126,16 +130,14 @@ class TestRollbackMigrationErrorHandling:
             }
         ]
 
-        # Create real error condition - make backup directory inaccessible
-        old_mode = backup_dir.stat().st_mode
-        backup_dir.chmod(0o000)  # Remove all permissions
+        # Force restore failure by mocking shutil.copy2 to raise OSError
+        def selective_copy_failure(src, dst, *args, **kwargs):
+            if "database.sqlite" in str(src):
+                raise PermissionError(13, "Permission denied", src)
+            return _REAL_COPY2(src, dst, *args, **kwargs)
 
-        try:
-            # Execute rollback
+        with patch("mmrelay.migrate.shutil.copy2", side_effect=selective_copy_failure):
             result = rollback_migration(completed_steps, migrations, new_home)
-        finally:
-            # Restore permissions
-            backup_dir.chmod(old_mode)
 
         # Verify OSError handling
         assert result["success"] is False
@@ -190,15 +192,14 @@ class TestRollbackMigrationErrorHandling:
             },
         ]
 
-        # Create real error condition - make config backup inaccessible
-        config_backup.chmod(0o000)  # Remove permissions
+        # Force config restore failure by mocking shutil.copy2 to raise OSError
+        def selective_copy_failure(src, dst, *args, **kwargs):
+            if "config.yaml" in str(src):
+                raise PermissionError(13, "Permission denied", src)
+            return _REAL_COPY2(src, dst, *args, **kwargs)
 
-        try:
-            # Execute rollback
+        with patch("mmrelay.migrate.shutil.copy2", side_effect=selective_copy_failure):
             result = rollback_migration(completed_steps, migrations, new_home)
-        finally:
-            # Restore permissions
-            config_backup.chmod(0o644)
 
         # Verify partial success handling
         assert result["success"] is False  # Overall should be False due to errors
@@ -245,16 +246,16 @@ class TestRollbackMigrationErrorHandling:
             }
         ]
 
-        # Make staging directory unwritable to cause cleanup failure
-        old_mode = staging_dir.stat().st_mode
-        staging_dir.chmod(0o555)  # Read and execute only
+        # Force staging cleanup failure by mocking shutil.rmtree to raise OSError
+        def selective_rmtree_failure(path, *args, **kwargs):
+            if MIGRATION_STAGING_DIRNAME in str(path):
+                raise PermissionError(13, "Permission denied", path)
+            return _REAL_RMTREE(path, *args, **kwargs)
 
-        try:
-            # Execute rollback (rollback should succeed, but cleanup should fail)
+        with patch(
+            "mmrelay.migrate.shutil.rmtree", side_effect=selective_rmtree_failure
+        ):
             result = rollback_migration(completed_steps, migrations, new_home)
-        finally:
-            # Restore permissions
-            staging_dir.chmod(old_mode)
 
         # Verify that cleanup failure doesn't affect rollback success
         # The rollback should still succeed, just log a warning about cleanup failure

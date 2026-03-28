@@ -120,7 +120,7 @@ class Plugin(BasePlugin):
 
         mode_offsets = HOURLY_CONFIG.get(mode_key, HOURLY_CONFIG[WEATHER_MODE_CURRENT])
         offsets = [
-            int(offset)
+            offset
             for offset in mode_offsets.get("offsets", ())
             if isinstance(offset, int)
         ]

@@ -240,6 +240,9 @@ class TestRollbackDatabaseMigration:
         result = rollback_migration(completed_steps, migrations, new_home)
 
         assert result["success"] is True
+        # rolled_back_steps has 2 entries because backed_up_files contains 2 files (db + wal).
+        # Each restored file gets its own entry, unlike test_rollback_database_migration_with_sidecars
+        # which uses find_backup_for_step() and produces 1 entry per step.
         assert len(result["rolled_back_steps"]) == 2
         assert result["rolled_back_steps"][0]["step"] == "database"
         assert db_dest.read_text() == "SQLite format 3 (backup)"

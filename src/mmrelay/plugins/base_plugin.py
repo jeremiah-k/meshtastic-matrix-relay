@@ -252,7 +252,8 @@ class BasePlugin(ABC):
                     expected_section = configured_section
                     mapped_type = PLUGIN_SECTION_TYPES.get(configured_section)
                     if mapped_type is not None and (
-                        mapped_type != "core" or self.plugin_type in (None, "core")
+                        mapped_type != PLUGIN_TYPE_CORE
+                        or self.plugin_type in (None, PLUGIN_TYPE_CORE)
                     ):
                         self.plugin_type = mapped_type
 

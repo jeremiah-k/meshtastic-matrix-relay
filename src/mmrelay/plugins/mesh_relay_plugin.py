@@ -176,7 +176,7 @@ class Plugin(BasePlugin):
                 break
 
         if not channel_mapped:
-            self.logger.debug(f"Skipping message from unmapped channel {channel}")
+            self.logger.debug("Skipping message from unmapped channel %s", channel)
             return False
         if not target_room_id:
             self.logger.error(
@@ -283,7 +283,7 @@ class Plugin(BasePlugin):
                 break
 
         if channel is None:
-            self.logger.debug(f"Skipping message from unmapped room {room.room_id}")
+            self.logger.debug("Skipping message from unmapped room %s", room.room_id)
             return False
 
         packet_json = event.source.get("content", {}).get(MATRIX_PACKET_KEY)

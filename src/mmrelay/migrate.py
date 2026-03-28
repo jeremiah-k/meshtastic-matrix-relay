@@ -2707,7 +2707,7 @@ def perform_migration(dry_run: bool = False, force: bool = False) -> dict[str, A
             )
             return report
         logger.debug(
-            "Disk space check passed: %d MB available",
+            "Disk space check passed: %d MiB available",
             free_bytes // BYTES_PER_MIB,
         )
 

@@ -636,7 +636,7 @@ class TestPerformanceStress:
             ):
                 with patch("mmrelay.meshtastic_utils.reconnecting", False):
                     queue = MessageQueue()
-                    message_delay = 0.1  # 100ms delay between messages (will warn about 2.1s minimum)
+                    message_delay = 0.1  # 100ms delay between messages
                     queue.start(message_delay=message_delay)
                     # Ensure processor starts now that event loop is running
                     queue.ensure_processor_started()

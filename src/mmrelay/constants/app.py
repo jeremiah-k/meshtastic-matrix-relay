@@ -48,7 +48,8 @@ LOGS_DIRNAME: Final[str] = "logs"
 LOG_FILENAME: Final[str] = "mmrelay.log"
 PLUGINS_DIRNAME: Final[str] = "plugins"
 PLUGIN_DATA_DIRNAME: Final[str] = "data"
-LEGACY_DATA_SUBDIR: Final[str] = PLUGIN_DATA_DIRNAME  # Alias for backward compatibility
+# Alias for backward compatibility
+LEGACY_DATA_SUBDIR: Final[str] = PLUGIN_DATA_DIRNAME
 
 # File permissions (octal)
 SECURE_FILE_PERMISSIONS: Final[int] = 0o600

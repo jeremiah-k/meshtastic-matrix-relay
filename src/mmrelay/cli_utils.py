@@ -69,12 +69,12 @@ LocalTransportError: type[Any] = _FallbackLocalTransportError
 RemoteTransportError: type[Any] = _FallbackRemoteTransportError
 LocalProtocolError: type[Any] = _FallbackLocalProtocolError
 RemoteProtocolError: type[Any] = _FallbackRemoteProtocolError
-NioLoginError: type[Any] = _FallbackLoginError
-NioLogoutError: type[Any] = _FallbackLogoutError
-NioLocalTransportError: type[Any] = _FallbackLocalTransportError
-NioRemoteTransportError: type[Any] = _FallbackRemoteTransportError
-NioLocalProtocolError: type[Any] = _FallbackLocalProtocolError
-NioRemoteProtocolError: type[Any] = _FallbackRemoteProtocolError
+NioLoginError = LoginError
+NioLogoutError = LogoutError
+NioLocalTransportError = LocalTransportError
+NioRemoteTransportError = RemoteTransportError
+NioLocalProtocolError = LocalProtocolError
+NioRemoteProtocolError = RemoteProtocolError
 
 try:
     from nio import AsyncClient as _AsyncClient
@@ -94,12 +94,12 @@ else:
     RemoteTransportError = _RemoteTransportError
     LocalProtocolError = _LocalProtocolError
     RemoteProtocolError = _RemoteProtocolError
-    NioLoginError = _LoginError
-    NioLogoutError = _LogoutError
-    NioLocalTransportError = _LocalTransportError
-    NioRemoteTransportError = _RemoteTransportError
-    NioLocalProtocolError = _LocalProtocolError
-    NioRemoteProtocolError = _RemoteProtocolError
+    NioLoginError = LoginError
+    NioLogoutError = LogoutError
+    NioLocalTransportError = LocalTransportError
+    NioRemoteTransportError = RemoteTransportError
+    NioLocalProtocolError = LocalProtocolError
+    NioRemoteProtocolError = RemoteProtocolError
 
 # Import mmrelay modules - avoid circular imports by importing inside functions
 

@@ -917,18 +917,7 @@ def initialize_database() -> None:
                         cursor.execute(
                             _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITHOUT_MESH_SQL
                         )
-            if temp_exists:
-                try:
-                    cursor.execute(_INSERT_OR_IGNORE_MESSAGE_MAP_FROM_TEMP_SQL)
-                    logger.info(
-                        "Merged rows from temporary table into rebuilt message_map"
-                    )
-                except sqlite3.Error as e:
-                    logger.warning("Failed to merge temporary table data: %s", e)
-                finally:
-                    cursor.execute(_DROP_TABLE_MESSAGE_MAP_TEMP_SQL)
-            else:
-                cursor.execute(_DROP_TABLE_MESSAGE_MAP_TEMP_SQL)
+            cursor.execute(_DROP_TABLE_MESSAGE_MAP_TEMP_SQL)
             if stale_temp_exists:
                 try:
                     cursor.execute(_PRAGMA_MESSAGE_MAP_STALE_TEMP_INFO_SQL)

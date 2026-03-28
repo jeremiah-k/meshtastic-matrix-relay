@@ -435,8 +435,9 @@ class TestNetworkErrorRecovery:
             nonlocal send_count
             send_count += 1
 
-        def _record_sleep(duration):
+        async def _record_sleep(duration):
             requested_delays.append(duration)
+            return None
 
         with patch("asyncio.sleep", side_effect=_record_sleep):
             # Simulate rapid message sending with enforced spacing

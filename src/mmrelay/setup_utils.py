@@ -351,17 +351,6 @@ def get_template_service_content() -> str:
             "Error accessing %s via importlib.resources", SYSTEMD_SERVICE_FILENAME
         )
 
-        # Fall back to the file path method
-        fallback_template_path = get_service_template_path()
-        if fallback_template_path:
-            # Read the template from file
-            try:
-                with open(fallback_template_path, "r", encoding="utf-8") as f:
-                    service_template = f.read()
-                return service_template
-            except (OSError, UnicodeDecodeError):
-                logger.exception("Error reading service template file")
-
     # If we couldn't find or read the template file, use a default template
     logger.warning("Using default service template")
     resolved_exec_start = get_resolved_exec_start()

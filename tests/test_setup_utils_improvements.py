@@ -31,7 +31,7 @@ class TestPatchCoverageImprovements(unittest.TestCase):
         call_args = mock_logger.warning.call_args_list
         self.assertTrue(
             any(
-                "Could not find" in str(call[0]) and "mmrelay.service" in str(call[0])
+                "Could not find" in str(call) and "mmrelay.service" in str(call)
                 for call in call_args
             )
         )
