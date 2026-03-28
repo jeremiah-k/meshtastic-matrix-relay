@@ -1187,9 +1187,9 @@ class TestOnMeshtasticMessageOldPacketFiltering:
         with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
             mu_module.on_meshtastic_message(old_packet, mock_interface)
 
-            # Should log debug about ignoring old message
+            # Should log debug about ignoring old packet
             log_calls = [str(call) for call in mock_logger.debug.call_args_list]
-            assert any("Ignoring old message" in call for call in log_calls)
+            assert any("Ignoring old packet" in call for call in log_calls)
 
 
 class TestSnapshotNodeNameRowsNonDict:
