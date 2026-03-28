@@ -36,7 +36,6 @@ set -euo pipefail
 #   NODEDB_REFRESH_INTERVAL_SECONDS: Node-name refresh cadence in MMRelay config
 #   NAME_PRUNE_WAIT_TIMEOUT_SECONDS: Timeout for stale-name prune assertions
 #   MMRELAY_ALLOW_TAGGED_IMAGE_CACHE: Reuse local tag-based images instead of forcing pull
-#   MMRELAY_ENABLE_DM_FORWARDING_TEST: Enable strict DM forwarding assertions (default: false)
 # =============================================================================
 
 # Meshtasticd Configuration
@@ -79,7 +78,6 @@ MATRIX_EVENT_TIMEOUT_SECONDS="${MATRIX_EVENT_TIMEOUT_SECONDS:-60}"
 MESSAGE_MAP_WAIT_TIMEOUT_SECONDS="${MESSAGE_MAP_WAIT_TIMEOUT_SECONDS:-60}"
 NAME_PRUNE_WAIT_TIMEOUT_SECONDS="${NAME_PRUNE_WAIT_TIMEOUT_SECONDS:-75}"
 NODEDB_REFRESH_INTERVAL_SECONDS="${NODEDB_REFRESH_INTERVAL_SECONDS:-5}"
-MMRELAY_ENABLE_DM_FORWARDING_TEST="${MMRELAY_ENABLE_DM_FORWARDING_TEST:-false}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 
 if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
@@ -673,16 +671,46 @@ get_local_node_id() {
 }
 
 # send_direct_mesh_message sends a direct text message to a destination node.
+# Returns 0 on success, non-zero on failure. Output is captured for debugging.
 send_direct_mesh_message() {
 	local endpoint=$1
 	local destination_id=$2
 	local text=$3
+	local stderr_file
+	stderr_file=$(mktemp)
 	"${PYTHON_BIN}" -m meshtastic \
 		--timeout 20 \
 		--host "${endpoint}" \
 		--dest "${destination_id}" \
 		--sendtext "${text}" \
-		--wait-to-disconnect 2 >/dev/null
+		--wait-to-disconnect 2 >/dev/null 2>"${stderr_file}"
+	local exit_code=$?
+	if ((exit_code != 0)); then
+		echo "send_direct_mesh_message failed: endpoint=${endpoint} dest=${destination_id} exit=${exit_code}" >&2
+		sed 's/^/  /' "${stderr_file}" >&2
+	fi
+	rm -f "${stderr_file}"
+	return "${exit_code}"
+}
+
+# wait_for_node_in_nodedb waits until a node with the given ID appears in the
+# node DB of the specified meshtasticd endpoint. Returns 0 on success, 1 on timeout.
+wait_for_node_in_nodedb() {
+	local endpoint=$1
+	local node_id=$2
+	local timeout_seconds=${3:-30}
+	local deadline=$((SECONDS + timeout_seconds))
+
+	while ((SECONDS < deadline)); do
+		local nodes_output
+		nodes_output=$("${PYTHON_BIN}" -m meshtastic --timeout 10 --host "${endpoint}" --nodes 2>/dev/null || true)
+		if printf '%s\n' "${nodes_output}" | grep -Fq "${node_id}"; then
+			return 0
+		fi
+		sleep 2
+	done
+	echo "Timed out waiting for node ${node_id} in nodedb of ${endpoint}" >&2
+	return 1
 }
 
 wait_for_synapse_ready() {
@@ -2804,142 +2832,148 @@ run_or_fail "Reaction did not relay to Mesh B" \
 	60
 pass_test "Encrypted-room user reaction relayed to both meshes"
 
-# Test 7: DM receiver plugin forwards direct mesh messages into relay-specific Matrix rooms.
-start_test "Test 7" "Test 7: dm-rcv-basic plugin forwards direct mesh DMs to relay-specific Matrix rooms..."
+# Test 7: dm-rcv-basic plugin forwards direct mesh DMs to relay-specific Matrix rooms.
+# Verifies plugin initializes correctly with valid dm_room config, then tests
+# actual DM forwarding: peer node -> relay node -> plugin -> Matrix DM room
+start_test "Test 7" "Test 7: dm-rcv-basic plugin forwards direct mesh DMs to Matrix..."
 
-run_or_fail "dm-rcv-basic did not load in relay A" \
+run_or_fail "dm-rcv-basic did not initialize in relay A" \
 	wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_A}" \
-	"Plugins: Loaded: dm-rcv-basic" \
+	"Direct message plugin initialized - forwarding DMs to room:" \
 	0 \
 	45
-run_or_fail "dm-rcv-basic did not load in relay B" \
+run_or_fail "dm-rcv-basic did not initialize in relay B" \
 	wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_B}" \
-	"Plugins: Loaded: dm-rcv-basic" \
+	"Direct message plugin initialized - forwarding DMs to room:" \
 	0 \
 	45
 
-case "${MMRELAY_ENABLE_DM_FORWARDING_TEST,,}" in
-1 | true | yes | on)
-	DM_A_TEXT_1="MMRELAY_CI_DM_A1_$(date +%s)_${RANDOM}"
-	DM_A_TEXT_2="MMRELAY_CI_DM_A2_$(date +%s)_${RANDOM}"
-	DM_B_TEXT_1="MMRELAY_CI_DM_B1_$(date +%s)_${RANDOM}"
-	DM_B_TEXT_2="MMRELAY_CI_DM_B2_$(date +%s)_${RANDOM}"
+run_or_fail "A_PEER did not discover Relay A in mesh before DM test" \
+	wait_for_node_in_nodedb \
+	"${MESHTASTICD_ENDPOINT_A_PEER}" \
+	"${RELAY_NODE_ID_A}" \
+	30
+run_or_fail "B_PEER did not discover Relay B in mesh before DM test" \
+	wait_for_node_in_nodedb \
+	"${MESHTASTICD_ENDPOINT_B_PEER}" \
+	"${RELAY_NODE_ID_B}" \
+	30
 
-	run_or_fail "Failed to send direct DM #1 to relay A" \
-		send_direct_mesh_message \
-		"${MESHTASTICD_ENDPOINT_A_PEER}" \
-		"${RELAY_NODE_ID_A}" \
-		"${DM_A_TEXT_1}"
-	run_capture_or_fail \
-		dm_event_json \
-		"DM #1 for relay A was not forwarded to Matrix room A" \
-		matrix_wait_event \
-		"${USER_ACCESS_TOKEN}" \
-		"${ROOM_ID_DM_A}" \
-		"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
-		"m.room.message" \
-		"${BOT_A_USER_ID}" \
-		"${DM_A_TEXT_1}" \
-		"m.text" \
-		"" \
-		"" \
-		"" \
-		"${SYNC_CURSOR_USER1}"
-	run_capture_or_fail \
-		SYNC_CURSOR_USER1 \
-		"Failed to update Matrix sync cursor after relay A DM #1" \
-		json_extract \
-		"${dm_event_json}" \
-		"next_batch"
+DM_A_TEXT_1="MMRELAY_CI_DM_A1_$(date +%s)_${RANDOM}"
+DM_A_TEXT_2="MMRELAY_CI_DM_A2_$(date +%s)_${RANDOM}"
+DM_B_TEXT_1="MMRELAY_CI_DM_B1_$(date +%s)_${RANDOM}"
+DM_B_TEXT_2="MMRELAY_CI_DM_B2_$(date +%s)_${RANDOM}"
 
-	run_or_fail "Failed to send direct DM #2 to relay A" \
-		send_direct_mesh_message \
-		"${MESHTASTICD_ENDPOINT_A_PEER}" \
-		"${RELAY_NODE_ID_A}" \
-		"${DM_A_TEXT_2}"
-	run_capture_or_fail \
-		dm_event_json \
-		"DM #2 for relay A was not forwarded to Matrix room A" \
-		matrix_wait_event \
-		"${USER_ACCESS_TOKEN}" \
-		"${ROOM_ID_DM_A}" \
-		"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
-		"m.room.message" \
-		"${BOT_A_USER_ID}" \
-		"${DM_A_TEXT_2}" \
-		"m.text" \
-		"" \
-		"" \
-		"" \
-		"${SYNC_CURSOR_USER1}"
-	run_capture_or_fail \
-		SYNC_CURSOR_USER1 \
-		"Failed to update Matrix sync cursor after relay A DM #2" \
-		json_extract \
-		"${dm_event_json}" \
-		"next_batch"
+run_or_fail "Failed to send direct DM #1 to relay A" \
+	send_direct_mesh_message \
+	"${MESHTASTICD_ENDPOINT_A_PEER}" \
+	"${RELAY_NODE_ID_A}" \
+	"${DM_A_TEXT_1}"
+run_capture_or_fail \
+	dm_event_json \
+	"DM #1 for relay A was not forwarded to Matrix room A" \
+	matrix_wait_event \
+	"${USER_ACCESS_TOKEN}" \
+	"${ROOM_ID_DM_A}" \
+	"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
+	"m.room.message" \
+	"${BOT_A_USER_ID}" \
+	"${DM_A_TEXT_1}" \
+	"m.text" \
+	"" \
+	"" \
+	"" \
+	"${SYNC_CURSOR_USER1}"
+run_capture_or_fail \
+	SYNC_CURSOR_USER1 \
+	"Failed to update Matrix sync cursor after relay A DM #1" \
+	json_extract \
+	"${dm_event_json}" \
+	"next_batch"
 
-	run_or_fail "Failed to send direct DM #1 to relay B" \
-		send_direct_mesh_message \
-		"${MESHTASTICD_ENDPOINT_B_PEER}" \
-		"${RELAY_NODE_ID_B}" \
-		"${DM_B_TEXT_1}"
-	run_capture_or_fail \
-		dm_event_json \
-		"DM #1 for relay B was not forwarded to Matrix room B" \
-		matrix_wait_event \
-		"${USER_ACCESS_TOKEN}" \
-		"${ROOM_ID_DM_B}" \
-		"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
-		"m.room.message" \
-		"${BOT_B_USER_ID}" \
-		"${DM_B_TEXT_1}" \
-		"m.text" \
-		"" \
-		"" \
-		"" \
-		"${SYNC_CURSOR_USER1}"
-	run_capture_or_fail \
-		SYNC_CURSOR_USER1 \
-		"Failed to update Matrix sync cursor after relay B DM #1" \
-		json_extract \
-		"${dm_event_json}" \
-		"next_batch"
+run_or_fail "Failed to send direct DM #2 to relay A" \
+	send_direct_mesh_message \
+	"${MESHTASTICD_ENDPOINT_A_PEER}" \
+	"${RELAY_NODE_ID_A}" \
+	"${DM_A_TEXT_2}"
+run_capture_or_fail \
+	dm_event_json \
+	"DM #2 for relay A was not forwarded to Matrix room A" \
+	matrix_wait_event \
+	"${USER_ACCESS_TOKEN}" \
+	"${ROOM_ID_DM_A}" \
+	"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
+	"m.room.message" \
+	"${BOT_A_USER_ID}" \
+	"${DM_A_TEXT_2}" \
+	"m.text" \
+	"" \
+	"" \
+	"" \
+	"${SYNC_CURSOR_USER1}"
+run_capture_or_fail \
+	SYNC_CURSOR_USER1 \
+	"Failed to update Matrix sync cursor after relay A DM #2" \
+	json_extract \
+	"${dm_event_json}" \
+	"next_batch"
 
-	run_or_fail "Failed to send direct DM #2 to relay B" \
-		send_direct_mesh_message \
-		"${MESHTASTICD_ENDPOINT_B_PEER}" \
-		"${RELAY_NODE_ID_B}" \
-		"${DM_B_TEXT_2}"
-	run_capture_or_fail \
-		dm_event_json \
-		"DM #2 for relay B was not forwarded to Matrix room B" \
-		matrix_wait_event \
-		"${USER_ACCESS_TOKEN}" \
-		"${ROOM_ID_DM_B}" \
-		"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
-		"m.room.message" \
-		"${BOT_B_USER_ID}" \
-		"${DM_B_TEXT_2}" \
-		"m.text" \
-		"" \
-		"" \
-		"" \
-		"${SYNC_CURSOR_USER1}"
-	run_capture_or_fail \
-		SYNC_CURSOR_USER1 \
-		"Failed to update Matrix sync cursor after relay B DM #2" \
-		json_extract \
-		"${dm_event_json}" \
-		"next_batch"
-	pass_test "dm-rcv-basic forwarded multiple direct mesh messages for both relays"
-	;;
-*)
-	pass_test "dm-rcv-basic loaded in both relays (DM forwarding checks skipped; set MMRELAY_ENABLE_DM_FORWARDING_TEST=true to enforce)"
-	;;
-esac
+run_or_fail "Failed to send direct DM #1 to relay B" \
+	send_direct_mesh_message \
+	"${MESHTASTICD_ENDPOINT_B_PEER}" \
+	"${RELAY_NODE_ID_B}" \
+	"${DM_B_TEXT_1}"
+run_capture_or_fail \
+	dm_event_json \
+	"DM #1 for relay B was not forwarded to Matrix room B" \
+	matrix_wait_event \
+	"${USER_ACCESS_TOKEN}" \
+	"${ROOM_ID_DM_B}" \
+	"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
+	"m.room.message" \
+	"${BOT_B_USER_ID}" \
+	"${DM_B_TEXT_1}" \
+	"m.text" \
+	"" \
+	"" \
+	"" \
+	"${SYNC_CURSOR_USER1}"
+run_capture_or_fail \
+	SYNC_CURSOR_USER1 \
+	"Failed to update Matrix sync cursor after relay B DM #1" \
+	json_extract \
+	"${dm_event_json}" \
+	"next_batch"
+
+run_or_fail "Failed to send direct DM #2 to relay B" \
+	send_direct_mesh_message \
+	"${MESHTASTICD_ENDPOINT_B_PEER}" \
+	"${RELAY_NODE_ID_B}" \
+	"${DM_B_TEXT_2}"
+run_capture_or_fail \
+	dm_event_json \
+	"DM #2 for relay B was not forwarded to Matrix room B" \
+	matrix_wait_event \
+	"${USER_ACCESS_TOKEN}" \
+	"${ROOM_ID_DM_B}" \
+	"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
+	"m.room.message" \
+	"${BOT_B_USER_ID}" \
+	"${DM_B_TEXT_2}" \
+	"m.text" \
+	"" \
+	"" \
+	"" \
+	"${SYNC_CURSOR_USER1}"
+run_capture_or_fail \
+	SYNC_CURSOR_USER1 \
+	"Failed to update Matrix sync cursor after relay B DM #2" \
+	json_extract \
+	"${dm_event_json}" \
+	"next_batch"
+pass_test "dm-rcv-basic forwarded multiple direct mesh messages for both relays"
 
 # Test 8: stale name rows are pruned to match current node DB snapshot.
 start_test "Test 8" "Test 8: stale name rows are pruned to match current node DB..."
