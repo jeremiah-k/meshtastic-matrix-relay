@@ -326,10 +326,10 @@ def get_template_service_content() -> str:
     Returns:
         str: Complete service file content suitable for writing to the user service unit.
     """
-    # Use the helper function to get the service template path
-    template_path = get_template_service_path()
+    # Use compatibility alias to support existing tests/callers that patch it.
+    template_path = get_service_template_path()
 
-    if template_path and os.path.exists(template_path):
+    if template_path:
         # Read the template from file
         try:
             with open(template_path, "r", encoding="utf-8") as f:
@@ -352,7 +352,7 @@ def get_template_service_content() -> str:
         )
 
         # Fall back to the file path method
-        fallback_template_path = get_template_service_path()
+        fallback_template_path = get_service_template_path()
         if fallback_template_path:
             # Read the template from file
             try:
