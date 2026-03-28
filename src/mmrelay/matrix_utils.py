@@ -2910,7 +2910,13 @@ async def login_matrix_bot(
                         "whoami response did not include user_id and login response had no user_id; "
                         "saving credentials without user_id"
                     )
-            except Exception as e:
+            except (
+                *NIO_COMM_EXCEPTIONS,
+                AttributeError,
+                TypeError,
+                ValueError,
+                RuntimeError,
+            ) as e:
                 if response_user_id:
                     actual_user_id = response_user_id
                     logger.warning(

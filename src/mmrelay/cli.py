@@ -2380,7 +2380,7 @@ def handle_auth_logout(args: argparse.Namespace) -> int:
         password = getattr(args, "password", None)
 
         if password is None or password is _PASSWORD_PROMPT_SENTINEL:
-            # No --password flag (None) or bare --password (__PROMPT__), prompt securely
+            # No --password flag (None) or bare --password (sentinel), prompt securely
             import getpass
 
             password = getpass.getpass("Enter Matrix password for verification: ")

@@ -1118,10 +1118,10 @@ def run_main(args: Any) -> int:
 
     if credentials:
         # With credentials.json, only meshtastic and matrix_rooms are required
-        required_keys = list(REQUIRED_CONFIG_SECTIONS_WITH_CREDENTIALS)
+        required_keys = sorted(REQUIRED_CONFIG_SECTIONS_WITH_CREDENTIALS)
     else:
         # Without credentials.json, all sections are required
-        required_keys = list(REQUIRED_CONFIG_SECTIONS_WITHOUT_CREDENTIALS)
+        required_keys = sorted(REQUIRED_CONFIG_SECTIONS_WITHOUT_CREDENTIALS)
 
     # Check each key individually for better debugging
     for key in required_keys:

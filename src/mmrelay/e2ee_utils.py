@@ -20,9 +20,11 @@ from mmrelay.constants.app import (
 )
 from mmrelay.constants.messages import (
     MSG_E2EE_DISABLED,
+    MSG_E2EE_DISABLED_SHORT,
     MSG_E2EE_NO_AUTH,
     MSG_E2EE_WINDOWS_UNSUPPORTED,
     MSG_E2EE_WINDOWS_UNSUPPORTED_DETAIL,
+    MSG_E2EE_WINDOWS_UNSUPPORTED_SHORT,
 )
 from mmrelay.log_utils import get_logger
 from mmrelay.paths import is_deprecation_window_active, resolve_all_paths
@@ -30,10 +32,6 @@ from mmrelay.paths import is_deprecation_window_active, resolve_all_paths
 logger = get_logger("E2EE")
 
 _E2EE_INCOMPLETE_STATUS = "E2EE setup is incomplete"
-_E2EE_DISABLED_SHORT = MSG_E2EE_DISABLED.replace(" is ", " ").replace(
-    " in configuration", ""
-)
-_E2EE_WINDOWS_UNSUPPORTED_SHORT = MSG_E2EE_WINDOWS_UNSUPPORTED.replace(" is ", " ")
 
 
 class E2EEStatus(TypedDict):
@@ -286,7 +284,7 @@ def format_room_list(rooms: Dict[str, Any], e2ee_status: Dict[str, Any]) -> List
     Returns:
         List[str]: One formatted line per room suitable for user display.
     """
-    room_lines: list[str] = []
+    room_lines: List[str] = []
 
     # Handle invalid rooms input
     if not rooms or not hasattr(rooms, "items"):
@@ -307,11 +305,11 @@ def format_room_list(rooms: Dict[str, Any], e2ee_status: Dict[str, Any]) -> List
             if encrypted:
                 if e2ee_status["overall_status"] == "unavailable":
                     room_lines.append(
-                        f"   ⚠️ {room_name} - Encrypted ({_E2EE_WINDOWS_UNSUPPORTED_SHORT} - messages will be blocked)"
+                        f"   ⚠️ {room_name} - Encrypted ({MSG_E2EE_WINDOWS_UNSUPPORTED_SHORT} - messages will be blocked)"
                     )
                 elif e2ee_status["overall_status"] == "disabled":
                     room_lines.append(
-                        f"   ⚠️ {room_name} - Encrypted ({_E2EE_DISABLED_SHORT} - messages will be blocked)"
+                        f"   ⚠️ {room_name} - Encrypted ({MSG_E2EE_DISABLED_SHORT} - messages will be blocked)"
                     )
                 else:
                     room_lines.append(

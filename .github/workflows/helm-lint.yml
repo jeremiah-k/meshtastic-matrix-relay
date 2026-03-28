@@ -25,11 +25,32 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cache_key_suffix="$(printf '%s' "${HELM_IMAGE}" | sha256sum | awk '{print $1}')"
+          digest="${HELM_IMAGE##*@sha256:}"
+          if [[ "${digest}" == "${HELM_IMAGE}" ]]; then
+            resolved_digest=""
+            if command -v docker >/dev/null 2>&1; then
+              # Resolve the manifest digest when available so cache keys track image content.
+              resolved_digest="$(
+                docker buildx imagetools inspect "${HELM_IMAGE}" --format '{{.Manifest.Digest}}' 2>/dev/null || true
+              )"
+              if [[ "${resolved_digest}" == "<no value>" ]]; then
+                resolved_digest=""
+              fi
+            fi
+            resolved_digest="${resolved_digest#sha256:}"
+            if [[ -n "${resolved_digest}" ]]; then
+              digest="${resolved_digest}"
+            else
+              digest="$(printf '%s' "${HELM_IMAGE}" | sha256sum | awk '{print $1}')"
+            fi
+          fi
           cache_dir="${RUNNER_TEMP}/helm-image-cache"
-          cache_path="${cache_dir}/${cache_key_suffix}.tar"
-          echo "cache_key=${RUNNER_OS}-helm-image-v${HELM_IMAGE_CACHE_VERSION}-${cache_key_suffix}" >> "${GITHUB_OUTPUT}"
-          echo "cache_path=${cache_path}" >> "${GITHUB_OUTPUT}"
+          cache_path="${cache_dir}/${digest}.tar"
+          {
+            echo "digest=${digest}"
+            echo "cache_key=${RUNNER_OS}-helm-image-v${HELM_IMAGE_CACHE_VERSION}-${digest}"
+            echo "cache_path=${cache_path}"
+          } >> "${GITHUB_OUTPUT}"
 
       - name: Restore cached Helm image
         id: helm-image-cache

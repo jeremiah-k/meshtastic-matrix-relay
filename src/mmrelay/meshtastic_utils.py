@@ -132,6 +132,9 @@ matrix_rooms: list[dict[str, Any]] = []
 # Initialize logger for Meshtastic
 logger = get_logger(name="Meshtastic")
 
+# Meshtastic text payloads are UTF-8 on the wire.
+MESHTASTIC_TEXT_ENCODING = "utf-8"
+
 # Session cutoff used to filter out backlog packets; reset on each new connection.
 RELAY_START_TIME = time.time()
 
@@ -4784,7 +4787,7 @@ def send_text_reply(
     # Create the Data protobuf message with reply_id set
     data_msg = mesh_pb2.Data()
     data_msg.portnum = portnums_pb2.PortNum.TEXT_MESSAGE_APP
-    data_msg.payload = text.encode(DEFAULT_TEXT_ENCODING)
+    data_msg.payload = text.encode(MESHTASTIC_TEXT_ENCODING)
     data_msg.reply_id = reply_id
 
     # Create the MeshPacket

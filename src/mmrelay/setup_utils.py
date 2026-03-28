@@ -622,6 +622,8 @@ def service_needs_update() -> tuple[bool, str]:
     launches_mmrelay = uses_python_module or uses_env_mmrelay or launches_mmrelay_binary
 
     # Allow explicit custom launchers (absolute paths or systemd specifier paths).
+    # This is an intentional trust-the-operator path: we validate home semantics
+    # above, but we do not attempt deep wrapper introspection here.
     is_explicit_custom_launcher = os.path.isabs(cmd_token) or cmd_token.startswith("%")
     if not launches_mmrelay and not is_explicit_custom_launcher:
         return True, "Service file does not use a recognizable mmrelay launcher"

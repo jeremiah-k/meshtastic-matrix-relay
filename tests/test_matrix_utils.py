@@ -13,7 +13,6 @@ import pytest
 from nio import SyncError, ToDeviceError, ToDeviceResponse
 
 import mmrelay.matrix_utils as matrix_utils_module
-from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID
 from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
 from mmrelay.matrix_utils import (
     ImageUploadError,
@@ -5221,7 +5220,7 @@ async def test_connect_matrix_legacy_config(
         # Verify AsyncClient was created without E2EE
         mock_async_client.assert_called_once()
         call_args = mock_async_client.call_args
-        assert CONFIG_KEY_DEVICE_ID not in call_args[1]
+        assert "device_id" not in call_args[1]
         assert call_args[1].get("store_path") is None
 
         # Verify sync was called
@@ -5715,9 +5714,7 @@ async def test_login_matrix_bot_login_response_status_codes(
 
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
-@patch("mmrelay.matrix_utils._normalize_bot_user_id", return_value="@user:matrix.org")
 async def test_login_matrix_bot_forbidden_with_localpart_suggests_full_mxid(
-    _mock_normalize,
     _mock_ssl_context,
     mock_async_client,
 ):
@@ -5758,9 +5755,7 @@ async def test_login_matrix_bot_forbidden_with_localpart_suggests_full_mxid(
 
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
-@patch("mmrelay.matrix_utils._normalize_bot_user_id", return_value="@user:matrix.org")
 async def test_login_matrix_bot_forbidden_with_full_mxid_skips_full_mxid_hint(
-    _mock_normalize,
     _mock_ssl_context,
     mock_async_client,
 ):
@@ -5848,9 +5843,7 @@ async def test_login_matrix_bot_whoami_exception_uses_fallback(
 @patch("mmrelay.matrix_utils.save_credentials")
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
-@patch("mmrelay.matrix_utils._normalize_bot_user_id", return_value="@user:matrix.org")
 async def test_login_matrix_bot_saves_credentials_without_user_id_when_unknown(
-    _mock_normalize,
     _mock_ssl_context,
     mock_async_client,
     mock_save_credentials,
