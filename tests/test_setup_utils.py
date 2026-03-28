@@ -679,7 +679,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         self, mock_get_template, mock_get_executable, mock_read_service
     ):
         """
-        Test that service_needs_update flags legacy semantics even with explicit executables.
+        Test that service_needs_update flags missing home configuration.
         """
         mock_read_service.return_value = "ExecStart=/old/path/mmrelay"
         mock_get_executable.return_value = "/new/path/mmrelay"
@@ -688,7 +688,7 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
         needs_update, reason = service_needs_update()
 
         self.assertTrue(needs_update)
-        self.assertIn("missing --home flag", reason)
+        self.assertIn("missing home configuration", reason)
 
     @patch("mmrelay.setup_utils.read_service_file")
     @patch("mmrelay.setup_utils.get_template_service_path")
@@ -874,14 +874,44 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
     def test_service_needs_update_absolute_launcher_does_not_require_path(
         self, mock_getmtime, mock_read_service, mock_exists
     ):
-        """Absolute custom launchers with --home should not be flagged for PATH entries."""
+        """Absolute custom launchers may rely on MMRELAY_HOME without requiring --home/PATH."""
         mock_exists.return_value = True
         mock_getmtime.side_effect = [1, 1]
         mock_read_service.return_value = """[Unit]
 Description=MMRelay Service
 
 [Service]
-ExecStart=/opt/mmrelay/bin/mmrelay-wrapper --home %h/.mmrelay
+Environment=MMRELAY_HOME=%h/.mmrelay
+ExecStart=/opt/mmrelay/bin/mmrelay-wrapper
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+"""
+
+        with patch(
+            "mmrelay.setup_utils.get_template_service_path", return_value="/tmp/t"
+        ):
+            result, reason = service_needs_update()
+
+        self.assertFalse(result)
+        self.assertIn("up to date", reason)
+
+    @patch("os.path.exists")
+    @patch("mmrelay.setup_utils.read_service_file")
+    @patch("os.path.getmtime")
+    def test_service_needs_update_env_launcher_with_assignments_supported(
+        self, mock_getmtime, mock_read_service, mock_exists
+    ):
+        """`/usr/bin/env MMRELAY_HOME=... mmrelay` should be treated as valid."""
+        mock_exists.return_value = True
+        mock_getmtime.side_effect = [1, 1]
+        mock_read_service.return_value = """[Unit]
+Description=MMRelay Service
+
+[Service]
+Environment=PATH=%h/.local/bin
+ExecStart=/usr/bin/env MMRELAY_HOME=%h/.mmrelay mmrelay
 Restart=on-failure
 
 [Install]

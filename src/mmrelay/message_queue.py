@@ -70,6 +70,11 @@ class MessageQueue:
         """
         self._queue: deque[QueuedMessage] = deque()  # Explicit size checks in enqueue()
         self._processor_task: Optional[asyncio.Task[None]] = None
+        # Lifecycle invariants:
+        # - _running=True means enqueue is allowed and the processor can run.
+        # - _stopping=True blocks enqueue/start while stop cleanup is in progress.
+        # - _stop_failed=True latches only after stop timeout; start remains blocked
+        #   until cleanup fully completes and state is cleared.
         self._running = False
         self._stopping = False
         self._lock = threading.Lock()

@@ -158,6 +158,79 @@ def _has_windows_installer_markers(root: Path) -> bool:
     return any((root / marker).exists() for marker in installer_markers)
 
 
+def _dir_has_entries(path: Path) -> bool:
+    """Return True when a directory exists and contains at least one entry."""
+    if not path.is_dir():
+        return False
+    try:
+        with os.scandir(path) as entries:
+            return next(entries, None) is not None
+    except OSError:
+        return False
+
+
+def _score_mmrelay_home_state(root: Path) -> int:
+    """
+    Score how strongly a directory appears to be an established MMRelay home.
+
+    Higher scores indicate stronger evidence of long-lived runtime state.
+    Critical state (config, credentials, database) is weighted higher than
+    low-signal artifacts (logs directory content).
+
+    Parameters:
+        root (Path): Directory candidate to score.
+
+    Returns:
+        int: Non-negative score; 0 indicates no MMRelay state detected.
+    """
+    if not root.exists():
+        return 0
+
+    score = 0
+
+    has_config = (root / CONFIG_FILENAME).exists()
+    has_credentials = any(
+        path.exists()
+        for path in (
+            root / CREDENTIALS_FILENAME,
+            root / MATRIX_DIRNAME / CREDENTIALS_FILENAME,
+        )
+    )
+    has_database = any(
+        path.exists()
+        for path in (
+            root / DATABASE_FILENAME,
+            root / LEGACY_DATA_SUBDIR / DATABASE_FILENAME,
+            root / DATABASE_DIRNAME / DATABASE_FILENAME,
+        )
+    )
+    has_store_content = _dir_has_entries(root / STORE_DIRNAME) or _dir_has_entries(
+        root / MATRIX_DIRNAME / STORE_DIRNAME
+    )
+    has_plugins_content = _dir_has_entries(root / PLUGINS_DIRNAME) or _dir_has_entries(
+        root / MATRIX_DIRNAME / PLUGINS_DIRNAME
+    )
+    has_log_file = (root / LOGS_DIRNAME / LOG_FILENAME).exists()
+    has_logs_content = _dir_has_entries(root / LOGS_DIRNAME)
+
+    if has_config:
+        score += 6
+    if has_credentials:
+        score += 6
+    if has_database:
+        score += 6
+    if has_store_content:
+        score += 3
+    if has_plugins_content:
+        score += 2
+    if has_log_file:
+        score += 1
+    if has_logs_content:
+        score += 1
+
+    return score
+
+
 def set_home_override(path: str, *, source: str | None = None) -> None:
     """
     Store a CLI-provided application home path and its source as the module-level override used by path resolution.
@@ -254,9 +327,8 @@ def get_home_dir() -> Path:
         return Path.home() / f".{APP_NAME}"
     else:  # Windows
         platform_home = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
-        platform_has_artifacts = platform_home.exists() and _has_mmrelay_artifacts(
-            platform_home
-        )
+        platform_score = _score_mmrelay_home_state(platform_home)
+        platform_has_artifacts = platform_score > 0
 
         local_app_data = os.environ.get("LOCALAPPDATA")
         if local_app_data:
@@ -264,8 +336,29 @@ def get_home_dir() -> Path:
                 Path(local_app_data) / "Programs" / WINDOWS_INSTALLER_DIR_NAME
             )
             if installer_path.exists():
-                installer_has_artifacts = _has_mmrelay_artifacts(installer_path)
+                installer_score = _score_mmrelay_home_state(installer_path)
+                installer_has_artifacts = installer_score > 0
                 installer_has_markers = _has_windows_installer_markers(installer_path)
+
+                if installer_has_artifacts and platform_has_artifacts:
+                    if installer_score > platform_score:
+                        logger.info(
+                            "Using installer MMRelay home at %s (score=%d) over platform home %s (score=%d)",
+                            installer_path,
+                            installer_score,
+                            platform_home,
+                            platform_score,
+                        )
+                        return installer_path
+                    logger.info(
+                        "Using existing platform MMRelay home at %s (score=%d) over installer home %s (score=%d)",
+                        platform_home,
+                        platform_score,
+                        installer_path,
+                        installer_score,
+                    )
+                    return platform_home
+
                 if installer_has_artifacts:
                     return installer_path
                 if installer_has_markers:

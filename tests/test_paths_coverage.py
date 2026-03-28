@@ -138,6 +138,76 @@ class TestGetHomeDir:
 
             assert result == platform_home
 
+    def test_get_home_dir_windows_prefers_stronger_platform_state_over_weak_installer_artifacts(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Weak installer artifacts (like logs) should not outrank established platform state."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            local_app_data = root / "LocalAppData"
+            installer_path = local_app_data / "Programs" / WINDOWS_INSTALLER_DIR_NAME
+            installer_logs = installer_path / "logs"
+            installer_logs.mkdir(parents=True, exist_ok=True)
+            (installer_logs / LOG_FILENAME).write_text("log\n", encoding="utf-8")
+
+            platform_home = root / "PlatformData" / "mmrelay"
+            platform_db = platform_home / "database"
+            platform_db.mkdir(parents=True, exist_ok=True)
+            (platform_home / DEFAULT_CONFIG_FILENAME).write_text(
+                "test: true\n", encoding="utf-8"
+            )
+            (platform_db / "meshtastic.sqlite").write_text("", encoding="utf-8")
+
+            monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+            monkeypatch.delenv("MMRELAY_HOME", raising=False)
+            monkeypatch.delenv("MMRELAY_BASE_DIR", raising=False)
+            monkeypatch.delenv("MMRELAY_DATA_DIR", raising=False)
+            with (
+                patch("sys.platform", "win32"),
+                patch(
+                    "mmrelay.paths.platformdirs.user_data_dir",
+                    return_value=str(platform_home),
+                ),
+            ):
+                result = get_home_dir()
+
+            assert result == platform_home
+
+    def test_get_home_dir_windows_prefers_stronger_installer_state_over_weak_platform_artifacts(
+        self, monkeypatch: pytest.MonkeyPatch
+    ):
+        """Installer path should win when it clearly has stronger MMRelay state."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            local_app_data = root / "LocalAppData"
+            installer_path = local_app_data / "Programs" / WINDOWS_INSTALLER_DIR_NAME
+            installer_db = installer_path / "database"
+            installer_db.mkdir(parents=True, exist_ok=True)
+            (installer_path / DEFAULT_CONFIG_FILENAME).write_text(
+                "test: true\n", encoding="utf-8"
+            )
+            (installer_db / "meshtastic.sqlite").write_text("", encoding="utf-8")
+
+            platform_home = root / "PlatformData" / "mmrelay"
+            platform_logs = platform_home / "logs"
+            platform_logs.mkdir(parents=True, exist_ok=True)
+            (platform_logs / LOG_FILENAME).write_text("log\n", encoding="utf-8")
+
+            monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+            monkeypatch.delenv("MMRELAY_HOME", raising=False)
+            monkeypatch.delenv("MMRELAY_BASE_DIR", raising=False)
+            monkeypatch.delenv("MMRELAY_DATA_DIR", raising=False)
+            with (
+                patch("sys.platform", "win32"),
+                patch(
+                    "mmrelay.paths.platformdirs.user_data_dir",
+                    return_value=str(platform_home),
+                ),
+            ):
+                result = get_home_dir()
+
+            assert result == installer_path
+
     def test_get_home_dir_windows_platformdirs_fallback(
         self, monkeypatch: pytest.MonkeyPatch
     ):

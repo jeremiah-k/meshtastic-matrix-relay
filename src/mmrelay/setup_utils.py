@@ -515,7 +515,7 @@ def service_needs_update() -> tuple[bool, str]:
     Performs these checks in order and reports the first failing condition:
     - No existing user service file is present.
     - The service file uses legacy flags (--config, --logfile) instead of the v1.3 --home flag.
-    - The service file is missing the v1.3 --home flag.
+    - The service file is missing home configuration (either v1.3 --home or Environment=MMRELAY_HOME=...).
     - The service's ExecStart line does not contain a recognizable launcher, unless it uses an explicit custom absolute/specifier path.
     - Environment PATH entries in the unit do not include common user-bin locations ("%h/.local/pipx/venvs/mmrelay/bin" or "%h/.local/bin") when the service relies on PATH lookup for `mmrelay`.
     - A template service file exists on disk and has a modification time newer than the installed service file.
@@ -550,6 +550,12 @@ def service_needs_update() -> tuple[bool, str]:
     if not exec_start_value:
         return True, "Service file has empty ExecStart command"
 
+    environment_lines = [
+        line
+        for line in existing_service.splitlines()
+        if line.strip().startswith("Environment=")
+    ]
+
     # Check if the service file is using legacy flags (--config, --logfile) instead of --home
     # This ensures migration to v1.3 unified path model
     if "--config" in exec_start_line or "--logfile" in exec_start_line:
@@ -558,10 +564,16 @@ def service_needs_update() -> tuple[bool, str]:
             "Service file uses legacy --config/--logfile flags (update to --home)",
         )
 
-    # Check if the service file is missing the --home flag entirely
-    # A valid v1.3 service file should have --home
-    if "--home" not in exec_start_line:
-        return True, "Service file is missing --home flag (v1.3 unified path model)"
+    # Accept either --home in ExecStart or MMRELAY_HOME in Environment for compatibility.
+    has_home_flag = "--home" in exec_start_line
+    has_home_env = any("MMRELAY_HOME=" in line for line in environment_lines) or (
+        "MMRELAY_HOME=" in exec_start_line
+    )
+    if not (has_home_flag or has_home_env):
+        return (
+            True,
+            "Service file is missing home configuration (--home or MMRELAY_HOME)",
+        )
 
     try:
         exec_tokens = shlex.split(exec_start_value)
@@ -572,6 +584,18 @@ def service_needs_update() -> tuple[bool, str]:
 
     cmd_token = exec_tokens[0]
     cmd_basename = os.path.basename(cmd_token)
+
+    env_target_token: str | None = None
+    if cmd_basename == "env":
+        for token in exec_tokens[1:]:
+            # Skip env assignments/options and capture the first command token.
+            if token.startswith("-"):
+                continue
+            if "=" in token:
+                continue
+            env_target_token = token
+            break
+
     uses_python_module = any(
         token == "-m"
         and index + 1 < len(exec_tokens)
@@ -579,7 +603,7 @@ def service_needs_update() -> tuple[bool, str]:
         for index, token in enumerate(exec_tokens)
     )
     uses_env_mmrelay = (
-        cmd_basename == "env" and len(exec_tokens) > 1 and exec_tokens[1] == "mmrelay"
+        env_target_token is not None and os.path.basename(env_target_token) == "mmrelay"
     )
     launches_mmrelay_binary = cmd_basename == "mmrelay"
     launches_mmrelay = uses_python_module or uses_env_mmrelay or launches_mmrelay_binary
@@ -590,15 +614,15 @@ def service_needs_update() -> tuple[bool, str]:
         return True, "Service file does not use a recognizable mmrelay launcher"
 
     # Only require PATH hardening when ExecStart depends on PATH lookup.
-    uses_path_lookup = uses_env_mmrelay or (
-        launches_mmrelay_binary and not is_explicit_custom_launcher
-    )
+    uses_path_lookup = False
+    if uses_env_mmrelay and env_target_token is not None:
+        uses_path_lookup = not (
+            os.path.isabs(env_target_token) or env_target_token.startswith("%")
+        )
+    elif launches_mmrelay_binary and not is_explicit_custom_launcher:
+        uses_path_lookup = True
+
     if uses_path_lookup:
-        environment_lines = [
-            line
-            for line in existing_service.splitlines()
-            if line.strip().startswith("Environment=")
-        ]
         path_in_environment = any(
             "%h/.local/pipx/venvs/mmrelay/bin" in line or "%h/.local/bin" in line
             for line in environment_lines
