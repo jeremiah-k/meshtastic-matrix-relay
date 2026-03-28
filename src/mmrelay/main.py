@@ -454,6 +454,8 @@ async def main(config: dict[str, Any]) -> None:
             return
 
         if result is not None:
+            if isinstance(result, (KeyboardInterrupt, SystemExit)):
+                raise result
             logger.error(
                 "Error while stopping %s",
                 step_name,

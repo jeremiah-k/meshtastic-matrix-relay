@@ -55,6 +55,8 @@ QUEUE_EXECUTOR_MAX_WORKERS: Final[int] = 1
 CONNECTION_ERROR_KEYWORDS: Final[frozenset[str]] = frozenset(
     {
         "connection",
+        "disconnected",
+        "not connected",
         "timeout",
         "refused",
         "reset",
