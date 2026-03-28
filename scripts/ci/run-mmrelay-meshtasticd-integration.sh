@@ -16,13 +16,15 @@ set -euo pipefail
 #   - meshtasticd relay-B (port 4404) ← MMRelay B ←─┘
 #
 # Test Scenarios:
+#   0. CLI smoke checks against both runtime config/home layouts
 #   1. Matrix user message in plaintext room → Mesh A + Mesh B
 #   2. Injected Mesh A-origin event in plaintext room → remote meshnet processing in MMRelay B
 #   3. Injected Mesh B-origin event in plaintext room → remote meshnet processing in MMRelay A
 #   4. E2EE Matrix user message in encrypted room → Mesh A + Mesh B
 #   5. E2EE Matrix user reply in encrypted room → both meshes as structured replies
 #   6. E2EE Matrix user reaction in encrypted room → both meshes
-#   7. Stale name rows are pruned to match current node DB
+#   7. dm-rcv-basic plugin forwards direct mesh DMs to relay-specific Matrix rooms
+#   8. Stale name rows are pruned to match current node DB
 #
 # Environment Variables:
 #   MESHTASTICD_IMAGE: Docker image for meshtasticd (default: meshtastic/meshtasticd:latest)
@@ -189,6 +191,10 @@ MMRELAY_HOME_DIR_B="${INSTANCE_B_DATA_DIR}/mmrelay-home"
 MMRELAY_DB_PATH_A="${MMRELAY_HOME_DIR_A}/database/meshtastic.sqlite"
 MMRELAY_DB_PATH_B="${MMRELAY_HOME_DIR_B}/database/meshtastic.sqlite"
 MATRIX_RUNTIME_JSON="${SHARED_DIR}/matrix-runtime.json"
+ROOM_ID_DM_A=""
+ROOM_ID_DM_B=""
+RELAY_NODE_ID_A=""
+RELAY_NODE_ID_B=""
 
 # Process tracking
 MMRELAY_PID_A=""
@@ -622,6 +628,34 @@ configure_mesh_channel() {
 		--host "${endpoint}" \
 		--ch-set psk "${psk_hex}" \
 		--ch-index 0 >/dev/null
+}
+
+# get_local_node_id reads the connected node ID for a Meshtastic endpoint and
+# returns it in !xxxxxxxx format suitable for --dest.
+get_local_node_id() {
+	local endpoint=$1
+	local info_output
+	info_output="$("${PYTHON_BIN}" -m meshtastic --timeout 15 --host "${endpoint}" --info 2>/dev/null || true)"
+	local node_id
+	node_id="$(printf '%s\n' "${info_output}" | grep -Eo '![0-9a-fA-F]{8}' | head -n1 || true)"
+	if [[ -z ${node_id} ]]; then
+		echo "Unable to determine Meshtastic node ID for endpoint ${endpoint}" >&2
+		return 1
+	fi
+	printf '%s\n' "${node_id,,}"
+}
+
+# send_direct_mesh_message sends a direct text message to a destination node.
+send_direct_mesh_message() {
+	local endpoint=$1
+	local destination_id=$2
+	local text=$3
+	"${PYTHON_BIN}" -m meshtastic \
+		--timeout 20 \
+		--host "${endpoint}" \
+		--dest "${destination_id}" \
+		--sendtext "${text}" \
+		--wait-to-disconnect 2 >/dev/null
 }
 
 wait_for_synapse_ready() {
@@ -1973,6 +2007,9 @@ configure_mesh_channel "${MESHTASTICD_ENDPOINT_A}" "${MESH_CHANNEL_NAME_A}" "${M
 configure_mesh_channel "${MESHTASTICD_ENDPOINT_B}" "${MESH_CHANNEL_NAME_B}" "${MESH_PRIMARY_PSK_B}"
 wait_for_meshtasticd_ready "${MESHTASTICD_ENDPOINT_A}" "${MESHTASTICD_CONTAINER_A}"
 wait_for_meshtasticd_ready "${MESHTASTICD_ENDPOINT_B}" "${MESHTASTICD_CONTAINER_B}"
+RELAY_NODE_ID_A="$(get_local_node_id "${MESHTASTICD_ENDPOINT_A}")"
+RELAY_NODE_ID_B="$(get_local_node_id "${MESHTASTICD_ENDPOINT_B}")"
+echo "Resolved relay node IDs: A=${RELAY_NODE_ID_A}, B=${RELAY_NODE_ID_B}"
 
 echo ""
 ensure_docker_image_available "${SYNAPSE_IMAGE}"
@@ -2173,11 +2210,29 @@ room_id_encrypted = create_room(
     f"mmrelay-ci-e2ee-{room_suffix}",
     encrypted=True,
 )
+room_id_dm_a = create_room(
+    user1["access_token"],
+    "MMRelay CI DM Room A",
+    "Direct message forwarding room for relay A plugin tests",
+    f"mmrelay-ci-dm-a-{room_suffix}",
+    encrypted=False,
+)
+room_id_dm_b = create_room(
+    user1["access_token"],
+    "MMRelay CI DM Room B",
+    "Direct message forwarding room for relay B plugin tests",
+    f"mmrelay-ci-dm-b-{room_suffix}",
+    encrypted=False,
+)
 
 # Shared room members: user1 + user2 + bot_a + bot_b in both rooms.
 for room_id in [room_id_plaintext, room_id_encrypted]:
     for account in [bot_a, bot_b, user2]:
         invite_and_join(room_id, user1["access_token"], account)
+
+# Relay-specific DM rooms
+invite_and_join(room_id_dm_a, user1["access_token"], bot_a)
+invite_and_join(room_id_dm_b, user1["access_token"], bot_b)
 
 sync_response = requests.get(
     f"{base_url}/_matrix/client/v3/sync",
@@ -2191,6 +2246,8 @@ initial_sync_user1 = sync_response.json()
 runtime = {
     "room_id_plaintext": room_id_plaintext,
     "room_id_encrypted": room_id_encrypted,
+    "room_id_dm_a": room_id_dm_a,
+    "room_id_dm_b": room_id_dm_b,
     "bot_a_user_id": bot_a["user_id"],
     "bot_a_access_token": bot_a["access_token"],
     "bot_a_device_id": bot_a["device_id"],
@@ -2219,6 +2276,8 @@ USER2_ACCESS_TOKEN="$(load_json_value user2_access_token)"
 USER2_DEVICE_ID="$(load_json_value user2_device_id)"
 ROOM_ID_PLAINTEXT="$(load_json_value room_id_plaintext)"
 ROOM_ID_ENCRYPTED="$(load_json_value room_id_encrypted)"
+ROOM_ID_DM_A="$(load_json_value room_id_dm_a)"
+ROOM_ID_DM_B="$(load_json_value room_id_dm_b)"
 SYNC_SINCE_USER="$(load_json_value sync_since_user)"
 
 export BOT_A_USER_ID
@@ -2233,6 +2292,8 @@ export USER2_ACCESS_TOKEN
 export USER2_DEVICE_ID
 export ROOM_ID_PLAINTEXT
 export ROOM_ID_ENCRYPTED
+export ROOM_ID_DM_A
+export ROOM_ID_DM_B
 export SYNC_SINCE_USER
 
 E2EE_USER2_STORE_DIR="${SHARED_DIR}/user2-e2ee-store"
@@ -2280,6 +2341,13 @@ matrix_rooms:
     meshtastic_channel: 0
   - id: "${ROOM_ID_ENCRYPTED}"
     meshtastic_channel: 0
+community-plugins:
+  dm-rcv-basic:
+    active: true
+    repository: "https://github.com/jeremiah-k/mmr-dm-rcv-basic.git"
+    branch: "main"
+    dm_room: "${ROOM_ID_DM_A}"
+    dm_prefix: true
 meshtastic:
   connection_type: tcp
   host: "${MESHTASTICD_HOST_A}"
@@ -2313,6 +2381,13 @@ matrix_rooms:
     meshtastic_channel: 0
   - id: "${ROOM_ID_ENCRYPTED}"
     meshtastic_channel: 0
+community-plugins:
+  dm-rcv-basic:
+    active: true
+    repository: "https://github.com/jeremiah-k/mmr-dm-rcv-basic.git"
+    branch: "main"
+    dm_room: "${ROOM_ID_DM_B}"
+    dm_prefix: true
 meshtastic:
   connection_type: tcp
   host: "${MESHTASTICD_HOST_B}"
@@ -2396,6 +2471,67 @@ echo "==========================================================================
 
 SUITE_START_MS=$(date +%s%3N)
 SYNC_CURSOR_USER1="${SYNC_SINCE_USER}"
+
+# Test 0: CLI smoke checks against live config/home layouts
+start_test "Test 0" "Test 0: CLI smoke checks (real commands + command-tree help coverage)..."
+run_or_fail "CLI --help failed" \
+	"${PYTHON_BIN}" -m mmrelay.cli --help >/dev/null
+run_or_fail "CLI --version failed" \
+	"${PYTHON_BIN}" -m mmrelay.cli --version >/dev/null
+run_or_fail "CLI migrate --help failed" \
+	"${PYTHON_BIN}" -m mmrelay.cli migrate --help >/dev/null
+run_or_fail "CLI auth login --help failed" \
+	"${PYTHON_BIN}" -m mmrelay.cli auth login --help >/dev/null
+run_or_fail "CLI auth logout --help failed" \
+	"${PYTHON_BIN}" -m mmrelay.cli auth logout --help >/dev/null
+run_or_fail "CLI service install --help failed" \
+	"${PYTHON_BIN}" -m mmrelay.cli service install --help >/dev/null
+run_or_fail "CLI service migrate --help failed" \
+	"${PYTHON_BIN}" -m mmrelay.cli service migrate --help >/dev/null
+run_or_fail "CLI config generate --help failed" \
+	"${PYTHON_BIN}" -m mmrelay.cli config generate --help >/dev/null
+
+for relay in A B; do
+	if [[ ${relay} == "A" ]]; then
+		relay_home="${MMRELAY_HOME_DIR_A}"
+		relay_config="${MMRELAY_CONFIG_PATH_A}"
+	else
+		relay_home="${MMRELAY_HOME_DIR_B}"
+		relay_config="${MMRELAY_CONFIG_PATH_B}"
+	fi
+
+	run_or_fail "CLI paths failed for relay ${relay}" \
+		"${PYTHON_BIN}" -m mmrelay.cli \
+		--home "${relay_home}" \
+		--config "${relay_config}" \
+		paths >/dev/null
+	run_or_fail "CLI doctor --migration failed for relay ${relay}" \
+		"${PYTHON_BIN}" -m mmrelay.cli \
+		--home "${relay_home}" \
+		--config "${relay_config}" \
+		doctor --migration >/dev/null
+	run_or_fail "CLI verify-migration failed for relay ${relay}" \
+		"${PYTHON_BIN}" -m mmrelay.cli \
+		--home "${relay_home}" \
+		--config "${relay_config}" \
+		verify-migration >/dev/null
+	run_or_fail "CLI config check failed for relay ${relay}" \
+		"${PYTHON_BIN}" -m mmrelay.cli \
+		--home "${relay_home}" \
+		--config "${relay_config}" \
+		config check >/dev/null
+	run_or_fail "CLI config diagnose failed for relay ${relay}" \
+		"${PYTHON_BIN}" -m mmrelay.cli \
+		--home "${relay_home}" \
+		--config "${relay_config}" \
+		config diagnose >/dev/null
+	run_or_fail "CLI auth status failed for relay ${relay}" \
+		"${PYTHON_BIN}" -m mmrelay.cli \
+		--home "${relay_home}" \
+		--config "${relay_config}" \
+		auth status >/dev/null
+done
+pass_test "CLI smoke checks passed for both relay homes/configs"
 
 # Test 1: Matrix user message in plaintext room → Mesh A + Mesh B
 MATRIX_TO_SHARED_TEXT="MMRELAY_CI_M2SHARED_$(date +%s)_${RANDOM}"
@@ -2665,8 +2801,138 @@ run_or_fail "Reaction did not relay to Mesh B" \
 	60
 pass_test "Encrypted-room user reaction relayed to both meshes"
 
-# Test 7: stale name rows are pruned to match current node DB snapshot.
-start_test "Test 7" "Test 7: stale name rows are pruned to match current node DB..."
+# Test 7: DM receiver plugin forwards direct mesh messages into relay-specific Matrix rooms.
+start_test "Test 7" "Test 7: dm-rcv-basic plugin forwards direct mesh DMs to relay-specific Matrix rooms..."
+
+run_or_fail "dm-rcv-basic did not initialize in relay A" \
+	wait_for_log_pattern_since \
+	"${MMRELAY_LOG_PATH_A}" \
+	"Direct message plugin initialized - forwarding DMs to room: ${ROOM_ID_DM_A}" \
+	0 \
+	45
+run_or_fail "dm-rcv-basic did not initialize in relay B" \
+	wait_for_log_pattern_since \
+	"${MMRELAY_LOG_PATH_B}" \
+	"Direct message plugin initialized - forwarding DMs to room: ${ROOM_ID_DM_B}" \
+	0 \
+	45
+
+DM_A_TEXT_1="MMRELAY_CI_DM_A1_$(date +%s)_${RANDOM}"
+DM_A_TEXT_2="MMRELAY_CI_DM_A2_$(date +%s)_${RANDOM}"
+DM_B_TEXT_1="MMRELAY_CI_DM_B1_$(date +%s)_${RANDOM}"
+DM_B_TEXT_2="MMRELAY_CI_DM_B2_$(date +%s)_${RANDOM}"
+
+run_or_fail "Failed to send direct DM #1 to relay A" \
+	send_direct_mesh_message \
+	"${MESHTASTICD_ENDPOINT_A}" \
+	"${RELAY_NODE_ID_A}" \
+	"${DM_A_TEXT_1}"
+run_capture_or_fail \
+	dm_event_json \
+	"DM #1 for relay A was not forwarded to Matrix room A" \
+	matrix_wait_event \
+	"${USER_ACCESS_TOKEN}" \
+	"${ROOM_ID_DM_A}" \
+	"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
+	"m.room.message" \
+	"${BOT_A_USER_ID}" \
+	"${DM_A_TEXT_1}" \
+	"m.text" \
+	"" \
+	"" \
+	"" \
+	"${SYNC_CURSOR_USER1}"
+run_capture_or_fail \
+	SYNC_CURSOR_USER1 \
+	"Failed to update Matrix sync cursor after relay A DM #1" \
+	json_extract \
+	"${dm_event_json}" \
+	"next_batch"
+
+run_or_fail "Failed to send direct DM #2 to relay A" \
+	send_direct_mesh_message \
+	"${MESHTASTICD_ENDPOINT_A}" \
+	"${RELAY_NODE_ID_A}" \
+	"${DM_A_TEXT_2}"
+run_capture_or_fail \
+	dm_event_json \
+	"DM #2 for relay A was not forwarded to Matrix room A" \
+	matrix_wait_event \
+	"${USER_ACCESS_TOKEN}" \
+	"${ROOM_ID_DM_A}" \
+	"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
+	"m.room.message" \
+	"${BOT_A_USER_ID}" \
+	"${DM_A_TEXT_2}" \
+	"m.text" \
+	"" \
+	"" \
+	"" \
+	"${SYNC_CURSOR_USER1}"
+run_capture_or_fail \
+	SYNC_CURSOR_USER1 \
+	"Failed to update Matrix sync cursor after relay A DM #2" \
+	json_extract \
+	"${dm_event_json}" \
+	"next_batch"
+
+run_or_fail "Failed to send direct DM #1 to relay B" \
+	send_direct_mesh_message \
+	"${MESHTASTICD_ENDPOINT_B}" \
+	"${RELAY_NODE_ID_B}" \
+	"${DM_B_TEXT_1}"
+run_capture_or_fail \
+	dm_event_json \
+	"DM #1 for relay B was not forwarded to Matrix room B" \
+	matrix_wait_event \
+	"${USER_ACCESS_TOKEN}" \
+	"${ROOM_ID_DM_B}" \
+	"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
+	"m.room.message" \
+	"${BOT_B_USER_ID}" \
+	"${DM_B_TEXT_1}" \
+	"m.text" \
+	"" \
+	"" \
+	"" \
+	"${SYNC_CURSOR_USER1}"
+run_capture_or_fail \
+	SYNC_CURSOR_USER1 \
+	"Failed to update Matrix sync cursor after relay B DM #1" \
+	json_extract \
+	"${dm_event_json}" \
+	"next_batch"
+
+run_or_fail "Failed to send direct DM #2 to relay B" \
+	send_direct_mesh_message \
+	"${MESHTASTICD_ENDPOINT_B}" \
+	"${RELAY_NODE_ID_B}" \
+	"${DM_B_TEXT_2}"
+run_capture_or_fail \
+	dm_event_json \
+	"DM #2 for relay B was not forwarded to Matrix room B" \
+	matrix_wait_event \
+	"${USER_ACCESS_TOKEN}" \
+	"${ROOM_ID_DM_B}" \
+	"${MATRIX_EVENT_TIMEOUT_SECONDS}" \
+	"m.room.message" \
+	"${BOT_B_USER_ID}" \
+	"${DM_B_TEXT_2}" \
+	"m.text" \
+	"" \
+	"" \
+	"" \
+	"${SYNC_CURSOR_USER1}"
+run_capture_or_fail \
+	SYNC_CURSOR_USER1 \
+	"Failed to update Matrix sync cursor after relay B DM #2" \
+	json_extract \
+	"${dm_event_json}" \
+	"next_batch"
+pass_test "dm-rcv-basic forwarded multiple direct mesh messages for both relays"
+
+# Test 8: stale name rows are pruned to match current node DB snapshot.
+start_test "Test 8" "Test 8: stale name rows are pruned to match current node DB..."
 
 POLL_TIMEOUT_SECONDS=$(
 	"${PYTHON_BIN}" - "${NODEDB_REFRESH_INTERVAL_SECONDS}" <<'PY'
