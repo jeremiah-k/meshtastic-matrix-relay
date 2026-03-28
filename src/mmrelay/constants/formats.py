@@ -99,11 +99,11 @@ TELEMETRY_GRAPH_FILENAME: Final[str] = "graph.png"
 TELEMETRY_APP_PORTNUM: Final[str] = "TELEMETRY_APP"
 
 # Map settings
-DEFAULT_MAP_ZOOM: Final[int] = 8
+DEFAULT_MAP_ZOOM: Final[int] = 10
 MAP_ZOOM_MIN: Final[int] = 0
 MAP_ZOOM_MAX: Final[int] = 30
 DEFAULT_MAP_IMAGE_SIZE: Final[tuple[int, int]] = (1000, 1000)
-MAP_LABEL_FONT_SIZE: Final[int] = 50
+MAP_LABEL_FONT_SIZE: Final[int] = 16
 
 # Label settings
 DEFAULT_LABEL_FONT_SIZE: Final[int] = 12
