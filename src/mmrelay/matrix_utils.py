@@ -1581,7 +1581,8 @@ async def _resolve_and_load_credentials(
                 present_auth_keys.append(key)
         if present_auth_keys:
             logger.error(
-                f"Matrix section is missing required field: '{CONFIG_KEY_ACCESS_TOKEN}'"
+                "Matrix section is missing required field: '%s'",
+                CONFIG_KEY_ACCESS_TOKEN,
             )
         else:
             logger.error(
@@ -1594,7 +1595,8 @@ async def _resolve_and_load_credentials(
     matrix_homeserver = matrix_section.get(CONFIG_KEY_HOMESERVER)
     if not isinstance(matrix_homeserver, str) or not matrix_homeserver.strip():
         logger.error(
-            f"Matrix section is missing required field: '{CONFIG_KEY_HOMESERVER}'"
+            "Matrix section is missing required field: '%s'",
+            CONFIG_KEY_HOMESERVER,
         )
         return None
 

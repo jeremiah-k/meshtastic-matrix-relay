@@ -91,14 +91,14 @@ def test_is_running_as_service_false_on_file_not_found() -> None:
 
 def test_is_running_as_service_false_when_status_has_no_ppid_line() -> None:
     """Missing PPid field in /proc/self/status should return False."""
-
-    def _open_side_effect(path, *args, **kwargs):
-        if path == runtime_utils.PROC_SELF_STATUS_PATH:
-            return mock_open(read_data="Name:\tpython\n")()
-        raise FileNotFoundError(f"Unexpected file open: {path}")
-
     with (
         patch.dict(os.environ, {}, clear=True),
-        patch("builtins.open", side_effect=_open_side_effect),
+        patch(
+            "builtins.open",
+            side_effect=_open_side_effect_for_proc(
+                status_text="Name:\tpython\n",
+                comm_text="ignored\n",
+            ),
+        ),
     ):
         assert runtime_utils.is_running_as_service() is False

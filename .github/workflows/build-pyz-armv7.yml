@@ -11,6 +11,9 @@ jobs:
   build-armv7-pyz:
     runs-on: ubuntu-latest
     env:
+      # TODO: Pin to a digest (e.g., @sha256:...) for reproducibility. The :latest tag is mutable
+      # and can change, breaking cache reproducibility. Resolve the digest with:
+      # docker buildx imagetools inspect ghcr.io/jeremiah-k/mmrelay-builder-armv7:latest
       BUILDER_IMAGE: ghcr.io/jeremiah-k/mmrelay-builder-armv7:latest
 
     steps:

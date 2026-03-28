@@ -236,7 +236,9 @@ _PRAGMA_MESSAGE_MAP_LEGACY_INFO_SQL = "PRAGMA table_info(message_map_legacy)"
 _PRAGMA_MESSAGE_MAP_TEMP_INFO_SQL = "PRAGMA table_info(message_map_old_temp)"
 _DROP_TABLE_MESSAGE_MAP_LEGACY_SQL = "DROP TABLE IF EXISTS message_map_legacy"
 _DROP_TABLE_MESSAGE_MAP_TEMP_SQL = "DROP TABLE IF EXISTS message_map_old_temp"
-_DROP_TABLE_MESSAGE_MAP_STALE_TEMP_SQL = "DROP TABLE IF EXISTS message_map_stale_temp"
+_DROP_TABLE_MESSAGE_MAP_STALE_TEMP_SQL = (
+    f"DROP TABLE IF EXISTS {_MESSAGE_MAP_STALE_TEMP_TABLE}"
+)
 _RENAME_MESSAGE_MAP_TO_LEGACY_SQL = (
     "ALTER TABLE message_map RENAME TO message_map_legacy"
 )
@@ -244,7 +246,7 @@ _RENAME_MESSAGE_MAP_TO_TEMP_SQL = (
     "ALTER TABLE message_map RENAME TO message_map_old_temp"
 )
 _RENAME_MESSAGE_MAP_TEMP_TO_STALE_TEMP_SQL = (
-    "ALTER TABLE message_map_old_temp RENAME TO message_map_stale_temp"
+    f"ALTER TABLE message_map_old_temp RENAME TO {_MESSAGE_MAP_STALE_TEMP_TABLE}"
 )
 _CREATE_TABLE_MESSAGE_MAP_FROM_SCRATCH_SQL = (
     "CREATE TABLE message_map "
@@ -277,18 +279,20 @@ _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_TEMP_SQL = (
     "SELECT meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet "
     "FROM message_map_old_temp"
 )
-_PRAGMA_MESSAGE_MAP_STALE_TEMP_INFO_SQL = "PRAGMA table_info(message_map_stale_temp)"
+_PRAGMA_MESSAGE_MAP_STALE_TEMP_INFO_SQL = (
+    f"PRAGMA table_info({_MESSAGE_MAP_STALE_TEMP_TABLE})"
+)
 _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_STALE_TEMP_WITH_MESH_SQL = (
-    "INSERT OR IGNORE INTO message_map "
-    "(meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
-    "SELECT meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet "
-    "FROM message_map_stale_temp"
+    f"INSERT OR IGNORE INTO message_map "
+    f"(meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
+    f"SELECT meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet "
+    f"FROM {_MESSAGE_MAP_STALE_TEMP_TABLE}"
 )
 _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_STALE_TEMP_WITHOUT_MESH_SQL = (
-    "INSERT OR IGNORE INTO message_map "
-    "(meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
-    "SELECT meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, NULL "
-    "FROM message_map_stale_temp"
+    f"INSERT OR IGNORE INTO message_map "
+    f"(meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
+    f"SELECT meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, NULL "
+    f"FROM {_MESSAGE_MAP_STALE_TEMP_TABLE}"
 )
 _CREATE_INDEX_MESSAGE_MAP_ID_SQL = (
     "CREATE INDEX IF NOT EXISTS idx_message_map_meshtastic_id "

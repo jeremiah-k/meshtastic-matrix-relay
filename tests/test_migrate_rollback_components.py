@@ -24,6 +24,14 @@ def new_home_with_gpx_plugin(tmp_path: Path) -> Path:
     return new_home
 
 
+@pytest.fixture
+def gpxtracker_plugin_path(new_home_with_gpx_plugin: Path) -> Path:
+    """Create the gpxtracker plugin directory structure and return its path."""
+    gpx_plugin_parent = new_home_with_gpx_plugin / "plugins" / "community"
+    gpx_plugin_parent.mkdir(parents=True, exist_ok=True)
+    return gpx_plugin_parent / "gpxtracker"
+
+
 class TestRollbackCredentialsMigration:
     """Test rollback of credentials.json migration."""
 
@@ -461,14 +469,12 @@ class TestRollbackPluginsMigration:
 class TestRollbackGpxtrackerMigration:
     """Test rollback of GPX tracker data migration."""
 
-    def test_rollback_gpxtracker_migration(self, tmp_path: Path) -> None:
+    def test_rollback_gpxtracker_migration(
+        self, new_home_with_gpx_plugin: Path, gpxtracker_plugin_path: Path
+    ) -> None:
         """Test rollback of GPX tracker data from backup."""
-        # Create test structure
-        new_home = tmp_path / "home"
-        new_home.mkdir()
-
         # Create current (migrated) GPX directory
-        gpx_dest = new_home / "plugins" / "community" / "gpxtracker" / "data"
+        gpx_dest = gpxtracker_plugin_path / "data"
         gpx_dest.mkdir(parents=True)
         (gpx_dest / "track_new.gpx").write_text("<gpx>New track</gpx>")
 
@@ -499,7 +505,9 @@ class TestRollbackGpxtrackerMigration:
         ]
 
         # Execute rollback
-        result = rollback_migration(completed_steps, migrations, new_home)
+        result = rollback_migration(
+            completed_steps, migrations, new_home_with_gpx_plugin
+        )
 
         # Verify rollback succeeded
         assert result["success"] is True

@@ -241,7 +241,6 @@ class TestInstallServiceSystemctlUsage(unittest.TestCase):
             patch("mmrelay.setup_utils.is_service_enabled", return_value=False),
             patch("mmrelay.setup_utils.check_loginctl_available", return_value=False),
             patch("mmrelay.setup_utils.is_service_active", return_value=False),
-            patch("time.sleep", return_value=None),
         ):
             install_service()
 
@@ -268,7 +267,6 @@ class TestInstallServiceSystemctlUsage(unittest.TestCase):
             patch("mmrelay.setup_utils.is_service_enabled", return_value=False),
             patch("mmrelay.setup_utils.check_loginctl_available", return_value=False),
             patch("mmrelay.setup_utils.is_service_active", return_value=False),
-            patch("time.sleep", return_value=None),
             patch("subprocess.run", return_value=MagicMock(returncode=1)),
         ):
             result = install_service()
