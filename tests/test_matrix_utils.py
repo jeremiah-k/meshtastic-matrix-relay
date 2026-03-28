@@ -5457,7 +5457,8 @@ async def test_login_matrix_bot_whoami_fallback_when_missing_user_id(
     assert result is True
     assert mock_save_credentials.call_args.args[0]["user_id"] == "@fallback:matrix.org"
     assert any(
-        "whoami failed, using fallback user_id" in call.args[0]
+        "whoami response did not include user_id; using login response user_id"
+        in call.args[0]
         for call in mock_logger.warning.call_args_list
     )
 
@@ -5712,6 +5713,92 @@ async def test_login_matrix_bot_login_response_status_codes(
     mock_main_client.close.assert_awaited_once()
 
 
+@patch("mmrelay.matrix_utils.AsyncClient")
+@patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
+@patch("mmrelay.matrix_utils._normalize_bot_user_id", return_value="@user:matrix.org")
+async def test_login_matrix_bot_forbidden_with_localpart_suggests_full_mxid(
+    _mock_normalize,
+    _mock_ssl_context,
+    mock_async_client,
+):
+    """401/M_FORBIDDEN guidance should suggest full MXID when localpart was used."""
+    mock_discovery_client = AsyncMock()
+    mock_main_client = AsyncMock()
+    mock_async_client.side_effect = [mock_discovery_client, mock_main_client]
+
+    mock_discovery_client.discovery_info.return_value = SimpleNamespace(
+        homeserver_url="https://matrix.org"
+    )
+    mock_discovery_client.close = AsyncMock()
+    mock_main_client.login.return_value = MagicMock(
+        access_token=None, status_code=401, message="M_FORBIDDEN"
+    )
+    mock_main_client.close = AsyncMock()
+
+    with (
+        patch("mmrelay.config.load_config", return_value={}),
+        patch("mmrelay.config.is_e2ee_enabled", return_value=False),
+        patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+    ):
+        result = await login_matrix_bot(
+            homeserver="https://matrix.org",
+            username="user",
+            password="pass",
+            logout_others=False,
+        )
+
+    assert result is False
+    assert any(
+        "retry with a full Matrix ID" in call.args[0]
+        for call in mock_logger.error.call_args_list
+    )
+    mock_main_client.close.assert_awaited_once()
+
+
+@patch("mmrelay.matrix_utils.AsyncClient")
+@patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
+@patch("mmrelay.matrix_utils._normalize_bot_user_id", return_value="@user:matrix.org")
+async def test_login_matrix_bot_forbidden_with_full_mxid_skips_full_mxid_hint(
+    _mock_normalize,
+    _mock_ssl_context,
+    mock_async_client,
+):
+    """Full MXID input should not log redundant full-MXID retry guidance."""
+    mock_discovery_client = AsyncMock()
+    mock_main_client = AsyncMock()
+    mock_async_client.side_effect = [mock_discovery_client, mock_main_client]
+
+    mock_discovery_client.discovery_info.return_value = SimpleNamespace(
+        homeserver_url="https://matrix.org"
+    )
+    mock_discovery_client.close = AsyncMock()
+    mock_main_client.login.return_value = MagicMock(
+        access_token=None, status_code=401, message="M_FORBIDDEN"
+    )
+    mock_main_client.close = AsyncMock()
+
+    with (
+        patch("mmrelay.config.load_config", return_value={}),
+        patch("mmrelay.config.is_e2ee_enabled", return_value=False),
+        patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+    ):
+        result = await login_matrix_bot(
+            homeserver="https://matrix.org",
+            username="@user:matrix.org",
+            password="pass",
+            logout_others=False,
+        )
+
+    assert result is False
+    assert not any(
+        "retry with a full Matrix ID" in call.args[0]
+        for call in mock_logger.error.call_args_list
+    )
+    mock_main_client.close.assert_awaited_once()
+
+
 @patch("mmrelay.matrix_utils.save_credentials")
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
@@ -5754,6 +5841,53 @@ async def test_login_matrix_bot_whoami_exception_uses_fallback(
     assert mock_save_credentials.call_args.args[0]["user_id"] == "@fallback:matrix.org"
     assert any(
         "whoami call failed" in call.args[0]
+        for call in mock_logger.warning.call_args_list
+    )
+
+
+@patch("mmrelay.matrix_utils.save_credentials")
+@patch("mmrelay.matrix_utils.AsyncClient")
+@patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
+@patch("mmrelay.matrix_utils._normalize_bot_user_id", return_value="@user:matrix.org")
+async def test_login_matrix_bot_saves_credentials_without_user_id_when_unknown(
+    _mock_normalize,
+    _mock_ssl_context,
+    mock_async_client,
+    mock_save_credentials,
+):
+    """If whoami and login response omit user_id, credentials should still save."""
+    mock_discovery_client = AsyncMock()
+    mock_main_client = AsyncMock()
+    mock_async_client.side_effect = [mock_discovery_client, mock_main_client]
+
+    mock_discovery_client.discovery_info.return_value = SimpleNamespace(
+        homeserver_url="https://matrix.org"
+    )
+    mock_discovery_client.close = AsyncMock()
+    mock_main_client.login.return_value = MagicMock(
+        access_token="token", device_id="DEV", user_id=None
+    )
+    mock_main_client.whoami.return_value = MagicMock(user_id=None)
+    mock_main_client.close = AsyncMock()
+
+    with (
+        patch("mmrelay.config.load_config", return_value={}),
+        patch("mmrelay.config.is_e2ee_enabled", return_value=False),
+        patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+    ):
+        result = await login_matrix_bot(
+            homeserver="https://matrix.org",
+            username="user",
+            password="pass",
+            logout_others=False,
+        )
+
+    assert result is True
+    saved_credentials = mock_save_credentials.call_args.args[0]
+    assert "user_id" not in saved_credentials
+    assert any(
+        "saving credentials without user_id" in call.args[0]
         for call in mock_logger.warning.call_args_list
     )
 

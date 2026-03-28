@@ -141,6 +141,23 @@ def _has_mmrelay_artifacts(root: Path) -> bool:
     return False
 
 
+def _has_windows_installer_markers(root: Path) -> bool:
+    """
+    Detect whether a directory looks like an MMRelay Windows installer location.
+
+    This checks for installer-created launcher scripts so first-run installs can
+    still resolve to the installer home before runtime artifacts exist.
+
+    Parameters:
+        root (Path): Directory to inspect.
+
+    Returns:
+        bool: True when one or more installer marker files are present.
+    """
+    installer_markers = ("mmrelay.bat", "setup-auth.bat", "logout.bat")
+    return any((root / marker).exists() for marker in installer_markers)
+
+
 def set_home_override(path: str, *, source: str | None = None) -> None:
     """
     Store a CLI-provided application home path and its source as the module-level override used by path resolution.
@@ -243,8 +260,11 @@ def get_home_dir() -> Path:
             installer_path = (
                 Path(local_app_data) / "Programs" / WINDOWS_INSTALLER_DIR_NAME
             )
-            # Check if this looks like an MMRelay installation with data
-            if installer_path.exists() and _has_mmrelay_artifacts(installer_path):
+            # Prefer installer home for both established and first-run installs.
+            if installer_path.exists() and (
+                _has_mmrelay_artifacts(installer_path)
+                or _has_windows_installer_markers(installer_path)
+            ):
                 return installer_path
 
         # Fall back to platformdirs default
@@ -257,7 +277,7 @@ def get_config_paths(*, explicit: str | None = None) -> list[Path]:
 
     Order:
       1. Explicit CLI path (if provided) — always included first, even if the file does not exist.
-      2. MMRELAY_HOME/<config file> (skipped when an explicit path is provided).
+      2. MMRELAY_HOME/<config file>.
       3. ./<config file> in the current working directory (skipped if identical to home).
       4. Legacy ~/.{APP_NAME}/<config file> — included only if the directory exists and is not equal to the resolved home.
       5. Platform-specific user data directory (e.g., Windows AppData) — included only if it exists and differs from the resolved home.
@@ -270,13 +290,12 @@ def get_config_paths(*, explicit: str | None = None) -> list[Path]:
     """
     candidates = []
 
-    # 1. Explicit CLI argument - ALWAYS add as first candidate, even if it doesn't exist
-    # This allows downstream code to report "file not found" errors appropriately
-    # rather than silently falling back to other locations.
+    # 1. Explicit CLI argument - ALWAYS add as first candidate, even if it doesn't exist.
+    # Downstream code can report a clear file-not-found error for the explicit path
+    # while still preserving normal fallback discovery behavior.
     if explicit:
         explicit_path = Path(explicit).expanduser().absolute()
         candidates.append(explicit_path)
-        return candidates
 
     # 2. MMRELAY_HOME/<CONFIG_FILENAME>
     home = get_home_dir()

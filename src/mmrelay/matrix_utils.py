@@ -2466,6 +2466,7 @@ async def login_matrix_bot(
             logging.getLogger("aiohttp").setLevel(logging.DEBUG)
 
         prompted_for_credentials = False
+        username_included_serverpart = False
 
         # Get homeserver URL
         if not homeserver:
@@ -2548,9 +2549,11 @@ async def login_matrix_bot(
         # Get username
         if not username:
             username = input(
-                "Enter Matrix username or full user ID (e.g., bot or @bot:example.com): "
+                "Enter Matrix username (localpart, e.g., bot) or full user ID (e.g., @bot:example.com): "
             )
             prompted_for_credentials = True
+        raw_username = username.strip() if isinstance(username, str) else ""
+        username_included_serverpart = ":" in raw_username.lstrip("@")
 
         # Format username correctly using the original homeserver domain
         # This ensures the username uses the domain the user expects, not the discovered one
@@ -2886,32 +2889,50 @@ async def login_matrix_bot(
         if access_token:
             logger.info("Login successful!")
 
-            # Get the actual user_id from whoami() - this is the proper way
+            # Prefer user_id from whoami, fall back to response user_id if available.
+            actual_user_id = None
+            response_user_id = _first_nonblank_str(getattr(response, "user_id", None))
             try:
                 whoami_response = await client.whoami()
-                user_id = getattr(whoami_response, "user_id", None)
-                if user_id:
-                    actual_user_id = user_id
-                    logger.debug(f"Got user_id from whoami: {actual_user_id}")
-                else:
-                    # Fallback to response user_id or username
-                    actual_user_id = getattr(response, "user_id", username)
+                whoami_user_id = _first_nonblank_str(
+                    getattr(whoami_response, "user_id", None)
+                )
+                if whoami_user_id:
+                    actual_user_id = whoami_user_id
+                    logger.debug("Got user_id from whoami: %s", actual_user_id)
+                elif response_user_id:
+                    actual_user_id = response_user_id
                     logger.warning(
-                        f"whoami failed, using fallback user_id: {actual_user_id}"
+                        "whoami response did not include user_id; using login response user_id"
+                    )
+                else:
+                    logger.warning(
+                        "whoami response did not include user_id and login response had no user_id; "
+                        "saving credentials without user_id"
                     )
             except Exception as e:
-                logger.warning(f"whoami call failed: {e}, using fallback")
-                actual_user_id = getattr(response, "user_id", username)
+                if response_user_id:
+                    actual_user_id = response_user_id
+                    logger.warning(
+                        "whoami call failed: %s; using login response user_id", e
+                    )
+                else:
+                    logger.warning(
+                        "whoami call failed: %s; login response had no user_id, "
+                        "saving credentials without user_id",
+                        e,
+                    )
 
             # Save credentials to credentials.json
             credentials = {
                 CONFIG_KEY_HOMESERVER: homeserver,
-                CONFIG_KEY_USER_ID: actual_user_id,
                 CONFIG_KEY_ACCESS_TOKEN: getattr(response, "access_token", None),
                 CONFIG_KEY_DEVICE_ID: getattr(
                     response, "device_id", existing_device_id
                 ),
             }
+            if actual_user_id:
+                credentials[CONFIG_KEY_USER_ID] = actual_user_id
 
             # save_credentials() now uses unified HOME location
             credentials_path = await asyncio.to_thread(
@@ -2966,6 +2987,10 @@ async def login_matrix_bot(
                     logger.error(
                         "4. Use 'mmrelay auth login' to set up new credentials"
                     )
+                    if not username_included_serverpart:
+                        logger.error(
+                            "5. If needed, retry with a full Matrix ID (e.g., @user:example.com)."
+                        )
                 elif numeric_status == 404:
                     logger.error("User not found or homeserver not found.")
                     logger.error(

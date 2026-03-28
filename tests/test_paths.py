@@ -180,14 +180,26 @@ class TestPathResolutionConfigPaths(unittest.TestCase):
         reset_home_override()
 
     def test_explicit_config_path_provided(self):
-        """Test explicit config path is always first in candidates (lines 152-153, 160)."""
-        with patch("sys.platform", "linux"):
+        """Explicit config should be first while preserving fallback candidates."""
+        with (
+            patch("sys.platform", "linux"),
+            patch("mmrelay.paths.get_home_dir", return_value=Path("/home/testhome")),
+            patch("mmrelay.paths.Path.cwd", return_value=Path("/workdir")),
+        ):
             paths = get_config_paths(explicit="/explicit/config.yaml")
 
             self.assertTrue(len(paths) >= 1)
             self.assertEqual(
                 os.path.normpath(str(paths[0])),
                 os.path.normpath("/explicit/config.yaml"),
+            )
+            self.assertIn(
+                os.path.normpath("/home/testhome/config.yaml"),
+                [os.path.normpath(str(p)) for p in paths],
+            )
+            self.assertIn(
+                os.path.normpath("/workdir/config.yaml"),
+                [os.path.normpath(str(p)) for p in paths],
             )
 
     def test_no_explicit_path_home_config_exists(self):

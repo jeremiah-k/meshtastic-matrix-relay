@@ -224,7 +224,7 @@ $ mmrelay auth login
 Matrix Bot Login for E2EE
 =========================
 Matrix homeserver (e.g., https://matrix.org): https://matrix.example.org
-Matrix username (e.g., @user:matrix.org): @mmrelay-bot:matrix.example.org
+Matrix username (localpart or full user ID, e.g., bot or @bot:example.com): @mmrelay-bot:matrix.example.org
 Matrix password: [password hidden]
 
 Login successful!

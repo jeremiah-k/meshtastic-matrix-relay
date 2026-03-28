@@ -1833,6 +1833,36 @@ class TestAuthStatus(unittest.TestCase):
     @patch("mmrelay.cli_utils.get_command")
     @patch("mmrelay.config.get_config_paths")
     @patch("os.path.exists")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("builtins.print")
+    def test_handle_auth_status_credentials_missing_user_id_shows_runtime_note(
+        self, mock_print, mock_file, mock_exists, mock_get_paths, mock_get_command
+    ):
+        """Missing user_id should still be valid and display recovery guidance."""
+        mock_get_paths.return_value = [TEST_HOME_CONFIG_PATH]
+        mock_exists.return_value = True
+        mock_get_command.return_value = "mmrelay auth login"
+
+        credentials_data = {
+            "homeserver": "https://matrix.org",
+            "access_token": "syt_dGVzdA_test_token_here",
+            CONFIG_KEY_DEVICE_ID: "DEVICEABC123",
+        }
+        mock_file.return_value.read.return_value = json.dumps(credentials_data)
+
+        from mmrelay.cli import handle_auth_status
+
+        result = handle_auth_status(self.mock_args)
+
+        self.assertEqual(result, 0)
+        mock_print.assert_any_call("   User ID: <missing>")
+        mock_print.assert_any_call(
+            "   Note: user_id is optional and can be recovered at runtime via whoami."
+        )
+
+    @patch("mmrelay.cli_utils.get_command")
+    @patch("mmrelay.config.get_config_paths")
+    @patch("os.path.exists")
     @patch("builtins.print")
     def test_handle_auth_status_credentials_not_found(
         self, mock_print, mock_exists, mock_get_paths, mock_get_command

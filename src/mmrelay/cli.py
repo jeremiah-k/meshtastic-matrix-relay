@@ -405,7 +405,7 @@ def parse_arguments() -> argparse.Namespace:
     )
     login_parser.add_argument(
         "--username",
-        help="Matrix username (with or without @ and :server). If provided, --homeserver and --password are also required.",
+        help="Matrix username localpart (recommended, e.g., bot) or full user ID (e.g., @bot:example.com). If provided, --homeserver and --password are also required.",
     )
     login_parser.add_argument(
         "--password",
@@ -2334,6 +2334,10 @@ def handle_auth_status(args: argparse.Namespace) -> int:
                 )
                 print(f"   User ID: {user_id_display}")
                 print(f"   Device ID: {device_id_display}")
+                if user_id_display == "<missing>":
+                    print(
+                        "   Note: user_id is optional and can be recovered at runtime via whoami."
+                    )
                 return 0
 
     print("❌ No credentials.json found")
