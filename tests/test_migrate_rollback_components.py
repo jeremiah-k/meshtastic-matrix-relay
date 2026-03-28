@@ -14,19 +14,26 @@ from mmrelay.constants.migration import MIGRATION_BACKUP_DIRNAME
 from mmrelay.migrate import rollback_migration
 
 
+@pytest.fixture
+def new_home_with_gpx_plugin(tmp_path: Path) -> Path:
+    """Create a new_home directory with the gpxtracker plugin parent structure."""
+    new_home = tmp_path / "home"
+    new_home.mkdir()
+    gpx_plugin_parent = new_home / "plugins" / "community"
+    gpx_plugin_parent.mkdir(parents=True)
+    return new_home
+
+
 class TestRollbackCredentialsMigration:
     """Test rollback of credentials.json migration."""
 
-    def test_rollback_credentials_migration(self, tmp_path: Path) -> None:
+    def test_rollback_credentials_migration(
+        self, new_home_with_gpx_plugin: Path
+    ) -> None:
         """Test rollback of credentials.json from backup."""
-        # Create test structure
-        new_home = tmp_path / "home"
-        new_home.mkdir()
+        new_home = new_home_with_gpx_plugin
 
         # Create backup directory and credentials backup
-        # Create parent directories for gpxtracker
-        gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
-        gpx_plugin_dir.mkdir(parents=True)
 
         backup_dir = new_home / "matrix" / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir(parents=True)
@@ -73,16 +80,11 @@ class TestRollbackCredentialsMigration:
 class TestRollbackConfigMigration:
     """Test rollback of config.yaml migration."""
 
-    def test_rollback_config_migration(self, tmp_path: Path) -> None:
+    def test_rollback_config_migration(self, new_home_with_gpx_plugin: Path) -> None:
         """Test rollback of config.yaml from backup."""
-        # Create test structure
-        new_home = tmp_path / "home"
-        new_home.mkdir()
+        new_home = new_home_with_gpx_plugin
 
         # Create backup directory and config backup
-        # Create parent directories for gpxtracker
-        gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
-        gpx_plugin_dir.mkdir(parents=True)
 
         backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir(parents=True)
@@ -128,16 +130,13 @@ class TestRollbackConfigMigration:
 class TestRollbackDatabaseMigration:
     """Test rollback of database files including WAL/SHM sidecars."""
 
-    def test_rollback_database_migration_with_sidecars(self, tmp_path: Path) -> None:
+    def test_rollback_database_migration_with_sidecars(
+        self, new_home_with_gpx_plugin: Path
+    ) -> None:
         """Test rollback of database including WAL and SHM sidecar files."""
-        # Create test structure
-        new_home = tmp_path / "home"
-        new_home.mkdir()
+        new_home = new_home_with_gpx_plugin
 
         # Create backup directory and database backups with sidecars
-        # Create parent directories for gpxtracker
-        gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
-        gpx_plugin_dir.mkdir(parents=True)
 
         backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()
@@ -189,15 +188,10 @@ class TestRollbackDatabaseMigration:
         assert "backup" in db_file.read_text()
 
     def test_rollback_database_migration_uses_recorded_backup_members(
-        self, tmp_path: Path
+        self, new_home_with_gpx_plugin: Path
     ) -> None:
         """Recorded backup member paths should restore DB files when step new_path is a directory."""
-        new_home = tmp_path / "home"
-        new_home.mkdir()
-
-        # Create parent directories for gpxtracker
-        gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
-        gpx_plugin_dir.mkdir(parents=True)
+        new_home = new_home_with_gpx_plugin
 
         db_dir = new_home / "database"
         backup_dir = db_dir / MIGRATION_BACKUP_DIRNAME
@@ -244,15 +238,10 @@ class TestRollbackDatabaseMigration:
         assert wal_dest.read_text() == "WAL backup"
 
     def test_rollback_database_migration_removes_unbacked_migrated_members(
-        self, tmp_path: Path
+        self, new_home_with_gpx_plugin: Path
     ) -> None:
         """Rollback should remove migrated DB members that had no recorded backup."""
-        new_home = tmp_path / "home"
-        new_home.mkdir()
-
-        # Create parent directories for gpxtracker
-        gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
-        gpx_plugin_dir.mkdir(parents=True)
+        new_home = new_home_with_gpx_plugin
 
         db_dir = new_home / "database"
         backup_dir = db_dir / MIGRATION_BACKUP_DIRNAME
@@ -295,16 +284,11 @@ class TestRollbackDatabaseMigration:
 class TestRollbackLogsMigration:
     """Test rollback of logs directory migration."""
 
-    def test_rollback_logs_migration(self, tmp_path: Path) -> None:
+    def test_rollback_logs_migration(self, new_home_with_gpx_plugin: Path) -> None:
         """Test rollback of logs directory from backup."""
-        # Create test structure
-        new_home = tmp_path / "home"
-        new_home.mkdir()
+        new_home = new_home_with_gpx_plugin
 
         # Create backup directory and logs backup
-        # Create parent directories for gpxtracker
-        gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
-        gpx_plugin_dir.mkdir(parents=True)
 
         backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()
@@ -354,16 +338,11 @@ class TestRollbackStoreMigration:
     """Test rollback of E2EE store directory migration."""
 
     @pytest.mark.skipif(sys.platform == "win32", reason="E2EE not supported on Windows")
-    def test_rollback_store_migration(self, tmp_path: Path) -> None:
+    def test_rollback_store_migration(self, new_home_with_gpx_plugin: Path) -> None:
         """Test rollback of E2EE store directory from backup (Unix/macOS only)."""
-        # Create test structure
-        new_home = tmp_path / "home"
-        new_home.mkdir()
+        new_home = new_home_with_gpx_plugin
 
         # Create backup directory and store backup
-        # Create parent directories for gpxtracker
-        gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
-        gpx_plugin_dir.mkdir(parents=True)
 
         backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()
@@ -411,16 +390,11 @@ class TestRollbackStoreMigration:
 class TestRollbackPluginsMigration:
     """Test rollback of plugins directory migration."""
 
-    def test_rollback_plugins_migration(self, tmp_path: Path) -> None:
+    def test_rollback_plugins_migration(self, new_home_with_gpx_plugin: Path) -> None:
         """Test rollback of plugins directory with custom and community subdirectories."""
-        # Create test structure
-        new_home = tmp_path / "home"
-        new_home.mkdir()
+        new_home = new_home_with_gpx_plugin
 
         # Create backup directory and plugins backup
-        # Create parent directories for gpxtracker
-        gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
-        gpx_plugin_dir.mkdir(parents=True)
 
         backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()
@@ -541,16 +515,11 @@ class TestRollbackGpxtrackerMigration:
 class TestRollbackMultipleComponents:
     """Test rollback of multiple components in reverse order."""
 
-    def test_rollback_multiple_components_reverse_order(self, tmp_path: Path) -> None:
+    def test_rollback_multiple_components_reverse_order(
+        self, new_home_with_gpx_plugin: Path
+    ) -> None:
         """Test that multiple components are rolled back in reverse order."""
-        # Create test structure
-        new_home = tmp_path / "home"
-        new_home.mkdir()
-
-        # Create backup directory
-        # Create parent directories for gpxtracker
-        gpx_plugin_dir = new_home / "plugins" / "community" / "gpxtracker"
-        gpx_plugin_dir.mkdir(parents=True)
+        new_home = new_home_with_gpx_plugin
 
         backup_dir = new_home / MIGRATION_BACKUP_DIRNAME
         backup_dir.mkdir()

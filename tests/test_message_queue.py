@@ -426,7 +426,8 @@ class TestMessageQueue(unittest.TestCase):
             ):
                 await queue._process_queue()
 
-            assert msg in queue._queue
+            assert len(queue._queue) == 1
+            assert queue._queue[0] is msg
 
         self.loop.run_until_complete(run_test())
 
@@ -468,7 +469,8 @@ class TestMessageQueue(unittest.TestCase):
             ):
                 await queue._process_queue()
 
-            assert msg in queue._queue
+            assert len(queue._queue) == 1
+            assert queue._queue[0] is msg
 
         self.loop.run_until_complete(run_test())
 

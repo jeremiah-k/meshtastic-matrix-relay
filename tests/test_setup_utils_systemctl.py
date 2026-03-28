@@ -45,10 +45,10 @@ class TestSystemctlPathResolution(unittest.TestCase):
         """Test that is_service_enabled uses the resolved systemctl path."""
         from mmrelay.setup_utils import is_service_enabled
 
-        with patch("mmrelay.setup_utils.SYSTEMCTL", "/custom/path/systemctl"), patch(
-            "subprocess.run"
-        ) as mock_run:
-
+        with (
+            patch("mmrelay.setup_utils.SYSTEMCTL", "/custom/path/systemctl"),
+            patch("subprocess.run") as mock_run,
+        ):
             mock_run.return_value.returncode = 0
             mock_run.return_value.stdout = "enabled"
 
@@ -66,10 +66,10 @@ class TestSystemctlPathResolution(unittest.TestCase):
         """Test that is_service_active uses the resolved systemctl path."""
         from mmrelay.setup_utils import is_service_active
 
-        with patch("mmrelay.setup_utils.SYSTEMCTL", "/custom/path/systemctl"), patch(
-            "subprocess.run"
-        ) as mock_run:
-
+        with (
+            patch("mmrelay.setup_utils.SYSTEMCTL", "/custom/path/systemctl"),
+            patch("subprocess.run") as mock_run,
+        ):
             mock_run.return_value.returncode = 0
             mock_run.return_value.stdout = "active"
 
@@ -87,10 +87,11 @@ class TestSystemctlPathResolution(unittest.TestCase):
         """Test that reload_daemon uses the resolved systemctl path."""
         from mmrelay.setup_utils import reload_daemon
 
-        with patch("mmrelay.setup_utils.SYSTEMCTL", "/custom/path/systemctl"), patch(
-            "subprocess.run"
-        ) as mock_run, patch("mmrelay.setup_utils.logger"):
-
+        with (
+            patch("mmrelay.setup_utils.SYSTEMCTL", "/custom/path/systemctl"),
+            patch("subprocess.run") as mock_run,
+            patch("mmrelay.setup_utils.logger"),
+        ):
             mock_run.return_value = None  # Successful run
 
             result = reload_daemon()
@@ -105,10 +106,10 @@ class TestSystemctlPathResolution(unittest.TestCase):
         """Test that start_service uses the resolved systemctl path."""
         from mmrelay.setup_utils import start_service
 
-        with patch("mmrelay.setup_utils.SYSTEMCTL", "/custom/path/systemctl"), patch(
-            "subprocess.run"
-        ) as mock_run:
-
+        with (
+            patch("mmrelay.setup_utils.SYSTEMCTL", "/custom/path/systemctl"),
+            patch("subprocess.run") as mock_run,
+        ):
             mock_run.return_value = None  # Successful run
 
             result = start_service()
@@ -124,10 +125,10 @@ class TestSystemctlPathResolution(unittest.TestCase):
         """Test that show_service_status uses the resolved systemctl path."""
         from mmrelay.setup_utils import show_service_status
 
-        with patch("mmrelay.setup_utils.SYSTEMCTL", "/custom/path/systemctl"), patch(
-            "subprocess.run"
-        ) as mock_run:
-
+        with (
+            patch("mmrelay.setup_utils.SYSTEMCTL", "/custom/path/systemctl"),
+            patch("subprocess.run") as mock_run,
+        ):
             mock_run.return_value.stdout = (
                 "● mmrelay.service - MMRelay\n   Active: active (running)"
             )
@@ -152,14 +153,14 @@ class TestServiceTemplateImprovements(unittest.TestCase):
         from mmrelay.setup_utils import get_template_service_content
 
         # Mock all methods to fail
-        with patch(
-            "mmrelay.setup_utils.get_service_template_path", return_value=None
-        ), patch(
-            "importlib.resources.files", side_effect=ImportError("No module")
-        ), patch(
-            "mmrelay.setup_utils.get_template_service_path", return_value="/nonexistent"
+        with (
+            patch("mmrelay.setup_utils.get_service_template_path", return_value=None),
+            patch("importlib.resources.files", side_effect=ImportError("No module")),
+            patch(
+                "mmrelay.setup_utils.get_template_service_path",
+                return_value="/nonexistent",
+            ),
         ):
-
             result = get_template_service_content()
 
             # Should return default template
@@ -173,14 +174,14 @@ class TestServiceTemplateImprovements(unittest.TestCase):
         from mmrelay.setup_utils import get_template_service_content
 
         # Mock all methods to fail to force default template
-        with patch(
-            "mmrelay.setup_utils.get_service_template_path", return_value=None
-        ), patch(
-            "importlib.resources.files", side_effect=ImportError("No module")
-        ), patch(
-            "mmrelay.setup_utils.get_template_service_path", return_value="/nonexistent"
+        with (
+            patch("mmrelay.setup_utils.get_service_template_path", return_value=None),
+            patch("importlib.resources.files", side_effect=ImportError("No module")),
+            patch(
+                "mmrelay.setup_utils.get_template_service_path",
+                return_value="/nonexistent",
+            ),
         ):
-
             result = get_template_service_content()
 
             # Should have updated description
@@ -192,14 +193,14 @@ class TestServiceTemplateImprovements(unittest.TestCase):
         from mmrelay.setup_utils import get_template_service_content
 
         # Mock all methods to fail to force default template
-        with patch(
-            "mmrelay.setup_utils.get_service_template_path", return_value=None
-        ), patch(
-            "importlib.resources.files", side_effect=ImportError("No module")
-        ), patch(
-            "mmrelay.setup_utils.get_template_service_path", return_value="/nonexistent"
+        with (
+            patch("mmrelay.setup_utils.get_service_template_path", return_value=None),
+            patch("importlib.resources.files", side_effect=ImportError("No module")),
+            patch(
+                "mmrelay.setup_utils.get_template_service_path",
+                return_value="/nonexistent",
+            ),
         ):
-
             result = get_template_service_content()
 
             # Should use resolved executable path (better than hardcoded env)
@@ -233,18 +234,15 @@ class TestInstallServiceSystemctlUsage(unittest.TestCase):
         mock_run.return_value = mock_result
 
         # Mock other dependencies
-        with patch("mmrelay.setup_utils.create_service_file", return_value=True), patch(
-            "mmrelay.setup_utils.reload_daemon", return_value=True
-        ), patch("mmrelay.setup_utils.read_service_file", return_value=None), patch(
-            "mmrelay.setup_utils.is_service_enabled", return_value=False
-        ), patch(
-            "mmrelay.setup_utils.check_loginctl_available", return_value=False
-        ), patch(
-            "mmrelay.setup_utils.is_service_active", return_value=False
-        ), patch(
-            "mmrelay.setup_utils.wait_for_service_start", return_value=None
+        with (
+            patch("mmrelay.setup_utils.create_service_file", return_value=True),
+            patch("mmrelay.setup_utils.reload_daemon", return_value=True),
+            patch("mmrelay.setup_utils.read_service_file", return_value=None),
+            patch("mmrelay.setup_utils.is_service_enabled", return_value=False),
+            patch("mmrelay.setup_utils.check_loginctl_available", return_value=False),
+            patch("mmrelay.setup_utils.is_service_active", return_value=False),
+            patch("time.sleep", return_value=None),
         ):
-
             install_service()
 
             # Should use custom systemctl path for enable and start
@@ -263,20 +261,16 @@ class TestInstallServiceSystemctlUsage(unittest.TestCase):
         from mmrelay.setup_utils import install_service
 
         # Mock other dependencies
-        with patch("mmrelay.setup_utils.create_service_file", return_value=True), patch(
-            "mmrelay.setup_utils.reload_daemon", return_value=True
-        ), patch("mmrelay.setup_utils.read_service_file", return_value=None), patch(
-            "mmrelay.setup_utils.is_service_enabled", return_value=False
-        ), patch(
-            "mmrelay.setup_utils.check_loginctl_available", return_value=False
-        ), patch(
-            "mmrelay.setup_utils.is_service_active", return_value=False
-        ), patch(
-            "mmrelay.setup_utils.wait_for_service_start", return_value=None
-        ), patch(
-            "subprocess.run", return_value=MagicMock(returncode=1)
+        with (
+            patch("mmrelay.setup_utils.create_service_file", return_value=True),
+            patch("mmrelay.setup_utils.reload_daemon", return_value=True),
+            patch("mmrelay.setup_utils.read_service_file", return_value=None),
+            patch("mmrelay.setup_utils.is_service_enabled", return_value=False),
+            patch("mmrelay.setup_utils.check_loginctl_available", return_value=False),
+            patch("mmrelay.setup_utils.is_service_active", return_value=False),
+            patch("time.sleep", return_value=None),
+            patch("subprocess.run", return_value=MagicMock(returncode=1)),
         ):
-
             result = install_service()
 
             # Should still complete (returns True even if systemctl operations fail)

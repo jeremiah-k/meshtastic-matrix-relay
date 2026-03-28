@@ -9,7 +9,7 @@ from typing import Final
 
 from mmrelay.constants.auth import TEMP_DEVICE_NAME_LOGOUT
 
-__all__ = (
+__all__: tuple[str, ...] = (
     "BYTES_PER_MIB",
     "DEFAULT_SERVICE_ARGS_SUFFIX",
     "MIGRATION_BACKUP_DIRNAME",

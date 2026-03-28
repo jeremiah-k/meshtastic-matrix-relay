@@ -34,6 +34,16 @@ from mmrelay.cli_utils import (
 from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID
 
 
+@pytest.fixture
+def base_credentials():
+    """Return base mock credentials dict for logout tests."""
+    return {
+        "homeserver": "https://matrix.org",
+        "access_token": "test_token",
+        CONFIG_KEY_DEVICE_ID: "test_device",
+    }
+
+
 class TestCommandRegistry:
     """Test the CLI command registry constants."""
 
@@ -509,15 +519,11 @@ class TestLogoutMatrixBot:
         mock_print.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_logout_matrix_bot_fetch_user_id_success(self):
+    async def test_logout_matrix_bot_fetch_user_id_success(self, base_credentials):
         """Test logout when user_id is fetched successfully from whoami (line 603)."""
         from mmrelay.cli_utils import logout_matrix_bot
 
-        mock_credentials = {
-            "homeserver": "https://matrix.org",
-            "access_token": "test_token",
-            CONFIG_KEY_DEVICE_ID: "test_device",
-        }
+        mock_credentials = base_credentials.copy()
 
         mock_whoami_response = MagicMock()
         mock_whoami_response.user_id = "@test:matrix.org"
@@ -545,15 +551,11 @@ class TestLogoutMatrixBot:
             mock_save_creds.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_logout_matrix_bot_fetch_user_id_timeout(self):
+    async def test_logout_matrix_bot_fetch_user_id_timeout(self, base_credentials):
         """Test logout when fetching user_id times out (lines 615-620)."""
         from mmrelay.cli_utils import logout_matrix_bot
 
-        mock_credentials = {
-            "homeserver": "https://matrix.org",
-            "access_token": "test_token",
-            CONFIG_KEY_DEVICE_ID: "test_device",
-        }
+        mock_credentials = base_credentials.copy()
 
         mock_temp_client = AsyncMock()
         mock_temp_client.whoami.side_effect = asyncio.TimeoutError()
@@ -578,17 +580,13 @@ class TestLogoutMatrixBot:
             mock_temp_client.close.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_logout_matrix_bot_fetch_user_id_exception(self):
+    async def test_logout_matrix_bot_fetch_user_id_exception(self, base_credentials):
         """
         Verify logout_matrix_bot handles an unexpected exception raised while fetching the user's ID from the temporary Matrix client: the exception is logged and the temporary client is closed.
         """
         from mmrelay.cli_utils import logout_matrix_bot
 
-        mock_credentials = {
-            "homeserver": "https://matrix.org",
-            "access_token": "test_token",
-            CONFIG_KEY_DEVICE_ID: "test_device",
-        }
+        mock_credentials = base_credentials.copy()
 
         mock_temp_client = AsyncMock()
         mock_temp_client.whoami.side_effect = Exception("Unexpected database error")
@@ -632,7 +630,7 @@ class TestLogoutMatrixBot:
             mock_temp_client.close.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_logout_matrix_bot_ssl_context_none(self):
+    async def test_logout_matrix_bot_ssl_context_none(self, base_credentials):
         """
         Ensure logout_matrix_bot proceeds when SSL context creation returns None and emits a warning.
 
@@ -640,12 +638,7 @@ class TestLogoutMatrixBot:
         """
         from mmrelay.cli_utils import logout_matrix_bot
 
-        mock_credentials = {
-            "homeserver": "https://matrix.org",
-            "user_id": "@test:matrix.org",
-            "access_token": "test_token",
-            CONFIG_KEY_DEVICE_ID: "test_device",
-        }
+        mock_credentials = {**base_credentials, "user_id": "@test:matrix.org"}
 
         mock_temp_client = AsyncMock()
         mock_temp_client.login.return_value = MagicMock(access_token="temp_token")
@@ -676,16 +669,11 @@ class TestLogoutMatrixBot:
             mock_logger.warning.assert_called()
 
     @pytest.mark.asyncio
-    async def test_logout_matrix_bot_password_verified_success(self):
+    async def test_logout_matrix_bot_password_verified_success(self, base_credentials):
         """Test logout when password is verified successfully (line 681)."""
         from mmrelay.cli_utils import logout_matrix_bot
 
-        mock_credentials = {
-            "homeserver": "https://matrix.org",
-            "user_id": "@test:matrix.org",
-            "access_token": "test_token",
-            CONFIG_KEY_DEVICE_ID: "test_device",
-        }
+        mock_credentials = {**base_credentials, "user_id": "@test:matrix.org"}
 
         mock_temp_client = AsyncMock()
         mock_temp_client.login.return_value = MagicMock(access_token="temp_token")
@@ -715,7 +703,9 @@ class TestLogoutMatrixBot:
             mock_temp_client.logout.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_logout_matrix_bot_temp_session_logout_timeout(self):
+    async def test_logout_matrix_bot_temp_session_logout_timeout(
+        self, base_credentials
+    ):
         """
         Verify logout_matrix_bot continues when a temporary session logout times out.
 
@@ -723,12 +713,7 @@ class TestLogoutMatrixBot:
         """
         from mmrelay.cli_utils import logout_matrix_bot
 
-        mock_credentials = {
-            "homeserver": "https://matrix.org",
-            "user_id": "@test:matrix.org",
-            "access_token": "test_token",
-            CONFIG_KEY_DEVICE_ID: "test_device",
-        }
+        mock_credentials = {**base_credentials, "user_id": "@test:matrix.org"}
 
         mock_temp_client = AsyncMock()
         mock_temp_client.login.return_value = MagicMock(access_token="temp_token")
@@ -762,16 +747,11 @@ class TestLogoutMatrixBot:
             assert result is True
 
     @pytest.mark.asyncio
-    async def test_logout_matrix_bot_close_temp_client_oserror(self):
+    async def test_logout_matrix_bot_close_temp_client_oserror(self, base_credentials):
         """Test logout when closing temp client raises OSError (lines 715-717)."""
         from mmrelay.cli_utils import logout_matrix_bot
 
-        mock_credentials = {
-            "homeserver": "https://matrix.org",
-            "user_id": "@test:matrix.org",
-            "access_token": "test_token",
-            CONFIG_KEY_DEVICE_ID: "test_device",
-        }
+        mock_credentials = {**base_credentials, "user_id": "@test:matrix.org"}
 
         mock_temp_client = AsyncMock()
         mock_temp_client.login.return_value = MagicMock(access_token="temp_token")
@@ -804,16 +784,11 @@ class TestLogoutMatrixBot:
             mock_logger.debug.assert_called()
 
     @pytest.mark.asyncio
-    async def test_logout_matrix_bot_server_logout_timeout(self):
+    async def test_logout_matrix_bot_server_logout_timeout(self, base_credentials):
         """Test logout when server logout times out (lines 741-744)."""
         from mmrelay.cli_utils import logout_matrix_bot
 
-        mock_credentials = {
-            "homeserver": "https://matrix.org",
-            "user_id": "@test:matrix.org",
-            "access_token": "test_token",
-            CONFIG_KEY_DEVICE_ID: "test_device",
-        }
+        mock_credentials = {**base_credentials, "user_id": "@test:matrix.org"}
 
         mock_temp_client = AsyncMock()
         mock_temp_client.login.return_value = MagicMock(access_token="temp_token")
@@ -847,7 +822,9 @@ class TestLogoutMatrixBot:
             assert result is True
 
     @pytest.mark.asyncio
-    async def test_logout_matrix_bot_server_logout_unclear_response(self):
+    async def test_logout_matrix_bot_server_logout_unclear_response(
+        self, base_credentials
+    ):
         """
         Verify that logout_matrix_bot proceeds with local cleanup and returns True when the server's logout response is not clearly structured.
 
@@ -855,12 +832,7 @@ class TestLogoutMatrixBot:
         """
         from mmrelay.cli_utils import logout_matrix_bot
 
-        mock_credentials = {
-            "homeserver": "https://matrix.org",
-            "user_id": "@test:matrix.org",
-            "access_token": "test_token",
-            CONFIG_KEY_DEVICE_ID: "test_device",
-        }
+        mock_credentials = {**base_credentials, "user_id": "@test:matrix.org"}
 
         mock_temp_client = AsyncMock()
         mock_temp_client.login.return_value = MagicMock(access_token="temp_token")
@@ -895,7 +867,7 @@ class TestLogoutMatrixBot:
             assert result is True
 
     @pytest.mark.asyncio
-    async def test_logout_matrix_bot_close_main_client_timeout(self):
+    async def test_logout_matrix_bot_close_main_client_timeout(self, base_credentials):
         """
         Verify logout_matrix_bot returns True when closing the main client raises a TimeoutError.
 
@@ -903,12 +875,7 @@ class TestLogoutMatrixBot:
         """
         from mmrelay.cli_utils import logout_matrix_bot
 
-        mock_credentials = {
-            "homeserver": "https://matrix.org",
-            "user_id": "@test:matrix.org",
-            "access_token": "test_token",
-            CONFIG_KEY_DEVICE_ID: "test_device",
-        }
+        mock_credentials = {**base_credentials, "user_id": "@test:matrix.org"}
 
         mock_temp_client = AsyncMock()
         mock_temp_client.login.return_value = MagicMock(access_token="temp_token")
@@ -941,7 +908,7 @@ class TestLogoutMatrixBot:
             mock_logger.debug.assert_called()
 
     @pytest.mark.asyncio
-    async def test_logout_matrix_bot_process_exception(self):
+    async def test_logout_matrix_bot_process_exception(self, base_credentials):
         """
         Ensure logout_matrix_bot handles exceptions raised during AsyncClient construction.
 
@@ -949,12 +916,7 @@ class TestLogoutMatrixBot:
         """
         from mmrelay.cli_utils import logout_matrix_bot
 
-        mock_credentials = {
-            "homeserver": "https://matrix.org",
-            "user_id": "@test:matrix.org",
-            "access_token": "test_token",
-            CONFIG_KEY_DEVICE_ID: "test_device",
-        }
+        mock_credentials = {**base_credentials, "user_id": "@test:matrix.org"}
 
         with (
             patch(
