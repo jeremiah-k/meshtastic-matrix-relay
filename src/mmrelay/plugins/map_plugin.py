@@ -46,7 +46,13 @@ from mmrelay.plugins.base_plugin import BasePlugin
 def _normalize_rgba(
     color: tuple[int, int, int, int],
 ) -> tuple[float, float, float, float]:
-    return tuple(c / RGBA_CHANNEL_MAX for c in color)  # type: ignore[return-value]
+    red, green, blue, alpha = color
+    return (
+        red / RGBA_CHANNEL_MAX,
+        green / RGBA_CHANNEL_MAX,
+        blue / RGBA_CHANNEL_MAX,
+        alpha / RGBA_CHANNEL_MAX,
+    )
 
 
 # Cairo colors (normalized RGBA 0-1) derived from RGBA constants

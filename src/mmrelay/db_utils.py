@@ -286,13 +286,13 @@ _PRAGMA_MESSAGE_MAP_STALE_TEMP_INFO_SQL = (
     f"PRAGMA table_info({_MESSAGE_MAP_STALE_TEMP_TABLE})"
 )
 _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_STALE_TEMP_WITH_MESH_SQL = (
-    f"INSERT OR IGNORE INTO message_map "
+    f"INSERT OR IGNORE INTO message_map "  # nosec B608
     f"(meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
     f"SELECT meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet "
     f"FROM {_MESSAGE_MAP_STALE_TEMP_TABLE}"
 )
 _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_STALE_TEMP_WITHOUT_MESH_SQL = (
-    f"INSERT OR IGNORE INTO message_map "
+    f"INSERT OR IGNORE INTO message_map "  # nosec B608
     f"(meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
     f"SELECT meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, NULL "
     f"FROM {_MESSAGE_MAP_STALE_TEMP_TABLE}"
@@ -815,14 +815,14 @@ def initialize_database() -> None:
             if _col_mesh in temp_columns:
                 stale_mesh_expr = _col_mesh if _col_mesh in stale_columns else "NULL"
                 cursor.execute(
-                    f"INSERT OR IGNORE INTO {_temp_table} "
+                    f"INSERT OR IGNORE INTO {_temp_table} "  # nosec B608
                     f"({_col_id}, {_col_evt}, {_col_room}, {_col_text}, {_col_mesh}) "
                     f"SELECT {_col_id}, {_col_evt}, {_col_room}, {_col_text}, {stale_mesh_expr} "
                     f"FROM {_MESSAGE_MAP_STALE_TEMP_TABLE}"
                 )
             else:
                 cursor.execute(
-                    f"INSERT OR IGNORE INTO {_temp_table} "
+                    f"INSERT OR IGNORE INTO {_temp_table} "  # nosec B608
                     f"({_col_id}, {_col_evt}, {_col_room}, {_col_text}) "
                     f"SELECT {_col_id}, {_col_evt}, {_col_room}, {_col_text} "
                     f"FROM {_MESSAGE_MAP_STALE_TEMP_TABLE}"
@@ -841,10 +841,10 @@ def initialize_database() -> None:
             and str(meshtastic_column[2]).upper() == "TEXT"
         ):
             cursor.execute(_PRAGMA_MESSAGE_MAP_TEMP_INFO_SQL)
-            temp_columns = {column[1]: column for column in cursor.fetchall()}
+            temp_column_map = {column[1]: column for column in cursor.fetchall()}
             insert_sql = (
                 _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITH_MESH_SQL
-                if _col_mesh in temp_columns
+                if _col_mesh in temp_column_map
                 else _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_LEGACY_WITHOUT_MESH_SQL
             ).replace("message_map_legacy", _temp_table)
             if "message_map_legacy" in insert_sql:

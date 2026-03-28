@@ -22,6 +22,8 @@ Usage:
     result = await logout_matrix_bot(password="user_password")
 """
 
+# ruff: noqa: E402
+
 import asyncio
 import logging
 import os
@@ -517,7 +519,11 @@ def _handle_matrix_error(
         status_text = (
             str(status_code).strip().lower() if status_code is not None else ""
         )
-        message_text = str(getattr(error, "message", "")).strip().lower()
+        raw_message_obj = getattr(error, "message", None)
+        raw_message = (
+            str(raw_message_obj).strip() if raw_message_obj is not None else ""
+        )
+        message_text = raw_message.lower()
         parsed_status_code: int | None = None
         if status_code is not None:
             try:
@@ -536,7 +542,9 @@ def _handle_matrix_error(
             error_category = "server"
         else:
             error_category = "other"
-            error_detail = str(status_code)
+            error_detail = raw_message or str(
+                status_code if status_code is not None else type(error).__name__
+            )
     # Handle network/transport exceptions
     elif isinstance(
         error,

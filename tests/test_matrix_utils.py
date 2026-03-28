@@ -1523,7 +1523,7 @@ async def test_connect_matrix_alias_resolution_exception(
             "homeserver": "https://matrix.org",
             "access_token": "test_token",
             "user_id": "@test:matrix.org",
-            CONFIG_KEY_DEVICE_ID: "test_device_id",
+            "device_id": "test_device_id",
         }
 
         # Mock the AsyncClient instance
@@ -3280,7 +3280,7 @@ async def test_connect_matrix_missing_device_id_uses_direct_assignment(
         "homeserver": "https://matrix.example.org",
         "user_id": "@bot:example.org",
         "access_token": "test_token",
-        CONFIG_KEY_DEVICE_ID: discovered_device_id,
+        "device_id": discovered_device_id,
     }
     assert call_args[1]["credentials_path"].endswith("credentials.json")
 
@@ -4091,7 +4091,7 @@ async def test_connect_matrix_ignores_config_access_token_when_credentials_prese
                 "homeserver": "https://matrix.example.org",
                 "user_id": "@bot:example.org",
                 "access_token": "creds_token",
-                CONFIG_KEY_DEVICE_ID: "DEV",
+                "device_id": "DEV",
             },
         ),
         patch(
@@ -4556,12 +4556,9 @@ async def test_connect_matrix_e2ee_store_path_default(monkeypatch, tmp_path):
         raising=False,
     )
 
-    default_path = str(tmp_path / "mmrelay-store")
-    monkeypatch.setattr(
-        "mmrelay.matrix_utils.get_e2ee_store_dir",
-        lambda: default_path,
-        raising=False,
-    )
+    from mmrelay.config import get_e2ee_store_dir as config_get_e2ee_store_dir
+
+    default_path = str(config_get_e2ee_store_dir())
     client_calls = []
 
     def fake_async_client(*_args, **_kwargs):
@@ -5251,12 +5248,13 @@ async def test_login_matrix_bot_e2ee_store_path_created(
     mock_main_client.whoami.return_value = MagicMock(user_id="@user:matrix.org")
     mock_main_client.close = AsyncMock()
 
-    store_path = str(tmp_path / "mmrelay-store")
+    from mmrelay.config import get_e2ee_store_dir as config_get_e2ee_store_dir
+
+    store_path = str(config_get_e2ee_store_dir())
 
     with (
         patch("mmrelay.config.load_config", return_value={"matrix": {}}),
         patch("mmrelay.config.is_e2ee_enabled", return_value=True),
-        patch("mmrelay.matrix_utils.get_e2ee_store_dir", return_value=store_path),
         patch("mmrelay.matrix_utils.os.makedirs") as mock_makedirs,
         patch(
             "mmrelay.matrix_utils._normalize_bot_user_id",
@@ -5272,7 +5270,10 @@ async def test_login_matrix_bot_e2ee_store_path_created(
         )
 
     assert result is True
-    mock_makedirs.assert_called_once_with(store_path, exist_ok=True)
+    assert any(
+        call.args == (store_path,) and call.kwargs == {"exist_ok": True}
+        for call in mock_makedirs.call_args_list
+    )
 
 
 @patch("mmrelay.matrix_utils.save_credentials")

@@ -3916,7 +3916,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         config = {
             "meshtastic": {
                 "connection_type": "ble",
-                "ble_address": "AA:BB:CC:DD:EE:FF",
+                "ble_address": TEST_BLE_MAC,
             },
             "matrix_rooms": [],
         }
@@ -3941,7 +3941,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             mu._metadata_future = None
             result = connect_meshtastic(passed_config=config)
             self.assertIsNone(result)
-            mock_bleak_client.assert_called_with("AA:BB:CC:DD:EE:FF")
+            mock_bleak_client.assert_called_with(TEST_BLE_MAC)
 
             self.assertIsNone(mu.meshtastic_iface)
 
@@ -3953,7 +3953,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             self.assertEqual(len(error_calls), MAX_TIMEOUT_RETRIES_INFINITE + 1)
 
             last_error_call = str(error_calls[-1])
-            self.assertIn("AA:BB:CC:DD:EE:FF", last_error_call)
+            self.assertIn(TEST_BLE_MAC, last_error_call)
 
             abort_calls = [
                 call
@@ -3980,7 +3980,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         config = {
             "meshtastic": {
                 "connection_type": "ble",
-                "ble_address": "AA:BB:CC:DD:EE:FF",
+                "ble_address": TEST_BLE_MAC,
                 "retries": 1,
             },
             "matrix_rooms": [],
@@ -4059,7 +4059,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         config = {
             "meshtastic": {
                 "connection_type": "ble",
-                "ble_address": "AA:BB:CC:DD:EE:FF",
+                "ble_address": TEST_BLE_MAC,
             },
             "matrix_rooms": [],
         }
@@ -4102,7 +4102,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
             mu._metadata_future = None
             result = connect_meshtastic(passed_config=config)
             self.assertIsNone(result)
-            mock_bleak_client.assert_called_with("AA:BB:CC:DD:EE:FF")
+            mock_bleak_client.assert_called_with(TEST_BLE_MAC)
 
             self.assertIsNone(mu.meshtastic_iface)
 
@@ -4148,7 +4148,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
         config = {
             "meshtastic": {
                 "connection_type": "ble",
-                "ble_address": "AA:BB:CC:DD:EE:FF",
+                "ble_address": TEST_BLE_MAC,
                 "retries": 1,
             },
             "matrix_rooms": [],

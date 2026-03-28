@@ -833,9 +833,9 @@ class TestPerformanceStress:
 
                             # Realistic short inter-message delay.
                             await asyncio.sleep(
-                                random.uniform(
+                                random.uniform(  # nosec B311 - Test timing variation, not cryptographic
                                     0.05, 0.15
-                                )  # nosec B311 - Test timing variation, not cryptographic
+                                )
                             )
 
                         # Wait for queue to drain (bounded)

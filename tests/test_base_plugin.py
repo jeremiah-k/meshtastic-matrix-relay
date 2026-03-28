@@ -217,7 +217,7 @@ class TestBasePlugin(unittest.TestCase):
     def test_non_core_plugin_preserves_inferred_type_with_legacy_plugins_config(self):
         """Legacy 'plugins' config should not demote inferred custom/community plugin type."""
         legacy_config = {"plugins": {"test_plugin": {"active": True}}}
-        class_file = "/tmp/custom_plugins/test_plugin.py"
+        class_file = "/tmp/custom_plugins/test_plugin.py"  # nosec B108
 
         with (
             patch("mmrelay.plugins.base_plugin.config", legacy_config),
@@ -226,7 +226,7 @@ class TestBasePlugin(unittest.TestCase):
             ),
             patch(
                 "mmrelay.plugin_loader.get_custom_plugin_dirs",
-                return_value=["/tmp/custom_plugins"],
+                return_value=["/tmp/custom_plugins"],  # nosec B108
             ),
             patch("mmrelay.plugin_loader.get_community_plugin_dirs", return_value=[]),
         ):

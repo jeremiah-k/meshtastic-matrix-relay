@@ -1,7 +1,8 @@
 """Tests for rollback_migration() function in migrate.py.
 
 These tests verify the critical safety functionality that restores files from
-.migration_backups/ directory when migration fails, ensuring data is not lost.
+the migration backup directory (MIGRATION_BACKUP_DIRNAME) when migration fails,
+ensuring data is not lost.
 """
 
 import shutil

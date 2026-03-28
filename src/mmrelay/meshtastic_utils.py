@@ -3083,6 +3083,30 @@ def serial_port_exists(port_name: str) -> bool:
     return port_name in ports
 
 
+def _get_connection_retry_wait_time(attempts: int) -> float:
+    """Return capped exponential retry backoff without exponentiating past the cap."""
+    if attempts <= 0 or CONNECTION_RETRY_BACKOFF_MAX_SECS <= 0:
+        return 0.0
+
+    if CONNECTION_RETRY_BACKOFF_BASE <= 1:
+        return min(
+            float(CONNECTION_RETRY_BACKOFF_BASE**attempts),
+            float(CONNECTION_RETRY_BACKOFF_MAX_SECS),
+        )
+
+    max_capped_attempt = math.ceil(
+        math.log(
+            CONNECTION_RETRY_BACKOFF_MAX_SECS,
+            CONNECTION_RETRY_BACKOFF_BASE,
+        )
+    )
+    exponent = min(attempts, max_capped_attempt)
+    return min(
+        float(CONNECTION_RETRY_BACKOFF_BASE**exponent),
+        float(CONNECTION_RETRY_BACKOFF_MAX_SECS),
+    )
+
+
 def connect_meshtastic(
     passed_config: dict[str, Any] | None = None,
     force_connect: bool = False,
@@ -3780,10 +3804,7 @@ def connect_meshtastic(
                 logger.exception("Connection failed after %s attempts", attempts)
                 return None
 
-            wait_time = min(
-                CONNECTION_RETRY_BACKOFF_BASE**attempts,
-                CONNECTION_RETRY_BACKOFF_MAX_SECS,
-            )
+            wait_time = _get_connection_retry_wait_time(attempts)
             logger.warning(
                 "Connection attempt %s timed out (%s). Retrying in %s seconds...",
                 attempts,
@@ -3808,10 +3829,7 @@ def connect_meshtastic(
                 ble_scan_after_failure = True
                 ble_scan_reason = type(e).__name__
             if retry_limit == 0 or attempts <= retry_limit:
-                wait_time = min(
-                    CONNECTION_RETRY_BACKOFF_BASE**attempts,
-                    CONNECTION_RETRY_BACKOFF_MAX_SECS,
-                )
+                wait_time = _get_connection_retry_wait_time(attempts)
                 logger.warning(
                     "An unexpected error occurred on attempt %s: %s. Retrying in %s seconds...",
                     attempts,

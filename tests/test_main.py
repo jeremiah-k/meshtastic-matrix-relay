@@ -1100,13 +1100,8 @@ class TestMain(unittest.TestCase):
         original_iface = mu.meshtastic_iface
         original_shutting_down = mu.shutting_down
         original_reconnecting = mu.reconnecting
-        timeout_sentinel = MESHTASTIC_CLOSE_TIMEOUT_SECS + 1
         try:
             with (
-                patch(
-                    "mmrelay.main.MESHTASTIC_CLOSE_TIMEOUT_SECS",
-                    timeout_sentinel,
-                ),
                 patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
                 patch(
                     "mmrelay.main.asyncio.get_running_loop",
@@ -1178,13 +1173,8 @@ class TestMain(unittest.TestCase):
         original_iface = mu.meshtastic_iface
         original_shutting_down = mu.shutting_down
         original_reconnecting = mu.reconnecting
-        timeout_sentinel = MESHTASTIC_CLOSE_TIMEOUT_SECS + 1
         try:
             with (
-                patch(
-                    "mmrelay.main.MESHTASTIC_CLOSE_TIMEOUT_SECS",
-                    timeout_sentinel,
-                ),
                 patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
                 patch(
                     "mmrelay.main.asyncio.get_running_loop",

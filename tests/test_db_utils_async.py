@@ -731,23 +731,29 @@ class TestInitializeDatabaseErrors(unittest.TestCase):
 
         initialize_database()
 
-        def normalize_sql(sql: str) -> str:
-            """Normalize SQL by collapsing whitespace and lowercasing."""
-            return re.sub(r"\s+", " ", sql).strip().lower()
-
-        expected_index_sql = (
-            f"CREATE INDEX IF NOT EXISTS idx_{MESSAGE_MAP_TABLE}_meshtastic_id "
-            f"ON {MESSAGE_MAP_TABLE} (meshtastic_id)"
+        executed_sqls = [call.args[0] for call in mock_cursor.execute.call_args_list]
+        index_name = f"idx_{MESSAGE_MAP_TABLE}_meshtastic_id"
+        has_meshtastic_id_index = any(
+            re.search(
+                rf"create\s+index\s+if\s+not\s+exists\s+{re.escape(index_name)}\b",
+                sql,
+                flags=re.IGNORECASE,
+            )
+            and re.search(
+                rf"\bon\s+\"?{re.escape(MESSAGE_MAP_TABLE)}\"?\b",
+                sql,
+                flags=re.IGNORECASE,
+            )
+            and re.search(
+                r"\(\s*\"?meshtastic_id\"?\s*\)",
+                sql,
+                flags=re.IGNORECASE,
+            )
+            for sql in executed_sqls
         )
-        normalized_expected = normalize_sql(expected_index_sql)
-        executed_sqls = [
-            normalize_sql(call.args[0])
-            for call in mock_cursor.execute.call_args_list
-            if call.args
-        ]
-        self.assertIn(
-            normalized_expected,
-            executed_sqls,
+        self.assertTrue(
+            has_meshtastic_id_index,
+            f"Expected index creation for {MESSAGE_MAP_TABLE}.meshtastic_id in SQL calls",
         )
 
     @patch("mmrelay.db_utils._get_db_manager")

@@ -1089,7 +1089,11 @@ class Plugin:
                     "https://github.com/user/repo.git",
                     "repo",
                 ],
-                {"cwd": self.temp_plugins_dir, "timeout": TEST_GIT_TIMEOUT},
+                {
+                    "cwd": self.temp_plugins_dir,
+                    "timeout": TEST_GIT_TIMEOUT,
+                    "retry_attempts": 1,
+                },
             ),
             # Check if already at the commit
             (

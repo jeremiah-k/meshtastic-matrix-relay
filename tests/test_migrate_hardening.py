@@ -11,6 +11,7 @@ from mmrelay.constants.migration import (
     MIGRATION_STAGING_DIRNAME,
 )
 from mmrelay.migrate import (
+    MigrationError,
     migrate_config,
     migrate_credentials,
     migrate_database,
@@ -136,8 +137,37 @@ def test_database_migration_success(tmp_path: Path) -> None:
 
     result = migrate_database([legacy_root], new_home)
     assert result["success"] is True
-    assert (new_home / "database" / "meshtastic.sqlite").exists()
+    migrated_db_path = new_home / "database" / "meshtastic.sqlite"
+    assert migrated_db_path.exists()
     assert not db_path.exists()
+
+    with sqlite3.connect(migrated_db_path) as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='test'"
+        ).fetchone()
+    assert row is not None
+    assert row[0] == 1
+
+
+def test_database_migration_move_failure_preserves_legacy_source(
+    tmp_path: Path,
+) -> None:
+    """Database migration failures should not delete the legacy source DB."""
+    legacy_root = tmp_path / "legacy"
+    legacy_root.mkdir()
+    db_path = legacy_root / "meshtastic.sqlite"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("CREATE TABLE test (id INTEGER)")
+        conn.commit()
+
+    new_home = tmp_path / "home"
+
+    with patch("mmrelay.migrate.shutil.move", side_effect=OSError("move failed")):
+        with pytest.raises(MigrationError, match="move failed"):
+            migrate_database([legacy_root], new_home)
+
+    assert db_path.exists()
+    assert not (new_home / "database" / "meshtastic.sqlite").exists()
 
 
 def test_migration_failure_reports_paths(

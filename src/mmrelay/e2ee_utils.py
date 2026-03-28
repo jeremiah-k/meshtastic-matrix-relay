@@ -29,6 +29,12 @@ from mmrelay.paths import is_deprecation_window_active, resolve_all_paths
 
 logger = get_logger("E2EE")
 
+_E2EE_INCOMPLETE_STATUS = "E2EE setup is incomplete"
+_E2EE_DISABLED_SHORT = MSG_E2EE_DISABLED.replace(" is ", " ").replace(
+    " in configuration", ""
+)
+_E2EE_WINDOWS_UNSUPPORTED_SHORT = MSG_E2EE_WINDOWS_UNSUPPORTED.replace(" is ", " ")
+
 
 class E2EEStatus(TypedDict):
     """Type definition for E2EE status dictionary."""
@@ -243,15 +249,15 @@ def get_room_encryption_warnings(
         overall = e2ee_status["overall_status"]
         if overall == "unavailable":
             warnings.append(
-                f"⚠️ {len(encrypted_rooms)} encrypted room(s) detected but E2EE is not supported on Windows"
+                f"⚠️ {len(encrypted_rooms)} encrypted room(s) detected but {MSG_E2EE_WINDOWS_UNSUPPORTED}"
             )
         elif overall == "disabled":
             warnings.append(
-                f"⚠️ {len(encrypted_rooms)} encrypted room(s) detected but E2EE is disabled"
+                f"⚠️ {len(encrypted_rooms)} encrypted room(s) detected but {MSG_E2EE_DISABLED}"
             )
         else:
             warnings.append(
-                f"⚠️ {len(encrypted_rooms)} encrypted room(s) detected but E2EE setup is incomplete"
+                f"⚠️ {len(encrypted_rooms)} encrypted room(s) detected but {_E2EE_INCOMPLETE_STATUS}"
             )
 
         # Tail message depends on readiness
@@ -301,15 +307,15 @@ def format_room_list(rooms: Dict[str, Any], e2ee_status: Dict[str, Any]) -> List
             if encrypted:
                 if e2ee_status["overall_status"] == "unavailable":
                     room_lines.append(
-                        f"   ⚠️ {room_name} - Encrypted (E2EE not supported on Windows - messages will be blocked)"
+                        f"   ⚠️ {room_name} - Encrypted ({_E2EE_WINDOWS_UNSUPPORTED_SHORT} - messages will be blocked)"
                     )
                 elif e2ee_status["overall_status"] == "disabled":
                     room_lines.append(
-                        f"   ⚠️ {room_name} - Encrypted (E2EE disabled - messages will be blocked)"
+                        f"   ⚠️ {room_name} - Encrypted ({_E2EE_DISABLED_SHORT} - messages will be blocked)"
                     )
                 else:
                     room_lines.append(
-                        f"   ⚠️ {room_name} - Encrypted (E2EE incomplete - messages may be blocked)"
+                        f"   ⚠️ {room_name} - Encrypted ({_E2EE_INCOMPLETE_STATUS} - messages may be blocked)"
                     )
             else:
                 room_lines.append(f"   ✅ {room_name}")
@@ -328,11 +334,11 @@ def get_e2ee_warning_messages() -> dict[str, str]:
             and "missing_config".
     """
     return {
-        "unavailable": "E2EE is not supported on Windows - messages to encrypted rooms will be blocked",
-        "disabled": "E2EE is disabled in configuration - messages to encrypted rooms will be blocked",
-        "incomplete": "E2EE setup is incomplete - messages to encrypted rooms may be blocked",
+        "unavailable": f"{MSG_E2EE_WINDOWS_UNSUPPORTED} - messages to encrypted rooms will be blocked",
+        "disabled": f"{MSG_E2EE_DISABLED} - messages to encrypted rooms will be blocked",
+        "incomplete": f"{_E2EE_INCOMPLETE_STATUS} - messages to encrypted rooms may be blocked",
         "missing_deps": f"E2EE dependencies not installed - run: pipx install {PACKAGE_NAME_E2E}",
-        "missing_auth": f"Matrix authentication not configured - run: {get_command('auth_login')}",
+        "missing_auth": f"{MSG_E2EE_NO_AUTH} - run: {get_command('auth_login')}",
         "missing_config": "E2EE not enabled in configuration - add 'e2ee: enabled: true' under matrix section",
     }
 
