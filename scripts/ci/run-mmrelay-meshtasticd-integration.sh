@@ -34,6 +34,7 @@ set -euo pipefail
 #   MATRIX_EVENT_TIMEOUT_SECONDS: Matrix event polling timeout per assertion
 #   NODEDB_REFRESH_INTERVAL_SECONDS: Node-name refresh cadence in MMRelay config
 #   NAME_PRUNE_WAIT_TIMEOUT_SECONDS: Timeout for stale-name prune assertions
+#   MMRELAY_ALLOW_TAGGED_IMAGE_CACHE: Reuse local tag-based images instead of forcing pull
 # =============================================================================
 
 # Meshtasticd Configuration
@@ -105,9 +106,12 @@ docker_pull_with_retry() {
 ensure_docker_image_available() {
 	local image="${1}"
 	local max_retries="${2:-3}"
+	local allow_tagged_cache="${MMRELAY_ALLOW_TAGGED_IMAGE_CACHE:-false}"
 
-	# Only use cache for immutable digest references; always refresh tag-based refs
-	if [[ ${image} == *@sha256:* ]]; then
+	# Default behavior is to trust only immutable digest references.
+	# CI cache-restore steps can opt into trusted tag reuse by setting
+	# MMRELAY_ALLOW_TAGGED_IMAGE_CACHE=true for deterministic cache tags.
+	if [[ ${image} == *@sha256:* || ${allow_tagged_cache} == "true" ]]; then
 		if docker image inspect "${image}" >/dev/null 2>&1; then
 			echo "Using cached Docker image: ${image}"
 			return 0

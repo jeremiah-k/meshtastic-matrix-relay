@@ -27,6 +27,7 @@ from mmrelay.migrate import (
     migrate_plugins,
     migrate_store,
     perform_migration,
+    rollback_migration,
 )
 
 
@@ -2140,3 +2141,46 @@ class TestMigrationRealWorldScenarios:
         assert (new_home / "matrix" / "credentials.json").exists()
         assert (new_home / "database" / "meshtastic.sqlite").exists()
         assert any((new_home / "logs").glob("*.log"))
+
+
+def test_rollback_database_sidecar_only_restore_keeps_main_db(tmp_path: Path) -> None:
+    """Rollback should not delete migrated main DB when only sidecars were backed up."""
+    new_home = tmp_path / "new-home"
+    db_dir = new_home / "database"
+    db_dir.mkdir(parents=True)
+
+    main_db = db_dir / "meshtastic.sqlite"
+    main_db.write_text("migrated-main-db", encoding="utf-8")
+    migrated_shm = db_dir / "meshtastic.sqlite-shm"
+    migrated_shm.write_text("migrated-shm", encoding="utf-8")
+
+    backup_dir = tmp_path / MIGRATION_BACKUP_DIRNAME
+    backup_dir.mkdir()
+    backup_wal = backup_dir / "meshtastic.sqlite-wal.backup"
+    backup_wal.write_text("backup-wal", encoding="utf-8")
+
+    migrations = [
+        {
+            "type": "database",
+            "result": {
+                "action": "migrated",
+                "new_path": str(main_db),
+                "backed_up_files": [
+                    {
+                        "backup_path": str(backup_wal),
+                        "restore_path": str(db_dir / "meshtastic.sqlite-wal"),
+                    }
+                ],
+                "migrated_files": [str(main_db), str(migrated_shm)],
+            },
+        }
+    ]
+
+    report = rollback_migration(["database"], migrations, new_home)
+
+    assert report["success"] is True
+    assert main_db.exists()
+    assert migrated_shm.exists()
+    assert (db_dir / "meshtastic.sqlite-wal").read_text(
+        encoding="utf-8"
+    ) == "backup-wal"

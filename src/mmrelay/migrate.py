@@ -3130,18 +3130,16 @@ def rollback_migration(
                     }
                     # Check if we only restored database sidecars, not the main DB
                     # In that case, keep migrated DB files to avoid data loss
-                    sidecar_suffixes = ("-wal", "-shm", "-journal")
                     if step_name == "database":
-                        backed_up_db_names = {
-                            path.name
+                        restored_names = {path.name for path in backed_up_restore_paths}
+                        restored_db_bases = {
+                            _get_db_base_path(path).name
                             for path in backed_up_restore_paths
-                            if path.suffix in sidecar_suffixes
-                            or path.name == DATABASE_FILENAME
                         }
                         # If only sidecars were backed up (no main DB), skip deletion
-                        if backed_up_db_names and not any(
-                            path.name == DATABASE_FILENAME
-                            for path in backed_up_restore_paths
+                        if (
+                            DATABASE_FILENAME not in restored_names
+                            and DATABASE_FILENAME in restored_db_bases
                         ):
                             logger.warning(
                                 "Rollback restored only database sidecars; keeping migrated "

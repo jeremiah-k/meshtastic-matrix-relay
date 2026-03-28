@@ -295,6 +295,31 @@ class TestTelemetryPlugin(unittest.TestCase):
 
         asyncio.run(run_test())
 
+    def test_handle_meshtastic_message_missing_from_id(self):
+        """Telemetry packets without fromId should be ignored without raising."""
+        packet = {
+            "decoded": {
+                "portnum": "TELEMETRY_APP",
+                "telemetry": {
+                    "time": 1642248000,
+                    "deviceMetrics": {"batteryLevel": 80},
+                },
+            },
+        }
+
+        async def run_test():
+            result = await self.plugin.handle_meshtastic_message(
+                packet, "formatted_message", "longname", "meshnet_name"
+            )
+
+            self.assertFalse(result)
+            self.plugin.get_node_data.assert_not_called()
+            self.plugin.set_node_data.assert_not_called()
+
+        import asyncio
+
+        asyncio.run(run_test())
+
     @patch("mmrelay.matrix_utils.bot_command")
     def test_matches_with_valid_command(self, mock_bot_command):
         """

@@ -2320,9 +2320,20 @@ def handle_auth_status(args: argparse.Namespace) -> int:
             else:
                 print(f"✅ Found credentials.json at: {credentials_path}")
                 print(f"   Homeserver: {credentials.get('homeserver')}")
-                user_id_display = credentials.get("user_id") or "<missing>"
+                user_id_value = credentials.get("user_id")
+                user_id_display = (
+                    user_id_value
+                    if _is_valid_non_empty_string(user_id_value)
+                    else "<missing>"
+                )
+                device_id_value = credentials.get(CONFIG_KEY_DEVICE_ID)
+                device_id_display = (
+                    device_id_value
+                    if _is_valid_non_empty_string(device_id_value)
+                    else "<missing>"
+                )
                 print(f"   User ID: {user_id_display}")
-                print(f"   Device ID: {credentials.get(CONFIG_KEY_DEVICE_ID)}")
+                print(f"   Device ID: {device_id_display}")
                 return 0
 
     print("❌ No credentials.json found")

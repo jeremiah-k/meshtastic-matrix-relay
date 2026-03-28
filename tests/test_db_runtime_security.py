@@ -609,7 +609,7 @@ class TestDatabaseManager(unittest.TestCase):
                 close_started.set()
                 try:
                     self.manager.close()
-                except RuntimeError as err:
+                except Exception as err:
                     close_error.set_exception(err)
                 else:
                     close_error.set_result(None)
@@ -848,7 +848,7 @@ class TestDatabaseManager(unittest.TestCase):
             close_started.set()
             try:
                 manager.close()
-            except RuntimeError as err:  # pragma: no cover - defensive
+            except Exception as err:  # pragma: no cover - defensive
                 close_error.set_exception(err)
             else:
                 close_error.set_result(None)

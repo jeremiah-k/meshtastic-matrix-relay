@@ -57,7 +57,7 @@ class TestConnectionRetryLogic:
         """
         backoff_delays = []
 
-        async def _record_sleep(duration):
+        def _record_sleep(duration):
             backoff_delays.append(duration)
 
         with (
@@ -435,7 +435,7 @@ class TestNetworkErrorRecovery:
             nonlocal send_count
             send_count += 1
 
-        async def _record_sleep(duration):
+        def _record_sleep(duration):
             requested_delays.append(duration)
 
         with patch("asyncio.sleep", side_effect=_record_sleep):

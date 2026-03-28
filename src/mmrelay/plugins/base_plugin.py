@@ -274,9 +274,12 @@ class BasePlugin(ABC):
                     self.config = plugin_config
                     resolved_section = section
                     expected_section = section
-                    self.plugin_type = PLUGIN_SECTION_TYPES.get(
-                        section, self.plugin_type
-                    )
+                    mapped_type = PLUGIN_SECTION_TYPES.get(section)
+                    if mapped_type is not None and (
+                        mapped_type != PLUGIN_TYPE_CORE
+                        or self.plugin_type in (None, PLUGIN_TYPE_CORE)
+                    ):
+                        self.plugin_type = mapped_type
                     break
 
             # Cache global plugin-level settings (for options like require_bot_mention)

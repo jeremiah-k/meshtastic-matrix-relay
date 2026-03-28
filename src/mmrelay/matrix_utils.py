@@ -1448,7 +1448,12 @@ async def _resolve_and_load_credentials(
                 credentials.get(CONFIG_KEY_USER_ID),
                 credentials.get(CONFIG_KEY_BOT_USER_ID),
             )
-            bot_user_id = raw_user_id or ""
+            normalized_user_id = (
+                _normalize_bot_user_id(matrix_homeserver, raw_user_id)
+                if raw_user_id
+                else None
+            )
+            bot_user_id = normalized_user_id or ""
             e2ee_device_id = _get_valid_device_id(credentials.get(CONFIG_KEY_DEVICE_ID))
 
             logger.debug(f"Using Matrix credentials (device: {e2ee_device_id})")

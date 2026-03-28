@@ -214,6 +214,27 @@ class TestBasePlugin(unittest.TestCase):
             self.assertEqual(plugin.response_delay, 2.5)  # DEFAULT_MESSAGE_DELAY
             self.assertEqual(plugin.channels, [])
 
+    def test_non_core_plugin_preserves_inferred_type_with_legacy_plugins_config(self):
+        """Legacy 'plugins' config should not demote inferred custom/community plugin type."""
+        legacy_config = {"plugins": {"test_plugin": {"active": True}}}
+        class_file = "/tmp/custom_plugins/test_plugin.py"
+
+        with (
+            patch("mmrelay.plugins.base_plugin.config", legacy_config),
+            patch(
+                "mmrelay.plugins.base_plugin.inspect.getfile", return_value=class_file
+            ),
+            patch(
+                "mmrelay.plugin_loader.get_custom_plugin_dirs",
+                return_value=["/tmp/custom_plugins"],
+            ),
+            patch("mmrelay.plugin_loader.get_community_plugin_dirs", return_value=[]),
+        ):
+            plugin = MockPlugin()
+
+        self.assertEqual(plugin.plugin_type, "custom")
+        self.assertTrue(plugin.config["active"])
+
     def test_start_stop_schedule_thread(self):
         """Plugins should register and clear scheduled jobs via start/stop."""
         with (

@@ -87,7 +87,7 @@ class Plugin(BasePlugin):
         """
         Record device telemetry from an incoming Meshtastic telemetry packet for the sending node.
 
-        When `packet` contains a normalized `decoded.portnum` matching `TELEMETRY_APP_PORTNUM` (numeric values and enum-name strings are both accepted) and `decoded.telemetry.deviceMetrics`, extracts the telemetry timestamp and the `batteryLevel`, `voltage`, and `airUtilTx` fields (each `None` if missing) and appends a telemetry record for the sender identified by `packet["fromId"]`. Other packet contents are not modified.
+        When `packet` contains a normalized `decoded.portnum` matching `TELEMETRY_APP_PORTNUM` (numeric values and enum-name strings are both accepted), `decoded.telemetry.deviceMetrics`, and a `fromId`, extracts the telemetry timestamp and the `batteryLevel`, `voltage`, and `airUtilTx` fields (each `None` if missing) and appends a telemetry record for that sender. Other packet contents are not modified.
 
         Parameters:
             packet (dict): Meshtastic packet expected to include `decoded` with `portnum` and `telemetry.deviceMetrics`.
@@ -111,8 +111,11 @@ class Plugin(BasePlugin):
             and isinstance(telemetry, dict)
             and isinstance(device_metrics, dict)
         ):
+            from_id = packet.get("fromId")
+            if from_id is None:
+                return False
             telemetry_data = []
-            data = self.get_node_data(meshtastic_id=packet["fromId"])
+            data = self.get_node_data(meshtastic_id=from_id)
             if data:
                 telemetry_data = data if isinstance(data, list) else [data]
 
@@ -129,7 +132,7 @@ class Plugin(BasePlugin):
                     "airUtilTx": device_metrics.get("airUtilTx"),
                 }
             )
-            self.set_node_data(meshtastic_id=packet["fromId"], node_data=telemetry_data)
+            self.set_node_data(meshtastic_id=from_id, node_data=telemetry_data)
             return False
 
         return False

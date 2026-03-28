@@ -400,7 +400,10 @@ class TestHandleMatrixError:
         error.errcode = "M_FORBIDDEN"
         result = _handle_matrix_error(error, "Password verification")
         assert result is True
-        mock_logger.error.assert_called()
+        mock_logger.error.assert_any_call(
+            "Password verification failed: Invalid credentials."
+        )
+        mock_logger.error.assert_any_call("Please check your username and password.")
 
     @patch("mmrelay.cli_utils._get_logger")
     def test_handle_matrix_error_credentials_forbidden_status_code(
@@ -418,7 +421,10 @@ class TestHandleMatrixError:
 
         result = _handle_matrix_error(error, "Password verification")
         assert result is True
-        mock_logger.error.assert_called()
+        mock_logger.error.assert_any_call(
+            "Password verification failed: Invalid credentials."
+        )
+        mock_logger.error.assert_any_call("Please check your username and password.")
 
     @patch("mmrelay.cli_utils._get_logger")
     def test_handle_matrix_error_network(self, mock_get_logger):
@@ -430,7 +436,9 @@ class TestHandleMatrixError:
         error = NioLocalTransportError("Connection failed")
         result = _handle_matrix_error(error, "Server logout", log_level="warning")
         assert result is True
-        mock_logger.warning.assert_called()
+        mock_logger.warning.assert_called_once_with(
+            "Server logout failed due to network issues, proceeding with local cleanup."
+        )
 
     @patch("mmrelay.cli_utils._get_logger")
     def test_handle_matrix_error_server(self, mock_get_logger):
@@ -442,7 +450,9 @@ class TestHandleMatrixError:
         error = Exception("500 Internal Server Error")
         result = _handle_matrix_error(error, "Some context")
         assert result is True
-        mock_logger.error.assert_called()
+        mock_logger.error.assert_called_once_with(
+            "Some context failed due to server error, proceeding with local cleanup."
+        )
 
     @patch("mmrelay.cli_utils._get_logger")
     def test_handle_matrix_error_unknown(self, mock_get_logger):
@@ -454,7 +464,9 @@ class TestHandleMatrixError:
         error = ValueError("Some other error")
         result = _handle_matrix_error(error, "Another context")
         assert result is True
-        mock_logger.error.assert_called()
+        mock_logger.error.assert_called_once_with(
+            "Another context failed (ValueError), proceeding with local cleanup."
+        )
 
     @patch("mmrelay.cli_utils._get_logger")
     def test_handle_matrix_error_login_server_status_code(self, mock_get_logger):
@@ -470,7 +482,12 @@ class TestHandleMatrixError:
 
         result = _handle_matrix_error(error, "Password verification")
         assert result is True
-        mock_logger.error.assert_called()
+        mock_logger.error.assert_any_call(
+            "Password verification failed: Matrix server error."
+        )
+        mock_logger.error.assert_any_call(
+            "Please try again later or contact your Matrix server administrator."
+        )
 
     @patch("mmrelay.cli_utils._get_logger")
     def test_handle_matrix_error_logout_other_status_code_sets_detail(
@@ -488,7 +505,9 @@ class TestHandleMatrixError:
 
         result = _handle_matrix_error(error, "Logout")
         assert result is True
-        mock_logger.error.assert_called()
+        mock_logger.error.assert_called_once_with(
+            "Logout failed (418), proceeding with local cleanup."
+        )
 
     @patch("mmrelay.cli_utils._get_logger")
     def test_handle_matrix_error_unknown_connection_string_maps_to_network(
@@ -503,7 +522,9 @@ class TestHandleMatrixError:
         error = Exception("Connection timeout while contacting homeserver")
         result = _handle_matrix_error(error, "Server logout", log_level="warning")
         assert result is True
-        mock_logger.warning.assert_called()
+        mock_logger.warning.assert_called_once_with(
+            "Server logout failed due to network issues, proceeding with local cleanup."
+        )
 
 
 class TestLogoutMatrixBot:

@@ -223,6 +223,7 @@ class DatabaseManager:
                     if isinstance(value, str):
                         # Security: Restrict pragma string values to safe characters only.
                         # This regex allows alphanumeric, underscore, hyphen, space, comma, period, and backslash.
+                        # It also rejects "--" to block SQL-comment marker injection.
                         # We deliberately exclude forward slash and colon to prevent path injection attacks.
                         # Backslash is allowed but trailing backslashes are blocked to prevent escape sequences.
                         #

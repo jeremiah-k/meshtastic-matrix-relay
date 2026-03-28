@@ -51,6 +51,7 @@ jobs:
           fi
           cache_dir="${RUNNER_TEMP}/meshtasticd-image-cache"
           cache_path="${cache_dir}/${digest}.tar"
+          echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
           echo "cache_key=${RUNNER_OS}-meshtasticd-image-${digest}" >> "${GITHUB_OUTPUT}"
           echo "cache_path=${cache_path}" >> "${GITHUB_OUTPUT}"
 
@@ -65,6 +66,7 @@ jobs:
           fi
           cache_dir="${RUNNER_TEMP}/synapse-image-cache"
           cache_path="${cache_dir}/${digest}.tar"
+          echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
           echo "cache_key=${RUNNER_OS}-synapse-image-${digest}" >> "${GITHUB_OUTPUT}"
           echo "cache_path=${cache_path}" >> "${GITHUB_OUTPUT}"
 
@@ -84,13 +86,45 @@ jobs:
 
       - name: Load cached meshtasticd image
         if: ${{ steps.meshtasticd-image-cache.outputs.cache-hit == 'true' }}
+        shell: bash
         run: |
-          docker load -i "${{ steps.meshtasticd-cache.outputs.cache_path }}"
+          set -euo pipefail
+          cache_tag="meshtastic/meshtasticd:ci-cache-${{ steps.meshtasticd-cache.outputs.digest }}"
+          load_output="$(docker load -i "${{ steps.meshtasticd-cache.outputs.cache_path }}")"
+          echo "${load_output}"
+          loaded_ref="$(printf '%s\n' "${load_output}" | awk -F': ' '/Loaded image: /{print $2}' | tail -n 1)"
+          loaded_id="$(printf '%s\n' "${load_output}" | awk -F': ' '/Loaded image ID: /{print $2}' | tail -n 1)"
+          if [[ -n "${loaded_ref}" ]]; then
+            docker tag "${loaded_ref}" "${cache_tag}"
+          elif [[ -n "${loaded_id}" ]]; then
+            docker tag "${loaded_id}" "${cache_tag}"
+          else
+            echo "Unable to resolve loaded meshtasticd image reference from cache tar" >&2
+            exit 1
+          fi
+          echo "MESHTASTICD_IMAGE=${cache_tag}" >> "${GITHUB_ENV}"
+          echo "MMRELAY_ALLOW_TAGGED_IMAGE_CACHE=true" >> "${GITHUB_ENV}"
 
       - name: Load cached Synapse image
         if: ${{ steps.synapse-image-cache.outputs.cache-hit == 'true' }}
+        shell: bash
         run: |
-          docker load -i "${{ steps.synapse-cache.outputs.cache_path }}"
+          set -euo pipefail
+          cache_tag="matrixdotorg/synapse:ci-cache-${{ steps.synapse-cache.outputs.digest }}"
+          load_output="$(docker load -i "${{ steps.synapse-cache.outputs.cache_path }}")"
+          echo "${load_output}"
+          loaded_ref="$(printf '%s\n' "${load_output}" | awk -F': ' '/Loaded image: /{print $2}' | tail -n 1)"
+          loaded_id="$(printf '%s\n' "${load_output}" | awk -F': ' '/Loaded image ID: /{print $2}' | tail -n 1)"
+          if [[ -n "${loaded_ref}" ]]; then
+            docker tag "${loaded_ref}" "${cache_tag}"
+          elif [[ -n "${loaded_id}" ]]; then
+            docker tag "${loaded_id}" "${cache_tag}"
+          else
+            echo "Unable to resolve loaded Synapse image reference from cache tar" >&2
+            exit 1
+          fi
+          echo "SYNAPSE_IMAGE=${cache_tag}" >> "${GITHUB_ENV}"
+          echo "MMRELAY_ALLOW_TAGGED_IMAGE_CACHE=true" >> "${GITHUB_ENV}"
 
       - name: Log in to Docker Hub
         continue-on-error: true

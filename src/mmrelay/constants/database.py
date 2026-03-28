@@ -88,7 +88,7 @@ SQLITE_PRAGMA_NAME_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^[a-zA-Z_][a-zA-Z0-9_]*$"
 )
 SQLITE_PRAGMA_SAFE_STRING_VALUE_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"^[a-zA-Z0-9_,.\-\\ ]+$"
+    r"^(?!.*--)[a-zA-Z0-9_,.\-\\ ]+$"
 )
 
 # PRAGMA boolean values

@@ -1290,6 +1290,10 @@ def _clone_new_repo_to_commit(
             ["git", GIT_CLONE_CMD, GIT_CLONE_FILTER_BLOB_NONE, repo_url, repo_name],
             cwd=plugins_dir,
             timeout=GIT_COMMAND_TIMEOUT_SECONDS,
+            # _run_git retries cannot clean a partially created destination between attempts.
+            # Use a single clone attempt here so we do not fail retries with
+            # "destination path already exists".
+            retry_attempts=1,
         )
         logger.info(f"Cloned repository {repo_name} from {_redact_url(repo_url)}")
 

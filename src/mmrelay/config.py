@@ -84,7 +84,7 @@ def _expand_path(path: str) -> str:
 
 
 def _emit_legacy_credentials_warning(credentials_path: str) -> None:
-    _get_config_logger().warning(
+    logger.warning(
         "Credentials found in legacy location: %s. "
         "Please run 'mmrelay migrate' to move to new unified structure. "
         "Support for legacy credentials will be removed in v%s.",

@@ -248,6 +248,9 @@ _RENAME_MESSAGE_MAP_TO_TEMP_SQL = (
 _RENAME_MESSAGE_MAP_TEMP_TO_STALE_TEMP_SQL = (
     f"ALTER TABLE message_map_old_temp RENAME TO {_MESSAGE_MAP_STALE_TEMP_TABLE}"
 )
+_RENAME_MESSAGE_MAP_STALE_TEMP_TO_TEMP_SQL = (
+    f"ALTER TABLE {_MESSAGE_MAP_STALE_TEMP_TABLE} RENAME TO {_MESSAGE_MAP_TEMP_TABLE}"
+)
 _CREATE_TABLE_MESSAGE_MAP_FROM_SCRATCH_SQL = (
     "CREATE TABLE message_map "
     "(meshtastic_id TEXT, matrix_event_id TEXT PRIMARY KEY, "
@@ -788,6 +791,49 @@ def initialize_database() -> None:
         )
         temp_exists = cursor.fetchone() is not None
         stale_temp_exists = False
+        _validate_identifier(_MESSAGE_MAP_STALE_TEMP_TABLE, _VALID_TABLE_NAMES)
+
+        cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            (_MESSAGE_MAP_STALE_TEMP_TABLE,),
+        )
+        stale_table_exists = cursor.fetchone() is not None
+        if stale_table_exists and not temp_exists:
+            cursor.execute(_RENAME_MESSAGE_MAP_STALE_TEMP_TO_TEMP_SQL)
+            temp_exists = True
+            stale_table_exists = False
+            logger.info(
+                "Recovered stale temporary table %s as %s",
+                _MESSAGE_MAP_STALE_TEMP_TABLE,
+                _temp_table,
+            )
+        elif stale_table_exists and temp_exists:
+            cursor.execute(_PRAGMA_MESSAGE_MAP_TEMP_INFO_SQL)
+            temp_columns = {column[1] for column in cursor.fetchall()}
+            cursor.execute(_PRAGMA_MESSAGE_MAP_STALE_TEMP_INFO_SQL)
+            stale_columns = {column[1] for column in cursor.fetchall()}
+            if _col_mesh in temp_columns:
+                stale_mesh_expr = _col_mesh if _col_mesh in stale_columns else "NULL"
+                cursor.execute(
+                    f"INSERT OR IGNORE INTO {_temp_table} "
+                    f"({_col_id}, {_col_evt}, {_col_room}, {_col_text}, {_col_mesh}) "
+                    f"SELECT {_col_id}, {_col_evt}, {_col_room}, {_col_text}, {stale_mesh_expr} "
+                    f"FROM {_MESSAGE_MAP_STALE_TEMP_TABLE}"
+                )
+            else:
+                cursor.execute(
+                    f"INSERT OR IGNORE INTO {_temp_table} "
+                    f"({_col_id}, {_col_evt}, {_col_room}, {_col_text}) "
+                    f"SELECT {_col_id}, {_col_evt}, {_col_room}, {_col_text} "
+                    f"FROM {_MESSAGE_MAP_STALE_TEMP_TABLE}"
+                )
+            cursor.execute(_DROP_TABLE_MESSAGE_MAP_STALE_TEMP_SQL)
+            stale_table_exists = False
+            logger.info(
+                "Merged rows from stale temporary table %s into %s",
+                _MESSAGE_MAP_STALE_TEMP_TABLE,
+                _temp_table,
+            )
 
         if (
             temp_exists
@@ -812,7 +858,6 @@ def initialize_database() -> None:
             (_legacy_table,),
         )
         legacy_exists = cursor.fetchone() is not None
-        _validate_identifier(_MESSAGE_MAP_STALE_TEMP_TABLE, _VALID_TABLE_NAMES)
 
         if legacy_exists and (
             not meshtastic_column or str(meshtastic_column[2]).upper() == "TEXT"
