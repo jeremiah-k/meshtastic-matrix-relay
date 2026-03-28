@@ -17,6 +17,7 @@ from mmrelay.migrate import (
     _dir_has_entries,
     _find_legacy_data,
     _get_most_recent_database,
+    _looks_like_matrix_credentials,
     _path_is_within_home,
     is_migration_needed,
     migrate_config,
@@ -468,6 +469,30 @@ class TestGetMostRecentDatabase:
 
 class TestMigrateCredentials:
     """Tests for migrate_credentials function (lines 416-494)."""
+
+    def test_looks_like_matrix_credentials_accepts_missing_user_id(
+        self, tmp_path: Path
+    ) -> None:
+        """Credential detection should align with runtime-required fields only."""
+        creds = tmp_path / "credentials.json"
+        creds.write_text(
+            '{"homeserver":"https://matrix.tchncs.de","access_token":"syt_token"}',
+            encoding="utf-8",
+        )
+
+        assert _looks_like_matrix_credentials(creds) is True
+
+    def test_looks_like_matrix_credentials_rejects_missing_access_token(
+        self, tmp_path: Path
+    ) -> None:
+        """Credential detection should still reject files missing required fields."""
+        creds = tmp_path / "credentials.json"
+        creds.write_text(
+            '{"homeserver":"https://matrix.tchncs.de","user_id":"@bot:tchncs.de"}',
+            encoding="utf-8",
+        )
+
+        assert _looks_like_matrix_credentials(creds) is False
 
     def test_no_credentials_found(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

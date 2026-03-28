@@ -84,6 +84,11 @@ _home_override_source: str | None = None
 # Track whether we've already emitted deprecation warnings to avoid duplicates
 _deprecation_warning_shown = False
 
+# When both Windows homes contain MMRelay artifacts, only switch from the
+# existing platform home to the installer home when the installer has a
+# meaningfully stronger state signal (not just logs/low-signal artifacts).
+_WINDOWS_INSTALLER_SWITCH_MARGIN = 3
+
 
 def _reset_deprecation_warning_flag() -> None:
     """
@@ -341,21 +346,25 @@ def get_home_dir() -> Path:
                 installer_has_markers = _has_windows_installer_markers(installer_path)
 
                 if installer_has_artifacts and platform_has_artifacts:
-                    if installer_score > platform_score:
+                    score_delta = installer_score - platform_score
+                    if score_delta >= _WINDOWS_INSTALLER_SWITCH_MARGIN:
                         logger.info(
-                            "Using installer MMRelay home at %s (score=%d) over platform home %s (score=%d)",
+                            "Using installer MMRelay home at %s (score=%d) over platform home %s (score=%d, margin=%d)",
                             installer_path,
                             installer_score,
                             platform_home,
                             platform_score,
+                            _WINDOWS_INSTALLER_SWITCH_MARGIN,
                         )
                         return installer_path
                     logger.info(
-                        "Using existing platform MMRelay home at %s (score=%d) over installer home %s (score=%d)",
+                        "Using existing platform MMRelay home at %s (score=%d) over installer home %s (score=%d; delta=%d < margin=%d)",
                         platform_home,
                         platform_score,
                         installer_path,
                         installer_score,
+                        score_delta,
+                        _WINDOWS_INSTALLER_SWITCH_MARGIN,
                     )
                     return platform_home
 

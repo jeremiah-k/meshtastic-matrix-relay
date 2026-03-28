@@ -1222,7 +1222,8 @@ def check_config(args: argparse.Namespace | None = None) -> bool:
                 # Check matrix section requirements based on credentials.json availability
                 if has_valid_credentials:
                     # With credentials.json, no matrix section fields are required
-                    # (homeserver, access_token, user_id, device_id all come from credentials.json)
+                    # (homeserver/access_token come from credentials.json; user_id/device_id may be
+                    # absent and recovered at runtime via whoami/store)
                     if CONFIG_SECTION_MATRIX not in config:
                         # Create empty matrix section if missing - no fields required
                         config[CONFIG_SECTION_MATRIX] = {}
