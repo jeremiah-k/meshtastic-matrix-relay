@@ -954,6 +954,17 @@ class BasePlugin(ABC):
             full_message (str): The full text content of the received message.
 
         Returns:
-            bool: `True` if the plugin handled the message, `False` otherwise.
+            bool: `True` if the plugin handled the message (including user-facing error
+                cases), `False` if the message was not handled and should be passed to
+                other plugins for reinterpretation.
+
+        Plugin author guidance:
+            - Return `True` when the plugin has claimed the message and no further
+              reinterpretation is desired, including when the plugin has sent a
+              user-visible failure response (e.g., via room.send_text).
+            - Return `False` when the plugin did not recognize or handle the message,
+              allowing subsequent plugins in the priority order to process it.
+            - This semantics prevents error messages from being sent multiple times
+              by different plugins interpreting the same command.
         """
         pass  # Implement in subclass

@@ -525,24 +525,26 @@ def service_needs_update() -> tuple[bool, str]:
 
     This function is primarily a runtime-correctness validator: it checks whether the
     installed service file can actually work correctly with the current mmrelay version.
-    It also provides normalization guidance for common migration scenarios, but respects
-    operator choice for custom unit shapes.
+    Normalization guidance for common migration scenarios is a secondary concern; the
+    function respects operator choice for custom unit shapes and does not enforce a
+    house style beyond what is required for correct operation.
 
-    Performs these checks in order and reports the first failing condition:
-    - No existing user service file is present.
-    - The service file uses legacy flags (--config, --logfile) instead of the v1.3 --home flag.
-    - The service file is missing home configuration (either v1.3 --home or Environment=MMRELAY_HOME=...).
-    - The service's ExecStart line does not contain a recognizable launcher, unless it uses an explicit custom absolute/specifier path (absolute paths or systemd specifiers like %h are trusted).
-    - Environment PATH entries in the unit do not include common user-bin locations ("%h/.local/pipx/venvs/mmrelay/bin" or "%h/.local/bin") when the service relies on PATH lookup for `mmrelay`.
-    - A template service file exists on disk and has a modification time newer than the installed service file.
+    Correctness checks (always enforced):
+    - Legacy --config/--logfile flags are flagged because they indicate an incompatible
+      configuration model that will not work with v1.3+.
+    - Home configuration must be present (--home or MMRELAY_HOME) to ensure the service
+      can locate state correctly.
+    - A recognizable launcher or explicit custom path must be present.
+
+    Normalization guidance (heuristic, not enforced):
+    - PATH hardening for common user-bin locations is suggested when the unit relies on
+      PATH-based mmrelay lookup, but custom launchers are not flagged.
 
     Policy notes:
-    - Legacy --config/--logfile flags are always flagged because they indicate an old,
-      incompatible configuration model that will not work correctly.
-    - Explicit custom launchers (absolute paths or systemd specifiers) are trusted because
-      the operator has made an intentional choice that we cannot meaningfully validate.
-    - PATH hardening is only enforced when the unit relies on PATH-based mmrelay lookup;
-      custom launchers that set their own PATH are not flagged.
+    - Explicit custom launchers (absolute paths or systemd specifiers like %h) are trusted
+      because the operator has made an intentional choice that we cannot meaningfully validate.
+    - This function is NOT a style checker; it will not flag operationally valid custom
+      units that do not match the template layout.
 
     Returns:
         tuple: (needs_update, reason)
