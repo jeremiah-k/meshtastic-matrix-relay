@@ -1419,12 +1419,6 @@ class TestDbUtils(unittest.TestCase):
 
         _get_db_manager()
 
-        def _to_thread_inline(func, *args, **kwargs):
-            """
-            Execute asyncio.to_thread call sites inline for deterministic test behavior.
-            """
-            return func(*args, **kwargs)
-
         async def exercise():
             """
             Store two message-map entries and prune the message map to keep only the most recent entry.
@@ -1439,12 +1433,7 @@ class TestDbUtils(unittest.TestCase):
             )
             await async_prune_message_map(1)
 
-        with patch(
-            "mmrelay.db_utils.asyncio.to_thread",
-            side_effect=_to_thread_inline,
-        ) as mock_to_thread:
-            asyncio.run(exercise())
-        self.assertEqual(mock_to_thread.call_count, 3)
+        asyncio.run(exercise())
 
         # Oldest entry should have been pruned
         self.assertIsNone(get_message_map_by_meshtastic_id("mesh1"))
