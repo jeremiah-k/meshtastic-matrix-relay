@@ -532,6 +532,11 @@ class MessageQueue:
             bool: True if the queue can be safely restarted; False when cleanup is still active.
         """
         with self._lock:
+            if self._stopping:
+                logger.error(
+                    "Cannot reset failed-stop state while queue shutdown is in progress"
+                )
+                return False
             if not self._stop_failed:
                 return True
             if self._clear_failed_stop_state_if_recovered_locked():

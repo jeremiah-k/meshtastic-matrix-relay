@@ -2502,7 +2502,6 @@ async def async_store_message_map(
         meshtastic_text (str): Text content of the Meshtastic message.
         meshtastic_meshnet (str | None): Optional meshnet identifier associated with the message.
     """
-    manager = _get_db_manager()
     # Normalize IDs to a consistent string form to match other DB helpers.
     id_key = str(meshtastic_id)
 
@@ -2516,7 +2515,7 @@ async def async_store_message_map(
             meshtastic_meshnet,
         )
         await asyncio.to_thread(
-            manager.run_sync,
+            _get_db_manager().run_sync,
             lambda cursor: _store_message_map_core(
                 cursor,
                 id_key,
@@ -2538,11 +2537,9 @@ async def async_prune_message_map(msgs_to_keep: int) -> None:
     Parameters:
         msgs_to_keep (int): Number of most recent rows to retain; older rows will be deleted.
     """
-    manager = _get_db_manager()
-
     try:
         pruned = await asyncio.to_thread(
-            manager.run_sync,
+            _get_db_manager().run_sync,
             lambda cursor: _prune_message_map_core(cursor, msgs_to_keep),
             write=True,
         )

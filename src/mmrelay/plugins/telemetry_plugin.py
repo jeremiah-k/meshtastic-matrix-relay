@@ -121,6 +121,10 @@ class Plugin(BasePlugin):
                 telemetry_data = data if isinstance(data, list) else [data]
 
             telemetry_time = telemetry.get("time")
+            if not isinstance(telemetry_time, (int, float)) or not math.isfinite(
+                telemetry_time
+            ):
+                telemetry_time = None
             telemetry_data.append(
                 {
                     "time": (
@@ -208,6 +212,8 @@ class Plugin(BasePlugin):
                 node_data_rows (list[dict[str, Any]]): Records containing a "time" POSIX timestamp (seconds) and a telemetry value under the key named by the enclosing `telemetry_option`; values are appended to the outer `hourly_averages` dictionary for the matching hourly interval.
             """
             for record in node_data_rows:
+                if not isinstance(record, dict):
+                    continue
                 timestamp = record.get("time")
                 telemetry_value = record.get(telemetry_option)
                 if timestamp is None or telemetry_value is None:

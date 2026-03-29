@@ -603,9 +603,25 @@ def service_needs_update() -> tuple[bool, str]:
     has_home_flag = any(
         token == "--home" or token.startswith("--home=") for token in exec_tokens
     )
-    has_home_env = any("MMRELAY_HOME=" in line for line in environment_lines) or (
-        "MMRELAY_HOME=" in exec_start_line
-    )
+
+    def _has_matching_env_assignment(line: str) -> bool:
+        line = line.strip()
+        if line.startswith("Environment="):
+            rest = line[len("Environment=") :]
+            key = rest.split("=", 1)[0].strip()
+            return key == "MMRELAY_HOME"
+        if "MMRELAY_HOME=" in line:
+            tokens = line.split()
+            for token in tokens:
+                if "=" in token:
+                    key = token.split("=", 1)[0]
+                    if key == "MMRELAY_HOME":
+                        return True
+        return False
+
+    has_home_env = any(_has_matching_env_assignment(line) for line in environment_lines)
+    if not has_home_env:
+        has_home_env = _has_matching_env_assignment(exec_start_line)
     if not (has_home_flag or has_home_env):
         return (
             True,
@@ -660,12 +676,24 @@ def service_needs_update() -> tuple[bool, str]:
 
     if uses_path_lookup:
         path_in_environment = any(
-            "%h/.local/pipx/venvs/mmrelay/bin" in line or "%h/.local/bin" in line
+            ("%h/.local/pipx/venvs/mmrelay/bin" in line or "%h/.local/bin" in line)
+            or ("/.local/pipx/venvs/mmrelay/bin" in line or "/.local/bin" in line)
+            or ("~/.local/pipx/venvs/mmrelay/bin" in line or "~/.local/bin" in line)
             for line in environment_lines
         )
         path_in_exec_env = env_path_assignment is not None and (
-            "%h/.local/pipx/venvs/mmrelay/bin" in env_path_assignment
-            or "%h/.local/bin" in env_path_assignment
+            (
+                "%h/.local/pipx/venvs/mmrelay/bin" in env_path_assignment
+                or "%h/.local/bin" in env_path_assignment
+            )
+            or (
+                "/.local/pipx/venvs/mmrelay/bin" in env_path_assignment
+                or "/.local/bin" in env_path_assignment
+            )
+            or (
+                "~/.local/pipx/venvs/mmrelay/bin" in env_path_assignment
+                or "~/.local/bin" in env_path_assignment
+            )
         )
         if not (path_in_environment or path_in_exec_env):
             return True, "Service PATH does not include common user-bin locations"

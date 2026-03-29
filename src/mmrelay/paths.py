@@ -380,28 +380,6 @@ def get_home_dir() -> Path:
                     return platform_home
 
                 if installer_has_artifacts:
-                    if platform_has_artifacts:
-                        score_delta = installer_score - platform_score
-                        if score_delta >= _WINDOWS_INSTALLER_SWITCH_MARGIN:
-                            logger.info(
-                                "Using installer MMRelay home at %s (score=%d) over platform home %s (score=%d, margin=%d)",
-                                installer_path,
-                                installer_score,
-                                platform_home,
-                                platform_score,
-                                _WINDOWS_INSTALLER_SWITCH_MARGIN,
-                            )
-                            return installer_path
-                        logger.info(
-                            "Using existing platform MMRelay home at %s (score=%d) over installer home %s (score=%d; delta=%d < margin=%d)",
-                            platform_home,
-                            platform_score,
-                            installer_path,
-                            installer_score,
-                            score_delta,
-                            _WINDOWS_INSTALLER_SWITCH_MARGIN,
-                        )
-                        return platform_home
                     if installer_score >= 6:
                         logger.info(
                             "Using installer MMRelay home at %s (score=%d) over empty platform home",
