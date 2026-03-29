@@ -29,6 +29,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from mmrelay.constants.network import (
     BLE_CONNECT_TIMEOUT_SECS,
     BLE_DISCONNECT_SETTLE_SECS,
+    CONNECTION_TYPE_BLE,
+    CONNECTION_TYPE_SERIAL,
+    CONNECTION_TYPE_TCP,
     DEFAULT_MESHTASTIC_TIMEOUT,
     DEFAULT_TCP_PORT,
     MAX_TIMEOUT_RETRIES_INFINITE,
@@ -137,7 +140,7 @@ class TestMeshtasticUtils(unittest.TestCase):
         # Mock configuration
         self.mock_config = {
             "meshtastic": {
-                "connection_type": "serial",
+                "connection_type": CONNECTION_TYPE_SERIAL,
                 "serial_port": "/dev/ttyUSB0",
                 "broadcast_enabled": True,
                 "meshnet_name": "test_mesh",
@@ -588,7 +591,10 @@ class TestMeshtasticUtils(unittest.TestCase):
         mock_port_exists.return_value = True
 
         config = {
-            "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"}
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_SERIAL,
+                "serial_port": "/dev/ttyUSB0",
+            }
         }
 
         # Reset global state
@@ -622,7 +628,7 @@ class TestMeshtasticUtils(unittest.TestCase):
 
         config = {
             "meshtastic": {
-                "connection_type": "tcp",
+                "connection_type": CONNECTION_TYPE_TCP,
                 "host": "192.168.1.100",  # Use 'host' not 'tcp_host'
             }
         }
@@ -660,7 +666,7 @@ class TestMeshtasticUtils(unittest.TestCase):
 
         config = {
             "meshtastic": {
-                "connection_type": "tcp",
+                "connection_type": CONNECTION_TYPE_TCP,
                 "host": "192.168.1.101",
                 "port": 4404,
             }
@@ -706,7 +712,12 @@ class TestMeshtasticUtils(unittest.TestCase):
         # Configure BLE mock to return our mock client
         mock_ble.return_value = mock_client
 
-        config = {"meshtastic": {"connection_type": "ble", "ble_address": TEST_BLE_MAC}}
+        config = {
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_BLE,
+                "ble_address": TEST_BLE_MAC,
+            }
+        }
 
         # Reset global state
         import mmrelay.meshtastic_utils
@@ -1450,7 +1461,10 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
         mock_port_exists.return_value = False
 
         config = {
-            "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"}
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_SERIAL,
+                "serial_port": "/dev/ttyUSB0",
+            }
         }
 
         result = connect_meshtastic(passed_config=config)
@@ -1468,7 +1482,10 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
         mock_serial.side_effect = Exception("Serial connection failed")
 
         config = {
-            "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"}
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_SERIAL,
+                "serial_port": "/dev/ttyUSB0",
+            }
         }
 
         with patch("mmrelay.meshtastic_utils.serial_port_exists", return_value=True):
@@ -1487,7 +1504,12 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
         """
         mock_tcp.side_effect = Exception("TCP connection failed")
 
-        config = {"meshtastic": {"connection_type": "tcp", "host": "192.168.1.100"}}
+        config = {
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_TCP,
+                "host": "192.168.1.100",
+            }
+        }
 
         result = connect_meshtastic(passed_config=config)
 
@@ -1515,7 +1537,9 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
             raise Exception("boom")
 
         mock_tcp.side_effect = raise_and_shutdown
-        config = {"meshtastic": {"connection_type": "tcp", "host": "127.0.0.1"}}
+        config = {
+            "meshtastic": {"connection_type": CONNECTION_TYPE_TCP, "host": "127.0.0.1"}
+        }
 
         try:
             mu.shutting_down = False
@@ -1538,7 +1562,12 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
         """
         mock_ble.side_effect = Exception("BLE connection failed")
 
-        config = {"meshtastic": {"connection_type": "ble", "ble_address": TEST_BLE_MAC}}
+        config = {
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_BLE,
+                "ble_address": TEST_BLE_MAC,
+            }
+        }
 
         import mmrelay.meshtastic_utils as mu
 
@@ -1581,7 +1610,10 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
             mu.shutting_down = True
             result = connect_meshtastic(
                 passed_config={
-                    "meshtastic": {"connection_type": "tcp", "host": "127.0.0.1"}
+                    "meshtastic": {
+                        "connection_type": CONNECTION_TYPE_TCP,
+                        "host": "127.0.0.1",
+                    }
                 }
             )
         finally:
@@ -1602,7 +1634,7 @@ class TestConnectMeshtasticEdgeCases(unittest.TestCase):
 
         existing_client = MagicMock()
         config = {
-            "meshtastic": {"connection_type": "tcp", "host": "127.0.0.1"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_TCP, "host": "127.0.0.1"},
             "matrix_rooms": [{"id": "!room:example.org", "meshtastic_channel": 0}],
         }
 
@@ -1751,7 +1783,7 @@ class TestMessageProcessingEdgeCases(unittest.TestCase):
         """
         self.mock_config = {
             "meshtastic": {
-                "connection_type": "serial",
+                "connection_type": CONNECTION_TYPE_SERIAL,
                 "serial_port": "/dev/ttyUSB0",
                 "broadcast_enabled": True,
                 "meshnet_name": "test_mesh",
@@ -1963,7 +1995,7 @@ def test_connect_meshtastic_retry_on_serial_exception(
 
     config = {
         "meshtastic": {
-            "connection_type": "serial",
+            "connection_type": CONNECTION_TYPE_SERIAL,
             "serial_port": "/dev/ttyUSB0",
             "retries": 2,
         }
@@ -1986,7 +2018,9 @@ def test_connect_meshtastic_retry_exhausted(
     # Mock a critical error that should not be retried
     mock_tcp.side_effect = ConcurrentTimeoutError("Connection timeout")
 
-    config = {"meshtastic": {"connection_type": "tcp", "host": "192.168.1.100"}}
+    config = {
+        "meshtastic": {"connection_type": CONNECTION_TYPE_TCP, "host": "192.168.1.100"}
+    }
 
     result = connect_meshtastic(passed_config=config)
 
@@ -2044,7 +2078,9 @@ def test_reconnect_attempts_connection(
     import mmrelay.meshtastic_utils as mu
 
     original_config = mu.config
-    test_config = {"meshtastic": {"connection_type": "tcp", "host": "127.0.0.1"}}
+    test_config = {
+        "meshtastic": {"connection_type": CONNECTION_TYPE_TCP, "host": "127.0.0.1"}
+    }
     expected_config = copy.deepcopy(test_config)
     mu.config = test_config
     original_backoff = mu.DEFAULT_BACKOFF_TIME
@@ -3260,7 +3296,10 @@ class TestUncoveredMeshtasticUtils(unittest.TestCase):
         mmrelay.meshtastic_utils.meshtastic_client = mock_existing_client
 
         config = {
-            "meshtastic": {"connection_type": "tcp", "host": "localhost:4403"},
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_TCP,
+                "host": "localhost:4403",
+            },
             "matrix_rooms": {},
         }
 
@@ -3918,7 +3957,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         config = {
             "meshtastic": {
-                "connection_type": "ble",
+                "connection_type": CONNECTION_TYPE_BLE,
                 "ble_address": TEST_BLE_MAC,
             },
             "matrix_rooms": [],
@@ -3982,7 +4021,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         config = {
             "meshtastic": {
-                "connection_type": "ble",
+                "connection_type": CONNECTION_TYPE_BLE,
                 "ble_address": TEST_BLE_MAC,
                 "retries": 1,
             },
@@ -4061,7 +4100,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         config = {
             "meshtastic": {
-                "connection_type": "ble",
+                "connection_type": CONNECTION_TYPE_BLE,
                 "ble_address": TEST_BLE_MAC,
             },
             "matrix_rooms": [],
@@ -4150,7 +4189,7 @@ class TestUncoveredMeshtasticUtilsPaths(unittest.TestCase):
 
         config = {
             "meshtastic": {
-                "connection_type": "ble",
+                "connection_type": CONNECTION_TYPE_BLE,
                 "ble_address": TEST_BLE_MAC,
                 "retries": 1,
             },

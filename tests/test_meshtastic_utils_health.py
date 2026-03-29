@@ -8,6 +8,8 @@ import pytest
 
 import mmrelay.meshtastic_utils as mu
 from mmrelay.constants.network import (
+    CONNECTION_TYPE_BLE,
+    CONNECTION_TYPE_TCP,
     DEFAULT_MESHTASTIC_OPERATION_TIMEOUT,
     INITIAL_HEALTH_CHECK_DELAY,
 )
@@ -102,7 +104,7 @@ async def test_check_connection_health_disabled_returns(reset_meshtastic_globals
 
 @pytest.mark.asyncio
 async def test_check_connection_ble_skips_health_checks(reset_meshtastic_globals):
-    mu.config = _make_health_config(connection_type="ble")
+    mu.config = _make_health_config(connection_type=CONNECTION_TYPE_BLE)
     mu.meshtastic_client = MagicMock()
 
     with patch("mmrelay.meshtastic_utils.logger") as mock_logger:
@@ -116,7 +118,7 @@ async def test_check_connection_ble_skips_health_checks(reset_meshtastic_globals
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("reset_meshtastic_globals")
 async def test_check_connection_metadata_probe_succeeds():
-    mu.config = _make_health_config(connection_type="tcp")
+    mu.config = _make_health_config(connection_type=CONNECTION_TYPE_TCP)
     mu.meshtastic_client = MagicMock()
     mu.meshtastic_client.localNode.onAckNak = Mock()
 
@@ -180,7 +182,9 @@ async def test_check_connection_uses_configured_initial_delay():
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("reset_meshtastic_globals")
 async def test_check_connection_uses_configured_probe_timeout():
-    mu.config = _make_health_config(connection_type="tcp", probe_timeout=7.5)
+    mu.config = _make_health_config(
+        connection_type=CONNECTION_TYPE_TCP, probe_timeout=7.5
+    )
     mu.meshtastic_client = MagicMock()
     mu.meshtastic_client.localNode.onAckNak = Mock()
 
@@ -227,7 +231,7 @@ async def test_check_connection_uses_configured_probe_timeout():
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("reset_meshtastic_globals")
 async def test_check_connection_triggers_reconnect_on_probe_failure():
-    mu.config = _make_health_config(connection_type="tcp")
+    mu.config = _make_health_config(connection_type=CONNECTION_TYPE_TCP)
     mu.meshtastic_client = MagicMock()
     mu.meshtastic_client.localNode.onAckNak = Mock()
 
@@ -263,7 +267,7 @@ async def test_check_connection_triggers_reconnect_on_probe_failure():
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("reset_meshtastic_globals")
 async def test_check_connection_tracks_timed_out_probe_until_worker_finishes():
-    mu.config = _make_health_config(connection_type="tcp")
+    mu.config = _make_health_config(connection_type=CONNECTION_TYPE_TCP)
     mu.meshtastic_client = MagicMock()
     mu.meshtastic_client.localNode.onAckNak = Mock()
 
@@ -310,7 +314,7 @@ async def test_check_connection_tracks_timed_out_probe_until_worker_finishes():
 @pytest.mark.asyncio
 @pytest.mark.usefixtures("reset_meshtastic_globals")
 async def test_check_connection_skips_when_metadata_probe_active():
-    mu.config = _make_health_config(connection_type="tcp")
+    mu.config = _make_health_config(connection_type=CONNECTION_TYPE_TCP)
     mu.meshtastic_client = MagicMock()
     mu.meshtastic_client.localNode.onAckNak = Mock()
     mu._metadata_future = Mock()
@@ -340,7 +344,7 @@ async def test_check_connection_skips_when_metadata_probe_active():
 
 @pytest.mark.asyncio
 async def test_check_connection_skips_when_reconnecting(reset_meshtastic_globals):
-    mu.config = _make_health_config(connection_type="tcp")
+    mu.config = _make_health_config(connection_type=CONNECTION_TYPE_TCP)
     mu.meshtastic_client = MagicMock()
     mu.reconnecting = True
 
@@ -364,7 +368,7 @@ async def test_check_connection_skips_when_reconnecting(reset_meshtastic_globals
 
 @pytest.mark.asyncio
 async def test_check_connection_skips_when_no_client(reset_meshtastic_globals):
-    mu.config = _make_health_config(connection_type="tcp")
+    mu.config = _make_health_config(connection_type=CONNECTION_TYPE_TCP)
     mu.meshtastic_client = None
 
     sleep_handler = SleepAndShutdown(
@@ -387,7 +391,7 @@ async def test_check_connection_skips_when_no_client(reset_meshtastic_globals):
 async def test_check_connection_uses_legacy_heartbeat_interval(
     reset_meshtastic_globals,
 ):
-    mu.config = _make_health_config(connection_type="tcp")
+    mu.config = _make_health_config(connection_type=CONNECTION_TYPE_TCP)
     mu.config["meshtastic"]["heartbeat_interval"] = 5
     mu.meshtastic_client = None
 

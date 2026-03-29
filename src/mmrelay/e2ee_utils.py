@@ -18,6 +18,7 @@ from mmrelay.constants.app import (
     PYTHON_OLM_PACKAGE,
     WINDOWS_PLATFORM,
 )
+from mmrelay.constants.config import CONFIG_SECTION_MATRIX
 from mmrelay.constants.messages import (
     MSG_E2EE_DISABLED,
     MSG_E2EE_DISABLED_SHORT,
@@ -107,7 +108,7 @@ def get_e2ee_status(
         logger.debug("E2EE dependency check: missing olm or nio components")
 
     # Check configuration
-    matrix_section = config.get("matrix", {})
+    matrix_section = config.get(CONFIG_SECTION_MATRIX, {})
     e2ee_config = matrix_section.get("e2ee", {})
     encryption_config = matrix_section.get("encryption", {})  # Legacy support
     status["enabled"] = e2ee_config.get("enabled", False) or encryption_config.get(

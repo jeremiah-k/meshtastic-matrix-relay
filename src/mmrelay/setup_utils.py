@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import Any
 
 from mmrelay.constants.app import (
+    APP_NAME,
+    LOGS_DIRNAME,
     SERVICE_RESTART_SECONDS,
     SYSTEMD_SERVICE_FILENAME,
     SYSTEMD_USER_DIR,
@@ -62,20 +64,20 @@ def _get_service_template_candidates() -> list[str]:
     candidates = [
         os.path.join(package_dir, SYSTEMD_SERVICE_FILENAME),
         os.path.join(package_dir, "tools", SYSTEMD_SERVICE_FILENAME),
-        os.path.join(sys.prefix, "share", "mmrelay", SYSTEMD_SERVICE_FILENAME),
-        os.path.join(sys.prefix, "share", "mmrelay", "tools", SYSTEMD_SERVICE_FILENAME),
+        os.path.join(sys.prefix, "share", APP_NAME, SYSTEMD_SERVICE_FILENAME),
+        os.path.join(sys.prefix, "share", APP_NAME, "tools", SYSTEMD_SERVICE_FILENAME),
         os.path.join(
             os.path.expanduser("~"),
             ".local",
             "share",
-            "mmrelay",
+            APP_NAME,
             SYSTEMD_SERVICE_FILENAME,
         ),
         os.path.join(
             os.path.expanduser("~"),
             ".local",
             "share",
-            "mmrelay",
+            APP_NAME,
             "tools",
             SYSTEMD_SERVICE_FILENAME,
         ),
@@ -445,7 +447,7 @@ def create_service_file() -> bool:
     service_dir.mkdir(parents=True, exist_ok=True)
 
     # Create logs directory if it doesn't exist
-    logs_dir = Path.home() / ".mmrelay" / "logs"
+    logs_dir = Path.home() / f".{APP_NAME}" / LOGS_DIRNAME
     logs_dir.mkdir(parents=True, exist_ok=True)
 
     # Get the template service content

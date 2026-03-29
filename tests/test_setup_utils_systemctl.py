@@ -13,6 +13,8 @@ from unittest.mock import MagicMock, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.setup_utils import SYSTEMD_SERVICE_FILENAME
+
 
 class TestSystemctlPathResolution(unittest.TestCase):
     """Test cases for dynamic systemctl path resolution."""
@@ -56,7 +58,12 @@ class TestSystemctlPathResolution(unittest.TestCase):
 
             # Should use the custom systemctl path
             mock_run.assert_called_once_with(
-                ["/custom/path/systemctl", "--user", "is-enabled", "mmrelay.service"],
+                [
+                    "/custom/path/systemctl",
+                    "--user",
+                    "is-enabled",
+                    SYSTEMD_SERVICE_FILENAME,
+                ],
                 check=False,
                 capture_output=True,
                 text=True,
@@ -77,7 +84,12 @@ class TestSystemctlPathResolution(unittest.TestCase):
 
             # Should use the custom systemctl path
             mock_run.assert_called_once_with(
-                ["/custom/path/systemctl", "--user", "is-active", "mmrelay.service"],
+                [
+                    "/custom/path/systemctl",
+                    "--user",
+                    "is-active",
+                    SYSTEMD_SERVICE_FILENAME,
+                ],
                 check=False,
                 capture_output=True,
                 text=True,
@@ -116,7 +128,7 @@ class TestSystemctlPathResolution(unittest.TestCase):
 
             # Should use the custom systemctl path
             mock_run.assert_called_once_with(
-                ["/custom/path/systemctl", "--user", "start", "mmrelay.service"],
+                ["/custom/path/systemctl", "--user", "start", SYSTEMD_SERVICE_FILENAME],
                 check=True,
             )
             self.assertTrue(result)
@@ -137,7 +149,12 @@ class TestSystemctlPathResolution(unittest.TestCase):
 
             # Should use the custom systemctl path
             mock_run.assert_called_once_with(
-                ["/custom/path/systemctl", "--user", "status", "mmrelay.service"],
+                [
+                    "/custom/path/systemctl",
+                    "--user",
+                    "status",
+                    SYSTEMD_SERVICE_FILENAME,
+                ],
                 check=False,
                 capture_output=True,
                 text=True,
@@ -245,8 +262,18 @@ class TestInstallServiceSystemctlUsage(unittest.TestCase):
             install_service()
 
             # Should use custom systemctl path for enable and start
-            enable_call = ["/test/systemctl", "--user", "enable", "mmrelay.service"]
-            start_call = ["/test/systemctl", "--user", "start", "mmrelay.service"]
+            enable_call = [
+                "/test/systemctl",
+                "--user",
+                "enable",
+                SYSTEMD_SERVICE_FILENAME,
+            ]
+            start_call = [
+                "/test/systemctl",
+                "--user",
+                "start",
+                SYSTEMD_SERVICE_FILENAME,
+            ]
 
             # Check that the custom systemctl path was used
             mock_run.assert_any_call(enable_call, check=True)

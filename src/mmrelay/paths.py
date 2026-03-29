@@ -39,6 +39,7 @@ from mmrelay.constants.app import (
     PLUGINS_DIRNAME,
     STORE_DIRNAME,
     WINDOWS_INSTALLER_DIR_NAME,
+    WINDOWS_PLATFORM,
 )
 from mmrelay.constants.database import PLUGIN_DB_FILENAME_TEMPLATE
 from mmrelay.constants.plugins import (
@@ -328,7 +329,7 @@ def get_home_dir() -> Path:
         return Path(env_data_dir).expanduser().absolute()
 
     # Platform defaults
-    if sys.platform != "win32":
+    if sys.platform != WINDOWS_PLATFORM:
         return Path.home() / f".{APP_NAME}"
     else:  # Windows
         platform_home = Path(platformdirs.user_data_dir(APP_NAME, APP_AUTHOR))
@@ -531,7 +532,7 @@ def get_e2ee_store_dir() -> Path:
     Raises:
         E2EENotSupportedError: If invoked on Windows (E2EE is not supported on Windows).
     """
-    if sys.platform == "win32":
+    if sys.platform == WINDOWS_PLATFORM:
         raise E2EENotSupportedError()
 
     return get_matrix_dir() / STORE_DIRNAME
@@ -722,7 +723,7 @@ def ensure_directories(*, create_missing: bool = True) -> None:
         get_matrix_dir(),
         get_database_dir(),
         get_logs_dir(),
-        get_e2ee_store_dir() if sys.platform != "win32" else None,
+        get_e2ee_store_dir() if sys.platform != WINDOWS_PLATFORM else None,
         get_plugins_dir(),
         get_custom_plugins_dir(),
         get_community_plugins_dir(),
@@ -835,7 +836,7 @@ def get_legacy_dirs() -> list[Path]:
 
     # 2b. Check Windows Inno Setup installer path (AppData\Local\Programs\MM Relay)
     # This is where the Windows installer puts the application and data
-    if sys.platform == "win32":
+    if sys.platform == WINDOWS_PLATFORM:
         try:
             local_app_data = os.environ.get("LOCALAPPDATA")
             if local_app_data:
@@ -949,7 +950,9 @@ def resolve_all_paths() -> dict[str, Any]:
         "credentials_path": str(get_credentials_path()),
         "database_dir": str(get_database_dir()),
         "store_dir": (
-            str(get_e2ee_store_dir()) if sys.platform != "win32" else "N/A (Windows)"
+            str(get_e2ee_store_dir())
+            if sys.platform != WINDOWS_PLATFORM
+            else "N/A (Windows)"
         ),
         "logs_dir": str(get_logs_dir()),
         "log_file": str(get_log_file()),

@@ -24,7 +24,12 @@ from meshtastic.mesh_interface import BROADCAST_NUM
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from mmrelay.constants.network import DEFAULT_PLUGIN_TIMEOUT_SECS
+from mmrelay.constants.network import (
+    CONNECTION_TYPE_BLE,
+    CONNECTION_TYPE_SERIAL,
+    CONNECTION_TYPE_TCP,
+    DEFAULT_PLUGIN_TIMEOUT_SECS,
+)
 from mmrelay.meshtastic_utils import (
     connect_meshtastic,
     is_running_as_service,
@@ -132,7 +137,10 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         Test that connect_meshtastic returns None and logs an error when a serial connection attempt results in a timeout.
         """
         config = {
-            "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"}
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_SERIAL,
+                "serial_port": "/dev/ttyUSB0",
+            }
         }
 
         with patch("mmrelay.meshtastic_utils.serial_port_exists", return_value=True):
@@ -160,7 +168,10 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         Simulates a BLE connection attempt where the device cannot be found, verifying that connect_meshtastic handles the error gracefully and logs the failure.
         """
         config = {
-            "meshtastic": {"connection_type": "ble", "ble_address": "00:11:22:33:44:55"}
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_BLE,
+                "ble_address": "00:11:22:33:44:55",
+            }
         }
 
         with patch(
@@ -186,7 +197,12 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
 
         Patches the TCPInterface to raise ConnectionRefusedError and asserts that connect_meshtastic returns None and that logger.exception is invoked.
         """
-        config = {"meshtastic": {"connection_type": "tcp", "host": "192.168.1.100"}}
+        config = {
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_TCP,
+                "host": "192.168.1.100",
+            }
+        }
 
         with patch(
             "mmrelay.meshtastic_utils.meshtastic.tcp_interface.TCPInterface",
@@ -215,7 +231,10 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         Sets a serial connection config, patches serial_port_exists to True and SerialInterface to raise MemoryError on each attempt, patches time.sleep to avoid delays, and asserts connect_meshtastic returns None and that logger.exception was called.
         """
         config = {
-            "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"}
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_SERIAL,
+                "serial_port": "/dev/ttyUSB0",
+            }
         }
 
         with patch("mmrelay.meshtastic_utils.serial_port_exists", return_value=True):
@@ -595,7 +614,10 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         Verify that connect_meshtastic returns None and handles concurrent connection attempts gracefully when a reconnection is already in progress.
         """
         config = {
-            "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"}
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_SERIAL,
+                "serial_port": "/dev/ttyUSB0",
+            }
         }
 
         import mmrelay.meshtastic_utils
@@ -613,7 +635,10 @@ class TestMeshtasticUtilsEdgeCases(unittest.TestCase):
         Simulates a memory constraint scenario by forcing SerialInterface to raise MemoryError, and verifies that connect_meshtastic returns None and logs an error.
         """
         config = {
-            "meshtastic": {"connection_type": "serial", "serial_port": "/dev/ttyUSB0"}
+            "meshtastic": {
+                "connection_type": CONNECTION_TYPE_SERIAL,
+                "serial_port": "/dev/ttyUSB0",
+            }
         }
 
         with patch("mmrelay.meshtastic_utils.serial_port_exists", return_value=True):

@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import MagicMock, mock_open, patch
 
 from mmrelay.setup_utils import (
+    SYSTEMD_SERVICE_FILENAME,
     check_lingering_enabled,
     check_loginctl_available,
     enable_lingering,
@@ -31,7 +32,7 @@ class TestPatchCoverageImprovements(unittest.TestCase):
         call_args = mock_logger.warning.call_args_list
         self.assertTrue(
             any(
-                "Could not find" in str(call) and "mmrelay.service" in str(call)
+                "Could not find" in str(call) and SYSTEMD_SERVICE_FILENAME in str(call)
                 for call in call_args
             )
         )

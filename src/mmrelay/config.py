@@ -31,6 +31,7 @@ from mmrelay.constants.config import (
     CONFIG_SECTION_COMMUNITY_PLUGINS,
     CONFIG_SECTION_CUSTOM_PLUGINS,
     CONFIG_SECTION_MATRIX,
+    CONFIG_SECTION_MESHTASTIC,
     DEPRECATION_VERSIONS,
     ENV_BOOL_FALSE_VALUES,
     ENV_BOOL_TRUE_VALUES,
@@ -313,7 +314,7 @@ def get_explicit_credentials_path(config: Mapping[str, Any] | None) -> str | Non
         if not isinstance(explicit_path, str):
             raise InvalidCredentialsPathTypeError()
         return explicit_path
-    matrix_section = config.get("matrix")
+    matrix_section = config.get(CONFIG_SECTION_MATRIX)
     if isinstance(matrix_section, dict):
         credentials_path = matrix_section.get("credentials_path")
         if credentials_path is not None and not isinstance(credentials_path, str):
@@ -624,7 +625,7 @@ def is_e2ee_enabled(config: dict[str, Any] | None) -> bool:
     if not config:
         return False
 
-    matrix_cfg = config.get("matrix", {}) or {}
+    matrix_cfg = config.get(CONFIG_SECTION_MATRIX, {}) or {}
     if not isinstance(matrix_cfg, dict) or not matrix_cfg:
         return False
 
@@ -1375,7 +1376,7 @@ def _resolve_credentials_path(
         if not candidate:
             candidate = relay_config.get("credentials_path")
         if not candidate:
-            matrix_config = relay_config.get("matrix", {})
+            matrix_config = relay_config.get(CONFIG_SECTION_MATRIX, {})
             if isinstance(matrix_config, dict):
                 candidate = matrix_config.get("credentials_path")
 
@@ -1526,7 +1527,9 @@ def get_meshtastic_config_value(
     Raises:
         KeyError: If `required` is True and the requested key is missing.
     """
-    section = config.get("meshtastic", {}) if isinstance(config, dict) else {}
+    section = (
+        config.get(CONFIG_SECTION_MESHTASTIC, {}) if isinstance(config, dict) else {}
+    )
     if not isinstance(section, dict):
         section = {}
     try:

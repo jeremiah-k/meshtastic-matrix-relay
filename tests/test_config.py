@@ -39,7 +39,12 @@ from mmrelay.config import (
 )
 from mmrelay.constants.app import CONFIG_FILENAME, SECURE_FILE_PERMISSIONS
 from mmrelay.constants.config import DEFAULT_NODEDB_REFRESH_INTERVAL
-from mmrelay.constants.network import DEFAULT_TCP_PORT
+from mmrelay.constants.network import (
+    CONNECTION_TYPE_BLE,
+    CONNECTION_TYPE_SERIAL,
+    CONNECTION_TYPE_TCP,
+    DEFAULT_TCP_PORT,
+)
 from mmrelay.constants.queue import DEFAULT_MESSAGE_DELAY
 
 
@@ -232,7 +237,7 @@ class TestConfigEdgeCases(unittest.TestCase):
                 "password": "secret",
             },
             "meshtastic": {
-                "connection_type": "serial",
+                "connection_type": CONNECTION_TYPE_SERIAL,
                 "serial_port": TEST_SERIAL_PORT,
             },
         }
@@ -813,7 +818,7 @@ class TestEnvironmentVariableIntegration(unittest.TestCase):
         """Test applying environment variable overrides to existing configuration."""
         base_config = {
             "meshtastic": {
-                "connection_type": "serial",
+                "connection_type": CONNECTION_TYPE_SERIAL,
                 "serial_port": TEST_SERIAL_PORT,
                 "meshnet_name": "Original Name",
             },

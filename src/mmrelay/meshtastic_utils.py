@@ -3203,7 +3203,7 @@ def connect_meshtastic(
             )
 
     # Move retry loop outside the lock to prevent blocking other threads
-    meshtastic_settings = config.get("meshtastic", {}) if config else {}
+    meshtastic_settings = config.get(CONFIG_SECTION_MESHTASTIC, {}) if config else {}
     retry_limit_raw = meshtastic_settings.get("retries")
     if retry_limit_raw is None:
         retry_limit_raw = meshtastic_settings.get("retry_limit", INFINITE_RETRIES)

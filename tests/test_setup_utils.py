@@ -57,7 +57,7 @@ class TestSetupUtils(unittest.TestCase):
         """
         # Create temporary directory for testing
         self.test_dir = tempfile.mkdtemp()
-        self.test_service_path = Path(self.test_dir) / "mmrelay.service"
+        self.test_service_path = Path(self.test_dir) / SYSTEMD_SERVICE_FILENAME
 
     def tearDown(self):
         """

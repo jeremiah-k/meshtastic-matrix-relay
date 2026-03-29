@@ -15,6 +15,7 @@ import pytest
 
 from mmrelay.constants.network import (
     CONNECTION_TYPE_BLE,
+    CONNECTION_TYPE_NETWORK,
     CONNECTION_TYPE_SERIAL,
     CONNECTION_TYPE_TCP,
     DEFAULT_BACKOFF_TIME,
@@ -70,7 +71,12 @@ class TestConnectionRetryLogic:
 
         try:
             mu.DEFAULT_BACKOFF_TIME = 1
-            mu.config = {"meshtastic": {"connection_type": "tcp", "host": "127.0.0.1"}}
+            mu.config = {
+                "meshtastic": {
+                    "connection_type": CONNECTION_TYPE_TCP,
+                    "host": "127.0.0.1",
+                }
+            }
             mu.shutting_down = False
 
             with (
@@ -233,7 +239,12 @@ class TestConnectionTypeFallback:
         for conn_type in valid_types:
             assert isinstance(conn_type, str)
             assert len(conn_type) > 0
-            assert conn_type in ["tcp", "serial", "ble", "network"]
+            assert conn_type in [
+                CONNECTION_TYPE_TCP,
+                CONNECTION_TYPE_SERIAL,
+                CONNECTION_TYPE_BLE,
+                CONNECTION_TYPE_NETWORK,
+            ]
 
     @pytest.mark.asyncio
     async def test_connection_preference_order(self):
