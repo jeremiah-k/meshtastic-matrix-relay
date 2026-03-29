@@ -640,6 +640,9 @@ async def main(config: dict[str, Any]) -> None:
         # This provides proactive connection detection for all interface types
         check_connection_callable = meshtastic_utils.check_connection
         check_connection_task = asyncio.create_task(check_connection_callable())
+        continuous_health_exit_message = (
+            "Connection health task exited unexpectedly without an exception"
+        )
 
         def _on_check_connection_done(task: asyncio.Task[Any]) -> None:
             nonlocal fatal_exception
@@ -663,18 +666,34 @@ async def main(config: dict[str, Any]) -> None:
                 check_connection_callable is _DEFAULT_CHECK_CONNECTION_CALLABLE
                 and _requires_continuous_health_monitor(config)
             ):
-                fatal_exception = RuntimeError(
-                    "Connection health task exited unexpectedly without an exception"
-                )
-                meshtastic_logger.error(
-                    "Connection health task exited unexpectedly without an exception"
-                )
+                fatal_exception = RuntimeError(continuous_health_exit_message)
+                meshtastic_logger.error(continuous_health_exit_message)
                 _set_shutdown_flag()
 
         check_connection_task.add_done_callback(_on_check_connection_done)
         # Give the health-check task one scheduling opportunity before readiness logic.
         # This only guards against immediate startup failures in check_connection().
         await asyncio.sleep(0)
+        # Enforce deterministic startup behavior for immediate task failures/exits.
+        # Done callbacks are normally enough, but checking task state directly avoids
+        # event-loop scheduling races across Python versions.
+        if check_connection_task.done():
+            if fatal_exception is not None:
+                raise fatal_exception
+            if not check_connection_task.cancelled():
+                task_exception = check_connection_task.exception()
+                if task_exception is not None:
+                    fatal_exception = task_exception
+                    _set_shutdown_flag()
+                    check_connection_task._exception_consumed = True  # type: ignore[attr-defined]
+                    raise task_exception
+                if (
+                    check_connection_callable is _DEFAULT_CHECK_CONNECTION_CALLABLE
+                    and _requires_continuous_health_monitor(config)
+                ):
+                    fatal_exception = RuntimeError(continuous_health_exit_message)
+                    _set_shutdown_flag()
+                    raise fatal_exception
     except BaseException:
         _set_shutdown_flag()
         if check_connection_task is not None:
