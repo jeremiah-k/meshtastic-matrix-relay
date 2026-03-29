@@ -1198,6 +1198,9 @@ bot_start_time = int(
 
 matrix_client = None
 
+# Serialize connect_matrix startup publication and invite-state monkey patching.
+_MATRIX_STARTUP_SYNC_LOCK = asyncio.Lock()
+
 
 async def get_displayname(user_id: str) -> str | None:
     """
@@ -2193,34 +2196,35 @@ async def _perform_initial_sync(
                             return []
                         return []
 
-                    try:
-                        nio_responses.SyncResponse._get_invite_state = staticmethod(  # pyright: ignore[reportAttributeAccessIssue]  # type: ignore[misc]
-                            _safe_get_invite_state
-                        )
-                        return await asyncio.wait_for(
-                            client.sync(
-                                timeout=MATRIX_EARLY_SYNC_TIMEOUT,
-                                full_state=False,
-                                sync_filter=invite_safe_filter,
-                            ),
-                            timeout=MATRIX_SYNC_OPERATION_TIMEOUT,
-                        )
-                    finally:
-                        if original_descriptor is not None:
-                            nio_responses.SyncResponse._get_invite_state = (
-                                original_descriptor
+                    async with _MATRIX_STARTUP_SYNC_LOCK:
+                        try:
+                            nio_responses.SyncResponse._get_invite_state = staticmethod(  # pyright: ignore[reportAttributeAccessIssue]  # type: ignore[misc]
+                                _safe_get_invite_state
                             )
-                        else:
-                            # Descriptor didn't exist in class dict; remove it if we added it.
-                            # This avoids leaking the patch if it was shadowing a base class.
-                            if (
-                                "_get_invite_state"
-                                in nio_responses.SyncResponse.__dict__
-                            ):
-                                try:
-                                    del nio_responses.SyncResponse._get_invite_state
-                                except (AttributeError, TypeError):
-                                    pass
+                            return await asyncio.wait_for(
+                                client.sync(
+                                    timeout=MATRIX_EARLY_SYNC_TIMEOUT,
+                                    full_state=False,
+                                    sync_filter=invite_safe_filter,
+                                ),
+                                timeout=MATRIX_SYNC_OPERATION_TIMEOUT,
+                            )
+                        finally:
+                            if original_descriptor is not None:
+                                nio_responses.SyncResponse._get_invite_state = (
+                                    original_descriptor
+                                )
+                            else:
+                                # Descriptor didn't exist in class dict; remove it if we added it.
+                                # This avoids leaking the patch if it was shadowing a base class.
+                                if (
+                                    "_get_invite_state"
+                                    in nio_responses.SyncResponse.__dict__
+                                ):
+                                    try:
+                                        del nio_responses.SyncResponse._get_invite_state
+                                    except (AttributeError, TypeError):
+                                        pass
 
                 try:
                     sync_response = await _sync_ignore_invalid_invites()
@@ -2472,15 +2476,19 @@ async def connect_matrix(
         )
         bot_user_id = ""
 
-    # Use local variable during initialization to avoid exposing half-initialized client
-    client = _initialize_matrix_client(
-        homeserver=matrix_homeserver,
-        user_id=bot_user_id,
-        device_id=e2ee_device_id,
-        e2ee_enabled=e2ee_enabled,
-        e2ee_store_path=e2ee_store_path,
-        ssl_context=ssl_context,
-    )
+    async with _MATRIX_STARTUP_SYNC_LOCK:
+        if matrix_client:
+            return matrix_client
+
+        # Use local variable during initialization to avoid exposing half-initialized client
+        client = _initialize_matrix_client(
+            homeserver=matrix_homeserver,
+            user_id=bot_user_id,
+            device_id=e2ee_device_id,
+            e2ee_enabled=e2ee_enabled,
+            e2ee_store_path=e2ee_store_path,
+            ssl_context=ssl_context,
+        )
 
     try:
         await _perform_matrix_login(client, auth_info)
@@ -2516,9 +2524,16 @@ async def connect_matrix(
         await _close_matrix_client_after_failure(client, "connect_matrix setup")
         raise
     else:
-        # Only assign to global after successful initialization
-        matrix_client = client
-        return matrix_client
+        # Only assign to global after successful initialization.
+        # Another concurrent connect_matrix() may have published a client while we initialized.
+        async with _MATRIX_STARTUP_SYNC_LOCK:
+            if matrix_client is not None:
+                await _close_matrix_client_after_failure(
+                    client, "connect_matrix duplicate setup"
+                )
+                return matrix_client
+            matrix_client = client
+            return matrix_client
 
 
 async def login_matrix_bot(
@@ -3010,12 +3025,14 @@ async def login_matrix_bot(
                     )
 
             # Save credentials to credentials.json
+            response_device_id = _get_valid_device_id(
+                getattr(response, "device_id", None)
+            )
+            resolved_device_id = response_device_id or existing_device_id
             credentials = {
                 CONFIG_KEY_HOMESERVER: homeserver,
                 CONFIG_KEY_ACCESS_TOKEN: getattr(response, "access_token", None),
-                CONFIG_KEY_DEVICE_ID: getattr(
-                    response, "device_id", existing_device_id
-                ),
+                CONFIG_KEY_DEVICE_ID: resolved_device_id,
             }
             if actual_user_id:
                 credentials[CONFIG_KEY_USER_ID] = actual_user_id

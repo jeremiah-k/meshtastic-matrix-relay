@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import json
 import logging
@@ -2515,7 +2516,8 @@ async def async_store_message_map(
             meshtastic_text,
             meshtastic_meshnet,
         )
-        await _get_db_manager().run_async(
+        manager = await asyncio.to_thread(_get_db_manager)
+        await manager.run_async(
             lambda cursor: _store_message_map_core(
                 cursor,
                 id_key,
@@ -2538,7 +2540,8 @@ async def async_prune_message_map(msgs_to_keep: int) -> None:
         msgs_to_keep (int): Number of most recent rows to retain; older rows will be deleted.
     """
     try:
-        pruned = await _get_db_manager().run_async(
+        manager = await asyncio.to_thread(_get_db_manager)
+        pruned = await manager.run_async(
             lambda cursor: _prune_message_map_core(cursor, msgs_to_keep),
             write=True,
         )
