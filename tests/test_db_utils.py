@@ -511,6 +511,34 @@ class TestDbUtils(unittest.TestCase):
             )
             self.assertIsNone(cursor.fetchone())
 
+    def test_initialize_database_keeps_stale_temp_when_merge_fails(self):
+        """Failed stale-temp merge should keep preserved rows for future recovery."""
+        with sqlite3.connect(self.test_db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "CREATE TABLE message_map (meshtastic_id INTEGER, matrix_event_id TEXT PRIMARY KEY, matrix_room_id TEXT, meshtastic_text TEXT)"
+            )
+            cursor.execute(
+                "INSERT INTO message_map VALUES (?, ?, ?, ?)",
+                (88, "$evt-main", "!room", "payload"),
+            )
+            # Deliberately incompatible schema: required message_map columns are missing.
+            cursor.execute("CREATE TABLE message_map_stale_temp (bogus TEXT)")
+            cursor.execute(
+                "INSERT INTO message_map_stale_temp VALUES (?)",
+                ("preserve-me",),
+            )
+            conn.commit()
+
+        initialize_database()
+
+        with sqlite3.connect(self.test_db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='message_map_stale_temp'"
+            )
+            self.assertIsNotNone(cursor.fetchone())
+
     def test_longname_operations(self):
         """
         Tests saving and retrieving longnames by Meshtastic ID, including handling of non-existent entries.

@@ -5919,6 +5919,52 @@ async def test_login_matrix_bot_whoami_exception_uses_fallback(
 @patch("mmrelay.matrix_utils.save_credentials")
 @patch("mmrelay.matrix_utils.AsyncClient")
 @patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
+@patch("mmrelay.matrix_utils._normalize_bot_user_id", return_value="@user:matrix.org")
+async def test_login_matrix_bot_whoami_oserror_uses_fallback(
+    _mock_normalize,
+    _mock_ssl_context,
+    mock_async_client,
+    mock_save_credentials,
+):
+    """OSError from whoami should warn and fall back to login response user_id."""
+    mock_discovery_client = AsyncMock()
+    mock_main_client = AsyncMock()
+    mock_async_client.side_effect = [mock_discovery_client, mock_main_client]
+
+    mock_discovery_client.discovery_info.return_value = SimpleNamespace(
+        homeserver_url="https://matrix.org"
+    )
+    mock_discovery_client.close = AsyncMock()
+    mock_main_client.login.return_value = MagicMock(
+        access_token="token", device_id="DEV", user_id="@fallback:matrix.org"
+    )
+    mock_main_client.whoami.side_effect = OSError("network down")
+    mock_main_client.close = AsyncMock()
+
+    with (
+        patch("mmrelay.config.load_config", return_value={}),
+        patch("mmrelay.config.is_e2ee_enabled", return_value=False),
+        patch("mmrelay.matrix_utils.os.path.exists", return_value=False),
+        patch("mmrelay.matrix_utils.logger") as mock_logger,
+    ):
+        result = await login_matrix_bot(
+            homeserver=TEST_HOMESERVER,
+            username=TEST_USERNAME,
+            password=TEST_PASSWORD,
+            logout_others=False,
+        )
+
+    assert result is True
+    assert mock_save_credentials.call_args.args[0]["user_id"] == "@fallback:matrix.org"
+    assert any(
+        "whoami call failed" in call.args[0]
+        for call in mock_logger.warning.call_args_list
+    )
+
+
+@patch("mmrelay.matrix_utils.save_credentials")
+@patch("mmrelay.matrix_utils.AsyncClient")
+@patch("mmrelay.matrix_utils._create_ssl_context", return_value=None)
 async def test_login_matrix_bot_saves_credentials_without_user_id_when_unknown(
     _mock_ssl_context,
     mock_async_client,

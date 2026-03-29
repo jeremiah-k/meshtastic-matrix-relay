@@ -213,6 +213,7 @@ SYNC_RETRY_EXCEPTIONS: tuple[type[BaseException], ...] = (
 # Exception tuple for login whoami fallback when resolving user_id post-login.
 WHOAMI_USER_ID_FALLBACK_EXCEPTIONS: tuple[type[BaseException], ...] = (
     *NIO_COMM_EXCEPTIONS,
+    OSError,
     AttributeError,
     TypeError,
     ValueError,
@@ -907,18 +908,42 @@ def get_interaction_settings(config: dict[str, Any] | None) -> dict[str, bool]:
         return {"reactions": False, "replies": False}
 
     meshtastic_config = config.get(CONFIG_SECTION_MESHTASTIC, {})
+    if not isinstance(meshtastic_config, dict):
+        logger.warning(
+            "Invalid '%s' configuration type (%s); disabling reactions and replies.",
+            CONFIG_SECTION_MESHTASTIC,
+            type(meshtastic_config).__name__,
+        )
+        return {"reactions": False, "replies": False}
 
     # Check for new structured configuration first
-    if "message_interactions" in meshtastic_config:
-        interactions = meshtastic_config["message_interactions"]
+    interactions = meshtastic_config.get("message_interactions")
+    if interactions is not None:
+        if not isinstance(interactions, dict):
+            logger.warning(
+                "Invalid '%s.message_interactions' value (%s); disabling reactions and replies.",
+                CONFIG_SECTION_MESHTASTIC,
+                type(interactions).__name__,
+            )
+            return {"reactions": False, "replies": False}
+
+        reactions = interactions.get("reactions", False)
+        replies = interactions.get("replies", False)
         return {
-            "reactions": interactions.get("reactions", False),
-            "replies": interactions.get("replies", False),
+            "reactions": reactions if isinstance(reactions, bool) else False,
+            "replies": replies if isinstance(replies, bool) else False,
         }
 
     # Fall back to legacy relay_reactions setting
     if "relay_reactions" in meshtastic_config:
-        enabled = meshtastic_config["relay_reactions"]
+        enabled_value = meshtastic_config.get("relay_reactions")
+        enabled = enabled_value if isinstance(enabled_value, bool) else False
+        if not isinstance(enabled_value, bool):
+            logger.warning(
+                "Invalid '%s.relay_reactions' value (%s); treating as False.",
+                CONFIG_SECTION_MESHTASTIC,
+                type(enabled_value).__name__,
+            )
         logger.warning(
             "Configuration setting 'relay_reactions' is deprecated. "
             "Please use 'message_interactions: {reactions: bool, replies: bool}' instead. "

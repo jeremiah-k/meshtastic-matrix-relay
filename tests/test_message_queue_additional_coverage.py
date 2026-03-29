@@ -92,6 +92,45 @@ def test_ensure_processor_started_handles_missing_running_loop() -> None:
     assert queue._processor_task is None
 
 
+def test_ensure_processor_started_restarts_when_existing_task_is_done() -> None:
+    queue = MessageQueue()
+    queue._running = True
+    queue._stop_failed = False
+    queue._processor_task = MagicMock(done=MagicMock(return_value=True))
+
+    created_task = MagicMock()
+    loop = MagicMock()
+    loop.is_running.return_value = True
+    loop.create_task.return_value = created_task
+
+    with (
+        patch("mmrelay.message_queue.asyncio.get_running_loop", return_value=loop),
+        patch.object(queue, "_process_queue", new=MagicMock(return_value=MagicMock())),
+    ):
+        queue.ensure_processor_started()
+
+    assert queue._processor_task is created_task
+    loop.create_task.assert_called_once()
+
+
+def test_stop_raises_unexpected_task_cleanup_exception() -> None:
+    queue = MessageQueue()
+    queue._running = True
+    queue._executor = None
+
+    task_loop = MagicMock()
+    task_loop.is_closed.return_value = False
+    task_loop.is_running.return_value = False
+    task_loop.run_until_complete.side_effect = ValueError("cleanup failure")
+
+    task = MagicMock()
+    task.get_loop.return_value = task_loop
+    queue._processor_task = task
+
+    with pytest.raises(ValueError, match="cleanup failure"):
+        queue.stop()
+
+
 @pytest.mark.asyncio
 async def test_process_queue_connection_error_requeues_message() -> None:
     queue = MessageQueue()

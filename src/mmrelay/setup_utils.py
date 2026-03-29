@@ -96,7 +96,10 @@ def _get_service_template_candidates() -> list[str]:
 
     override_path = os.environ.get("MMRELAY_SERVICE_OVERRIDE")
     if override_path:
-        candidates.insert(0, override_path)
+        candidates.insert(
+            0,
+            os.path.abspath(os.path.expanduser(os.path.expandvars(override_path))),
+        )
 
     return candidates
 
@@ -599,12 +602,24 @@ def service_needs_update() -> tuple[bool, str]:
         )
 
     # Accept either --home in ExecStart or MMRELAY_HOME in Environment for compatibility.
-    # Use token-level matching to avoid false positives on flags like --home-dir
-    has_home_flag = any(
-        token == "--home" or token.startswith("--home=") for token in exec_tokens
-    )
+    # Use token-level matching to avoid false positives on flags like --home-dir and
+    # require non-empty values for --home/MMRELAY_HOME.
+    has_home_flag = False
+    for index, token in enumerate(exec_tokens):
+        if token == "--home":
+            if index + 1 < len(exec_tokens):
+                next_token = exec_tokens[index + 1].strip()
+                if next_token and not next_token.startswith("-"):
+                    has_home_flag = True
+                    break
+            continue
+        if token.startswith("--home="):
+            home_value = token.split("=", 1)[1].strip()
+            if home_value:
+                has_home_flag = True
+                break
 
-    def _iter_env_assignment_keys(raw_line: str) -> list[str]:
+    def _iter_env_assignments(raw_line: str) -> list[tuple[str, str]]:
         line = raw_line.strip()
         if line.startswith("Environment="):
             line = line[len("Environment=") :].strip()
@@ -615,18 +630,21 @@ def service_needs_update() -> tuple[bool, str]:
         except ValueError:
             tokens = line.split()
 
-        keys: list[str] = []
+        assignments: list[tuple[str, str]] = []
         for token in tokens:
             if "=" not in token:
                 continue
-            key, _ = token.split("=", 1)
+            key, value = token.split("=", 1)
             normalized_key = key.strip().strip('"').strip("'")
+            normalized_value = value.strip().strip('"').strip("'")
             if normalized_key:
-                keys.append(normalized_key)
-        return keys
+                assignments.append((normalized_key, normalized_value))
+        return assignments
 
     has_home_env = any(
-        "MMRELAY_HOME" in _iter_env_assignment_keys(line) for line in environment_lines
+        key == "MMRELAY_HOME" and bool(value)
+        for line in environment_lines
+        for key, value in _iter_env_assignments(line)
     )
 
     cmd_token = exec_tokens[0]
@@ -645,9 +663,10 @@ def service_needs_update() -> tuple[bool, str]:
             if "=" in token:
                 key, value = token.split("=", 1)
                 normalized_key = key.strip().strip('"').strip("'")
+                normalized_value = value.strip().strip('"').strip("'")
                 if normalized_key == "PATH":
-                    env_path_assignment = value
-                if normalized_key == "MMRELAY_HOME":
+                    env_path_assignment = normalized_value
+                if normalized_key == "MMRELAY_HOME" and normalized_value:
                     has_home_env_in_exec = True
                 continue
             env_target_token = token
@@ -700,26 +719,45 @@ def service_needs_update() -> tuple[bool, str]:
         uses_path_lookup = True
 
     if uses_path_lookup:
-        path_in_environment = any(
-            ("%h/.local/pipx/venvs/mmrelay/bin" in line or "%h/.local/bin" in line)
-            or ("/.local/pipx/venvs/mmrelay/bin" in line or "/.local/bin" in line)
-            or ("~/.local/pipx/venvs/mmrelay/bin" in line or "~/.local/bin" in line)
-            for line in environment_lines
-        )
-        path_in_exec_env = env_path_assignment is not None and (
-            (
-                "%h/.local/pipx/venvs/mmrelay/bin" in env_path_assignment
-                or "%h/.local/bin" in env_path_assignment
+
+        def _normalize_path_entry(entry: str) -> str:
+            normalized = entry.strip().strip('"').strip("'")
+            if normalized.startswith("%h/"):
+                normalized = os.path.join(os.path.expanduser("~"), normalized[3:])
+            elif normalized == "%h":
+                normalized = os.path.expanduser("~")
+            normalized = os.path.expandvars(os.path.expanduser(normalized))
+            return normalized.rstrip("/")
+
+        def _split_path_entries(path_value: str) -> set[str]:
+            entries: set[str] = set()
+            for part in path_value.split(":"):
+                normalized = _normalize_path_entry(part)
+                if normalized:
+                    entries.add(normalized)
+            return entries
+
+        expected_path_entries = {
+            _normalize_path_entry("%h/.local/pipx/venvs/mmrelay/bin"),
+            _normalize_path_entry("%h/.local/bin"),
+            _normalize_path_entry("/.local/pipx/venvs/mmrelay/bin"),
+            _normalize_path_entry("/.local/bin"),
+            _normalize_path_entry("~/.local/pipx/venvs/mmrelay/bin"),
+            _normalize_path_entry("~/.local/bin"),
+        }
+
+        environment_path_entries: set[str] = set()
+        for line in environment_lines:
+            for key, value in _iter_env_assignments(line):
+                if key == "PATH" and value:
+                    environment_path_entries.update(_split_path_entries(value))
+
+        path_in_environment = bool(environment_path_entries & expected_path_entries)
+        path_in_exec_env = False
+        if env_path_assignment:
+            path_in_exec_env = bool(
+                _split_path_entries(env_path_assignment) & expected_path_entries
             )
-            or (
-                "/.local/pipx/venvs/mmrelay/bin" in env_path_assignment
-                or "/.local/bin" in env_path_assignment
-            )
-            or (
-                "~/.local/pipx/venvs/mmrelay/bin" in env_path_assignment
-                or "~/.local/bin" in env_path_assignment
-            )
-        )
         if not (path_in_environment or path_in_exec_env):
             return True, "Service PATH does not include common user-bin locations"
 

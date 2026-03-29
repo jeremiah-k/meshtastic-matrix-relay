@@ -391,53 +391,63 @@ async def main(config: dict[str, Any]) -> None:
     ):
         previous_loop_exception_handler = _install_loop_exception_handler(loop)
 
-    # Initialize the SQLite database
-    initialize_database()
+    def _restore_loop_exception_handler() -> None:
+        if hasattr(loop, "set_exception_handler"):
+            loop.set_exception_handler(previous_loop_exception_handler)
 
-    # Check database config for wipe_on_restart (preferred format)
-    database_config = config.get(CONFIG_SECTION_DATABASE)
-    msg_map_config = (
-        database_config.get(CONFIG_KEY_MSG_MAP)
-        if isinstance(database_config, dict)
-        else None
-    )
-    preferred_msg_map_config = (
-        msg_map_config if isinstance(msg_map_config, dict) else {}
-    )
-    has_preferred_wipe_on_restart = (
-        CONFIG_KEY_WIPE_ON_RESTART in preferred_msg_map_config
-    )
-    preferred_wipe_on_restart = preferred_msg_map_config.get(
-        CONFIG_KEY_WIPE_ON_RESTART, False
-    )
-    wipe_on_restart = (
-        _coerce_config_bool(preferred_wipe_on_restart)
-        if has_preferred_wipe_on_restart
-        else False
-    )
+    try:
+        # Initialize the SQLite database
+        initialize_database()
 
-    # If not found in database config, check legacy db config
-    if not has_preferred_wipe_on_restart:
-        db_config = config.get(CONFIG_SECTION_DATABASE_LEGACY)
-        legacy_msg_map_config = (
-            db_config.get(CONFIG_KEY_MSG_MAP) if isinstance(db_config, dict) else None
+        # Check database config for wipe_on_restart (preferred format)
+        database_config = config.get(CONFIG_SECTION_DATABASE)
+        msg_map_config = (
+            database_config.get(CONFIG_KEY_MSG_MAP)
+            if isinstance(database_config, dict)
+            else None
         )
-        if not isinstance(legacy_msg_map_config, dict):
-            legacy_msg_map_config = {}
-        legacy_wipe_on_restart_value = legacy_msg_map_config.get(
+        preferred_msg_map_config = (
+            msg_map_config if isinstance(msg_map_config, dict) else {}
+        )
+        has_preferred_wipe_on_restart = (
+            CONFIG_KEY_WIPE_ON_RESTART in preferred_msg_map_config
+        )
+        preferred_wipe_on_restart = preferred_msg_map_config.get(
             CONFIG_KEY_WIPE_ON_RESTART, False
         )
-        legacy_wipe_on_restart = _coerce_config_bool(legacy_wipe_on_restart_value)
+        wipe_on_restart = (
+            _coerce_config_bool(preferred_wipe_on_restart)
+            if has_preferred_wipe_on_restart
+            else False
+        )
 
-        if legacy_wipe_on_restart:
-            wipe_on_restart = True
-            logger.warning(
-                "Using 'db.msg_map' configuration (legacy). 'database.msg_map' is now the preferred format and 'db.msg_map' will be deprecated in a future version."
+        # If not found in database config, check legacy db config
+        if not has_preferred_wipe_on_restart:
+            db_config = config.get(CONFIG_SECTION_DATABASE_LEGACY)
+            legacy_msg_map_config = (
+                db_config.get(CONFIG_KEY_MSG_MAP)
+                if isinstance(db_config, dict)
+                else None
             )
+            if not isinstance(legacy_msg_map_config, dict):
+                legacy_msg_map_config = {}
+            legacy_wipe_on_restart_value = legacy_msg_map_config.get(
+                CONFIG_KEY_WIPE_ON_RESTART, False
+            )
+            legacy_wipe_on_restart = _coerce_config_bool(legacy_wipe_on_restart_value)
 
-    if wipe_on_restart:
-        logger.debug("wipe_on_restart enabled. Wiping message_map now (startup).")
-        wipe_message_map()
+            if legacy_wipe_on_restart:
+                wipe_on_restart = True
+                logger.warning(
+                    "Using 'db.msg_map' configuration (legacy). 'database.msg_map' is now the preferred format and 'db.msg_map' will be deprecated in a future version."
+                )
+
+        if wipe_on_restart:
+            logger.debug("wipe_on_restart enabled. Wiping message_map now (startup).")
+            wipe_message_map()
+    except BaseException:
+        _restore_loop_exception_handler()
+        raise
 
     # Set up shutdown event
     shutdown_event = asyncio.Event()
@@ -1070,8 +1080,7 @@ async def main(config: dict[str, Any]) -> None:
     except KeyboardInterrupt:
         shutdown()
     finally:
-        if hasattr(loop, "set_exception_handler"):
-            loop.set_exception_handler(previous_loop_exception_handler)
+        _restore_loop_exception_handler()
         _set_shutdown_flag()
         await _await_background_task_shutdown(
             ready_task,

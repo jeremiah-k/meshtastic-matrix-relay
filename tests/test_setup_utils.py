@@ -379,6 +379,23 @@ class TestSetupUtils(unittest.TestCase):
         self.assertIsNotNone(path)
         self.assertTrue(path.endswith("share/mmrelay/mmrelay.service"))  # type: ignore[optional-attr]
 
+    @patch.dict(
+        os.environ,
+        {"MMRELAY_SERVICE_OVERRIDE": "~/override-dir/mmrelay.service"},
+        clear=False,
+    )
+    @patch("os.path.exists")
+    def test_get_template_service_path_expands_override(self, mock_exists):
+        """Override path should expand user/env markers before existence checks."""
+        expanded_override = os.path.abspath(
+            os.path.expanduser("~/override-dir/mmrelay.service")
+        )
+        mock_exists.side_effect = lambda path: path == expanded_override
+
+        path = get_template_service_path()
+
+        self.assertEqual(path, expanded_override)
+
     @patch("mmrelay.setup_utils.get_service_template_path")
     @patch("os.path.exists")
     def test_get_template_service_content_from_file(
@@ -891,6 +908,114 @@ ExecStart=%h/meshtastic-matrix-relay/.pyenv/bin/python %h/meshtastic-matrix-rela
             self.assertIn(
                 "Service PATH does not include common user-bin locations", reason
             )
+
+    @patch("os.path.exists")
+    @patch("mmrelay.setup_utils.read_service_file")
+    def test_service_needs_update_rejects_empty_home_equals_value(
+        self, mock_read_service, mock_exists
+    ) -> None:
+        """`--home=` without a value should be treated as missing home config."""
+        mock_exists.return_value = True
+        mock_read_service.return_value = """[Unit]
+Description=MMRelay Service
+
+[Service]
+ExecStart=mmrelay --home=
+Environment=PATH=%h/.local/bin
+
+[Install]
+WantedBy=default.target
+"""
+
+        with patch(
+            "mmrelay.setup_utils.get_template_service_path",
+            return_value="/var/lib/mmrelay/template.service",
+        ):
+            result, reason = service_needs_update()
+
+        self.assertTrue(result)
+        self.assertIn("missing home configuration", reason)
+
+    @patch("os.path.exists")
+    @patch("mmrelay.setup_utils.read_service_file")
+    def test_service_needs_update_rejects_standalone_home_without_value(
+        self, mock_read_service, mock_exists
+    ) -> None:
+        """Standalone `--home` without a following value should be invalid."""
+        mock_exists.return_value = True
+        mock_read_service.return_value = """[Unit]
+Description=MMRelay Service
+
+[Service]
+ExecStart=mmrelay --home
+Environment=PATH=%h/.local/bin
+
+[Install]
+WantedBy=default.target
+"""
+
+        with patch(
+            "mmrelay.setup_utils.get_template_service_path",
+            return_value="/var/lib/mmrelay/template.service",
+        ):
+            result, reason = service_needs_update()
+
+        self.assertTrue(result)
+        self.assertIn("missing home configuration", reason)
+
+    @patch("os.path.exists")
+    @patch("mmrelay.setup_utils.read_service_file")
+    def test_service_needs_update_rejects_empty_mmrelay_home_environment(
+        self, mock_read_service, mock_exists
+    ) -> None:
+        """Empty MMRELAY_HOME assignment should not satisfy home config checks."""
+        mock_exists.return_value = True
+        mock_read_service.return_value = """[Unit]
+Description=MMRelay Service
+
+[Service]
+Environment=MMRELAY_HOME=
+ExecStart=/opt/mmrelay/bin/mmrelay-wrapper
+
+[Install]
+WantedBy=default.target
+"""
+
+        with patch(
+            "mmrelay.setup_utils.get_template_service_path",
+            return_value="/var/lib/mmrelay/template.service",
+        ):
+            result, reason = service_needs_update()
+
+        self.assertTrue(result)
+        self.assertIn("missing home configuration", reason)
+
+    @patch("os.path.exists")
+    @patch("mmrelay.setup_utils.read_service_file")
+    def test_service_needs_update_path_substring_does_not_satisfy_lookup(
+        self, mock_read_service, mock_exists
+    ) -> None:
+        """Unrelated env values containing '/.local/bin' substrings should not pass PATH checks."""
+        mock_exists.return_value = True
+        mock_read_service.return_value = """[Unit]
+Description=MMRelay Service
+
+[Service]
+ExecStart=mmrelay --home %h/.mmrelay
+Environment=SOME_DIR=/opt/.local/bin-cache
+
+[Install]
+WantedBy=default.target
+"""
+
+        with patch(
+            "mmrelay.setup_utils.get_template_service_path",
+            return_value="/var/lib/mmrelay/template.service",
+        ):
+            result, reason = service_needs_update()
+
+        self.assertTrue(result)
+        self.assertIn("Service PATH does not include common user-bin locations", reason)
 
     @patch("os.path.exists")
     @patch("mmrelay.setup_utils.read_service_file")

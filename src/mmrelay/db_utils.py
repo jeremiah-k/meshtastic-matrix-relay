@@ -946,6 +946,7 @@ def initialize_database() -> None:
                         )
             cursor.execute(_DROP_TABLE_MESSAGE_MAP_TEMP_SQL)
             if stale_temp_exists:
+                merged_stale_temp = False
                 try:
                     cursor.execute(_PRAGMA_MESSAGE_MAP_STALE_TEMP_INFO_SQL)
                     stale_columns = {col[1] for col in cursor.fetchall()}
@@ -957,6 +958,7 @@ def initialize_database() -> None:
                         cursor.execute(
                             _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_STALE_TEMP_WITHOUT_MESH_SQL
                         )
+                    merged_stale_temp = True
                     logger.info(
                         "Merged rows from preserved stale temporary table into rebuilt message_map"
                     )
@@ -964,7 +966,7 @@ def initialize_database() -> None:
                     logger.warning(
                         "Failed to merge preserved stale temporary table data: %s", e
                     )
-                finally:
+                if merged_stale_temp:
                     cursor.execute(_DROP_TABLE_MESSAGE_MAP_STALE_TEMP_SQL)
             cursor.execute(_DROP_TABLE_MESSAGE_MAP_LEGACY_SQL)
 
@@ -2515,16 +2517,17 @@ async def async_store_message_map(
             meshtastic_meshnet,
         )
         await asyncio.to_thread(
-            _get_db_manager().run_sync,
-            lambda cursor: _store_message_map_core(
-                cursor,
-                id_key,
-                matrix_event_id,
-                matrix_room_id,
-                meshtastic_text,
-                meshtastic_meshnet,
-            ),
-            write=True,
+            lambda: _get_db_manager().run_sync(
+                lambda cursor: _store_message_map_core(
+                    cursor,
+                    id_key,
+                    matrix_event_id,
+                    matrix_room_id,
+                    meshtastic_text,
+                    meshtastic_meshnet,
+                ),
+                write=True,
+            )
         )
     except sqlite3.Error:
         logger.exception("Database error storing message map for %s", matrix_event_id)
@@ -2539,9 +2542,10 @@ async def async_prune_message_map(msgs_to_keep: int) -> None:
     """
     try:
         pruned = await asyncio.to_thread(
-            _get_db_manager().run_sync,
-            lambda cursor: _prune_message_map_core(cursor, msgs_to_keep),
-            write=True,
+            lambda: _get_db_manager().run_sync(
+                lambda cursor: _prune_message_map_core(cursor, msgs_to_keep),
+                write=True,
+            )
         )
         if pruned > 0:
             logger.info(

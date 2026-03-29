@@ -79,6 +79,7 @@ MESSAGE_MAP_WAIT_TIMEOUT_SECONDS="${MESSAGE_MAP_WAIT_TIMEOUT_SECONDS:-60}"
 NAME_PRUNE_WAIT_TIMEOUT_SECONDS="${NAME_PRUNE_WAIT_TIMEOUT_SECONDS:-75}"
 NODEDB_REFRESH_INTERVAL_SECONDS="${NODEDB_REFRESH_INTERVAL_SECONDS:-5}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
+DM_RCV_BASIC_COMMIT="${DM_RCV_BASIC_COMMIT:-d6c07cccef267cb8e6be4b6f7e9d91a6e9ca24f1}"
 
 if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
 	echo "Python runtime '${PYTHON_BIN}' is required." >&2
@@ -237,10 +238,16 @@ require_regex() {
 
 # run_with_status executes a command with errexit temporarily disabled and returns its exit status.
 run_with_status() {
+	local errexit_was_set=0
+	if [[ $- == *e* ]]; then
+		errexit_was_set=1
+	fi
 	set +e
 	"$@"
 	local status=$?
-	set -e
+	if ((errexit_was_set)); then
+		set -e
+	fi
 	return "${status}"
 }
 
@@ -249,10 +256,16 @@ run_capture_with_status() {
 	local output_var=$1
 	shift
 	local output
+	local errexit_was_set=0
+	if [[ $- == *e* ]]; then
+		errexit_was_set=1
+	fi
 	set +e
 	output="$("$@")"
 	local status=$?
-	set -e
+	if ((errexit_was_set)); then
+		set -e
+	fi
 	printf -v "${output_var}" "%s" "${output}"
 	return "${status}"
 }
@@ -262,10 +275,16 @@ run_or_fail() {
 	local failure_note=$1
 	shift
 	local status=0
+	local errexit_was_set=0
+	if [[ $- == *e* ]]; then
+		errexit_was_set=1
+	fi
 	set +e
 	run_with_status "$@"
 	status=$?
-	set -e
+	if ((errexit_was_set)); then
+		set -e
+	fi
 	if ((status != 0)); then
 		fail_test "${failure_note}"
 	fi
@@ -277,10 +296,16 @@ run_capture_or_fail() {
 	local failure_note=$2
 	shift 2
 	local status=0
+	local errexit_was_set=0
+	if [[ $- == *e* ]]; then
+		errexit_was_set=1
+	fi
 	set +e
 	run_capture_with_status "${output_var}" "$@"
 	status=$?
-	set -e
+	if ((errexit_was_set)); then
+		set -e
+	fi
 	if ((status != 0)); then
 		fail_test "${failure_note}"
 	fi
@@ -2438,7 +2463,7 @@ community-plugins:
   dm-rcv-basic:
     active: true
     repository: "https://github.com/jeremiah-k/mmr-dm-rcv-basic.git"
-    branch: "main"
+    commit: "${DM_RCV_BASIC_COMMIT}"
     dm_room: "${ROOM_ID_DM_A}"
     dm_prefix: true
 meshtastic:
@@ -2478,7 +2503,7 @@ community-plugins:
   dm-rcv-basic:
     active: true
     repository: "https://github.com/jeremiah-k/mmr-dm-rcv-basic.git"
-    branch: "main"
+    commit: "${DM_RCV_BASIC_COMMIT}"
     dm_room: "${ROOM_ID_DM_B}"
     dm_prefix: true
 meshtastic:
@@ -2839,13 +2864,13 @@ start_test "Test 7" "Test 7: dm-rcv-basic plugin initialization..."
 run_or_fail "dm-rcv-basic did not initialize in relay A" \
 	wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_A}" \
-	"initialized - forwarding DMs to room:" \
+	"initialized - forwarding DMs to room: ${ROOM_ID_DM_A}" \
 	0 \
 	45
 run_or_fail "dm-rcv-basic did not initialize in relay B" \
 	wait_for_log_pattern_since \
 	"${MMRELAY_LOG_PATH_B}" \
-	"initialized - forwarding DMs to room:" \
+	"initialized - forwarding DMs to room: ${ROOM_ID_DM_B}" \
 	0 \
 	45
 pass_test "dm-rcv-basic plugin initialized in both relays"

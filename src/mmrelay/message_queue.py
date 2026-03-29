@@ -190,6 +190,7 @@ class MessageQueue:
         """
         task = None
         exec_ref = None
+        task_cleanup_error: Exception | None = None
         with self._lock:
             if not self._running:
                 return
@@ -310,10 +311,9 @@ class MessageQueue:
                     task_loop.run_until_complete(task)
                 except (asyncio.CancelledError, RuntimeError):
                     pass
-                except Exception:
-                    logger.debug(
-                        "Unexpected exception during task cleanup", exc_info=True
-                    )
+                except Exception as exc:
+                    logger.exception("Unexpected exception during task cleanup")
+                    task_cleanup_error = exc
                 task_cleanup_complete.set()
                 _finalize_stop_state()
 
@@ -359,6 +359,8 @@ class MessageQueue:
                 _watch_executor_shutdown()
 
         _finalize_stop_state()
+        if task_cleanup_error is not None:
+            raise task_cleanup_error
 
     def enqueue(
         self,
@@ -607,7 +609,11 @@ class MessageQueue:
         Has no effect if the processor is already running or the queue is not active.
         """
         with self._lock:
-            if self._running and not self._stop_failed and self._processor_task is None:
+            task_inactive = self._processor_task is None or self._processor_task.done()
+            if task_inactive and self._processor_task is not None:
+                self._processor_task = None
+
+            if self._running and not self._stop_failed and task_inactive:
                 try:
                     loop = asyncio.get_running_loop()
                 except RuntimeError:

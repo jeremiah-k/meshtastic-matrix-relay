@@ -2472,6 +2472,28 @@ class TestMainAsyncFunction(unittest.TestCase):
         # Verify event loop was accessed for meshtastic utils
         mock_get_loop.assert_called()
 
+    def test_main_restores_loop_exception_handler_on_early_init_failure(self) -> None:
+        """Loop exception handler should be restored when startup fails before main try."""
+        config = {"matrix_rooms": [{"id": "!room:matrix.org"}]}
+        mock_loop = MagicMock()
+        previous_handler = object()
+
+        with (
+            patch("mmrelay.main.asyncio.get_running_loop", return_value=mock_loop),
+            patch(
+                "mmrelay.main._install_loop_exception_handler",
+                return_value=previous_handler,
+            ),
+            patch(
+                "mmrelay.main.initialize_database",
+                side_effect=RuntimeError("init failed"),
+            ),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "init failed"):
+                asyncio.run(main(config))
+
+        mock_loop.set_exception_handler.assert_called_with(previous_handler)
+
     def test_main_shutdown_task_cancellation_coverage(self) -> None:
         """Test shutdown task cancellation logic with and without pending tasks."""
         loop = asyncio.new_event_loop()
