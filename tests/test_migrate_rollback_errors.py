@@ -9,15 +9,14 @@ import shutil
 from pathlib import Path
 from unittest.mock import patch
 
-# Save original functions before any patching (for selective mock side effects)
-_REAL_COPY2 = shutil.copy2
-_REAL_RMTREE = shutil.rmtree
-
 from mmrelay.constants.migration import (
     MIGRATION_BACKUP_DIRNAME,
     MIGRATION_STAGING_DIRNAME,
 )
 from mmrelay.migrate import rollback_migration
+
+_REAL_COPY2 = shutil.copy2
+_REAL_RMTREE = shutil.rmtree
 
 
 class TestRollbackMigrationErrorHandling:

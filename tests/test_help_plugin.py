@@ -110,8 +110,9 @@ class TestHelpPlugin(unittest.TestCase):
         event.body = "full_message"
         event.source = {"content": {"formatted_body": ""}}
 
-        with patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"), patch(
-            "mmrelay.matrix_utils.bot_user_name", "TestBot"
+        with (
+            patch("mmrelay.matrix_utils.bot_user_id", "@bot:matrix.org"),
+            patch("mmrelay.matrix_utils.bot_user_name", "TestBot"),
         ):
 
             async def run_test():

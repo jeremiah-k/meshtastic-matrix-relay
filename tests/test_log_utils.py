@@ -984,7 +984,6 @@ class TestLogUtils(unittest.TestCase):
             del sys.modules["mmrelay.log_utils"]
 
         with patch("mmrelay.runtime_utils.is_running_as_service", return_value=True):
-
             import mmrelay.log_utils as lu_reloaded
 
             # Verify Rich components were NOT imported

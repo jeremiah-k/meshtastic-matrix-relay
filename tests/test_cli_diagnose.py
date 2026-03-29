@@ -202,17 +202,15 @@ class TestWindowsErrorHandling(unittest.TestCase):
         mock_get_error.return_value = "Windows file permission error with guidance"
 
         # Mock file operations to trigger Windows error handling during file copy
-        with patch(
-            "mmrelay.cli.get_config_paths", return_value=["/test/config.yaml"]
-        ), patch(
-            "mmrelay.cli.get_sample_config_path",
-            return_value="/fake/sample_config.yaml",
-        ), patch(
-            "os.path.exists", return_value=True
-        ), patch(
-            "shutil.copy2", side_effect=OSError("Permission denied")
+        with (
+            patch("mmrelay.cli.get_config_paths", return_value=["/test/config.yaml"]),
+            patch(
+                "mmrelay.cli.get_sample_config_path",
+                return_value="/fake/sample_config.yaml",
+            ),
+            patch("os.path.exists", return_value=True),
+            patch("shutil.copy2", side_effect=OSError("Permission denied")),
         ):
-
             result = generate_sample_config()
 
         # Should fail

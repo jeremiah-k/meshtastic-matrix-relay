@@ -1988,8 +1988,8 @@ class TestAuthStatus(unittest.TestCase):
         etc_dir = os.path.dirname(TEST_CONFIG_PATH)
         mock_get_paths.return_value = [TEST_HOME_CONFIG_PATH, TEST_CONFIG_PATH]
         # First path doesn't have credentials, second path does (in matrix/ subdir)
-        mock_exists.side_effect = lambda path: path == os.path.join(
-            etc_dir, "matrix", "credentials.json"
+        mock_exists.side_effect = lambda path: (
+            path == os.path.join(etc_dir, "matrix", "credentials.json")
         )
         mock_get_command.return_value = "mmrelay auth login"
 

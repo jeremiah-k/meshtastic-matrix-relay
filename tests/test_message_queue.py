@@ -250,8 +250,8 @@ class TestMessageQueue(unittest.TestCase):
         fake_task.add_done_callback.side_effect = lambda callback: callback(fake_task)
         queue._processor_task = fake_task
 
-        fake_loop.call_soon_threadsafe.side_effect = (
-            lambda callback, *args, **kwargs: callback(*args, **kwargs)
+        fake_loop.call_soon_threadsafe.side_effect = lambda callback, *args, **kwargs: (
+            callback(*args, **kwargs)
         )
 
         queue.stop()
@@ -349,8 +349,8 @@ class TestMessageQueue(unittest.TestCase):
         fake_task.done.return_value = True
         queue._processor_task = fake_task
 
-        task_loop.call_soon_threadsafe.side_effect = (
-            lambda callback, *args, **kwargs: callback(*args, **kwargs)
+        task_loop.call_soon_threadsafe.side_effect = lambda callback, *args, **kwargs: (
+            callback(*args, **kwargs)
         )
 
         queue.stop()
