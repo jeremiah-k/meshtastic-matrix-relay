@@ -1978,7 +1978,7 @@ def _clone_or_update_repo_validated(
         subprocess.TimeoutExpired,
         FileNotFoundError,
     ):
-        logger.exception(
+        logger.debug(
             "Error cloning/updating repository %s at %s %s",
             repo_name,
             ref_type,
