@@ -28,13 +28,13 @@ lint:
     - actionlint@1.7.11
     - bandit@1.9.4
     - black@26.3.1
-    - checkov@3.2.511
+    - checkov@3.2.513
     - git-diff-check
     - isort@8.0.1
     - markdownlint@0.48.0
     - osv-scanner@2.3.5
     - prettier@3.8.1
-    - ruff@0.15.7
+    - ruff@0.15.8
     - trufflehog@3.94.1
     - yamllint@1.38.0
   definitions:
