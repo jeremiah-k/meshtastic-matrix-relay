@@ -1098,15 +1098,15 @@ async def test_run_async_cancelled_write_logs_worker_error(
         patch.object(
             temp_db_manager._async_executor, "submit", return_value=worker_future
         ),
+        patch.object(
+            temp_db_manager,
+            "_await_submitted_future",
+            new=AsyncMock(side_effect=asyncio.CancelledError),
+        ),
         patch("mmrelay.db_runtime.logger") as mock_logger,
     ):
-        task = asyncio.create_task(
-            temp_db_manager.run_async(lambda _cursor: None, write=True)
-        )
-        await asyncio.sleep(0)
-        task.cancel()
         with pytest.raises(asyncio.CancelledError):
-            await task
+            await temp_db_manager.run_async(lambda _cursor: None, write=True)
 
     worker_future.cancel.assert_not_called()
     mock_logger.warning.assert_called_once()
@@ -1181,18 +1181,50 @@ async def test_run_async_cancelled_read_does_not_cancel_finished_future(
     """Read cancellation should not cancel an already completed worker future."""
     worker_future = MagicMock()
     worker_future.done.return_value = True
-    with patch.object(
-        temp_db_manager._async_executor, "submit", return_value=worker_future
+    with (
+        patch.object(
+            temp_db_manager._async_executor, "submit", return_value=worker_future
+        ),
+        patch.object(
+            temp_db_manager,
+            "_await_submitted_future",
+            new=AsyncMock(side_effect=asyncio.CancelledError),
+        ),
     ):
-        task = asyncio.create_task(
-            temp_db_manager.run_async(lambda _cursor: None, write=False)
-        )
-        await asyncio.sleep(0)
-        task.cancel()
         with pytest.raises(asyncio.CancelledError):
-            await task
+            await temp_db_manager.run_async(lambda _cursor: None, write=False)
 
     worker_future.cancel.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_await_submitted_future_cancelled_task_allows_late_completion(
+    temp_db_manager: DatabaseManager,
+) -> None:
+    """Cancelling the waiter should not block a later worker completion."""
+    worker_future: Future[int] = Future()
+    task = asyncio.create_task(temp_db_manager._await_submitted_future(worker_future))
+
+    await asyncio.sleep(0)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    worker_future.set_result(123)
+    await asyncio.sleep(0)
+    assert worker_future.done()
+
+
+@pytest.mark.asyncio
+async def test_await_submitted_future_maps_concurrent_cancel_to_async_cancel(
+    temp_db_manager: DatabaseManager,
+) -> None:
+    """Concurrent-future cancellation should surface as asyncio cancellation."""
+    worker_future: Future[int] = Future()
+    worker_future.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await temp_db_manager._await_submitted_future(worker_future)
 
 
 class TestDatabaseManagerEdgeCases(unittest.TestCase):

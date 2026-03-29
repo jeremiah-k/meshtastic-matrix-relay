@@ -3647,6 +3647,59 @@ class TestRunBlockingShutdownStep(unittest.TestCase):
                 )
             )
 
+    def test_exception_in_stop_message_queue_logs_error(self) -> None:
+        """Message queue shutdown failures should be logged and not abort teardown."""
+        config = {
+            "matrix_rooms": [{"id": "!room:matrix.org"}],
+            "matrix": {"homeserver": "https://matrix.org"},
+            "meshtastic": {"connection_type": CONNECTION_TYPE_SERIAL},
+        }
+
+        with (
+            patch("mmrelay.main.initialize_database"),
+            patch("mmrelay.main.load_plugins"),
+            patch("mmrelay.main.start_message_queue"),
+            patch(
+                "mmrelay.main.connect_matrix",
+                new_callable=AsyncMock,
+            ),
+            patch("mmrelay.main.connect_meshtastic", return_value=MagicMock()),
+            patch("mmrelay.main.join_matrix_room", new_callable=AsyncMock),
+            patch("mmrelay.main.get_message_queue") as mock_get_queue,
+            patch("mmrelay.main.shutdown_plugins") as mock_shutdown,
+            patch("mmrelay.main.stop_message_queue") as mock_stop_message_queue,
+            patch("mmrelay.main.asyncio.Event", return_value=_ImmediateEvent()),
+            patch(
+                "mmrelay.main.asyncio.get_running_loop",
+                side_effect=_make_patched_get_running_loop(),
+            ),
+            patch("mmrelay.main.asyncio.to_thread", side_effect=inline_to_thread),
+            patch("mmrelay.main.meshtastic_utils.check_connection", new=_async_noop),
+            patch("mmrelay.main.logger") as mock_logger,
+        ):
+            mock_matrix_client = AsyncMock()
+            mock_matrix_client.add_event_callback = MagicMock()
+            mock_matrix_client.close = AsyncMock()
+            mock_connect_matrix = AsyncMock(return_value=mock_matrix_client)
+            with patch("mmrelay.main.connect_matrix", mock_connect_matrix):
+                mock_queue = MagicMock()
+                mock_queue.ensure_processor_started = MagicMock()
+                mock_get_queue.return_value = mock_queue
+                mock_stop_message_queue.side_effect = ValueError("Queue stop error")
+
+                asyncio.run(main(config))
+
+                mock_shutdown.assert_called_once()
+                mock_stop_message_queue.assert_called_once()
+                mock_matrix_client.close.assert_awaited_once()
+
+            self.assertTrue(
+                any(
+                    "Error while stopping" in str(call) and "message queue" in str(call)
+                    for call in mock_logger.error.call_args_list
+                )
+            )
+
     def test_shutdown_exceptions_are_logged_and_suppressed(self):
         """KeyboardInterrupt and SystemExit raised by shutdown steps should be logged, not re-raised."""
         for exception_class in (KeyboardInterrupt, SystemExit):

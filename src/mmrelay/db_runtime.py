@@ -434,38 +434,39 @@ class DatabaseManager:
     async def _await_submitted_future(self, worker_future: Future[Any]) -> Any:
         """
         Await a submitted executor future without polling.
+
+        Cancellation semantics:
+        - No internal timeout is applied here; callers own timeout policy.
+        - Caller cancellation should propagate immediately.
+        - `run_async()` decides post-cancel behavior (cancel read futures, observe
+          write-future errors).
         """
+        if worker_future.done():
+            return self._resolve_submitted_future_result(worker_future)
+
         loop = asyncio.get_running_loop()
-        awaited_future: asyncio.Future[Any] = loop.create_future()
+        done_event = asyncio.Event()
 
-        def _publish_completion(resolved_future: Future[Any]) -> None:
+        def _signal_done(_resolved_future: Future[Any]) -> None:
             try:
-                result = resolved_future.result()
+                loop.call_soon_threadsafe(done_event.set)
+            except RuntimeError:
+                # Event loop is shutting down; caller task cancellation will handle unwind.
+                return
 
-                def _publish_result() -> None:
-                    if not awaited_future.done():
-                        awaited_future.set_result(result)
+        worker_future.add_done_callback(_signal_done)
+        await done_event.wait()
+        return self._resolve_submitted_future_result(worker_future)
 
-                try:
-                    loop.call_soon_threadsafe(_publish_result)
-                except RuntimeError:
-                    # Event loop is shutting down; caller task cancellation will handle unwind.
-                    return
-            except BaseException as exc:
-                error = exc
-
-                def _publish_error() -> None:
-                    if not awaited_future.done():
-                        awaited_future.set_exception(error)
-
-                try:
-                    loop.call_soon_threadsafe(_publish_error)
-                except RuntimeError:
-                    # Event loop is shutting down; caller task cancellation will handle unwind.
-                    return
-
-        worker_future.add_done_callback(_publish_completion)
-        return await awaited_future
+    @staticmethod
+    def _resolve_submitted_future_result(worker_future: Future[Any]) -> Any:
+        """
+        Return worker future result with normalized cancellation semantics.
+        """
+        try:
+            return worker_future.result()
+        except ConcurrentCancelledError as exc:
+            raise asyncio.CancelledError() from exc
 
     def _log_write_future_error_after_cancellation(
         self, worker_future: Future[Any]
