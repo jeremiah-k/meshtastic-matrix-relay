@@ -288,6 +288,18 @@ _INSERT_OR_IGNORE_MESSAGE_MAP_FROM_TEMP_SQL = (
     "SELECT meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet "
     "FROM message_map_old_temp"
 )
+_INSERT_OR_IGNORE_MESSAGE_MAP_TEMP_FROM_STALE_TEMP_WITH_MESH_SQL = (
+    "INSERT OR IGNORE INTO message_map_old_temp "
+    "(meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet) "
+    "SELECT meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text, meshtastic_meshnet "
+    "FROM message_map_stale_temp"
+)
+_INSERT_OR_IGNORE_MESSAGE_MAP_TEMP_FROM_STALE_TEMP_WITHOUT_MESH_SQL = (
+    "INSERT OR IGNORE INTO message_map_old_temp "
+    "(meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text) "
+    "SELECT meshtastic_id, matrix_event_id, matrix_room_id, meshtastic_text "
+    "FROM message_map_stale_temp"
+)
 _PRAGMA_MESSAGE_MAP_STALE_TEMP_INFO_SQL = (
     f"PRAGMA table_info({_MESSAGE_MAP_STALE_TEMP_TABLE})"
 )
@@ -832,13 +844,14 @@ def initialize_database() -> None:
             stale_columns = {column[1] for column in cursor.fetchall()}
             merge_target = _temp_table
             if _col_mesh in temp_columns:
-                stale_mesh_expr = _col_mesh if _col_mesh in stale_columns else "NULL"
-                cursor.execute(
-                    f"INSERT OR IGNORE INTO {_temp_table} "  # nosec B608
-                    f"({_col_id}, {_col_evt}, {_col_room}, {_col_text}, {_col_mesh}) "
-                    f"SELECT {_col_id}, {_col_evt}, {_col_room}, {_col_text}, {stale_mesh_expr} "
-                    f"FROM {_MESSAGE_MAP_STALE_TEMP_TABLE}"
-                )
+                if _col_mesh in stale_columns:
+                    cursor.execute(
+                        _INSERT_OR_IGNORE_MESSAGE_MAP_TEMP_FROM_STALE_TEMP_WITH_MESH_SQL
+                    )
+                else:
+                    cursor.execute(
+                        _INSERT_OR_IGNORE_MESSAGE_MAP_TEMP_FROM_STALE_TEMP_WITHOUT_MESH_SQL
+                    )
             else:
                 if _col_mesh in stale_columns:
                     # Preserve meshnet values by merging directly into message_map when
@@ -849,10 +862,7 @@ def initialize_database() -> None:
                     merge_target = MESSAGE_MAP_TABLE
                 else:
                     cursor.execute(
-                        f"INSERT OR IGNORE INTO {_temp_table} "  # nosec B608
-                        f"({_col_id}, {_col_evt}, {_col_room}, {_col_text}) "
-                        f"SELECT {_col_id}, {_col_evt}, {_col_room}, {_col_text} "
-                        f"FROM {_MESSAGE_MAP_STALE_TEMP_TABLE}"
+                        _INSERT_OR_IGNORE_MESSAGE_MAP_TEMP_FROM_STALE_TEMP_WITHOUT_MESH_SQL
                     )
             cursor.execute(_DROP_TABLE_MESSAGE_MAP_STALE_TEMP_SQL)
             stale_table_exists = False
