@@ -12,6 +12,7 @@ import asyncio
 import sqlite3
 import threading
 from collections.abc import Callable
+from concurrent.futures import CancelledError as ConcurrentCancelledError
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import contextmanager
 from functools import lru_cache
@@ -33,7 +34,6 @@ from mmrelay.constants.database import (
 from mmrelay.log_utils import get_logger
 
 logger = get_logger(__name__)
-_ASYNC_WORKER_POLL_INTERVAL_SECONDS = 0.01
 
 
 def _get_sqlite_runtime_version_info() -> tuple[int, int, int]:
@@ -426,27 +426,69 @@ class DatabaseManager:
             return await self._await_submitted_future(worker_future)
         except asyncio.CancelledError:
             if write:
-                try:
-                    if worker_future.done():
-                        worker_future.result()
-                except asyncio.CancelledError:
-                    pass
-                except BaseException:
-                    logger.warning(
-                        "Write future finished with an error after caller cancellation",
-                        exc_info=True,
-                    )
+                self._log_write_future_error_after_cancellation(worker_future)
             elif not worker_future.done():
                 worker_future.cancel()
             raise
 
     async def _await_submitted_future(self, worker_future: Future[Any]) -> Any:
         """
-        Await completion of a submitted worker future without wrap_future bridging.
+        Await a submitted executor future without polling.
         """
-        while not worker_future.done():
-            await asyncio.sleep(_ASYNC_WORKER_POLL_INTERVAL_SECONDS)
-        return worker_future.result()
+        loop = asyncio.get_running_loop()
+        awaited_future: asyncio.Future[Any] = loop.create_future()
+
+        def _publish_completion(resolved_future: Future[Any]) -> None:
+            try:
+                result = resolved_future.result()
+
+                def _publish_result() -> None:
+                    if not awaited_future.done():
+                        awaited_future.set_result(result)
+
+                try:
+                    loop.call_soon_threadsafe(_publish_result)
+                except RuntimeError:
+                    # Event loop is shutting down; caller task cancellation will handle unwind.
+                    return
+            except BaseException as exc:
+                error = exc
+
+                def _publish_error() -> None:
+                    if not awaited_future.done():
+                        awaited_future.set_exception(error)
+
+                try:
+                    loop.call_soon_threadsafe(_publish_error)
+                except RuntimeError:
+                    # Event loop is shutting down; caller task cancellation will handle unwind.
+                    return
+
+        worker_future.add_done_callback(_publish_completion)
+        return await awaited_future
+
+    def _log_write_future_error_after_cancellation(
+        self, worker_future: Future[Any]
+    ) -> None:
+        """
+        Surface write worker failures that complete after caller cancellation.
+        """
+
+        def _log_future_error(resolved_future: Future[Any]) -> None:
+            try:
+                resolved_future.result()
+            except (asyncio.CancelledError, ConcurrentCancelledError):
+                pass
+            except BaseException:
+                logger.warning(
+                    "Write future finished with an error after caller cancellation",
+                    exc_info=True,
+                )
+
+        if worker_future.done():
+            _log_future_error(worker_future)
+            return
+        worker_future.add_done_callback(_log_future_error)
 
     # ------------------------------------------------------------------ #
     # Lifecycle

@@ -17,7 +17,7 @@ import tempfile
 import threading
 import unittest
 from concurrent.futures import Future
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -1089,14 +1089,7 @@ async def test_run_async_cancelled_write_logs_worker_error() -> None:
     try:
         worker_future = MagicMock()
         worker_future.cancel = MagicMock()
-        done_calls = 0
-
-        def _done_after_cancel() -> bool:
-            nonlocal done_calls
-            done_calls += 1
-            return done_calls > 1
-
-        worker_future.done.side_effect = _done_after_cancel
+        worker_future.done.return_value = True
         worker_future.result.side_effect = RuntimeError(
             "worker failed after caller cancellation"
         )
@@ -1152,6 +1145,45 @@ async def test_run_async_cancelled_write_swallows_followup_cancellation() -> Non
 
 
 @pytest.mark.asyncio
+async def test_run_async_cancelled_write_logs_late_worker_error() -> None:
+    """Write cancellation should log errors from worker completion callbacks."""
+    temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+    temp_db.close()
+    db_path = temp_db.name
+    manager = DatabaseManager(db_path)
+    try:
+        worker_future = MagicMock()
+        worker_future.cancel = MagicMock()
+        worker_future.done.return_value = False
+        worker_future.result.side_effect = RuntimeError(
+            "worker failed after caller cancellation"
+        )
+
+        def _add_done_callback(callback):
+            callback(worker_future)
+
+        worker_future.add_done_callback.side_effect = _add_done_callback
+
+        with (
+            patch.object(manager._async_executor, "submit", return_value=worker_future),
+            patch.object(
+                manager,
+                "_await_submitted_future",
+                new=AsyncMock(side_effect=asyncio.CancelledError),
+            ),
+            patch("mmrelay.db_runtime.logger") as mock_logger,
+        ):
+            with pytest.raises(asyncio.CancelledError):
+                await manager.run_async(lambda _cursor: None, write=True)
+
+        worker_future.cancel.assert_not_called()
+        mock_logger.warning.assert_called_once()
+    finally:
+        manager.close()
+        os.unlink(db_path)
+
+
+@pytest.mark.asyncio
 async def test_run_async_cancelled_read_does_not_cancel_finished_future() -> None:
     """Read cancellation should not cancel an already completed worker future."""
     temp_db = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
@@ -1160,14 +1192,7 @@ async def test_run_async_cancelled_read_does_not_cancel_finished_future() -> Non
     manager = DatabaseManager(db_path)
     try:
         worker_future = MagicMock()
-        done_calls = 0
-
-        def _done_for_finished_read() -> bool:
-            nonlocal done_calls
-            done_calls += 1
-            return done_calls > 1
-
-        worker_future.done.side_effect = _done_for_finished_read
+        worker_future.done.return_value = True
         with patch.object(
             manager._async_executor, "submit", return_value=worker_future
         ):
