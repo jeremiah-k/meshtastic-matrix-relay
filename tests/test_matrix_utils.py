@@ -13,7 +13,9 @@ import pytest
 from nio import SyncError, ToDeviceError, ToDeviceResponse
 
 import mmrelay.matrix_utils as matrix_utils_module
+from mmrelay.constants.app import CREDENTIALS_FILENAME
 from mmrelay.constants.database import DEFAULT_MSGS_TO_KEEP
+from mmrelay.constants.domain import MATRIX_EVENT_TYPE_ROOM_MESSAGE
 from mmrelay.matrix_utils import (
     ImageUploadError,
     NioLocalTransportError,
@@ -2761,7 +2763,7 @@ async def test_send_room_image():
     mock_client.room_send.assert_called_once()
     call_args = mock_client.room_send.call_args
     assert call_args[1]["room_id"] == "!room:matrix.org"
-    assert call_args[1]["message_type"] == "m.room.message"
+    assert call_args[1]["message_type"] == MATRIX_EVENT_TYPE_ROOM_MESSAGE
     content = call_args[1]["content"]
     assert content["msgtype"] == "m.image"
     assert content["url"] == "mxc://matrix.org/test123"
@@ -3287,7 +3289,7 @@ async def test_connect_matrix_missing_device_id_uses_direct_assignment(
         "access_token": "test_token",
         "device_id": discovered_device_id,
     }
-    assert call_args[1]["credentials_path"].endswith("credentials.json")
+    assert call_args[1]["credentials_path"].endswith(CREDENTIALS_FILENAME)
 
 
 @pytest.mark.asyncio
@@ -3948,7 +3950,7 @@ async def test_connect_matrix_credentials_load_exception_uses_config(
         "matrix_rooms": [{"id": "!room:example", "meshtastic_channel": 0}],
     }
 
-    candidate_path = tmp_path / "credentials.json"
+    candidate_path = tmp_path / CREDENTIALS_FILENAME
     candidate_path.write_text('{"invalid": true}', encoding="utf-8")
 
     with (
@@ -3958,7 +3960,7 @@ async def test_connect_matrix_credentials_load_exception_uses_config(
         ),
         patch(
             "mmrelay.matrix_utils.get_credentials_path",
-            return_value=tmp_path / "credentials.json",
+            return_value=tmp_path / CREDENTIALS_FILENAME,
         ),
         patch(
             "mmrelay.e2ee_utils.get_e2ee_status", return_value={"overall_status": "ok"}
@@ -5016,7 +5018,7 @@ async def test_connect_matrix_e2ee_store_missing_db_files_warns(
     mock_listdir.return_value = ["notes.txt"]
 
     def exists_side_effect(path):
-        if path.endswith("credentials.json"):
+        if path.endswith(CREDENTIALS_FILENAME):
             return False
         if path == "/test/store":
             return True
@@ -6015,7 +6017,7 @@ async def test_login_matrix_bot_no_password_warns(
         mock_main_client.whoami.return_value = MagicMock(user_id="@user:matrix.org")
         mock_main_client.close = AsyncMock()
 
-        credentials_path = str(tmp_path / "credentials.json")
+        credentials_path = str(tmp_path / CREDENTIALS_FILENAME)
         mock_load_credentials.side_effect = OSError("boom")
 
         with (

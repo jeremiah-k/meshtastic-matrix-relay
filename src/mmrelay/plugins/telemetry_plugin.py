@@ -16,6 +16,7 @@ from nio import (
 )
 from PIL import Image
 
+from mmrelay.constants.domain import MATRIX_EVENT_TYPE_ROOM_MESSAGE
 from mmrelay.constants.formats import (
     GRAPH_IMAGE_FORMAT,
     GRAPH_XLABEL_ROTATION_DEGREES,
@@ -296,7 +297,7 @@ class Plugin(BasePlugin):
             self.logger.exception("Failed to send telemetry graph")
             await matrix_client.room_send(
                 room_id=room.room_id,
-                message_type="m.room.message",
+                message_type=MATRIX_EVENT_TYPE_ROOM_MESSAGE,
                 content={
                     "msgtype": "m.notice",
                     "body": MSG_GRAPH_UPLOAD_FAILED,

@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import mock_open, patch
 
 from mmrelay.config import check_e2ee_enabled_silently, is_e2ee_enabled
+from mmrelay.constants.app import CONFIG_FILENAME, CREDENTIALS_FILENAME
 from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID
 
 
@@ -96,7 +97,7 @@ class TestAuthFlowFixes(unittest.TestCase):
                             # Should open the correct path - use os.path.join to get the right separator
                             expected_path = ntpath.join(
                                 "C:\\Users\\Test\\AppData\\Local\\mmrelay",
-                                "credentials.json",
+                                CREDENTIALS_FILENAME,
                             )
                             mock_file.assert_called_with(
                                 expected_path, "w", encoding="utf-8"
@@ -115,7 +116,7 @@ class TestAuthFlowFixes(unittest.TestCase):
 
         with patch("sys.platform", "win32"):
             config_dir = "C:\\Users\\Test\\AppData\\Local\\mmrelay"
-            credentials_path = ntpath.join(config_dir, "credentials.json")
+            credentials_path = ntpath.join(config_dir, CREDENTIALS_FILENAME)
 
             with patch("mmrelay.config.get_home_dir", return_value=Path(config_dir)):
                 # Mock os.path.exists to return False for credentials.json but True for the directory
@@ -138,7 +139,7 @@ class TestAuthFlowFixes(unittest.TestCase):
 
                 with patch("os.path.exists", side_effect=mock_exists):
                     with patch(
-                        "os.listdir", return_value=["config.yaml", "other_file.txt"]
+                        "os.listdir", return_value=[CONFIG_FILENAME, "other_file.txt"]
                     ) as mock_listdir:
                         with patch("mmrelay.config.logger") as mock_logger:
                             result = load_credentials()

@@ -37,6 +37,7 @@ from mmrelay.config import (
     set_secure_file_permissions,
     validate_yaml_syntax,
 )
+from mmrelay.constants.app import CONFIG_FILENAME, SECURE_FILE_PERMISSIONS
 from mmrelay.constants.config import DEFAULT_NODEDB_REFRESH_INTERVAL
 from mmrelay.constants.network import DEFAULT_TCP_PORT
 from mmrelay.constants.queue import DEFAULT_MESSAGE_DELAY
@@ -141,7 +142,7 @@ class TestConfig(unittest.TestCase):
                 mock_user_data_dir.return_value = win_path
 
                 paths = get_config_paths()
-                expected_path = os.path.join(win_path, "config.yaml")
+                expected_path = os.path.join(win_path, CONFIG_FILENAME)
                 # Normalize paths for comparison
                 normalized_paths = [os.path.normpath(p) for p in paths]
                 self.assertIn(os.path.normpath(expected_path), normalized_paths)
@@ -875,7 +876,7 @@ class TestFilePermissions(unittest.TestCase):
         """Test secure file permission setting on Unix systems."""
         tmp_path = os.path.join(tempfile.gettempdir(), "test_file")
         set_secure_file_permissions(tmp_path)
-        mock_chmod.assert_called_once_with(tmp_path, 0o600)
+        mock_chmod.assert_called_once_with(tmp_path, SECURE_FILE_PERMISSIONS)
 
     @patch("mmrelay.config.sys.platform", "win32")
     @patch("mmrelay.config.os.chmod")
@@ -1450,7 +1451,7 @@ class TestConfigUncoveredLines(unittest.TestCase):
 
         with (
             patch("sys.platform", "win32"),
-            patch("mmrelay.config.os.listdir", return_value=["config.yaml"]),
+            patch("mmrelay.config.os.listdir", return_value=[CONFIG_FILENAME]),
         ):
             log_debug = []
 

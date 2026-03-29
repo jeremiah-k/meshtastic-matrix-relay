@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from mmrelay.constants.app import CREDENTIALS_FILENAME
 from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID, CONFIG_KEY_USER_ID
 from mmrelay.matrix_utils import MatrixAuthInfo, _perform_matrix_login
 
@@ -35,7 +36,7 @@ def mock_client():
 async def test_whoami_discovers_missing_device_id(mock_client, tmp_path):
     """Test that whoami is called to discover missing device_id and credentials are updated."""
     access_token = secrets.token_hex(16)
-    credentials_path = str(tmp_path / "credentials.json")
+    credentials_path = str(tmp_path / CREDENTIALS_FILENAME)
     auth_info = MatrixAuthInfo(
         homeserver="https://matrix.org",
         access_token=access_token,
@@ -81,7 +82,7 @@ async def test_whoami_discovers_missing_device_id(mock_client, tmp_path):
 async def test_user_id_mismatch_handles_gracefully(mock_client, tmp_path):
     """Test that user_id mismatch between credentials and whoami is handled by preferring whoami."""
     access_token = secrets.token_hex(16)
-    credentials_path = str(tmp_path / "credentials.json")
+    credentials_path = str(tmp_path / CREDENTIALS_FILENAME)
     auth_info = MatrixAuthInfo(
         homeserver="https://matrix.org",
         access_token=access_token,
@@ -125,7 +126,7 @@ async def test_user_id_mismatch_handles_gracefully(mock_client, tmp_path):
 async def test_whoami_failure_handles_gracefully(mock_client, tmp_path):
     """Test that whoami failure is handled gracefully with a warning."""
     access_token = secrets.token_hex(16)
-    credentials_path = str(tmp_path / "credentials.json")
+    credentials_path = str(tmp_path / CREDENTIALS_FILENAME)
     auth_info = MatrixAuthInfo(
         homeserver="https://matrix.org",
         access_token=access_token,

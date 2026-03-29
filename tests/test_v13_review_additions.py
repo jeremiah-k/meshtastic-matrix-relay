@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
+from mmrelay.constants.app import CONFIG_FILENAME
 from mmrelay.migrate import (
     _cleanup_lock_file,
     _is_mmrelay_running,
@@ -52,7 +53,7 @@ class TestPathsGaps:
                 paths = get_config_paths()
                 path_strs = [str(p) for p in paths]
                 # We expect C:\legacy\appdata\config.yaml to be in candidates
-                assert any("legacy" in s and "config.yaml" in s for s in path_strs)
+                assert any("legacy" in s and CONFIG_FILENAME in s for s in path_strs)
 
     def test_get_legacy_dirs_docker(self):
         """Test detection of Docker legacy paths."""

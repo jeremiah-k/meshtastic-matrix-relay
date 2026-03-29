@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-from mmrelay.constants.app import WINDOWS_VTP_FLAG
+from mmrelay.constants.app import CONFIG_FILENAME, WINDOWS_VTP_FLAG
 from mmrelay.windows_utils import (
     check_windows_requirements,
     get_windows_error_message,
@@ -297,7 +297,7 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
         """Missing sample config path should mark sample test as error."""
         with tempfile.TemporaryDirectory() as tmp_path:
             missing_sample = os.path.join(tmp_path, "missing_sample.yaml")
-            config_path = os.path.join(tmp_path, "config.yaml")
+            config_path = os.path.join(tmp_path, CONFIG_FILENAME)
             with (
                 patch("mmrelay.windows_utils.is_windows", return_value=True),
                 patch(
@@ -320,7 +320,7 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
         """importlib.resources errors should be captured in diagnostics."""
         with tempfile.TemporaryDirectory() as tmp_path:
             sample_config = os.path.join(tmp_path, "sample_config.yaml")
-            config_path = os.path.join(tmp_path, "config.yaml")
+            config_path = os.path.join(tmp_path, CONFIG_FILENAME)
             with (
                 patch("mmrelay.windows_utils.is_windows", return_value=True),
                 patch(
@@ -368,7 +368,7 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_path:
             sample_config = os.path.join(tmp_path, "sample_config.yaml")
             new_dir = os.path.join(tmp_path, "new")
-            new_config = os.path.join(tmp_path, "new", "config.yaml")
+            new_config = os.path.join(tmp_path, "new", CONFIG_FILENAME)
             with (
                 patch("mmrelay.windows_utils.is_windows", return_value=True),
                 patch(
@@ -399,7 +399,7 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
         """Directory creation OSError should be captured as diagnostic error."""
         with tempfile.TemporaryDirectory() as tmp_path:
             sample_config = os.path.join(tmp_path, "sample_config.yaml")
-            new_config = os.path.join(tmp_path, "new", "config.yaml")
+            new_config = os.path.join(tmp_path, "new", CONFIG_FILENAME)
             with (
                 patch("mmrelay.windows_utils.is_windows", return_value=True),
                 patch(
@@ -427,7 +427,7 @@ class TestTestConfigGenerationWindows(unittest.TestCase):
         """
         with tempfile.TemporaryDirectory() as tmp_path:
             sample_config = os.path.join(tmp_path, "sample_config.yaml")
-            config_path = os.path.join(tmp_path, "config.yaml")
+            config_path = os.path.join(tmp_path, CONFIG_FILENAME)
             with (
                 patch("mmrelay.windows_utils.is_windows", return_value=True),
                 patch(

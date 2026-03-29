@@ -26,6 +26,7 @@ from unittest.mock import MagicMock, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.app import DATABASE_FILENAME
 from mmrelay.constants.database import DEFAULT_BUSY_TIMEOUT_MS, DEFAULT_DB_FILENAME
 from mmrelay.db_runtime import DatabaseManager
 from mmrelay.db_utils import (
@@ -1745,7 +1746,7 @@ class TestDbUtils(unittest.TestCase):
 
             # Create legacy database at root level
             os.makedirs(legacy_dir, exist_ok=True)
-            legacy_db_path = os.path.join(legacy_dir, "meshtastic.sqlite")
+            legacy_db_path = os.path.join(legacy_dir, DATABASE_FILENAME)
             with sqlite3.connect(legacy_db_path) as conn:
                 conn.execute("CREATE TABLE test_table (id INTEGER)")
 
@@ -1782,7 +1783,7 @@ class TestDbUtils(unittest.TestCase):
             os.makedirs(legacy_dir, exist_ok=True)
             data_subdir = os.path.join(legacy_dir, "data")
             os.makedirs(data_subdir, exist_ok=True)
-            legacy_db_path = os.path.join(data_subdir, "meshtastic.sqlite")
+            legacy_db_path = os.path.join(data_subdir, DATABASE_FILENAME)
             with sqlite3.connect(legacy_db_path) as conn:
                 conn.execute("CREATE TABLE test_table (id INTEGER)")
 
@@ -1819,7 +1820,7 @@ class TestDbUtils(unittest.TestCase):
             os.makedirs(legacy_dir, exist_ok=True)
             database_subdir = os.path.join(legacy_dir, "database")
             os.makedirs(database_subdir, exist_ok=True)
-            legacy_db_path = os.path.join(database_subdir, "meshtastic.sqlite")
+            legacy_db_path = os.path.join(database_subdir, DATABASE_FILENAME)
             with sqlite3.connect(legacy_db_path) as conn:
                 conn.execute("CREATE TABLE test_table (id INTEGER)")
 
@@ -1868,7 +1869,7 @@ class TestDbUtils(unittest.TestCase):
                         "mmrelay.db_utils.get_legacy_dirs", return_value=[legacy_dir]
                     ):
                         path = get_db_path()
-                        expected_path = os.path.join(database_dir, "meshtastic.sqlite")
+                        expected_path = os.path.join(database_dir, DATABASE_FILENAME)
                         self.assertEqual(path, expected_path)
 
     def test_get_db_path_default_exists_skips_legacy_check(self):
@@ -1889,13 +1890,13 @@ class TestDbUtils(unittest.TestCase):
 
             # Create default database
             os.makedirs(database_dir, exist_ok=True)
-            default_db_path = os.path.join(database_dir, "meshtastic.sqlite")
+            default_db_path = os.path.join(database_dir, DATABASE_FILENAME)
             with sqlite3.connect(default_db_path) as conn:
                 conn.execute("CREATE TABLE test_table (id INTEGER)")
 
             # Create legacy database (should NOT be returned)
             os.makedirs(legacy_dir, exist_ok=True)
-            legacy_db_path = os.path.join(legacy_dir, "meshtastic.sqlite")
+            legacy_db_path = os.path.join(legacy_dir, DATABASE_FILENAME)
             with sqlite3.connect(legacy_db_path) as conn:
                 conn.execute("CREATE TABLE test_table (id INTEGER)")
 
@@ -1932,7 +1933,7 @@ class TestDbUtils(unittest.TestCase):
 
             # Create legacy database (should NOT be returned when deprecation inactive)
             os.makedirs(legacy_dir, exist_ok=True)
-            legacy_db_path = os.path.join(legacy_dir, "meshtastic.sqlite")
+            legacy_db_path = os.path.join(legacy_dir, DATABASE_FILENAME)
             with sqlite3.connect(legacy_db_path) as conn:
                 conn.execute("CREATE TABLE test_table (id INTEGER)")
 
@@ -1949,7 +1950,7 @@ class TestDbUtils(unittest.TestCase):
                     ):
                         path = get_db_path()
                         # Should return default path, NOT legacy path
-                        expected_path = os.path.join(database_dir, "meshtastic.sqlite")
+                        expected_path = os.path.join(database_dir, DATABASE_FILENAME)
                         self.assertEqual(path, expected_path)
 
     def test_get_db_path_legacy_database_logs_warning(self):
@@ -1970,7 +1971,7 @@ class TestDbUtils(unittest.TestCase):
 
             # Create legacy database
             os.makedirs(legacy_dir, exist_ok=True)
-            legacy_db_path = os.path.join(legacy_dir, "meshtastic.sqlite")
+            legacy_db_path = os.path.join(legacy_dir, DATABASE_FILENAME)
             with sqlite3.connect(legacy_db_path) as conn:
                 conn.execute("CREATE TABLE test_table (id INTEGER)")
 
@@ -2015,12 +2016,12 @@ class TestDbUtils(unittest.TestCase):
 
             # Create databases in both legacy directories
             os.makedirs(legacy_dir1, exist_ok=True)
-            legacy_db_path1 = os.path.join(legacy_dir1, "meshtastic.sqlite")
+            legacy_db_path1 = os.path.join(legacy_dir1, DATABASE_FILENAME)
             with sqlite3.connect(legacy_db_path1) as conn:
                 conn.execute("CREATE TABLE test_table1 (id INTEGER)")
 
             os.makedirs(legacy_dir2, exist_ok=True)
-            legacy_db_path2 = os.path.join(legacy_dir2, "meshtastic.sqlite")
+            legacy_db_path2 = os.path.join(legacy_dir2, DATABASE_FILENAME)
             with sqlite3.connect(legacy_db_path2) as conn:
                 conn.execute("CREATE TABLE test_table2 (id INTEGER)")
 
@@ -2058,7 +2059,7 @@ class TestDbUtils(unittest.TestCase):
 
             # Create legacy database
             os.makedirs(legacy_dir, exist_ok=True)
-            legacy_db_path = os.path.join(legacy_dir, "meshtastic.sqlite")
+            legacy_db_path = os.path.join(legacy_dir, DATABASE_FILENAME)
             with sqlite3.connect(legacy_db_path) as conn:
                 conn.execute("CREATE TABLE test_table (id INTEGER)")
 
@@ -2102,7 +2103,7 @@ class TestDbUtils(unittest.TestCase):
 
             # Create legacy database
             os.makedirs(legacy_dir, exist_ok=True)
-            legacy_db_path = os.path.join(legacy_dir, "meshtastic.sqlite")
+            legacy_db_path = os.path.join(legacy_dir, DATABASE_FILENAME)
             with sqlite3.connect(legacy_db_path) as conn:
                 conn.execute("CREATE TABLE test_table (id INTEGER)")
 

@@ -494,7 +494,7 @@ def _find_legacy_data(legacy_root: Path) -> list[dict[str, str]]:
         findings.append({"type": item_type, "path": path_str})
         seen_paths.add(path_str)
 
-    credentials = legacy_root / "credentials.json"
+    credentials = legacy_root / CREDENTIALS_FILENAME
     if credentials.exists():
         add_finding("credentials", credentials)
 

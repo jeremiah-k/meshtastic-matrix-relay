@@ -1605,7 +1605,14 @@ def _update_existing_repo_to_branch_or_tag(
         return False
 
     if ref_type == "branch":
-        return _try_checkout_and_pull_ref(repo_path, ref_value, repo_name, "branch")
+        if not _try_checkout_and_pull_ref(repo_path, ref_value, repo_name, "branch"):
+            logger.warning(
+                "Failed to update %s to branch %s",
+                repo_name,
+                ref_value,
+            )
+            return False
+        return True
 
     # Handle tags
     try:
@@ -1978,7 +1985,7 @@ def _clone_or_update_repo_validated(
         subprocess.TimeoutExpired,
         FileNotFoundError,
     ):
-        logger.debug(
+        logger.warning(
             "Error cloning/updating repository %s at %s %s",
             repo_name,
             ref_type,

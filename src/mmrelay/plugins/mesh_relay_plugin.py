@@ -18,6 +18,7 @@ from nio import (
 )
 
 from mmrelay.constants.database import DEFAULT_MAX_DATA_ROWS_PER_NODE_MESH_RELAY
+from mmrelay.constants.domain import MATRIX_EVENT_TYPE_ROOM_MESSAGE
 from mmrelay.constants.formats import (
     DEFAULT_TEXT_ENCODING,
     FORMAT_PROCESSED_PACKET,
@@ -187,7 +188,7 @@ class Plugin(BasePlugin):
 
         await matrix_client.room_send(
             room_id=target_room_id,
-            message_type="m.room.message",
+            message_type=MATRIX_EVENT_TYPE_ROOM_MESSAGE,
             content={
                 "msgtype": "m.text",
                 MATRIX_SUPPRESS_KEY: True,

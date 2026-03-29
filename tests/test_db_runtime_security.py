@@ -21,7 +21,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mmrelay.constants.database import DEFAULT_BUSY_TIMEOUT_MS
+from mmrelay.constants.database import DEFAULT_BUSY_TIMEOUT_MS, SQLITE_IN_MEMORY_PATH
 from mmrelay.db_runtime import (
     DatabaseManager,
     _get_sqlite_runtime_version_info,
@@ -111,7 +111,7 @@ class TestDatabaseManager(unittest.TestCase):
             database = kwargs.get("database")
             if database is None and args:
                 database = args[0]
-            if database == ":memory:":
+            if database == SQLITE_IN_MEMORY_PATH:
                 return probe_conn
             return real_connect(*args, **kwargs)
 
@@ -142,7 +142,7 @@ class TestDatabaseManager(unittest.TestCase):
             database = kwargs.get("database")
             if database is None and args:
                 database = args[0]
-            if database == ":memory:":
+            if database == SQLITE_IN_MEMORY_PATH:
                 return probe_conn
             return real_connect(*args, **kwargs)
 

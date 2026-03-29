@@ -26,6 +26,7 @@ from mmrelay.constants.database import (
     NAMES_TABLE_LONGNAMES,
     NAMES_TABLE_SHORTNAMES,
     PLUGIN_DATA_TABLE,
+    SQLITE_IN_MEMORY_PATH,
 )
 from mmrelay.db_utils import (
     _delete_stale_names_core,
@@ -106,7 +107,7 @@ class TestDatabaseManagerIntegration(unittest.TestCase):
             patch(
                 "mmrelay.db_runtime.sqlite3.connect",
                 side_effect=lambda _path, *args, **kwargs: real_sqlite_connect(
-                    ":memory:",
+                    SQLITE_IN_MEMORY_PATH,
                     *args,
                     **kwargs,
                 ),
@@ -149,7 +150,7 @@ class TestDatabaseManagerIntegration(unittest.TestCase):
             patch(
                 "mmrelay.db_runtime.sqlite3.connect",
                 side_effect=lambda _path, *args, **kwargs: real_sqlite_connect(
-                    ":memory:",
+                    SQLITE_IN_MEMORY_PATH,
                     *args,
                     **kwargs,
                 ),

@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from rich.console import Console
 
 # Import logging configuration helpers and constants.
-from mmrelay.constants.app import APP_DISPLAY_NAME
+from mmrelay.constants.app import APP_DISPLAY_NAME, LOG_FILENAME
 from mmrelay.constants.formats import DATETIME_FORMAT_WITH_TZ, RICH_LOG_TIME_FORMAT
 from mmrelay.constants.messages import (
     DEFAULT_LOG_BACKUP_COUNT,
@@ -209,7 +209,7 @@ def _resolve_log_file(args: argparse.Namespace | None) -> str:
     if isinstance(config_log_file, str) and config_log_file:
         return config_log_file
 
-    return os.path.join(get_log_dir(), "mmrelay.log")
+    return os.path.join(get_log_dir(), LOG_FILENAME)
 
 
 class LogsDirTypeError(TypeError):

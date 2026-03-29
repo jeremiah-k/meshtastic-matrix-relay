@@ -6,7 +6,12 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from mmrelay.cli import handle_config_command, handle_paths_command
-from mmrelay.constants.app import APP_DISPLAY_NAME, APP_NAME
+from mmrelay.constants.app import (
+    APP_DISPLAY_NAME,
+    APP_NAME,
+    CREDENTIALS_FILENAME,
+    LOG_FILENAME,
+)
 
 
 def test_handle_paths_command_basic(capsys, monkeypatch, tmp_path):
@@ -20,11 +25,11 @@ def test_handle_paths_command_basic(capsys, monkeypatch, tmp_path):
         return_value={
             "home": str(home),
             "home_source": "env",
-            "credentials_path": str(home / "matrix" / "credentials.json"),
+            "credentials_path": str(home / "matrix" / CREDENTIALS_FILENAME),
             "database_dir": str(home / "database"),
             "store_dir": str(home / "matrix" / "store"),
             "logs_dir": str(home / "logs"),
-            "log_file": str(home / "logs" / "mmrelay.log"),
+            "log_file": str(home / "logs" / LOG_FILENAME),
             "plugins_dir": str(home / "plugins"),
             "custom_plugins_dir": str(home / "plugins" / "custom"),
             "community_plugins_dir": str(home / "plugins" / "community"),
@@ -54,11 +59,11 @@ def test_handle_paths_command_with_legacy(capsys, monkeypatch, tmp_path):
         return_value={
             "home": str(home),
             "home_source": "env",
-            "credentials_path": str(home / "matrix" / "credentials.json"),
+            "credentials_path": str(home / "matrix" / CREDENTIALS_FILENAME),
             "database_dir": str(home / "database"),
             "store_dir": str(home / "matrix" / "store"),
             "logs_dir": str(home / "logs"),
-            "log_file": str(home / "logs" / "mmrelay.log"),
+            "log_file": str(home / "logs" / LOG_FILENAME),
             "plugins_dir": str(home / "plugins"),
             "custom_plugins_dir": str(home / "plugins" / "custom"),
             "community_plugins_dir": str(home / "plugins" / "community"),
@@ -119,7 +124,7 @@ class TestDetectSameHomeLegacyItems:
 
         paths_info = {
             "home": str(home),
-            "credentials_path": str(home / "matrix" / "credentials.json"),
+            "credentials_path": str(home / "matrix" / CREDENTIALS_FILENAME),
             "store_dir": str(home / "matrix" / "store"),
         }
 
@@ -134,18 +139,18 @@ class TestDetectSameHomeLegacyItems:
         home.mkdir()
         (home / "matrix").mkdir()
         # Create legacy credentials at root
-        (home / "credentials.json").write_text("{}")
+        (home / CREDENTIALS_FILENAME).write_text("{}")
 
         paths_info = {
             "home": str(home),
-            "credentials_path": str(home / "matrix" / "credentials.json"),
+            "credentials_path": str(home / "matrix" / CREDENTIALS_FILENAME),
             "store_dir": str(home / "matrix" / "store"),
         }
 
         result = _detect_same_home_legacy_items(paths_info)
         assert len(result) == 1
         assert result[0]["type"] == "credentials"
-        assert result[0]["path"] == str(home / "credentials.json")
+        assert result[0]["path"] == str(home / CREDENTIALS_FILENAME)
 
     def test_detects_legacy_store_at_root(self, tmp_path):
         """Test detects store/ at HOME root (should be in matrix/store/)."""
@@ -159,7 +164,7 @@ class TestDetectSameHomeLegacyItems:
 
         paths_info = {
             "home": str(home),
-            "credentials_path": str(home / "matrix" / "credentials.json"),
+            "credentials_path": str(home / "matrix" / CREDENTIALS_FILENAME),
             "store_dir": str(home / "matrix" / "store"),
         }
 
@@ -176,12 +181,12 @@ class TestDetectSameHomeLegacyItems:
         home.mkdir()
         (home / "matrix").mkdir()
         # Create both legacy items at root
-        (home / "credentials.json").write_text("{}")
+        (home / CREDENTIALS_FILENAME).write_text("{}")
         (home / "store").mkdir()
 
         paths_info = {
             "home": str(home),
-            "credentials_path": str(home / "matrix" / "credentials.json"),
+            "credentials_path": str(home / "matrix" / CREDENTIALS_FILENAME),
             "store_dir": str(home / "matrix" / "store"),
         }
 
@@ -198,11 +203,11 @@ class TestDetectSameHomeLegacyItems:
         home.mkdir()
         (home / "matrix").mkdir()
         (home / "matrix" / "store").mkdir()
-        (home / "matrix" / "credentials.json").write_text("{}")
+        (home / "matrix" / CREDENTIALS_FILENAME).write_text("{}")
 
         paths_info = {
             "home": str(home),
-            "credentials_path": str(home / "matrix" / "credentials.json"),
+            "credentials_path": str(home / "matrix" / CREDENTIALS_FILENAME),
             "store_dir": str(home / "matrix" / "store"),
         }
 
@@ -216,11 +221,11 @@ class TestDetectSameHomeLegacyItems:
         home = tmp_path / "home"
         home.mkdir()
         (home / "matrix").mkdir()
-        (home / "credentials.json").write_text("{}")
+        (home / CREDENTIALS_FILENAME).write_text("{}")
 
         paths_info = {
             "home": str(home),
-            "credentials_path": str(home / "matrix" / "credentials.json"),
+            "credentials_path": str(home / "matrix" / CREDENTIALS_FILENAME),
             "store_dir": "N/A (Windows)",
         }
 
@@ -246,11 +251,11 @@ def test_handle_paths_command_with_same_home_legacy(capsys, monkeypatch, tmp_pat
         return_value={
             "home": str(home),
             "home_source": "env",
-            "credentials_path": str(home / "matrix" / "credentials.json"),
+            "credentials_path": str(home / "matrix" / CREDENTIALS_FILENAME),
             "database_dir": str(home / "database"),
             "store_dir": str(home / "matrix" / "store"),
             "logs_dir": str(home / "logs"),
-            "log_file": str(home / "logs" / "mmrelay.log"),
+            "log_file": str(home / "logs" / LOG_FILENAME),
             "plugins_dir": str(home / "plugins"),
             "custom_plugins_dir": str(home / "plugins" / "custom"),
             "community_plugins_dir": str(home / "plugins" / "community"),

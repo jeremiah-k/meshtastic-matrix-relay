@@ -11,7 +11,11 @@ from unittest.mock import patch
 
 import pytest
 
-from mmrelay.constants.app import LOG_FILENAME, WINDOWS_INSTALLER_DIR_NAME
+from mmrelay.constants.app import (
+    DATABASE_FILENAME,
+    LOG_FILENAME,
+    WINDOWS_INSTALLER_DIR_NAME,
+)
 from mmrelay.constants.config import DEFAULT_CONFIG_FILENAME
 from mmrelay.paths import (
     E2EENotSupportedError,
@@ -156,7 +160,7 @@ class TestGetHomeDir:
             (platform_home / DEFAULT_CONFIG_FILENAME).write_text(
                 "test: true\n", encoding="utf-8"
             )
-            (platform_db / "meshtastic.sqlite").write_text("", encoding="utf-8")
+            (platform_db / DATABASE_FILENAME).write_text("", encoding="utf-8")
 
             monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
             monkeypatch.delenv("MMRELAY_HOME", raising=False)
@@ -186,7 +190,7 @@ class TestGetHomeDir:
             (installer_path / DEFAULT_CONFIG_FILENAME).write_text(
                 "test: true\n", encoding="utf-8"
             )
-            (installer_db / "meshtastic.sqlite").write_text("", encoding="utf-8")
+            (installer_db / DATABASE_FILENAME).write_text("", encoding="utf-8")
 
             platform_home = root / "PlatformData" / "mmrelay"
             platform_logs = platform_home / "logs"
@@ -223,7 +227,7 @@ class TestGetHomeDir:
             (installer_path / DEFAULT_CONFIG_FILENAME).write_text(
                 "test: true\n", encoding="utf-8"
             )
-            (installer_db / "meshtastic.sqlite").write_text("", encoding="utf-8")
+            (installer_db / DATABASE_FILENAME).write_text("", encoding="utf-8")
             (installer_logs / LOG_FILENAME).write_text("log\n", encoding="utf-8")
 
             platform_home = root / "PlatformData" / "mmrelay"
@@ -232,7 +236,7 @@ class TestGetHomeDir:
             (platform_home / DEFAULT_CONFIG_FILENAME).write_text(
                 "test: true\n", encoding="utf-8"
             )
-            (platform_db / "meshtastic.sqlite").write_text("", encoding="utf-8")
+            (platform_db / DATABASE_FILENAME).write_text("", encoding="utf-8")
 
             monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
             monkeypatch.delenv("MMRELAY_HOME", raising=False)

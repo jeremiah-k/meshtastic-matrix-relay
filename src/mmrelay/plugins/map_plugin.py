@@ -35,6 +35,7 @@ from mmrelay.constants.formats import (
     MAP_ZOOM_MIN,
     RGBA_CHANNEL_MAX,
 )
+from mmrelay.constants.domain import MATRIX_EVENT_TYPE_ROOM_MESSAGE
 from mmrelay.constants.plugins import (
     MAX_MAP_IMAGE_SIZE,
     S2_PRECISION_BITS_TO_METERS_CONSTANT,
@@ -646,7 +647,7 @@ class Plugin(BasePlugin):
             self.logger.exception("Failed to send map image")
             await matrix_client.room_send(
                 room_id=room.room_id,
-                message_type="m.room.message",
+                message_type=MATRIX_EVENT_TYPE_ROOM_MESSAGE,
                 content={
                     "msgtype": "m.notice",
                     "body": "Failed to generate map: Image upload failed.",

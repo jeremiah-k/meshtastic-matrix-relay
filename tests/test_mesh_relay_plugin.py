@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.domain import MATRIX_EVENT_TYPE_ROOM_MESSAGE
 from mmrelay.constants.formats import MATRIX_PACKET_KEY, MATRIX_SUPPRESS_KEY
 from mmrelay.plugins.mesh_relay_plugin import Plugin
 from tests.constants import TEST_ROOM_ID_1
@@ -344,7 +345,9 @@ class TestMeshRelayPlugin(unittest.TestCase):
             call_args = mock_matrix_client.room_send.call_args
 
             self.assertEqual(call_args.kwargs["room_id"], TEST_ROOM_ID_1)
-            self.assertEqual(call_args.kwargs["message_type"], "m.room.message")
+            self.assertEqual(
+                call_args.kwargs["message_type"], MATRIX_EVENT_TYPE_ROOM_MESSAGE
+            )
 
             content = call_args.kwargs["content"]
             self.assertEqual(content["msgtype"], "m.text")

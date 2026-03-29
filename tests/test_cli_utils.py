@@ -31,6 +31,7 @@ from mmrelay.cli_utils import (
     suggest_command,
     validate_command,
 )
+from mmrelay.constants.app import CREDENTIALS_FILENAME
 from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID
 
 
@@ -230,7 +231,7 @@ class TestMessageTemplates:
         """Test msg_require_auth_login returns expected message."""
         result = msg_require_auth_login()
         assert "mmrelay auth login" in result
-        assert "credentials.json" in result
+        assert CREDENTIALS_FILENAME in result
 
     def test_msg_retry_auth_login(self):
         """Test msg_retry_auth_login returns expected message."""
@@ -261,7 +262,7 @@ class TestMessageTemplates:
         result = msg_or_run_auth_login()
         assert "or run" in result
         assert "mmrelay auth login" in result
-        assert "credentials.json" in result
+        assert CREDENTIALS_FILENAME in result
 
     def test_msg_setup_authentication(self):
         """Test msg_setup_authentication returns expected message."""

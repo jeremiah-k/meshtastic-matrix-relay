@@ -21,6 +21,7 @@ import s2sphere
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from mmrelay.constants.domain import MATRIX_EVENT_TYPE_ROOM_MESSAGE
 from mmrelay.matrix_utils import (
     ImageUploadError,
     send_image,
@@ -285,7 +286,7 @@ class TestImageUploadAndSend(unittest.TestCase):
 
             self.mock_client.room_send.assert_awaited_once_with(
                 room_id=room_id,
-                message_type="m.room.message",
+                message_type=MATRIX_EVENT_TYPE_ROOM_MESSAGE,
                 content={
                     "msgtype": "m.image",
                     "url": "mxc://example.com/test123",

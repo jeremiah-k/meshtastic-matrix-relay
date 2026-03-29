@@ -9,6 +9,11 @@ import shutil
 from pathlib import Path
 from unittest.mock import patch
 
+from mmrelay.constants.app import (
+    CONFIG_FILENAME,
+    CREDENTIALS_FILENAME,
+    DATABASE_FILENAME,
+)
 from mmrelay.constants.migration import (
     MIGRATION_BACKUP_DIRNAME,
     MIGRATION_STAGING_DIRNAME,
@@ -35,7 +40,7 @@ class TestRollbackMigrationErrorHandling:
         backup_file.write_text('{"test": "backup"}')
 
         # Create destination file
-        dest_file = new_home / "matrix" / "credentials.json"
+        dest_file = new_home / "matrix" / CREDENTIALS_FILENAME
         dest_file.parent.mkdir(parents=True)
         dest_file.write_text('{"test": "current"}')
 
@@ -75,7 +80,7 @@ class TestRollbackMigrationErrorHandling:
             {
                 "type": "credentials",
                 "result": {
-                    "new_path": str(new_home / "matrix" / "credentials.json"),
+                    "new_path": str(new_home / "matrix" / CREDENTIALS_FILENAME),
                     "action": "move",
                     "success": True,
                 },
@@ -112,7 +117,7 @@ class TestRollbackMigrationErrorHandling:
         backup_path.write_text("sqlite database content")
 
         # Create destination file
-        dest_file = new_home / "database" / "meshtastic.sqlite"
+        dest_file = new_home / "database" / DATABASE_FILENAME
         dest_file.parent.mkdir(parents=True)
         dest_file.write_text("current database")
 
@@ -163,11 +168,11 @@ class TestRollbackMigrationErrorHandling:
         config_backup.write_text("config: backup")
 
         # Create destination files
-        creds_dest = new_home / "matrix" / "credentials.json"
+        creds_dest = new_home / "matrix" / CREDENTIALS_FILENAME
         creds_dest.parent.mkdir(parents=True)
         creds_dest.write_text('{"test": "current_creds"}')
 
-        config_dest = new_home / "config.yaml"
+        config_dest = new_home / CONFIG_FILENAME
         config_dest.write_text("config: current")
 
         # Test data
@@ -193,7 +198,7 @@ class TestRollbackMigrationErrorHandling:
 
         # Force config restore failure by mocking shutil.copy2 to raise OSError
         def selective_copy_failure(src, dst, *args, **kwargs):
-            if "config.yaml" in str(src):
+            if CONFIG_FILENAME in str(src):
                 raise PermissionError(13, "Permission denied", src)
             return _REAL_COPY2(src, dst, *args, **kwargs)
 

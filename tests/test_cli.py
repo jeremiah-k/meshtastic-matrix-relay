@@ -45,6 +45,7 @@ from mmrelay.cli import (
     parse_arguments,
     print_version,
 )
+from mmrelay.constants.app import CREDENTIALS_FILENAME
 from mmrelay.constants.config import CONFIG_KEY_DEVICE_ID
 from tests.constants import TEST_CONFIG_PATH, TEST_HOME_CONFIG_PATH, TEST_SERIAL_PORT
 
@@ -1882,9 +1883,9 @@ class TestAuthStatus(unittest.TestCase):
         self.assertEqual(result, 1)
         mock_get_paths.assert_called_once_with(self.mock_args)
         home_dir = os.path.dirname(TEST_HOME_CONFIG_PATH)
-        mock_exists.assert_any_call(os.path.join(home_dir, "credentials.json"))
+        mock_exists.assert_any_call(os.path.join(home_dir, CREDENTIALS_FILENAME))
         mock_exists.assert_any_call(
-            os.path.join(home_dir, "matrix", "credentials.json")
+            os.path.join(home_dir, "matrix", CREDENTIALS_FILENAME)
         )
 
         # Check printed output
@@ -1920,9 +1921,9 @@ class TestAuthStatus(unittest.TestCase):
         self.assertEqual(result, 1)
         mock_get_paths.assert_called_once_with(self.mock_args)
         home_dir = os.path.dirname(TEST_HOME_CONFIG_PATH)
-        mock_exists.assert_any_call(os.path.join(home_dir, "credentials.json"))
+        mock_exists.assert_any_call(os.path.join(home_dir, CREDENTIALS_FILENAME))
         mock_exists.assert_any_call(
-            os.path.join(home_dir, "matrix", "credentials.json")
+            os.path.join(home_dir, "matrix", CREDENTIALS_FILENAME)
         )
 
         # Check error output
@@ -1989,7 +1990,7 @@ class TestAuthStatus(unittest.TestCase):
         mock_get_paths.return_value = [TEST_HOME_CONFIG_PATH, TEST_CONFIG_PATH]
         # First path doesn't have credentials, second path does (in matrix/ subdir)
         mock_exists.side_effect = lambda path: (
-            path == os.path.join(etc_dir, "matrix", "credentials.json")
+            path == os.path.join(etc_dir, "matrix", CREDENTIALS_FILENAME)
         )
         mock_get_command.return_value = "mmrelay auth login"
 
@@ -2012,12 +2013,14 @@ class TestAuthStatus(unittest.TestCase):
         mock_get_paths.assert_called_once_with(self.mock_args)
 
         # Should check configured candidates, including second config path.
-        mock_exists.assert_any_call(os.path.join(home_dir, "credentials.json"))
+        mock_exists.assert_any_call(os.path.join(home_dir, CREDENTIALS_FILENAME))
         mock_exists.assert_any_call(
-            os.path.join(home_dir, "matrix", "credentials.json")
+            os.path.join(home_dir, "matrix", CREDENTIALS_FILENAME)
         )
-        mock_exists.assert_any_call(os.path.join(etc_dir, "credentials.json"))
-        mock_exists.assert_any_call(os.path.join(etc_dir, "matrix", "credentials.json"))
+        mock_exists.assert_any_call(os.path.join(etc_dir, CREDENTIALS_FILENAME))
+        mock_exists.assert_any_call(
+            os.path.join(etc_dir, "matrix", CREDENTIALS_FILENAME)
+        )
 
         # Check printed output shows second path
         mock_print.assert_any_call(

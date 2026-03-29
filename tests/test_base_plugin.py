@@ -27,6 +27,7 @@ import schedule
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from mmrelay.constants.database import DEFAULT_MAX_DATA_ROWS_PER_NODE_BASE
+from mmrelay.constants.domain import MATRIX_EVENT_TYPE_ROOM_MESSAGE
 from mmrelay.constants.network import MINIMUM_MESSAGE_DELAY
 from mmrelay.constants.plugins import DEFAULT_PLUGIN_PRIORITY
 from mmrelay.plugins.base_plugin import BasePlugin
@@ -682,7 +683,9 @@ class TestBasePlugin(unittest.TestCase):
             mock_matrix_client.room_send.assert_called_once()
             call_args = mock_matrix_client.room_send.call_args
             self.assertEqual(call_args.kwargs["room_id"], "!room:matrix.org")
-            self.assertEqual(call_args.kwargs["message_type"], "m.room.message")
+            self.assertEqual(
+                call_args.kwargs["message_type"], MATRIX_EVENT_TYPE_ROOM_MESSAGE
+            )
 
         asyncio.run(run_test())
 

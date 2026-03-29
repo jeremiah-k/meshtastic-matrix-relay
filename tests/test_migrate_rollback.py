@@ -9,6 +9,11 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from mmrelay.constants.app import (
+    CONFIG_FILENAME,
+    CREDENTIALS_FILENAME,
+    DATABASE_FILENAME,
+)
 from mmrelay.constants.migration import MIGRATION_BACKUP_DIRNAME
 from mmrelay.migrate import rollback_migration
 
@@ -42,7 +47,7 @@ class TestRollbackMigration:
         legacy_root.mkdir()
 
         # Create test file in legacy location
-        test_file = legacy_root / "config.yaml"
+        test_file = legacy_root / CONFIG_FILENAME
         test_file.write_text("matrix: {}\nmeshtastic: {}")
 
         # Create destination and backup directories
@@ -52,7 +57,7 @@ class TestRollbackMigration:
         backup_dir.mkdir(parents=True)
 
         # Simulate migration - move file and create backup
-        dest_file = matrix_dir / "config.yaml"
+        dest_file = matrix_dir / CONFIG_FILENAME
         shutil.move(str(test_file), str(dest_file))
 
         # Create backup file (simulate _backup_file behavior)
@@ -96,13 +101,13 @@ class TestRollbackMigration:
         legacy_root.mkdir()
 
         # Create test files in legacy location
-        config_file = legacy_root / "config.yaml"
+        config_file = legacy_root / CONFIG_FILENAME
         config_file.write_text("matrix: {}\nmeshtastic: {}")
 
         # Create credentials directory and file
         creds_dir = legacy_root / "credentials"
         creds_dir.mkdir()
-        creds_file = creds_dir / "credentials.json"
+        creds_file = creds_dir / CREDENTIALS_FILENAME
         creds_file.write_text('{"access_token": "test_token"}')
 
         # Create destination directories
@@ -114,8 +119,8 @@ class TestRollbackMigration:
         config_backup_dir.mkdir(parents=True)
 
         # Simulate migration - move files and create backups
-        dest_config = matrix_dir / "config.yaml"
-        dest_creds = matrix_dir / "credentials.json"
+        dest_config = matrix_dir / CONFIG_FILENAME
+        dest_creds = matrix_dir / CREDENTIALS_FILENAME
         shutil.move(str(config_file), str(dest_config))
         shutil.move(str(creds_file), str(dest_creds))
 
@@ -173,7 +178,7 @@ class TestRollbackMigration:
         legacy_root.mkdir()
 
         # Create test file
-        test_file = legacy_root / "config.yaml"
+        test_file = legacy_root / CONFIG_FILENAME
         test_file.write_text("matrix: {}")
 
         # Create destination and backup directories
@@ -183,7 +188,7 @@ class TestRollbackMigration:
         backup_dir.mkdir(parents=True)
 
         # Simulate migration
-        dest_file = matrix_dir / "config.yaml"
+        dest_file = matrix_dir / CONFIG_FILENAME
         shutil.move(str(test_file), str(dest_file))
 
         # Create backup
@@ -253,7 +258,7 @@ class TestRollbackMigration:
         legacy_root.mkdir()
 
         # Create test file in legacy location
-        test_file = legacy_root / "config.yaml"
+        test_file = legacy_root / CONFIG_FILENAME
         test_file.write_text("matrix: {}")
 
         # Create destination directory but NO backup directory
@@ -261,7 +266,7 @@ class TestRollbackMigration:
         matrix_dir.mkdir(parents=True)
 
         # Simulate migration - move file but don't create backup
-        dest_file = matrix_dir / "config.yaml"
+        dest_file = matrix_dir / CONFIG_FILENAME
         shutil.move(str(test_file), str(dest_file))
 
         # Set up migration result

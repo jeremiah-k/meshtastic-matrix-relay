@@ -10,6 +10,11 @@ from pathlib import Path
 
 import pytest
 
+from mmrelay.constants.app import (
+    CONFIG_FILENAME,
+    CREDENTIALS_FILENAME,
+    DATABASE_FILENAME,
+)
 from mmrelay.constants.migration import MIGRATION_BACKUP_DIRNAME
 from mmrelay.migrate import rollback_migration
 
@@ -51,7 +56,7 @@ class TestRollbackCredentialsMigration:
         )
 
         # Create current (migrated) credentials file
-        creds_dest = new_home / "matrix" / "credentials.json"
+        creds_dest = new_home / "matrix" / CREDENTIALS_FILENAME
         creds_dest.parent.mkdir(parents=True, exist_ok=True)
         creds_dest.write_text(
             '{"homeserver": "https://new.server", "access_token": "new_token"}'
@@ -102,7 +107,7 @@ class TestRollbackConfigMigration:
         )
 
         # Create current (migrated) config file
-        config_dest = new_home / "config.yaml"
+        config_dest = new_home / CONFIG_FILENAME
         config_dest.write_text(
             "meshtastic:\n  connection_type: network\nmatrix:\n  homeserver: https://new.server"
         )
@@ -165,7 +170,7 @@ class TestRollbackDatabaseMigration:
         db_dir = new_home / "database"
         db_dir.mkdir(parents=True)
 
-        db_file = db_dir / "meshtastic.sqlite"
+        db_file = db_dir / DATABASE_FILENAME
         db_file.write_text("SQLite format 3 (migrated)")
 
         wal_file = db_dir / "meshtastic.sqlite-wal"
@@ -210,7 +215,7 @@ class TestRollbackDatabaseMigration:
         db_backup.write_text("SQLite format 3 (backup)")
         wal_backup.write_text("WAL backup")
 
-        db_dest = db_dir / "meshtastic.sqlite"
+        db_dest = db_dir / DATABASE_FILENAME
         wal_dest = db_dir / "meshtastic.sqlite-wal"
         db_dest.write_text("SQLite format 3 (migrated)")
         wal_dest.write_text("WAL migrated")
@@ -261,7 +266,7 @@ class TestRollbackDatabaseMigration:
         db_backup = backup_dir / "meshtastic.sqlite.bak.20240101_120000"
         db_backup.write_text("SQLite format 3 (backup)")
 
-        db_dest = db_dir / "meshtastic.sqlite"
+        db_dest = db_dir / DATABASE_FILENAME
         wal_dest = db_dir / "meshtastic.sqlite-wal"
         db_dest.write_text("SQLite format 3 (migrated)")
         wal_dest.write_text("WAL migrated")
@@ -547,11 +552,11 @@ class TestRollbackMultipleComponents:
         (logs_backup / "backup.log").write_text("backup log")
 
         # Create current (migrated) files
-        creds_dest = new_home / "matrix" / "credentials.json"
+        creds_dest = new_home / "matrix" / CREDENTIALS_FILENAME
         creds_dest.parent.mkdir(parents=True)
         creds_dest.write_text('{"token": "new_creds"}')
 
-        config_dest = new_home / "config.yaml"
+        config_dest = new_home / CONFIG_FILENAME
         config_dest.write_text("config: new")
 
         logs_dest = new_home / "logs"

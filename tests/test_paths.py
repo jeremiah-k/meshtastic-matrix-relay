@@ -210,7 +210,7 @@ class TestPathResolutionConfigPaths(unittest.TestCase):
             path_strs = [os.path.normpath(str(p)) for p in paths]
             self.assertTrue(
                 any(
-                    "mmrelay" in path_str and "config.yaml" in path_str
+                    "mmrelay" in path_str and CONFIG_FILENAME in path_str
                     for path_str in path_strs
                 )
             )

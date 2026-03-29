@@ -32,6 +32,7 @@ from mmrelay.constants.database import (
     DEFAULT_MAX_DATA_ROWS_PER_NODE_BASE,
     DEFAULT_TEXT_TRUNCATION_LENGTH,
 )
+from mmrelay.constants.domain import MATRIX_EVENT_TYPE_ROOM_MESSAGE
 from mmrelay.constants.plugins import (
     DEFAULT_PLUGIN_PRIORITY,
     PLUGIN_TYPE_COMMUNITY,
@@ -699,7 +700,7 @@ class BasePlugin(ABC):
             content["formatted_body"] = markdown.markdown(message)
         return await matrix_client.room_send(
             room_id=room_id,
-            message_type="m.room.message",
+            message_type=MATRIX_EVENT_TYPE_ROOM_MESSAGE,
             content=content,
         )
 
