@@ -213,6 +213,12 @@ class Plugin(BasePlugin):
             it mutates `event.source["content"]` by adding MATRIX_PACKET_KEY
             for consistency with newer message formats.
 
+        Policy: This method prioritizes correctness over backward compatibility.
+        It will not match legacy body-only markers unless packet data can be
+        reconstructed, because handle_room_message() needs packet data to relay
+        back onto the mesh. Historical Matrix-room replay/backfill is not a
+        supported use case; current and future correctness matters more.
+
         Parameters:
             event: Matrix event object whose `.source` mapping is expected to contain a `"content"` dict.
 

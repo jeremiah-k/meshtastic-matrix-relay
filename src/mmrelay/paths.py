@@ -183,6 +183,16 @@ def _score_mmrelay_home_state(root: Path) -> int:
     Critical state (config, credentials, database) is weighted higher than
     low-signal artifacts (logs directory content).
 
+    Policy: The primary trio (config, credentials, database at 6 points each) is
+    weighted to create a "lock-in" effect. Once a home has all three (18 points),
+    it requires meaningful additional evidence (store content, plugins) in the
+    competing home to justify a home flip. A switch margin of 3 means the
+    competing home needs to score at least 4 points higher to override.
+
+    This prevents partial migrations or weak artifacts (like an installer
+    directory that only has logs) from causing surprise home flips after a
+    user has established real operational state in one location.
+
     Parameters:
         root (Path): Directory candidate to score.
 
